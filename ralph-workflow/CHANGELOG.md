@@ -47,6 +47,8 @@ and open a fresh `[Unreleased]`.
 
 ### Changed
 
+- **refactor(display): consolidate to a single display mode so the persistent bottom Status Bar always shows working directory, active phase, and applicable outer development / inner analysis iterations regardless of terminal width. Drops narrow / medium / wide modes, the legacy env-var override, `force_mode` parameter, and three-tier path / label / limits tables.** — commit `<pending-ralph-generate-commit>`. Locks behavior in `tests/display/test_single_mode_anti_drift.py`, `tests/display/test_status_bar.py`, `tests/display/test_mode_adaptiveness.py`, `tests/test_parallel_display.py`, `tests/unit/display/test_display_context.py`, `tests/unit/display/test_mode.py`, and the broader `tests/` migration sweep that dropped `force_mode=` / `force_narrow` / `ctx.mode == compact|medium|wide` / `NARROW_THRESHOLD` / `MEDIUM_THRESHOLD`.
+
 - **feat(watchdog): close wt-021 with consolidated Trustworthy Idle Watchdog acceptance-criteria test** — commits `2a4aaf9cd`, `4ddd85613`, `1bc186c8e`, `1c3d4a2de`. Locks behavior in `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`.
 
 - **fix(agy): align CLI default and live regression suite on `agy/Gemini 3.5 Flash (Medium)` and accept any canonical AGY model display name.** Locks behavior in `tests/test_agy_live_regression.py`, `tests/test_cli_smoke.py`, `tests/test_smoke_agy_end_to_end.py`.

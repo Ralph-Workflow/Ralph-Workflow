@@ -25,22 +25,41 @@ ctx = make_display_context()          # uses terminal width, NO_COLOR, etc.
 show_phase_start("planning", display_context=ctx)
 ```
 
-### Width and Mode Precedence
+### Width Precedence
 
 | Priority | Source | Effect |
 |----------|--------|--------|
-| 1 | `RALPH_FORCE_NARROW=1\|true\|yes\|on` | Forces `compact` mode regardless of width |
-| 2 | `force_width` argument to `make_display_context()` | Overrides all width detection |
-| 3 | `COLUMNS=<N>` env var (positive int) | Overrides console.width |
-| 4 | `console.width` (actual terminal width) | Default fallback |
+| 1 | `force_width` argument to `make_display_context()` | Overrides all width detection |
+| 2 | `COLUMNS=<N>` env var (positive int) | Overrides console.width |
+| 3 | `console.width` (actual terminal width) | Default fallback |
 
-### Mode Thresholds
+### Display mode (single default)
 
-| Mode | Width | Description |
-|------|-------|-------------|
-| `compact` | < 60 cols | Suppresses secondary columns, extra blank lines, descriptive rules |
-| `medium` | 60–99 cols | Standard layout with moderate condensing |
-| `wide` | ≥ 100 cols | Full multi-line layout with all sections |
+Ralph Workflow exposes exactly ONE display mode: ``default``. There is no
+width-based dispatch and no per-mode limits table. The persistent bottom
+Status Bar always renders all applicable fields (working directory, active
+phase, applicable outer development iteration, applicable inner analysis
+iteration) regardless of terminal width — only the long-path
+middle-truncation and long-phase tail-truncation budgets adapt to width.
+
+The historical env-var override that selected a narrower mode is silently
+ignored. The historical ``force_mode`` keyword argument to
+``make_display_context()`` raises ``NotImplementedError`` if a non-``None``
+value is passed.
+
+.. note::
+
+   What changed and why it belongs here
+
+   The historical three-tier mode split (narrow / medium / wide), the
+   ``force_mode`` keyword argument, the legacy env-var override, and the
+   three-tier mode limits table were collapsed into a single ``default``
+   mode. This belongs on the operator-facing transcript reference page
+   because operators who relied on the legacy override need to know it is
+   no longer recognized. What was pruned: the mode thresholds table, the
+   legacy env-var precedence row, and the ``force_mode`` argument. What
+   was merged: every width-driven branch in ``parallel_display.py`` and
+   ``status_bar.py`` now renders identically.
 
 ### Color Precedence
 
@@ -137,19 +156,17 @@ captured transcript stays clean for machine parsers and post-run review.
 
 **Narrow-terminal behavior**
 
-The bar uses `ctx.mode` (mode thresholds: `compact` < 60, `medium` 60–99, `wide` ≥ 100)
-to select fields and budgets:
+The bar is mode-agnostic: it always renders every applicable field described above,
+regardless of terminal width. Width only influences two truncation budgets:
 
-| Mode    | Width | Fields rendered | Path budget | Phase-label budget |
-|---------|-------|-----------------|-------------|--------------------|
-| compact | <60   | phase + dir only | 20 chars   | 16 chars           |
-| medium  | 60–99 | phase + dir + `Dev N/cap` | 32 chars | 22 chars |
-| wide    | ≥100  | phase + dir + `Dev N/cap` + `Analysis N/cap` | 48 chars | 28 chars |
+- Long paths are middle-truncated (preserve first 8 chars + ellipsis + last segment) to
+  fit within `DEFAULT_PATH_BUDGET = 48` chars.
+- Long phase labels are tail-truncated (preserve the leading word) to fit within
+  `DEFAULT_PHASE_LABEL_BUDGET = 28` chars.
 
-Long paths are middle-truncated (preserve first 8 chars + ellipsis + last segment) and
-long phase labels are tail-truncated (preserve the leading word) so the bar never wraps
-into the working area. Truncation budgets are per-mode so the layout stays scannable
-on common laptop widths and stays readable on external-monitor widths.
+The two budgets are constants on `ralph.display.status_bar`, not a per-mode table, so
+the bar layout stays scannable on common laptop widths and stays readable on
+external-monitor widths without changing which fields render.
 
 **Single owner and refresh cadence**
 
@@ -267,39 +284,34 @@ The optional AI-generated layer is separate from the deterministic headline laye
 
 ## Phase-Start Banner
 
-Before each phase begins, a phase-start banner is printed to the console.  The exact
-layout depends on the display mode:
-
-- **compact**: single-line banner with no separators or qualifiers
-- **medium**: blank line before the banner provides a visual phase boundary; `(outer)` /
-  `(inner)` qualifiers are appended to the iteration labels
-- **wide**: a titled Rule separator precedes the banner (title = phase label + iteration
-  context); `(outer)` / `(inner)` qualifiers are appended; agent name appears on its own
-  indented line
+Before each phase begins, a phase-start banner is printed to the console.  The single
+default-mode layout uses a uniform banner shape across every terminal width: a titled
+Rule separator precedes the banner (title = phase label + iteration context), with
+`(outer)` / `(inner)` qualifiers appended to the iteration labels when those qualifiers
+apply and the agent name shown inline on the banner line.
 
 ```
-─────────── <Phase Label>  <od_glyph> Dev N/cap  <ia_glyph> Analysis N/cap ─── ← wide only
+─────────── <Phase Label>  <od_glyph> Dev N/cap  <ia_glyph> Analysis N/cap ───
 <glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  [N left|last]  [agent=<name>]
-    agent: <name>                                                               ← wide only
 ```
 
 | Field | Notes |
 |-------|-------|
 | `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
 | `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed current cycle number; shows cap when progress is tracked |
-| `(outer)` | Qualifier appended in **medium and wide mode** to clarify this is the outer dev cycle |
+| `(outer)` | Qualifier appended to the outer dev iteration label to clarify which cycle scope this is |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — 1-indexed; shows cap when known |
-| `(inner)` | Qualifier appended in **medium and wide mode** to clarify this is the inner analysis cycle |
-| `[N left]` | Remaining analysis iterations before cap is reached — shown in **medium/wide mode** when the cap is known and iterations remain |
-| `[last]` | Shown in **medium/wide mode** when the current analysis iteration is the final one allowed by the cap |
-| `agent=<name>` | Active agent identity — shown inline in compact/medium mode; shown on its own indented line in wide mode |
+| `(inner)` | Qualifier appended to the inner analysis iteration label to clarify which cycle scope this is |
+| `[N left]` | Remaining analysis iterations before cap is reached — shown when the cap is known and iterations remain |
+| `[last]` | Shown when the current analysis iteration is the final one allowed by the cap |
+| `agent=<name>` | Active agent identity — shown inline on the banner line |
 
 All iteration fields are optional and appear only when the pipeline has that context.
 `Dev N/cap` counts from 1: `Dev 1/5` means the pipeline is entering its first development
 cycle out of a total budget of 5. `Dev 0/cap` is never shown.
 
-In wide mode the titled Rule carries the same iteration labels as the banner line so
-the section heading is immediately scannable even when the banner itself scrolls out of view.
+The titled Rule carries the same iteration labels as the banner line so the section
+heading is immediately scannable even when the banner itself scrolls out of view.
 
 ## Phase-Close Banner
 
@@ -308,10 +320,10 @@ phase-close banner is printed to the console:
 
 ```
 <success_glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  Ns  <arrow> <exit_trigger>
-    ↳ stats: content=N thinking=N tools=N [errors=N]        ← medium/wide only, when activity > 0
-    ↳ artifact: <artifact_outcome>                           ← medium/wide only, when artifact produced
+    ↳ stats: content=N thinking=N tools=N [errors=N]         ← when activity > 0
+    ↳ artifact: <artifact_outcome>                            ← when artifact produced
   <warning_glyph> debug: waiting: <waiting_status> | failure: <failure_category>   ← only when breadcrumbs exist
-──────────── Ns  <arrow> <exit_trigger> ──────────────────── ← wide only, titled trailing Rule
+──────────── Ns  <arrow> <exit_trigger> ──────────────────── ← titled trailing Rule
 ```
 
 | Field | Notes |
@@ -319,18 +331,17 @@ phase-close banner is printed to the console:
 | `<success_glyph>` | `✓` (Unicode) or `[OK]` (ASCII) |
 | `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
 | `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed; same label as phase-start |
-| `(outer)` | Qualifier appended in **medium/wide mode** |
+| `(outer)` | Qualifier appended to the outer dev iteration label |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — same label as phase-start |
-| `(inner)` | Qualifier appended in **medium/wide mode** |
+| `(inner)` | Qualifier appended to the inner analysis iteration label |
 | `Ns` | Wall-clock elapsed time for the phase, in seconds (omitted when 0) |
 | `<arrow> <exit_trigger>` | Why the phase ended — present when an exit trigger is known |
-| `↳ stats:` | Phase-level activity counters — shown in medium/wide mode when any counter is non-zero |
-| `↳ artifact:` | What the phase produced (e.g. `plan: 5 step(s), 2 risk(s)`) — shown in medium/wide mode when set |
+| `↳ stats:` | Phase-level activity counters — shown when any counter is non-zero |
+| `↳ artifact:` | What the phase produced (e.g. `plan: 5 step(s), 2 risk(s)`) — shown when set |
 | `debug: waiting: …` | Last waiting-status line recorded during this phase (present only when set) |
 | `debug: … failure: …` | Last failure category recorded during this phase (present only when set) |
-| trailing Rule | **Wide mode only** — printed after all detail lines with `Ns  → exit_trigger` as
-    the Rule title (or a plain Rule when both are absent); symmetrically closes the section opened
-    by the phase-start titled Rule |
+| trailing Rule | Printed after all detail lines with `Ns  → exit_trigger` as the Rule title (or a plain
+    Rule when both are absent); symmetrically closes the section opened by the phase-start titled Rule |
 
 All iteration fields are optional and appear only when the pipeline has that context.
 This banner is symmetric with the phase-start banner: same field ordering, same glyphs,
@@ -339,8 +350,8 @@ same style keys — making before/after pairs easy to read in the terminal.
 When a phase ends with a waiting or failure breadcrumb still set (e.g. a timeout or tool
 error), an indented debug line appears immediately below the close banner. This makes
 failure-related state visible without requiring the completion summary to be read first.
-The waiting status is truncated to 80 characters. The debug line appears in all display
-modes (compact, medium, wide) whenever the data is present.
+The waiting status is truncated to 80 characters. The debug line appears whenever the
+data is present, regardless of terminal width.
 
 ## Phase-Transition Banner
 
@@ -406,16 +417,9 @@ the same vocabulary for iteration context:
 ## `[run-end]` Panel
 
 At the end of every pipeline run, a `[run-end]` block reports the run summary.
-The format adapts to the display mode:
+The single default-mode layout renders the multi-line shape with grouped counters and
+PR at the end (the same shape used at every terminal width):
 
-**Compact mode** (`< 60` cols): abbreviated 3-line summary:
-```
-<ISO-TS> MILESTONE META [run-end] <phase> | <elapsed>s | <exit_trigger>
-<ISO-TS> INFO     META [run-end] agent=N content=X thinking=Y tools=Z errors=W
-<ISO-TS> INFO     META [run-end] pr=<url>
-```
-
-**Wide mode** (`>= 100` cols): multi-line with grouped counters and PR at end:
 ```
 <ISO-TS> MILESTONE META [run-end] ◆ Ralph Workflow run end
 <ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s exit=<exit_trigger> [dev_cycle=N]
@@ -458,7 +462,6 @@ The `exit` field reports **why** the run ended:
 | `RALPH_LONG_CONTENT_AI_SUMMARY` | `0` | Append `⇳ ai-summary:` (requires LLM round-trip) |
 | `NO_COLOR` | unset | Disable all ANSI colour output (any value) |
 | `FORCE_COLOR` | unset | Force ANSI colour even when stdout is not a TTY (any value) |
-| `RALPH_FORCE_NARROW` | unset | Force compact mode display; set to `1`, `true`, `yes`, or `on` |
 | `COLUMNS` | unset | Override terminal width; positive integer |
 
 ## Related Modules

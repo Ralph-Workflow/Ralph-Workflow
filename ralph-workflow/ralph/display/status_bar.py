@@ -1,34 +1,62 @@
 """Persistent Status Bar at the bottom of the interactive terminal display.
 
-The Status Bar shows working directory, active phase, and any applicable outer
-development iteration and inner analysis iteration during interactive runs. It
-is the single owner of run-level layout, color, spacing, truncation, and
-live-update behavior; the per-unit ``emit_status_line`` and the transient
-``waiting_status_line`` are orthogonal surfaces left intact for one-shot
-transcript lines.
+The Status Bar shows working directory, active phase, and any applicable
+outer development iteration and inner analysis iteration during
+interactive runs. It is the single owner of run-level layout, color,
+spacing, truncation, and live-update behavior; the per-unit
+``emit_status_line`` and the transient ``waiting_status_line`` are
+orthogonal surfaces left intact for one-shot transcript lines.
+
+After the wt-028-display consolidation, Ralph Workflow exposes exactly
+ONE display mode (``default``). The persistent Status Bar always renders
+all applicable fields:
+
+- working directory (middle-truncated when long),
+- active phase label (tail-truncated when long),
+- outer development iteration (when non-``None``),
+- inner analysis iteration (when non-``None``).
+
+Only the path middle-truncation budget and the phase tail-truncation
+budget adapt to terminal width.
 
 The bar is gated on a real-TTY check (``console.is_terminal AND
-console.file.isatty()``) so it stays out of non-interactive runs (redirects,
-pipes, CI logs, StringIO test consoles, and force_terminal+StringIO consoles).
+console.file.isatty()``) so it stays out of non-interactive runs
+(redirects, pipes, CI logs, StringIO test consoles, and
+force_terminal+StringIO consoles).
 
 DI / purity invariants:
 
-- ``render_status_bar`` is a pure function: no I/O, no env reads, no Console
-  construction, no ``Path.home()`` calls (``home`` is a parameter so the
-  function can be tested deterministically).
-- ``status_bar.py`` does not construct a ``rich.Console`` and does not read
-  ``os.environ`` / ``os.getenv``; the DI invariants test asserts this.
-- The StatusBar lifecycle class lazily constructs a single ``rich.live.Live``
-  region only when the real-TTY gate passes; it never reads env at module
-  import.
+- ``render_status_bar`` is a pure function: no I/O, no env reads, no
+  Console construction, no ``Path.home()`` calls (``home`` is a parameter
+  so the function can be tested deterministically).
+- ``status_bar.py`` does not construct a ``rich.Console`` and does not
+  read ``os.environ`` / ``os.getenv``; the DI invariants test asserts this.
+- The StatusBar lifecycle class lazily constructs a single
+  ``rich.live.Live`` region only when the real-TTY gate passes; it
+  never reads env at module import.
 
 Cadence constants:
 
-- ``_STATUS_BAR_REFRESH_PER_SECOND`` (default ``4.0``): refresh rate for the
-  Live region. Pinned by ``test_status_bar_pins_steady_cadence_config``.
-- ``_STATUS_BAR_TRANSIENT`` (default ``True``): frames are erased on stop,
-  preserving clean scrollback, copy/paste, terminal search, and post-run
-  log review.
+- ``_STATUS_BAR_REFRESH_PER_SECOND`` (default ``4.0``): refresh rate for
+  the Live region. Pinned by
+  ``test_status_bar_pins_steady_cadence_config``.
+- ``_STATUS_BAR_TRANSIENT`` (default ``True``): frames are erased on
+  stop, preserving clean scrollback, copy/paste, terminal search, and
+  post-run log review.
+
+Default rendering
+-----------------
+
+The single default layout renders (in order)::
+
+    [phase_marker] {phase_label} [milestone] {workspace_root}
+                              [milestone] {outer_dev} Dev N/cap
+                              [milestone] {inner_analysis} Analysis N/cap
+
+A field is omitted entirely (no ``--`` placeholder) when its iteration
+field is ``None`` on the model. The phase marker glyph is omitted when
+``ctx.glyphs_enabled`` is ``False`` so ASCII consoles render a clean
+prefix.
 """
 
 from __future__ import annotations
@@ -62,16 +90,8 @@ _STATUS_BAR_REFRESH_PER_SECOND: float = 4.0
 _STATUS_BAR_TRANSIENT: bool = True
 
 
-_PATH_BUDGET_BY_MODE: dict[str, int] = {
-    "compact": 20,
-    "medium": 32,
-    "wide": 48,
-}
-_PHASE_LABEL_BUDGET_BY_MODE: dict[str, int] = {
-    "compact": 16,
-    "medium": 22,
-    "wide": 28,
-}
+DEFAULT_PATH_BUDGET: int = 48
+DEFAULT_PHASE_LABEL_BUDGET: int = 28
 _HOME_PREFIX: str = "~"
 _ELLIPSIS: str = "..."
 _ELLIPSIS_LEN: int = len(_ELLIPSIS)
@@ -173,42 +193,42 @@ def render_status_bar(
     """Render the single-line Status Bar footer for the given model.
 
     This function is PURE: no I/O, no env reads, no Console construction,
-    no ``Path.home()`` calls. ``home`` is a parameter so callers can supply
-    the resolved home directory once (the ``StatusBar`` lifecycle resolves
-    it at construction; tests pass an explicit value).
+    no ``Path.home()`` calls. ``home`` is a parameter so callers can
+    supply the resolved home directory once (the ``StatusBar`` lifecycle
+    resolves it at construction; tests pass an explicit value).
+
+    The single default-mode layout always renders phase + dir, then
+    outer_dev (when non-``None``), then inner_analysis (when
+    non-``None``). Only path middle-truncation and phase tail-truncation
+    adapt to terminal width.
 
     Args:
         model: Immutable view-model describing the bar contents.
         ctx: Display context providing mode, glyphs, and theme-aware style.
-        home: Optional home directory; when supplied and ``model.workspace_root``
-            starts with it, the rendered path is home-relative.
+        home: Optional home directory; when supplied and
+            ``model.workspace_root`` starts with it, the rendered path is
+            home-relative.
 
     Returns:
-        A single-line ``rich.text.Text`` carrying the bar contents. The rendered
-        text never contains ``\\n`` so the bar cannot wrap into the working area.
+        A single-line ``rich.text.Text`` carrying the bar contents. The
+        rendered text never contains ``\\n`` so the bar cannot wrap into
+        the working area.
     """
-    mode = ctx.mode
-    path_budget = _PATH_BUDGET_BY_MODE[mode]
-    label_budget = _PHASE_LABEL_BUDGET_BY_MODE[mode]
     separator = _field_separator(ctx)
     path_display = _home_relative(model.workspace_root, home)
-    path_display = _middle_truncate_path(path_display, path_budget)
-    phase_display = _tail_truncate(model.phase_label, label_budget)
+    path_display = _middle_truncate_path(path_display, DEFAULT_PATH_BUDGET)
+    phase_display = _tail_truncate(model.phase_label, DEFAULT_PHASE_LABEL_BUDGET)
     text = Text()
-    if mode != "compact":
+    if ctx.glyphs_enabled:
         marker = ctx.glyph_for("phase_marker")
         text.append(marker + " ", style="theme.status.bar_marker")
     text.append(phase_display, style=model.phase_style)
     text.append(separator, style="theme.status.path_marker")
     text.append(path_display, style="theme.status.path")
-    if mode == "compact":
-        return text
     if model.outer_dev_iteration is not None:
         text.append(separator, style="theme.status.path_marker")
         text.append(ctx.glyph_for("outer_dev") + " ", style="theme.outer_dev")
         text.append(format_dev_cycle(model.outer_dev_iteration, model.outer_dev_cap))
-    if mode == "medium":
-        return text
     if model.inner_analysis is not None:
         text.append(separator, style="theme.status.path_marker")
         text.append(

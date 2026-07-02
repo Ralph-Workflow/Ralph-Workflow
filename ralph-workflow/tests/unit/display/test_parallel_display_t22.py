@@ -5,6 +5,7 @@ from queue import Queue
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
@@ -18,33 +19,32 @@ if TYPE_CHECKING:
 
 def test_no_args_constructs_in_non_tty_env() -> None:
     pd = ParallelDisplay(make_display_context())
-    assert pd.mode in ("compact", "medium", "wide")
+    assert pd.mode == "default"
 
 
 def test_no_args_constructs_in_tty_env() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
-    assert pd.mode == "wide"
+    assert pd.mode == "default"
 
 
-def test_mode_override_compact_applied() -> None:
+def test_force_mode_compact_raises_not_implemented() -> None:
+    """force_mode is removed; passing a value raises NotImplementedError."""
     console = Console(force_terminal=False, width=120)
-    pd = ParallelDisplay(
+    with pytest.raises(NotImplementedError):
         make_display_context(console=console, env={"CI": "1"}, force_mode="compact")
-    )
-    assert pd.mode == "compact"
 
 
-def test_mode_override_wide_applied() -> None:
+def test_force_mode_wide_raises_not_implemented() -> None:
     console = Console(force_terminal=True, width=200)
-    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="wide"))
-    assert pd.mode == "wide"
+    with pytest.raises(NotImplementedError):
+        make_display_context(console=console, env={}, force_mode="wide")
 
 
 def test_emit_lines_mode_writes_to_console() -> None:
     console = Console(force_terminal=False, width=120, record=True)
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
-    assert pd.mode == "wide"
+    assert pd.mode == "default"
     pd.emit("u1", "hi from lines mode")
     text = console.export_text()
     assert "hi from lines mode" in text
@@ -63,7 +63,7 @@ def test_set_status_does_not_call_subscriber_notify() -> None:
 
     with patch.object(sub, "notify", wraps=sub.notify) as notify_mock:
         pd = ParallelDisplay(
-            make_display_context(console=console, env={}, force_mode="compact"),
+            make_display_context(console=console, env={}),
             subscriber=sub,
         )
         pd.set_status("u1", WorkerStatus.RUNNING)

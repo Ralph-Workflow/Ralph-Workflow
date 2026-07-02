@@ -3,6 +3,15 @@
 No renderer may construct its own Console. All display code must receive
 a DisplayContext (or build one via make_display_context) that owns the
 console, theme, terminal width, color policy, mode, and adaptive limits.
+
+After the wt-028-display consolidation, ``DisplayContext.mode`` is
+always the string ``'default'``. There is no width-based dispatch, no
+``compact`` / ``medium`` / ``wide`` tier, and no per-mode limits
+table. The persistent bottom Status Bar always renders all applicable
+fields (working directory, active phase, applicable outer development
+iteration, and applicable inner analysis iteration) regardless of
+terminal width — only the long-path middle-truncation and long-phase
+tail-truncation adapt to width.
 """
 
 from __future__ import annotations
@@ -17,7 +26,7 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 
 from ralph.display._mode_adaptive_limits import _ModeAdaptiveLimits
 from ralph.display._resolved_env import _ResolvedEnv
-from ralph.display.mode import MEDIUM_THRESHOLD, NARROW_THRESHOLD
+from ralph.display.mode import DEFAULT_MODE
 from ralph.display.theme import (
     ASCII_GLYPHS,
     RALPH_THEME,
@@ -32,37 +41,29 @@ if TYPE_CHECKING:
     from rich.console import Console
     from rich.theme import Theme
 
-COMPACT_HEADLINE_MAX_CHARS: Final[int] = 80
-_MEDIUM_HEADLINE_MAX_CHARS: Final[int] = 100
-WIDE_HEADLINE_MAX_CHARS: Final[int] = 120
-
-COMPACT_CONDENSER_SOFT_LIMIT: Final[int] = 240
-_MEDIUM_CONDENSER_SOFT_LIMIT: Final[int] = 300
-WIDE_CONDENSER_SOFT_LIMIT: Final[int] = 400
-
-COMPACT_CONDENSER_HARD_LIMIT: Final[int] = 2400
-_MEDIUM_CONDENSER_HARD_LIMIT: Final[int] = 3200
-WIDE_CONDENSER_HARD_LIMIT: Final[int] = 4000
-
-COMPACT_STREAMING_CHECKPOINT_CHARS: Final[int] = 2400
-_MEDIUM_STREAMING_CHECKPOINT_CHARS: Final[int] = 3200
-WIDE_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
-
-COMPACT_THINKING_PREVIEW_MIN_CHARS: Final[int] = 60
-_MEDIUM_THINKING_PREVIEW_MIN_CHARS: Final[int] = 70
-WIDE_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
-
-COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 60
-_MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 70
-WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
+HEADLINE_MAX_CHARS: Final[int] = 120
+CONDENSER_SOFT_LIMIT: Final[int] = 400
+CONDENSER_HARD_LIMIT: Final[int] = 4000
+STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
+THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
+TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
 
 _STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
 
 _STREAMING_DEDUP_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 _STREAMING_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
-_RALPH_FORCE_NARROW_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
+
+
+_DEFAULT_LIMITS: Final[_ModeAdaptiveLimits] = _ModeAdaptiveLimits(
+    headline_max_chars=HEADLINE_MAX_CHARS,
+    condenser_soft_limit=CONDENSER_SOFT_LIMIT,
+    condenser_hard_limit=CONDENSER_HARD_LIMIT,
+    streaming_checkpoint_chars=STREAMING_CHECKPOINT_CHARS,
+    thinking_preview_min_chars=THINKING_PREVIEW_MIN_CHARS,
+    tool_result_headline_min_chars=TOOL_RESULT_HEADLINE_MIN_CHARS,
+)
 
 
 def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
@@ -76,8 +77,6 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
     """
     no_color = "NO_COLOR" in env
     force_color = "FORCE_COLOR" in env
-    force_narrow_val = env.get("RALPH_FORCE_NARROW", "").lower().strip()
-    force_narrow = force_narrow_val in _RALPH_FORCE_NARROW_TRUTHY
 
     force_ascii_val = env.get("RALPH_FORCE_ASCII", "").lower().strip()
     force_ascii = force_ascii_val in _RALPH_FORCE_ASCII_TRUTHY
@@ -101,7 +100,6 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
     return _ResolvedEnv(
         no_color=no_color,
         force_color=force_color,
-        force_narrow=force_narrow,
         columns=columns,
         force_ascii=force_ascii,
         streaming_dedup_enabled=streaming_dedup_enabled,
@@ -193,28 +191,14 @@ def _set_injected_console_width(console: Console, width: int) -> None:
         console._height = height
 
 
-def _compute_mode(
-    resolved_env: _ResolvedEnv,
-    force_mode: Literal["compact", "medium", "wide"] | None,
-    width: int,
-) -> Literal["compact", "medium", "wide"]:
-    """Resolve display mode from overrides, env flags, and terminal width.
+def _compute_default_mode() -> Literal["default"]:
+    """Return the single display mode.
 
-    Args:
-        resolved_env: Pre-resolved environment settings.
-        force_mode: Explicit mode override.
-        width: Effective terminal width.
-
-    Returns:
-        Resolved display mode.
+    wt-028-display: Ralph Workflow exposes ONE display mode. The
+    historical ``compact`` / ``medium`` / ``wide`` modes and the
+    ``force_mode`` override are removed.
     """
-    if force_mode is not None:
-        return force_mode
-    if resolved_env.force_narrow or width < NARROW_THRESHOLD:
-        return "compact"
-    if width < MEDIUM_THRESHOLD:
-        return "medium"
-    return "wide"
+    return cast("Literal['default']", DEFAULT_MODE)
 
 
 @dataclass(frozen=True)
@@ -228,8 +212,7 @@ class DisplayContext:
         console: Rich Console instance for all rendering.
         theme: Rich Theme with Ralph's Okabe-Ito color palette.
         width: Effective terminal width in characters.
-        mode: Display mode - 'compact', 'medium', or 'wide'.
-        narrow: True when mode is 'compact'.
+        mode: Display mode. Always ``'default'`` (the single mode).
         color_enabled: True when color output is enabled.
         glyphs_enabled: True when Unicode glyphs should be used, False for ASCII fallbacks.
         headline_max_chars: Max characters for condensed headlines.
@@ -246,8 +229,7 @@ class DisplayContext:
     console: Console
     theme: Theme
     width: int
-    mode: Literal["compact", "medium", "wide"]
-    narrow: bool
+    mode: Literal["default"]
     color_enabled: bool
     glyphs_enabled: bool
     headline_max_chars: int
@@ -266,7 +248,6 @@ class DisplayContext:
         default_factory=lambda: _ResolvedEnv(
             no_color=False,
             force_color=False,
-            force_narrow=False,
             columns=None,
             force_ascii=False,
             streaming_dedup_enabled=True,
@@ -276,9 +257,6 @@ class DisplayContext:
         compare=False,
     )
     _force_width: int | None = field(default=None, repr=False, compare=False)
-    _force_mode: Literal["compact", "medium", "wide"] | None = field(
-        default=None, repr=False, compare=False
-    )
     _force_glyphs: bool | None = field(default=None, repr=False, compare=False)
 
     def glyph_for(self, name: str) -> str:
@@ -301,15 +279,16 @@ class DisplayContext:
         return ASCII_GLYPHS[name]
 
     def refreshed(self) -> DisplayContext:
-        """Return a new DisplayContext with refreshed terminal width and derived limits.
+        """Return a new DisplayContext with refreshed terminal width.
 
-        Re-resolves width and mode using the same precedence rules as make_display_context(),
-        preserving any active overrides (RALPH_FORCE_NARROW, COLUMNS, force_width, force_mode)
-        stored at construction time. The console identity, theme, color_enabled,
-        and glyphs_enabled are unchanged.
+        Re-resolves width using the same precedence rules as
+        make_display_context(), preserving any active overrides (COLUMNS,
+        force_width) stored at construction time. The console identity,
+        theme, color_enabled, glyphs_enabled, and adaptive limits are
+        unchanged. Mode is always ``'default'``.
 
         Returns:
-            New DisplayContext with updated width, mode, and limits.
+            New DisplayContext with updated width.
         """
         new_width = _compute_width(
             self._resolved_env,
@@ -317,60 +296,28 @@ class DisplayContext:
             self._force_width,
             prefer_configured_width=False,
         )
-        new_mode = _compute_mode(self._resolved_env, self._force_mode, new_width)
-        new_limits = _MODE_LIMITS.get(new_mode, _MODE_LIMITS["wide"])
 
         return DisplayContext(
             console=self.console,
             theme=self.theme,
             width=new_width,
-            mode=new_mode,
-            narrow=new_mode == "compact",
+            mode=cast("Literal['default']", DEFAULT_MODE),
             color_enabled=self.color_enabled,
             glyphs_enabled=self.glyphs_enabled,
-            headline_max_chars=new_limits.headline_max_chars,
-            condenser_soft_limit=new_limits.condenser_soft_limit,
-            condenser_hard_limit=new_limits.condenser_hard_limit,
-            streaming_checkpoint_chars=new_limits.streaming_checkpoint_chars,
+            headline_max_chars=self.headline_max_chars,
+            condenser_soft_limit=self.condenser_soft_limit,
+            condenser_hard_limit=self.condenser_hard_limit,
+            streaming_checkpoint_chars=self.streaming_checkpoint_chars,
             streaming_checkpoint_fragments=self.streaming_checkpoint_fragments,
             streaming_dedup_enabled=self.streaming_dedup_enabled,
             streaming_checkpoints_enabled=self.streaming_checkpoints_enabled,
-            thinking_preview_min_chars=new_limits.thinking_preview_min_chars,
-            tool_result_headline_min_chars=new_limits.tool_result_headline_min_chars,
+            thinking_preview_min_chars=self.thinking_preview_min_chars,
+            tool_result_headline_min_chars=self.tool_result_headline_min_chars,
             _resolved_env=self._resolved_env,
             env=self.env,
             _force_width=self._force_width,
-            _force_mode=self._force_mode,
             _force_glyphs=self._force_glyphs,
         )
-
-
-_MODE_LIMITS: Final[dict[str, _ModeAdaptiveLimits]] = {
-    "compact": _ModeAdaptiveLimits(
-        headline_max_chars=COMPACT_HEADLINE_MAX_CHARS,
-        condenser_soft_limit=COMPACT_CONDENSER_SOFT_LIMIT,
-        condenser_hard_limit=COMPACT_CONDENSER_HARD_LIMIT,
-        streaming_checkpoint_chars=COMPACT_STREAMING_CHECKPOINT_CHARS,
-        thinking_preview_min_chars=COMPACT_THINKING_PREVIEW_MIN_CHARS,
-        tool_result_headline_min_chars=COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
-    ),
-    "medium": _ModeAdaptiveLimits(
-        headline_max_chars=_MEDIUM_HEADLINE_MAX_CHARS,
-        condenser_soft_limit=_MEDIUM_CONDENSER_SOFT_LIMIT,
-        condenser_hard_limit=_MEDIUM_CONDENSER_HARD_LIMIT,
-        streaming_checkpoint_chars=_MEDIUM_STREAMING_CHECKPOINT_CHARS,
-        thinking_preview_min_chars=_MEDIUM_THINKING_PREVIEW_MIN_CHARS,
-        tool_result_headline_min_chars=_MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS,
-    ),
-    "wide": _ModeAdaptiveLimits(
-        headline_max_chars=WIDE_HEADLINE_MAX_CHARS,
-        condenser_soft_limit=WIDE_CONDENSER_SOFT_LIMIT,
-        condenser_hard_limit=WIDE_CONDENSER_HARD_LIMIT,
-        streaming_checkpoint_chars=WIDE_STREAMING_CHECKPOINT_CHARS,
-        thinking_preview_min_chars=WIDE_THINKING_PREVIEW_MIN_CHARS,
-        tool_result_headline_min_chars=WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
-    ),
-}
 
 
 def make_display_context(
@@ -378,7 +325,7 @@ def make_display_context(
     env: Mapping[str, str] | None = None,
     console: Console | None = None,
     force_width: int | None = None,
-    force_mode: Literal["compact", "medium", "wide"] | None = None,
+    force_mode: object = None,
     force_glyphs: bool | None = None,
 ) -> DisplayContext:
     """Create a DisplayContext with resolved terminal metrics and adaptive limits.
@@ -387,12 +334,27 @@ def make_display_context(
         env: Environment mapping (defaults to os.environ).
         console: Console to use (defaults to make_console() with env-aware color policy).
         force_width: Override terminal width detection.
-        force_mode: Override mode detection ('compact', 'medium', or 'wide').
+        force_mode: REMOVED in wt-028-display. Passing a non-``None`` value
+            raises :class:`NotImplementedError`. The single display mode is
+            always ``'default'``. Pass ``None`` (the default) to suppress
+            the shim.
         force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
 
     Returns:
         Fully initialised DisplayContext.
+
+    Raises:
+        NotImplementedError: If ``force_mode`` is supplied as anything
+            other than ``None``. The historical ``compact`` / ``medium`` /
+            ``wide`` modes and the ``force_mode`` override are removed;
+            Ralph uses a single ``default`` display mode.
     """
+    if force_mode is not None:
+        raise NotImplementedError(
+            "force_mode is removed in wt-028-display; "
+            "Ralph now uses a single display mode ('default')."
+        )
+
     env_was_provided = env is not None
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)
@@ -406,8 +368,8 @@ def make_display_context(
     width = _compute_width(resolved_env, resolved_console, force_width)
     if injected_console:
         _set_injected_console_width(resolved_console, width)
-    mode = _compute_mode(resolved_env, force_mode, width)
-    limits = _MODE_LIMITS.get(mode, _MODE_LIMITS["wide"])
+    mode = _compute_default_mode()
+    limits = _DEFAULT_LIMITS
 
     # NO_COLOR wins over FORCE_COLOR per CLI conventions.
     color_enabled = not resolved_env.no_color and not _console_has_no_color(
@@ -432,7 +394,6 @@ def make_display_context(
         theme=RALPH_THEME,
         width=width,
         mode=mode,
-        narrow=mode == "compact",
         color_enabled=color_enabled,
         glyphs_enabled=glyphs_enabled,
         headline_max_chars=limits.headline_max_chars,
@@ -447,7 +408,6 @@ def make_display_context(
         env=env_dict,
         _resolved_env=resolved_env,
         _force_width=force_width,
-        _force_mode=force_mode,
         _force_glyphs=force_glyphs,
     )
 

@@ -44,12 +44,27 @@ views used by CLI diagnostics and listing commands.
    every file under ``ralph/display/`` to assert that ``Console(`` and
    ``Theme(`` only appear in ``theme.py``, and that
    ``os.environ``/``os.getenv`` only appear in ``context.py`` and
-   ``content_condenser.py``.
+   ``content_condenser.py``. The companion
+   ``tests/display/test_single_mode_anti_drift.py`` AST-scans
+   ``ralph/display/`` to assert that no future commit re-introduces a
+   ``ctx.mode == 'compact'`` / ``'medium'`` / ``'wide'`` branch (single
+   ``default`` mode is the only owner of display layout).
+
+   **Display mode (single default):** After the wt-028-display consolidation,
+   ``DisplayContext.mode`` is always the literal string ``"default"``. There
+   is no width-based dispatch, no ``compact`` / ``medium`` / ``wide`` tier,
+   and no per-mode limits table. The historical ``force_mode`` keyword
+   argument to ``make_display_context()`` raises ``NotImplementedError`` if
+   a non-``None`` value is passed, and the historical ``RALPH_FORCE_NARROW``
+   env var is silently ignored. The persistent bottom Status Bar always
+   renders all applicable fields (working directory, active phase,
+   applicable outer development iteration, applicable inner analysis
+   iteration) regardless of terminal width — only the long-path
+   middle-truncation and long-phase tail-truncation budgets adapt to
+   width.
 
    **Environment variable precedence (highest to lowest):**
 
-   - ``RALPH_FORCE_NARROW`` (``1``/``true``/``yes``/``on``) — forces
-     ``compact`` mode regardless of terminal width.
    - ``force_width`` argument to ``make_display_context()`` — overrides
      terminal width detection.
    - ``COLUMNS`` (positive integer) — overrides the console's auto-detected
@@ -83,27 +98,18 @@ views used by CLI diagnostics and listing commands.
    - ``RALPH_LONG_CONTENT_AI_SUMMARY`` (``0``/``false``/``no``/``off``) —
      disables AI-based headline generation for long content blocks.
 
-   **Mode thresholds:**
-
-   - ``compact`` — terminal width < 60 columns.
-   - ``medium`` — terminal width 60-99 columns.
-   - ``wide`` — terminal width ≥ 100 columns.
-
    **Width refresh (cross-platform):** The runner installs a width refresher
    via ``install_width_refresher()`` at pipeline start. On POSIX this uses a
    SIGWINCH signal handler; on Windows or non-main threads it falls back to a
    poll-based daemon thread. Either path calls ``DisplayContext.refreshed()``
-   which re-reads the current terminal width and recomputes mode and adaptive
-   limits. Renderers that buffer adaptive limits (e.g. ``PlainLogRenderer``)
-   call ``refreshed()`` at phase boundaries via ``flush_blocks()`` to pick up
-   new sizes. The runner also keeps its live display object and nested plain
-   renderer synced with the refreshed context so later banners and summaries
-   use the new mode. The returned stop callback is invoked on shutdown to
-   clean up any poll thread.
-
-   **Compact mode:** When ``ctx.mode == 'compact'``, renderers suppress
-   secondary columns, extra blank lines, and descriptive rules to fit
-   narrow terminals.
+   which re-reads the current terminal width and recomputes adaptive limits
+   while keeping the mode at ``"default"``. Renderers that buffer adaptive
+   limits (e.g. ``PlainLogRenderer``) call ``refreshed()`` at phase
+   boundaries via ``flush_blocks()`` to pick up new sizes. The runner also
+   keeps its live display object and nested plain renderer synced with the
+   refreshed context so later banners and summaries use the new limits.
+   The returned stop callback is invoked on shutdown to clean up any poll
+   thread.
 """
 
 from ralph.display._run_start_orientation import RunStartOrientation

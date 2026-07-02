@@ -1,4 +1,9 @@
-"""Tests for DisplayContext.refreshed() and install_sigwinch_refresher."""
+"""Tests for DisplayContext.refreshed() and install_sigwinch_refresher.
+
+After the wt-028-display consolidation, ``refreshed()`` preserves
+``mode='default'`` regardless of width changes. The historical
+``compact`` / ``medium`` / ``wide`` tier is gone.
+"""
 
 from __future__ import annotations
 
@@ -24,34 +29,18 @@ class TestDisplayContextRefreshed:
     NARROW_WIDTH = 40
     WIDE_WIDTH = 120
 
-    def test_refreshed_compact_to_wide(self) -> None:
-        """A compact context refreshed with narrower console switches to compact."""
-        # Start with a console at width 120 (wide)
+    def test_refreshed_preserves_default_mode_through_resize(self) -> None:
+        """refreshed() preserves mode='default' across a wide→narrow resize."""
         console = Console(width=self.WIDE_WIDTH, force_terminal=True)
         ctx = make_display_context(console=console, env={})
-        assert ctx.mode == "wide"
-
-        # Simulate resize: create a new context with the patched width
-        with patch.object(
-            type(console), "width", new_callable=PropertyMock, return_value=self.NARROW_WIDTH
-        ):
-            refreshed = ctx.refreshed()
-
-        assert refreshed.mode == "compact"
-        assert refreshed.width == self.NARROW_WIDTH
-
-    def test_refreshed_wide_to_compact(self) -> None:
-        """A wide context refreshed with narrower console becomes compact."""
-        console = Console(width=self.WIDE_WIDTH, force_terminal=True)
-        ctx = make_display_context(console=console, env={})
-        assert ctx.mode == "wide"
+        assert ctx.mode == "default"
 
         with patch.object(
             type(console), "width", new_callable=PropertyMock, return_value=self.NARROW_WIDTH
         ):
             refreshed = ctx.refreshed()
 
-        assert refreshed.mode == "compact"
+        assert refreshed.mode == "default"
         assert refreshed.width == self.NARROW_WIDTH
 
     def test_refreshed_preserves_color_enabled(self) -> None:
@@ -73,8 +62,8 @@ class TestDisplayContextRefreshed:
 
         assert refreshed.theme is ctx.theme
 
-    def test_refreshed_updates_headline_max_chars(self) -> None:
-        """refreshed() must recompute headline_max_chars for the new width."""
+    def test_refreshed_preserves_default_mode_limits(self) -> None:
+        """refreshed() preserves the single fixed default-mode limits."""
         console = Console(width=40, force_terminal=True)
         ctx = make_display_context(console=console, env={})
         compact_limit = ctx.headline_max_chars
@@ -82,7 +71,7 @@ class TestDisplayContextRefreshed:
         with patch.object(type(console), "width", new_callable=PropertyMock, return_value=200):
             refreshed = ctx.refreshed()
 
-        assert refreshed.headline_max_chars > compact_limit
+        assert refreshed.headline_max_chars == compact_limit
 
     def test_refreshed_preserves_console_identity(self) -> None:
         """refreshed() must use the same console instance."""
@@ -93,38 +82,38 @@ class TestDisplayContextRefreshed:
 
         assert refreshed.console is ctx.console
 
-    def test_refreshed_preserves_force_narrow_env(self) -> None:
-        """refreshed() must keep compact mode when RALPH_FORCE_NARROW=1 is set."""
+    def test_refreshed_ignores_ralph_force_narrow_env(self) -> None:
+        """refreshed() preserves mode='default' even when RALPH_FORCE_NARROW=1 is set."""
         console = Console(width=120, force_terminal=True)
         ctx = make_display_context(console=console, env={"RALPH_FORCE_NARROW": "1"})
-        assert ctx.mode == "compact"
+        assert ctx.mode == "default"
 
         refreshed = ctx.refreshed()
 
-        assert refreshed.mode == "compact"
+        assert refreshed.mode == "default"
 
     def test_refreshed_preserves_columns_env(self) -> None:
         """refreshed() must preserve the COLUMNS env override after refresh."""
         forced_narrow_width = self.NARROW_WIDTH
         console = Console(width=120, force_terminal=True)
         ctx = make_display_context(console=console, env={"COLUMNS": str(forced_narrow_width)})
-        assert ctx.mode == "compact"
         assert ctx.width == forced_narrow_width
+        assert ctx.mode == "default"
 
         refreshed = ctx.refreshed()
 
         assert refreshed.width == forced_narrow_width
-        assert refreshed.mode == "compact"
+        assert refreshed.mode == "default"
 
     def test_refreshed_preserves_force_width(self) -> None:
         """refreshed() must preserve force_width override after refresh."""
         forced_narrow_width = self.NARROW_WIDTH
         console = Console(width=120, force_terminal=True)
         ctx = make_display_context(console=console, env={}, force_width=forced_narrow_width)
-        assert ctx.mode == "compact"
         assert ctx.width == forced_narrow_width
+        assert ctx.mode == "default"
 
         refreshed = ctx.refreshed()
 
         assert refreshed.width == forced_narrow_width
-        assert refreshed.mode == "compact"
+        assert refreshed.mode == "default"

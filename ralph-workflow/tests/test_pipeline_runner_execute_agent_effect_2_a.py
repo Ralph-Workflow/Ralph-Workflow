@@ -80,7 +80,7 @@ def _install_runner_display_context(
     width: int = 120,
 ) -> Console:
     console = Console(record=True, force_terminal=False, width=width, color_system=None)
-    ctx = make_display_context(console=console, force_width=width, force_mode="wide")
+    ctx = make_display_context(console=console, force_width=width, )
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
     return console
 
@@ -244,7 +244,7 @@ class TestExecuteAgentEffectA:
 
         console = Console(file=StringIO(), force_terminal=False, width=120, color_system=None)
         display = ParallelDisplay(
-            make_display_context(console=console, env={"CI": "1"}, force_mode="medium"),
+            make_display_context(console=console, env={"CI": "1"}, ),
             workspace_root=tmp_path,
             run_id="run-invoke-start",
         )
@@ -304,7 +304,7 @@ class TestExecuteAgentEffectA:
             record=True,
         )
         display = ParallelDisplay(
-            make_display_context(console=console, env={"CI": "1"}, force_mode="medium"),
+            make_display_context(console=console, env={"CI": "1"}, ),
             workspace_root=tmp_path,
             run_id="run-phase-order",
         )
@@ -370,7 +370,7 @@ class TestExecuteAgentEffectA:
             record=True,
         )
         display = ParallelDisplay(
-            make_display_context(console=console, env={"CI": "1"}, force_mode="medium"),
+            make_display_context(console=console, env={"CI": "1"}, ),
             workspace_root=tmp_path,
             run_id="run-pre-output",
         )

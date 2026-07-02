@@ -1,12 +1,12 @@
 """Tests for the DisplayContext dependency injection contract.
 
+After the wt-028-display consolidation, mode is always 'default'.
 These tests verify that:
 1. All public renderers require an explicit DisplayContext (no silent Console fallbacks).
 2. Color disabled propagates correctly through renderers.
-3. Compact mode produces abbreviated output.
-4. Wide mode produces full layout.
-5. DisplayContext.refreshed() picks up new terminal sizes.
-6. No literal color/style strings exist outside theme.py.
+3. Single default-mode renders consistently regardless of width.
+4. DisplayContext.refreshed() picks up new terminal sizes without changing mode.
+5. No literal color/style strings exist outside theme.py.
 """
 
 from __future__ import annotations
@@ -21,26 +21,24 @@ from ralph.display.context import make_display_context
 class TestRefreshedPicksUpNewWidth:
     """Test that DisplayContext.refreshed() picks up new terminal sizes."""
 
-    def test_refreshed_changes_mode(self) -> None:
-        """Calling refreshed() on a wide context with narrow console switches to compact."""
-        # Start with a console at width 120 (wide)
+    def test_refreshed_preserves_default_mode_across_resize(self) -> None:
+        """Calling refreshed() preserves mode='default' across a wide→narrow resize."""
         console = Console(width=120, force_terminal=True)
         ctx = make_display_context(console=console, env={})
-        assert ctx.mode == "wide"
+        assert ctx.mode == "default"
 
-        # Simulate resize: after refresh the console reports width 40
         narrow_width = 40
         with patch.object(
             type(console), "width", new_callable=PropertyMock, return_value=narrow_width
         ):
             refreshed = ctx.refreshed()
 
-        assert refreshed.mode == "compact"
+        assert refreshed.mode == "default"
         assert refreshed.width == narrow_width
 
-        # Sanity: without resize, refreshed stays wide
-        refreshed_still_wide = ctx.refreshed()
-        assert refreshed_still_wide.mode == "wide"
+        # Sanity: without resize, refreshed also stays default
+        refreshed_still_default = ctx.refreshed()
+        assert refreshed_still_default.mode == "default"
 
     def test_refreshed_preserves_theme_and_color_enabled(self) -> None:
         """refreshed() must preserve theme and color_enabled from the original context."""

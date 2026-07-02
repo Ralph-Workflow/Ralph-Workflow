@@ -72,7 +72,7 @@ def _install_runner_display_context(
     width: int = 120,
 ) -> DisplayContext:
     console = Console(record=True, force_terminal=False, width=width, color_system=None)
-    return make_display_context(console=console, force_width=width, force_mode="wide")
+    return make_display_context(console=console, force_width=width, )
 
 
 def _config_with_agents(

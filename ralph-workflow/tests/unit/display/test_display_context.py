@@ -1,95 +1,83 @@
-"""Tests for DisplayContext and make_display_context factory."""
+"""Tests for DisplayContext and make_display_context factory.
+
+After the wt-028-display consolidation, DisplayContext exposes a single
+``default`` mode with one fixed set of adaptive limits. The
+``compact`` / ``medium`` / ``wide`` tier is gone, ``force_mode`` raises
+:data:`NotImplementedError`, and ``RALPH_FORCE_NARROW`` is silently
+ignored. The historical per-mode constants
+(``COMPACT_HEADLINE_MAX_CHARS`` etc.) are removed.
+"""
 
 from __future__ import annotations
 
+import pytest
 from rich.console import Console
 
 from ralph.display import DisplayContext as DisplayContextExport
 from ralph.display import make_display_context as make_display_context_export
 from ralph.display.context import (
-    COMPACT_CONDENSER_HARD_LIMIT,
-    COMPACT_CONDENSER_SOFT_LIMIT,
-    COMPACT_HEADLINE_MAX_CHARS,
-    COMPACT_STREAMING_CHECKPOINT_CHARS,
-    COMPACT_THINKING_PREVIEW_MIN_CHARS,
-    COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
-    WIDE_CONDENSER_HARD_LIMIT,
-    WIDE_CONDENSER_SOFT_LIMIT,
-    WIDE_HEADLINE_MAX_CHARS,
-    WIDE_STREAMING_CHECKPOINT_CHARS,
-    WIDE_THINKING_PREVIEW_MIN_CHARS,
-    WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
+    CONDENSER_HARD_LIMIT,
+    CONDENSER_SOFT_LIMIT,
+    HEADLINE_MAX_CHARS,
+    STREAMING_CHECKPOINT_CHARS,
+    THINKING_PREVIEW_MIN_CHARS,
+    TOOL_RESULT_HEADLINE_MIN_CHARS,
     DisplayContext,
     make_display_context,
 )
-from ralph.display.mode import NARROW_THRESHOLD
 from ralph.display.theme import RALPH_THEME
 
 _NARROW_TEST_WIDTH = 40
 _WIDE_TEST_WIDTH = 200
 
 
-def test_wide_mode_for_wide_terminal() -> None:
-    console = Console(width=120, force_terminal=True)
+@pytest.mark.parametrize("width", [40, 60, 80, 100, 120, 200])
+def test_default_mode_for_any_width(width: int) -> None:
+    """Single default-mode invariant: any width returns mode='default'."""
+    console = Console(width=width, force_terminal=True)
     ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "wide"
-    assert ctx.narrow is False
+    assert ctx.mode == "default"
 
 
-def test_compact_mode_for_narrow_terminal() -> None:
-    console = Console(width=40, force_terminal=True)
-    ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "compact"
-    assert ctx.narrow is True
-
-
-def test_compact_mode_at_threshold_boundary() -> None:
-    # width == NARROW_THRESHOLD (60) is not < 60 → falls into medium tier
-    console = Console(width=NARROW_THRESHOLD, force_terminal=True)
-    ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "medium"
-
-
-def test_ralph_force_narrow_env_forces_compact() -> None:
+def test_ralph_force_narrow_env_is_ignored() -> None:
+    """The historical RALPH_FORCE_NARROW env var is silently ignored."""
     console = Console(width=200, force_terminal=True)
     ctx = make_display_context(console=console, env={"RALPH_FORCE_NARROW": "1"})
-    assert ctx.mode == "compact"
-    assert ctx.narrow is True
+    assert ctx.mode == "default"
 
 
-def test_ralph_force_narrow_true_forces_compact() -> None:
+def test_ralph_force_narrow_true_is_ignored() -> None:
     console = Console(width=200, force_terminal=True)
     ctx = make_display_context(console=console, env={"RALPH_FORCE_NARROW": "true"})
-    assert ctx.mode == "compact"
+    assert ctx.mode == "default"
 
 
-def test_ralph_force_narrow_zero_does_not_force_compact() -> None:
+def test_ralph_force_narrow_zero_is_ignored() -> None:
+    """RALPH_FORCE_NARROW has no effect (no truthy/falsy distinction post-consolidation)."""
     console = Console(width=200, force_terminal=True)
     ctx = make_display_context(console=console, env={"RALPH_FORCE_NARROW": "0"})
-    assert ctx.mode == "wide"
+    assert ctx.mode == "default"
 
 
-def test_force_mode_overrides_width() -> None:
+def test_force_mode_compact_raises_not_implemented() -> None:
+    """force_mode='compact' raises NotImplementedError after consolidation."""
     console = Console(width=200, force_terminal=True)
-    ctx = make_display_context(console=console, env={}, force_mode="compact")
-    assert ctx.mode == "compact"
-    assert ctx.narrow is True
-    # Limits should be compact, not wide
-    assert ctx.headline_max_chars == COMPACT_HEADLINE_MAX_CHARS
+    with pytest.raises(NotImplementedError):
+        make_display_context(console=console, env={}, force_mode="compact")
 
 
 def test_force_width_overrides_console_width() -> None:
     console = Console(width=120, force_terminal=True)
     ctx = make_display_context(console=console, env={}, force_width=_NARROW_TEST_WIDTH)
     assert ctx.width == _NARROW_TEST_WIDTH
-    assert ctx.mode == "compact"
+    assert ctx.mode == "default"
 
 
 def test_columns_env_overrides_console_width() -> None:
     console = Console(width=120, force_terminal=True)
     ctx = make_display_context(console=console, env={"COLUMNS": str(_NARROW_TEST_WIDTH)})
     assert ctx.width == _NARROW_TEST_WIDTH
-    assert ctx.mode == "compact"
+    assert ctx.mode == "default"
 
 
 def test_force_width_takes_precedence_over_columns_env() -> None:
@@ -98,7 +86,7 @@ def test_force_width_takes_precedence_over_columns_env() -> None:
         console=console, env={"COLUMNS": str(_NARROW_TEST_WIDTH)}, force_width=_WIDE_TEST_WIDTH
     )
     assert ctx.width == _WIDE_TEST_WIDTH
-    assert ctx.mode == "wide"
+    assert ctx.mode == "default"
 
 
 def test_no_color_env_disables_color() -> None:
@@ -113,35 +101,26 @@ def test_color_enabled_by_default() -> None:
     assert ctx.color_enabled is True
 
 
-def test_wide_mode_limits() -> None:
+def test_default_mode_uses_single_fixed_limits() -> None:
+    """Single default-mode uses one fixed set of adaptive limits."""
     console = Console(width=120, force_terminal=True)
     ctx = make_display_context(console=console, env={})
-    assert ctx.headline_max_chars == WIDE_HEADLINE_MAX_CHARS
-    assert ctx.condenser_soft_limit == WIDE_CONDENSER_SOFT_LIMIT
-    assert ctx.condenser_hard_limit == WIDE_CONDENSER_HARD_LIMIT
-    assert ctx.streaming_checkpoint_chars == WIDE_STREAMING_CHECKPOINT_CHARS
-    assert ctx.thinking_preview_min_chars == WIDE_THINKING_PREVIEW_MIN_CHARS
-    assert ctx.tool_result_headline_min_chars == WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS
+    assert ctx.headline_max_chars == HEADLINE_MAX_CHARS
+    assert ctx.condenser_soft_limit == CONDENSER_SOFT_LIMIT
+    assert ctx.condenser_hard_limit == CONDENSER_HARD_LIMIT
+    assert ctx.streaming_checkpoint_chars == STREAMING_CHECKPOINT_CHARS
+    assert ctx.thinking_preview_min_chars == THINKING_PREVIEW_MIN_CHARS
+    assert ctx.tool_result_headline_min_chars == TOOL_RESULT_HEADLINE_MIN_CHARS
 
 
-def test_compact_mode_limits() -> None:
-    console = Console(width=40, force_terminal=True)
-    ctx = make_display_context(console=console, env={})
-    assert ctx.headline_max_chars == COMPACT_HEADLINE_MAX_CHARS
-    assert ctx.condenser_soft_limit == COMPACT_CONDENSER_SOFT_LIMIT
-    assert ctx.condenser_hard_limit == COMPACT_CONDENSER_HARD_LIMIT
-    assert ctx.streaming_checkpoint_chars == COMPACT_STREAMING_CHECKPOINT_CHARS
-    assert ctx.thinking_preview_min_chars == COMPACT_THINKING_PREVIEW_MIN_CHARS
-    assert ctx.tool_result_headline_min_chars == COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS
-
-
-def test_compact_limits_smaller_than_wide() -> None:
-    assert COMPACT_HEADLINE_MAX_CHARS < WIDE_HEADLINE_MAX_CHARS
-    assert COMPACT_CONDENSER_SOFT_LIMIT < WIDE_CONDENSER_SOFT_LIMIT
-    assert COMPACT_CONDENSER_HARD_LIMIT < WIDE_CONDENSER_HARD_LIMIT
-    assert COMPACT_STREAMING_CHECKPOINT_CHARS < WIDE_STREAMING_CHECKPOINT_CHARS
-    assert COMPACT_THINKING_PREVIEW_MIN_CHARS <= WIDE_THINKING_PREVIEW_MIN_CHARS
-    assert COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS <= WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS
+def test_default_mode_limits_constant_for_any_width() -> None:
+    """Single default-mode uses the same limits regardless of width."""
+    narrow = make_display_context(console=Console(width=40, force_terminal=True), env={})
+    wide = make_display_context(console=Console(width=200, force_terminal=True), env={})
+    assert narrow.headline_max_chars == wide.headline_max_chars
+    assert narrow.condenser_soft_limit == wide.condenser_soft_limit
+    assert narrow.condenser_hard_limit == wide.condenser_hard_limit
+    assert narrow.streaming_checkpoint_chars == wide.streaming_checkpoint_chars
 
 
 def test_display_context_is_frozen() -> None:

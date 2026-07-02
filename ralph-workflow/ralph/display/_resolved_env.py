@@ -12,7 +12,6 @@ class _ResolvedEnv:
     Attributes:
         no_color: True when NO_COLOR is present in environment.
         force_color: True when FORCE_COLOR is present in environment.
-        force_narrow: True when RALPH_FORCE_NARROW is set to a truthy value.
         columns: Terminal width override from COLUMNS env, or None.
         force_ascii: True when RALPH_FORCE_ASCII is set to a truthy value.
         streaming_dedup_enabled: True when RALPH_STREAMING_DEDUP is not disabled.
@@ -21,7 +20,6 @@ class _ResolvedEnv:
 
     no_color: bool
     force_color: bool
-    force_narrow: bool
     columns: int | None
     force_ascii: bool
     streaming_dedup_enabled: bool

@@ -29,7 +29,7 @@ DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaul
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch, console: Console) -> None:
-    ctx = make_display_context(console=console, force_width=console.width, force_mode="wide")
+    ctx = make_display_context(console=console, force_width=console.width, )
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
 
 

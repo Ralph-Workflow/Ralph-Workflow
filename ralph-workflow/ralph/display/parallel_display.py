@@ -116,8 +116,6 @@ from ralph.display._phase_counters import PhaseCounters as _PhaseCounters
 from ralph.display._plain_constants import (
     _ANSI_ESCAPE,
     _CAT_THEME_KEYS,
-    _COMPACT_CAT_BADGES,
-    _COMPACT_LEVEL_BADGES,
     _EMPTY_PLAN_SIGNATURE,
     _KIND_TO_LEVEL,
     _KIND_TO_TAG,
@@ -511,24 +509,16 @@ class ParallelDisplay:
     # -- Pure helpers (inlined from _PlainLogRendererBase) ----------------
 
     def _format_timestamp(self, ts: datetime) -> str:
-        """Format a datetime as a timestamp string, abbreviated in compact mode."""
-        if self._ctx.mode == "compact":
-            return ts.strftime("%H:%M:%S")
+        """Format a datetime as an ISO 8601 timestamp string (single default mode)."""
         return ts.isoformat()
 
     def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
         """Build a styled Text line with level and category badge segments."""
         t = Text()
         t.append(timestamp + " ")
-        if self._ctx.mode == "compact":
-            level_badge = _COMPACT_LEVEL_BADGES.get(level, level[0])
-            cat_badge = _COMPACT_CAT_BADGES.get(cat, cat[0])
-        else:
-            level_badge = level
-            cat_badge = cat
-        t.append(level_badge, style=_LEVEL_THEME_KEYS.get(level, ""))
+        t.append(level, style=_LEVEL_THEME_KEYS.get(level, ""))
         t.append(" ")
-        t.append(cat_badge, style=_CAT_THEME_KEYS.get(cat, ""))
+        t.append(cat, style=_CAT_THEME_KEYS.get(cat, ""))
         t.append(" ")
         t.append(suffix)
         return t
@@ -1335,7 +1325,7 @@ class ParallelDisplay:
         return self._activity_router
 
     @property
-    def mode(self) -> Literal["compact", "medium", "wide"]:
+    def mode(self) -> Literal["default"]:
         return self._ctx.mode
 
     @property
@@ -1451,10 +1441,8 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[run-start]")
+            self._emit_section_rule("[run-start]")
             timestamp = self._format_timestamp(self._clock())
-            compact = self._ctx.mode == "compact"
 
             t = _RichText()
             t.append(f"{timestamp} ")
@@ -1469,7 +1457,7 @@ class ParallelDisplay:
             t.append("Ralph Workflow run start", style="theme.banner.title")
             self._console.print(t, markup=False, highlight=False, no_wrap=True)
 
-            if orientation.legend_enabled and not compact:
+            if orientation.legend_enabled:
                 self._console.print(
                     self._build_line(
                         timestamp,
@@ -1483,66 +1471,10 @@ class ParallelDisplay:
                     no_wrap=True,
                 )
 
-            if compact:
-                self._emit_run_start_compact(timestamp, orientation)
-            else:
-                self._emit_run_start_wide(timestamp, orientation)
+            self._emit_run_start(timestamp, orientation)
 
-    def _emit_run_start_compact(self, timestamp: str, orientation: RunStartOrientation) -> None:
-        """Compact layout: max 4 [run-start] lines (milestone + up to 3 content)."""
-        prompt_ws_parts: list[str] = []
-        if orientation.prompt_path is not None:
-            prompt_ws_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
-        if orientation.workspace_root is not None:
-            prompt_ws_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
-        if prompt_ws_parts:
-            self._console.print(
-                self._build_line(
-                    timestamp, "INFO", "META", f"[run-start] {' '.join(prompt_ws_parts)}"
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        agents_iters_parts: list[str] = []
-        if orientation.developer_agent is not None:
-            agents_iters_parts.append(f"developer={_sanitize(orientation.developer_agent)}")
-        if orientation.developer_model is not None:
-            agents_iters_parts.append(f"model={_sanitize(orientation.developer_model)}")
-        iter_compact: list[str] = []
-        if orientation.developer_iters is not None:
-            iter_compact.append(f"dev:{orientation.developer_iters}")
-        if iter_compact:
-            agents_iters_parts.append(f"iterations={' '.join(iter_compact)}")
-        if agents_iters_parts:
-            self._console.print(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[run-start] {' '.join(agents_iters_parts)}",
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        plan_val = "ready" if orientation.plan_present else "absent"
-        misc_parts: list[str] = [f"plan={plan_val}"]
-        if orientation.verbosity is not None:
-            misc_parts.append(f"verbosity={orientation.verbosity}")
-        if orientation.parallel_max_workers is not None:
-            misc_parts.append(f"parallel=max_workers={orientation.parallel_max_workers}")
-        self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(misc_parts)}"),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-
-    def _emit_run_start_wide(self, timestamp: str, orientation: RunStartOrientation) -> None:
-        """Medium/wide layout: grouped fields on shared lines."""
+    def _emit_run_start(self, timestamp: str, orientation: RunStartOrientation) -> None:
+        """Emit the run-start orientation body (single default-mode layout)."""
         pw_parts: list[str] = []
         if orientation.prompt_path is not None:
             pw_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
@@ -1831,93 +1763,53 @@ class ParallelDisplay:
                 total_elapsed_s = round(max(0.0, self._monotonic() - self._run_start_time), 1)
             elapsed_str = format_elapsed_seconds(total_elapsed_s)
 
-            is_compact = self._ctx.mode == "compact"
-
-            if is_compact:
-                trigger_suffix = f" | {exit_trigger}" if exit_trigger is not None else ""
+            t = _RichText()
+            t.append(f"{timestamp} ")
+            t.append("MILESTONE", style="theme.level.milestone")
+            t.append(" ")
+            t.append("META", style="theme.cat.meta")
+            t.append(" ")
+            t.append(
+                f"[run-end] {self._ctx.glyph_for('milestone')} ",
+                style="theme.banner.ascii",
+            )
+            t.append("Ralph Workflow run end", style="theme.banner.title")
+            self._console.print(t, markup=False, highlight=False, no_wrap=True)
+            phase_elapsed = f"[run-end] phase={phase} elapsed={elapsed_str}"
+            if exit_trigger is not None:
+                phase_elapsed += f" exit={exit_trigger}"
+            if outer_dev_iteration is not None:
+                phase_elapsed += f" dev_cycle={outer_dev_iteration}"
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", phase_elapsed),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-end] agent_calls={total_agent_calls}"
+                    f" content_blocks={self._run_counters.content_blocks}"
+                    f" thinking_blocks={self._run_counters.thinking_blocks}"
+                    f" tool_calls={self._run_counters.tool_calls}"
+                    f" errors={self._run_counters.errors}",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            if pr_url is not None:
                 self._console.print(
                     self._build_line(
-                        timestamp,
-                        "MILESTONE",
-                        "META",
-                        f"[run-end] {phase} | {elapsed_str}{trigger_suffix}",
+                        timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
                     ),
                     markup=False,
                     highlight=False,
                     no_wrap=True,
                 )
-                self._console.print(
-                    self._build_line(
-                        timestamp,
-                        "INFO",
-                        "META",
-                        f"[run-end] agent={total_agent_calls}"
-                        f" content={self._run_counters.content_blocks}"
-                        f" thinking={self._run_counters.thinking_blocks}"
-                        f" tools={self._run_counters.tool_calls}"
-                        f" errors={self._run_counters.errors}",
-                    ),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=True,
-                )
-                if pr_url is not None:
-                    self._console.print(
-                        self._build_line(
-                            timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
-                        ),
-                        markup=False,
-                        highlight=False,
-                        no_wrap=True,
-                    )
-            else:
-                t = _RichText()
-                t.append(f"{timestamp} ")
-                t.append("MILESTONE", style="theme.level.milestone")
-                t.append(" ")
-                t.append("META", style="theme.cat.meta")
-                t.append(" ")
-                t.append(
-                    f"[run-end] {self._ctx.glyph_for('milestone')} ",
-                    style="theme.banner.ascii",
-                )
-                t.append("Ralph Workflow run end", style="theme.banner.title")
-                self._console.print(t, markup=False, highlight=False, no_wrap=True)
-                phase_elapsed = f"[run-end] phase={phase} elapsed={elapsed_str}"
-                if exit_trigger is not None:
-                    phase_elapsed += f" exit={exit_trigger}"
-                if outer_dev_iteration is not None:
-                    phase_elapsed += f" dev_cycle={outer_dev_iteration}"
-                self._console.print(
-                    self._build_line(timestamp, "INFO", "META", phase_elapsed),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=True,
-                )
-                self._console.print(
-                    self._build_line(
-                        timestamp,
-                        "INFO",
-                        "META",
-                        f"[run-end] agent_calls={total_agent_calls}"
-                        f" content_blocks={self._run_counters.content_blocks}"
-                        f" thinking_blocks={self._run_counters.thinking_blocks}"
-                        f" tool_calls={self._run_counters.tool_calls}"
-                        f" errors={self._run_counters.errors}",
-                    ),
-                    markup=False,
-                    highlight=False,
-                    no_wrap=True,
-                )
-                if pr_url is not None:
-                    self._console.print(
-                        self._build_line(
-                            timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
-                        ),
-                        markup=False,
-                        highlight=False,
-                        no_wrap=True,
-                    )
             self._console.print()  # blank line AFTER the run-end block
 
     def emit_completion_summary_panel(
@@ -1938,9 +1830,8 @@ class ParallelDisplay:
 
         Visual-hierarchy contract:
 
-        - Section rule (``[run-completion]``) is emitted in non-compact mode
-          only (mirrors the ``if self._ctx.mode != 'compact'`` guard used
-          by every other emit_* method).
+        - Section rule (``[run-completion]``) is emitted unconditionally
+          (single default-mode layout).
         - The body is delegated to
           :func:`ralph.display.completion_summary.render_completion_summary_group`
           and printed via ``self._console.print(group, ...)``.
@@ -1973,8 +1864,7 @@ class ParallelDisplay:
                 ``CompletionSummaryOptions()`` is constructed.
         """
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[run-completion]")
+            self._emit_section_rule("[run-completion]")
             from ralph.display.completion_summary import (
                 CompletionSummaryOptions,
                 render_completion_summary_group,
@@ -1990,8 +1880,8 @@ class ParallelDisplay:
 
     # -- Phase banner methods (port of phase_banner.py) ---------------------
     # All four methods route through self._console.print. Each method calls
-    # self._emit_section_rule only when self._ctx.mode != 'compact', so the
-    # existing no-rule-lines-in-compact-mode contract is preserved.
+    # self._emit_section_rule unconditionally; the single default-mode
+    # layout always emits section rules.
 
     def emit_phase_start(
         self,
@@ -2007,8 +1897,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[phase-start]")
+            self._emit_section_rule("[phase-start]")
             c = self._console
             style = _phase_style(phase, pipeline_policy)
             label = _phase_label(phase)
@@ -2020,7 +1909,7 @@ class ParallelDisplay:
                 line.append(f"  agent={agent_name}", style="theme.text.muted")
             c.print(line)
 
-    def emit_phase_start_from_entry(  # noqa: PLR0912 - many branches needed for mode dispatch
+    def emit_phase_start_from_entry(
         self,
         entry: PhaseEntryModel,
         *,
@@ -2029,103 +1918,56 @@ class ParallelDisplay:
         """Display the start of a pipeline phase from a lifecycle entry model.
 
         Port of :func:`ralph.display.phase_banner.show_phase_start_from_entry`.
-        Canonical model-based path. Wide mode emits a titled Rule; medium mode
-        emits a banner line with qualifiers; compact mode emits a terse line.
+        Canonical model-based path (single default-mode layout): emits a
+        titled Rule with phase label, outer development iteration,
+        inner analysis iteration, and an optional agent line.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[phase-start]")
+            self._emit_section_rule("[phase-start]")
             c = self._console
             style = _phase_style(entry.phase_name, pipeline_policy)
             label = entry.human_label()
-            mode = self._ctx.mode
             start_glyph = self._ctx.glyph_for("start")
             od_glyph = self._ctx.glyph_for("outer_dev")
             ia_glyph = self._ctx.glyph_for("inner_analysis")
 
-            if mode == "wide":
-                rule_title = Text()
-                rule_title.append(f"{start_glyph} ", style=style)
-                rule_title.append(label, style=style)
-                if entry.outer_dev_iteration is not None:
-                    rule_title.append(
-                        _build_outer_iteration_suffix(
-                            entry.outer_dev_iteration,
-                            entry.outer_dev_cap,
-                            od_glyph=od_glyph,
-                            qualifier="(outer)",
-                        ),
-                        style="theme.outer_dev",
-                    )
-                if entry.inner_analysis is not None:
-                    rule_title.append(
-                        _build_inner_analysis_suffix(
-                            entry.inner_analysis,
-                            entry.inner_analysis_cap,
-                            ia_glyph=ia_glyph,
-                            qualifier="(inner)",
-                        ),
-                        style="theme.inner_analysis",
-                    )
-                if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
-                    remaining = entry.inner_analysis_cap - entry.inner_analysis
-                    if remaining > 0:
-                        rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
-                    elif remaining == 0:
-                        rule_title.append("  [last]", style="theme.level.warn")
-                c.print(Rule(title=rule_title, style=style))
-                if entry.agent_name is not None:
-                    agent_line = Text()
-                    agent_line.append("    agent: ", style="theme.text.muted")
-                    agent_line.append(entry.agent_name, style="theme.text.emphasis")
-                    c.print(agent_line)
-                return
-
-            if mode == "medium":
-                c.print()
-
-            line = Text()
-            line.append(f"{start_glyph} ", style=style)
-            line.append(label, style=style)
-
-            outer_qualifier = "(outer)" if mode == "medium" else ""
-            inner_qualifier = "(inner)" if mode == "medium" else ""
-
+            rule_title = Text()
+            rule_title.append(f"{start_glyph} ", style=style)
+            rule_title.append(label, style=style)
             if entry.outer_dev_iteration is not None:
-                suffix = _build_outer_iteration_suffix(
-                    entry.outer_dev_iteration,
-                    entry.outer_dev_cap,
-                    od_glyph=od_glyph,
-                    qualifier=outer_qualifier,
+                rule_title.append(
+                    _build_outer_iteration_suffix(
+                        entry.outer_dev_iteration,
+                        entry.outer_dev_cap,
+                        od_glyph=od_glyph,
+                        qualifier="(outer)",
+                    ),
+                    style="theme.outer_dev",
                 )
-                line.append(suffix, style="theme.outer_dev")
-
             if entry.inner_analysis is not None:
-                suffix = _build_inner_analysis_suffix(
-                    entry.inner_analysis,
-                    entry.inner_analysis_cap,
-                    ia_glyph=ia_glyph,
-                    qualifier=inner_qualifier,
+                rule_title.append(
+                    _build_inner_analysis_suffix(
+                        entry.inner_analysis,
+                        entry.inner_analysis_cap,
+                        ia_glyph=ia_glyph,
+                        qualifier="(inner)",
+                    ),
+                    style="theme.inner_analysis",
                 )
-                line.append(suffix, style="theme.inner_analysis")
-
-            if (
-                mode == "medium"
-                and entry.inner_analysis is not None
-                and entry.inner_analysis_cap is not None
-            ):
+            if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
                 remaining = entry.inner_analysis_cap - entry.inner_analysis
                 if remaining > 0:
-                    line.append(f"  [{remaining} left]", style="theme.text.muted")
+                    rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
                 elif remaining == 0:
-                    line.append("  [last]", style="theme.level.warn")
-
+                    rule_title.append("  [last]", style="theme.level.warn")
+            c.print(Rule(title=rule_title, style=style))
             if entry.agent_name is not None:
-                line.append(f"  agent={entry.agent_name}", style="theme.text.muted")
-
-            c.print(line)
+                agent_line = Text()
+                agent_line.append("    agent: ", style="theme.text.muted")
+                agent_line.append(entry.agent_name, style="theme.text.emphasis")
+                c.print(agent_line)
 
     def emit_phase_transition(
         self,
@@ -2152,8 +1994,7 @@ class ParallelDisplay:
             is_major = _resolve_transition_meta(from_phase, to_phase, pipeline_policy)
             ctx = self._ctx
             if is_major:
-                if self._ctx.mode != "compact":
-                    self._emit_section_rule("[phase-transition]")
+                self._emit_section_rule("[phase-transition]")
                 title = Text()
                 title.append(from_label, style="theme.text.muted")
                 title.append(f" {ctx.glyph_for('arrow')} ", style="theme.text.emphasis")
@@ -2164,9 +2005,7 @@ class ParallelDisplay:
                 c.print(Rule(title=title, style=style))
                 return
 
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[phase-transition]")
-                c.print()
+            self._emit_section_rule("[phase-transition]")
             title = Text()
             arrow = ctx.glyph_for("arrow")
             title.append(f"{from_label} {arrow} {to_label}")
@@ -2195,8 +2034,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[phase-close]")
+            self._emit_section_rule("[phase-close]")
             c = self._console
             style = _phase_style(exit_model.phase_name, pipeline_policy)
             label = _phase_label(exit_model.phase_name)
@@ -2208,16 +2046,12 @@ class ParallelDisplay:
             line.append(f"{success_glyph} ", style=style)
             line.append(label, style=style)
 
-            mode = self._ctx.mode
-            outer_qualifier = "(outer)" if mode in ("medium", "wide") else ""
-            inner_qualifier = "(inner)" if mode in ("medium", "wide") else ""
-
             if exit_model.outer_dev_iteration is not None:
                 suffix = _build_outer_iteration_suffix(
                     exit_model.outer_dev_iteration,
                     exit_model.outer_dev_cap,
                     od_glyph=od_glyph,
-                    qualifier=outer_qualifier,
+                    qualifier="(outer)",
                 )
                 line.append(suffix, style="theme.outer_dev")
 
@@ -2226,7 +2060,7 @@ class ParallelDisplay:
                     exit_model.inner_analysis,
                     exit_model.inner_analysis_cap,
                     ia_glyph=ia_glyph,
-                    qualifier=inner_qualifier,
+                    qualifier="(inner)",
                 )
                 line.append(suffix, style="theme.inner_analysis")
 
@@ -2245,7 +2079,7 @@ class ParallelDisplay:
             if stats_line is not None:
                 c.print(stats_line)
 
-            if exit_model.artifact_outcome and mode != "compact":
+            if exit_model.artifact_outcome:
                 artifact_line = Text()
                 artifact_line.append("    \u21b3 artifact: ", style="theme.text.muted")
                 artifact_line.append(exit_model.artifact_outcome, style="theme.text.emphasis")
@@ -2265,19 +2099,16 @@ class ParallelDisplay:
             if debug_line is not None:
                 c.print(debug_line)
 
-            if mode == "wide":
-                self._print_wide_close_rule(
-                    style,
-                    c,
-                    elapsed_seconds=exit_model.elapsed_seconds,
-                    exit_trigger=exit_model.exit_trigger,
-                    arrow=arrow,
-                )
+            self._print_wide_close_rule(
+                style,
+                c,
+                elapsed_seconds=exit_model.elapsed_seconds,
+                exit_trigger=exit_model.exit_trigger,
+                arrow=arrow,
+            )
 
     def _build_phase_close_stats_line(self, exit_model: PhaseExitModel) -> Text | None:
         """Return an activity-stats supplementary line for the phase-close banner."""
-        if self._ctx.mode == "compact":
-            return None
         total = (
             exit_model.content_blocks
             + exit_model.thinking_blocks
@@ -2695,14 +2526,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[welcome]")
-            compact = self._ctx.mode == "compact"
-            if compact:
-                welcome = Text(f"Ralph Workflow v{version}", style="theme.banner.welcome")
-                tagline = Text(_TAGLINE_TEXT, style="theme.banner.tagline")
-                self._console.print(Group(welcome, tagline))
-                return
+            self._emit_section_rule("[welcome]")
             banner_text = Text("\n".join(_ASCII_ART_BANNER), style="theme.banner.ascii")
             version_text = Text(f"v{version}", style="theme.banner.version")
             title_text = Text("Ralph Workflow", style="theme.banner.title")
@@ -2725,33 +2549,24 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[agents]")
-            show_secondary = self._ctx.mode != "compact"
+            self._emit_section_rule("[agents]")
             table = Table(title="Configured Agents", show_header=True)
             table.add_column("Name", style="theme.cat.meta")
             table.add_column("Command")
-            if show_secondary:
-                table.add_column("Parser", style="theme.cat.cont")
-                table.add_column("Can Commit", justify="center")
+            table.add_column("Parser", style="theme.cat.cont")
+            table.add_column("Can Commit", justify="center")
             if not agents:
-                if show_secondary:
-                    table.add_row(
-                        Text("No agents configured", style="theme.text.muted"), "", "", ""
-                    )
-                else:
-                    table.add_row(Text("No agents configured", style="theme.text.muted"), "")
+                table.add_row(
+                    Text("No agents configured", style="theme.text.muted"), "", "", ""
+                )
             else:
                 for name, agent in agents.items():
                     cmd = getattr(agent, "cmd", "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     parser = getattr(agent, "json_parser", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     can_commit = getattr(agent, "can_commit", False)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                    if show_secondary:
-                        can_commit_str = "yes" if can_commit else "no"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                        parser_str = str(parser.value if parser is not None else "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                        table.add_row(name, cmd, parser_str, can_commit_str)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                    else:
-                        table.add_row(name, cmd)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    can_commit_str = "yes" if can_commit else "no"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    parser_str = str(parser.value if parser is not None else "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    table.add_row(name, cmd, parser_str, can_commit_str)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             self._console.print(table)
 
     def emit_providers_table(self, providers: list[str]) -> None:
@@ -2762,24 +2577,15 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[providers]")
-            show_status = self._ctx.mode != "compact"
+            self._emit_section_rule("[providers]")
             table = Table(title="Available Providers", show_header=True)
             table.add_column("Provider", style="theme.cat.meta")
-            if show_status:
-                table.add_column("Status", justify="center")
+            table.add_column("Status", justify="center")
             if not providers:
-                if show_status:
-                    table.add_row(Text("No providers available", style="theme.text.muted"), "")
-                else:
-                    table.add_row(Text("No providers available", style="theme.text.muted"))
+                table.add_row(Text("No providers available", style="theme.text.muted"), "")
             else:
                 for provider in providers:
-                    if show_status:
-                        table.add_row(provider, "Available")
-                    else:
-                        table.add_row(provider)
+                    table.add_row(provider, "Available")
             self._console.print(table)
 
     def emit_config_table(self, config: UnifiedConfig) -> None:
@@ -2790,26 +2596,15 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[config]")
+            self._emit_section_rule("[config]")
             config_json = config.model_dump_json(indent=2)
-            if self._ctx.mode == "compact":
-                self._console.print(
-                    Panel(
-                        config_json,
-                        title="Effective Configuration",
-                        border_style="theme.phase.planning",
-                        width=self._ctx.width,
-                    )
+            self._console.print(
+                Panel(
+                    config_json,
+                    title="Effective Configuration",
+                    border_style="theme.phase.planning",
                 )
-            else:
-                self._console.print(
-                    Panel(
-                        config_json,
-                        title="Effective Configuration",
-                        border_style="theme.phase.planning",
-                    )
-                )
+            )
 
     def emit_capability_summary(
         self,
@@ -2828,8 +2623,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[capabilities]")
+            self._emit_section_rule("[capabilities]")
             from ralph.cli._capability_summary import collect_skill_root_rows
             from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
             from ralph.skills._capability_status import CapabilityStatus
@@ -2953,8 +2747,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
-            if self._ctx.mode != "compact":
-                self._emit_section_rule("[info]")
+            self._emit_section_rule("[info]")
             panel = Panel(content, title=title, border_style="theme.phase.planning", padding=(1, 2))
             self._console.print(panel)
 
@@ -2967,18 +2760,14 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[metrics]")
-            show_secondary = self._ctx.mode != "compact"
             table = Table(
                 title="Pipeline Metrics",
                 show_header=True,
-                expand=show_secondary,
+                expand=True,
                 title_style="theme.banner.title",
                 header_style="theme.text.emphasis",
             )
-            if self._ctx.mode == "compact":
-                table.add_column("Metric", style="theme.cat.meta", overflow="fold")
-            else:
-                table.add_column("Metric", style="theme.cat.meta")
+            table.add_column("Metric", style="theme.cat.meta")
             table.add_column("Value", justify="right", style="theme.status.success")
             for name, value in metrics.items():
                 table.add_row(name, str(value))
@@ -2997,17 +2786,13 @@ class ParallelDisplay:
             self._emit_section_rule("[checkpoint]")
             phase: str = getattr(options, "phase", "")
             progress: Mapping[str, tuple[int, int]] = getattr(options, "budget_progress", {})
-            show_secondary = self._ctx.mode != "compact"
             table = Table(
                 title="Checkpoint Summary",
                 show_header=False,
-                expand=show_secondary,
+                expand=True,
                 title_style="theme.banner.title",
             )
-            if self._ctx.mode == "compact":
-                table.add_column("Property", style="theme.cat.meta", overflow="fold")
-            else:
-                table.add_column("Property", style="theme.cat.meta")
+            table.add_column("Property", style="theme.cat.meta")
             table.add_column("Value")
             table.add_row("Phase", str(phase))
             for counter_name, value_pair in progress.items():

@@ -96,12 +96,18 @@ def _make_display_context(
 
 
 # ---------------------------------------------------------------------------
-# render_status_bar — wide mode shows all four fields
+# render_status_bar — single default-mode layout shows all four fields
 # ---------------------------------------------------------------------------
 
 
-def test_render_status_bar_wide_shows_all_fields() -> None:
-    """Wide mode (>=100 cols): phase + dir + outer_dev + inner_analysis all present."""
+def test_render_status_bar_default_mode_shows_all_applicable_fields() -> None:
+    """Single default-mode layout: phase + dir + outer_dev + inner_analysis all present.
+
+    After the wt-028-display consolidation, the persistent Status Bar
+    always renders all applicable fields regardless of terminal width.
+    Only path middle-truncation and phase tail-truncation adapt to
+    width.
+    """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
         phase_label="Development",
@@ -120,13 +126,9 @@ def test_render_status_bar_wide_shows_all_fields() -> None:
     assert "Analysis 2/5" in plain
 
 
-# ---------------------------------------------------------------------------
-# render_status_bar — medium mode shows phase + dir + outer_dev only
-# ---------------------------------------------------------------------------
-
-
-def test_render_status_bar_medium_shows_phase_dir_and_outer_dev() -> None:
-    """Medium mode (60-99 cols): phase + dir + outer_dev; inner_analysis omitted."""
+@pytest.mark.parametrize("width", [40, 60, 80, 100, 120, 200])
+def test_render_status_bar_shows_all_fields_at_any_width(width: int) -> None:
+    """Single default-mode invariant: any width renders all applicable fields."""
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
         phase_label="Development",
@@ -136,90 +138,13 @@ def test_render_status_bar_medium_shows_phase_dir_and_outer_dev() -> None:
         inner_analysis=2,
         inner_analysis_cap=5,
     )
-    ctx = _make_display_context(width=80)
+    ctx = _make_display_context(width=width)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     assert "Development" in plain
     assert "my-cool-project" in plain
     assert "Dev 1/3" in plain
-    assert "Analysis" not in plain
-
-
-# ---------------------------------------------------------------------------
-# render_status_bar — compact mode shows only phase + dir
-# ---------------------------------------------------------------------------
-
-
-def test_render_status_bar_compact_drops_iterations() -> None:
-    """Compact mode (<60 cols): phase + dir only; both iteration fields dropped."""
-    model = StatusBarModel(
-        workspace_root="/Users/alice/code/my-cool-project",
-        phase_label="Development",
-        phase_style="theme.phase.development",
-        outer_dev_iteration=1,
-        outer_dev_cap=3,
-        inner_analysis=2,
-        inner_analysis_cap=5,
-    )
-    ctx = _make_display_context(width=40)
-    text = render_status_bar(model, ctx, home="/Users/alice")
-    plain = _plain_text(text)
-    assert "Development" in plain
-    assert "my-cool-project" in plain
-    # The canonical 'Dev N/cap' / 'Dev #N' iteration labels must be absent.
-    assert "Dev #" not in plain
-    assert "Dev 1/3" not in plain
-    # The canonical 'Analysis N/cap' / 'Analysis #N' iteration labels must be absent.
-    assert "Analysis #" not in plain
-    assert "Analysis 2/5" not in plain
-
-
-# ---------------------------------------------------------------------------
-# render_status_bar — None outer_dev_iteration omits the Dev segment
-# ---------------------------------------------------------------------------
-
-
-def test_render_status_bar_none_outer_dev_omits_dev_segment() -> None:
-    """None outer_dev_iteration -> the Dev segment is absent (no placeholder)."""
-    model = StatusBarModel(
-        workspace_root="/Users/alice/code/my-cool-project",
-        phase_label="Commit",
-        phase_style="theme.phase.commit",
-        outer_dev_iteration=None,
-        outer_dev_cap=None,
-        inner_analysis=2,
-        inner_analysis_cap=5,
-    )
-    ctx = _make_display_context(width=140)
-    text = render_status_bar(model, ctx, home="/Users/alice")
-    plain = _plain_text(text)
-    assert "Commit" in plain
-    assert "Dev" not in plain
     assert "Analysis 2/5" in plain
-
-
-# ---------------------------------------------------------------------------
-# render_status_bar — None inner_analysis omits the Analysis segment
-# ---------------------------------------------------------------------------
-
-
-def test_render_status_bar_none_inner_analysis_omits_analysis_segment() -> None:
-    """None inner_analysis -> the Analysis segment is absent (no placeholder)."""
-    model = StatusBarModel(
-        workspace_root="/Users/alice/code/my-cool-project",
-        phase_label="Development",
-        phase_style="theme.phase.development",
-        outer_dev_iteration=1,
-        outer_dev_cap=3,
-        inner_analysis=None,
-        inner_analysis_cap=None,
-    )
-    ctx = _make_display_context(width=140)
-    text = render_status_bar(model, ctx, home="/Users/alice")
-    plain = _plain_text(text)
-    assert "Development" in plain
-    assert "Dev 1/3" in plain
-    assert "Analysis" not in plain
 
 
 # ---------------------------------------------------------------------------
@@ -282,8 +207,8 @@ def test_render_status_bar_no_dash_placeholder_when_inner_analysis_is_none() -> 
     )
 
 
-def test_render_status_bar_no_dash_placeholder_in_compact_mode() -> None:
-    """In compact mode (no iteration fields rendered), no '--' placeholder appears."""
+def test_render_status_bar_no_dash_placeholder_when_iterations_are_none() -> None:
+    """When iteration fields are None on the model, no '--' placeholder appears."""
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
         phase_label="Commit",
@@ -291,7 +216,7 @@ def test_render_status_bar_no_dash_placeholder_in_compact_mode() -> None:
         outer_dev_iteration=None,
         inner_analysis=None,
     )
-    ctx = _make_display_context(width=40)
+    ctx = _make_display_context(width=140)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     assert "--" not in plain
@@ -448,24 +373,41 @@ def test_render_status_bar_pathological_no_home_relative_when_home_not_passed() 
 
 
 def test_render_status_bar_truncates_long_phase_label_no_wrap() -> None:
-    """A long phase label is tail-truncated in compact mode and never wraps (no '\\n')."""
-    # 'Development Analysis' is 20 chars; compact budget is 16 -> must elide.
+    """A long phase label is tail-truncated and never wraps (no '\\n').
+
+    The single default-mode layout uses DEFAULT_PHASE_LABEL_BUDGET=28
+    chars; a 20-char 'Development Analysis' fits the budget, so this
+    test asserts the phase label is rendered in full when within the
+    budget. The no-wrap invariant is the key contract.
+    """
+    # 'Development Analysis' is 20 chars; default budget is 28 -> no elision.
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
         phase_label="Development Analysis",
         phase_style="theme.phase.analysis",
     )
-    ctx = _make_display_context(width=40)
+    ctx = _make_display_context(width=140)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     assert "\n" not in plain, f"Status Bar must not wrap: {plain!r}"
-    # A long phase label was truncated; the original long form must not appear in full.
-    assert "Development Analysis" not in plain, (
-        f"Long phase label not truncated: {plain!r}"
+    # The phase label is rendered in full because it fits the budget.
+    assert "Development Analysis" in plain
+
+
+def test_render_status_bar_truncates_very_long_phase_label() -> None:
+    """A phase label longer than DEFAULT_PHASE_LABEL_BUDGET=28 is tail-truncated."""
+    long_label = "Very Long Phase Label Exceeding Default Budget Of Twenty Eight"
+    assert len(long_label) > 28
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label=long_label,
+        phase_style="theme.phase.analysis",
     )
-    # The leading word's prefix is preserved (tail-truncation keeps the prefix).
-    assert "Develop" in plain
-    # The rendered text must contain an ellipsis where the long label was cut.
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\n" not in plain, f"Status Bar must not wrap: {plain!r}"
+    # The full label was truncated; the rendered text ends with '...'.
     assert "..." in plain, f"Truncated label must include '...'; got {plain!r}"
 
 
@@ -486,15 +428,15 @@ def test_render_status_bar_ascii_glyph_fallback_when_glyphs_disabled() -> None:
     ctx = _make_display_context(width=140, ascii_glyphs=True)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
-    # ASCII fallback glyph for 'phase_marker' is '[]', 'milestone' is '*', outer_dev is '[OD]',
-    # inner_analysis is '[IA]'.
-    assert "[]" in plain, (
-        f"ASCII phase_marker '[]' must appear in plain output; got {plain!r}"
-    )
+    # ASCII fallback glyph for 'milestone' is '*' and 'outer_dev' is '[OD]'.
     assert "*" in plain, (
         f"ASCII milestone '*' must appear in plain output; got {plain!r}"
     )
-    # No Unicode phase_marker — the Unicode glyph would be '■'.
+    assert "[OD]" in plain, (
+        f"ASCII outer_dev '[OD]' must appear in plain output; got {plain!r}"
+    )
+    # Phase_marker is omitted when glyphs are disabled (single default-mode invariant).
+    # No Unicode glyphs at all should appear.
     assert "■" not in plain
     assert "◆" not in plain
     assert "◎" not in plain

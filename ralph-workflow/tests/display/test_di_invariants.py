@@ -600,9 +600,9 @@ def test_table_panel_methods_emit_section_rule_header() -> None:
             missing_section_rule.append(name)
     assert not missing_section_rule, (
         "Table/panel emit_* methods missing a section-rule header: "
-        f"{missing_section_rule!r}. Add ``if self._ctx.mode != 'compact': "
-        "self._emit_section_rule('[<tag>]')`` as the first statement "
-        "inside the ``with contextlib.suppress(Exception):`` block."
+        f"{missing_section_rule!r}. Add ``self._emit_section_rule('[<tag>]')`` "
+        "as the first statement inside the "
+        "``with contextlib.suppress(Exception):`` block."
     )
 
 

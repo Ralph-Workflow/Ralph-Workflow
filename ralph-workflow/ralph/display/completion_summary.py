@@ -79,10 +79,10 @@ class CompletionSummaryOptions:
 def _children_persist_diagnostic_line(error: str) -> str | None:
     """Parse a CHILDREN_PERSIST_TOO_LONG error string into a human-readable reason line.
 
-    Returns None when the error does not match the marker phrase.
+    Returns None when the error does not match the marker phrase (or is None).
     Missing keys in the diagnostic render as '?'.
     """
-    if _CHILDREN_PERSIST_MARKER not in error:
+    if not error or _CHILDREN_PERSIST_MARKER not in error:
         return None
     pairs: dict[str, str] = {m.group(1): m.group(2) for m in _KV_PATTERN.finditer(error)}
     cum = pairs.get("cumulative", "?")

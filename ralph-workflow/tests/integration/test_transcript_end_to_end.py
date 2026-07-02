@@ -101,7 +101,7 @@ def _install_runner_stubs(
         runner_module,
         "make_display_context",
         lambda **_kwargs: make_display_context(
-            console=captured_console, force_width=300, force_mode="wide"
+            console=captured_console, force_width=300,
         ),
     )
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))

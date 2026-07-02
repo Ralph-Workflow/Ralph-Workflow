@@ -14,6 +14,7 @@ finish in < 0.5 s.
 
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime
 from io import StringIO
 
@@ -96,8 +97,8 @@ def test_emit_completion_summary_panel_emits_section_rule_header() -> None:
     )
 
 
-def test_emit_completion_summary_panel_compact_mode_skips_section_rule() -> None:
-    """Compact mode suppresses the section rule but keeps the body."""
+def test_emit_completion_summary_panel_section_rule_at_any_width() -> None:
+    """Single default-mode: section rule is emitted at any width (no compact-mode suppression)."""
     pd, buf = _display(force_terminal=False, width=40)
     pd.emit_completion_summary_panel(
         _make_snapshot(),
@@ -105,12 +106,12 @@ def test_emit_completion_summary_panel_compact_mode_skips_section_rule() -> None
     )
     pd.stop()
     output = buf.getvalue()
-    # Section rule is suppressed in compact mode; the body is still emitted.
-    assert "[run-completion]" not in output, (
-        f"compact mode must not emit a section rule; got: {output!r}"
+    # Section rule is emitted unconditionally in the single default-mode layout.
+    assert "[run-completion]" in output, (
+        f"default mode must emit the section rule; got: {output!r}"
     )
     # Body must still be present (Pipeline title and decisions survive).
-    assert "Pipeline" in output, f"compact body must still be present: {output!r}"
+    assert "Pipeline" in output, f"default-mode body must still be present: {output!r}"
 
 
 def test_emit_completion_summary_panel_renders_panel_body() -> None:
@@ -140,8 +141,12 @@ def test_emit_completion_summary_panel_failed_uses_failed_title() -> None:
         ),
         options=CompletionSummaryOptions(),
     )
+    sys.stderr.write(f"\nDEBUG before stop output: {buf.getvalue()!r}\n")
+    sys.stderr.flush()
     pd.stop()
     output = buf.getvalue()
+    sys.stderr.write(f"\nDEBUG failure test output: {output!r}\n")
+    sys.stderr.flush()
     assert "Pipeline Failed" in output, (
         f"expected 'Pipeline Failed' title in failure body: {output!r}"
     )

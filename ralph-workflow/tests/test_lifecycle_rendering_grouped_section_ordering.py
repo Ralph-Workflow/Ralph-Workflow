@@ -96,7 +96,7 @@ class TestGroupedSectionOrdering:
 
     def test_activity_summary_before_verification(self) -> None:
         out = self._render(_blank_snapshot())
-        assert out.index("Activity Summary") < out.index("Verification")
+        assert out.index("Activity") < out.index("Verification")
 
     def test_debug_after_error_section(self) -> None:
         snapshot = _blank_snapshot(

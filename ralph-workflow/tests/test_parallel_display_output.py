@@ -17,14 +17,14 @@ def test_strip_markup_removes_rich_tags() -> None:
     assert strip_markup("plain text") == "plain text"
 
 
-def test_medium_mode_emit_strips_rich_markup() -> None:
-    """In medium mode, emit strips rich markup from lines."""
+def test_default_mode_emit_strips_rich_markup() -> None:
+    """In the single default mode, emit strips rich markup from lines."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(
-        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
+        make_display_context(console=console, env={"CI": "1"})
     )
-    assert pd.mode == "medium"
+    assert pd.mode == "default"
     pd.emit("unit-1", "[green]hello[/green]")
     text = buf.getvalue()
     assert "hello" in text
@@ -32,7 +32,7 @@ def test_medium_mode_emit_strips_rich_markup() -> None:
     assert "[green]" not in text
 
 
-def test_emit_analysis_result_in_medium_mode_records_to_decision_log() -> None:
+def test_emit_analysis_result_in_default_mode_records_to_decision_log() -> None:
     """emit_analysis_result records to decision_log but does NOT emit to console.
 
     The analysis decision is rendered as a titled block by render_analysis_decision
@@ -41,7 +41,7 @@ def test_emit_analysis_result_in_medium_mode_records_to_decision_log() -> None:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(
-        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
+        make_display_context(console=console, env={"CI": "1"})
     )
     pd.emit_analysis_result("development_analysis", "proceed", "all tests pass")
     text = buf.getvalue()
@@ -53,10 +53,10 @@ def test_emit_analysis_result_in_medium_mode_records_to_decision_log() -> None:
     assert any(entry[1].lower() == "proceed" and "all tests pass" in entry[2] for entry in log), log
 
 
-def test_emit_analysis_result_updates_subscriber_state_in_medium_mode() -> None:
-    """emit_analysis_result updates subscriber state in medium mode."""
+def test_emit_analysis_result_updates_subscriber_state_in_default_mode() -> None:
+    """emit_analysis_result updates subscriber state in the single default mode."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
-    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="medium"))
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.emit_analysis_result("development_analysis", "proceed", "all good")
     # subscriber state should reflect the analysis result
     subscriber = pd.subscriber
@@ -67,7 +67,7 @@ def test_emit_analysis_result_updates_subscriber_state_in_medium_mode() -> None:
 def test_record_activity_updates_snapshot_fields() -> None:
     """record_activity propagates to snapshot fields and build_snapshot mirrors notify."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
-    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="medium"))
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
 
     pd.subscriber.record_activity(
         unit_id="developer",
@@ -109,7 +109,7 @@ def test_record_activity_updates_snapshot_fields() -> None:
 def test_emit_updates_subscriber_snapshot_for_unit_scoped_raw_activity() -> None:
     """Unit-scoped raw emits must update the subscriber state as well as the console."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
-    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="medium"))
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
 
     pd.emit("unit-1", "[green]hello[/green]")
 
@@ -123,7 +123,7 @@ def test_long_unit_id_does_not_hide_payload_content() -> None:
     """Long unit ids are elided so the payload remains visible."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="wide"))
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
 
     pd.emit("opencode/minimax/MiniMax-M3", "Invoking agent: opencode/minimax/MiniMax-M3")
 
@@ -136,7 +136,7 @@ def test_emit_refreshes_visible_activity_when_line_changes_but_unit_is_same() ->
     """Later activity lines for the same unit must still render when the payload changes."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=160, color_system=None)
-    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="wide"))
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
 
     pd.emit("unit-1", "Invoking agent: dev")
     pd.emit("unit-1", "Agent process started; waiting for first output")

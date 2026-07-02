@@ -274,29 +274,13 @@ def _make_execution_to_analysis_policy() -> PipelinePolicy:
     )
 
 
-def test_show_phase_transition_compact_mode_no_leading_blank_line() -> None:
-    """Compact mode major transition has no leading blank line and one Rule."""
-    console = Console(record=True, width=80)
-    ctx = make_display_context(console=console, force_mode="compact")
-    policy = _make_execution_to_analysis_policy()
-    display = resolve_active_display(None, ctx)
-    display.emit_phase_transition("planning", "development", pipeline_policy=policy)
-    output = console.export_text()
 
-    assert "Planning" in output
-    assert "Development" in output
-    # Compact: no leading blank line (first char should be the Rule character)
-    lines = output.split("\n")
-    assert lines[0].strip() != ""  # First line is not blank
-    # Should have exactly one Rule line (compact shows single rule with title)
-    rule_lines = [line for line in lines if "─" in line or "━" in line]
-    assert len(rule_lines) == 1
 
 
 def test_show_phase_transition_medium_mode_has_one_rule_no_description() -> None:
     """Medium mode major transition uses a single titled Rule (no duplication)."""
     console = Console(record=True, width=80)
-    ctx = make_display_context(console=console, force_mode="medium")
+    ctx = make_display_context(console=console, )
     policy = _make_execution_to_analysis_policy()
     display = resolve_active_display(None, ctx)
     display.emit_phase_transition("planning", "development", pipeline_policy=policy)
@@ -315,7 +299,7 @@ def test_show_phase_transition_medium_mode_has_one_rule_no_description() -> None
 def test_show_phase_transition_wide_mode_has_one_rule_no_description() -> None:
     """Wide mode major transition uses a single titled Rule (same as compact/medium)."""
     console = Console(record=True, width=120)
-    ctx = make_display_context(console=console, force_mode="wide")
+    ctx = make_display_context(console=console, )
     policy = _make_execution_to_analysis_policy()
     display = resolve_active_display(None, ctx)
     display.emit_phase_transition("planning", "development", pipeline_policy=policy)

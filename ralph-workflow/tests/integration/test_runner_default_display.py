@@ -219,6 +219,6 @@ def test_width_refresher_updates_live_display_context(
     )
 
     assert exit_code == 0
-    assert display._ctx.mode == "compact"
+    assert display._ctx.mode == "default"
     # The stop callback returned by install_width_refresher must be called on shutdown
     assert stop_called, "Runner did not call the width refresher stop callback on shutdown"

@@ -211,7 +211,7 @@ def _config() -> UnifiedConfig:
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
     console = Console(record=True, force_terminal=False, width=120, color_system=None)
-    ctx = make_display_context(console=console, force_width=120, force_mode="wide")
+    ctx = make_display_context(console=console, force_width=120, )
     monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
 
 

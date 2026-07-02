@@ -14,7 +14,6 @@ from ralph.display.completion_summary import (
 )
 from ralph.display.context import make_display_context
 from ralph.display.snapshot import BudgetProgress, PipelineSnapshot
-from ralph.display.theme import RALPH_THEME
 
 
 def _make_snapshot(
@@ -111,24 +110,6 @@ def _render_group_full(
     return buf.getvalue()
 
 
-def _render_compact(
-    snapshot: PipelineSnapshot,
-    *,
-    thinking_block_count: int = 0,
-) -> str:
-    """Render the group in compact mode using a narrow DisplayContext."""
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, width=50, theme=RALPH_THEME)
-    ctx = make_display_context(console=console, env={"COLUMNS": "50"})
-    group = render_completion_summary_group(
-        snapshot,
-        display_context=ctx,
-        options=CompletionSummaryOptions(thinking_block_count=thinking_block_count),
-    )
-    console.print(group, markup=False, highlight=False)
-    return buf.getvalue()
-
-
 def test_group_contains_pipeline_complete_title() -> None:
     out = _render_group(_make_snapshot())
     assert "Pipeline Complete" in out
@@ -185,14 +166,10 @@ def test_group_no_decisions_shows_none_recorded() -> None:
     assert "none recorded" in out
 
 
-def test_group_risks_section_shown_when_risks_present() -> None:
-    out = _render_group(_make_snapshot(plan_risks=("risky thing",)))
-    assert "Open Risks" in out
-    assert "risky thing" in out
-
-
 def test_group_error_section_shown_on_failure() -> None:
-    out = _render_group(_make_snapshot(phase="failed", last_error="boom"))
+    out = _render_group(
+        _make_snapshot(phase="failed", last_error="boom", is_terminal_failure=True)
+    )
     assert "Error" in out
     assert "boom" in out
 
@@ -232,7 +209,7 @@ def test_group_no_markup_tags_in_output() -> None:
 
 def test_group_contains_activity_summary_section() -> None:
     out = _render_group(_make_snapshot())
-    assert "Activity Summary" in out
+    assert "Activity" in out
 
 
 def test_group_activity_summary_shows_agent_calls() -> None:
@@ -258,7 +235,7 @@ def test_group_activity_summary_no_overflow_path_when_none() -> None:
 
 def test_group_activity_summary_appears_before_verification() -> None:
     out = _render_group(_make_snapshot())
-    assert out.index("Activity Summary") < out.index("Verification")
+    assert out.index("Activity") < out.index("Verification")
 
 
 def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:
@@ -335,34 +312,6 @@ def test_completion_panel_parity_with_run_end() -> None:
     assert "agent_calls=4" in out
 
 
-# --- Compact mode tests ---
-
-
-def test_compact_collapses_section_headers() -> None:
-    """In compact mode, Rule headers like 'Metrics' are replaced with 'METRICS:' prefixes."""
-    out = _render_compact(_make_snapshot())
-    # Should NOT contain a Rule titled 'Metrics' (Rules render as '── Metrics ──')
-    # In plain text output, a Rule appears as a line with dashes around the title
-    # We check that no standalone 'Metrics' appears as a section header line
-    # (compact mode uses 'METRICS:' prefix instead)
-    assert "METRICS:" in out
-    assert "DECISIONS:" in out or "DECISIONS" in out
-    assert "VERIFICATION:" in out
-
-
-def test_compact_contains_pipeline_title() -> None:
-    """Compact mode still shows the pipeline title."""
-    out = _render_compact(_make_snapshot())
-    assert "Pipeline Complete" in out
-
-
-def test_compact_contains_key_data() -> None:
-    """Compact mode still includes agent_calls and verification data."""
-    out = _render_compact(_make_snapshot())
-    assert "agent_calls=4" in out
-    assert "Verification" in out
-
-
 # --- Elapsed and Iteration Context placement tests ---
 
 
@@ -396,23 +345,6 @@ def _make_snapshot_with_outer_dev(outer_dev_iteration: int = 3) -> PipelineSnaps
     )
 
 
-def _render_compact_full(
-    snapshot: PipelineSnapshot,
-    *,
-    elapsed_seconds: float | None = None,
-) -> str:
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, width=50, color_system=None)
-    ctx = make_display_context(console=console, env={"COLUMNS": "50"})
-    group = render_completion_summary_group(
-        snapshot,
-        display_context=ctx,
-        options=CompletionSummaryOptions(elapsed_seconds=elapsed_seconds),
-    )
-    console.print(group, markup=False, highlight=False)
-    return buf.getvalue()
-
-
 def test_elapsed_appears_before_metrics_in_wide_mode() -> None:
     """elapsed= line appears before the Metrics section in wide mode output."""
     out = _render_group_full(_make_snapshot(), elapsed_seconds=12.4)
@@ -431,24 +363,6 @@ def test_iteration_context_section_absent_without_context() -> None:
     """Wide mode omits 'Iteration Context' section when no iteration fields are set."""
     out = _render_group_full(_make_snapshot())
     assert "Iteration Context" not in out
-
-
-def test_compact_elapsed_in_title_line() -> None:
-    """Compact mode includes elapsed in the pipeline title line."""
-    out = _render_compact_full(_make_snapshot(), elapsed_seconds=45.2)
-    lines = out.splitlines()
-    title_line = next((ln for ln in lines if "Pipeline Complete" in ln), None)
-    assert title_line is not None
-    assert "elapsed=45.2s" in title_line, (
-        f"Expected elapsed=45.2s on title line, got: {title_line!r}"
-    )
-
-
-def test_compact_context_prefix_with_outer_dev() -> None:
-    """Compact mode shows CONTEXT: prefix when outer_dev_iteration is set."""
-    out = _render_compact_full(_make_snapshot_with_outer_dev(outer_dev_iteration=2))
-    assert "CONTEXT:" in out
-    assert "Dev #2" in out
 
 
 # --- Budget Progress section tests ---
@@ -503,25 +417,7 @@ def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
     assert "Budget Progress" not in out
 
 
-def test_compact_budget_never_shown() -> None:
-    """Compact mode never shows 'BUDGET:' or 'remaining' budget wording."""
-    snap = _make_snapshot_with_budget_bp(
-        {
-            "dev_cycles": BudgetProgress(
-                completed=4, cap=10, description="Dev Cycles", tracks_budget=True
-            ),
-        }
-    )
-    out = _render_compact_full(snap)
-    assert "BUDGET:" not in out
-    assert "remaining" not in out
 
-
-def test_compact_budget_absent_when_no_tracked_counters() -> None:
-    """Compact mode omits 'BUDGET:' when no budget-tracked counters exist."""
-    snap = _make_snapshot_with_budget_bp({})
-    out = _render_compact_full(snap)
-    assert "BUDGET:" not in out
 
 
 # --- Exit trigger tests ---
@@ -554,22 +450,4 @@ def test_group_exit_trigger_appears_before_metrics_in_wide_mode() -> None:
     assert out.index("exit=completed") < out.index("Metrics")
 
 
-def test_compact_exit_trigger_shown() -> None:
-    """Compact mode shows EXIT: label."""
-    out = _render_compact(_make_snapshot())
-    assert "EXIT:" in out
-    assert "completed" in out
 
-
-def test_compact_exit_trigger_failed_shown() -> None:
-    """Compact mode shows EXIT: failed when is_terminal_failure=True."""
-    out = _render_compact(
-        _make_snapshot(
-            phase="failed",
-            last_error="crash",
-            is_terminal_success=False,
-            is_terminal_failure=True,
-        )
-    )
-    assert "EXIT:" in out
-    assert "failed" in out

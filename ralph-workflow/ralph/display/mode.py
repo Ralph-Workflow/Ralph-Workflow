@@ -1,20 +1,24 @@
-"""Terminal mode detection constants for Ralph's transcript output.
+"""Display mode constants for Ralph's terminal output.
 
-Defines the column-width thresholds used to select between narrow, medium, and
-wide rendering modes for transcript and display output:
+After the wt-028-display consolidation, Ralph Workflow exposes exactly ONE
+display mode: ``default``. There are no narrow / medium / wide tiers,
+no width-based adaptive limits, and no width-derived dispatch. The
+persistent bottom Status Bar always renders all applicable fields
+(working directory, active phase, applicable outer development
+iteration, and applicable inner analysis iteration) regardless of
+terminal width — only the long-path middle-truncation and long-phase
+tail-truncation adapt to width.
 
-- ``NARROW_THRESHOLD`` (60 columns) - below this the display switches to a
-  compact single-column layout with abbreviated labels.
-- ``MEDIUM_THRESHOLD`` (100 columns) - between the two thresholds a balanced
-  layout is used; above this the full wide layout is used.
-
-These constants are read by ``ralph.display`` components that adapt their
-formatting based on the current terminal width.
+The historical ``NARROW_THRESHOLD`` (60 cols) and ``MEDIUM_THRESHOLD``
+(100 cols) constants are removed; importing either raises
+:data:`ImportError`. The historical ``RALPH_FORCE_NARROW`` environment
+variable is silently ignored. The historical ``force_mode`` keyword
+argument to :func:`make_display_context` raises
+:data:`NotImplementedError` if a non-``None`` value is passed.
 """
 
 from __future__ import annotations
 
-NARROW_THRESHOLD: int = 60
-MEDIUM_THRESHOLD: int = 100
+DEFAULT_MODE: str = "default"
 
-__all__ = ["MEDIUM_THRESHOLD", "NARROW_THRESHOLD"]
+__all__ = ["DEFAULT_MODE"]

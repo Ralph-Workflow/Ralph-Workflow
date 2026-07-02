@@ -135,7 +135,7 @@ class TestTransitionDescriptionRoleOnly:
     def test_transition_without_policy_is_minor(self) -> None:
         """Without policy, any transition is treated as minor (no major banner)."""
         console = _console()
-        ctx = make_display_context(console=console, force_mode="medium")
+        ctx = make_display_context(console=console, )
         display = resolve_active_display(None, ctx)
         display.emit_phase_transition("planning", "development", pipeline_policy=None)
         output = console.file.getvalue()

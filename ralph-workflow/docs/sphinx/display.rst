@@ -187,14 +187,14 @@ The section-rule contract is enforced by
 ``tests/display/test_parallel_display_visual_hierarchy.py``:
 
 - Every emit method that opens a section calls
-  ``self._emit_section_rule(tag)`` in non-compact mode and is silent
-  in compact mode.
+  ``self._emit_section_rule(tag)`` (single default-mode layout always
+  emits section rules).
 - Headers use the ``theme.banner.title`` style; body cells use
   ``theme.text.muted``.
 - Output is markup-free: callers do not need to escape ``[brackets]``
   or rich markup.
-- Wide-mode emit methods emit a trailing ``Rule`` for visual symmetry
-  around the section block.
+- The single default-mode layout emits a trailing ``Rule`` for visual
+  symmetry around the section block.
 
 Environment variables
 ---------------------
@@ -203,7 +203,7 @@ The following environment variables influence display behaviour.  All are
 resolved once during ``make_display_context()``; no renderer reads the
 environment after that.
 
-**Width and mode**
+**Width**
 
 .. list-table::
    :header-rows: 1
@@ -211,9 +211,6 @@ environment after that.
 
    * - Variable
      - Effect
-   * - ``RALPH_FORCE_NARROW``
-     - Any truthy value (``1``, ``true``, ``yes``, ``on``) forces ``compact``
-       mode regardless of terminal width.
    * - ``COLUMNS``
      - Positive integer overrides the console's auto-detected width.
 
@@ -278,21 +275,51 @@ environment after that.
 Mode thresholds
 ---------------
 
-.. list-table::
-   :header-rows: 1
-   :widths: 15 85
+Display mode (single default)
+-----------------------------
 
-   * - Mode
-     - Trigger
-   * - ``compact``
-     - Terminal width < 60 columns, or ``RALPH_FORCE_NARROW`` is set.
-   * - ``medium``
-     - Terminal width 60–99 columns.
-   * - ``wide``
-     - Terminal width ≥ 100 columns.
+Ralph Workflow exposes exactly ONE display mode: ``default``. There is no
+width-based dispatch and no per-mode limits table. The persistent bottom
+Status Bar always renders all applicable fields (working directory, active
+phase, applicable outer development iteration, applicable inner analysis
+iteration) regardless of terminal width — only the long-path
+middle-truncation and long-phase tail-truncation budgets adapt to width.
 
-In ``compact`` mode, renderers suppress secondary table columns, extra blank
-lines, and descriptive Rules to fit narrow terminals.
+.. note::
+
+   What changed and why it belongs here
+
+   The historical three-tier mode split (narrow / medium / wide), the
+   ``force_mode`` keyword argument, the legacy env-var override, and the
+   three-tier mode limits table were collapsed into a single ``default``
+   mode. The persistent bottom Status Bar always renders all applicable
+   fields (working directory, active phase, applicable outer development
+   iteration, applicable inner analysis iteration) regardless of terminal
+   width — only the long-path middle-truncation and long-phase
+   tail-truncation budgets adapt to width. This belongs on the
+   operator-facing reference page because operators who relied on the
+   legacy override need to know the public API has changed; the
+   consolidated single mode is one clear surface to learn instead of
+   three. What was pruned: the mode thresholds table, the legacy env-var
+   precedence row, and the ``force_mode`` argument. What was merged:
+   every width-driven branch in ``parallel_display.py`` and
+   ``status_bar.py`` now renders identically.
+
+The single default-mode layout:
+
+- Renders ``[phase]`` / ``[run-start]`` / ``[run-end]`` / ``[run-completion]``
+  section rules unconditionally.
+- Renders the full Status Bar fields (phase + dir + outer_dev +
+  inner_analysis) at every width (only path/label truncation adapts to
+  width).
+- Always emits section rules around phase-close banners and completion
+  panels.
+
+The historical env-var override that selected a narrower mode is silently
+ignored. The historical ``force_mode`` keyword argument to
+``make_display_context()`` raises
+``NotImplementedError("force_mode is removed in wt-028-display; Ralph Workflow now uses a single display mode ('default').")``
+if a non-``None`` value is passed.
 
 Iteration context labels
 ------------------------
@@ -373,13 +400,13 @@ Phase-close rich banner
 -----------------------
 
 In addition to the ``[phase-close]`` transcript line, a rich visual banner is
-emitted to the console at the start of each phase transition.  In medium and
-wide modes the banner also includes:
+emitted to the console at the start of each phase transition.  In the single
+default-mode layout the banner includes:
 
 - A ``↳ artifact:`` line showing what was produced (e.g.
   ``plan: 5 step(s), 2 risk(s)``), sourced from
   :attr:`~ralph.display.phase_lifecycle.PhaseExitModel.artifact_outcome`.
-  This line is omitted in compact mode and when the artifact outcome is empty.
+  This line is omitted when the artifact outcome is empty.
 - A ``↳ stats:`` line showing per-phase activity counters (content, thinking,
   tool calls, errors), omitted when all counters are zero.
 - A ``debug:`` line showing the last waiting-status breadcrumb and failure

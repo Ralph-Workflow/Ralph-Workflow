@@ -1,17 +1,14 @@
 """Black-box tests for lifecycle model-driven rendering APIs.
 
-Covers:
-- show_phase_start_from_entry (phase_banner.py)
-- emit_phase_close_from_exit (PlainLogRenderer / ParallelDisplay)
-- debug breadcrumbs in text-mode render_completion_summary
-- section ordering in render_completion_summary_group
+After the wt-028-display consolidation, the single ``default`` mode
+applies; the artifact outcome always renders when set (no
+mode-conditional suppression).
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import StringIO
-from typing import Literal
 
 from rich.console import Console
 
@@ -83,56 +80,55 @@ def _blank_snapshot(
 
 
 class TestRichCloseArtifactOutcome:
-    def _render_close(
-        self, exit_model: PhaseExitModel, mode: Literal["compact", "medium", "wide"] = "medium"
-    ) -> str:
+    def _render_close(self, exit_model: PhaseExitModel, width: int = 80) -> str:
         buf = StringIO()
         console = Console(
             file=buf,
             record=True,
             force_terminal=False,
             color_system=None,
-            width={"compact": 50, "medium": 80, "wide": 120}[mode],
+            width=width,
         )
-        ctx = make_display_context(console=console, env={}, force_mode=mode)
+        ctx = make_display_context(console=console, env={})
 
         display = resolve_active_display(None, ctx)
         display.emit_phase_close_banner(exit_model)
         return console.export_text()
 
-    def test_artifact_outcome_appears_in_medium_mode(self) -> None:
+    def test_artifact_outcome_appears_in_default_mode(self) -> None:
         exit_model = PhaseExitModel(
             phase_name="planning",
             exit_trigger="produced",
             artifact_outcome="plan: 5 step(s), 2 risk(s)",
         )
-        output = self._render_close(exit_model, "medium")
+        output = self._render_close(exit_model, width=80)
         assert "artifact:" in output
         assert "plan: 5 step(s), 2 risk(s)" in output
 
-    def test_artifact_outcome_appears_in_wide_mode(self) -> None:
+    def test_artifact_outcome_appears_at_wide_width(self) -> None:
         exit_model = PhaseExitModel(
             phase_name="development",
             exit_trigger="produced",
             artifact_outcome="result produced",
         )
-        output = self._render_close(exit_model, "wide")
+        output = self._render_close(exit_model, width=120)
         assert "artifact:" in output
         assert "result produced" in output
 
     def test_artifact_outcome_absent_when_empty(self) -> None:
         exit_model = PhaseExitModel(phase_name="development", artifact_outcome="")
-        output = self._render_close(exit_model, "wide")
+        output = self._render_close(exit_model, width=120)
         assert "artifact:" not in output
 
-    def test_artifact_outcome_omitted_in_compact_mode(self) -> None:
+    def test_artifact_outcome_always_present_when_set(self) -> None:
+        """Single default-mode invariant: artifact outcome always renders when set."""
         exit_model = PhaseExitModel(
             phase_name="planning",
             exit_trigger="produced",
             artifact_outcome="plan: 3 step(s)",
         )
-        output = self._render_close(exit_model, "compact")
-        assert "artifact:" not in output
+        output = self._render_close(exit_model, width=40)
+        assert "artifact:" in output
 
     def test_artifact_outcome_after_stats_line(self) -> None:
         """artifact line must appear after the main banner line and before debug breadcrumbs."""
@@ -143,7 +139,7 @@ class TestRichCloseArtifactOutcome:
             content_blocks=2,
             tool_calls=3,
         )
-        output = self._render_close(exit_model, "medium")
+        output = self._render_close(exit_model, width=80)
         # artifact line should exist; stats line should exist
         assert "artifact:" in output
         assert "stats:" in output

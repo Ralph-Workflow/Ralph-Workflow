@@ -167,45 +167,6 @@ def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
     assert "verbosity=" in plan_line, "verbosity= must be on the same line as plan="
 
 
-def _make_compact_renderer() -> tuple[ParallelDisplay, StringIO]:
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    return (
-        ParallelDisplay(make_display_context(console=console, env={}, force_mode="compact")),
-        buf,
-    )
-
-
-def test_emit_run_start_compact_mode_max_four_lines() -> None:
-    """Compact mode emits no more than 4 [run-start] lines even with all fields populated."""
-    pd, buf = _make_compact_renderer()
-    pd.emit_run_start(
-        _orientation(
-            prompt_path="PROMPT.md",
-            developer_agent="claude",
-            developer_model="claude-3-5-sonnet",
-            parallel_max_workers=2,
-            plan_present=True,
-            verbosity="verbose",
-            workspace_root="/workspace",
-        )
-    )
-    out = buf.getvalue()
-    run_start_lines = [ln for ln in out.splitlines() if "[run-start]" in ln]
-    assert len(run_start_lines) <= _COMPACT_MAX_RUN_START_LINES, (
-        f"compact mode must emit <={_COMPACT_MAX_RUN_START_LINES} [run-start] lines,"
-        f" got {len(run_start_lines)}: {run_start_lines}"
-    )
-
-
-def test_emit_run_start_compact_mode_legend_omitted() -> None:
-    """Compact mode does not emit the legend line to conserve space."""
-    pd, buf = _make_compact_renderer()
-    pd.emit_run_start(_orientation(legend_enabled=True))
-    out = buf.getvalue()
-    assert "legend:" not in out, "compact mode must not emit legend line"
-
-
 def test_emit_run_start_prompt_workspace_grouped_on_one_line() -> None:
     """Wide mode: prompt= and workspace= share one [run-start] line."""
     pd, buf = _make_display()
