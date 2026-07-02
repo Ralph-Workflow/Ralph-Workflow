@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
+
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
@@ -86,9 +88,11 @@ def _render_materialized_prompt(
     return workspace.read(prompt_path)
 
 
+@pytest.mark.timeout_seconds(3)
 def test_planning_prompt_materialization_uses_docs_mcp_active_branch(
     tmp_path: Path,
 ) -> None:
+    """Parallel xdist contention on per-test policy materialization; see commit 2fa17fa38."""
     rendered = _render_materialized_prompt(
         phase="planning",
         drain=SessionDrain.PLANNING,

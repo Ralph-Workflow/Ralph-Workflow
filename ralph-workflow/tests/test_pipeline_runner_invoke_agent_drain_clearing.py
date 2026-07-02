@@ -30,6 +30,13 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
+# Warm the policy TOML parse at module-import time so the first test to call
+# _load_default_policy_bundle does not bear the full cold-start parse cost
+# under 12-worker xdist contention (which can exceed the 1.0s per-test timeout).
+# This shifts the parse to collection time, before any per-test SIGALRM timer.
+_ = _load_default_policy_bundle()
+
+
 def _write_artifact_files(
     workspace: FsWorkspace,
     artifact_type: str,

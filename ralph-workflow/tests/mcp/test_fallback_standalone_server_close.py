@@ -67,8 +67,13 @@ def _patch_http_server_class(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_run_closes_server_on_normal_exit(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Normal exit path: ``serve_forever`` returns, ``server_close`` runs."""
+    """Normal exit path: ``serve_forever`` returns, ``server_close`` runs.
+
+    Parallel xdist contention on real threading.Event scheduling for the
+    shutdown signal thread; see commit 2fa17fa38.
+    """
     server_stub = _CloseCapturingServer()
     server_stub.shutdown_event = Event()
     _patch_http_server_class(monkeypatch, server_stub)
