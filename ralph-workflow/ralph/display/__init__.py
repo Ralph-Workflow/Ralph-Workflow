@@ -16,7 +16,14 @@ views used by CLI diagnostics and listing commands.
    status surface. There are no separate free-function renderers; the legacy
    ``ralph.display.phase_banner``, ``ralph.display.artifact_renderer``,
    ``ralph.display.first_run_panel``, ``ralph.display.tables``,
-   ``ralph.banner``, and ``ralph.cli.options`` modules have been deleted.
+   ``ralph.banner``, and ``ralph.cli.options`` modules have been deleted. The
+   persistent bottom Status Bar is composed via the ``ralph.display.status_bar``
+   module and reachable as ``ParallelDisplay.status_bar`` with push-side updates
+   through ``ParallelDisplay.update_status_bar(model)``; it is the single owner
+   of the run-level footer (working directory, active phase, applicable cycle
+   counts) on real-TTY runs, gated on
+   ``ctx.console.is_terminal AND ctx.console.file.isatty()`` to stay out of
+   non-interactive output.
 
    **DI requirement:** Every public emit method on ``ParallelDisplay`` is
    reachable through a ``DisplayContext``; callers resolve an active display

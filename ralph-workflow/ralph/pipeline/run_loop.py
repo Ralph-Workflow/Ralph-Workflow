@@ -20,11 +20,16 @@ from ralph.display.parallel_display import (
     ParallelDisplay,
     build_default_display_legacy_bridge,
     emit_activity_line,
+    phase_style_for_phase,
     status_text,
 )
+from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
-from ralph.pipeline.phase_transition import emit_final_summary
+from ralph.pipeline.phase_transition import (
+    build_phase_entry_model_from_state,
+    emit_final_summary,
+)
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -341,6 +346,77 @@ def _log_resumed_state(
     )
 
 
+def _build_status_bar_model(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    workspace_root: Path,
+) -> StatusBarModel:
+    """Build a :class:`StatusBarModel` from the live pipeline state.
+
+    Display-only: does not change workflow routing, phase semantics, or
+    iteration budgets. The 1-indexed ``outer_dev_iteration`` comes from
+    :func:`build_phase_entry_model_from_state` (completed+1) and is the
+    same value the phase-start banner surfaces; ``inner_analysis`` comes from
+    ``AnalysisLoopCounter.display_iteration``. The status bar at the bottom
+    of the terminal reads from this model so operators can see the active
+    working directory, phase, and applicable cycle counts without scrolling.
+    """
+    entry = build_phase_entry_model_from_state(
+        state.phase, state, policy_bundle.pipeline
+    )
+    phase_style = phase_style_for_phase(state.phase, policy_bundle.pipeline)
+    return StatusBarModel(
+        workspace_root=str(workspace_root),
+        phase_label=entry.human_label(),
+        phase_style=phase_style,
+        outer_dev_iteration=entry.outer_dev_iteration,
+        outer_dev_cap=entry.outer_dev_cap,
+        inner_analysis=entry.inner_analysis,
+        inner_analysis_cap=entry.inner_analysis_cap,
+    )
+
+
+def _safe_push_status_bar(
+    active_display: object,
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    workspace_root: Path,
+) -> None:
+    """Best-effort push of a fresh :class:`StatusBarModel` to ``active_display``.
+
+    Defensive end-to-end (hasattr + suppress(Exception)) so any failure in
+    model-building or the display path is swallowed and never breaks the
+    pipeline. Matches the existing precedent for `_emit_run_start` and
+    ``emit_activity_line`` in this file.
+    """
+    with suppress(Exception):
+        if hasattr(active_display, "update_status_bar"):
+            active_display.update_status_bar(
+                _build_status_bar_model(state, policy_bundle, workspace_root)
+            )
+
+
+def _push_status_bar_if_changed(
+    active_display: object,
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    workspace_root: Path,
+    last_sig: tuple[str, int | None, int | None] | None,
+) -> tuple[str, int | None, int | None] | None:
+    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle) signature changes.
+
+    Returns the new signature so the caller's closure-local ``last_status_sig``
+    stays current. Defensive: any failure is swallowed.
+    """
+    with suppress(Exception):
+        model = _build_status_bar_model(state, policy_bundle, workspace_root)
+        signature = (state.phase, model.outer_dev_iteration, model.inner_analysis)
+        if signature != last_sig and hasattr(active_display, "update_status_bar"):
+            active_display.update_status_bar(model)
+            return signature
+    return last_sig
+
+
 def _run_inner_loop(
     state: PipelineState,
     ctx: _LoopContext,
@@ -360,6 +436,7 @@ def _run_inner_loop(
     def _live_is_waiting() -> bool:
         return bool(state_holder[0].is_waiting_state)
 
+    last_status_sig: tuple[str, int | None, int | None] | None = None
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state
@@ -395,6 +472,17 @@ def _run_inner_loop(
         if isinstance(step_result, int):
             return state, prev_phase, step_result
         state = step_result
+        # Push a fresh status-bar model when the (phase, cycle) signature
+        # changes. The dedupe var is a closure-local scalar tuple (NOT
+        # module-level state, NOT a self.X slot) so this stays compliant
+        # with the resource-accumulator audit.
+        last_status_sig = _push_status_bar_if_changed(
+            ctx.active_display,
+            state,
+            ctx.policy_bundle,
+            ctx.workspace_scope.root,
+            last_status_sig,
+        )
         if ctx.snapshot_registry is not None:
             from ralph.pro_support.state_query import (  # noqa: PLC0415
                 build_pipeline_state_snapshot,
@@ -806,6 +894,15 @@ def _execute_with_cleanup(
             if hasattr(loop_ctx.active_display, "begin_phase"):
                 with suppress(Exception):
                     cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(state.phase)
+            # Seed the persistent bottom Status Bar with the active directory +
+            # phase + iteration context for the initial phase. Defensive push
+            # (matches _emit_run_start / emit_activity_line precedent).
+            _safe_push_status_bar(
+                loop_ctx.active_display,
+                state,
+                loop_ctx.policy_bundle,
+                loop_ctx.workspace_scope.root,
+            )
             _runner_module.notify_pipeline_subscriber(loop_ctx.effective_pipeline_subscriber, state)
             try:
                 state, prev_phase, early_exit = _run_inner_loop(state, loop_ctx, prev_phase)

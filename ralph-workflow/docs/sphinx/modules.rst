@@ -2837,6 +2837,13 @@ ralph.display.snapshot
    :members:
    :show-inheritance:
 
+ralph.display.status_bar
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.status_bar
+   :members:
+   :show-inheritance:
+
 ralph.display.subscriber
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

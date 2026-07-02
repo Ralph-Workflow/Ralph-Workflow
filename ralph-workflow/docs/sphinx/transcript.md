@@ -11,6 +11,17 @@
     preserved.
   - How the route is clearer: the lead now matches the canonical autopilot
     framing used by the README and the manual home.
+  - What was added (wt-028-display): a new `### Status Bar` subsection
+    under `## Display Architecture` describing the persistent bottom footer
+    composed by `StatusBar` via `ParallelDisplay`. The footer is the single
+    owner of run-level layout/color/spacing/truncation/live-update behavior,
+    so future display changes have one clear product surface to maintain.
+    This page already names `DisplayContext` and the `emit_*` set as the
+    single owners of display logic, so the Status Bar owner is named on the
+    same surface as a peer reference (not a competing one). The status-bar
+    subsection explicitly cross-references `ParallelDisplay.update_status_bar`
+    and notes that the per-unit `emit_status_line` and waiting_status_line
+    remain orthogonal surfaces.
 -->
 
 # Transcript and Display Reference
@@ -82,6 +93,90 @@ On POSIX systems (Linux, macOS) when called from the main thread, the refresher 
 a `SIGWINCH` signal handler. On Windows, or when called from a non-main thread, a
 background poll thread monitors width changes instead. The returned stop callback is
 invoked at pipeline shutdown to clean up the poll thread when one was started.
+
+### Status Bar
+
+A persistent single-line **Status Bar** is pinned to the bottom of the interactive
+terminal display during real-TTY runs. It gives operators an immediate, stable answer
+to "where am I in this run?" without scrolling or reconstructing state from logs.
+
+**What the Status Bar shows**
+
+| Field | Source | When shown |
+|-------|--------|------------|
+| Working directory | `workspace_root` from the active `StatusBarModel`, home-relative and middle-truncated to a per-mode path budget | Always |
+| Active phase label | `PhaseEntryModel.human_label()` (e.g. `Development`, `Development Analysis`) colored by `phase_style_for_phase` | Always |
+| `Dev N/cap` | `format_dev_cycle(outer_dev_iteration, outer_dev_cap)` — 1-indexed current cycle from `PhaseEntryModel` (`completed + 1`) | When `outer_dev_iteration is not None` |
+| `Analysis N/cap` | `format_analysis_cycle(inner_analysis, inner_analysis_cap)` — 1-indexed current cycle from `AnalysisLoopCounter.display_iteration` | When `inner_analysis is not None` |
+
+Iteration fields are **omitted** (no placeholders, no empty segments) when the active
+phase does not carry that iteration context.
+
+**When the Status Bar appears**
+
+The bar is gated on a real-TTY check:
+
+```python
+ctx.console.is_terminal and bool(getattr(ctx.console.file, "isatty", lambda: False)())
+```
+
+Both conjuncts are required because Rich's `Console.is_terminal` is
+`force_terminal OR isatty()`, so a `force_terminal=True` StringIO console reports
+`is_terminal == True` and would otherwise start the Live region; the `isatty()` check
+keeps the bar out of:
+
+- output redirects (`> file`)
+- CI logs and tee pipes
+- `StringIO` test consoles
+- `force_terminal=True + StringIO` setups (the same shape used by
+  `tests/display/test_parallel_display_tty_parity.py`)
+- quiet mode (`ParallelDisplay(is_quiet=True)`)
+
+In all of those cases `StatusBar.start()` is a no-op — the lifecycle is silent and the
+captured transcript stays clean for machine parsers and post-run review.
+
+**Narrow-terminal behavior**
+
+The bar uses `ctx.mode` (mode thresholds: `compact` < 60, `medium` 60–99, `wide` ≥ 100)
+to select fields and budgets:
+
+| Mode    | Width | Fields rendered | Path budget | Phase-label budget |
+|---------|-------|-----------------|-------------|--------------------|
+| compact | <60   | phase + dir only | 20 chars   | 16 chars           |
+| medium  | 60–99 | phase + dir + `Dev N/cap` | 32 chars | 22 chars |
+| wide    | ≥100  | phase + dir + `Dev N/cap` + `Analysis N/cap` | 48 chars | 28 chars |
+
+Long paths are middle-truncated (preserve first 8 chars + ellipsis + last segment) and
+long phase labels are tail-truncated (preserve the leading word) so the bar never wraps
+into the working area. Truncation budgets are per-mode so the layout stays scannable
+on common laptop widths and stays readable on external-monitor widths.
+
+**Single owner and refresh cadence**
+
+The Status Bar owns run-level layout, color, spacing, alignment, truncation, and
+live-update behavior. The bar is composed by `ParallelDisplay` (reachable as
+`pd.status_bar` and updated via `pd.update_status_bar(model)`); it is **outside** the
+canonical 36-name `emit_*` set because it is a persistent live region with a
+start/stop lifecycle rather than a one-shot surface.
+
+The Live region renders at a steady, deliberate cadence:
+
+- `_STATUS_BAR_REFRESH_PER_SECOND = 4.0` (250ms refresh tick), pinned by
+  `tests/display/test_status_bar.py::test_status_bar_pins_steady_cadence_config`.
+- `_STATUS_BAR_TRANSIENT = True` (frames erased on stop, preserving clean scrollback,
+  copy/paste, terminal search, and post-run log review).
+
+The per-unit `emit_status_line` and the transient `waiting_status_line` remain
+orthogonal one-shot surfaces for activity breadcrumb rows and waiting-status ticks;
+the Status Bar is the **persistent run-level footer** and stays the single owner of
+that surface.
+
+**Operators see one coherent run-level surface**
+
+Operators may leave a run unattended for long periods, return to the terminal, and
+read the working directory, current phase, and applicable cycle counts at a glance —
+without scrollback, copy/paste, terminal search, or post-run log review being worse
+than before.
 
 ## Line Format
 

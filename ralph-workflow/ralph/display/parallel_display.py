@@ -390,6 +390,7 @@ class ParallelDisplay:
         "_phase_counters",
         "_run_counters",
         "_run_start_time",
+        "_status_bar",
         "_subscriber",
         "_workspace_root",
     )
@@ -478,6 +479,15 @@ class ParallelDisplay:
             on_event=self._emit_activity_event,
             raw_overflow_callback=self._raw_overflow_write,
         )
+
+        # Persistent bottom Status Bar — composed owner for run-level layout,
+        # color, spacing, truncation, and live-update behavior. The 36-name
+        # emit_* set (see ``_PARALLEL_DISPLAY_36_NAMES`` in the drift-prevention
+        # test) remains the canonical one-shot surface; the StatusBar is the
+        # single owner of the persistent footer lifecycle.
+        from ralph.display.status_bar import StatusBar
+
+        self._status_bar: StatusBar = StatusBar(self)
 
         if subscriber is not None:
             self._subscriber = subscriber
@@ -1333,10 +1343,39 @@ class ParallelDisplay:
         return self._subscriber
 
     def start(self) -> None:
-        return None
+        # Bring the persistent Status Bar up first so banners and progress
+        # lines render above the Live region's reserved row. The bar is a
+        # no-op on non-tty consoles and in quiet mode (see StatusBar._gate).
+        self._status_bar.start()
 
     def stop(self) -> None:
+        # Tear down the Status Bar suppressingly so a Live region error
+        # never blocks run-end flushing. Closing the bar before flush_blocks
+        # means the final summary prints into clean scrollback with the
+        # transient region already erased.
+        with contextlib.suppress(Exception):
+            self._status_bar.stop()
         self.flush_blocks()
+
+    def update_status_bar(self, model: object) -> None:
+        """Push a new :class:`StatusBarModel` to the composed StatusBar.
+
+        Outside the frozen 36-name ``emit_*`` set; reachable through
+        ``ParallelDisplay``. No-op when the bar is inactive (the model is
+        still stored so the next render can pick it up).
+        """
+        from ralph.display.status_bar import StatusBarModel
+
+        if not isinstance(model, StatusBarModel):
+            model_type = type(model).__name__
+            msg = f"update_status_bar requires a StatusBarModel, got {model_type}"
+            raise TypeError(msg)
+        self._status_bar.update(model)
+
+    @property
+    def status_bar(self) -> object:
+        """Return the composed :class:`StatusBar` (owner of the persistent footer)."""
+        return self._status_bar
 
     def emit(self, unit_id: str | None, line: str) -> None:
         """Emit a raw line directly to the consolidated log renderer.

@@ -1,0 +1,893 @@
+"""Black-box tests for the persistent Status Bar at the bottom of the display.
+
+The Status Bar shows working directory, active phase, and any applicable
+outer development iteration and inner analysis iteration during interactive
+runs. This file pins the contract:
+
+- ``render_status_bar`` is a pure function (no I/O, no env reads, no Console
+  construction; ``home`` is a parameter so the function does not call
+  ``pathlib.Path.home()``).
+- The StatusBar lifecycle is a no-op unless ``ctx.console.is_terminal AND
+  ctx.console.file.isatty()`` are both True (Rich's ``is_terminal`` is True
+  on force_terminal+StringIO consoles, so the ``isatty()`` conjunct is
+  mandatory to keep force_terminal tests, redirects, pipes, and CI logs
+  clean).
+- Cadence constants ``_STATUS_BAR_REFRESH_PER_SECOND`` and
+  ``_STATUS_BAR_TRANSIENT`` are pinned by import-time assertions.
+- Run-loop wiring uses 1-indexed ``outer_dev_iteration`` semantics from
+  ``PhaseEntryModel`` (completed+1), not the snapshot's completed count.
+- ``ParallelDisplay`` composes the StatusBar; ``update_status_bar`` is the
+  public surface (outside the frozen 36-name ``emit_*`` set).
+"""
+
+from __future__ import annotations
+
+import ast
+import dataclasses
+import inspect
+import io
+import re
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pytest
+from rich.console import Console
+
+import ralph.pipeline.run_loop as _run_loop_module
+from ralph.display import status_bar as _status_bar_module
+from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.status_bar import (
+    _STATUS_BAR_REFRESH_PER_SECOND,
+    _STATUS_BAR_TRANSIENT,
+    StatusBar,
+    StatusBarModel,
+    render_status_bar,
+)
+
+if TYPE_CHECKING:
+    from rich.text import Text
+
+
+def _plain_text(text: Text) -> str:
+    """Return the plain (markup-stripped) text of a rich.text.Text instance."""
+    return text.plain
+
+
+def _make_display_context(
+    *,
+    width: int,
+    force_terminal: bool = False,
+    ascii_glyphs: bool = False,
+) -> DisplayContext:
+    """Build a DisplayContext with a StringIO-backed Console of the given width.
+
+    ``ascii_glyphs=True`` forces ASCII fallback glyphs (no Unicode markers).
+    Default is False (Unicode glyphs enabled), matching the production default.
+    """
+    buf = io.StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=force_terminal,
+        color_system=None,
+        width=width,
+    )
+    return make_display_context(
+        console=console,
+        env={},
+        force_width=width,
+        force_glyphs=not ascii_glyphs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — wide mode shows all four fields
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_wide_shows_all_fields() -> None:
+    """Wide mode (>=100 cols): phase + dir + outer_dev + inner_analysis all present."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "Development" in plain
+    assert "my-cool-project" in plain
+    assert "Dev 1/3" in plain
+    assert "Analysis 2/5" in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — medium mode shows phase + dir + outer_dev only
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_medium_shows_phase_dir_and_outer_dev() -> None:
+    """Medium mode (60-99 cols): phase + dir + outer_dev; inner_analysis omitted."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=80)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "Development" in plain
+    assert "my-cool-project" in plain
+    assert "Dev 1/3" in plain
+    assert "Analysis" not in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — compact mode shows only phase + dir
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_compact_drops_iterations() -> None:
+    """Compact mode (<60 cols): phase + dir only; both iteration fields dropped."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=40)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "Development" in plain
+    assert "my-cool-project" in plain
+    # The canonical 'Dev N/cap' / 'Dev #N' iteration labels must be absent.
+    assert "Dev #" not in plain
+    assert "Dev 1/3" not in plain
+    # The canonical 'Analysis N/cap' / 'Analysis #N' iteration labels must be absent.
+    assert "Analysis #" not in plain
+    assert "Analysis 2/5" not in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — None outer_dev_iteration omits the Dev segment
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_none_outer_dev_omits_dev_segment() -> None:
+    """None outer_dev_iteration -> the Dev segment is absent (no placeholder)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Commit",
+        phase_style="theme.phase.commit",
+        outer_dev_iteration=None,
+        outer_dev_cap=None,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "Commit" in plain
+    assert "Dev" not in plain
+    assert "Analysis 2/5" in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — None inner_analysis omits the Analysis segment
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_none_inner_analysis_omits_analysis_segment() -> None:
+    """None inner_analysis -> the Analysis segment is absent (no placeholder)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=None,
+        inner_analysis_cap=None,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "Development" in plain
+    assert "Dev 1/3" in plain
+    assert "Analysis" not in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — Dev label formatting
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_dev_iteration_format_with_cap() -> None:
+    """outer_dev_iteration=1, outer_dev_cap=3 -> 'Dev 1/3'."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    assert "Dev 1/3" in _plain_text(text)
+
+
+def test_render_status_bar_dev_iteration_format_without_cap() -> None:
+    """outer_dev_iteration=2, outer_dev_cap=None -> 'Dev #2' (canonical fallback)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=2,
+        outer_dev_cap=None,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    assert "Dev #2" in _plain_text(text)
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — Analysis label formatting
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_analysis_iteration_format_with_cap() -> None:
+    """inner_analysis=3, inner_analysis_cap=7 -> 'Analysis 3/7'."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.analysis",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=3,
+        inner_analysis_cap=7,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    assert "Analysis 3/7" in _plain_text(text)
+
+
+def test_render_status_bar_analysis_iteration_format_without_cap() -> None:
+    """inner_analysis=1, inner_analysis_cap=None -> 'Analysis #1' fallback."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.analysis",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=1,
+        inner_analysis_cap=None,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    assert "Analysis #1" in _plain_text(text)
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — Path middle-truncation, never wraps
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_truncates_long_path_no_wrap() -> None:
+    """A long workspace path is middle-truncated and the rendered text has no '\\n'."""
+    long_path = "/Users/alice/very-very-long-directory-name/my-very-cool-project-name/subdir"
+    model = StatusBarModel(
+        workspace_root=long_path,
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\n" not in plain, f"Status Bar must not wrap into the working area: {plain!r}"
+    # The whole long path must NOT be present (it was truncated to a budget).
+    assert long_path not in plain, "Path was not truncated."
+    # Some abbreviated form must survive.
+    assert "/" in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — home-relative substitution
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_home_relative_path_when_home_passed() -> None:
+    """When ``home`` is supplied and workspace_root starts with it, output uses '~'."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "~/" in plain
+    assert "code/proj" in plain
+
+
+def test_render_status_bar_pathological_no_home_relative_when_home_not_passed() -> None:
+    """When ``home`` is None, the original path passes through (verifying the param)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home=None)
+    plain = _plain_text(text)
+    # No '~/' substitution without home.
+    assert "~/" not in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — phase label tail-truncation in compact mode, never wraps
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_truncates_long_phase_label_no_wrap() -> None:
+    """A long phase label is tail-truncated in compact mode and never wraps (no '\\n')."""
+    # 'Development Analysis' is 20 chars; compact budget is 16 -> must elide.
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.analysis",
+    )
+    ctx = _make_display_context(width=40)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\n" not in plain, f"Status Bar must not wrap: {plain!r}"
+    # A long phase label was truncated; the original long form must not appear in full.
+    assert "Development Analysis" not in plain, (
+        f"Long phase label not truncated: {plain!r}"
+    )
+    # The leading word's prefix is preserved (tail-truncation keeps the prefix).
+    assert "Develop" in plain
+    # The rendered text must contain an ellipsis where the long label was cut.
+    assert "..." in plain, f"Truncated label must include '...'; got {plain!r}"
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — ASCII glyph fallback when ctx.glyphs_enabled is False
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_ascii_glyph_fallback_when_glyphs_disabled() -> None:
+    """When glyphs_enabled is False, the status bar uses ASCII separators (no Unicode bullets)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    ctx = _make_display_context(width=140, ascii_glyphs=True)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # ASCII fallback glyph for 'phase_marker' is '[]', 'milestone' is '*', outer_dev is '[OD]',
+    # inner_analysis is '[IA]'.
+    assert "[]" in plain, (
+        f"ASCII phase_marker '[]' must appear in plain output; got {plain!r}"
+    )
+    assert "*" in plain, (
+        f"ASCII milestone '*' must appear in plain output; got {plain!r}"
+    )
+    # No Unicode phase_marker — the Unicode glyph would be '■'.
+    assert "■" not in plain
+    assert "◆" not in plain
+    assert "◎" not in plain
+    assert "▸" not in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — single-line no-newline invariant
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        StatusBarModel(
+            workspace_root="/Users/alice/code/proj",
+            phase_label="Development",
+            phase_style="theme.phase.development",
+        ),
+        StatusBarModel(
+            workspace_root="/Users/alice/very-very-long-directory-name/very-very-cool-project/subdir",
+            phase_label="Development Analysis",
+            phase_style="theme.phase.analysis",
+            outer_dev_iteration=1,
+            outer_dev_cap=3,
+            inner_analysis=2,
+            inner_analysis_cap=7,
+        ),
+        StatusBarModel(
+            workspace_root="/Users/alice/code/p",
+            phase_label="Commit",
+            phase_style="theme.phase.commit",
+            outer_dev_iteration=None,
+        ),
+    ],
+)
+def test_render_status_bar_single_line_no_newline(model: StatusBarModel) -> None:
+    """render_status_bar must always emit a single line regardless of mode/model."""
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\n" not in plain, f"Status Bar must be single-line: {plain!r}"
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — phase label is styled with model.phase_style
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_phase_label_is_styled() -> None:
+    """The phase label segment of the rendered Text carries ``model.phase_style``."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    has_styled_phase = False
+    for span in text.spans:
+        substring = text[span.start : span.end]
+        if "Development" in substring and span.style and "theme.phase.development" in span.style:
+            has_styled_phase = True
+            break
+    if not has_styled_phase:
+        spans_detail = [
+            (text[span.start : span.end], span.style) for span in text.spans
+        ]
+        assert has_styled_phase, (
+            f"Phase label 'Development' must be styled with theme.phase.development; "
+            f"spans={spans_detail!r}"
+        )
+
+
+def test_render_status_bar_textual_meaning_not_solely_color() -> None:
+    """Plain text contains the phase label even when style is meaningless (colorEnabled=False)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    # Force NO_COLOR so color_enabled is False on the resulting context.
+    ctx = make_display_context(
+        console=Console(file=io.StringIO(), width=140, color_system=None),
+        env={"NO_COLOR": "1"},
+    )
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    assert "Development" in _plain_text(text)
+
+
+# ---------------------------------------------------------------------------
+# StatusBar lifecycle — non-terminal StringIO no-op
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_noop_on_non_terminal_console() -> None:
+    """A non-terminal console (no force_terminal AND no isatty) -> StatusBar.start() is a no-op."""
+    ctx = make_display_context(
+        console=Console(
+            file=io.StringIO(),
+            force_terminal=False,
+            width=120,
+            color_system=None,
+        ),
+        env={},
+    )
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    assert isinstance(sb, StatusBar)
+    sb.start()
+    try:
+        assert sb.is_active is False
+        # Buffer must be empty.
+        buf = ctx.console.file
+        if isinstance(buf, io.StringIO):
+            buf_value = buf.getvalue()
+            assert buf_value == "", (
+                f"Non-terminal must not write anything; got {buf_value!r}"
+            )
+    finally:
+        sb.stop()
+
+
+# ---------------------------------------------------------------------------
+# StatusBar lifecycle — force_terminal+StringIO is a no-op (the isatty() conjunct)
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_noop_on_force_terminal_stringio_console() -> None:
+    """force_terminal=True but isatty()=False (StringIO) -> StatusBar.start() is a no-op.
+
+    Verified Rich behavior: Console(file=StringIO(), force_terminal=True).is_terminal is True
+    (Rich defines is_terminal = force_terminal OR isatty()), so without the isatty() conjunct
+    the bar would start on a non-tty file. The isatty() conjunct keeps it pinned to real TTY.
+    """
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=True, width=120, color_system="standard")
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    # Documenting WHY the isatty() conjunct is required.
+    assert console.is_terminal is True, "force_terminal implies Rich's is_terminal=True"
+    assert console.file.isatty() is False, "StringIO is not a TTY"
+    sb.start()
+    try:
+        assert sb.is_active is False, (
+            "force_terminal+StringIO must NOT start a Live region; the isatty() conjunct is "
+            "the gate that suppresses the bar on non-tty files even when force_terminal is set."
+        )
+        assert buf.getvalue() == "", (
+            f"No bytes may be written on a force_terminal+StringIO console; got {buf.getvalue()!r}"
+        )
+    finally:
+        sb.stop()
+
+
+# ---------------------------------------------------------------------------
+# StatusBar lifecycle — quiet mode no-op
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_quiet_mode_noop() -> None:
+    """A ParallelDisplay constructed with is_quiet=True must NOT start the bar."""
+    ctx = make_display_context(
+        console=Console(
+            file=io.StringIO(),
+            force_terminal=True,
+            width=120,
+            color_system="standard",
+        ),
+        env={},
+    )
+    pd = ParallelDisplay(ctx, is_quiet=True)
+    sb = pd.status_bar
+    sb.start()
+    try:
+        assert sb.is_active is False, "Quiet mode must keep the StatusBar inert."
+    finally:
+        sb.stop()
+
+
+# ---------------------------------------------------------------------------
+# StatusBar lifecycle — start/stop idempotent
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_start_stop_idempotent() -> None:
+    """Repeated start()/stop() do not raise, and stop() without start() is a no-op."""
+    ctx = make_display_context(
+        console=Console(
+            file=io.StringIO(),
+            force_terminal=True,
+            width=120,
+            color_system="standard",
+        ),
+        env={},
+    )
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    sb.start()
+    sb.start()  # second start() is idempotent
+    assert sb.is_active is False, "StringIO starts must remain a no-op"
+    sb.stop()
+    sb.stop()  # second stop() is a no-op
+
+
+def test_status_bar_stop_without_start_is_noop() -> None:
+    """Calling stop() on an unstarted bar does not raise."""
+    ctx = make_display_context(
+        console=Console(file=io.StringIO(), force_terminal=False, width=120),
+        env={},
+    )
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    sb.stop()
+    assert sb.is_active is False
+
+
+# ---------------------------------------------------------------------------
+# StatusBar lifecycle — update(model) before start() stores the model
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_update_before_start_stores_model() -> None:
+    """update(model) is allowed before start() and last_model reflects the value."""
+    ctx = make_display_context(
+        console=Console(file=io.StringIO(), width=120),
+        env={},
+    )
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    sb.update(model)
+    assert sb.last_model == model
+    sb.stop()
+
+
+# ---------------------------------------------------------------------------
+# Cadence-constant pinning
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_pins_steady_cadence_config() -> None:
+    """_STATUS_BAR_REFRESH_PER_SECOND==4.0 and _STATUS_BAR_TRANSIENT is True."""
+    assert _STATUS_BAR_REFRESH_PER_SECOND == 4.0, (
+        f"refresh_per_second must be 4.0; got {_STATUS_BAR_REFRESH_PER_SECOND}"
+    )
+    assert _STATUS_BAR_TRANSIENT is True, (
+        f"_STATUS_BAR_TRANSIENT must be True; got {_STATUS_BAR_TRANSIENT}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Clean-buffer-under-flow on a non-terminal console (readability proof)
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_clean_buffer_under_flow() -> None:
+    """On a non-terminal console, emit() and update_status_bar() leave a clean, in-order buffer.
+
+    This proves the StatusBar does NOT pollute captured output with Live cursor-control
+    artifacts when the gate decides against starting a Live region.
+    """
+    buf = io.StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        width=120,
+        color_system="standard",
+    )
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    for line in ("line-A", "line-B", "line-C", "line-D", "line-E"):
+        pd.emit("run", line)
+    for n in range(3):
+        pd.update_status_bar(
+            StatusBarModel(
+                workspace_root="/Users/alice/code/proj",
+                phase_label="Development",
+                phase_style="theme.phase.development",
+                outer_dev_iteration=n + 1,
+                outer_dev_cap=3,
+            )
+        )
+    pd.stop()
+    out = buf.getvalue()
+    # Five logs in order.
+    for line in ("line-A", "line-B", "line-C", "line-D", "line-E"):
+        assert line in out, f"missing {line!r} in captured output: {out!r}"
+    # No Live cursor-hide/show sequences.
+    assert "\x1b[?25" not in out, f"unexpected cursor-control escape: {out!r}"
+    # No duplicated Live frames.
+    assert out.count("\x1b[?1049l") == 0 and out.count("\x1b[?1049h") == 0, (
+        f"unexpected alt-screen toggle in non-tty output: {out!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# ParallelDisplay composition + method pinning
+# ---------------------------------------------------------------------------
+
+
+def test_parallel_display_composes_status_bar() -> None:
+    """ParallelDisplay exposes a non-None ``status_bar`` of type StatusBar."""
+    ctx = make_display_context(
+        console=Console(file=io.StringIO(), width=120),
+        env={},
+    )
+    pd = ParallelDisplay(ctx)
+    assert isinstance(pd.status_bar, StatusBar)
+
+
+def test_parallel_display_has_update_status_bar_method() -> None:
+    """ParallelDisplay exposes an update_status_bar(model) method (outside the 36-name set)."""
+    ctx = make_display_context(
+        console=Console(file=io.StringIO(), width=120),
+        env={},
+    )
+    pd = ParallelDisplay(ctx)
+    assert hasattr(pd, "update_status_bar")
+    assert callable(pd.update_status_bar)
+
+
+def test_parallel_display_update_status_bar_does_not_raise_on_non_terminal() -> None:
+    """update_status_bar on a non-terminal ParallelDisplay does not raise and stores the model."""
+    ctx = make_display_context(
+        console=Console(file=io.StringIO(), width=120),
+        env={},
+    )
+    pd = ParallelDisplay(ctx)
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    pd.update_status_bar(model)
+    assert pd.status_bar.last_model == model
+
+
+# ---------------------------------------------------------------------------
+# StatusBar module purity — no Console construction, no os.environ read
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_module_constructs_no_console_and_reads_no_env() -> None:
+    """status_bar.py source uses neither ``Console(`` construction nor env reads.
+
+    The DI audit (test_di_invariants) covers all of ralph/display/*.py automatically,
+    but this focused assertion names the invariant for clarity. We strip out
+    docstrings/comments so this test pins CODE behaviour, not documentation.
+    """
+    src = inspect.getsource(_status_bar_module)
+    # Drop docstrings line-by-line so the assertion scans CODE only.
+    src_no_docstrings = re.sub(r'\"\"\"[\s\S]*?\"\"\"', '', src)
+    assert "Console(" not in src_no_docstrings, (
+        "status_bar.py must not construct a Console; found 'Console(' in source."
+    )
+    assert "os.environ" not in src_no_docstrings, (
+        "status_bar.py must not read os.environ; found in source."
+    )
+    assert "os.getenv" not in src_no_docstrings, (
+        "status_bar.py must not call os.getenv; found in source."
+    )
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar must not call Path.home() (the purity invariant)
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_does_not_call_path_home() -> None:
+    """render_status_bar must not invoke pathlib.Path.home(): home is a parameter.
+
+    Walks the function's AST and asserts the body has no ``Call`` whose function
+    is the attribute ``Path.home`` (a real call expression). The function's
+    docstring may describe the purity invariant — we ignore string tokens.
+    """
+    func_ast = ast.parse(inspect.getsource(_status_bar_module.render_status_bar)).body[0]
+    for node in ast.walk(func_ast):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "home"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "Path"
+        ):
+            raise AssertionError(
+                f"render_status_bar must take home as a parameter; found Path.home() "
+                f"call at line {node.lineno}."
+            )
+
+
+# ---------------------------------------------------------------------------
+# Glyph-token separators — render uses ctx.glyph_for('milestone') (or ASCII | fallback)
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_uses_milestone_glyph_between_fields() -> None:
+    """The render_status_bar output includes the milestone glyph (Unicode or ASCII)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    ctx = _make_display_context(width=140, ascii_glyphs=True)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # ASCII glyph for 'milestone' is '*' from ASCII_GLYPHS.
+    # ASCII glyph for 'phase_marker' is '[]'.
+    has_separator = "|" in plain or "*" in plain or "[]" in plain or "·" in plain
+    assert has_separator, (
+        f"render_status_bar must include a separator glyph; got plain={plain!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Frozen StatusBarModel — must reject assignment after construction
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_model_is_frozen() -> None:
+    """StatusBarModel is a frozen dataclass (immutable view-model)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    # ``dataclasses.FrozenInstanceError`` is a subclass of ``AttributeError``;
+    # both are raised on assignment to a frozen dataclass. Casting to ``Any``
+    # lets us attempt the assignment without a mypy suppression comment
+    # (test files may not carry type suppressions per
+    # ``tests/test_type_ignore_policy.py``).
+    mutable_model: Any = model
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        mutable_model.phase_label = "Commit"
+
+
+# ---------------------------------------------------------------------------
+# Pure _build_status_bar_model unit test (1-indexed entry semantics)
+# ---------------------------------------------------------------------------
+
+
+def test_build_status_bar_model_uses_entry_semantics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_build_status_bar_model uses PhaseEntryModel.human_label() and entry iteration fields.
+
+    Proves: the wire in run_loop produces a StatusBarModel whose phase_label is the
+    human-readable form (not the raw phase_name), and whose outer_dev_iteration is the
+    1-indexed current cycle from PhaseEntryModel (NOT the snapshot's completed count).
+
+    This is a PURE unit test on the model's data contract; it does not invoke the live
+    runner and runs inside the 60s budget.
+    """
+    run_loop_mod = _run_loop_module
+
+    class _FakeEntry:
+        def __init__(self, label: str, outer_dev: int | None, cap: int | None) -> None:
+            self._label = label
+            self.outer_dev_iteration = outer_dev
+            self.outer_dev_cap = cap
+            self.inner_analysis = None
+            self.inner_analysis_cap = None
+
+        def human_label(self) -> str:
+            return self._label
+
+    def _fake_build(*args: object, **kwargs: object) -> _FakeEntry:
+        return _FakeEntry("Development", 2, 3)
+
+    # Monkeypatch on the LOCAL name in run_loop because ``from x import y``
+    # binds y at import time in run_loop.
+    monkeypatch.setattr(run_loop_mod, "build_phase_entry_model_from_state", _fake_build)
+
+    def _fake_style(phase: str, pipeline_policy: object) -> str:
+        return "theme.phase.development"
+
+    monkeypatch.setattr(run_loop_mod, "phase_style_for_phase", _fake_style)
+
+    class _FakeState:
+        phase = "development"
+
+    class _FakePolicyBundle:
+        pipeline = object()  # only used by the fake helpers above
+
+    model = run_loop_mod._build_status_bar_model(
+        _FakeState(),
+        _FakePolicyBundle(),
+        Path("/Users/alice/code/proj"),
+    )
+    assert model.phase_label == "Development"
+    assert model.outer_dev_iteration == 2
+    assert model.outer_dev_cap == 3
+    assert model.phase_style == "theme.phase.development"
+    assert model.workspace_root == "/Users/alice/code/proj"
