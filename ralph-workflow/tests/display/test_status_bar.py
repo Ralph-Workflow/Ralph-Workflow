@@ -44,6 +44,7 @@ from ralph.display.status_bar import (
     StatusBarModel,
     render_status_bar,
 )
+from ralph.display.theme import RALPH_THEME
 
 if TYPE_CHECKING:
     from rich.text import Text
@@ -969,6 +970,37 @@ def test_parallel_display_update_status_bar_does_not_raise_on_non_terminal() -> 
     )
     pd.update_status_bar(model)
     assert pd.status_bar.last_model == model
+
+
+# ---------------------------------------------------------------------------
+# Theme-style guard — render_status_bar references theme.status.* keys
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_theme_styles_are_defined() -> None:
+    """The three ``theme.status.*`` keys referenced by ``render_status_bar`` are defined.
+
+    ``render_status_bar`` attaches ``style='theme.status.bar_marker'``,
+    ``style='theme.status.path_marker'``, and ``style='theme.status.path'``
+    to the bar-marker, separator, and path segments. When any of those
+    keys are missing from ``RALPH_THEME.styles`` Rich silently renders
+    that segment uncolored (a dangling style reference), which breaks
+    the "color clarifies state" UX requirement and de-emphasizes the
+    path / structural markers away from the colored phase label.
+
+    This guard pins that all three keys exist in the public theme mapping
+    so the bar's color story is coherent end-to-end.
+    """
+    required_keys: frozenset[str] = frozenset(
+        {"theme.status.path", "theme.status.path_marker", "theme.status.bar_marker"}
+    )
+    actual_keys: frozenset[str] = frozenset(RALPH_THEME.styles.keys())
+    missing: frozenset[str] = required_keys - actual_keys
+    assert not missing, (
+        f"RALPH_THEME is missing status-bar styles {sorted(missing)!r}; "
+        "render_status_bar attaches these styles, and absent keys render as "
+        "uncolored (dangling) Rich spans."
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -155,6 +155,16 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.review_fail": f"bold {VERMILLION}",
     "theme.proceed": f"bold {BLUISH_GREEN}",
     "theme.revise": f"bold {ORANGE}",
+    # Theme keys for the persistent Status Bar (ralph/display/status_bar.py).
+    # Dim styling de-emphasizes the working-directory path and structural
+    # separators so the colored phase label (theme.phase.*) and the iteration
+    # counts (theme.outer_dev / theme.inner_analysis) remain the prominent
+    # state signal, matching 'prioritize the most operationally important
+    # information when space is tight'. Without these keys Rich would silently
+    # render the affected segments uncolored (dangling style references).
+    "theme.status.bar_marker": "dim",
+    "theme.status.path_marker": "dim",
+    "theme.status.path": "dim",
 }
 
 RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)
