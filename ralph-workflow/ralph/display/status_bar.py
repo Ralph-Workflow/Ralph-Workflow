@@ -152,9 +152,16 @@ def _tail_truncate(text: str, budget: int) -> str:
     return text[: budget - _ELLIPSIS_LEN].rstrip() + "..."
 
 
-def _ascii_separator() -> str:
-    """Return the ASCII fallback separator between status bar fields."""
-    return " | "
+def _field_separator(ctx: DisplayContext) -> str:
+    """Return the field-to-field separator for the Status Bar.
+
+    The separator is always ``ctx.glyph_for('milestone')`` plus a trailing
+    space, so the same logical glyph drives the visual rhythm on both
+    Unicode (``◆ ``) and ASCII (``* ``) consoles. The ASCII fallback
+    preserves scan-friendly consistency with the existing milestone
+    glyphs used elsewhere in the display surface.
+    """
+    return f"{ctx.glyph_for('milestone')} "
 
 
 def render_status_bar(
@@ -183,7 +190,7 @@ def render_status_bar(
     mode = ctx.mode
     path_budget = _PATH_BUDGET_BY_MODE[mode]
     label_budget = _PHASE_LABEL_BUDGET_BY_MODE[mode]
-    separator = _ascii_separator()
+    separator = _field_separator(ctx)
     path_display = _home_relative(model.workspace_root, home)
     path_display = _middle_truncate_path(path_display, path_budget)
     phase_display = _tail_truncate(model.phase_label, label_budget)
@@ -192,22 +199,24 @@ def render_status_bar(
         marker = ctx.glyph_for("phase_marker")
         text.append(marker + " ", style="theme.status.bar_marker")
     text.append(phase_display, style=model.phase_style)
-    text.append(separator)
-    path_marker = ctx.glyph_for("milestone")
-    text.append(path_marker + " ", style="theme.status.path_marker")
+    text.append(separator, style="theme.status.path_marker")
     text.append(path_display, style="theme.status.path")
     if mode == "compact":
         return text
     if model.outer_dev_iteration is not None:
-        text.append(separator)
+        text.append(separator, style="theme.status.path_marker")
         text.append(ctx.glyph_for("outer_dev") + " ", style="theme.outer_dev")
         text.append(format_dev_cycle(model.outer_dev_iteration, model.outer_dev_cap))
     if mode == "medium":
         return text
     if model.inner_analysis is not None:
-        text.append(separator)
-        text.append(ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis")
-        text.append(format_analysis_cycle(model.inner_analysis, model.inner_analysis_cap))
+        text.append(separator, style="theme.status.path_marker")
+        text.append(
+            ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis"
+        )
+        text.append(
+            format_analysis_cycle(model.inner_analysis, model.inner_analysis_cap)
+        )
     return text
 
 
@@ -321,18 +330,22 @@ class StatusBar:
             live.stop()
 
     def update(self, model: StatusBarModel) -> None:
-        """Store ``model`` and force an immediate Live refresh.
+        """Store ``model`` for the Live region to pick up on its next refresh tick.
 
-        Safe to call before :meth:`start` (the model is stored and the
-        next :meth:`start` constructs the Live region with the latest
-        renderable). Thread-safe under :attr:`_lock`. When the Live
-        region is active, an explicit ``refresh()`` is invoked so the
-        new model appears in the rendered output deterministically
-        (without waiting for the next 4 Hz refresh tick).
+        The update itself is intentionally a pure store: it does NOT force
+        an immediate ``live.refresh()``. The persistent footer is owned by
+        the Live region's :data:`_STATUS_BAR_REFRESH_PER_SECOND` cadence
+        (4.0 Hz / 250 ms by default), so update calls feed a fresh
+        :class:`StatusBarModel` and the next refresh tick renders it. This
+        keeps update cheap, deterministic, and free of any rendering
+        side-effects; it also keeps Live's bounded refresh rate the single
+        owner of refresh-side behavior, matching the design constraint that
+        the StatusBar is a single owner of run-level live-update cadence.
+
+        Safe to call before :meth:`start`; in that case the model is
+        stored and the subsequent :meth:`start` constructs the Live region
+        using the latest model as its initial renderable. Thread-safe
+        under :attr:`_lock`.
         """
         with self._lock:
             self._model = model
-        live = self._live
-        if live is not None:
-            with contextlib.suppress(Exception):
-                live.refresh()

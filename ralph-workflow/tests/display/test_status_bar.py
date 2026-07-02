@@ -803,14 +803,18 @@ def test_status_bar_clean_buffer_under_flow() -> None:
 
 
 def test_status_bar_live_region_renders_updated_model_on_tty_like_stream() -> None:
-    """On a tty-like stream (isatty()=True), start+update+stop renders the model.
+    """On a tty-like stream (isatty()=True), update+start+stop renders the model.
 
     The gate is open on a tty-like StringIO because both
     ``console.is_terminal`` and ``console.file.isatty()`` are True. The Live
-    region is started; ``update(model)`` stores the model and forces an
-    immediate refresh; ``stop()`` tears down the Live region. The captured
-    buffer must contain both the phase label AND the iteration text
-    (proving the live-update path actually surfaces the model).
+    region is constructed with the model as its initial renderable
+    (update is called BEFORE start), so the captured buffer contains both
+    the phase label AND the iteration text after stop, proving the
+    live-update path surfaces the model on a real-TTY console.
+
+    This pattern deliberately avoids relying on the 4 Hz refresh tick or
+    any eager ``live.refresh()``: the model is captured into ``Live``'s
+    initial-renderable slot, so the first render uses it deterministically.
     """
     buf = _TtyLikeStringIO()
     console = Console(
@@ -825,20 +829,22 @@ def test_status_bar_live_region_renders_updated_model_on_tty_like_stream() -> No
     # Sanity: gate is open on this tty-like stream.
     assert console.is_terminal is True
     assert console.file.isatty() is True
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    sb.update(model)
     sb.start()
     try:
         assert sb.is_active is True, (
             "StatusBar.start() must construct a Live region on a tty-like stream "
             "(both console.is_terminal and console.file.isatty() are True)."
         )
-        sb.update(
-            StatusBarModel(
-                workspace_root="/Users/alice/code/proj",
-                phase_label="Development",
-                phase_style="theme.phase.development",
-                outer_dev_iteration=1,
-                outer_dev_cap=3,
-            )
+        assert sb.last_model is model, (
+            "StatusBar.last_model must reflect the most recently supplied model."
         )
     finally:
         sb.stop()
@@ -852,24 +858,27 @@ def test_status_bar_live_region_renders_updated_model_on_tty_like_stream() -> No
 
 
 def test_status_bar_live_region_renders_phase_only_when_no_iteration() -> None:
-    """Tty-like stream with outer_dev_iteration=None renders phase but no '--' placeholder."""
+    """Tty-like stream with outer_dev_iteration=None renders phase but no '--' placeholder.
+
+    Uses the update-before-start pattern so the omitted iteration fields
+    leave a deterministic trace in the rendered output.
+    """
     buf = _TtyLikeStringIO()
     console = Console(file=buf, force_terminal=True, width=120, color_system="standard")
     ctx = make_display_context(console=console, env={})
     pd = ParallelDisplay(ctx)
     sb = pd.status_bar
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Commit",
+        phase_style="theme.phase.commit",
+        outer_dev_iteration=None,
+        inner_analysis=None,
+    )
+    sb.update(model)
     sb.start()
     try:
         assert sb.is_active is True
-        sb.update(
-            StatusBarModel(
-                workspace_root="/Users/alice/code/proj",
-                phase_label="Commit",
-                phase_style="theme.phase.commit",
-                outer_dev_iteration=None,
-                inner_analysis=None,
-            )
-        )
     finally:
         sb.stop()
     out = buf.getvalue()
@@ -888,27 +897,27 @@ def test_status_bar_live_region_renders_with_outer_dev_only() -> None:
     The 120-col tty-like stream falls in 'wide' mode (>=100 cols), so the
     inner_analysis field would normally render. With inner_analysis=None
     the field is OMITTED entirely (no glyph, no '--' stub, no separator
-    before it). The outer_dev field IS rendered.
+    before it). The outer_dev field IS rendered. Uses the
+    update-before-start pattern for determinism.
     """
     buf = _TtyLikeStringIO()
     console = Console(file=buf, force_terminal=True, width=120, color_system="standard")
     ctx = make_display_context(console=console, env={})
     pd = ParallelDisplay(ctx)
     sb = pd.status_bar
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=2,
+        outer_dev_cap=5,
+        inner_analysis=None,
+        inner_analysis_cap=None,
+    )
+    sb.update(model)
     sb.start()
     try:
         assert sb.is_active is True
-        sb.update(
-            StatusBarModel(
-                workspace_root="/Users/alice/code/proj",
-                phase_label="Development",
-                phase_style="theme.phase.development",
-                outer_dev_iteration=2,
-                outer_dev_cap=5,
-                inner_analysis=None,
-                inner_analysis_cap=None,
-            )
-        )
     finally:
         sb.stop()
     out = buf.getvalue()

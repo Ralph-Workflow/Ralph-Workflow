@@ -13,15 +13,23 @@ views used by CLI diagnostics and listing commands.
    for all user-facing display logic in Ralph Workflow. All 37 consolidated
    ``emit_*`` methods (36 instance methods on ``ParallelDisplay`` plus the
    module-level ``emit_activity_line``) own every banner, table, panel, and
-   status surface. There are no separate free-function renderers; the legacy
-   ``ralph.display.phase_banner``, ``ralph.display.artifact_renderer``,
-   ``ralph.display.first_run_panel``, ``ralph.display.tables``,
-   ``ralph.banner``, and ``ralph.cli.options`` modules have been deleted. The
-   persistent bottom Status Bar is composed via the ``ralph.display.status_bar``
-   module and reachable as ``ParallelDisplay.status_bar`` with push-side updates
-   through ``ParallelDisplay.update_status_bar(model)``; it is the single owner
-   of the run-level footer (working directory, active phase, applicable cycle
-   counts) on real-TTY runs, gated on
+   one-shot status surface. The legacy ``ralph.display.phase_banner``,
+   ``ralph.display.artifact_renderer``, ``ralph.display.first_run_panel``,
+   ``ralph.display.tables``, ``ralph.banner``, and ``ralph.cli.options``
+   modules have been deleted. The persistent bottom Status Bar is composed
+   via the ``ralph.display.status_bar`` module: ``StatusBar`` (a lifecycle
+   class reachable as ``ParallelDisplay.status_bar``) composes the Live
+   region, and the pure free function
+   ``ralph.display.status_bar.render_status_bar(model, ctx, *, home=None)``
+   owns the layout / color / spacing / alignment / truncation logic (its
+   pure-function shape is what makes the layout testable in isolation). The
+   single push-side surface is ``ParallelDisplay.update_status_bar(model)``;
+   ``StatusBar.update(model)`` stores the model and the persistent footer
+   is rendered on the
+   ``ralph.display.status_bar._STATUS_BAR_REFRESH_PER_SECOND = 4.0`` Hz
+   cadence (i.e. no eager ``live.refresh()`` from update). The Status Bar
+   is the single owner of the run-level footer (working directory, active
+   phase, applicable cycle counts) on real-TTY runs, gated on
    ``ctx.console.is_terminal AND ctx.console.file.isatty()`` to stay out of
    non-interactive output.
 
