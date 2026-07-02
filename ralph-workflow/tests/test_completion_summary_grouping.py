@@ -390,8 +390,8 @@ def _make_snapshot_with_budget_bp(budget_progress: dict) -> PipelineSnapshot:
     )
 
 
-def test_wide_budget_progress_never_shown() -> None:
-    """Wide mode never shows 'Budget Progress' or 'remaining' budget wording."""
+def test_default_mode_budget_progress_never_shown() -> None:
+    """Default mode never shows 'Budget Progress' or 'remaining' budget wording."""
     snap = _make_snapshot_with_budget_bp(
         {
             "dev_cycles": BudgetProgress(
@@ -404,8 +404,8 @@ def test_wide_budget_progress_never_shown() -> None:
     assert "remaining" not in out
 
 
-def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
-    """Wide mode omits 'Budget Progress' section when no budget-tracked counters exist."""
+def test_default_mode_budget_progress_absent_when_no_tracked_counters() -> None:
+    """Default mode omits 'Budget Progress' section when no budget-tracked counters exist."""
     snap = _make_snapshot_with_budget_bp(
         {
             "dev_cycles": BudgetProgress(
@@ -424,13 +424,13 @@ def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
 
 
 def test_group_exit_trigger_shown_in_default_mode() -> None:
-    """Wide mode shows exit= label after header rule."""
+    """Default mode shows exit= label after header rule."""
     out = _render_group(_make_snapshot())
     assert "exit=completed" in out
 
 
 def test_group_exit_trigger_failed_shown_in_default_mode() -> None:
-    """Wide mode shows exit=failed when is_terminal_failure=True."""
+    """Default mode shows exit=failed when is_terminal_failure=True."""
     out = _render_group(
         _make_snapshot(
             phase="failed",

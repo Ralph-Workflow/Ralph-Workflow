@@ -723,6 +723,163 @@ def test_render_status_bar_single_line_no_newline(model: StatusBarModel) -> None
 
 
 # ---------------------------------------------------------------------------
+# render_status_bar — hostile-input sanitization (newlines, control chars, escapes)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "hostile_value",
+    [
+        "Dev\nPhase",
+        "Dev\r\nPhase",
+        "Dev\rPhase",
+        "Dev\x00Phase",
+        "Dev\x07Phase",
+        "Dev\x1b[31mPhase",
+        "Dev\x1b[2JPhase",
+    ],
+)
+def test_render_status_bar_strips_hostile_phase_label_chars(
+    hostile_value: str,
+) -> None:
+    """render_status_bar must neutralise hostile bytes in ``phase_label``.
+
+    The persistent live footer is single-line by contract (it cannot wrap
+    into the working area), so any input that would split the bar across
+    lines or inject terminal control sequences has to be neutralized
+    before the label is appended. The strips preserve visual meaning as
+    much as possible: line breaks collapse to a space, control bytes and
+    CSI escape sequences are dropped entirely.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label=hostile_value,
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\n" not in plain, (
+        f"Status Bar must not wrap from hostile phase_label={hostile_value!r}: {plain!r}"
+    )
+    assert "\r" not in plain, (
+        f"Status Bar must not contain CR from hostile phase_label={hostile_value!r}: "
+        f"{plain!r}"
+    )
+    assert "\x1b" not in plain, (
+        f"Status Bar must not contain ESC from hostile phase_label={hostile_value!r}: "
+        f"{plain!r}"
+    )
+    assert "\x00" not in plain, (
+        f"Status Bar must not contain NUL from hostile phase_label={hostile_value!r}: "
+        f"{plain!r}"
+    )
+    assert "\x07" not in plain, (
+        f"Status Bar must not contain BEL from hostile phase_label={hostile_value!r}: "
+        f"{plain!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "hostile_value",
+    [
+        "/tmp/evil\npath",
+        "/tmp/evil\r\npath",
+        "/tmp/evil\rpath",
+        "/tmp/evil\x00path",
+        "/tmp/\x07evil",
+        "/tmp/evil\x1b[31mred",
+        "/tmp/evil\x1b[2Jred",
+    ],
+)
+def test_render_status_bar_strips_hostile_workspace_root_chars(
+    hostile_value: str,
+) -> None:
+    """render_status_bar must neutralise hostile bytes in ``workspace_root``.
+
+    Same invariant as the phase_label guard, applied to the path field.
+    A path that contains a newline, CR, NUL, BEL, or CSI escape sequence
+    must not be allowed to wrap or escape-sequence-inject the live
+    Status Bar footer.
+    """
+    model = StatusBarModel(
+        workspace_root=hostile_value,
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\n" not in plain, (
+        f"Status Bar must not wrap from hostile workspace_root={hostile_value!r}: {plain!r}"
+    )
+    assert "\r" not in plain, (
+        f"Status Bar must not contain CR from hostile workspace_root={hostile_value!r}: "
+        f"{plain!r}"
+    )
+    assert "\x1b" not in plain, (
+        f"Status Bar must not contain ESC from hostile workspace_root={hostile_value!r}: "
+        f"{plain!r}"
+    )
+    assert "\x00" not in plain, (
+        f"Status Bar must not contain NUL from hostile workspace_root={hostile_value!r}: "
+        f"{plain!r}"
+    )
+    assert "\x07" not in plain, (
+        f"Status Bar must not contain BEL from hostile workspace_root={hostile_value!r}: "
+        f"{plain!r}"
+    )
+
+
+def test_render_status_bar_collapses_hostile_newlines_to_spaces() -> None:
+    """Newlines in phase_label collapse to a space so the bar stays single-line.
+
+    A label that would otherwise be ``"Dev\nPhase"`` renders as
+    ``"Dev Phase"`` after sanitization (newline replaced by a single
+    ASCII space). This preserves the label's visual meaning while
+    preventing the bar from splitting into the working area.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Dev\nPhase",
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "Dev Phase" in plain, f"expected 'Dev Phase' (newline collapsed to space): {plain!r}"
+    assert "Dev\nPhase" not in plain, (
+        f"newline should be collapsed to a space, not preserved: {plain!r}"
+    )
+
+
+def test_render_status_bar_preserves_meaningful_path_chars() -> None:
+    """Sanitization must not strip non-hostile, meaningful characters from a path.
+
+    Defends against an over-zealous sanitizer that would clobber the
+    trailing project name or visual separators (e.g. ``-`` or ``_``).
+    A path like ``/Users/alice/very_cool-project/subdir`` must round-trip
+    intact (modulo the home-relative ``~`` prefix).
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/very_cool-project/subdir",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "very_cool-project" in plain or "very_cool-pro" in plain, (
+        f"expected the project name to survive sanitization: {plain!r}"
+    )
+    assert "subdir" in plain, f"expected the trailing path component: {plain!r}"
+
+
+# ---------------------------------------------------------------------------
 # render_status_bar — phase label is styled with model.phase_style
 # ---------------------------------------------------------------------------
 

@@ -292,7 +292,11 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert "smoke_test_result artifact submitted" in output
     assert "Observed output" in output
     assert "I am creating the todo list now." in output
-    assert "claude/haiku tool" in output
+    # Agent name surfaces in the parity-table title; tool activity surfaces in
+    # the parser-classified ``Observed output`` block as ``tool_use: <name>``
+    # (the agent's tool invocation, not the human-readable ``<agent> tool: <name>``
+    # form the older single-string rendered_lines API used to produce).
+    assert "tool_use: write_file" in output
     assert "write_file" in output
     assert "Observed working" in output
     assert "Observed breaks" in output

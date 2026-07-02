@@ -77,6 +77,7 @@ from __future__ import annotations
 import contextlib
 import os
 import pathlib
+import re
 import threading
 from dataclasses import dataclass
 from typing import IO, TYPE_CHECKING, Protocol
@@ -116,6 +117,42 @@ _HOME_PREFIX: str = "~"
 _ELLIPSIS: str = "..."
 _ELLIPSIS_LEN: int = len(_ELLIPSIS)
 _MIN_BUDGET: int = _ELLIPSIS_LEN + 1
+
+# Status Bar hostile-input scrubber. The persistent live footer is
+# single-line by contract (see ``render_status_bar``'s docstring) so
+# anything that would split it across lines or inject terminal control
+# sequences has to be neutralized before the label is appended to the
+# rendered Text. The strips preserve the label's visual meaning as
+# much as possible:
+#   * CRLF / LF / CR collapse to a single ASCII space so a stray
+#     newline can never wrap the bar into the working area.
+#   * ASCII DEL and the C0 control block (excluding ``\t``) are dropped
+#     so embedded NULs / BELs cannot poison the live region.
+#   * CSI / SGR escape sequences (``ESC[...m`` and friends) are
+#     stripped so a hostile path cannot inject color or cursor moves
+#     into the bar.
+_SAFE_LINE_NEWLINE_RE: re.Pattern[str] = re.compile(r"[\r\n]+")
+_SAFE_LINE_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_SAFE_LINE_ESCAPE_RE: re.Pattern[str] = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _safe_single_line(text: str) -> str:
+    """Return ``text`` reduced to one safe visual line.
+
+    Neutralises three hostile-input classes that the live Status Bar
+    cannot tolerate (see :data:`_SAFE_LINE_NEWLINE_RE`,
+    :data:`_SAFE_LINE_CONTROL_RE`, :data:`_SAFE_LINE_ESCAPE_RE`).
+    Collapses line breaks to a single space (preserving readability)
+    and drops control characters and CSI escape sequences entirely.
+    Leading / trailing whitespace is trimmed so a path that is
+    otherwise non-empty cannot render as an invisible bar segment.
+    """
+    if not text:
+        return ""
+    cleaned = _SAFE_LINE_ESCAPE_RE.sub("", text)
+    cleaned = _SAFE_LINE_CONTROL_RE.sub("", cleaned)
+    cleaned = _SAFE_LINE_NEWLINE_RE.sub(" ", cleaned)
+    return cleaned.strip()
 
 # Canonical label widths (full form: ``Dev 1/3`` / ``Analysis 2/5``).
 # These reflect the WORST-CASE actual label length with multi-digit
@@ -611,8 +648,17 @@ def render_status_bar(
         ``len(text.plain) <= ctx.width`` invariant).
     """
     separator = _field_separator(ctx)
-    path_display = _home_relative(model.workspace_root, home)
-    phase_display = model.phase_label
+    # Neutralise hostile input in the user-facing labels BEFORE any
+    # truncation or budget allocation. ``_safe_single_line`` strips
+    # CR / LF, C0 control bytes, and CSI / SGR escape sequences from
+    # the strings so a stray newline in ``phase_label`` or an
+    # ``ESC[31m`` in ``workspace_root`` cannot split the bar into the
+    # working area or inject terminal control codes into the live
+    # region. The rendered text is therefore single-line by
+    # construction (the function-level ``text.truncate`` clamp is a
+    # width safety net, not a newline safety net).
+    path_display = _safe_single_line(_home_relative(model.workspace_root, home))
+    phase_display = _safe_single_line(model.phase_label)
 
     has_outer_dev = model.outer_dev_iteration is not None
     has_inner_analysis = model.inner_analysis is not None

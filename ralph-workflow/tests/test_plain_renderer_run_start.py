@@ -157,7 +157,7 @@ def _filter_run_start_content(lines: list[str]) -> list[str]:
 
 
 def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
-    """Wide mode: plan and verbosity share one [run-start] line."""
+    """Default mode: plan and verbosity share one [run-start] line."""
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(plan_present=True, verbosity="verbose"))
     out = buf.getvalue()
@@ -168,7 +168,7 @@ def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
 
 
 def test_emit_run_start_prompt_workspace_grouped_on_one_line() -> None:
-    """Wide mode: prompt= and workspace= share one [run-start] line."""
+    """Default mode: prompt= and workspace= share one [run-start] line."""
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(prompt_path="PROMPT.md", workspace_root="/workspace"))
     out = buf.getvalue()
