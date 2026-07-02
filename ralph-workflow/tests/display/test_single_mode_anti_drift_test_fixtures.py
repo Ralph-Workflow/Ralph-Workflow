@@ -20,17 +20,20 @@ Scanned checks:
    ``make_display_context`` factory default).
 
 2. No ``DisplayContext(...)`` call site in ``tests/`` passes ``narrow=``
-   or ``narrow:`` as a keyword argument / annotation. The pre-consolidation
-   tier flag is dead; the consolidated single-mode Status Bar adapts to
-   width inside the renderer rather than via a kwarg.
+   as a keyword argument, AND no source location anywhere in a test
+   fixture uses ``narrow:`` as a function/lambda parameter annotation or
+   an ``AnnAssign`` target. The pre-consolidation tier flag is dead;
+   the consolidated single-mode Status Bar adapts to width inside the
+   renderer rather than via a kwarg or annotation.
 
 Performance: the candidate file set is pre-filtered textually at import
 time (cheap ``read_text + 'in'`` substring scan that takes < 100 ms over
-~600 test files); only files that mention ``DisplayContext`` are AST-parsed
-during the tests. This keeps the per-test body well under the 1 s
-per-test timeout even under ``pytest -n auto`` workers. There are
-typically ~70 candidate files; parsing all of them twice (once per test)
-takes ~250 ms total.
+~600 test files) and each candidate's AST is parsed at most once via
+:func:`functools.cache` (mirroring the import-time AST-cache pattern
+used by ``tests/display/test_single_mode_anti_drift.py``). The cache is
+pre-warmed at module import time so the per-test bodies run with zero
+parse overhead and finish well under the 1 s per-test timeout even under
+``pytest -n auto`` workers.
 
 This file intentionally mentions ``'compact'``, ``'medium'``, ``'wide'``,
 and ``narrow`` as the literal rejection set and is excluded from its own
@@ -54,11 +57,11 @@ _DISPLAY_CONTEXT_NAMES: frozenset[str] = frozenset({"DisplayContext"})
 
 
 def _discover_candidate_files() -> tuple[Path, ...]:
-    """Return every tests/**/*.py file that textually mentions DisplayContext.
+    """Return every ``tests/**/*.py`` file that textually mentions ``DisplayContext``.
 
     Excludes ``__pycache__`` and the two intentional anti-drift guard
-    files. AST parsing is deferred to the per-test scan to keep this
-    import-time scan fast.
+    files. The textual pre-filter keeps the per-test parse work bounded
+    to the ~70 test files that actually construct a DisplayContext.
     """
     candidates: list[Path] = []
     for path in sorted(_TESTS_DIR.rglob("*.py")):
@@ -76,8 +79,32 @@ def _discover_candidate_files() -> tuple[Path, ...]:
     return tuple(candidates)
 
 
+_AST_CACHE: dict[Path, ast.Module] = {}
+
+
+def _parsed_ast(path: Path) -> ast.Module:
+    """Return the AST module for ``path``, parsed once and cached at import time.
+
+    Mirrors the import-time AST cache pattern from
+    ``tests/display/test_single_mode_anti_drift.py`` (parse-each-once
+    via a memoized helper). The cache is a plain dict keyed by
+    ``Path`` because ``functools.cache`` introduces an ``Any``-typed
+    wrapper that fails ``mypy --strict --disallow-any-decorated``; a
+    dict lookup is type-clean and produces identical cache behavior
+    under the bounded candidate-file set. The cache is pre-warmed
+    below at module import time so every test runs against an
+    already-parsed AST.
+    """
+    cached = _AST_CACHE.get(path)
+    if cached is not None:
+        return cached
+    parsed = ast.parse(path.read_text(encoding="utf-8"))
+    _AST_CACHE[path] = parsed
+    return parsed
+
+
 def _display_context_calls(tree: ast.Module) -> list[ast.Call]:
-    """Return every Call node whose callee name is in the DisplayContext set."""
+    """Return every ``Call`` node whose callee name is in the DisplayContext set."""
     calls: list[ast.Call] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -101,7 +128,7 @@ def _string_literal_value(node: ast.AST) -> str | None:
 
 
 def _iter_rejected_mode_kwargs(call: ast.Call) -> list[tuple[int, str]]:
-    """Yield (lineno, literal) for kwarg 'mode' whose value is a rejected mode."""
+    """Yield ``(lineno, literal)`` for kwarg ``mode`` whose value is a rejected mode."""
     hits: list[tuple[int, str]] = []
     for kw in call.keywords:
         if kw.arg != "mode":
@@ -113,7 +140,7 @@ def _iter_rejected_mode_kwargs(call: ast.Call) -> list[tuple[int, str]]:
 
 
 def _iter_rejected_positional_modes(call: ast.Call) -> list[tuple[int, str]]:
-    """Yield (lineno, literal) for positional string args that are rejected modes."""
+    """Yield ``(lineno, literal)`` for positional string args that are rejected modes."""
     hits: list[tuple[int, str]] = []
     for arg in call.args:
         value = _string_literal_value(arg)
@@ -123,38 +150,94 @@ def _iter_rejected_positional_modes(call: ast.Call) -> list[tuple[int, str]]:
 
 
 def _iter_narrow_kwargs(call: ast.Call) -> list[int]:
-    """Yield the lineno of every keyword arg named 'narrow' on the call."""
+    """Yield the lineno of every keyword arg named ``narrow`` on the call."""
     return [call.lineno for kw in call.keywords if kw.arg == "narrow"]
 
 
-# Pre-discover candidate files at import time using a cheap textual scan.
-# AST parsing is deferred to the per-test scan, which iterates the
-# candidate tuple twice (once per test). The pre-filter ensures the
-# per-test work stays well under the 1 s per-test timeout under
-# pytest-xdist workers.
+def _iter_narrow_annotations(tree: ast.Module) -> list[int]:
+    """Yield the lineno of every annotation target named ``narrow``.
+
+    Catches every annotation syntax shape the pre-consolidation tier
+    flag could conceivably linger in:
+
+    - Function / method parameter annotations:
+      ``def f(narrow: bool = False, *narrow: tuple, **narrow: dict)``
+    - Positional-only parameter annotations:
+      ``def f(narrow: bool, /)``
+    - Keyword-only parameter annotations:
+      ``def f(*, narrow: bool)``
+    - Lambda parameter annotations: ``f = lambda narrow: bool: ...``
+    - Annotated assignments: ``ctx.narrow: bool = False``,
+      ``narrow: bool = False`` (only ``ast.Name`` targets; attribute
+      targets are still surfaced indirectly via the parent walk).
+
+    Each hit uses the annotation node's own lineno so the diagnostic
+    points at the offending parameter / assignment rather than at the
+    enclosing function definition.
+    """
+    hits: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            function_args = node.args
+            hits.extend(
+                arg.lineno
+                for arg in (
+                    *function_args.posonlyargs,
+                    *function_args.args,
+                    *function_args.kwonlyargs,
+                )
+                if arg.arg == "narrow"
+            )
+            if function_args.vararg and function_args.vararg.arg == "narrow":
+                hits.append(function_args.vararg.lineno)
+            if function_args.kwarg and function_args.kwarg.arg == "narrow":
+                hits.append(function_args.kwarg.lineno)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if node.target.id == "narrow":
+                hits.append(node.target.lineno)
+    return hits
+
+
+def _rel(path: Path) -> str:
+    """Return ``path`` relative to the ralph-workflow package root."""
+    return str(path.relative_to(_TESTS_DIR.parent.parent))
+
+
+# Pre-discover the candidate file set at import time using a cheap
+# textual scan, then pre-warm the AST cache by parsing every candidate
+# once. The combination ensures both tests run against an already-parsed
+# AST and the per-test body stays well under the 1 s per-test timeout.
 _CANDIDATE_FILES: tuple[Path, ...] = _discover_candidate_files()
+for _candidate in _CANDIDATE_FILES:
+    try:
+        _parsed_ast(_candidate)
+    except (OSError, SyntaxError):
+        # Skip unparsable candidates at import time; the per-test
+        # guards re-fetch the cache (still empty for that path) and
+        # silently ignore it. A test file that fails to parse should
+        # already be a red flag elsewhere.
+        continue
 
 
 def test_no_compact_medium_wide_in_test_display_context_calls() -> None:
-    """No test fixture passes mode='compact' / 'medium' / 'wide' to DisplayContext.
+    """No test fixture passes ``mode='compact' | 'medium' | 'wide'`` to ``DisplayContext``.
 
-    The production ``DisplayContext.mode`` is ``Literal['default']``; the
-    pre-consolidation three-tier dispatch is dead. Any test fixture using
-    a rejected mode would raise ``TypeError`` on collection, silently
-    masking the drift cleanup.
+    The production ``DisplayContext.mode`` is ``Literal['default']``;
+    the pre-consolidation three-tier dispatch is dead. Any test fixture
+    using a rejected mode would raise ``TypeError`` on collection,
+    silently masking the drift cleanup.
     """
     violations: list[str] = []
     for path in _CANDIDATE_FILES:
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            tree = _parsed_ast(path)
         except (OSError, SyntaxError):
             continue
-        rel = str(path.relative_to(_TESTS_DIR.parent.parent))
         for call in _display_context_calls(tree):
             for lineno, literal in _iter_rejected_mode_kwargs(call):
-                violations.append(f"{rel}:{lineno}: mode={literal!r}")
+                violations.append(f"{_rel(path)}:{lineno}: mode={literal!r}")
             for lineno, literal in _iter_rejected_positional_modes(call):
-                violations.append(f"{rel}:{lineno}: positional mode={literal!r}")
+                violations.append(f"{_rel(path)}:{lineno}: positional mode={literal!r}")
     assert not violations, (
         "Test fixtures must not pass mode='compact' / 'medium' / 'wide' to "
         "DisplayContext (Ralph Workflow has a SINGLE display mode called "
@@ -164,28 +247,43 @@ def test_no_compact_medium_wide_in_test_display_context_calls() -> None:
 
 
 def test_no_narrow_kwarg_in_test_display_context_calls() -> None:
-    """No test fixture passes narrow=<value> to DisplayContext.
+    """No test fixture uses ``narrow=`` (kwarg) or ``narrow:`` (annotation) anywhere.
 
-    The pre-consolidation ``narrow=`` tier flag is dead; the consolidated
-    single-mode Status Bar adapts to width inside the renderer rather
-    than via a kwarg. Any test fixture using ``narrow=`` would raise
-    ``TypeError: DisplayContext.__init__() got an unexpected keyword argument 'narrow'``
-    on collection.
+    Scans for both syntax shapes the dead pre-consolidation tier flag
+    could linger in:
+
+    - ``DisplayContext(..., narrow=<value>)`` — kwarg on a DisplayContext
+      call (the legacy signature from the three-tier mode dispatch).
+    - ``def f(narrow: <type>)`` / ``lambda narrow: <type>: ...`` /
+      ``narrow: <type> = ...`` — annotation syntax anywhere in a test
+      file. Any annotation named ``narrow`` is treated as a drift signal
+      because the only legitimate use under the consolidated single
+      default mode is no use at all.
+
+    The pre-consolidation ``narrow=`` tier flag is dead; the single
+    default mode adapts to width inside the renderer rather than via a
+    kwarg or annotation. Any test fixture using either shape would
+    raise ``TypeError: DisplayContext.__init__() got an unexpected
+    keyword argument 'narrow'`` on collection.
     """
     violations: list[str] = []
     for path in _CANDIDATE_FILES:
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            tree = _parsed_ast(path)
         except (OSError, SyntaxError):
             continue
-        rel = str(path.relative_to(_TESTS_DIR.parent.parent))
         for call in _display_context_calls(tree):
             violations.extend(
-                f"{rel}:{lineno}: narrow=" for lineno in _iter_narrow_kwargs(call)
+                f"{_rel(path)}:{lineno}: narrow=" for lineno in _iter_narrow_kwargs(call)
             )
+        violations.extend(
+            f"{_rel(path)}:{lineno}: narrow:"
+            for lineno in _iter_narrow_annotations(tree)
+        )
     assert not violations, (
-        "Test fixtures must not pass narrow=<value> to DisplayContext "
-        "(the pre-consolidation tier flag is dead; the single default "
-        "mode adapts to width inside the renderer). Violations:\n"
+        "Test fixtures must not use the dead pre-consolidation 'narrow' "
+        "flag in either kwarg (narrow=<value>) or annotation (narrow:<type>) "
+        "syntax — the single default mode adapts to width inside the "
+        "renderer. Violations:\n"
         + "\n".join(violations)
     )
