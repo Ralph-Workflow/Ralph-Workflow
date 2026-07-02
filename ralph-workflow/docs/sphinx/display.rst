@@ -3,23 +3,21 @@
    <!--
      Review note (docs rubric §"Required review note for meaningful docs changes"):
      - What changed: collapsed the historical three-tier mode split
-       (narrow / medium / wide), the ``force_mode`` keyword argument, the
-       legacy narrow-mode env-var override, and the three-tier mode
-       limits table into a single ``default`` display mode. The
-       persistent bottom Status Bar now always renders all applicable
-       fields (working directory, active phase, applicable outer
-       development iteration, applicable inner analysis iteration)
-       regardless of terminal width.
+       (narrow / medium / wide), the legacy narrow-mode env-var
+       override, and the three-tier mode limits table into a single
+       ``default`` display mode. The persistent bottom Status Bar now
+       always renders all applicable fields (working directory, active
+       phase, applicable outer development iteration, applicable inner
+       analysis iteration) regardless of terminal width.
      - Why it belongs here: this is the operator-facing display reference
        page (DisplayContext / ParallelDisplay ownership surface).
-       Operators who relied on the legacy override or on
-       ``make_display_context(force_mode=...)`` need to know the public
-       API has changed: ``force_mode`` now raises ``NotImplementedError``
-       and the env-var override is silently ignored. The single default
-       mode is one clear surface to learn instead of three.
+       Operators who relied on the legacy override need to know the
+       public API has changed: the env-var override is silently
+       ignored. The single default mode is one clear surface to learn
+       instead of three.
      - What was pruned: the entire "Mode thresholds" subsection, the
-       env-var override row, the ``force_mode`` argument note,
-       and the legacy env-var precedence listing for mode selection.
+       env-var override row, and the legacy env-var precedence listing
+       for mode selection.
      - What was merged: every width-driven branch in
        ``parallel_display.py`` and every tier in ``status_bar.py``'s
        budgets now renders identically; only the long-path
@@ -319,19 +317,18 @@ middle-truncation and long-phase tail-truncation budgets adapt to width.
    What changed and why it belongs here
 
    The historical three-tier mode split (narrow / medium / wide), the
-   ``force_mode`` keyword argument, the legacy env-var override, and the
-   three-tier mode limits table were collapsed into a single ``default``
-   mode. The persistent bottom Status Bar always renders all applicable
-   fields (working directory, active phase, applicable outer development
-   iteration, applicable inner analysis iteration) regardless of terminal
-   width — only the long-path middle-truncation and long-phase
-   tail-truncation budgets adapt to width. This belongs on the
-   operator-facing reference page because operators who relied on the
-   legacy override need to know the public API has changed; the
-   consolidated single mode is one clear surface to learn instead of
-   three. What was pruned: the mode thresholds table, the legacy env-var
-   precedence row, and the ``force_mode`` argument. What was merged:
-   every width-driven branch in ``parallel_display.py`` and
+   legacy env-var override, and the three-tier mode limits table were
+   collapsed into a single ``default`` mode. The persistent bottom
+   Status Bar always renders all applicable fields (working directory,
+   active phase, applicable outer development iteration, applicable
+   inner analysis iteration) regardless of terminal width — only the
+   long-path middle-truncation and long-phase tail-truncation budgets
+   adapt to width. This belongs on the operator-facing reference page
+   because operators who relied on the legacy override need to know the
+   public API has changed; the consolidated single mode is one clear
+   surface to learn instead of three. What was pruned: the mode
+   thresholds table, the legacy env-var precedence row. What was
+   merged: every width-driven branch in ``parallel_display.py`` and
    ``status_bar.py`` now renders identically.
 
 The single default-mode layout:
@@ -345,10 +342,7 @@ The single default-mode layout:
   panels.
 
 The historical env-var override that selected a narrower mode is silently
-ignored. The historical ``force_mode`` keyword argument to
-``make_display_context()`` raises
-``NotImplementedError("force_mode is removed in wt-028-display; Ralph Workflow now uses a single display mode ('default').")``
-if a non-``None`` value is passed.
+ignored.
 
 Iteration context labels
 ------------------------

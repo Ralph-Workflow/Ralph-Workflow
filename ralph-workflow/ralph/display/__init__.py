@@ -47,15 +47,13 @@ views used by CLI diagnostics and listing commands.
    ``content_condenser.py``. The companion
    ``tests/display/test_single_mode_anti_drift.py`` AST-scans
    ``ralph/display/`` to assert that no future commit re-introduces a
-   ``ctx.mode == 'compact'`` / ``'medium'`` / ``'wide'`` branch (single
-   ``default`` mode is the only owner of display layout).
+   compact / medium / wide branch (single ``default`` mode is the only
+   owner of display layout).
 
    **Display mode (single default):** After the wt-028-display consolidation,
    ``DisplayContext.mode`` is always the literal string ``"default"``. There
    is no width-based dispatch, no ``compact`` / ``medium`` / ``wide`` tier,
-   and no per-mode limits table. The historical ``force_mode`` keyword
-   argument to ``make_display_context()`` raises ``NotImplementedError`` if
-   a non-``None`` value is passed, and the historical ``RALPH_FORCE_NARROW``
+   and no per-mode limits table. The historical ``RALPH_FORCE_NARROW``
    env var is silently ignored. The persistent bottom Status Bar always
    renders all applicable fields (working directory, active phase,
    applicable outer development iteration, applicable inner analysis
@@ -138,20 +136,17 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
 )
-from ralph.display.progress import RalphProgress, get_progress
 
 __all__ = [
     "DisplayContext",
     "ParallelDisplay",
     "PhaseIterationContext",
-    "RalphProgress",
     "RunStartOrientation",
     "build_default_display_legacy_bridge",
     "emit_activity_line",
     "format_analysis_cycle",
     "format_dev_cycle",
     "get_display_context",
-    "get_progress",
     "install_sigwinch_refresher",
     "install_width_refresher",
     "make_display_context",

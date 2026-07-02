@@ -29,8 +29,6 @@ from functools import cache, lru_cache
 from pathlib import Path
 from typing import get_args, get_origin
 
-import pytest
-
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.mode import DEFAULT_MODE
 
@@ -138,29 +136,5 @@ def test_no_compact_medium_wide_branches_in_display_production() -> None:
 def test_make_display_context_no_force_mode_kwarg_call_works() -> None:
     """make_display_context() with no extra kwargs returns a DisplayContext with mode='default'."""
     ctx = make_display_context()
-    assert ctx.mode == "default"
-    assert isinstance(ctx, DisplayContext)
-
-
-@pytest.mark.parametrize("value", ["compact", "medium", "wide", "narrow", "default", "anything"])
-def test_make_display_context_force_mode_raises_not_implemented_error(value: str) -> None:
-    """force_mode='...' must raise NotImplementedError (the planned compatibility shim).
-
-    The plan required a compatibility shim rather than silent API removal:
-    any caller that still passes ``force_mode`` to
-    :func:`make_display_context` must fail loudly with
-    ``NotImplementedError`` so that operator scripts do not silently
-    misrender.
-    """
-    with pytest.raises(NotImplementedError) as exc_info:
-        make_display_context(force_mode=value)
-    assert "force_mode is removed" in str(exc_info.value), (
-        f"NotImplementedError message must explain the removal; got {exc_info.value!r}"
-    )
-
-
-def test_make_display_context_force_mode_none_does_not_raise() -> None:
-    """force_mode=None (the default) must NOT raise; it stays a valid no-op."""
-    ctx = make_display_context(force_mode=None)
     assert ctx.mode == "default"
     assert isinstance(ctx, DisplayContext)

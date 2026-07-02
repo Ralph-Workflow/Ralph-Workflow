@@ -376,26 +376,6 @@ def _build_status_bar_model(
     )
 
 
-def _safe_push_status_bar(
-    active_display: object,
-    state: PipelineState,
-    policy_bundle: PolicyBundle,
-    workspace_root: Path,
-) -> None:
-    """Best-effort push of a fresh :class:`StatusBarModel` to ``active_display``.
-
-    Defensive end-to-end (hasattr + suppress(Exception)) so any failure in
-    model-building or the display path is swallowed and never breaks the
-    pipeline. Matches the existing precedent for `_emit_run_start` and
-    ``emit_activity_line`` in this file.
-    """
-    with suppress(Exception):
-        if hasattr(active_display, "update_status_bar"):
-            active_display.update_status_bar(
-                _build_status_bar_model(state, policy_bundle, workspace_root)
-            )
-
-
 def _push_status_bar_if_changed(
     active_display: object,
     state: PipelineState,
@@ -406,7 +386,8 @@ def _push_status_bar_if_changed(
     """Push a fresh :class:`StatusBarModel` only when the (phase, cycle) signature changes.
 
     Returns the new signature so the caller's closure-local ``last_status_sig``
-    stays current. Defensive: any failure is swallowed.
+    stays current. Defensive: any failure is swallowed. Pass ``last_sig=None``
+    for an unconditional initial push.
     """
     with suppress(Exception):
         model = _build_status_bar_model(state, policy_bundle, workspace_root)
@@ -896,12 +877,14 @@ def _execute_with_cleanup(
                     cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(state.phase)
             # Seed the persistent bottom Status Bar with the active directory +
             # phase + iteration context for the initial phase. Defensive push
-            # (matches _emit_run_start / emit_activity_line precedent).
-            _safe_push_status_bar(
+            # (matches _emit_run_start / emit_activity_line precedent). Pass
+            # last_sig=None so the first push is unconditional.
+            _push_status_bar_if_changed(
                 loop_ctx.active_display,
                 state,
                 loop_ctx.policy_bundle,
                 loop_ctx.workspace_scope.root,
+                last_sig=None,
             )
             _runner_module.notify_pipeline_subscriber(loop_ctx.effective_pipeline_subscriber, state)
             try:

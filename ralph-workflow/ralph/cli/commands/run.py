@@ -606,14 +606,6 @@ def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> 
 sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run
 
 
-def _status_text(label: str, detail: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}:", style=style)
-    text.append(" ")
-    text.append(detail)
-    return text
-
-
 def _detail_text(label: str, detail: str) -> Text:
     text = Text()
     text.append(f"  {label}: ")

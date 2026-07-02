@@ -4,7 +4,7 @@
 # Exits non-zero when:
 #   1. The upstream search path is wrong (grep rc=2), or
 #   2. Real drift exists: any production code reference to a removed mode token
-#      (force_mode=, force_narrow, NARROW_THRESHOLD, MEDIUM_THRESHOLD,
+#      (NARROW_THRESHOLD, MEDIUM_THRESHOLD,
 #      ctx.mode == 'compact' / ctx.mode == "compact" / ctx.mode != 'compact' / ctx.mode != "compact")
 #      in ralph/ or tests/, after applying the explicit allowlist.
 #
@@ -16,8 +16,8 @@ set -u
 RALPH_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$RALPH_ROOT"
 
-DRIFT_PATTERNS='force_mode=|force_narrow|NARROW_THRESHOLD|MEDIUM_THRESHOLD'
-ALLOWLIST_PATTERNS='ralph/display/mode\.py|ralph/display/__init__\.py|tests/display/test_single_mode_anti_drift\.py|tests/test_display_context\.py|tests/unit/display/test_display_context\.py|tests/unit/display/test_mode\.py|tests/unit/display/test_context_resize_display_context_refreshed\.py|tests/unit/display/test_parallel_display_t22\.py|tests/test_no_anti_drift_regression\.py'
+DRIFT_PATTERNS='NARROW_THRESHOLD|MEDIUM_THRESHOLD|ctx\.mode == ['\''"](compact|medium|wide)['\''"]'
+ALLOWLIST_PATTERNS='tests/test_display_context\.py|tests/unit/display/test_display_context\.py|tests/unit/display/test_mode\.py|tests/unit/display/test_context_resize_display_context_refreshed\.py|tests/unit/display/test_parallel_display_t22\.py|tests/test_no_anti_drift_regression\.py'
 
 # Exclude __pycache__ and .pyc files so the check stays stable across builds.
 DRIFT_HITS="$(grep -rln -E "$DRIFT_PATTERNS" ralph/ tests/ \
@@ -40,5 +40,5 @@ if [ -n "$FILTERED" ]; then
     exit 1
 fi
 
-echo "PASS: drift check clean (no force_mode / force_narrow / NARROW_THRESHOLD / MEDIUM_THRESHOLD outside the allowlist)"
+echo "PASS: drift check clean (no NARROW_THRESHOLD / MEDIUM_THRESHOLD / ctx.mode == compact|medium|wide outside the allowlist)"
 exit 0

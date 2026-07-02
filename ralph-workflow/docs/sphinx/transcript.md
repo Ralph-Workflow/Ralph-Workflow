@@ -43,23 +43,7 @@ iteration) regardless of terminal width — only the long-path
 middle-truncation and long-phase tail-truncation budgets adapt to width.
 
 The historical env-var override that selected a narrower mode is silently
-ignored. The historical ``force_mode`` keyword argument to
-``make_display_context()`` raises ``NotImplementedError`` if a non-``None``
-value is passed.
-
-.. note::
-
-   What changed and why it belongs here
-
-   The historical three-tier mode split (narrow / medium / wide), the
-   ``force_mode`` keyword argument, the legacy env-var override, and the
-   three-tier mode limits table were collapsed into a single ``default``
-   mode. This belongs on the operator-facing transcript reference page
-   because operators who relied on the legacy override need to know it is
-   no longer recognized. What was pruned: the mode thresholds table, the
-   legacy env-var precedence row, and the ``force_mode`` argument. What
-   was merged: every width-driven branch in ``parallel_display.py`` and
-   ``status_bar.py`` now renders identically.
+ignored.
 
 ### Color Precedence
 

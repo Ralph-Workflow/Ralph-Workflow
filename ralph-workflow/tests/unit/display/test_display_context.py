@@ -2,10 +2,9 @@
 
 After the wt-028-display consolidation, DisplayContext exposes a single
 ``default`` mode with one fixed set of adaptive limits. The
-``compact`` / ``medium`` / ``wide`` tier is gone, ``force_mode`` raises
-:data:`NotImplementedError`, and ``RALPH_FORCE_NARROW`` is silently
-ignored. The historical per-mode constants
-(``COMPACT_HEADLINE_MAX_CHARS`` etc.) are removed.
+``compact`` / ``medium`` / ``wide`` tier is gone, and
+``RALPH_FORCE_NARROW`` is silently ignored. The historical per-mode
+constants (``COMPACT_HEADLINE_MAX_CHARS`` etc.) are removed.
 """
 
 from __future__ import annotations

@@ -9,12 +9,9 @@ iteration, and applicable inner analysis iteration) regardless of
 terminal width — only the long-path middle-truncation and long-phase
 tail-truncation adapt to width.
 
-The historical ``NARROW_THRESHOLD`` (60 cols) and ``MEDIUM_THRESHOLD``
-(100 cols) constants are removed; importing either raises
-:data:`ImportError`. The historical ``RALPH_FORCE_NARROW`` environment
-variable is silently ignored. The historical ``force_mode`` keyword
-argument to :func:`make_display_context` raises
-:data:`NotImplementedError` if a non-``None`` value is passed.
+The historical width-tier threshold constants and the historical
+``RALPH_FORCE_NARROW`` environment variable are removed; the env var is
+silently ignored.
 """
 
 from __future__ import annotations

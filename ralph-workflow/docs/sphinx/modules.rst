@@ -2704,13 +2704,6 @@ ralph.display.activity_visibility_hint
    :members:
    :show-inheritance:
 
-ralph.display.progress_protocols
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.progress_protocols
-   :members:
-   :show-inheritance:
-
 ralph.display.activity_router
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2799,13 +2792,6 @@ ralph.display.phase_status
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.phase_status
-   :members:
-   :show-inheritance:
-
-ralph.display.progress
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.progress
    :members:
    :show-inheritance:
 

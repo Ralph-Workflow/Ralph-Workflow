@@ -41,6 +41,16 @@ and open a fresh `[Unreleased]`.
 
 ## [Unreleased]
 
+### Removed
+
+- **refactor(display)!: remove dead force_mode= keyword argument and its NotImplementedError raise shim** from `make_display_context()` in `ralph/display/context.py`. Breaking change for any caller that explicitly passed `force_mode=` — those callers now raise `TypeError: unexpected keyword argument` instead of `NotImplementedError`. No production caller exists; locks regression in `tests/display/test_single_mode_anti_drift.py` (the two pinning tests removed).
+
+- **refactor(display)!: remove orphaned public exports `RalphProgress` and `get_progress`** from `ralph/display/__init__.py` (and the orphaned `ralph/display/progress.py` + `ralph/display/_progress_singleton.py` + `ralph/display/progress_protocols.py` modules they lived in). Breaking change for any out-of-tree consumer that imported these names; zero production callers in this repo. `tests/test_display_progress.py` and its 5 dummy helper modules are removed in the same change.
+
+- **chore(pipeline): consolidate redundant `_safe_push_status_bar` into the deduping `_push_status_bar_if_changed` push function** in `ralph/pipeline/run_loop.py` (module-private; no public API effect).
+
+- **chore(cli): delete dead local `_status_text` helper** in `ralph/cli/commands/run.py` (module-private; no public API effect).
+
 ### Added
 
 - **feat(display): add persistent bottom Status Bar showing working directory, active phase, and applicable outer development / inner analysis iterations during interactive runs** — commits `0ea756476`, `2d19483d1`, `666661755`, `ac8013e0a`, `c27b2a933`. Locks behavior in `tests/display/test_status_bar.py`.
