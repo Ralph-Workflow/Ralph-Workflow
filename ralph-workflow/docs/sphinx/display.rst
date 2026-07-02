@@ -101,8 +101,7 @@ by surface below.
 Run lifecycle
 ~~~~~~~~~~~~~
 
-- ``emit_run_start`` — start-of-run banner with mode-aware title and
-  project root.
+- ``emit_run_start`` — start-of-run banner with title and project root.
 - ``emit_run_end`` — end-of-run recap line with status symbol.
 - ``emit_parsed_event`` — turn one parsed transcript event into a log
   line and (optionally) a banner.
@@ -304,9 +303,6 @@ environment after that.
    * - ``RALPH_LONG_CONTENT_AI_SUMMARY``
      - Set to ``0``/``false``/``no``/``off`` to disable AI-based headline
        generation for long content blocks.
-
-Mode thresholds
----------------
 
 Display mode (single default)
 -----------------------------

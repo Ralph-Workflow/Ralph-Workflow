@@ -1835,7 +1835,7 @@ class ParallelDisplay:
         - The body is delegated to
           :func:`ralph.display.completion_summary.render_completion_summary_group`
           and printed via ``self._console.print(group, ...)``.
-        - In wide mode the body itself begins with a titled Rule
+        - The body itself begins with a titled Rule
           (``Pipeline Complete`` / ``Pipeline Failed``); the adjacent
           section rule and body title Rule are intentional visual
           punctuation and match the layering pattern used by
@@ -1981,8 +1981,8 @@ class ParallelDisplay:
 
         Port of :func:`ralph.display.phase_banner.show_phase_transition`.
         Major transitions get a prominent Rule banner; minor transitions get
-        a simple titled Rule. The leading section rule is suppressed in
-        compact mode to preserve the no-rule-lines-in-compact-mode contract.
+        a simple titled Rule. The leading section rule is always emitted in
+        the single default mode (no per-mode gating remains).
         """
         if self._is_quiet:
             return
@@ -2021,7 +2021,7 @@ class ParallelDisplay:
 
         Port of :func:`ralph.display.phase_banner.show_phase_close_banner`.
         The rich, model-based phase-close banner (full stats line, review
-        outcome, debug breadcrumb, and wide-mode trailing Rule).
+        outcome, debug breadcrumb, and trailing titled Rule).
 
         .. note::
            This method is semantically distinct from the existing
@@ -2173,7 +2173,7 @@ class ParallelDisplay:
         exit_trigger: str | None = None,
         arrow: str = "\u2192",
     ) -> None:
-        """Print the wide-mode trailing titled Rule as the section-close separator."""
+        """Print the trailing titled Rule as the section-close separator."""
         parts: list[str] = []
         if elapsed_seconds > 0:
             parts.append(format_elapsed_seconds(elapsed_seconds))

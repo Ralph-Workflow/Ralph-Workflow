@@ -123,7 +123,7 @@ to "where am I in this run?" without scrolling or reconstructing state from logs
 
 | Field | Source | When shown |
 |-------|--------|------------|
-| Working directory | `workspace_root` from the active `StatusBarModel`, home-relative and middle-truncated to a per-mode path budget | Always |
+| Working directory | `workspace_root` from the active `StatusBarModel`, home-relative and middle-truncated to fit within the path budget | Always |
 | Active phase label | `PhaseEntryModel.human_label()` (e.g. `Development`, `Development Analysis`) colored by `phase_style_for_phase` | Always |
 | `Dev N/cap` | `format_dev_cycle(outer_dev_iteration, outer_dev_cap)` — 1-indexed current cycle from `PhaseEntryModel` (`completed + 1`) | When `outer_dev_iteration is not None` |
 | `Analysis N/cap` | `format_analysis_cycle(inner_analysis, inner_analysis_cap)` — 1-indexed current cycle from `AnalysisLoopCounter.display_iteration` | When `inner_analysis is not None` |
@@ -154,7 +154,7 @@ keeps the bar out of:
 In all of those cases `StatusBar.start()` is a no-op — the lifecycle is silent and the
 captured transcript stays clean for machine parsers and post-run review.
 
-**Narrow-terminal behavior**
+**Width-aware truncation**
 
 The bar is mode-agnostic: it always renders every applicable field described above,
 regardless of terminal width. Width only influences two truncation budgets:
@@ -469,7 +469,7 @@ The `exit` field reports **why** the run ended:
 - `ralph.display` — public display API and `DisplayContext` factory
 - `ralph.display.plain_renderer` — line-format renderer with cross-platform width-aware resize
 - `ralph.display.long_content_summary` — streaming block summarisation
-- `ralph.display.completion_summary` — `[run-end]` panel renderer with mode-adaptive layout
+- `ralph.display.completion_summary` — `[run-end]` panel renderer with the default single-mode layout
 
 ## Related pages
 
