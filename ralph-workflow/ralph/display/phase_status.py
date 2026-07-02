@@ -45,6 +45,63 @@ def format_analysis_cycle(n: int, cap: int | None = None) -> str:
     return f"Analysis #{n}"
 
 
+def format_dev_cycle_compact(n: int, cap: int | None = None) -> str:
+    """Return compact dev cycle label for narrow-terminal rendering.
+
+    The compact form shortens the canonical ``Dev N/cap`` to ``D1/3``
+    (4 chars) so the persistent Status Bar fits a constrained terminal
+    without dropping the iteration field. Without a cap, returns
+    ``D#1`` (3 chars).
+
+    The compact form keeps the disambiguating ``D`` prefix so an
+    operator can still tell dev cycles from analysis cycles at a
+    glance. Used by :mod:`ralph.display.status_bar` when the canonical
+    label exceeds the per-iteration label budget derived from
+    ``ctx.width``.
+    """
+    if cap is not None and cap > 0:
+        return f"D{n}/{cap}"
+    return f"D#{n}"
+
+
+def format_analysis_cycle_compact(n: int, cap: int | None = None) -> str:
+    """Return compact analysis cycle label for narrow-terminal rendering.
+
+    Shortens ``Analysis N/cap`` to ``A1/3`` (4 chars) and ``Analysis #N``
+    to ``A#1`` (3 chars). The ``A`` prefix keeps the label distinct
+    from the dev-cycle compact form.
+    """
+    if cap is not None and cap > 0:
+        return f"A{n}/{cap}"
+    return f"A#{n}"
+
+
+def format_dev_cycle_minimal(n: int, cap: int | None = None) -> str:
+    """Return minimal dev cycle label for very narrow terminals.
+
+    Returns ``N/cap`` (no prefix) when a cap is provided, ``#N``
+    otherwise. Used by :mod:`ralph.display.status_bar` when even the
+    compact form (``D1/3``) cannot fit.
+    """
+    if cap is not None and cap > 0:
+        return f"{n}/{cap}"
+    return f"#{n}"
+
+
+def format_analysis_cycle_minimal(n: int, cap: int | None = None) -> str:
+    """Return minimal analysis cycle label for very narrow terminals.
+
+    Returns ``N/cap`` (no prefix) when a cap is provided, ``#N``
+    otherwise. The compact and minimal forms of the analysis cycle share
+    the same shape (the ``A`` prefix is dropped); at very narrow widths
+    the operator still sees the count vs cap and a glyph prefix
+    distinguishes dev vs analysis.
+    """
+    if cap is not None and cap > 0:
+        return f"{n}/{cap}"
+    return f"#{n}"
+
+
 def format_elapsed_seconds(s: float) -> str:
     """Return canonical elapsed-time label."""
     return f"{round(s, 1)}s"
@@ -121,7 +178,11 @@ class PhaseIterationContext:
 __all__ = [
     "PhaseIterationContext",
     "format_analysis_cycle",
+    "format_analysis_cycle_compact",
+    "format_analysis_cycle_minimal",
     "format_dev_cycle",
+    "format_dev_cycle_compact",
+    "format_dev_cycle_minimal",
     "format_elapsed_seconds",
     "format_exit_trigger",
     "format_transition_context_items",

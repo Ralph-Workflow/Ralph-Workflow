@@ -326,6 +326,7 @@ def make_display_context(
     console: Console | None = None,
     force_width: int | None = None,
     force_glyphs: bool | None = None,
+    force_mode: str | None = None,
 ) -> DisplayContext:
     """Create a DisplayContext with resolved terminal metrics and adaptive limits.
 
@@ -334,10 +335,25 @@ def make_display_context(
         console: Console to use (defaults to make_console() with env-aware color policy).
         force_width: Override terminal width detection.
         force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
+        force_mode: Removed in wt-028-display. Ralph Workflow exposes a single
+            display mode (``default``); passing any non-``None`` value raises
+            :data:`NotImplementedError` so that operator scripts that still
+            rely on the historical ``force_mode`` keyword fail loudly instead
+            of silently misrendering. Use the ``default`` mode (the only mode)
+            and rely on path / phase truncation to adapt to terminal width.
 
     Returns:
         Fully initialised DisplayContext.
+
+    Raises:
+        NotImplementedError: If ``force_mode`` is non-``None``. The historical
+            ``force_mode`` keyword was removed in wt-028-display; Ralph now
+            uses a single display mode.
     """
+    if force_mode is not None:
+        raise NotImplementedError(
+            "force_mode is removed in wt-028-display; Ralph now uses a single display mode"
+        )
     env_was_provided = env is not None
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)

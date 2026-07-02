@@ -157,13 +157,14 @@ def test_render_status_bar_shows_all_fields_at_wide_widths(width: int) -> None:
 def test_render_status_bar_fits_terminal_width_at_any_width(width: int) -> None:
     """At any width, the Status Bar fits the terminal width without wrapping.
 
-    The bar must NEVER exceed the terminal width. The phase and path
-    budgets are derived from ``ctx.width`` (after subtracting the
-    fixed overhead of the iteration segments that are always
-    rendered) so the rendered text remains single-line and within
-    ``ctx.width`` columns at every width. At narrow widths the phase
-    label and the path are truncated to fit; the iteration segments
-    (``Dev N/cap`` and ``Analysis N/cap``) remain rendered in full.
+    The bar must NEVER exceed the terminal width. The phase, path, and
+    iteration-label budgets are derived together from ``ctx.width`` so
+    the rendered text remains single-line and within ``ctx.width``
+    columns at every width. At narrow widths the iteration labels
+    degrade from canonical (``Dev 1/3`` / ``Analysis 2/5``) through
+    compact (``D1/3`` / ``A2/5``) to minimal (``1/3`` / ``2/5``) forms
+    and ultimately drop a segment only when even the minimal form
+    cannot fit alongside phase + path.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
@@ -192,12 +193,10 @@ def test_render_status_bar_shows_all_applicable_fields_at_any_width(width: int) 
 
     This is the central AC-03 invariant: the persistent bottom Status
     Bar always renders all applicable iteration fields regardless of
-    terminal width. Only the path middle-truncation budget and the
-    phase tail-truncation budget adapt to width; the iteration
-    segments are NEVER dropped based on width. At very narrow widths
-    the phase label and the path may be heavily truncated, but the
-    iteration segments (``Dev N/cap`` and ``Analysis N/cap``) are
-    always rendered in full.
+    terminal width. The per-iteration label form adapts to ``ctx.width``
+    (canonical / compact / minimal) so the bar always fits ``ctx.width``,
+    but the count-vs-cap payload (``1/3`` for outer_dev and ``2/5`` for
+    inner_analysis) is ALWAYS present in some form.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
@@ -211,13 +210,57 @@ def test_render_status_bar_shows_all_applicable_fields_at_any_width(width: int) 
     ctx = _make_display_context(width=width)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
-    # outer_dev iteration: must always render when non-None.
-    assert "Dev 1/3" in plain, (
-        f"outer_dev 'Dev 1/3' must render at width={width}; got {plain!r}"
+    # outer_dev iteration: must always render in SOME form. Accept canonical
+    # ("Dev 1/3"), compact ("D1/3"), or minimal ("1/3"). The count/payload
+    # ("1/3") is the disambiguating invariant.
+    outer_forms = ("Dev 1/3", "D1/3", "1/3")
+    assert any(form in plain for form in outer_forms), (
+        f"outer_dev must render in canonical/compact/minimal form at "
+        f"width={width}; got {plain!r}"
     )
-    # inner_analysis iteration: must always render when non-None.
-    assert "Analysis 2/5" in plain, (
-        f"inner_analysis 'Analysis 2/5' must render at width={width}; got {plain!r}"
+    # inner_analysis iteration: must always render in SOME form.
+    inner_forms = ("Analysis 2/5", "A2/5", "2/5")
+    assert any(form in plain for form in inner_forms), (
+        f"inner_analysis must render in canonical/compact/minimal form at "
+        f"width={width}; got {plain!r}"
+    )
+
+
+@pytest.mark.parametrize("width", [10, 15, 20, 24, 30, 40, 50, 60, 80, 100, 120])
+def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width: int) -> None:
+    """Status Bar fits ``ctx.width`` even with long inputs at narrow terminals.
+
+    Regression for the analysis-feedback finding that the previous
+    implementation produced a 45-char rendered bar at widths 20/24/30
+    with long workspace paths and both iteration fields. The fix
+    degrades iteration labels from canonical (``Dev 1/3`` /
+    ``Analysis 2/5``) to compact (``D1/3`` / ``A2/5``) to minimal
+    (``1/3`` / ``2/5``) and ultimately drops iteration segments only
+    when even the minimal form cannot fit alongside phase + path, so
+    ``len(plain) <= width`` always holds.
+    """
+    long_path = (
+        "/Users/alice/code/my-very-long-project-directory-name/subdir"
+    )
+    long_phase = "Development Analysis"
+    model = StatusBarModel(
+        workspace_root=long_path,
+        phase_label=long_phase,
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=width)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # Single-line invariant.
+    assert "\n" not in plain, f"Status Bar must not wrap at width={width}; got {plain!r}"
+    # Width-fit invariant.
+    assert len(plain) <= width, (
+        f"Status Bar exceeds terminal width at width={width}: "
+        f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
     )
 
 
