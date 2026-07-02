@@ -186,6 +186,79 @@ This contract is enforced by two test classes:
 - :class:`tests.test_no_anti_drift_regression.TestParallelDisplayOwnsAllDisplayHelpers`
   in ``tests/test_no_anti_drift_regression.py`` (anti-drift regression pin).
 
+Single Status Bar owner
+-----------------------
+
+The persistent bottom Status Bar is composed by
+:class:`~ralph.display.parallel_display.ParallelDisplay` and reachable only
+through ``pd.status_bar``. The lifecycle has exactly one owner:
+
+- **One constructor.** :class:`~ralph.display.status_bar.StatusBar` is
+  instantiated in exactly one site —
+  ``ralph.display.parallel_display.ParallelDisplay.__init__`` at line 488
+  (``self._status_bar: StatusBar = StatusBar(self)``). No other module under
+  ``ralph/display/``, ``ralph/pipeline/``, or ``ralph/cli/`` constructs a
+  ``StatusBar``.
+
+- **One start site.** :meth:`~ralph.display.status_bar.StatusBar.start` is
+  called from exactly one site —
+  ``ralph.display.parallel_display.ParallelDisplay.start`` at line 1335.
+  The pipeline reaches the bar through the production context manager
+  ``with loop_ctx.active_display:`` in ``ralph/pipeline/run_loop.py`` at
+  line 873, which invokes ``ParallelDisplay.start`` (and therefore
+  ``self._status_bar.start()``) exactly once per run.
+
+- **One stop site.** :meth:`~ralph.display.status_bar.StatusBar.stop` is
+  called from exactly one site —
+  ``ralph.display.parallel_display.ParallelDisplay.stop`` at line 1343.
+  ``ParallelDisplay.__exit__`` invokes ``ParallelDisplay.stop``, so the
+  Live region is torn down exactly once per run.
+
+- **One push surface.** The pipeline pushes models through
+  :meth:`~ralph.display.parallel_display.ParallelDisplay.update_status_bar`,
+  which validates the :class:`~ralph.display.status_bar.StatusBarModel` and
+  delegates to ``self._status_bar.update(model)``. The Live region reads
+  the latest model on each refresh tick (4 Hz by default).
+
+- **One CLI / runtime consumer surface.** ``ralph/cli/**/*.py`` and
+  ``ralph/runtime/**/*.py`` are forbidden from constructing
+  ``StatusBar`` or calling ``_status_bar.start()`` /
+  ``_status_bar.stop()``; consumers reach the bar through
+  ``pd.status_bar`` (the composed accessor on ``ParallelDisplay``) or via
+  ``active.update_status_bar(...)``.
+
+This single-owner contract is enforced by
+``tests/display/test_status_bar_single_owner.py`` (4 AST-based tests
+covering the constructor, the ``start()`` call site, the ``stop()``
+call site, and the CLI / runtime prohibition).
+
+Verifying the Status Bar runtime
+--------------------------------
+
+The persistent Status Bar runtime contract is provable through the
+production entry point. The integration test
+``tests/integration/test_status_bar_runtime_visibility.py`` enters
+``with pd as active:``, pushes a :class:`~ralph.display.status_bar.StatusBarModel`
+through the production context manager, and asserts both the observable
+``is_active`` / ``last_model`` slots on ``pd.status_bar`` and the
+captured buffer contents.
+
+Focused regression commands:
+
+.. code-block:: bash
+
+   cd ralph-workflow
+   uv run python -m pytest tests/display/test_status_bar.py tests/display/test_single_mode_anti_drift.py tests/display/test_status_bar_single_owner.py tests/integration/test_status_bar_runtime_visibility.py -q -p no:cacheprovider --no-header
+
+   uv run python -m pytest tests/pipeline/test_run_loop_status_bar_wiring.py -q -p no:cacheprovider --no-header
+
+Authoritative verification (combined 60-second test budget):
+
+.. code-block:: bash
+
+   cd ralph-workflow
+   make verify
+
 No drift in CLI/pipeline display
 --------------------------------
 
