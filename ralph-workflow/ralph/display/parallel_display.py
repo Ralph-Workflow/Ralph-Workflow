@@ -525,7 +525,7 @@ class ParallelDisplay:
 
     @staticmethod
     def _build_agents_parts(orientation: RunStartOrientation) -> list[str]:
-        """Collect developer agent+model tokens for the wide run-start agents line."""
+        """Collect developer agent+model tokens for the run-start agents line."""
         parts: list[str] = []
         if orientation.developer_agent is not None:
             parts.append(f"developer={_sanitize(orientation.developer_agent)}")
@@ -2095,7 +2095,7 @@ class ParallelDisplay:
             if debug_line is not None:
                 c.print(debug_line)
 
-            self._print_wide_close_rule(
+            self._print_section_close_rule(
                 style,
                 c,
                 elapsed_seconds=exit_model.elapsed_seconds,
@@ -2161,7 +2161,7 @@ class ParallelDisplay:
         return debug_line
 
     @staticmethod
-    def _print_wide_close_rule(
+    def _print_section_close_rule(
         style: str,
         console: Console,
         *,
@@ -2169,7 +2169,14 @@ class ParallelDisplay:
         exit_trigger: str | None = None,
         arrow: str = "\u2192",
     ) -> None:
-        """Print the trailing titled Rule as the section-close separator."""
+        """Print the trailing titled Rule as the section-close separator.
+
+        Renamed from ``_print_wide_close_rule`` after the wt-028-display
+        consolidation: the runtime no longer branches by mode, so the
+        ``wide`` qualifier no longer describes any runtime branch. The
+        section-close Rule renders identically in the single default
+        mode.
+        """
         parts: list[str] = []
         if elapsed_seconds > 0:
             parts.append(format_elapsed_seconds(elapsed_seconds))

@@ -200,15 +200,12 @@ def test_render_status_bar_shows_all_applicable_fields_at_any_width(width: int) 
     ``marker sep sep glyph outer sep glyph inner`` and the iteration
     labels render in compact form (``D1/3`` / ``A2/5``). Below 20 the
     iteration labels are still rendered (the bar drops the marker and
-    per-iter glyphs to make room), but the bar is no longer width-bounded
-    enough for the standard layout — the fits-width test below covers
-    the 14-119 range and a separate boundary test covers width 14.
-
-    The test name "any applicable width" was tightened from "any width"
-    after the analysis feedback required iterations to remain visible
-    at narrow widths: widths below 14 cannot fit both iteration labels
-    with the standard layout and are out of scope for the iteration
-    invariant (they pre-date the persistent bar).
+    per-iter glyphs to make room); below the iteration-visibility
+    threshold (``14 cols``) the iteration segments drop one at a time
+    so the bar degrades cleanly to phase + path. The
+    ``test_render_status_bar_fits_terminal_width_below_14`` test
+    covers the 1-13 col range and locks the no-overflow invariant at
+    every width.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
@@ -310,11 +307,12 @@ def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width:
 
     Width 14 is the narrowest width where the standard layout can
     still fit both iteration labels (``D1/3`` / ``A2/5``) without the
-    marker or per-iteration glyphs. Widths below 14 are out of scope:
-    the bar cannot honor the iteration-visibility contract AND fit
-    ctx.width with the standard layout at those widths, and the
-    historical compact-mode fallback (which dropped iteration
-    segments at narrow widths) was removed in wt-028-display.
+    marker or per-iteration glyphs. Below 14 cols the iteration
+    segments drop one at a time so the bar degrades cleanly to phase
+    + path; the companion
+    ``test_render_status_bar_fits_terminal_width_below_14`` test
+    covers the 1-13 col range and locks the ``len(plain) <= width``
+    invariant at every width below the iteration-visibility threshold.
     """
     long_path = (
         "/Users/alice/code/my-very-long-project-directory-name/subdir"
@@ -335,6 +333,55 @@ def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width:
     # Single-line invariant.
     assert "\n" not in plain, f"Status Bar must not wrap at width={width}; got {plain!r}"
     # Width-fit invariant.
+    assert len(plain) <= width, (
+        f"Status Bar exceeds terminal width at width={width}: "
+        f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — widths below 14: bar degrades cleanly (no overflow)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("width", [1, 2, 4, 6, 8, 10, 12, 13])
+def test_render_status_bar_fits_terminal_width_below_14(width: int) -> None:
+    """At very narrow widths (<14 cols), the Status Bar never overflows.
+
+    The persistent Status Bar must always fit ``ctx.width`` at every
+    width — including widths below the iteration-visibility threshold
+    (14 cols). At very narrow widths the implementation may drop
+    iteration segments (outer_dev / inner_analysis) entirely so the bar
+    does not overflow into the working area; the bar degrades cleanly
+    to whatever subset of phase + path can fit.
+
+    Below 14 cols the iteration-visibility contract is no longer
+    binding: at width 7 neither iteration label can fit alongside
+    even a single separator character, so the implementation drops
+    one or both segments as needed. The bar must still be
+    single-line and ``len(plain) <= ctx.width`` for the full range
+    of widths (1 through 13 cols).
+
+    The marker-prefix / glyphs are also dropped because the chrome
+    would otherwise overflow before any label can render.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=width)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # Single-line invariant: never wraps into the working area.
+    assert "\n" not in plain, (
+        f"Status Bar must not wrap at width={width}; got {plain!r}"
+    )
+    # Width-fit invariant: the core contract for any width.
     assert len(plain) <= width, (
         f"Status Bar exceeds terminal width at width={width}: "
         f"len(plain)={len(plain)} > width={width}, plain={plain!r}"

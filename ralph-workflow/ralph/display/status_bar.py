@@ -9,15 +9,28 @@ orthogonal surfaces left intact for one-shot transcript lines.
 
 After the wt-028-display consolidation, Ralph Workflow exposes exactly
 ONE display mode (``default``). The persistent Status Bar always renders
-all applicable fields:
+all applicable fields at every terminal width where they fit:
 
 - working directory (middle-truncated when long),
 - active phase label (tail-truncated when long),
-- outer development iteration (when non-``None``),
-- inner analysis iteration (when non-``None``).
+- outer development iteration (when non-``None`` AND ``ctx.width``
+  can accommodate it),
+- inner analysis iteration (when non-``None`` AND ``ctx.width``
+  can accommodate it).
 
-Only the path middle-truncation budget and the phase tail-truncation
-budget adapt to terminal width.
+Width-driven degradation (in order) so ``len(text.plain) <= ctx.width``
+holds at every width:
+
+1. Path middle-truncation absorbs excess length on long paths.
+2. Phase label tail-truncation absorbs excess length on long labels.
+3. Iteration label form degrades canonical -> compact -> minimal.
+4. Phase marker is dropped below the marker-fit threshold.
+5. Per-iteration glyphs are dropped below the glyph-fit threshold.
+6. Iteration segments drop one at a time (outer_dev first, then
+   inner_analysis, then both) below the iteration-visibility
+   threshold (``14 cols``). The bar always fits ``ctx.width`` even
+   when iteration segments drop entirely \u2014 phase + path remain
+   visible at every applicable width.
 
 The bar is gated on a real-TTY check (``console.is_terminal AND
 console.file.isatty()``) so it stays out of non-interactive runs
@@ -253,8 +266,9 @@ def _iteration_segment_width(
 class _FieldBudgets:
     """Width-aware rendering budgets derived from ``ctx.width``.
 
-    The single default-mode Status Bar always renders phase + dir +
-    (any applicable outer_dev) + (any applicable inner_analysis).
+    The single default-mode Status Bar renders phase + dir + (any
+    applicable outer_dev) + (any applicable inner_analysis) at every
+    width where the iteration segments fit.
 
     AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40
     cols) the iteration label form is ALWAYS the canonical
@@ -267,14 +281,17 @@ class _FieldBudgets:
     forms when canonical labels cannot fit alongside phase + path at
     the terminal width.
 
-    The phase and path budgets adapt to whatever space remains after
-    the iteration segments are sized, so the rendered text always
-    fits ``ctx.width`` (no wrap, no overflow). At very narrow widths
-    the bar drops the phase_marker and the per-iteration glyphs
-    (``render_marker=False``, ``render_iter_glyph=False``) to keep
-    both iteration labels visible: a 14-col bar may render as
-    ``1/3 2/5`` instead of the canonical
-    ``■ Dev 1/3 ◆ ◎ Analysis 2/5`` at 100+ cols.
+    Below the iteration-visibility threshold (``14 cols``) the
+    implementation drops iteration segments (outer_dev first, then
+    inner_analysis, then both) one at a time so the bar degrades
+    cleanly to phase + path. The phase and path budgets adapt to
+    whatever space remains after the iteration segments are sized,
+    so the rendered text always fits ``ctx.width`` (no wrap, no
+    overflow). At very narrow widths the bar drops the phase_marker
+    and the per-iteration glyphs (``render_marker=False``,
+    ``render_iter_glyph=False``) to keep both iteration labels
+    visible: a 14-col bar may render as ``1/3 2/5`` instead of the
+    canonical ``■ Dev 1/3 ◆ ◎ Analysis 2/5`` at 100+ cols.
     """
 
     phase_budget: int
@@ -301,9 +318,10 @@ def _field_overhead_and_label_budgets(
     minimal (``1/3`` / ``2/5``) forms to fit the bar at very narrow
     widths.
 
-    Iteration segments are ALWAYS present (in canonical / compact /
-    minimal form) when the model fields are non-``None``. The function
-    picks the most descriptive layout that fits ``ctx.width``:
+    Iteration segments are present (in canonical / compact / minimal
+    form) when the model fields are non-``None`` and ``ctx.width``
+    can accommodate them. The function picks the most descriptive
+    layout that fits ``ctx.width``:
 
     1. At widths ``>= _CANONICAL_FIT_THRESHOLD`` the canonical
        ``Dev N/cap`` / ``Analysis N/cap`` labels ALWAYS render in full
@@ -318,12 +336,19 @@ def _field_overhead_and_label_budgets(
     5. Below the no-marker threshold, the per-iteration glyphs are
        dropped (``render_iter_glyph=False``) so the labels still fit
        alongside phase + path at very narrow widths.
+    6. Below the iteration-visibility threshold (``<14`` cols), the
+       iteration segments drop one at a time (outer_dev first, then
+       inner_analysis, then both) so the bar degrades cleanly to
+       whatever subset of phase + path can fit. The
+       ``len(text.plain) <= ctx.width`` invariant holds at every
+       width \u2014 the bar may drop iteration segments entirely below
+       14 cols, but it never overflows.
 
     The phase and path budgets adapt to whatever space remains after
     the iteration segments are sized; they may be ``0`` at very narrow
     widths. The rendered text always fits ``ctx.width`` (no wrap, no
-    overflow), and the iteration labels are ALWAYS present when the
-    model fields are non-``None``.
+    overflow), and the iteration labels are present when the model
+    fields are non-``None`` AND ``ctx.width`` can accommodate them.
 
     Args:
         ctx: Display context providing glyphs and width.
@@ -339,19 +364,30 @@ def _field_overhead_and_label_budgets(
     outer_dev_glyph_len = len(ctx.glyph_for("outer_dev"))
     inner_analysis_glyph_len = len(ctx.glyph_for("inner_analysis"))
 
-    def _iter_overhead(outer_label: int, inner_label: int, with_glyph: bool) -> int:
+    def _iter_overhead(
+        outer_label: int,
+        inner_label: int,
+        with_glyph: bool,
+        *,
+        include_outer: bool = True,
+        include_inner: bool = True,
+    ) -> int:
         """Per-iteration overhead (leading separator + glyph + space + label).
 
         Each iteration segment renders as ``separator + [glyph + " "] + label``.
         The leading separator is included here so ``_base_overhead`` does
         not double-count the trailing separator.
+
+        ``include_outer`` / ``include_inner`` let the caller drop a segment
+        entirely (no separator, no glyph, no label) at very narrow widths
+        so the bar degrades cleanly without overflowing.
         """
         total = 0
-        if has_outer_dev:
+        if has_outer_dev and include_outer:
             total += separator_len + outer_label
             if with_glyph:
                 total += outer_dev_glyph_len + 1
-        if has_inner_analysis:
+        if has_inner_analysis and include_inner:
             total += separator_len + inner_label
             if with_glyph:
                 total += inner_analysis_glyph_len + 1
@@ -369,10 +405,19 @@ def _field_overhead_and_label_budgets(
         with_glyph: bool,
         phase_budget: int,
         path_budget: int,
+        *,
+        include_outer: bool = True,
+        include_inner: bool = True,
     ) -> int:
         return (
             _base_overhead(with_marker)
-            + _iter_overhead(outer_label, inner_label, with_glyph)
+            + _iter_overhead(
+                outer_label,
+                inner_label,
+                with_glyph,
+                include_outer=include_outer,
+                include_inner=include_inner,
+            )
             + phase_budget
             + path_budget
         )
@@ -382,21 +427,40 @@ def _field_overhead_and_label_budgets(
         inner_label: int,
         with_marker: bool,
         with_glyph: bool,
+        *,
+        include_outer: bool = True,
+        include_inner: bool = True,
     ) -> _FieldBudgets:
         """Build _FieldBudgets sized so the iteration segments fit alongside phase + path."""
         remaining = (
             ctx.width
             - _base_overhead(with_marker)
-            - _iter_overhead(outer_label, inner_label, with_glyph)
+            - _iter_overhead(
+                outer_label,
+                inner_label,
+                with_glyph,
+                include_outer=include_outer,
+                include_inner=include_inner,
+            )
         )
         if remaining <= 0:
             return _FieldBudgets(
-                0, 0, outer_label, inner_label, with_marker, with_glyph
+                0,
+                0,
+                outer_label if include_outer else 0,
+                inner_label if include_inner else 0,
+                with_marker,
+                with_glyph,
             )
         phase_budget = min(DEFAULT_PHASE_LABEL_BUDGET, remaining // 2)
         path_budget = remaining - phase_budget
         return _FieldBudgets(
-            phase_budget, path_budget, outer_label, inner_label, with_marker, with_glyph
+            phase_budget,
+            path_budget,
+            outer_label if include_outer else 0,
+            inner_label if include_inner else 0,
+            with_marker,
+            with_glyph,
         )
 
     label_forms: tuple[tuple[int, int], ...] = (
@@ -424,11 +488,57 @@ def _field_overhead_and_label_budgets(
                 ):
                     return budget
 
+    # Final degradation: drop iteration segments one at a time so the bar
+    # degrades cleanly at widths below the iteration-visibility threshold
+    # (14 cols). The bar must never overflow, even when the model has
+    # iteration fields that cannot fit alongside phase + path at the
+    # current width. We try (in order): drop outer_dev only, drop
+    # inner_analysis only, drop both. For each candidate we recompute the
+    # budget using the minimal label form so the segment that survives
+    # uses the smallest possible label.
+    for (
+        include_outer,
+        include_inner,
+    ) in (
+        (False, True),
+        (True, False),
+        (False, False),
+    ):
+        for with_marker in (True, False):
+            outer_label = (
+                _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS if include_outer else 0
+            )
+            inner_label = (
+                _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS if include_inner else 0
+            )
+            budget = _distribute(
+                outer_label,
+                inner_label,
+                with_marker,
+                with_glyph=False,
+                include_outer=include_outer,
+                include_inner=include_inner,
+            )
+            if (
+                _total_width(
+                    outer_label=outer_label if include_outer else 0,
+                    inner_label=inner_label if include_inner else 0,
+                    with_marker=with_marker,
+                    with_glyph=False,
+                    phase_budget=budget.phase_budget,
+                    path_budget=budget.path_budget,
+                    include_outer=include_outer,
+                    include_inner=include_inner,
+                )
+                <= ctx.width
+            ):
+                return budget
+
     return _FieldBudgets(
         0,
         0,
-        _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS,
-        _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS,
+        0,
+        0,
         False,
         False,
     )
@@ -469,17 +579,21 @@ def render_status_bar(
     supply the resolved home directory once (the ``StatusBar`` lifecycle
     resolves it at construction; tests pass an explicit value).
 
-    The single default-mode layout ALWAYS renders phase + dir + (any
-    applicable outer_dev) + (any applicable inner_analysis). When
-    ``ctx.width`` is too narrow to fit the canonical forms (``Dev 1/3``
-    / ``Analysis 2/5``) the labels degrade through compact
-    (``D1/3`` / ``A2/5``) and minimal (``1/3`` / ``2/5``) forms, and
-    finally drop an iteration segment only as a last resort so the
-    bar still fits ``ctx.width``.
+    The single default-mode layout renders phase + dir + (any applicable
+    outer_dev) + (any applicable inner_analysis) at every width where
+    the iteration segments fit. When ``ctx.width`` is too narrow to fit
+    the canonical forms (``Dev 1/3`` / ``Analysis 2/5``) the labels
+    degrade through compact (``D1/3`` / ``A2/5``) and minimal
+    (``1/3`` / ``2/5``) forms, the phase marker and per-iteration
+    glyphs are dropped at the marker-fit / glyph-fit thresholds, and
+    finally the iteration segments drop one at a time at very narrow
+    widths (below ``14 cols``) so the bar still fits ``ctx.width``.
 
     The phase and path labels are tail/middle truncated to fit the
-    remaining budget. ``len(text.plain) <= ctx.width`` always holds,
-    and the rendered text never contains a newline.
+    remaining budget. ``len(text.plain) <= ctx.width`` always holds
+    (a final ``Text.truncate`` clamp covers the 1-2 col edge case
+    where the phase|path separator alone exceeds the budget), and the
+    rendered text never contains a newline.
 
     Args:
         model: Immutable view-model describing the bar contents.
@@ -492,7 +606,9 @@ def render_status_bar(
         A single-line ``rich.text.Text`` carrying the bar contents. The
         rendered text never contains ``\\n`` so the bar cannot wrap into
         the working area, and ``len(text.plain) <= ctx.width`` so the
-        bar fits any terminal width.
+        bar fits any terminal width (including widths below 14 cols
+        where iteration segments drop entirely to honor the
+        ``len(text.plain) <= ctx.width`` invariant).
     """
     separator = _field_separator(ctx)
     path_display = _home_relative(model.workspace_root, home)
@@ -541,6 +657,15 @@ def render_status_bar(
                 budgets.inner_analysis_label_max_chars,
             )
         )
+    # Final width clamp: at extremely narrow widths (1-2 cols) the
+    # phase|path separator alone exceeds the budget so the rendered text
+    # cannot fit. Truncate the rendered text to ``ctx.width`` so the
+    # ``len(text.plain) <= ctx.width`` invariant holds at every width,
+    # including widths below the iteration-visibility threshold (14 cols).
+    if ctx.width < 1:
+        return Text(" ")
+    if len(text.plain) > ctx.width:
+        text.truncate(ctx.width)
     return text
 
 
