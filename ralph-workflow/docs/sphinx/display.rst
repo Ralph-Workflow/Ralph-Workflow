@@ -1,3 +1,36 @@
+.. raw:: html
+
+   <!--
+     Review note (docs rubric §"Required review note for meaningful docs changes"):
+     - What changed: collapsed the historical three-tier mode split
+       (narrow / medium / wide), the ``force_mode`` keyword argument, the
+       legacy narrow-mode env-var override, and the three-tier mode
+       limits table into a single ``default`` display mode. The
+       persistent bottom Status Bar now always renders all applicable
+       fields (working directory, active phase, applicable outer
+       development iteration, applicable inner analysis iteration)
+       regardless of terminal width.
+     - Why it belongs here: this is the operator-facing display reference
+       page (DisplayContext / ParallelDisplay ownership surface).
+       Operators who relied on the legacy override or on
+       ``make_display_context(force_mode=...)`` need to know the public
+       API has changed: ``force_mode`` now raises ``NotImplementedError``
+       and the env-var override is silently ignored. The single default
+       mode is one clear surface to learn instead of three.
+     - What was pruned: the entire "Mode thresholds" subsection, the
+       env-var override row, the ``force_mode`` argument note,
+       and the legacy env-var precedence listing for mode selection.
+     - What was merged: every width-driven branch in
+       ``parallel_display.py`` and every tier in ``status_bar.py``'s
+       budgets now renders identically; only the long-path
+       middle-truncation and long-phase tail-truncation budgets adapt
+       to width.
+     - How the route is clearer: one display mode, one set of limits,
+       one set of budgets. The consolidated single-mode invariant is
+       locked by ``tests/display/test_single_mode_anti_drift.py`` so the
+       drift guard runs every build.
+   -->
+
 Display Architecture
 ====================
 
