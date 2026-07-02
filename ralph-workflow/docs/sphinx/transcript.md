@@ -1,29 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestrator built around a simple ... Ralph-loop core" lead category.
-  - Why it belongs here: this page is part of the maintained Sphinx manual;
-    it must agree with the README and the manual home so the product story
-    is coherent across surfaces (rubric hard failure: surfaces fight each
-    other).
-  - What was pruned: nothing material; the page's page-specific argument is
-    preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home.
-  - What was added (wt-028-display): a new `### Status Bar` subsection
-    under `## Display Architecture` describing the persistent bottom footer
-    composed by `StatusBar` via `ParallelDisplay`. The footer is the single
-    owner of run-level layout/color/spacing/truncation/live-update behavior,
-    so future display changes have one clear product surface to maintain.
-    This page already names `DisplayContext` and the `emit_*` set as the
-    single owners of display logic, so the Status Bar owner is named on the
-    same surface as a peer reference (not a competing one). The status-bar
-    subsection explicitly cross-references `ParallelDisplay.update_status_bar`
-    and notes that the per-unit `emit_status_line` and waiting_status_line
-    remain orthogonal surfaces.
--->
-
 # Transcript and Display Reference
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
@@ -93,6 +67,32 @@ On POSIX systems (Linux, macOS) when called from the main thread, the refresher 
 a `SIGWINCH` signal handler. On Windows, or when called from a non-main thread, a
 background poll thread monitors width changes instead. The returned stop callback is
 invoked at pipeline shutdown to clean up the poll thread when one was started.
+
+<!--
+  Review note (docs rubric §"Required review note for meaningful docs changes"):
+  - What changed: rewrote the opening paragraph so the page leads with the
+    canonical autopilot positioning language instead of the older "AI agent
+    orchestrator built around a simple ... Ralph-loop core" lead category.
+  - Why it belongs here: this page is part of the maintained Sphinx manual;
+    it must agree with the README and the manual home so the product story
+    is coherent across surfaces (rubric hard failure: surfaces fight each
+    other).
+  - What was pruned: nothing material; the page's page-specific argument is
+    preserved.
+  - How the route is clearer: the lead now matches the canonical autopilot
+    framing used by the README and the manual home.
+  - What was added (wt-028-display): a new `### Status Bar` subsection
+    under `## Display Architecture` describing the persistent bottom footer
+    composed by `StatusBar` via `ParallelDisplay`. The footer is the single
+    owner of run-level layout/color/spacing/truncation/live-update behavior,
+    so future display changes have one clear product surface to maintain.
+    This page already names `DisplayContext` and the `emit_*` set as the
+    single owners of display logic, so the Status Bar owner is named on the
+    same surface as a peer reference (not a competing one). The status-bar
+    subsection explicitly cross-references `ParallelDisplay.update_status_bar`
+    and notes that the per-unit `emit_status_line` and waiting_status_line
+    remain orthogonal surfaces.
+-->
 
 ### Status Bar
 
