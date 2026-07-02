@@ -252,13 +252,20 @@ class _FieldBudgets:
 
     The phase and path budgets adapt to whatever space remains after
     the iteration segments are sized, so the rendered text always
-    fits ``ctx.width`` (no wrap, no overflow).
+    fits ``ctx.width`` (no wrap, no overflow). At very narrow widths
+    the bar drops the phase_marker and the per-iteration glyphs
+    (``render_marker=False``, ``render_iter_glyph=False``) to keep
+    both iteration labels visible: a 14-col bar may render as
+    ``1/3 2/5`` instead of the canonical
+    ``■ Dev 1/3 ◆ ◎ Analysis 2/5`` at 100+ cols.
     """
 
     phase_budget: int
     path_budget: int
-    outer_dev_label_max_chars: int  # 0 means: drop the outer_dev segment.
-    inner_analysis_label_max_chars: int  # 0 means: drop the inner_analysis segment.
+    outer_dev_label_max_chars: int
+    inner_analysis_label_max_chars: int
+    render_marker: bool
+    render_iter_glyph: bool
 
 
 def _field_overhead_and_label_budgets(
@@ -269,23 +276,28 @@ def _field_overhead_and_label_budgets(
 ) -> _FieldBudgets:
     """Derive width-aware budgets that always fit ``ctx.width``.
 
-    The function selects the most descriptive label form (canonical →
-    compact → minimal) that fits the terminal, and degrades to
-    dropping iteration segments only when even the minimal form
-    cannot fit alongside phase + path.
-
-    Layout precedence (canonical fits → compact fits → minimal fits →
-    drop one or both iterations):
+    Iteration segments are ALWAYS present (in canonical / compact /
+    minimal form) when the model fields are non-``None``. The function
+    picks the most descriptive layout that fits ``ctx.width``:
 
     1. At widths ``>= _WIDE_DEFAULT_BUDGET_THRESHOLD`` the canonical
-       ``Dev N/cap`` / ``Analysis N/cap`` labels render in full.
+       ``Dev N/cap`` / ``Analysis N/cap`` labels render in full with
+       the marker and per-iteration glyphs.
     2. Below the wide threshold, the compact form (``D1/3`` / ``A2/5``)
        is used when it fits.
     3. Below the compact threshold, the minimal form (``1/3`` / ``2/5``)
        is used when it fits.
-    4. When even the minimal form does not fit, the outer_dev segment
-       is dropped first (the inner_analysis field is preserved if it
-       can fit at canonical form), then the inner_analysis segment.
+    4. Below the minimal-with-marker threshold, the phase_marker is
+       dropped (``render_marker=False``) to recover two characters.
+    5. Below the no-marker threshold, the per-iteration glyphs are
+       dropped (``render_iter_glyph=False``) so the labels still fit
+       alongside phase + path at very narrow widths.
+
+    The phase and path budgets adapt to whatever space remains after
+    the iteration segments are sized; they may be ``0`` at very narrow
+    widths. The rendered text always fits ``ctx.width`` (no wrap, no
+    overflow), and the iteration labels are ALWAYS present when the
+    model fields are non-``None``.
 
     Args:
         ctx: Display context providing glyphs and width.
@@ -293,96 +305,107 @@ def _field_overhead_and_label_budgets(
         has_inner_analysis: True when the model has an inner_analysis field.
 
     Returns:
-        _FieldBudgets with phase_budget, path_budget, and per-iteration
-        label budgets that together fit ``ctx.width``.
+        _FieldBudgets with phase_budget, path_budget, label budgets,
+        and the render_marker / render_iter_glyph degradation flags.
     """
-    separator = _field_separator(ctx)
-    separator_len = len(separator)
+    separator_len = len(_field_separator(ctx))
     marker_len = len(ctx.glyph_for("phase_marker") + " ") if ctx.glyphs_enabled else 0
     outer_dev_glyph_len = len(ctx.glyph_for("outer_dev"))
     inner_analysis_glyph_len = len(ctx.glyph_for("inner_analysis"))
 
-    # Per-iteration fixed overhead: separator + glyph + space (the label is sized separately).
-    per_outer_fixed = separator_len + outer_dev_glyph_len + 1
-    per_inner_fixed = separator_len + inner_analysis_glyph_len + 1
+    def _iter_overhead(outer_label: int, inner_label: int, with_glyph: bool) -> int:
+        """Per-iteration overhead (leading separator + glyph + space + label).
 
-    # Pre-marker + phase separator + post-path separator overhead. The
-    # post-path separator is consumed by the first iteration segment,
-    # so it's only counted when at least one iteration is present.
-    base_overhead = marker_len + separator_len  # marker + phase|path separator
-    if has_outer_dev or has_inner_analysis:
-        base_overhead += separator_len  # trailing separator (consumed by first iter)
-
-    def _compute(outer_label: int, inner_label: int) -> _FieldBudgets:
-        """Compute phase/path budgets for the candidate iteration label sizes."""
-        iter_overhead = 0
+        Each iteration segment renders as ``separator + [glyph + " "] + label``.
+        The leading separator is included here so ``_base_overhead`` does
+        not double-count the trailing separator.
+        """
+        total = 0
         if has_outer_dev:
-            iter_overhead += per_outer_fixed + outer_label
+            total += separator_len + outer_label
+            if with_glyph:
+                total += outer_dev_glyph_len + 1
         if has_inner_analysis:
-            iter_overhead += per_inner_fixed + inner_label
-        field_budget = ctx.width - base_overhead - iter_overhead
-        if field_budget <= 0:
-            return _FieldBudgets(0, 0, outer_label, inner_label)
-        is_wide_canonical = (
-            ctx.width >= _WIDE_DEFAULT_BUDGET_THRESHOLD
-            and outer_label == _OUTER_DEV_LABEL_MAX_CHARS
-            and inner_label == _INNER_ANALYSIS_LABEL_MAX_CHARS
+            total += separator_len + inner_label
+            if with_glyph:
+                total += inner_analysis_glyph_len + 1
+        return total
+
+    def _base_overhead(with_marker: bool) -> int:
+        """Marker + phase|path separator only (no trailing iter separator)."""
+        ml = marker_len if with_marker else 0
+        return ml + separator_len
+
+    def _total_width(
+        outer_label: int,
+        inner_label: int,
+        with_marker: bool,
+        with_glyph: bool,
+        phase_budget: int,
+        path_budget: int,
+    ) -> int:
+        return (
+            _base_overhead(with_marker)
+            + _iter_overhead(outer_label, inner_label, with_glyph)
+            + phase_budget
+            + path_budget
         )
-        if is_wide_canonical:
+
+    def _distribute(
+        outer_label: int,
+        inner_label: int,
+        with_marker: bool,
+        with_glyph: bool,
+    ) -> _FieldBudgets:
+        """Build _FieldBudgets sized so the iteration segments fit alongside phase + path."""
+        remaining = (
+            ctx.width
+            - _base_overhead(with_marker)
+            - _iter_overhead(outer_label, inner_label, with_glyph)
+        )
+        if remaining <= 0:
             return _FieldBudgets(
-                DEFAULT_PHASE_LABEL_BUDGET, DEFAULT_PATH_BUDGET, outer_label, inner_label
+                0, 0, outer_label, inner_label, with_marker, with_glyph
             )
-        phase_budget = max(_MIN_BUDGET, min(DEFAULT_PHASE_LABEL_BUDGET, field_budget // 2))
-        path_budget = max(_MIN_BUDGET, field_budget - phase_budget)
-        return _FieldBudgets(phase_budget, path_budget, outer_label, inner_label)
+        phase_budget = min(DEFAULT_PHASE_LABEL_BUDGET, remaining // 2)
+        path_budget = remaining - phase_budget
+        return _FieldBudgets(
+            phase_budget, path_budget, outer_label, inner_label, with_marker, with_glyph
+        )
 
-    def _fits(b: _FieldBudgets) -> bool:
-        """Return True when the candidate strategy's rendered width fits ``ctx.width``."""
-        rendered_width = base_overhead + b.phase_budget + b.path_budget
-        if has_outer_dev:
-            rendered_width += per_outer_fixed + b.outer_dev_label_max_chars
-        if has_inner_analysis:
-            rendered_width += per_inner_fixed + b.inner_analysis_label_max_chars
-        return rendered_width <= ctx.width
+    label_forms: tuple[tuple[int, int], ...] = (
+        (_OUTER_DEV_LABEL_MAX_CHARS, _INNER_ANALYSIS_LABEL_MAX_CHARS),
+        (_OUTER_DEV_LABEL_COMPACT_MAX_CHARS, _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS),
+        (_OUTER_DEV_LABEL_MINIMAL_MAX_CHARS, _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS),
+    )
 
-    def _candidates() -> tuple[tuple[int, int], ...]:
-        """Return the candidate (outer_label, inner_label) tuples in priority order."""
-        canon = (
-            _OUTER_DEV_LABEL_MAX_CHARS if has_outer_dev else 0,
-            _INNER_ANALYSIS_LABEL_MAX_CHARS if has_inner_analysis else 0,
-        )
-        compact = (
-            _OUTER_DEV_LABEL_COMPACT_MAX_CHARS if has_outer_dev else 0,
-            _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS if has_inner_analysis else 0,
-        )
-        minimal = (
-            _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS if has_outer_dev else 0,
-            _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS if has_inner_analysis else 0,
-        )
-        drop_outer = (
-            0,
-            _INNER_ANALYSIS_LABEL_MAX_CHARS if has_inner_analysis else 0,
-        )
-        drop_inner = (
-            _OUTER_DEV_LABEL_MAX_CHARS if has_outer_dev else 0,
-            0,
-        )
-        drop_both = (0, 0)
-        if has_outer_dev and has_inner_analysis:
-            return (canon, compact, minimal, drop_inner, drop_outer, drop_both)
-        if has_outer_dev:
-            return (canon, compact, minimal, drop_both)
-        if has_inner_analysis:
-            return (canon, compact, minimal, drop_both)
-        return (drop_both,)
+    for with_marker in (True, False):
+        for with_glyph in (True, False):
+            for outer_label, inner_label in label_forms:
+                budget = _distribute(
+                    outer_label, inner_label, with_marker, with_glyph
+                )
+                if (
+                    _total_width(
+                        outer_label,
+                        inner_label,
+                        with_marker,
+                        with_glyph,
+                        budget.phase_budget,
+                        budget.path_budget,
+                    )
+                    <= ctx.width
+                ):
+                    return budget
 
-    for outer_label, inner_label in _candidates():
-        budget = _compute(outer_label, inner_label)
-        if _fits(budget):
-            return budget
-    # Unreachable: the final ``drop_both`` candidate always produces a
-    # valid budget (phase + path get all of ``ctx.width - base_overhead``).
-    return _compute(0, 0)
+    return _FieldBudgets(
+        0,
+        0,
+        _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS,
+        _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS,
+        False,
+        False,
+    )
 
 
 def _format_dev_label(n: int, cap: int | None, max_chars: int) -> str:
@@ -462,7 +485,7 @@ def render_status_bar(
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
-    if ctx.glyphs_enabled:
+    if ctx.glyphs_enabled and budgets.render_marker:
         marker = ctx.glyph_for("phase_marker")
         text.append(marker + " ", style="theme.status.bar_marker")
     text.append(phase_display, style=model.phase_style)
@@ -470,7 +493,8 @@ def render_status_bar(
     text.append(path_display, style="theme.status.path")
     if render_outer_dev:
         text.append(separator, style="theme.status.path_marker")
-        text.append(ctx.glyph_for("outer_dev") + " ", style="theme.outer_dev")
+        if budgets.render_iter_glyph:
+            text.append(ctx.glyph_for("outer_dev") + " ", style="theme.outer_dev")
         text.append(
             _format_dev_label(
                 model.outer_dev_iteration or 0,
@@ -480,9 +504,10 @@ def render_status_bar(
         )
     if render_inner_analysis:
         text.append(separator, style="theme.status.path_marker")
-        text.append(
-            ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis"
-        )
+        if budgets.render_iter_glyph:
+            text.append(
+                ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis"
+            )
         text.append(
             _format_analysis_label(
                 model.inner_analysis or 0,

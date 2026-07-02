@@ -59,9 +59,11 @@ views used by CLI diagnostics and listing commands.
    env var is silently ignored. The persistent bottom Status Bar always
    renders all applicable fields (working directory, active phase,
    applicable outer development iteration, applicable inner analysis
-   iteration) regardless of terminal width — only the long-path
-   middle-truncation and long-phase tail-truncation budgets adapt to
-   width.
+   iteration) for any applicable terminal width (>= 14 cols) — at
+   very narrow widths the bar drops the phase marker and per-iteration
+   glyphs so both iteration labels remain visible, and only the
+   long-path middle-truncation and long-phase tail-truncation
+   budgets adapt to width.
 
    **Environment variable precedence (highest to lowest):**
 
