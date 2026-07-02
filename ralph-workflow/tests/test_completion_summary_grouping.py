@@ -345,22 +345,22 @@ def _make_snapshot_with_outer_dev(outer_dev_iteration: int = 3) -> PipelineSnaps
     )
 
 
-def test_elapsed_appears_before_metrics_in_wide_mode() -> None:
-    """elapsed= line appears before the Metrics section in wide mode output."""
+def test_elapsed_appears_before_metrics_in_default_mode() -> None:
+    """elapsed= line appears before the Metrics section in default mode output."""
     out = _render_group_full(_make_snapshot(), elapsed_seconds=12.4)
     assert "elapsed=12.4s" in out
     assert out.index("elapsed=12.4s") < out.index("Metrics")
 
 
 def test_iteration_context_section_appears_with_outer_dev() -> None:
-    """Wide mode shows an 'Iteration Context' section when outer_dev_iteration is set."""
+    """Default mode shows an 'Iteration Context' section when outer_dev_iteration is set."""
     out = _render_group_full(_make_snapshot_with_outer_dev(outer_dev_iteration=3))
     assert "Iteration Context" in out
     assert "Dev #3" in out
 
 
 def test_iteration_context_section_absent_without_context() -> None:
-    """Wide mode omits 'Iteration Context' section when no iteration fields are set."""
+    """Default mode omits 'Iteration Context' section when no iteration fields are set."""
     out = _render_group_full(_make_snapshot())
     assert "Iteration Context" not in out
 
@@ -423,13 +423,13 @@ def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
 # --- Exit trigger tests ---
 
 
-def test_group_exit_trigger_shown_in_wide_mode() -> None:
+def test_group_exit_trigger_shown_in_default_mode() -> None:
     """Wide mode shows exit= label after header rule."""
     out = _render_group(_make_snapshot())
     assert "exit=completed" in out
 
 
-def test_group_exit_trigger_failed_shown_in_wide_mode() -> None:
+def test_group_exit_trigger_failed_shown_in_default_mode() -> None:
     """Wide mode shows exit=failed when is_terminal_failure=True."""
     out = _render_group(
         _make_snapshot(
@@ -442,8 +442,8 @@ def test_group_exit_trigger_failed_shown_in_wide_mode() -> None:
     assert "exit=failed" in out
 
 
-def test_group_exit_trigger_appears_before_metrics_in_wide_mode() -> None:
-    """exit= line appears before the Metrics section in wide mode output."""
+def test_group_exit_trigger_appears_before_metrics_in_default_mode() -> None:
+    """exit= line appears before the Metrics section in default mode output."""
     out = _render_group(_make_snapshot())
     assert "exit=completed" in out
     assert "Metrics" in out

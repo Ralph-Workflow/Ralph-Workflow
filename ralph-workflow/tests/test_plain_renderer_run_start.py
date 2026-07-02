@@ -163,7 +163,7 @@ def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
     out = buf.getvalue()
     run_start_lines = _filter_run_start_content(out.splitlines())
     plan_line = next((ln for ln in run_start_lines if "plan=" in ln), None)
-    assert plan_line is not None, "expected a line with plan= in wide mode"
+    assert plan_line is not None, "expected a line with plan= in default mode"
     assert "verbosity=" in plan_line, "verbosity= must be on the same line as plan="
 
 
@@ -174,5 +174,5 @@ def test_emit_run_start_prompt_workspace_grouped_on_one_line() -> None:
     out = buf.getvalue()
     run_start_lines = _filter_run_start_content(out.splitlines())
     prompt_line = next((ln for ln in run_start_lines if "prompt=" in ln), None)
-    assert prompt_line is not None, "expected a line with prompt= in wide mode"
+    assert prompt_line is not None, "expected a line with prompt= in default mode"
     assert "workspace=" in prompt_line, "workspace= must be on the same line as prompt="

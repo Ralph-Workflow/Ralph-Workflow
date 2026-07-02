@@ -244,7 +244,7 @@ def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
     assert "Analysis 1/3" in output
 
 
-# --- Tests for compact/medium/wide mode banners ---
+# --- Tests for default mode banners ---
 
 
 def _make_execution_to_analysis_policy() -> PipelinePolicy:
@@ -277,7 +277,7 @@ def _make_execution_to_analysis_policy() -> PipelinePolicy:
 
 
 
-def test_show_phase_transition_medium_mode_has_one_rule_no_description() -> None:
+def test_show_phase_transition_at_medium_width_has_one_rule_no_description() -> None:
     """Medium mode major transition uses a single titled Rule (no duplication)."""
     console = Console(record=True, width=80)
     ctx = make_display_context(console=console, )
@@ -296,7 +296,7 @@ def test_show_phase_transition_medium_mode_has_one_rule_no_description() -> None
     assert "analyzing results" not in output
 
 
-def test_show_phase_transition_wide_mode_has_one_rule_no_description() -> None:
+def test_show_phase_transition_at_wide_width_has_one_rule_no_description() -> None:
     """Wide mode major transition uses a single titled Rule (same as compact/medium)."""
     console = Console(record=True, width=120)
     ctx = make_display_context(console=console, )

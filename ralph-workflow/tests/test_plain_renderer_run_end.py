@@ -141,8 +141,8 @@ def test_emit_run_end_milestone_glyph_ascii_fallback() -> None:
     assert "◆" not in milestone_line
 
 
-def test_emit_run_end_exit_trigger_shown_in_wide_output() -> None:
-    """exit_trigger='completed' is surfaced as exit=completed in wide mode output."""
+def test_emit_run_end_exit_trigger_shown_in_default_mode_output() -> None:
+    """exit_trigger='completed' is surfaced as exit=completed in default mode output."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0, exit_trigger="completed")
     out = buf.getvalue()
@@ -161,7 +161,7 @@ def test_emit_run_end_exit_trigger_none_omits_exit_field() -> None:
 
 
 def test_emit_run_end_outer_dev_iteration_shown_when_set() -> None:
-    """outer_dev_iteration is surfaced as dev_cycle=N in wide mode output."""
+    """outer_dev_iteration is surfaced as dev_cycle=N in default mode output."""
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0, outer_dev_iteration=3)
     out = buf.getvalue()

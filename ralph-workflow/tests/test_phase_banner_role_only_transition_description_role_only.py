@@ -140,7 +140,7 @@ class TestTransitionDescriptionRoleOnly:
         display.emit_phase_transition("planning", "development", pipeline_policy=None)
         output = console.file.getvalue()
         # Minor transitions render as a simple Rule, not the major banner.
-        # Major banners in medium/wide mode print two Rules + description.
+        # Major banners in default mode at medium or wide width print two Rules + description.
         # We can verify the transition text appears but no description is emitted.
         assert "Planning" in output
         assert "Development" in output

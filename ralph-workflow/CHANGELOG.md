@@ -41,6 +41,10 @@ and open a fresh `[Unreleased]`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(display): wipe residual display-mode drift — replace stale mode="wide", narrow=False fixtures across 8 test helper sites with mode="default", drop 16 cosmetic test names still referencing 'wide mode' / 'compact mode' / 'medium mode', and add tests/display/test_single_mode_anti_drift_test_fixtures.py as the AST-level regression lock.**
+
 ### Removed
 
 - **refactor(display)!: remove dead force_mode= keyword argument and its NotImplementedError raise shim** from `make_display_context()` in `ralph/display/context.py`. Breaking change for any caller that explicitly passed `force_mode=` — those callers now raise `TypeError: unexpected keyword argument` instead of `NotImplementedError`. No production caller exists; locks regression in `tests/display/test_single_mode_anti_drift.py` (the two pinning tests removed).
