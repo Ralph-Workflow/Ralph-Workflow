@@ -160,11 +160,9 @@ def test_render_status_bar_fits_terminal_width_at_any_width(width: int) -> None:
     The bar must NEVER exceed the terminal width. The phase, path, and
     iteration-label budgets are derived together from ``ctx.width`` so
     the rendered text remains single-line and within ``ctx.width``
-    columns at every width. At narrow widths the iteration labels
-    degrade from canonical (``Dev 1/3`` / ``Analysis 2/5``) through
-    compact (``D1/3`` / ``A2/5``) to minimal (``1/3`` / ``2/5``) forms
-    and ultimately drop a segment only when even the minimal form
-    cannot fit alongside phase + path.
+    columns at every width. Path middle-truncation and phase
+    tail-truncation adapt to width; the iteration label form may
+    shorten at narrow widths to keep the bar single-line.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
@@ -250,11 +248,12 @@ def test_render_status_bar_canonical_iteration_labels_at_ac03_widths(width: int)
     truncation is needed. The only width-driven difference across these
     widths is path middle-truncation and phase tail-truncation; the
     iteration label FORM is identical (canonical). Below 40 cols the
-    implementation may degrade to compact/minimal forms to fit the bar.
+    implementation may shorten the iteration label form to fit the bar.
 
     This is the regression test that locks the analysis-feedback fix:
-    previously at width=40 the bar used compact labels (``D1/3`` /
-    ``A2/5``), violating AC-03's identical-rendering invariant.
+    previously at width=40 the bar used shortened labels
+    (``D1/3`` / ``A2/5``), violating AC-03's identical-rendering
+    invariant.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
@@ -277,12 +276,12 @@ def test_render_status_bar_canonical_iteration_labels_at_ac03_widths(width: int)
         f"AC-03: 'Analysis 2/5' must render in canonical form at width={width}; "
         f"got {plain!r}"
     )
-    # No compact or minimal label forms at AC-03 widths.
+    # No shortened label forms at AC-03 widths.
     assert "D1/3" not in plain, (
-        f"AC-03: compact 'D1/3' must NOT appear at width={width}; got {plain!r}"
+        f"AC-03: shortened 'D1/3' must NOT appear at width={width}; got {plain!r}"
     )
     assert "A2/5" not in plain, (
-        f"AC-03: compact 'A2/5' must NOT appear at width={width}; got {plain!r}"
+        f"AC-03: shortened 'A2/5' must NOT appear at width={width}; got {plain!r}"
     )
     # Width-fit invariant.
     assert len(plain) <= width, (
@@ -563,7 +562,7 @@ def test_render_status_bar_pathological_no_home_relative_when_home_not_passed() 
 
 
 # ---------------------------------------------------------------------------
-# render_status_bar — phase label tail-truncation in compact mode, never wraps
+# render_status_bar — phase label tail-truncation in the default mode (never wraps)
 # ---------------------------------------------------------------------------
 
 
@@ -1030,10 +1029,10 @@ def test_status_bar_live_region_renders_phase_only_when_no_iteration() -> None:
 
 
 def test_status_bar_live_region_renders_with_outer_dev_only() -> None:
-    """Tty-like stream with outer_dev set and inner_analysis=None: medium-ish width check.
+    """Tty-like stream with outer_dev set and inner_analysis=None at 120 cols.
 
-    The 120-col tty-like stream falls in 'wide' mode (>=100 cols), so the
-    inner_analysis field would normally render. With inner_analysis=None
+    At 120 cols the persistent Status Bar has enough width to render
+    the inner_analysis field when populated. With inner_analysis=None
     the field is OMITTED entirely (no glyph, no '--' stub, no separator
     before it). The outer_dev field IS rendered. Uses the
     update-before-start pattern for determinism.

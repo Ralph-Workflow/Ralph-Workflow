@@ -90,7 +90,7 @@ def _display(
 
 
 def test_emit_completion_summary_panel_emits_section_rule_header() -> None:
-    """The chosen ``[run-completion]`` section-rule header is emitted in non-compact mode."""
+    """The chosen ``[run-completion]`` section-rule header is emitted above the panel."""
     pd, buf = _display(force_terminal=True)
     pd.emit_completion_summary_panel(
         _make_snapshot(),

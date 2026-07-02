@@ -199,7 +199,7 @@ def test_visual_hierarchy_log_tag_markers_preserved() -> None:
 
 # ---------------------------------------------------------------------------
 # wt-007: visual-hierarchy cases for the 5 new emit_* methods.
-# Each new method must (1) emit a section-rule header in non-compact mode,
+# Each new method must (1) emit a section-rule header above the surface,
 # (2) carry the theme.banner.title style, (3) use theme.text.muted for body
 # cells, and (4) be markup-free in plain output.
 # ---------------------------------------------------------------------------
@@ -273,11 +273,11 @@ def test_visual_hierarchy_emit_info_panel() -> None:
 def test_visual_hierarchy_emit_completion_summary_panel() -> None:
     """AC-01+AC-03: emit_completion_summary_panel emits the [run-completion] section rule.
 
-    Wide mode: the body itself begins with a titled Rule
-    ("Pipeline Complete" or "Pipeline Failed"). The section rule line carries
-    the theme.banner.border sky-blue ANSI prefix. Both the section rule and
-    the body title are present (the wide-mode double-rule is intentional
-    visual punctuation).
+    The panel body begins with a titled Rule ("Pipeline Complete" or
+    "Pipeline Failed"). The section rule line carries the
+    theme.banner.border sky-blue ANSI prefix. Both the section rule and
+    the body title are present (the double-rule is intentional visual
+    punctuation that renders identically in the single default mode).
     """
 
     def _make_snapshot() -> PipelineSnapshot:

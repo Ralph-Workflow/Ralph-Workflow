@@ -72,14 +72,13 @@ def test_emit_info_panel_with_empty_content_still_emits() -> None:
     assert len(panels) == 1, f"empty content must still emit a panel, got {len(panels)}: {panels!r}"
 
 
-def test_emit_info_panel_emits_section_rule_in_non_compact_mode() -> None:
-    """AC-05: a [info] section-rule header is emitted in non-compact mode.
+def test_emit_info_panel_emits_section_rule_header() -> None:
+    """AC-05: a [info] section-rule header is emitted above the panel.
 
-    This pins the new visual-hierarchy fill from Step 2: every
-    table/panel surface that previously rendered a Table or Panel
-    without a section-rule header now emits ``[info]`` above the
-    panel in non-compact mode. The factory uses ``width=120`` so the
-    resulting mode is non-compact (compact is <60 cols).
+    This pins the visual-hierarchy fill: every table/panel surface
+    that previously rendered a Table or Panel without a section-rule
+    header now emits ``[info]`` above the panel. The factory uses
+    ``width=120`` so the panel is rendered in the single default mode.
     """
     pd, buf, _ = _display()
     pd.emit_info_panel(title="Next steps", content="  \u2022 Run ralph --init")

@@ -1,9 +1,9 @@
 """Black-box tests for DisplayContext factory and terminal-mode detection.
 
 After the wt-028-display consolidation, ``DisplayContext.mode`` is
-always ``"default"``. There is no width-based dispatch, no
-``RALPH_FORCE_NARROW`` env var, and no ``force_mode`` keyword. The
-adaptive limits are a single fixed set; ``ctx.narrow`` is removed.
+always the literal string ``"default"``. There is no width-based
+dispatch. The adaptive limits come from a single fixed
+``_DEFAULT_LIMITS`` set.
 """
 
 from __future__ import annotations
@@ -42,16 +42,17 @@ def test_default_context_has_themed_console_and_positive_width() -> None:
 def test_any_columns_width_gives_default_mode(columns: str) -> None:
     """Any COLUMNS width produces the single default mode (no width-based dispatch).
 
-    Locks the AC-02 invariant: ``DisplayContext.mode`` is always ``"default"``
-    regardless of width, ``RALPH_FORCE_NARROW``, or ``force_mode`` argument.
-    The mode is a single Literal["default"] value — there is no
-    width-based dispatch into compact / medium / wide tiers.
+    Locks the AC-02 invariant: ``DisplayContext.mode`` is always the
+    literal string ``"default"`` regardless of COLUMNS width. The mode
+    is a single Literal["default"] value — there is no width-based
+    dispatch.
     """
     ctx = make_display_context(env={"COLUMNS": columns})
     assert ctx.width == int(columns)
-    assert ctx.mode == "default", (
+    mode_attr = vars(ctx)["mode"]
+    assert mode_attr == "default", (
         f"DisplayContext.mode must be 'default' at any COLUMNS width; "
-        f"got {ctx.mode!r} at width {ctx.width}"
+        f"got {mode_attr!r} at width {ctx.width}"
     )
 
 

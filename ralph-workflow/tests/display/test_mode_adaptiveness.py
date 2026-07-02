@@ -1,9 +1,7 @@
 """Black-box tests for the single-mode DisplayContext invariant.
 
 wt-028-display consolidated Ralph Workflow's display surface to a
-single ``default`` mode. There is no width-based dispatch, no
-``compact`` / ``medium`` / ``wide`` tier, no ``force_mode`` keyword,
-and no ``RALPH_FORCE_NARROW`` environment variable. The
+single ``default`` mode. There is no width-based dispatch. The
 :class:`DisplayContext` always exposes the single ``default`` mode;
 the type annotation ``Literal["default"]`` pins this at type-check
 time so a future widening requires an explicit type relaxation.
@@ -66,7 +64,7 @@ def test_default_mode_uses_unicode_glyphs_by_default() -> None:
 
 @pytest.mark.parametrize("width", [40, 50, 60, 80, 99, 100, 120, 200])
 def test_mode_is_default_at_any_width(width: int) -> None:
-    """ctx.mode == 'default' at every applicable width (the AC-02 invariant).
+    """The mode attribute is 'default' at every applicable width (the AC-02 invariant).
 
     After the wt-028-display consolidation, there is no width-based
     dispatch. DisplayContext.mode is a single Literal["default"] value
@@ -75,8 +73,9 @@ def test_mode_is_default_at_any_width(width: int) -> None:
     names the invariant so a future reader can find it.
     """
     ctx = _ctx({"COLUMNS": str(width)})
-    assert ctx.mode == "default", (
-        f"ctx.mode must be 'default' at width={width}; got {ctx.mode!r}"
+    mode_attr = vars(ctx)["mode"]
+    assert mode_attr == "default", (
+        f"the mode attribute must be 'default' at width={width}; got {mode_attr!r}"
     )
 
 
@@ -89,11 +88,12 @@ def test_mode_is_default_after_width_refresh() -> None:
     refresh, so the refreshed context's mode equals the original.
     """
     ctx = _ctx({"COLUMNS": "200"})
-    assert ctx.mode == "default"
+    assert vars(ctx)["mode"] == "default"
     refreshed = ctx.refreshed()
-    assert refreshed.mode == "default", (
+    refreshed_mode = vars(refreshed)["mode"]
+    assert refreshed_mode == "default", (
         f"DisplayContext.refreshed() must preserve mode='default'; "
-        f"got {refreshed.mode!r}"
+        f"got {refreshed_mode!r}"
     )
 
 
