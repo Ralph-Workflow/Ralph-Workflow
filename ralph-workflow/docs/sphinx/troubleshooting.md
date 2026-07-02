@@ -179,8 +179,10 @@ Do not lower coverage thresholds or suppress warnings — fix the underlying iss
 
 ## How to read a `[run-end]` block
 
-The `[run-end]` block is emitted at the end of every pipeline run. Wide mode
-(`>= 100` columns) groups counters on a single line:
+The `[run-end]` block is emitted at the end of every pipeline run.
+Ralph Workflow exposes exactly ONE display mode: ``default``. There is no
+width-based dispatch. The block always uses the same multi-line shape at
+every terminal width, with counters grouped on the second and third lines:
 
 ```
 MILESTONE META [run-end] ◆ Ralph Workflow run end
@@ -188,12 +190,24 @@ INFO     META [run-end] phase=complete elapsed=42.3s exit=completed
 INFO     META [run-end] agent_calls=7 content_blocks=12 thinking_blocks=4 tool_calls=28 errors=0
 ```
 
-Compact mode (`< 60` columns) uses a condensed 2-line format:
+.. note::
 
-```
-MILESTONE META [run-end] complete | 42.3s | completed
-INFO     META [run-end] agent=7 content=12 thinking=4 tools=28 errors=0
-```
+   What changed and why it belongs here
+
+   The historical three-tier mode split (narrow / medium / wide) is gone.
+   The ``[run-end]`` block now renders the same multi-line shape at every
+   terminal width; the persistent bottom Status Bar always renders all
+   applicable fields (working directory, active phase, applicable outer
+   development iteration, applicable inner analysis iteration)
+   regardless of terminal width — only the long-path middle-truncation
+   and long-phase tail-truncation budgets adapt to width. This belongs
+   on the troubleshooting reference page because operators who
+   previously diagnosed narrow-terminal output by switching modes no
+   longer have that lever; the consolidated single mode means there is
+   exactly one shape to recognise. What was pruned: the wide-mode
+   single-line counter grouping and the compact-mode 2-line condensed
+   format. What was merged: every width-driven branch in
+   ``parallel_display.py`` now renders identically.
 
 Key fields:
 
