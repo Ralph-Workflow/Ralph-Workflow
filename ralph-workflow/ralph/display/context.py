@@ -325,7 +325,6 @@ def make_display_context(
     env: Mapping[str, str] | None = None,
     console: Console | None = None,
     force_width: int | None = None,
-    force_mode: object = None,
     force_glyphs: bool | None = None,
 ) -> DisplayContext:
     """Create a DisplayContext with resolved terminal metrics and adaptive limits.
@@ -334,27 +333,11 @@ def make_display_context(
         env: Environment mapping (defaults to os.environ).
         console: Console to use (defaults to make_console() with env-aware color policy).
         force_width: Override terminal width detection.
-        force_mode: REMOVED in wt-028-display. Passing a non-``None`` value
-            raises :class:`NotImplementedError`. The single display mode is
-            always ``'default'``. Pass ``None`` (the default) to suppress
-            the shim.
         force_glyphs: Override glyph detection (True=Unicode, False=ASCII, None=auto-detect).
 
     Returns:
         Fully initialised DisplayContext.
-
-    Raises:
-        NotImplementedError: If ``force_mode`` is supplied as anything
-            other than ``None``. The historical ``compact`` / ``medium`` /
-            ``wide`` modes and the ``force_mode`` override are removed;
-            Ralph uses a single ``default`` display mode.
     """
-    if force_mode is not None:
-        raise NotImplementedError(
-            "force_mode is removed in wt-028-display; "
-            "Ralph now uses a single display mode ('default')."
-        )
-
     env_was_provided = env is not None
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)

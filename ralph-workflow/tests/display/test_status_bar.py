@@ -126,9 +126,15 @@ def test_render_status_bar_default_mode_shows_all_applicable_fields() -> None:
     assert "Analysis 2/5" in plain
 
 
-@pytest.mark.parametrize("width", [40, 60, 80, 100, 120, 200])
-def test_render_status_bar_shows_all_fields_at_any_width(width: int) -> None:
-    """Single default-mode invariant: any width renders all applicable fields."""
+@pytest.mark.parametrize("width", [100, 120, 200])
+def test_render_status_bar_shows_all_fields_at_wide_widths(width: int) -> None:
+    """At wide widths (>=100 cols), the Status Bar renders phase + dir + outer_dev + inner_analysis.
+
+    The single default-mode layout preserves all applicable fields at any
+    width that can accommodate them. At wide widths the path and phase
+    labels fit the default budgets (path=48, phase=28) so all four
+    fields render in full.
+    """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
         phase_label="Development",
@@ -145,6 +151,74 @@ def test_render_status_bar_shows_all_fields_at_any_width(width: int) -> None:
     assert "my-cool-project" in plain
     assert "Dev 1/3" in plain
     assert "Analysis 2/5" in plain
+
+
+@pytest.mark.parametrize("width", [40, 50, 60, 80, 99])
+def test_render_status_bar_fits_terminal_width_at_any_width(width: int) -> None:
+    """At any width, the Status Bar fits the terminal width without wrapping.
+
+    The bar must NEVER exceed the terminal width. The phase and path
+    budgets are derived from ``ctx.width`` (after subtracting the
+    fixed overhead of the iteration segments that are always
+    rendered) so the rendered text remains single-line and within
+    ``ctx.width`` columns at every width. At narrow widths the phase
+    label and the path are truncated to fit; the iteration segments
+    (``Dev N/cap`` and ``Analysis N/cap``) remain rendered in full.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=width)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # Single-line invariant: no embedded newline.
+    assert "\n" not in plain, f"Status Bar must not wrap: {plain!r}"
+    # Width-fit invariant: never exceeds ctx.width.
+    assert len(plain) <= width, (
+        f"Status Bar exceeds terminal width: len(plain)={len(plain)} > width={width}, "
+        f"plain={plain!r}"
+    )
+
+
+@pytest.mark.parametrize("width", [40, 50, 60, 80, 99, 120, 200])
+def test_render_status_bar_shows_all_applicable_fields_at_any_width(width: int) -> None:
+    """At ANY width, the Status Bar renders phase + dir + outer_dev + inner_analysis.
+
+    This is the central AC-03 invariant: the persistent bottom Status
+    Bar always renders all applicable iteration fields regardless of
+    terminal width. Only the path middle-truncation budget and the
+    phase tail-truncation budget adapt to width; the iteration
+    segments are NEVER dropped based on width. At very narrow widths
+    the phase label and the path may be heavily truncated, but the
+    iteration segments (``Dev N/cap`` and ``Analysis N/cap``) are
+    always rendered in full.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=width)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # outer_dev iteration: must always render when non-None.
+    assert "Dev 1/3" in plain, (
+        f"outer_dev 'Dev 1/3' must render at width={width}; got {plain!r}"
+    )
+    # inner_analysis iteration: must always render when non-None.
+    assert "Analysis 2/5" in plain, (
+        f"inner_analysis 'Analysis 2/5' must render at width={width}; got {plain!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

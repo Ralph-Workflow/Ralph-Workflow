@@ -22,10 +22,9 @@ class TestRefreshedPicksUpNewWidth:
     """Test that DisplayContext.refreshed() picks up new terminal sizes."""
 
     def test_refreshed_preserves_default_mode_across_resize(self) -> None:
-        """Calling refreshed() preserves mode='default' across a wide→narrow resize."""
+        """Calling refreshed() preserves the single default mode across a wide→narrow resize."""
         console = Console(width=120, force_terminal=True)
         ctx = make_display_context(console=console, env={})
-        assert ctx.mode == "default"
 
         narrow_width = 40
         with patch.object(
@@ -33,12 +32,11 @@ class TestRefreshedPicksUpNewWidth:
         ):
             refreshed = ctx.refreshed()
 
-        assert refreshed.mode == "default"
         assert refreshed.width == narrow_width
 
-        # Sanity: without resize, refreshed also stays default
+        # Sanity: without resize, refreshed preserves width
         refreshed_still_default = ctx.refreshed()
-        assert refreshed_still_default.mode == "default"
+        assert refreshed_still_default.width == ctx.width
 
     def test_refreshed_preserves_theme_and_color_enabled(self) -> None:
         """refreshed() must preserve theme and color_enabled from the original context."""

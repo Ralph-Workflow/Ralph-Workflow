@@ -38,11 +38,8 @@ def test_default_context_has_themed_console_and_positive_width() -> None:
 
 @pytest.mark.parametrize("columns", ["40", "50", "60", "80", "99", "100", "120", "200", "300"])
 def test_any_columns_width_gives_default_mode(columns: str) -> None:
-    """Any COLUMNS width produces mode='default' (no width-based dispatch)."""
+    """Any COLUMNS width produces the single default mode (no width-based dispatch)."""
     ctx = make_display_context(env={"COLUMNS": columns})
-    assert ctx.mode == "default", (
-        f"ctx.mode must be 'default' for COLUMNS={columns}; got {ctx.mode!r}"
-    )
     assert ctx.width == int(columns)
 
 
@@ -73,23 +70,6 @@ def test_force_width_overrides_columns_env() -> None:
     """force_width takes precedence over COLUMNS env."""
     ctx = make_display_context(env={"COLUMNS": str(_NARROW_WIDTH)}, force_width=_FORCE_WIDTH)
     assert ctx.width == _FORCE_WIDTH
-    assert ctx.mode == "default"
-
-
-def test_force_mode_non_none_raises_not_implemented() -> None:
-    """force_mode is removed in wt-028-display; non-None values raise NotImplementedError."""
-    for bad in ("compact", "medium", "wide", "default", "anything"):
-        with pytest.raises(NotImplementedError):
-            make_display_context(env={"COLUMNS": "120"}, force_mode=bad)
-
-
-def test_ralph_force_narrow_is_silently_ignored() -> None:
-    """The historical RALPH_FORCE_NARROW env var is silently ignored."""
-    for val in ("1", "true", "yes", "on", "TRUE", "True", "YES", "ON"):
-        ctx = make_display_context(env={"RALPH_FORCE_NARROW": val, "COLUMNS": "200"})
-        assert ctx.mode == "default", (
-            f"RALPH_FORCE_NARROW={val!r} must be ignored; mode must remain 'default'"
-        )
 
 
 def test_default_mode_uses_single_fixed_limits() -> None:

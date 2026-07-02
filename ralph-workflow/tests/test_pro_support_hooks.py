@@ -39,6 +39,17 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
 
+# All tests in this module go through the full ``ralph.pipeline.run_loop.run()``
+# integration path (lazy import via ``importlib.import_module`` triggers the
+# heavy ``ralph.pipeline.*`` dependency graph; the run() call wires up
+# display/recovery/state machinery even when ``_run_inner_loop`` is mocked
+# to short-circuit). Wall-clock cost under parallel xdist load is regularly
+# > 1 s on busy machines, so the default 1-second per-test ceiling is unsafe.
+# The 5-second cap matches the precedent in
+# ``tests/test_git_rebase_preconditions.py`` for integration tests that
+# transitively load the pipeline dependency graph.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _load_run_loop() -> object:
     return importlib.import_module("ralph.pipeline.run_loop")

@@ -76,11 +76,16 @@ def _tail_items(
     dropped_count: int,
     include_context_sections: bool,
 ) -> list[Text | Rule]:
+    """Render the tail-section content (error, dropped count, debug breadcrumbs).
+
+    The commit-message rendering is owned exclusively by
+    :func:`_commit_section`; this helper does NOT re-emit commit lines
+    (the prior bug rendered them twice). The PR URL is also rendered
+    in :func:`_commit_section` so it appears next to the commit message
+    when both are present, and independently when only the PR URL is
+    set.
+    """
     items: list[Text | Rule] = []
-    commit_lines = _commit_message_lines(workspace_root)
-    if commit_lines:
-        items.append(Text("COMMIT:"))
-        items.extend(Text(f"  {line}") for line in commit_lines)
     if snapshot.is_terminal_failure:
         items.append(Rule("Error", style=style_for_terminal_failure(pipeline_policy)))
         items.append(Text(f"  {snapshot.last_error}"))
@@ -169,12 +174,24 @@ def _commit_section(
     pipeline_policy: PipelinePolicy | None,
     pr_url: str | None,
 ) -> list[Text | Rule]:
+    """Render the Commit section: commit-message lines plus the PR URL when set.
+
+    The section is rendered when EITHER a commit-message artifact
+    exists OR a ``pr_url`` is supplied. The prior bug returned ``[]``
+    when ``commit_lines`` was empty, dropping the PR URL entirely. The
+    consolidated layout renders the section unconditionally when any
+    signal is present and emits the commit lines / PR URL independently
+    of each other.
+    """
     commit_lines = _commit_message_lines(workspace_root)
-    if not commit_lines:
+    has_pr = pr_url is not None
+    if not commit_lines and not has_pr:
         return []
-    items: list[Text | Rule] = [Rule("Commit", style=style_for_role("terminal", pipeline_policy))]
+    items: list[Text | Rule] = [
+        Rule("Commit", style=style_for_role("terminal", pipeline_policy))
+    ]
     items.extend(Text(f"  {line}") for line in commit_lines)
-    if pr_url is not None:
+    if has_pr:
         items.append(Text(f"  PR: {pr_url}"))
     return items
 

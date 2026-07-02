@@ -18,12 +18,6 @@ Scanned checks:
    lives there) and ``ralph/display/__init__.py`` (which documents the
    single mode in its module docstring).
 
-3. The ``force_mode=`` keyword argument to ``make_display_context``
-   raises :class:`NotImplementedError` when a non-``None`` value is
-   supplied. This is the loud-failure shim that prevents operator
-   scripts which still pass ``force_mode='wide'`` from silently
-   mis-rendering after the consolidation.
-
 The AST cache is populated at module import time so the test runs in
 < 1 s.
 """
@@ -34,8 +28,6 @@ import ast
 from functools import cache, lru_cache
 from pathlib import Path
 from typing import get_args, get_origin
-
-import pytest
 
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.mode import DEFAULT_MODE
@@ -141,18 +133,8 @@ def test_no_compact_medium_wide_branches_in_display_production() -> None:
     )
 
 
-def test_make_display_context_force_mode_raises_not_implemented() -> None:
-    """force_mode keyword raises NotImplementedError for any non-None value."""
-    for bad in ("compact", "medium", "wide", "default", "anything"):
-        with pytest.raises(NotImplementedError):
-            make_display_context(force_mode=bad)
-    # None is the only allowed value (it is the default).
-    ctx = make_display_context(force_mode=None)
-    assert ctx.mode == "default"
-
-
 def test_make_display_context_no_force_mode_kwarg_call_works() -> None:
-    """make_display_context() without force_mode returns a DisplayContext with mode='default'."""
+    """make_display_context() with no extra kwargs returns a DisplayContext with mode='default'."""
     ctx = make_display_context()
     assert ctx.mode == "default"
     assert isinstance(ctx, DisplayContext)

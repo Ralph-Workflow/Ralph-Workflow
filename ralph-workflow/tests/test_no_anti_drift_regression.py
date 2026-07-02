@@ -1228,7 +1228,7 @@ class TestTransportAdaptationIsNarrow:
     checked here.
     """
 
-    NARROW_THRESHOLD = 30
+    NARROW_BODY_LINES_THRESHOLD = 30
 
     def test_transport_adaptation_is_narrow(self) -> None:
         offenders: list[str] = []
@@ -1260,7 +1260,7 @@ class TestTransportAdaptationIsNarrow:
                 if node.end_lineno is None:
                     continue
                 body_lines = node.end_lineno - node.lineno + 1
-                if body_lines > self.NARROW_THRESHOLD:
+                if body_lines > self.NARROW_BODY_LINES_THRESHOLD:
                     offenders.append(f"{path.name}:{node.lineno} {node.name} body={body_lines}")
         assert offenders == [], (
             "Per-transport adapters exceed the 30-line body threshold: "

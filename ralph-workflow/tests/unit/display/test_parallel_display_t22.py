@@ -5,7 +5,6 @@ from queue import Queue
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
@@ -19,32 +18,18 @@ if TYPE_CHECKING:
 
 def test_no_args_constructs_in_non_tty_env() -> None:
     pd = ParallelDisplay(make_display_context())
-    assert pd.mode == "default"
+    assert pd._ctx.width > 0
 
 
 def test_no_args_constructs_in_tty_env() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
-    assert pd.mode == "default"
-
-
-def test_force_mode_compact_raises_not_implemented() -> None:
-    """force_mode is removed; passing a value raises NotImplementedError."""
-    console = Console(force_terminal=False, width=120)
-    with pytest.raises(NotImplementedError):
-        make_display_context(console=console, env={"CI": "1"}, force_mode="compact")
-
-
-def test_force_mode_wide_raises_not_implemented() -> None:
-    console = Console(force_terminal=True, width=200)
-    with pytest.raises(NotImplementedError):
-        make_display_context(console=console, env={}, force_mode="wide")
+    assert pd._ctx.width == 120
 
 
 def test_emit_lines_mode_writes_to_console() -> None:
     console = Console(force_terminal=False, width=120, record=True)
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
-    assert pd.mode == "default"
     pd.emit("u1", "hi from lines mode")
     text = console.export_text()
     assert "hi from lines mode" in text

@@ -32,95 +32,85 @@ def _make_wide_console() -> tuple[Console, StringIO]:
     return console, buf
 
 
-def test_ci_env_does_not_affect_mode() -> None:
+def test_ci_env_does_not_affect_width() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={"CI": "1"})
-    assert ctx.mode == "default"
+    assert ctx.width == 120
 
 
-def test_ci_empty_string_does_not_affect_mode() -> None:
+def test_ci_empty_string_does_not_affect_width() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={"CI": ""})
-    assert ctx.mode == "default"
+    assert ctx.width == 120
 
 
-def test_no_color_env_does_not_affect_mode() -> None:
+def test_no_color_env_does_not_affect_width() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={"NO_COLOR": "1"})
-    assert ctx.mode == "default"
+    assert ctx.width == 120
 
 
-def test_no_color_empty_string_does_not_affect_mode() -> None:
+def test_no_color_empty_string_does_not_affect_width() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={"NO_COLOR": ""})
-    assert ctx.mode == "default"
+    assert ctx.width == 120
 
 
-def test_term_dumb_does_not_affect_mode() -> None:
+def test_term_dumb_does_not_affect_width() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={"TERM": "dumb"})
-    assert ctx.mode == "default"
+    assert ctx.width == 120
 
 
-def test_term_value_does_not_affect_mode() -> None:
+def test_term_value_does_not_affect_width() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={"TERM": "xterm-256color"})
-    assert ctx.mode == "default"
+    assert ctx.width == 120
 
 
-def test_non_terminal_console_does_not_affect_mode() -> None:
+def test_non_terminal_console_preserves_width() -> None:
     console = Console(force_terminal=False, width=120)
     ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "default"
+    assert ctx.width == 120
 
 
-def test_narrow_terminal_returns_default_mode() -> None:
+def test_narrow_terminal_preserves_width() -> None:
     console = Console(force_terminal=True, width=40)
     ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "default"
+    assert ctx.width == 40
 
 
 @pytest.mark.parametrize("width", [40, 60, 80, 99, 100, 120, 200])
-def test_any_terminal_width_returns_default_mode(width: int) -> None:
-    """Single default-mode invariant: any width returns mode='default'."""
+def test_any_terminal_width_preserves_width(width: int) -> None:
+    """Any terminal width is preserved on the DisplayContext."""
     console = Console(force_terminal=True, width=width)
     ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "default"
+    assert ctx.width == width
 
 
-def test_parallel_display_mode_detected_at_init() -> None:
+def test_parallel_display_initializes_with_console() -> None:
     console = Console(force_terminal=True, width=120)
     ctx = make_display_context(console=console, env={})
-    pd = ParallelDisplay(make_display_context(console=console, env={}))
-    assert pd.mode == ctx.mode == "default"
+    pd = ParallelDisplay(ctx)
+    assert pd._ctx is ctx
 
 
-def test_parallel_display_mode_default_when_ci() -> None:
+def test_parallel_display_initializes_with_ci_env() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
-    assert pd.mode == "default"
+    assert pd._ctx.width == 120
 
 
-def test_parallel_display_default_env_uses_default_mode() -> None:
+def test_parallel_display_default_env_preserves_width() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
-    assert pd.mode == "default"
-
-
-def test_parallel_display_mode_frozen_after_init() -> None:
-    console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(make_display_context(console=console, env={}))
-    try:
-        pd.mode = "lines"
-        raise AssertionError("Should have raised AttributeError")
-    except AttributeError:
-        pass
+    assert pd._ctx.width == 120
 
 
 def test_parallel_display_context_manager() -> None:
     console = Console(force_terminal=True, width=120)
     with ParallelDisplay(make_display_context(console=console, env={})) as pd:
-        assert pd.mode == "default"
+        assert pd._ctx.width == 120
 
 
 def test_parallel_display_emit_does_not_raise() -> None:
@@ -156,8 +146,6 @@ def test_parallel_display_start_stop_do_not_raise() -> None:
 def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
     console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
-
-    assert pd.mode == "default"
 
     pd.start()
     try:

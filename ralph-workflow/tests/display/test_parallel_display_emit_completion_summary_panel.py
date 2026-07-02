@@ -14,9 +14,12 @@ finish in < 0.5 s.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import sys
 from datetime import UTC, datetime
 from io import StringIO
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 
@@ -24,6 +27,9 @@ from ralph.display.completion_summary import CompletionSummaryOptions
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_snapshot(
@@ -174,4 +180,114 @@ def test_emit_completion_summary_panel_quiet_mode_still_renders() -> None:
     output = buf.getvalue()
     assert "Pipeline Complete" in output, (
         f"quiet mode must still render the completion panel; got: {output!r}"
+    )
+
+
+# --- Regression tests for the wt-028-display review feedback ---
+
+
+def test_emit_completion_panel_does_not_duplicate_commit_subject(tmp_path: Path) -> None:
+    """The commit subject is rendered ONCE in the completion panel, not duplicated.
+
+    The prior bug rendered the commit message lines in BOTH
+    ``_commit_section`` AND ``_tail_items``, producing two copies of the
+    subject line. The consolidated single default-mode layout renders
+    the commit output in ``_commit_section`` only.
+    """
+    artifacts = tmp_path / ".agent" / "tmp"
+    artifacts.mkdir(parents=True)
+    (artifacts / "commit_message.json").write_text(
+        json.dumps(
+            {
+                "name": "commit_message",
+                "type": "commit_message",
+                "content": {
+                    "type": "commit",
+                    "subject": "feat(display): surface polished completion output",
+                    "body_summary": "Show the final commit message in the completion summary.",
+                },
+                "created_at": "STATIC",
+                "updated_at": "STATIC",
+                "metadata": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    pd, buf = _display(force_terminal=True)
+    pd.emit_completion_summary_panel(
+        _make_snapshot(),
+        options=CompletionSummaryOptions(workspace_root=tmp_path),
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert (
+        output.count("feat(display): surface polished completion output") == 1
+    ), (
+        f"commit subject must appear exactly once in completion panel; got "
+        f"{output.count('feat(display): surface polished completion output')} copies: {output!r}"
+    )
+
+
+def test_emit_completion_panel_pr_url_without_commit_artifact(tmp_path: Path) -> None:
+    """PR URL is rendered even when no commit-message artifact exists.
+
+    The prior bug returned early in ``_commit_section`` when
+    ``commit_lines`` was empty, dropping the ``pr_url`` line entirely.
+    The consolidated layout renders the PR URL independently of whether
+    a commit artifact is present.
+    """
+    pd, buf = _display(force_terminal=True)
+    snap = _make_snapshot()  # _make_snapshot sets pr_url=None; override
+    snap_with_pr = dataclasses.replace(snap, pr_url="https://example.com/pr/42")
+    pd.emit_completion_summary_panel(
+        snap_with_pr,
+        options=CompletionSummaryOptions(workspace_root=tmp_path),
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert "PR:" in output, (
+        f"PR URL must render even when no commit artifact exists; got: {output!r}"
+    )
+    assert "https://example.com/pr/42" in output, (
+        f"PR URL value must render even when no commit artifact exists; got: {output!r}"
+    )
+
+
+def test_emit_completion_panel_pr_url_with_commit_artifact(tmp_path: Path) -> None:
+    """PR URL is rendered alongside the commit-message artifact in the same section."""
+    artifacts = tmp_path / ".agent" / "tmp"
+    artifacts.mkdir(parents=True)
+    (artifacts / "commit_message.json").write_text(
+        json.dumps(
+            {
+                "name": "commit_message",
+                "type": "commit_message",
+                "content": {
+                    "type": "commit",
+                    "subject": "feat(display): surface polished completion output",
+                    "body_summary": "Show the final commit message in the completion summary.",
+                },
+                "created_at": "STATIC",
+                "updated_at": "STATIC",
+                "metadata": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    pd, buf = _display(force_terminal=True)
+    snap = _make_snapshot()
+    snap_with_pr = dataclasses.replace(snap, pr_url="https://example.com/pr/42")
+    pd.emit_completion_summary_panel(
+        snap_with_pr,
+        options=CompletionSummaryOptions(workspace_root=tmp_path),
+    )
+    pd.stop()
+    output = buf.getvalue()
+    assert "https://example.com/pr/42" in output
+    assert "feat(display): surface polished completion output" in output
+    assert output.count("https://example.com/pr/42") == 1, (
+        f"PR URL must appear exactly once in completion panel; got "
+        f"{output.count('https://example.com/pr/42')} copies: {output!r}"
     )

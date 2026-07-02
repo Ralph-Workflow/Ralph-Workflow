@@ -97,7 +97,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -1323,10 +1323,6 @@ class ParallelDisplay:
     @property
     def activity_router(self) -> ActivityRouter:
         return self._activity_router
-
-    @property
-    def mode(self) -> Literal["default"]:
-        return self._ctx.mode
 
     @property
     def subscriber(self) -> PipelineSubscriber:

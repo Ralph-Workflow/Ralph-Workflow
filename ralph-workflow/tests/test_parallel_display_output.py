@@ -24,7 +24,6 @@ def test_default_mode_emit_strips_rich_markup() -> None:
     pd = ParallelDisplay(
         make_display_context(console=console, env={"CI": "1"})
     )
-    assert pd.mode == "default"
     pd.emit("unit-1", "[green]hello[/green]")
     text = buf.getvalue()
     assert "hello" in text

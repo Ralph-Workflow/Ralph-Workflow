@@ -32,52 +32,23 @@ _WIDE_TEST_WIDTH = 200
 
 
 @pytest.mark.parametrize("width", [40, 60, 80, 100, 120, 200])
-def test_default_mode_for_any_width(width: int) -> None:
-    """Single default-mode invariant: any width returns mode='default'."""
+def test_width_is_preserved_for_any_input_width(width: int) -> None:
+    """Single default-mode invariant: input width is preserved on the context."""
     console = Console(width=width, force_terminal=True)
     ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "default"
-
-
-def test_ralph_force_narrow_env_is_ignored() -> None:
-    """The historical RALPH_FORCE_NARROW env var is silently ignored."""
-    console = Console(width=200, force_terminal=True)
-    ctx = make_display_context(console=console, env={"RALPH_FORCE_NARROW": "1"})
-    assert ctx.mode == "default"
-
-
-def test_ralph_force_narrow_true_is_ignored() -> None:
-    console = Console(width=200, force_terminal=True)
-    ctx = make_display_context(console=console, env={"RALPH_FORCE_NARROW": "true"})
-    assert ctx.mode == "default"
-
-
-def test_ralph_force_narrow_zero_is_ignored() -> None:
-    """RALPH_FORCE_NARROW has no effect (no truthy/falsy distinction post-consolidation)."""
-    console = Console(width=200, force_terminal=True)
-    ctx = make_display_context(console=console, env={"RALPH_FORCE_NARROW": "0"})
-    assert ctx.mode == "default"
-
-
-def test_force_mode_compact_raises_not_implemented() -> None:
-    """force_mode='compact' raises NotImplementedError after consolidation."""
-    console = Console(width=200, force_terminal=True)
-    with pytest.raises(NotImplementedError):
-        make_display_context(console=console, env={}, force_mode="compact")
+    assert ctx.width == width
 
 
 def test_force_width_overrides_console_width() -> None:
     console = Console(width=120, force_terminal=True)
     ctx = make_display_context(console=console, env={}, force_width=_NARROW_TEST_WIDTH)
     assert ctx.width == _NARROW_TEST_WIDTH
-    assert ctx.mode == "default"
 
 
 def test_columns_env_overrides_console_width() -> None:
     console = Console(width=120, force_terminal=True)
     ctx = make_display_context(console=console, env={"COLUMNS": str(_NARROW_TEST_WIDTH)})
     assert ctx.width == _NARROW_TEST_WIDTH
-    assert ctx.mode == "default"
 
 
 def test_force_width_takes_precedence_over_columns_env() -> None:
@@ -86,7 +57,6 @@ def test_force_width_takes_precedence_over_columns_env() -> None:
         console=console, env={"COLUMNS": str(_NARROW_TEST_WIDTH)}, force_width=_WIDE_TEST_WIDTH
     )
     assert ctx.width == _WIDE_TEST_WIDTH
-    assert ctx.mode == "default"
 
 
 def test_no_color_env_disables_color() -> None:
