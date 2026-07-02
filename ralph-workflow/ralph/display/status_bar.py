@@ -198,20 +198,16 @@ def render_status_bar(
     text.append(path_display, style="theme.status.path")
     if mode == "compact":
         return text
-    text.append(separator)
-    text.append(ctx.glyph_for("outer_dev") + " ", style="theme.outer_dev")
     if model.outer_dev_iteration is not None:
+        text.append(separator)
+        text.append(ctx.glyph_for("outer_dev") + " ", style="theme.outer_dev")
         text.append(format_dev_cycle(model.outer_dev_iteration, model.outer_dev_cap))
-    else:
-        text.append("--")
     if mode == "medium":
         return text
-    text.append(separator)
-    text.append(ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis")
     if model.inner_analysis is not None:
+        text.append(separator)
+        text.append(ctx.glyph_for("inner_analysis") + " ", style="theme.inner_analysis")
         text.append(format_analysis_cycle(model.inner_analysis, model.inner_analysis_cap))
-    else:
-        text.append("--")
     return text
 
 
@@ -295,6 +291,10 @@ class StatusBar:
         No-op when the real-TTY gate is closed (non-tty console, redirected
         output, StringIO test console, quiet mode), or when a Live region
         is already active. Idempotent.
+
+        The Live region is constructed with ``get_renderable=self._renderable``
+        so each refresh tick re-reads the latest model — the initial
+        ``renderable`` argument is only the first-frame content.
         """
         if not self._gate():
             return
@@ -307,6 +307,7 @@ class StatusBar:
                 transient=_STATUS_BAR_TRANSIENT,
                 refresh_per_second=_STATUS_BAR_REFRESH_PER_SECOND,
                 screen=False,
+                get_renderable=self._renderable,
             )
             self._live.start()
 
@@ -320,9 +321,18 @@ class StatusBar:
             live.stop()
 
     def update(self, model: StatusBarModel) -> None:
-        """Store ``model`` so the next Live refresh picks it up.
+        """Store ``model`` and force an immediate Live refresh.
 
-        Safe to call before :meth:`start`. Thread-safe under :attr:`_lock`.
+        Safe to call before :meth:`start` (the model is stored and the
+        next :meth:`start` constructs the Live region with the latest
+        renderable). Thread-safe under :attr:`_lock`. When the Live
+        region is active, an explicit ``refresh()`` is invoked so the
+        new model appears in the rendered output deterministically
+        (without waiting for the next 4 Hz refresh tick).
         """
         with self._lock:
             self._model = model
+        live = self._live
+        if live is not None:
+            with contextlib.suppress(Exception):
+                live.refresh()

@@ -54,6 +54,20 @@ def _plain_text(text: Text) -> str:
     return text.plain
 
 
+class _TtyLikeStringIO(io.StringIO):
+    """An in-memory buffer that reports ``isatty() is True``.
+
+    Used to test the real-TTY branch of the StatusBar gate (the
+    ``console.is_terminal AND console.file.isatty()`` conjunct) without
+    requiring an actual pseudo-tty. This is the same shape of tty-like
+    StringIO used in the analysis feedback's runtime repro that exposed
+    the live-update bug.
+    """
+
+    def isatty(self) -> bool:
+        return True
+
+
 def _make_display_context(
     *,
     width: int,
@@ -205,6 +219,98 @@ def test_render_status_bar_none_inner_analysis_omits_analysis_segment() -> None:
     assert "Development" in plain
     assert "Dev 1/3" in plain
     assert "Analysis" not in plain
+
+
+# ---------------------------------------------------------------------------
+# render_status_bar — placeholder omission (whole segment, not just label)
+# ---------------------------------------------------------------------------
+
+
+def test_render_status_bar_no_dash_placeholder_when_outer_dev_is_none() -> None:
+    """When outer_dev_iteration is None, the rendered text contains NO '--' placeholder.
+
+    The whole outer_dev segment (glyph + iteration field) must be omitted — not
+    rendered as a glyph + '--' stub. This pins the AC-02 omission contract.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Commit",
+        phase_style="theme.phase.commit",
+        outer_dev_iteration=None,
+        outer_dev_cap=None,
+        inner_analysis=None,
+        inner_analysis_cap=None,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # No '--' placeholder anywhere in the rendered output.
+    assert "--" not in plain, f"Status bar must not render '--' placeholders; got {plain!r}"
+    # Neither outer_dev glyph (Unicode '◎' or ASCII '[OD]') should appear.
+    assert "◎" not in plain, (
+        f"outer_dev Unicode glyph must be absent when iteration is None; got {plain!r}"
+    )
+    assert "[OD]" not in plain, (
+        f"outer_dev ASCII glyph must be absent when iteration is None; got {plain!r}"
+    )
+
+
+def test_render_status_bar_no_dash_placeholder_when_inner_analysis_is_none() -> None:
+    """When inner_analysis is None, the rendered text contains NO '--' placeholder."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=None,
+        inner_analysis_cap=None,
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # The outer_dev field is present, the inner_analysis field is not.
+    assert "Dev 1/3" in plain
+    assert "--" not in plain, f"Status bar must not render '--' placeholders; got {plain!r}"
+    # Neither inner_analysis glyph (Unicode '▸' or ASCII '[IA]') should appear.
+    assert "▸" not in plain, (
+        f"inner_analysis Unicode glyph must be absent when iteration is None; got {plain!r}"
+    )
+    assert "[IA]" not in plain, (
+        f"inner_analysis ASCII glyph must be absent when iteration is None; got {plain!r}"
+    )
+
+
+def test_render_status_bar_no_dash_placeholder_in_compact_mode() -> None:
+    """In compact mode (no iteration fields rendered), no '--' placeholder appears."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Commit",
+        phase_style="theme.phase.commit",
+        outer_dev_iteration=None,
+        inner_analysis=None,
+    )
+    ctx = _make_display_context(width=40)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "--" not in plain
+
+
+def test_render_status_bar_no_dash_placeholder_in_ascii_mode() -> None:
+    """In ASCII glyph mode, omitted iteration fields leave NO '[OD] --' or '[IA] --' stub."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label="Commit",
+        phase_style="theme.phase.commit",
+        outer_dev_iteration=None,
+        inner_analysis=None,
+    )
+    ctx = _make_display_context(width=140, ascii_glyphs=True)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "[OD]" not in plain
+    assert "[IA]" not in plain
+    assert "--" not in plain
 
 
 # ---------------------------------------------------------------------------
@@ -689,6 +795,127 @@ def test_status_bar_clean_buffer_under_flow() -> None:
     assert out.count("\x1b[?1049l") == 0 and out.count("\x1b[?1049h") == 0, (
         f"unexpected alt-screen toggle in non-tty output: {out!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# StatusBar lifecycle — tty-like stream surfaces the live-rendered model
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_live_region_renders_updated_model_on_tty_like_stream() -> None:
+    """On a tty-like stream (isatty()=True), start+update+stop renders the model.
+
+    The gate is open on a tty-like StringIO because both
+    ``console.is_terminal`` and ``console.file.isatty()`` are True. The Live
+    region is started; ``update(model)`` stores the model and forces an
+    immediate refresh; ``stop()`` tears down the Live region. The captured
+    buffer must contain both the phase label AND the iteration text
+    (proving the live-update path actually surfaces the model).
+    """
+    buf = _TtyLikeStringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        width=120,
+        color_system="standard",
+    )
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    # Sanity: gate is open on this tty-like stream.
+    assert console.is_terminal is True
+    assert console.file.isatty() is True
+    sb.start()
+    try:
+        assert sb.is_active is True, (
+            "StatusBar.start() must construct a Live region on a tty-like stream "
+            "(both console.is_terminal and console.file.isatty() are True)."
+        )
+        sb.update(
+            StatusBarModel(
+                workspace_root="/Users/alice/code/proj",
+                phase_label="Development",
+                phase_style="theme.phase.development",
+                outer_dev_iteration=1,
+                outer_dev_cap=3,
+            )
+        )
+    finally:
+        sb.stop()
+    out = buf.getvalue()
+    assert "Development" in out, (
+        f"Live region must surface the phase label 'Development'; got {out!r}"
+    )
+    assert "Dev 1/3" in out, (
+        f"Live region must surface the iteration label 'Dev 1/3'; got {out!r}"
+    )
+
+
+def test_status_bar_live_region_renders_phase_only_when_no_iteration() -> None:
+    """Tty-like stream with outer_dev_iteration=None renders phase but no '--' placeholder."""
+    buf = _TtyLikeStringIO()
+    console = Console(file=buf, force_terminal=True, width=120, color_system="standard")
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    sb.start()
+    try:
+        assert sb.is_active is True
+        sb.update(
+            StatusBarModel(
+                workspace_root="/Users/alice/code/proj",
+                phase_label="Commit",
+                phase_style="theme.phase.commit",
+                outer_dev_iteration=None,
+                inner_analysis=None,
+            )
+        )
+    finally:
+        sb.stop()
+    out = buf.getvalue()
+    assert "Commit" in out, (
+        f"Live region must surface the phase label 'Commit'; got {out!r}"
+    )
+    # No placeholder for the omitted iteration fields.
+    assert "--" not in out, (
+        f"Live region must not render a '--' placeholder for omitted iteration; got {out!r}"
+    )
+
+
+def test_status_bar_live_region_renders_with_outer_dev_only() -> None:
+    """Tty-like stream with outer_dev set and inner_analysis=None: medium-ish width check.
+
+    The 120-col tty-like stream falls in 'wide' mode (>=100 cols), so the
+    inner_analysis field would normally render. With inner_analysis=None
+    the field is OMITTED entirely (no glyph, no '--' stub, no separator
+    before it). The outer_dev field IS rendered.
+    """
+    buf = _TtyLikeStringIO()
+    console = Console(file=buf, force_terminal=True, width=120, color_system="standard")
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    sb.start()
+    try:
+        assert sb.is_active is True
+        sb.update(
+            StatusBarModel(
+                workspace_root="/Users/alice/code/proj",
+                phase_label="Development",
+                phase_style="theme.phase.development",
+                outer_dev_iteration=2,
+                outer_dev_cap=5,
+                inner_analysis=None,
+                inner_analysis_cap=None,
+            )
+        )
+    finally:
+        sb.stop()
+    out = buf.getvalue()
+    assert "Development" in out
+    assert "Dev 2/5" in out
+    assert "Analysis" not in out
+    assert "--" not in out
 
 
 # ---------------------------------------------------------------------------
