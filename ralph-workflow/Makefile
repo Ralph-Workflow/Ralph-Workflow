@@ -313,6 +313,7 @@ verify-drift:
 	      echo "drift: ralph/ uses a RALPH_* env var outside the canonical three" >&2; \
 	      exit 1; \
 	    fi; \
+	  bash "$(abspath scripts/wt028-drift-check.sh)"; \
 	  echo "verify-drift: OK"'
 
 policy-loader-smoke:

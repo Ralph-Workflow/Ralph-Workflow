@@ -196,17 +196,23 @@ INFO     META [run-end] agent_calls=7 content_blocks=12 thinking_blocks=4 tool_c
 
    The historical three-tier mode split (narrow / medium / wide) is gone.
    The ``[run-end]`` block now renders the same multi-line shape at every
-   terminal width; the persistent bottom Status Bar always renders all
-   applicable fields (working directory, active phase, applicable outer
-   development iteration, applicable inner analysis iteration)
-   regardless of terminal width — only the long-path middle-truncation
-   and long-phase tail-truncation budgets adapt to width. This belongs
-   on the troubleshooting reference page because operators who
-   previously diagnosed narrow-terminal output by switching modes no
-   longer have that lever; the consolidated single mode means there is
-   exactly one shape to recognise. What was pruned: the wide-mode
-   single-line counter grouping and the compact-mode 2-line condensed
-   format. What was merged: every width-driven branch in
+   terminal width; the persistent bottom Status Bar renders all applicable
+   fields (working directory, active phase, applicable outer development
+   iteration, applicable inner analysis iteration) at every terminal width
+   where they fit. At widths >= 40 cols the canonical ``Dev N/cap`` /
+   ``Analysis N/cap`` labels render in full and only path
+   middle-truncation and phase tail-truncation budgets adapt to width.
+   Below 40 cols the implementation may degrade to compact
+   (``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit.
+   Below 14 cols the iteration segments drop one at a time (outer_dev
+   first, then inner_analysis, then both) so the bar never overflows the
+   working area; phase and path remain visible at every applicable
+   width. This belongs on the troubleshooting reference page because
+   operators who previously diagnosed narrow-terminal output by switching
+   modes no longer have that lever; the consolidated single mode means
+   there is exactly one shape to recognise. What was pruned: the
+   wide-mode single-line counter grouping and the compact-mode 2-line
+   condensed format. What was merged: every width-driven branch in
    ``parallel_display.py`` now renders identically.
 
 Key fields:

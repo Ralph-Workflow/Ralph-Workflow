@@ -307,10 +307,16 @@ Display mode (single default)
 
 Ralph Workflow exposes exactly ONE display mode: ``default``. There is no
 width-based dispatch and no per-mode limits table. The persistent bottom
-Status Bar always renders all applicable fields (working directory, active
-phase, applicable outer development iteration, applicable inner analysis
-iteration) regardless of terminal width — only the long-path
-middle-truncation and long-phase tail-truncation budgets adapt to width.
+Status Bar renders all applicable fields (working directory, active phase,
+applicable outer development iteration, applicable inner analysis
+iteration) at every terminal width where they fit. At widths >= 40 cols
+the canonical ``Dev N/cap`` / ``Analysis N/cap`` labels render in full and
+only path middle-truncation and phase tail-truncation budgets adapt to
+width. Below 40 cols the implementation may degrade to compact
+(``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below
+14 cols the iteration segments drop one at a time (outer_dev first, then
+inner_analysis, then both) so the bar never overflows the working area;
+phase and path remain visible at every applicable width.
 
 .. note::
 
@@ -319,12 +325,17 @@ middle-truncation and long-phase tail-truncation budgets adapt to width.
    The historical three-tier mode split (narrow / medium / wide), the
    legacy env-var override, and the three-tier mode limits table were
    collapsed into a single ``default`` mode. The persistent bottom
-   Status Bar always renders all applicable fields (working directory,
-   active phase, applicable outer development iteration, applicable
-   inner analysis iteration) regardless of terminal width — only the
-   long-path middle-truncation and long-phase tail-truncation budgets
-   adapt to width. This belongs on the operator-facing reference page
-   because operators who relied on the legacy override need to know the
+   Status Bar renders all applicable fields at every terminal width
+   where they fit. At widths >= 40 cols the canonical ``Dev N/cap`` /
+   ``Analysis N/cap`` labels render in full and only path
+   middle-truncation and phase tail-truncation adapt to width. Below
+   40 cols the implementation may degrade to compact (``D1/3`` /
+   ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below 14
+   cols the iteration segments drop one at a time (outer_dev first,
+   then inner_analysis, then both) so the bar never overflows the
+   working area; phase and path remain visible at every applicable
+   width. This belongs on the operator-facing reference page because
+   operators who relied on the legacy override need to know the
    public API has changed; the consolidated single mode is one clear
    surface to learn instead of three. What was pruned: the mode
    thresholds table, the legacy env-var precedence row. What was
@@ -336,8 +347,14 @@ The single default-mode layout:
 - Renders ``[phase]`` / ``[run-start]`` / ``[run-end]`` / ``[run-completion]``
   section rules unconditionally.
 - Renders the full Status Bar fields (phase + dir + outer_dev +
-  inner_analysis) at every width (only path/label truncation adapts to
-  width).
+  inner_analysis) at every terminal width where they fit. At widths
+  >= 40 cols the canonical ``Dev N/cap`` / ``Analysis N/cap`` iteration
+  labels always render in full and only path middle-truncation and
+  phase tail-truncation adapt to width. Below 40 cols the
+  implementation may degrade to compact / minimal forms to fit. Below
+  14 cols the iteration segments drop one at a time so the bar never
+  overflows the working area; phase and path remain visible at every
+  applicable width.
 - Always emits section rules around phase-close banners and completion
   panels.
 

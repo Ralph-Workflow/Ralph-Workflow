@@ -37,10 +37,16 @@ show_phase_start("planning", display_context=ctx)
 
 Ralph Workflow exposes exactly ONE display mode: ``default``. There is no
 width-based dispatch and no per-mode limits table. The persistent bottom
-Status Bar always renders all applicable fields (working directory, active
-phase, applicable outer development iteration, applicable inner analysis
-iteration) regardless of terminal width — only the long-path
-middle-truncation and long-phase tail-truncation budgets adapt to width.
+Status Bar renders all applicable fields (working directory, active phase,
+applicable outer development iteration, applicable inner analysis
+iteration) at every terminal width where they fit. At widths >= 40 cols
+the canonical ``Dev N/cap`` / ``Analysis N/cap`` labels render in full and
+only path middle-truncation and phase tail-truncation budgets adapt to
+width. Below 40 cols the implementation may degrade to compact
+(``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``) forms to fit. Below
+14 cols the iteration segments drop one at a time (outer_dev first, then
+inner_analysis, then both) so the bar never overflows the working area;
+phase and path remain visible at every applicable width.
 
 The historical env-var override that selected a narrower mode is silently
 ignored.
@@ -142,8 +148,15 @@ captured transcript stays clean for machine parsers and post-run review.
 
 **Width-aware truncation**
 
-The bar is mode-agnostic: it always renders every applicable field described above,
-regardless of terminal width. Width only influences two truncation budgets:
+The bar is mode-agnostic: it renders every applicable field described above
+at every terminal width where they fit. At widths >= 40 cols the canonical
+``Dev N/cap`` / ``Analysis N/cap`` labels render in full. Below 40 cols the
+implementation may degrade to compact (``D1/3`` / ``A2/5``) or minimal
+(``1/3`` / ``2/5``) forms to fit. Below 14 cols the iteration segments drop
+one at a time (outer_dev first, then inner_analysis, then both) so the bar
+never overflows the working area; phase and path remain visible at every
+applicable width. Width only influences path middle-truncation and phase
+tail-truncation budgets in addition:
 
 - Long paths are middle-truncated (preserve first 8 chars + ellipsis + last segment) to
   fit within `DEFAULT_PATH_BUDGET = 48` chars.
