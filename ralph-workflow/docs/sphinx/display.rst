@@ -6,9 +6,17 @@
        (narrow / medium / wide), the legacy narrow-mode env-var
        override, and the three-tier mode limits table into a single
        ``default`` display mode. The persistent bottom Status Bar now
-       always renders all applicable fields (working directory, active
-       phase, applicable outer development iteration, applicable inner
-       analysis iteration) regardless of terminal width.
+       renders all applicable fields (working directory, active phase,
+       applicable outer development iteration, applicable inner analysis
+       iteration) at every terminal width where they fit. At widths >=
+       40 cols the canonical ``Dev N/cap`` / ``Analysis N/cap`` labels
+       render in full and only path middle-truncation and phase
+       tail-truncation budgets adapt to width. Below 40 cols the
+       implementation may degrade to compact (``D1/3`` / ``A2/5``) or
+       minimal (``1/3`` / ``2/5``) forms to fit. Below 14 cols the
+       iteration segments drop one at a time (outer_dev first, then
+       inner_analysis, then both) so the bar never overflows the working
+       area; phase and path remain visible at every applicable width.
      - Why it belongs here: this is the operator-facing display reference
        page (DisplayContext / ParallelDisplay ownership surface).
        Operators who relied on the legacy override need to know the
