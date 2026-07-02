@@ -105,16 +105,26 @@ _ELLIPSIS_LEN: int = len(_ELLIPSIS)
 _MIN_BUDGET: int = _ELLIPSIS_LEN + 1
 
 # Canonical label widths (full form: ``Dev 1/3`` / ``Analysis 2/5``).
-_OUTER_DEV_LABEL_MAX_CHARS: int = 13
-_INNER_ANALYSIS_LABEL_MAX_CHARS: int = 17
+# These reflect the WORST-CASE actual label length with multi-digit
+# caps (e.g. ``Dev 99/999`` is 10 chars; ``Analysis 99/999`` is 14
+# chars). The budget allocator reserves exactly these widths, so the
+# canonical form fits even at the narrowest AC-03 width (40 cols)
+# where the label MUST render (only path/phase truncation adapts to
+# width — the AC-03 invariant).
+_OUTER_DEV_LABEL_MAX_CHARS: int = 10
+_INNER_ANALYSIS_LABEL_MAX_CHARS: int = 14
 # Compact label widths (D1/3 / A2/5).
 _OUTER_DEV_LABEL_COMPACT_MAX_CHARS: int = 4
 _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS: int = 4
 # Minimal label widths (1/3 / 2/5; no prefix).
 _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS: int = 4
 _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS: int = 4
-# Threshold at and above which the canonical (full) label form is honored.
-_WIDE_DEFAULT_BUDGET_THRESHOLD: int = 120
+# Threshold at and above which the canonical (full) label form is
+# always honored regardless of how much phase/path truncation is
+# needed. Below this threshold the implementation may degrade to
+# compact/minimal forms when canonical labels cannot fit alongside
+# phase + path at the terminal width.
+_CANONICAL_FIT_THRESHOLD: int = 40
 
 
 @dataclass(frozen=True)
@@ -245,10 +255,17 @@ class _FieldBudgets:
 
     The single default-mode Status Bar always renders phase + dir +
     (any applicable outer_dev) + (any applicable inner_analysis).
-    At very narrow widths the iteration labels degrade from canonical
-    (``Dev 1/3`` / ``Analysis 2/5``) through compact (``D1/3`` /
-    ``A2/5``) to minimal (``1/3`` / ``2/5``) forms so the bar fits
-    the terminal width without dropping the iteration fields.
+
+    AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40
+    cols) the iteration label form is ALWAYS the canonical
+    (``Dev 1/3`` / ``Analysis 2/5``) form regardless of how much
+    phase/path truncation is needed. Only path middle-truncation and
+    phase tail-truncation budgets adapt to width at those widths.
+
+    Below ``_CANONICAL_FIT_THRESHOLD`` the implementation may degrade
+    to compact (``D1/3`` / ``A2/5``) or minimal (``1/3`` / ``2/5``)
+    forms when canonical labels cannot fit alongside phase + path at
+    the terminal width.
 
     The phase and path budgets adapt to whatever space remains after
     the iteration segments are sized, so the rendered text always
@@ -276,15 +293,24 @@ def _field_overhead_and_label_budgets(
 ) -> _FieldBudgets:
     """Derive width-aware budgets that always fit ``ctx.width``.
 
+    AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40 cols)
+    the iteration label form is ALWAYS canonical (``Dev N/cap`` /
+    ``Analysis N/cap``); only path middle-truncation and phase
+    tail-truncation budgets adapt to width. Below the threshold the
+    implementation may degrade to compact (``D1/3`` / ``A2/5``) or
+    minimal (``1/3`` / ``2/5``) forms to fit the bar at very narrow
+    widths.
+
     Iteration segments are ALWAYS present (in canonical / compact /
     minimal form) when the model fields are non-``None``. The function
     picks the most descriptive layout that fits ``ctx.width``:
 
-    1. At widths ``>= _WIDE_DEFAULT_BUDGET_THRESHOLD`` the canonical
-       ``Dev N/cap`` / ``Analysis N/cap`` labels render in full with
-       the marker and per-iteration glyphs.
-    2. Below the wide threshold, the compact form (``D1/3`` / ``A2/5``)
-       is used when it fits.
+    1. At widths ``>= _CANONICAL_FIT_THRESHOLD`` the canonical
+       ``Dev N/cap`` / ``Analysis N/cap`` labels ALWAYS render in full
+       with the marker and per-iteration glyphs (phase/path truncate
+       to absorb any remaining width pressure).
+    2. Below the canonical-fit threshold, the compact form
+       (``D1/3`` / ``A2/5``) is used when it fits.
     3. Below the compact threshold, the minimal form (``1/3`` / ``2/5``)
        is used when it fits.
     4. Below the minimal-with-marker threshold, the phase_marker is

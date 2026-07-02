@@ -13,6 +13,8 @@ from io import StringIO
 import pytest
 from rich.console import Console
 
+from ralph.display import _mode_adaptive_limits as limits_module
+from ralph.display import context as context_module
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 
@@ -38,9 +40,44 @@ def test_default_context_has_themed_console_and_positive_width() -> None:
 
 @pytest.mark.parametrize("columns", ["40", "50", "60", "80", "99", "100", "120", "200", "300"])
 def test_any_columns_width_gives_default_mode(columns: str) -> None:
-    """Any COLUMNS width produces the single default mode (no width-based dispatch)."""
+    """Any COLUMNS width produces the single default mode (no width-based dispatch).
+
+    Locks the AC-02 invariant: ``DisplayContext.mode`` is always ``"default"``
+    regardless of width, ``RALPH_FORCE_NARROW``, or ``force_mode`` argument.
+    The mode is a single Literal["default"] value — there is no
+    width-based dispatch into compact / medium / wide tiers.
+    """
     ctx = make_display_context(env={"COLUMNS": columns})
     assert ctx.width == int(columns)
+    assert ctx.mode == "default", (
+        f"DisplayContext.mode must be 'default' at any COLUMNS width; "
+        f"got {ctx.mode!r} at width {ctx.width}"
+    )
+
+
+@pytest.mark.parametrize("columns", ["40", "50", "60", "80", "99", "100", "120", "200", "300"])
+def test_any_columns_width_adaptive_limits_are_constant(columns: str) -> None:
+    """All COLUMNS widths share the same fixed adaptive limits.
+
+    After the wt-028-display consolidation, ``_DEFAULT_LIMITS`` is the
+    single constant owned by ``ralph/display/_mode_adaptive_limits.py``
+    and consumed by ``ralph/display/context.py``. The width-independent
+    invariant means a single display mode has a single set of limits.
+    """
+    ctx = make_display_context(env={"COLUMNS": columns})
+    assert ctx.headline_max_chars == 120
+    assert ctx.condenser_soft_limit == 400
+    assert ctx.condenser_hard_limit == 4000
+    assert ctx.thinking_preview_min_chars == 80
+    assert ctx.tool_result_headline_min_chars == 80
+
+
+def test_default_limits_owner_is_mode_adaptive_limits_module() -> None:
+    """_DEFAULT_LIMITS lives in ralph.display._mode_adaptive_limits (single owner)."""
+    assert limits_module._DEFAULT_LIMITS is context_module._DEFAULT_LIMITS, (
+        "_DEFAULT_LIMITS must be a single shared object identity owned by "
+        "ralph.display._mode_adaptive_limits and consumed by ralph.display.context."
+    )
 
 
 def test_no_color_env_disables_color() -> None:

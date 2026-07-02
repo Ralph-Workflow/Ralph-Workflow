@@ -15,16 +15,15 @@ from rich.console import Console
 
 from ralph.display import DisplayContext as DisplayContextExport
 from ralph.display import make_display_context as make_display_context_export
-from ralph.display.context import (
+from ralph.display._mode_adaptive_limits import (
     CONDENSER_HARD_LIMIT,
     CONDENSER_SOFT_LIMIT,
     HEADLINE_MAX_CHARS,
     STREAMING_CHECKPOINT_CHARS,
     THINKING_PREVIEW_MIN_CHARS,
     TOOL_RESULT_HEADLINE_MIN_CHARS,
-    DisplayContext,
-    make_display_context,
 )
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 
 _NARROW_TEST_WIDTH = 40

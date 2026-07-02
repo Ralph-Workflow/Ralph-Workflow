@@ -24,7 +24,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal, cast
 
-from ralph.display._mode_adaptive_limits import _ModeAdaptiveLimits
+from ralph.display._mode_adaptive_limits import _DEFAULT_LIMITS
 from ralph.display._resolved_env import _ResolvedEnv
 from ralph.display.mode import DEFAULT_MODE
 from ralph.display.theme import (
@@ -41,29 +41,12 @@ if TYPE_CHECKING:
     from rich.console import Console
     from rich.theme import Theme
 
-HEADLINE_MAX_CHARS: Final[int] = 120
-CONDENSER_SOFT_LIMIT: Final[int] = 400
-CONDENSER_HARD_LIMIT: Final[int] = 4000
-STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
-THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
-TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
-
 _STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
 
 _STREAMING_DEDUP_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 _STREAMING_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
-
-
-_DEFAULT_LIMITS: Final[_ModeAdaptiveLimits] = _ModeAdaptiveLimits(
-    headline_max_chars=HEADLINE_MAX_CHARS,
-    condenser_soft_limit=CONDENSER_SOFT_LIMIT,
-    condenser_hard_limit=CONDENSER_HARD_LIMIT,
-    streaming_checkpoint_chars=STREAMING_CHECKPOINT_CHARS,
-    thinking_preview_min_chars=THINKING_PREVIEW_MIN_CHARS,
-    tool_result_headline_min_chars=TOOL_RESULT_HEADLINE_MIN_CHARS,
-)
 
 
 def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:

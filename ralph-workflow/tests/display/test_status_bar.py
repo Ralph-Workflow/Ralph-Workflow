@@ -240,6 +240,61 @@ def test_render_status_bar_shows_all_applicable_fields_at_any_width(width: int) 
     )
 
 
+@pytest.mark.parametrize("width", [40, 50, 60, 80, 99, 120, 200])
+def test_render_status_bar_canonical_iteration_labels_at_ac03_widths(width: int) -> None:
+    """AC-03 invariant: at widths >= 40 cols, iteration labels are ALWAYS canonical.
+
+    Locks the AC-03 invariant at widths 40/50/60/80/99/120/200 cols: the
+    rendered Status Bar contains the FULL canonical iteration labels
+    (``Dev 1/3`` and ``Analysis 2/5``) regardless of how much phase/path
+    truncation is needed. The only width-driven difference across these
+    widths is path middle-truncation and phase tail-truncation; the
+    iteration label FORM is identical (canonical). Below 40 cols the
+    implementation may degrade to compact/minimal forms to fit the bar.
+
+    This is the regression test that locks the analysis-feedback fix:
+    previously at width=40 the bar used compact labels (``D1/3`` /
+    ``A2/5``), violating AC-03's identical-rendering invariant.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-very-long-project-directory-name/subdir",
+        phase_label="Development Analysis",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=width)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # Canonical form is required at every width >= 40.
+    assert "Dev 1/3" in plain, (
+        f"AC-03: 'Dev 1/3' must render in canonical form at width={width}; "
+        f"got {plain!r}"
+    )
+    assert "Analysis 2/5" in plain, (
+        f"AC-03: 'Analysis 2/5' must render in canonical form at width={width}; "
+        f"got {plain!r}"
+    )
+    # No compact or minimal label forms at AC-03 widths.
+    assert "D1/3" not in plain, (
+        f"AC-03: compact 'D1/3' must NOT appear at width={width}; got {plain!r}"
+    )
+    assert "A2/5" not in plain, (
+        f"AC-03: compact 'A2/5' must NOT appear at width={width}; got {plain!r}"
+    )
+    # Width-fit invariant.
+    assert len(plain) <= width, (
+        f"AC-03: rendered bar exceeds width at width={width}; "
+        f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
+    )
+    # Single-line invariant.
+    assert "\n" not in plain, (
+        f"AC-03: rendered bar must be single-line at width={width}; got {plain!r}"
+    )
+
+
 @pytest.mark.parametrize("width", [14, 15, 20, 24, 30, 40, 50, 60, 80, 100, 120])
 def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width: int) -> None:
     """Status Bar fits ``ctx.width`` even with long inputs at narrow terminals.

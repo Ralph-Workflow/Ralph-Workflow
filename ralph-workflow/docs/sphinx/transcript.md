@@ -76,11 +76,13 @@ A width refresher is installed at pipeline start via `install_width_refresher()`
 the terminal is resized:
 
 1. The refresher calls `DisplayContext.refreshed()` which re-reads the current terminal
-   width and recomputes mode and adaptive limits.
+   width while preserving the fixed `default` display mode and fixed adaptive limits
+   (the single mode invariant: width refresh only mutates `width`).
 2. Renderers that buffer adaptive limits (e.g., `PlainLogRenderer`) refresh their context
    at phase boundaries via `flush_blocks()`.
 3. The runner keeps its live display object and nested plain renderer synced with the
-   refreshed context, so later banners and summaries render with the new mode.
+   refreshed context, so later banners and summaries render against the refreshed width
+   inside the same single `default` mode.
 
 On POSIX systems (Linux, macOS) when called from the main thread, the refresher installs
 a `SIGWINCH` signal handler. On Windows, or when called from a non-main thread, a
