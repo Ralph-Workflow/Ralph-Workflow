@@ -41,6 +41,10 @@ and open a fresh `[Unreleased]`.
 
 ## [Unreleased]
 
+### Added
+
+- **feat(display): add persistent bottom Status Bar showing working directory, active phase, and applicable outer development / inner analysis iterations during interactive runs** — commits `0ea756476`, `2d19483d1`, `666661755`, `ac8013e0a`, `c27b2a933`. Locks behavior in `tests/display/test_status_bar.py`.
+
 ### Changed
 
 - **feat(watchdog): close wt-021 with consolidated Trustworthy Idle Watchdog acceptance-criteria test** — commits `2a4aaf9cd`, `4ddd85613`, `1bc186c8e`, `1c3d4a2de`. Locks behavior in `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`.
