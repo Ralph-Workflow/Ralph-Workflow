@@ -133,3 +133,83 @@ def test_emit_warn_line_renders_message_verbatim() -> None:
     assert "the system is on fire" in output, (
         f"warn line missing message body: {output!r}"
     )
+
+
+def test_emit_warn_line_strips_newlines_from_unit_id() -> None:
+    """Embedded newlines in unit_id are stripped so the line layout stays intact.
+
+    Display-bound user-controlled text must not be able to split the
+    rendered transcript line. A newline inside ``unit_id`` would
+    otherwise surface the rest of the line under the wrong badge
+    (or under no badge at all) and let an attacker or a buggy
+    caller hide payload fragments behind the level/category header.
+    """
+    pd, buf = _make_display()
+    pd.emit_warn_line("unit\nBREAK", "warn", "hello")
+    pd.stop()
+    output = buf.getvalue()
+    content_lines = output.rstrip("\n").split("\n")
+    assert len(content_lines) == 1, (
+        f"unit_id newline must not split the rendered line; got {content_lines!r}"
+    )
+    assert "unit BREAK" in content_lines[0], (
+        f"embedded newline must be replaced with a space: {content_lines!r}"
+    )
+    assert "[warn][unit BREAK]" in content_lines[0], (
+        f"sanitized tag must surround the sanitized unit_id: {content_lines!r}"
+    )
+
+
+def test_emit_warn_line_strips_newlines_from_message() -> None:
+    """Embedded newlines in message are stripped so the line layout stays intact."""
+    pd, buf = _make_display()
+    pd.emit_warn_line("unit-1", "warn", "msg\nLINE2\nINJECT")
+    pd.stop()
+    output = buf.getvalue()
+    content_lines = output.rstrip("\n").split("\n")
+    assert len(content_lines) == 1, (
+        f"message newlines must not split the rendered line; got {content_lines!r}"
+    )
+    assert "msg LINE2 INJECT" in content_lines[0], (
+        f"embedded newlines in message must be replaced with spaces: "
+        f"{content_lines!r}"
+    )
+
+
+def test_emit_warn_line_strips_ansi_escapes_from_message_and_unit_id() -> None:
+    """Raw ANSI escape sequences are stripped before being rendered.
+
+    Without sanitization, an ANSI escape sequence embedded in the
+    message or unit_id would inject color/cursor-control codes into
+    the user's terminal scrollback. The transcript must stay free of
+    raw control sequences so it is copy-paste safe and so a hostile
+    caller cannot change the rendered line colour.
+    """
+    pd, buf = _make_display()
+    pd.emit_warn_line("u\x1b[31m1", "warn", "boom\x1b[0m ok")
+    pd.stop()
+    output = buf.getvalue()
+    assert "\x1b" not in output, (
+        f"raw ANSI escape must not appear in captured output: {output!r}"
+    )
+    assert "u1" in output, (
+        f"sanitized unit_id 'u1' (ANSI stripped) must remain: {output!r}"
+    )
+    assert "boom ok" in output, (
+        f"sanitized message 'boom ok' (ANSI stripped) must remain: {output!r}"
+    )
+
+
+def test_emit_warn_line_strips_newlines_from_tag() -> None:
+    """Embedded newlines in the tag are stripped so the bracket tag stays on one line."""
+    pd, buf = _make_display()
+    pd.emit_warn_line("unit-1", "warn\nTAG", "hello")
+    pd.stop()
+    output = buf.getvalue()
+    content_lines = output.rstrip("\n").split("\n")
+    assert len(content_lines) == 1, (
+        f"tag newline must not split the rendered line; got {content_lines!r}"
+    )
+    assert "[warn TAG]" in content_lines[0], (
+        f"sanitized tag must surround the rest of the tag text: {content_lines!r}"
+    )

@@ -145,7 +145,7 @@ from ralph.timeout_defaults import (
 _MODELED_FLAG_PARTS = 2
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
     from pathlib import Path
 
     from ralph.agents.timeout_clock import Clock
@@ -174,6 +174,10 @@ def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
 def _start_workspace_monitor(
     workspace_path: Path | None,
     classifier: WorkspaceChangeClassifier | None = None,
+    *,
+    factory: Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None = (
+        None
+    ),
 ) -> WorkspaceMonitor | None:
     """Start workspace monitoring if path provided.
 
@@ -188,9 +192,24 @@ def _start_workspace_monitor(
             ``on_event`` callback fires; events with weight ``1.0``
             are passed to the callback together with their
             ``(kind, weight)`` tuple.
+        factory: Optional callable used in place of the real
+            ``WorkspaceMonitor`` constructor. When provided, the
+            factory is invoked with the same positional and keyword
+            arguments the production code would pass to
+            ``WorkspaceMonitor``; the returned ``WorkspaceMonitor``
+            (or ``None`` to skip monitoring) is then started and
+            returned. This seam lets routing-only unit tests inject
+            a no-op factory so they do not block on the real
+            watchdog observer's ``start`` / ``stop`` cost.
     """
     if workspace_path is None:
         return None
+    if factory is not None:
+        monitor = factory(workspace_path, classifier)
+        if monitor is None:
+            return None
+        monitor.start()
+        return monitor
     monitor = WorkspaceMonitor(workspace_path, classifier=classifier)
     monitor.start()
     return monitor
@@ -377,6 +396,7 @@ def invoke_agent(
             )
             if opts.workspace_path is not None
             else None,
+            factory=opts.workspace_monitor_factory,
         )
         policy = _policy_from_options(opts)
 

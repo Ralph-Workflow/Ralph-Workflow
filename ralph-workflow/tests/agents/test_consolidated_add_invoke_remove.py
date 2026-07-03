@@ -94,7 +94,15 @@ def test_consolidated_headless_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
         agent_registry=default_registry,
         interactive=False,
     )
-    options = InvokeOptions(workspace_path=tmp_path, show_progress=False)
+    options = InvokeOptions(
+        workspace_path=tmp_path,
+        show_progress=False,
+        # Skip the real WorkspaceMonitor watchdog observer: this test
+        # only exercises the consolidated add/invoke/remove flow, so
+        # the observer's start/stop cost would otherwise eat the
+        # 1-second per-test budget on a slow machine.
+        workspace_monitor_factory=lambda *args, **kwargs: None,
+    )
     res = list(invoke_agent(support.config, str(prompt_file), options=options))
     assert "sub line" in res
     assert len(sub_called) == 1

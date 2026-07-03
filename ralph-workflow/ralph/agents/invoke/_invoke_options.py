@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.agents.idle_watchdog import SubagentPidRegistry, WaitingStatusListener
+    from ralph.agents.invoke._workspace import WorkspaceMonitor
+    from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import SubagentPidSource
 
@@ -17,6 +19,20 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class InvokeOptions:
     """Options for agent invocation."""
+
+    # Optional workspace-monitor factory. Production callers leave this
+    # ``None`` so :mod:`ralph.agents.invoke` constructs the real
+    # ``WorkspaceMonitor`` (which starts a real watchdog observer).
+    # Tests that only exercise routing / dispatch behavior inject a
+    # factory that returns ``None`` (skip the observer entirely) or a
+    # fake monitor so they do not block on the real watchdog observer's
+    # ``start`` / ``stop`` cost under the 1-second per-test timeout
+    # enforced by ``tests/conftest.py``. The factory signature mirrors
+    # :func:`ralph.agents.invoke._start_workspace_monitor` so callers
+    # can pass a thin ``lambda *args, **kwargs: None`` shortcut.
+    workspace_monitor_factory: Callable[
+        [Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None
+    ] | None = None
 
     model_flag: str | None = None
     session_id: str | None = None

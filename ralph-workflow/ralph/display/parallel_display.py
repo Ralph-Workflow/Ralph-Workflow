@@ -183,11 +183,44 @@ _MAX_STREAMING_FRAGMENTS: int = 2048
 _MIN_COALESCE_REPEAT = 2
 
 
+def _strip_control_chars_for_render(text: str) -> str:
+    """Strip control characters and ANSI escape sequences that could break the transcript.
+
+    Display-bound text is rendered into the live transcript with a fixed
+    badge contract (``[LEVEL] [CAT] [tag][unit_id] body``). A newline in
+    ``unit_id`` or in ``message`` would split the rendered line and let
+    the next fragment hide under the wrong badge; a raw control sequence
+    could also inject into the user's scrollback. This helper collapses
+    CRLF to LF, then removes every control character and ANSI escape
+    (the same contract as :func:`_sanitize`, but applied to text that is
+    NOT expected to contain legitimate markup, so it is safe to also
+    strip embedded newlines and tabs).
+
+    Args:
+        text: Arbitrary user-controlled string destined for a transcript
+            line. May contain ``\\n`` / ``\\r`` / ``\\x1b`` / ``\\x00`` etc.
+
+    Returns:
+        A safe string with no embedded newlines, tabs, or control
+        sequences. The visible content is preserved so the user still
+        sees the meaningful payload.
+    """
+    return _sanitize(text).replace("\n", " ").replace("\t", " ")
+
+
 def _render_unit_id(unit_id: str) -> str:
-    """Bound visible unit ids so prefixes cannot hide the activity payload."""
-    if len(unit_id) <= _MAX_RENDERED_UNIT_ID_CHARS:
-        return unit_id
-    return f"{unit_id[: _MAX_RENDERED_UNIT_ID_CHARS - 3]}..."
+    """Bound visible unit ids so prefixes cannot hide the activity payload.
+
+    Display-bound ``unit_id`` strings are sanitized first: embedded
+    newlines, tabs, ANSI escapes, and other control characters are
+    removed or replaced with spaces so a malicious or malformed unit id
+    cannot break the transcript line layout or inject control sequences
+    into the user's scrollback.
+    """
+    sanitized = _strip_control_chars_for_render(unit_id)
+    if len(sanitized) <= _MAX_RENDERED_UNIT_ID_CHARS:
+        return sanitized
+    return f"{sanitized[: _MAX_RENDERED_UNIT_ID_CHARS - 3]}..."
 
 
 # ASCII banner art inlined from the deleted ralph.banner module so
@@ -649,16 +682,26 @@ class ParallelDisplay:
         )
 
     def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
-        """Emit a WARN META line for a specific tag."""
+        """Emit a WARN META line for a specific tag.
+
+        Both ``tag`` and ``message`` are display-bound user-controlled
+        strings. They are sanitized for control characters, embedded
+        newlines, and ANSI escapes before being interpolated into the
+        fixed-format line so a malformed or hostile caller cannot break
+        the transcript line layout or inject control sequences into the
+        user's scrollback.
+        """
         timestamp = self._format_timestamp(self._clock())
         cat = TAG_CATEGORY.get(tag, "META")
         rendered_unit_id = _render_unit_id(unit_id)
+        sanitized_tag = _strip_control_chars_for_render(tag)
+        sanitized_message = _strip_control_chars_for_render(message)
         self._console.print(
             self._build_line(
                 timestamp,
                 "WARN",
                 cat,
-                f"[{tag}][{rendered_unit_id}] {message}",
+                f"[{sanitized_tag}][{rendered_unit_id}] {sanitized_message}",
             ),
             markup=False,
             highlight=False,

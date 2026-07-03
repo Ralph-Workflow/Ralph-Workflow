@@ -158,7 +158,16 @@ def test_invoke_agent_does_not_invent_transcript_session_id_on_fresh_interactive
         invoke_module.invoke_agent(
             config,
             str(prompt_file),
-            options=InvokeOptions(workspace_path=tmp_path, show_progress=False),
+            options=InvokeOptions(
+                workspace_path=tmp_path,
+                show_progress=False,
+                # Skip the real WorkspaceMonitor watchdog observer:
+                # this test only exercises routing / session-id
+                # behaviour, so the observer's start/stop cost would
+                # otherwise eat the 1-second per-test budget on a slow
+                # machine.
+                workspace_monitor_factory=lambda *args, **kwargs: None,
+            ),
         )
     )
 

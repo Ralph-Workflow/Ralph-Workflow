@@ -95,6 +95,21 @@ def test_emit_log_line_sanitizes_ansi_sequences() -> None:
     )
 
 
+def test_emit_log_line_strips_newlines_from_unit_id() -> None:
+    """Embedded newlines in unit_id are stripped so the line layout stays intact."""
+    pd, buf = _make_display()
+    pd.emit_log_line("unit\nBREAK", "hello world")
+    pd.stop()
+    output = buf.getvalue()
+    content_lines = output.rstrip("\n").split("\n")
+    assert len(content_lines) == 1, (
+        f"unit_id newline must not split the rendered line; got {content_lines!r}"
+    )
+    assert "[unit BREAK]" in content_lines[0], (
+        f"sanitized unit_id must replace newline with space: {content_lines!r}"
+    )
+
+
 def test_emit_log_line_quiet_mode_produces_empty_buffer() -> None:
     """``emit_log_line`` is a no-op when ``is_quiet=True`` (black-box contract).
 

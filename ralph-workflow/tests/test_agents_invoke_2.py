@@ -963,8 +963,9 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
     def _spy_start_workspace_monitor(
         workspace_path: Path | None,
         classifier: object | None = None,
+        **kwargs: object,
     ) -> None:
-        captured_calls.append(((workspace_path,), {"classifier": classifier}))
+        captured_calls.append(((workspace_path,), {"classifier": classifier, **kwargs}))
 
     monkeypatch.setattr(
         "ralph.agents.invoke._start_workspace_monitor",

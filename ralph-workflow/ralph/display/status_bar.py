@@ -719,10 +719,13 @@ class StatusBar:
     """Lifecycle owner for the persistent bottom Status Bar.
 
     The StatusBar is composed by :class:`ralph.display.parallel_display.ParallelDisplay`
-    and reachable via ``pd.status_bar``. It exposes ``update(model)`` as the
-    single push-side surface; reads happen via ``last_model``. The ``start()``
+    and reachable via ``pd.status_bar``. The public push-side surface is
+    :meth:`ralph.display.parallel_display.ParallelDisplay.update_status_bar`
+    (callers invoke ``display.update_status_bar(model)``); ``StatusBar.update(model)``
+    is the *internal storage seam* the public method forwards into so the
+    Live region picks the model up on its next refresh tick. The ``start()``
     and ``stop()`` methods are wired through ParallelDisplay's own
-    ``start()`` / ``stop()`` lifecycle.
+    ``start()`` / ``stop()`` lifecycle. Reads happen via ``last_model``.
 
     Attributes:
         _display: Same-package reference to the owning ParallelDisplay instance.
@@ -826,6 +829,11 @@ class StatusBar:
 
     def update(self, model: StatusBarModel) -> None:
         """Store ``model`` for the Live region to pick up on its next refresh tick.
+
+        This is the internal storage seam the public push-side surface
+        :meth:`ralph.display.parallel_display.ParallelDisplay.update_status_bar`
+        forwards into. Callers should NOT invoke ``status_bar.update(model)``
+        directly; the consolidated contract is ``display.update_status_bar(model)``.
 
         The update itself is intentionally a pure store: it does NOT force
         an immediate ``live.refresh()``. The persistent footer is owned by
