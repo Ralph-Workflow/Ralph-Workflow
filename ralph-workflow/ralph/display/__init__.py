@@ -10,8 +10,8 @@ views used by CLI diagnostics and listing commands.
    adaptive character limits. No renderer may construct its own ``rich.Console``.
 
    **Single display owner:** ``ParallelDisplay`` is the single source of truth
-   for all user-facing display logic in Ralph Workflow. All 37 consolidated
-   ``emit_*`` methods (36 instance methods on ``ParallelDisplay`` plus the
+   for all user-facing display logic in Ralph Workflow. All 42 consolidated
+   ``emit_*`` methods (41 instance methods on ``ParallelDisplay`` plus the
    module-level ``emit_activity_line``) own every banner, table, panel, and
    one-shot status surface. The legacy ``ralph.display.phase_banner``,
    ``ralph.display.artifact_renderer``, ``ralph.display.first_run_panel``,
@@ -136,12 +136,19 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
 )
+from ralph.display.status_bar import (
+    StatusBar,
+    StatusBarModel,
+    render_status_bar,
+)
 
 __all__ = [
     "DisplayContext",
     "ParallelDisplay",
     "PhaseIterationContext",
     "RunStartOrientation",
+    "StatusBar",
+    "StatusBarModel",
     "build_default_display_legacy_bridge",
     "emit_activity_line",
     "format_analysis_cycle",
@@ -151,6 +158,7 @@ __all__ = [
     "install_width_refresher",
     "make_display_context",
     "phase_style_for_phase",
+    "render_status_bar",
     "resolve_active_display",
     "resolve_display",
     "status_text",

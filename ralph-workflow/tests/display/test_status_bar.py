@@ -17,7 +17,7 @@ runs. This file pins the contract:
 - Run-loop wiring uses 1-indexed ``outer_dev_iteration`` semantics from
   ``PhaseEntryModel`` (completed+1), not the snapshot's completed count.
 - ``ParallelDisplay`` composes the StatusBar; ``update_status_bar`` is the
-  public surface (outside the frozen 36-name ``emit_*`` set).
+  public surface (outside the one-shot emit_* surface).
 """
 
 from __future__ import annotations
@@ -1284,7 +1284,7 @@ def test_parallel_display_composes_status_bar() -> None:
 
 
 def test_parallel_display_has_update_status_bar_method() -> None:
-    """ParallelDisplay exposes an update_status_bar(model) method (outside the 36-name set)."""
+    """ParallelDisplay exposes update_status_bar(model); not in the one-shot set."""
     ctx = make_display_context(
         console=Console(file=io.StringIO(), width=120),
         env={},

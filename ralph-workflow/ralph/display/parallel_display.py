@@ -1,12 +1,12 @@
 """Parallel display adapter: always emit log-first, copy-paste-safe transcript lines.
 
 wt-007-consolidate-display: All display logic is consolidated onto this class.
-Thirty-seven instance methods (plus the module-level ``emit_activity_line``)
+Forty-one instance methods (plus the module-level ``emit_activity_line``)
 own every user-facing banner, table, panel, and status surface. Error
 messages route through the existing ``emit_warning`` method with
 ``theme.status.error`` styling; no separate ``emit_error`` method exists.
 
-The 37 consolidated names (run lifecycle / phase banners / artifact
+The 41 consolidated names (run lifecycle / phase banners / artifact
 renderers / tables and panels / status and warnings / first-run and
 welcome / helpers):
 
@@ -479,10 +479,10 @@ class ParallelDisplay:
         )
 
         # Persistent bottom Status Bar — composed owner for run-level layout,
-        # color, spacing, truncation, and live-update behavior. The 36-name
-        # emit_* set (see ``_PARALLEL_DISPLAY_36_NAMES`` in the drift-prevention
-        # test) remains the canonical one-shot surface; the StatusBar is the
-        # single owner of the persistent footer lifecycle.
+        # color, spacing, truncation, and live-update behavior. The canonical
+        # emit_* set (see ``_PARALLEL_DISPLAY_ALL_NAMES`` in the drift-prevention
+        # test) is the single source of truth for the one-shot surface; the
+        # StatusBar is the single owner of the persistent footer lifecycle.
         from ralph.display.status_bar import StatusBar
 
         self._status_bar: StatusBar = StatusBar(self)
@@ -614,6 +614,11 @@ class ParallelDisplay:
         )
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
+        """Emit a per-unit raw-log line routed through emit_activity_line with kind=raw.
+
+        The line is sanitized, timestamped with the configured clock, and
+        rendered with the standard INFO/META badge contract.
+        """
         self.emit_activity_line(unit_id, "raw", line)
 
     def emit_status_line(self, unit_id: str, status: str) -> None:
@@ -632,22 +637,6 @@ class ParallelDisplay:
             highlight=False,
             no_wrap=False,
             overflow="fold",
-        )
-
-    def emit_artifact(self, kind: str, summary: str) -> None:
-        """Emit an artifact summary line for copy-paste-safe transcripts."""
-        timestamp = self._format_timestamp(self._clock())
-        sanitized_summary = _sanitize(summary)
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[artifact] kind={kind} summary={sanitized_summary}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
         )
 
     def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
@@ -1162,6 +1151,12 @@ class ParallelDisplay:
         return texts
 
     def emit_snapshot(self, snapshot: PipelineSnapshot) -> None:
+        """Sink for PipelineSubscriber snapshot events.
+
+        The constructor wires on_snapshot=self.emit_snapshot. A snapshot
+        becomes a series of INFO/META lines tagged with the snapshot's
+        unit_id and the originating worker's metadata.
+        """
         for text in self._snapshot_texts(snapshot):
             self._console.print(text, markup=False, highlight=False, no_wrap=True)
 
@@ -1346,7 +1341,7 @@ class ParallelDisplay:
     def update_status_bar(self, model: object) -> None:
         """Push a new :class:`StatusBarModel` to the composed StatusBar.
 
-        Outside the frozen 36-name ``emit_*`` set; reachable through
+        Outside the one-shot emit_* surface; reachable through
         ``ParallelDisplay``. No-op when the bar is inactive (the model is
         still stored so the next render can pick it up).
         """
@@ -1409,6 +1404,12 @@ class ParallelDisplay:
         decision: str,
         reason: str | None = None,
     ) -> None:
+        """Emit the analysis-cycle result line.
+
+        Composed of an INFO/META header and a body that names the phase,
+        decision, and optional reason; the style is decided by the
+        phase_style_for_phase helper.
+        """
         with contextlib.suppress(Exception):
             self._subscriber.record_analysis(phase, decision, reason)
 
@@ -1816,9 +1817,9 @@ class ParallelDisplay:
     ) -> None:
         """Emit the end-of-run completion summary panel.
 
-        This is the 37th consolidated emit_* method (intentionally outside
-        the frozen 36-name set in
-        ``tests/display/test_parallel_display_drift_prevention.py``).
+        This is one of the consolidated emit_* methods on the class;
+        the canonical set lives in
+        ``tests/display/test_parallel_display_drift_prevention.py``.
         The 2-segment ``[run-completion]`` section tag is intentionally
         a companion to ``[run-end]``: ``[run-end]`` is the one-line
         run-stop recap emitted before this method; ``[run-completion]``

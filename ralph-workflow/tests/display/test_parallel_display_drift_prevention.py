@@ -182,7 +182,7 @@ def test_emit_welcome_banner_rejects_console_parameter() -> None:
     )
 
 
-_PARALLEL_DISPLAY_36_NAMES = {
+_PARALLEL_DISPLAY_ALL_NAMES = {
     # 27 pre-existing instance methods (verified before step 2).
     "emit_parsed_event",
     "emit_analysis_result",
@@ -211,7 +211,7 @@ _PARALLEL_DISPLAY_36_NAMES = {
     "emit_warning",
     "emit_skill_failure_warning",
     "emit_fallback_next_steps",
-    # 8 new names added by the consolidation.
+    # 9 new names added by the consolidation.
     "emit_metrics_table",
     "emit_checkpoint_summary_table",
     "emit_diagnose_inventory_table",
@@ -221,23 +221,47 @@ _PARALLEL_DISPLAY_36_NAMES = {
     "emit_blank_line",
     "emit_dry_run_summary",
     "emit_renderable",
+    # 6 new names added by step 5 of the wt-028-display plan (raw-log
+    # helpers + completion panel promoted to canonical members).
+    "emit_log_line",
+    "emit_status_line",
+    "emit_warn_line",
+    "emit_snapshot",
+    "emit_completion_summary_panel",
 }
 
 
-def test_parallel_display_exposes_all_36_emit_methods() -> None:
-    """Pin wt-007: ParallelDisplay has all 36 emit_* method names.
+def test_parallel_display_exposes_exact_41_emit_methods() -> None:
+    """Pin wt-028-display: ParallelDisplay has all 41 emit_* method names.
 
-    Uses :func:`inspect.getmembers` to enumerate the canonical 36-name
-    set. PA-001 fix: NO emit_error is included; error messages use
+    Uses :func:`inspect.getmembers` to enumerate the canonical set and
+    asserts exact set equality with ``_PARALLEL_DISPLAY_ALL_NAMES``.
+    The exact-equality assertion is stricter than the prior subset
+    check: it captures every drift (added method OR removed method)
+    instead of silently tolerating either direction.
+
+    PA-001 fix: NO emit_error is included; error messages use
     the existing ``emit_warning`` method with theme.status.error
     styling. The test explicitly asserts all 6 pre-existing methods
     that were present in the baseline so a future regression that
     renames or removes one of those 6 would be flagged.
     """
-    members = {name for name, _ in inspect.getmembers(ParallelDisplay)}
-    missing = _PARALLEL_DISPLAY_36_NAMES - members
-    assert not missing, (
-        f"ParallelDisplay is missing canonical 36-name set members: {sorted(missing)!r}"
+    members = {
+        name for name, _ in inspect.getmembers(ParallelDisplay) if name.startswith("emit_")
+    }
+    # emit_activity_line is the module-level activity helper that ALSO appears
+    # as an instance method; the canonical set excludes it because the count
+    # of "consolidated instance methods" treats it as a one-shot helper, not
+    # a Consolidated Display surface member.
+    instance_only = members - {"emit_activity_line"}
+    diff = instance_only ^ _PARALLEL_DISPLAY_ALL_NAMES
+    members_only = sorted(diff & instance_only)
+    canonical_only = sorted(diff & _PARALLEL_DISPLAY_ALL_NAMES)
+    assert instance_only == _PARALLEL_DISPLAY_ALL_NAMES, (
+        "ParallelDisplay instance emit_* set must equal the canonical "
+        f"_PARALLEL_DISPLAY_ALL_NAMES set of {len(_PARALLEL_DISPLAY_ALL_NAMES)} "
+        f"names. members - canonical = {members_only!r}; "
+        f"canonical - members = {canonical_only!r}."
     )
     explicit_pins = {
         "emit_parsed_event",

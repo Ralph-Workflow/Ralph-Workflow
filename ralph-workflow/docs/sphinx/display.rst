@@ -99,7 +99,7 @@ exactly one module (``ralph/display/parallel_display.py`` or
    * - :func:`~ralph.display.parallel_display.strip_markup`
      - ``ralph/display/parallel_display.py``
 
-The 36 consolidated ``emit_*`` methods on ``ParallelDisplay`` (35
+The 42 consolidated ``emit_*`` methods on ``ParallelDisplay`` (41
 instance methods + the module-level ``emit_activity_line``) own every
 user-facing banner, table, panel, and status surface. They are grouped
 by surface below.

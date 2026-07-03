@@ -1605,21 +1605,21 @@ class TestNoExcludedEmitMethod:
 
         Matches both top-level module-scope and function-scope imports
         of the form ``from ralph.display.parallel_display import emit_xxx``
-        where ``emit_xxx`` is a name in the canonical 36-method instance
+        where ``emit_xxx`` is a name in the canonical 42-name instance
         set (single-sourced from
-        ``tests.display.test_parallel_display_drift_prevention._PARALLEL_DISPLAY_36_NAMES``).
+        ``tests.display.test_parallel_display_drift_prevention._PARALLEL_DISPLAY_ALL_NAMES``).
         The module-level ``emit_activity_line`` is exempt because it is
-        the legitimate free-function helper (1 name; the 36 are
-        instance methods). Callers must use the public re-export
+        the legitimate free-function helper (42 names are instance
+        methods). Callers must use the public re-export
         surface ``from ralph.display import ParallelDisplay`` and call
         ``display.emit_xxx`` instead.
         """
-        # Single-source the canonical 36 instance-method names so this
+        # Single-source the canonical 42 instance-method names so this
         # test never drifts from the authoritative surface.
         drift_module = importlib.import_module(
             "tests.display.test_parallel_display_drift_prevention"
         )
-        canonical_36: frozenset[str] = frozenset(drift_module._PARALLEL_DISPLAY_36_NAMES)
+        canonical_all: frozenset[str] = frozenset(drift_module._PARALLEL_DISPLAY_ALL_NAMES)
         offenders: list[str] = []
         for path in _emission_target_files():
             try:
@@ -1632,7 +1632,7 @@ class TestNoExcludedEmitMethod:
                 if node.module != "ralph.display.parallel_display":
                     continue
                 for alias in node.names:
-                    if alias.name in canonical_36:
+                    if alias.name in canonical_all:
                         offenders.extend(
                             [
                                 (

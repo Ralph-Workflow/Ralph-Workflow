@@ -172,7 +172,7 @@ external-monitor widths without changing which fields render.
 The Status Bar owns run-level layout, color, spacing, alignment, truncation, and
 live-update behavior. The bar is composed by `ParallelDisplay` (reachable as
 `pd.status_bar` and updated via `pd.update_status_bar(model)`); it is **outside** the
-canonical 36-name `emit_*` set because it is a persistent live region with a
+canonical one-shot `emit_*` surface because it is a persistent live region with a
 start/stop lifecycle rather than a one-shot surface.
 
 The Live region renders at a steady, deliberate cadence:

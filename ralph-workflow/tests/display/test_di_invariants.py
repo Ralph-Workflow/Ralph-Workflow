@@ -26,7 +26,6 @@ import ast
 import importlib
 import inspect
 import io
-import re
 import tokenize
 from functools import cache, lru_cache
 from pathlib import Path
@@ -500,7 +499,9 @@ def test_no_free_function_imports_in_cli_or_pipeline() -> None:
 
 # ---------------------------------------------------------------------------
 # wt-007 closing pass: every emit_* method has at least one black-box test
-# reference; the canonical 36-name set is the single source of truth.
+# reference; the canonical emit_* set (42 names, single-sourced from
+# tests.display.test_parallel_display_drift_prevention._PARALLEL_DISPLAY_ALL_NAMES)
+# is the single source of truth.
 # ---------------------------------------------------------------------------
 
 
@@ -510,7 +511,7 @@ def _test_parallel_display_files() -> tuple[Path, ...]:
 
     Broadened glob (vs. just ``test_parallel_display_emit_*.py``) so that
     references in ``test_parallel_display_drift_prevention.py`` (which
-    enumerates the 36-name set) and ``test_parallel_display_visual_hierarchy.py``
+    enumerates the canonical set) and ``test_parallel_display_visual_hierarchy.py``
     also count as black-box coverage.
     """
     glob_root = _REPO_ROOT_FOR_TESTS / "tests" / "display"
@@ -518,27 +519,27 @@ def _test_parallel_display_files() -> tuple[Path, ...]:
 
 
 @lru_cache(maxsize=1)
-def _canonical_36_names() -> frozenset[str]:
-    """Return the canonical 36 emit_* method names from drift_prevention.
+def _canonical_42_names() -> frozenset[str]:
+    """Return the canonical 42 emit_* method names from drift_prevention.
 
     Single-sources the canonical set so this test never drifts from the
     authoritative surface defined in
     ``tests/display/test_parallel_display_drift_prevention.py``.
     """
     drift_module = importlib.import_module("tests.display.test_parallel_display_drift_prevention")
-    return frozenset(drift_module._PARALLEL_DISPLAY_36_NAMES)
+    return frozenset(drift_module._PARALLEL_DISPLAY_ALL_NAMES)
 
 
 def test_every_emit_method_has_black_box_coverage() -> None:
     """Every emit_* method is referenced in some ``test_parallel_display_*.py``.
 
     Walks the broadened glob of test files and asserts each canonical
-    36-name set entry (minus the leading ``emit_`` prefix) appears as a
+    42-name set entry (minus the leading ``emit_`` prefix) appears as a
     substring somewhere in those files' bodies. This guards against
     silent additions to ParallelDisplay that are never covered by a
     black-box test.
     """
-    canonical = _canonical_36_names()
+    canonical = _canonical_42_names()
     file_bodies: list[tuple[Path, str]] = [
         (path, path.read_text(encoding="utf-8")) for path in _test_parallel_display_files()
     ]
@@ -579,7 +580,7 @@ def test_table_panel_methods_emit_section_rule_header() -> None:
         "emit_capability_summary",
         "emit_info_panel",
     )
-    canonical_set = _canonical_36_names()
+    canonical_set = _canonical_42_names()
     missing_section_rule: list[str] = []
     for name in table_panel_methods:
         if name in exempt:
@@ -615,32 +616,55 @@ def test_every_emit_method_with_test_file_match_exists() -> None:
     ``test_parallel_display_emit_foo.py`` for a method that doesn't
     exist on the class. The broadened glob from test 1 already catches
     this; this test makes the invariant explicit and produces a
-    focused diagnostic.
+    focused diagnostic that names the exact ``(path, line, full)``
+    triple for every stray emit_* reference.
     """
-    canonical = _canonical_36_names()
+    canonical = _canonical_42_names()
+    stray_refs: list[tuple[str, str, str]] = []
+    # Names that are legitimate emit_* references but NOT in the
+    # ParallelDisplay canonical set: ``emit_activity_line`` is the
+    # module-level activity helper and ``emit_completion_summary`` is
+    # the method on the unrelated CompletionSummary class
+    # (``ralph.display.completion_summary.emit_completion_summary``).
+    non_parallel_emit_allowlist = frozenset(
+        {"emit_activity_line", "emit_completion_summary"}
+    )
     for path in _test_parallel_display_files():
         if not path.name.startswith("test_parallel_display_emit_"):
             continue
         body = path.read_text(encoding="utf-8")
-        for line in body.splitlines():
-            for match in re.findall(r"emit_([A-Za-z0-9_]+)", line):
-                full = f"emit_{match}"
-                if full in canonical:
-                    continue
-                # Allow references inside comments / docstrings that
-                # mention a different canonical set (e.g. test files
-                # that describe the surface, not call it).
-                stripped = line.strip()
-                starts_comment = stripped.startswith("#")
-                starts_docstring_double = stripped.startswith('"""')
-                starts_docstring_single = stripped.startswith("'''")
-                if starts_comment or starts_docstring_double or starts_docstring_single:
-                    continue
+        try:
+            token_iter = list(
+                tokenize.generate_tokens(io.StringIO(body).readline)
+            )
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            token_iter = []
+        for tok in token_iter:
+            if tok.type != tokenize.NAME:
+                continue
+            if not tok.string.startswith("emit_"):
+                continue
+            full = tok.string
+            if full in canonical:
+                continue
+            if full in non_parallel_emit_allowlist:
+                continue
+            stray_refs.append((path.name, tok.line.rstrip(), full))
+    assert not stray_refs, (
+        "stray emit_* references in test files that are not in the "
+        "canonical 42-name set (add the name to "
+        "tests/display/test_parallel_display_drift_prevention."
+        "_PARALLEL_DISPLAY_ALL_NAMES or remove the stray reference): "
+        + "\n".join(
+            f"{name}:{line.strip()}: {full}"
+            for name, line, full in stray_refs
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
-# wt-007 closing pass: the new emit_completion_summary_panel method is the
-# 37th consolidated name (intentionally outside the frozen 36-name set).
+# wt-007 closing pass: the new emit_completion_summary_panel method is part of
+# the consolidated emit_* set.
 # These tests pin the anti-drift guard so the free-function call cannot be
 # re-introduced in ralph/pipeline/ and the new method is callable on
 # ParallelDisplay.
@@ -671,18 +695,17 @@ def test_no_free_function_completion_summary_in_pipeline() -> None:
 
 
 def test_parallel_display_has_emit_completion_summary_panel() -> None:
-    """The 37th consolidated method exists and is callable on ParallelDisplay.
+    """The consolidated emit_completion_summary_panel method exists and is callable.
 
     Pins the architectural contract from the public-method side. Mirrors
-    ``test_parallel_display_exposes_all_36_emit_methods`` in
-    ``test_parallel_display_drift_prevention.py``. The new method is
-    intentionally outside the frozen 36-name set; this test makes the
+    ``test_parallel_display_exposes_exact_42_emit_methods`` in
+    ``test_parallel_display_drift_prevention.py``. This test makes the
     drift visible if a future commit silently drops it.
     """
     method = getattr(ParallelDisplay, "emit_completion_summary_panel", None)
     assert method is not None, (
         "ParallelDisplay is missing the emit_completion_summary_panel method; "
-        "the 37th consolidated name must exist."
+        "the consolidated emit_completion_summary_panel method must exist on ParallelDisplay."
     )
     assert callable(method), (
         "ParallelDisplay.emit_completion_summary_panel must be callable; "
