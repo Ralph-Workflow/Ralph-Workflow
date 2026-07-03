@@ -617,12 +617,21 @@ class ParallelDisplay:
         """Emit a per-unit raw-log line routed through emit_activity_line with kind=raw.
 
         The line is sanitized, timestamped with the configured clock, and
-        rendered with the standard INFO/META badge contract.
+        rendered with the standard INFO/META badge contract. No-op when
+        ``is_quiet`` is true so machine-friendly runs stay clean.
         """
+        if self._is_quiet:
+            return
         self.emit_activity_line(unit_id, "raw", line)
 
     def emit_status_line(self, unit_id: str, status: str) -> None:
-        """Emit a status line with the same TIMESTAMP LEVEL CAT badge as other lines."""
+        """Emit a status line with the same TIMESTAMP LEVEL CAT badge as other lines.
+
+        No-op when ``is_quiet`` is true; quiet-mode machine-friendly runs
+        must not surface per-unit status banners.
+        """
+        if self._is_quiet:
+            return
         timestamp = self._format_timestamp(self._clock())
         sanitized = _sanitize(status)
         rendered_unit_id = _render_unit_id(unit_id)

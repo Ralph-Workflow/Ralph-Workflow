@@ -36,6 +36,13 @@ def _make_display(width: int = 120) -> tuple[ParallelDisplay, StringIO]:
     return ParallelDisplay(ctx), buf
 
 
+def _make_quiet_display(width: int = 120) -> tuple[ParallelDisplay, StringIO]:
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=width)
+    ctx = make_display_context(console=console, env={})
+    return ParallelDisplay(ctx, is_quiet=True), buf
+
+
 def test_emit_status_line_emits_status_tag_with_unit_id() -> None:
     """``[status][unit_id]`` is the canonical tag for log-parser grep."""
     pd, buf = _make_display()
@@ -79,4 +86,36 @@ def test_emit_status_line_preserves_unit_id_verbatim() -> None:
     )
     assert "[status][reviewer-agent/2]" in output, (
         f"[status][reviewer-agent/2] tag missing: {output!r}"
+    )
+
+
+def test_emit_status_line_quiet_mode_produces_empty_buffer() -> None:
+    """``emit_status_line`` is a no-op when ``is_quiet=True`` (black-box contract).
+
+    Quiet-mode machine-friendly runs must not surface per-unit status
+    banners; this pins that contract on the observable rendered output.
+    """
+    pd, buf = _make_quiet_display()
+    pd.emit_status_line("api-endpoints", "running")
+    pd.stop()
+    output = buf.getvalue()
+    assert output == "", (
+        f"quiet mode must produce empty output for emit_status_line; got: {output!r}"
+    )
+
+
+def test_emit_status_line_quiet_mode_suppresses_status_text_and_tag() -> None:
+    """Quiet mode suppresses both the ``[status]`` tag and the status text body."""
+    pd, buf = _make_quiet_display()
+    pd.emit_status_line("unit-9", "idle")
+    pd.stop()
+    output = buf.getvalue()
+    assert "[status]" not in output, (
+        f"quiet mode must suppress the [status] tag; got: {output!r}"
+    )
+    assert "idle" not in output, (
+        f"quiet mode must suppress the status text body; got: {output!r}"
+    )
+    assert "INFO" not in output, (
+        f"quiet mode must suppress the INFO badge; got: {output!r}"
     )

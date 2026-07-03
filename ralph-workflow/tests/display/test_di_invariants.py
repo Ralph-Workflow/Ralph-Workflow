@@ -499,7 +499,7 @@ def test_no_free_function_imports_in_cli_or_pipeline() -> None:
 
 # ---------------------------------------------------------------------------
 # wt-007 closing pass: every emit_* method has at least one black-box test
-# reference; the canonical emit_* set (42 names, single-sourced from
+# reference; the canonical emit_* set (41 names, single-sourced from
 # tests.display.test_parallel_display_drift_prevention._PARALLEL_DISPLAY_ALL_NAMES)
 # is the single source of truth.
 # ---------------------------------------------------------------------------
@@ -519,12 +519,15 @@ def _test_parallel_display_files() -> tuple[Path, ...]:
 
 
 @lru_cache(maxsize=1)
-def _canonical_42_names() -> frozenset[str]:
-    """Return the canonical 42 emit_* method names from drift_prevention.
+def _canonical_41_names() -> frozenset[str]:
+    """Return the canonical 41 emit_* method names from drift_prevention.
 
     Single-sources the canonical set so this test never drifts from the
     authoritative surface defined in
-    ``tests/display/test_parallel_display_drift_prevention.py``.
+    ``tests/display/test_parallel_display_drift_prevention.py``. The
+    41-name count reflects the post-cleanup canonical set after
+    ``emit_artifact`` was removed (the module-level ``emit_activity_line``
+    helper is excluded; the count is of consolidated instance methods).
     """
     drift_module = importlib.import_module("tests.display.test_parallel_display_drift_prevention")
     return frozenset(drift_module._PARALLEL_DISPLAY_ALL_NAMES)
@@ -534,12 +537,12 @@ def test_every_emit_method_has_black_box_coverage() -> None:
     """Every emit_* method is referenced in some ``test_parallel_display_*.py``.
 
     Walks the broadened glob of test files and asserts each canonical
-    42-name set entry (minus the leading ``emit_`` prefix) appears as a
+    41-name set entry (minus the leading ``emit_`` prefix) appears as a
     substring somewhere in those files' bodies. This guards against
     silent additions to ParallelDisplay that are never covered by a
     black-box test.
     """
-    canonical = _canonical_42_names()
+    canonical = _canonical_41_names()
     file_bodies: list[tuple[Path, str]] = [
         (path, path.read_text(encoding="utf-8")) for path in _test_parallel_display_files()
     ]
@@ -580,7 +583,7 @@ def test_table_panel_methods_emit_section_rule_header() -> None:
         "emit_capability_summary",
         "emit_info_panel",
     )
-    canonical_set = _canonical_42_names()
+    canonical_set = _canonical_41_names()
     missing_section_rule: list[str] = []
     for name in table_panel_methods:
         if name in exempt:
@@ -619,7 +622,7 @@ def test_every_emit_method_with_test_file_match_exists() -> None:
     focused diagnostic that names the exact ``(path, line, full)``
     triple for every stray emit_* reference.
     """
-    canonical = _canonical_42_names()
+    canonical = _canonical_41_names()
     stray_refs: list[tuple[str, str, str]] = []
     # Names that are legitimate emit_* references but NOT in the
     # ParallelDisplay canonical set: ``emit_activity_line`` is the
@@ -652,7 +655,7 @@ def test_every_emit_method_with_test_file_match_exists() -> None:
             stray_refs.append((path.name, tok.line.rstrip(), full))
     assert not stray_refs, (
         "stray emit_* references in test files that are not in the "
-        "canonical 42-name set (add the name to "
+        "canonical 41-name set (add the name to "
         "tests/display/test_parallel_display_drift_prevention."
         "_PARALLEL_DISPLAY_ALL_NAMES or remove the stray reference): "
         + "\n".join(
@@ -698,7 +701,7 @@ def test_parallel_display_has_emit_completion_summary_panel() -> None:
     """The consolidated emit_completion_summary_panel method exists and is callable.
 
     Pins the architectural contract from the public-method side. Mirrors
-    ``test_parallel_display_exposes_exact_42_emit_methods`` in
+    ``test_parallel_display_exposes_exact_41_emit_methods`` in
     ``test_parallel_display_drift_prevention.py``. This test makes the
     drift visible if a future commit silently drops it.
     """

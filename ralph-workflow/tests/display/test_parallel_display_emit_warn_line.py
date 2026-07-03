@@ -66,6 +66,50 @@ def test_emit_warn_line_uses_meta_category_for_unknown_tag() -> None:
     )
 
 
+def test_emit_warn_line_uses_cont_category_for_error_tag() -> None:
+    """The mapped ``error`` tag routes through ``TAG_CATEGORY['error'] = 'CONT'``.
+
+    Pins the mapped-category contract for ``emit_warn_line``: tags
+    that appear in ``TAG_CATEGORY`` use their mapped category, not the
+    ``META`` fallback. ``error`` is the canonical mapped-CONT tag and
+    is used here because it covers the runtime check surfaced in the
+    wt-028-display review feedback.
+    """
+    pd, buf = _make_display()
+    pd.emit_warn_line("u1", "error", "boom")
+    pd.stop()
+    output = buf.getvalue()
+    assert "WARN" in output, f"WARN level missing: {output!r}"
+    assert "CONT" in output, (
+        f"mapped 'error' tag must use CONT category per TAG_CATEGORY; "
+        f"got: {output!r}"
+    )
+    assert "[error][u1]" in output, (
+        f"[error][u1] tag missing: {output!r}"
+    )
+    assert "boom" in output, (
+        f"message body missing: {output!r}"
+    )
+
+
+def test_emit_warn_line_uses_cont_category_for_content_tag() -> None:
+    """The mapped ``content`` tag routes through ``TAG_CATEGORY['content'] = 'CONT'``.
+
+    Companion to ``test_emit_warn_line_uses_cont_category_for_error_tag``
+    that exercises a second mapped-CONT tag so the contract is pinned
+    across more than one entry.
+    """
+    pd, buf = _make_display()
+    pd.emit_warn_line("u2", "content", "raw-line-warning")
+    pd.stop()
+    output = buf.getvalue()
+    assert "WARN" in output, f"WARN level missing: {output!r}"
+    assert "CONT" in output, (
+        f"mapped 'content' tag must use CONT category per TAG_CATEGORY; "
+        f"got: {output!r}"
+    )
+
+
 def test_emit_warn_line_preserves_unit_id_verbatim() -> None:
     """Common unit_id shapes survive verbatim into the rendered output."""
     pd, buf = _make_display()
