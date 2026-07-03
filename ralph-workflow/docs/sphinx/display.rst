@@ -202,14 +202,14 @@ through ``pd.status_bar``. The lifecycle has exactly one owner:
 
 - **One constructor.** :class:`~ralph.display.status_bar.StatusBar` is
   instantiated in exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.__init__`` at line 488
+  ``ralph.display.parallel_display.ParallelDisplay.__init__`` at line 521
   (``self._status_bar: StatusBar = StatusBar(self)``). No other module under
   ``ralph/display/``, ``ralph/pipeline/``, or ``ralph/cli/`` constructs a
   ``StatusBar``.
 
 - **One start site.** :meth:`~ralph.display.status_bar.StatusBar.start` is
   called from exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.start`` at line 1335.
+  ``ralph.display.parallel_display.ParallelDisplay.start`` at line 1382.
   The pipeline reaches the bar through the production context manager
   ``with loop_ctx.active_display:`` in ``ralph/pipeline/run_loop.py`` at
   line 873, which invokes ``ParallelDisplay.start`` (and therefore
@@ -217,7 +217,7 @@ through ``pd.status_bar``. The lifecycle has exactly one owner:
 
 - **One stop site.** :meth:`~ralph.display.status_bar.StatusBar.stop` is
   called from exactly one site —
-  ``ralph.display.parallel_display.ParallelDisplay.stop`` at line 1343.
+  ``ralph.display.parallel_display.ParallelDisplay.stop`` at line 1390.
   ``ParallelDisplay.__exit__`` invokes ``ParallelDisplay.stop``, so the
   Live region is torn down exactly once per run.
 

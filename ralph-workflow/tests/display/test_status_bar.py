@@ -1499,3 +1499,94 @@ def test_build_status_bar_model_uses_entry_semantics(monkeypatch: pytest.MonkeyP
     assert model.outer_dev_cap == 3
     assert model.phase_style == "theme.phase.development"
     assert model.workspace_root == "/Users/alice/code/proj"
+
+
+# ---------------------------------------------------------------------------
+# Scrollback-cleanliness proof (AC-08)
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> None:
+    """AC-08: the persistent Live region emits an erase sequence on stop so scrollback stays clean.
+
+    This is the direct observable proof that ``_STATUS_BAR_TRANSIENT is True``
+    actually translates to a clean scrollback at runtime (complementing the
+    import-time constant pin in
+    ``test_status_bar_pins_steady_cadence_config``). It drives a real
+    ``StatusBar`` through ``start()`` -> ``update(StatusBarModel(...))``
+    -> ``stop()`` on a Rich ``Console(file=StringIO, force_terminal=True,
+    width=120)`` and asserts:
+
+    1. The captured buffer CONTAINS the rendered model content (the
+       workspace path and phase label appear), proving the Live region
+       actually rendered the model.
+    2. The captured buffer ENDS with the ANSI "erase entire line"
+       escape sequence (``ESC[2K``), which is the standard Rich
+       Live-transient erasure that wipes the bar's row from the
+       terminal on stop. This is the contract that scrollback,
+       copy/paste, terminal search, and post-run log review remain
+       usable for unattended runs.
+
+    The combination of (1) and (2) proves the transient behavior is
+    active at runtime: the bar DID render, AND its rendered row was
+    erased on stop. Without the transient erasure (e.g. if
+    ``_STATUS_BAR_TRANSIENT`` were ``False``), the buffer would still
+    contain the rendered text but would NOT end with the ``ESC[2K``
+    erase sequence \u2014 the rendered row would persist in scrollback
+    forever.
+
+    Uses the same ``_TtyLikeStringIO`` fake-console pattern as the
+    existing live-region tests so the StatusBar real-TTY gate passes
+    without a real pseudo-tty. The test does NOT use ``time.sleep``,
+    does NOT spawn a subprocess, and runs in well under 1s.
+    """
+    buf = _TtyLikeStringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        width=120,
+        color_system="standard",
+    )
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    assert console.is_terminal is True
+    assert console.file.isatty() is True
+    workspace_root = "/Users/alice/code/scrollback-cleanliness-probe"
+    phase_label = "ScrollbackProbe"
+    model = StatusBarModel(
+        workspace_root=workspace_root,
+        phase_label=phase_label,
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    sb.update(model)
+    sb.start()
+    try:
+        assert sb.is_active is True, (
+            "StatusBar.start() must construct a Live region on a tty-like "
+            "stream (both console.is_terminal and console.file.isatty() are True)"
+        )
+    finally:
+        sb.stop()
+    out = buf.getvalue()
+    assert phase_label in out, (
+        f"AC-08: Live region must have rendered the phase label "
+        f"{phase_label!r} before stop; got out={out!r}"
+    )
+    assert workspace_root in out, (
+        f"AC-08: Live region must have rendered the workspace path "
+        f"{workspace_root!r} before stop; got out={out!r}"
+    )
+    assert "Dev 1/3" in out, (
+        f"AC-08: Live region must have rendered the outer-dev iteration "
+        f"'Dev 1/3' before stop; got out={out!r}"
+    )
+    assert out.endswith("\x1b[2K"), (
+        f"AC-08: captured buffer must end with the ANSI 'erase entire "
+        f"line' escape sequence (\\x1b[2K) so scrollback stays clean after "
+        f"StatusBar.stop(); got tail={out[-20:]!r}, full out={out!r}"
+    )

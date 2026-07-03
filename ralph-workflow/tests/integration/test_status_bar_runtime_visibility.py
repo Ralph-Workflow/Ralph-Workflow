@@ -228,6 +228,119 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
     )
 
 
+def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end() -> None:
+    """AC-01..AC-04 end-to-end: workspace, phase, and applicable iteration counts.
+
+    This focused test names the four prompt acceptance criteria
+    (AC-01..AC-04) directly:
+
+    - **AC-01**: the bottom Status Bar visibly shows the working directory,
+      the active phase, and any applicable iteration count. The test
+      drives the production entry point (``pd.update_status_bar`` followed
+      by ``with pd:``) at terminal width 100 and asserts the captured
+      live buffer contains the workspace path ``/tmp/ac01-workspace``,
+      the phase label ``development``, and the literal iteration labels
+      ``Dev 1/3`` (outer-dev cycle 1 of 3) and ``Analysis 2/5`` (inner
+      analysis cycle 2 of 5).
+
+    - **AC-02**: when a phase does not track an outer-dev or inner
+      analysis iteration, the field is omitted entirely (no ``--``
+      placeholder). A second model with both iteration fields ``None``
+      is pushed through the same production entry point and the
+      captured buffer is asserted to contain neither ``Dev --`` nor
+      ``Analysis --`` nor any ``--/--`` substring.
+
+    - **AC-03**: during development-related phases the outer-dev
+      iteration (``Dev N/cap``) is visible.
+
+    - **AC-04**: during analysis phases the inner analysis iteration
+      (``Analysis N/cap``) is visible.
+
+    The test uses width 100 (a common external-monitor width) because
+    the canonical ``Dev 1/3`` / ``Analysis 2/5`` labels always render
+    in full at widths ``>= _CANONICAL_FIT_THRESHOLD`` (40 cols).
+    Reuses the existing ``_TtyLikeStringIO`` fake-console pattern so
+    the StatusBar real-TTY gate passes without a real pseudo-tty.
+    """
+    pd_full, buf_full = _make_parallel_display()
+    assert pd_full._ctx.console.is_terminal is True
+    assert pd_full._ctx.console.file.isatty() is True
+    sb = cast("StatusBar", pd_full.status_bar)
+    full_model = StatusBarModel(
+        workspace_root="/tmp/ac01-workspace",
+        phase_label="development",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    pd_full.update_status_bar(full_model)
+    captured_inside_full_active = False
+    with pd_full:
+        captured_inside_full_active = sb.is_active
+    full_out = buf_full.getvalue()
+    assert captured_inside_full_active is True, (
+        "StatusBar must be active inside the production context manager"
+    )
+    assert "/tmp/ac01-workspace" in full_out, (
+        f"AC-01: Live region must surface the workspace path "
+        f"'/tmp/ac01-workspace'; got {full_out!r}"
+    )
+    assert "development" in full_out, (
+        f"AC-01: Live region must surface the phase label 'development'; "
+        f"got {full_out!r}"
+    )
+    assert "Dev 1/3" in full_out, (
+        f"AC-03: Live region must surface the outer-dev iteration "
+        f"'Dev 1/3'; got {full_out!r}"
+    )
+    assert "Analysis 2/5" in full_out, (
+        f"AC-04: Live region must surface the inner-analysis iteration "
+        f"'Analysis 2/5'; got {full_out!r}"
+    )
+
+    pd_none, buf_none = _make_parallel_display()
+    none_model = StatusBarModel(
+        workspace_root="/tmp/ac01-workspace",
+        phase_label="commit",
+        phase_style="theme.phase.commit",
+        outer_dev_iteration=None,
+        outer_dev_cap=None,
+        inner_analysis=None,
+        inner_analysis_cap=None,
+    )
+    pd_none.update_status_bar(none_model)
+    captured_inside_none_active = False
+    with pd_none:
+        captured_inside_none_active = cast("StatusBar", pd_none.status_bar).is_active
+    none_out = buf_none.getvalue()
+    assert captured_inside_none_active is True, (
+        "StatusBar must be active inside the production context manager "
+        "for the no-iteration case too"
+    )
+    assert "Dev --" not in none_out, (
+        f"AC-02: Live region must NOT render a 'Dev --' placeholder when "
+        f"the outer-dev iteration is None; got {none_out!r}"
+    )
+    assert "Analysis --" not in none_out, (
+        f"AC-02: Live region must NOT render an 'Analysis --' placeholder "
+        f"when the inner-analysis iteration is None; got {none_out!r}"
+    )
+    assert "--/--" not in none_out, (
+        f"AC-02: Live region must NOT render any '--/--' iteration "
+        f"placeholder; got {none_out!r}"
+    )
+    assert "--" not in none_out, (
+        f"AC-02: Live region must NOT render any '--' placeholder for "
+        f"omitted iteration fields; got {none_out!r}"
+    )
+    assert "commit" in none_out, (
+        f"AC-01: Live region must still surface the phase label "
+        f"'commit' when iterations are None; got {none_out!r}"
+    )
+
+
 def test_quiet_mode_suppresses_status_bar_in_runtime_entry_point() -> None:
     """A quiet-mode ``ParallelDisplay`` does NOT start the Live region through
     the production entry point.

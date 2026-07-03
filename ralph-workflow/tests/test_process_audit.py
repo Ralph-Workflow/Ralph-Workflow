@@ -65,6 +65,10 @@ TESTS_ALLOWLIST: set[str] = {
     "test_smoke_agy_end_to_end.py",  # drives ralph smoke-interactive-agy as a bounded subprocess
     "test_audit_artifact_submission_canonical_path.py",
     # spawns python -O to verify import-time invariants survive -O
+    "test_single_mode_anti_drift.py",
+    # drives scripts/wt028-drift-check.sh via subprocess.run as the
+    # system-under-test (the bash script is the artifact being probed;
+    # subprocess is the same invocation path make verify-drift uses)
 }
 
 _MCP_FIXTURE_FILES = {
