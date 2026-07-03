@@ -140,7 +140,7 @@ def test_status_bar_only_instantiated_inside_parallel_display() -> None:
     """``StatusBar(...)`` constructor sites appear ONLY in parallel_display.py.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.__init__``
-    at line 488 (``self._status_bar: StatusBar = StatusBar(self)``). No
+    at line 521 (``self._status_bar: StatusBar = StatusBar(self)``). No
     other module under ``ralph/display/``, ``ralph/pipeline/``, or
     ``ralph/cli/`` may construct ``StatusBar``.
     """
@@ -167,7 +167,7 @@ def test_parallel_display_is_only_class_that_starts_status_bar() -> None:
     ``ParallelDisplay.start``.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.start``
-    at line 1331. No other module under ``ralph/display/``, ``ralph/pipeline/``,
+    at line 1382. No other module under ``ralph/display/``, ``ralph/pipeline/``,
     or ``ralph/cli/`` may call ``start()`` on the composed StatusBar.
     """
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
@@ -198,7 +198,7 @@ def test_status_bar_stop_only_inside_parallel_display_stop() -> None:
     ``ParallelDisplay.stop``.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.stop``
-    at line 1337. No other module under ``ralph/display/``, ``ralph/pipeline/``,
+    at line 1390. No other module under ``ralph/display/``, ``ralph/pipeline/``,
     or ``ralph/cli/`` may call ``stop()`` on the composed StatusBar.
     """
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
