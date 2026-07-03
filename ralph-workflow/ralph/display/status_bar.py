@@ -176,6 +176,22 @@ _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS: int = 4
 # phase + path at the terminal width.
 _CANONICAL_FIT_THRESHOLD: int = 40
 
+# Minimum readable budget for the workspace path and the phase label.
+# The single default-mode Status Bar ALWAYS reserves at least this much
+# space for the workspace path and the phase label so the operator can
+# identify the active working directory and phase at every applicable
+# width (the AC-07 narrow-terminal invariant). Below this combined
+# minimum the iteration segments are dropped so the bar degrades cleanly
+# to ``workspace + phase`` (or, at very narrow widths, to an empty bar).
+# These minima align with the budgets the existing tail-truncate /
+# middle-truncate helpers honour: ``_tail_truncate`` returns at least
+# the first ``budget`` characters when ``budget <= _ELLIPSIS_LEN``,
+# and ``_middle_truncate_path`` returns the trailing path segment
+# tail-truncated to ``budget`` characters when ``budget <= _MIN_BUDGET``.
+_MIN_PHASE_BUDGET: int = 5
+_MIN_PATH_BUDGET: int = 4
+_MIN_PHASE_PLUS_PATH: int = _MIN_PHASE_BUDGET + _MIN_PATH_BUDGET
+
 
 @dataclass(frozen=True)
 class StatusBarModel:
@@ -381,11 +397,20 @@ def _field_overhead_and_label_budgets(
        width \u2014 the bar may drop iteration segments entirely below
        14 cols, but it never overflows.
 
+    AC-07 invariant: at every applicable width the workspace path and
+    phase label remain readable — the budget allocator reserves at
+    least ``_MIN_PHASE_BUDGET`` chars for phase and ``_MIN_PATH_BUDGET``
+    chars for path before iteration labels are sized, so the bar never
+    collapses phase + path to zero (the AC-07 narrow-terminal
+    contract).
+
     The phase and path budgets adapt to whatever space remains after
-    the iteration segments are sized; they may be ``0`` at very narrow
-    widths. The rendered text always fits ``ctx.width`` (no wrap, no
-    overflow), and the iteration labels are present when the model
-    fields are non-``None`` AND ``ctx.width`` can accommodate them.
+    the iteration segments are sized; they are AT LEAST
+    ``_MIN_PHASE_BUDGET`` and ``_MIN_PATH_BUDGET`` respectively. The
+    rendered text always fits ``ctx.width`` (no wrap, no overflow),
+    and the iteration labels are present when the model fields are
+    non-``None`` AND ``ctx.width`` can accommodate them alongside the
+    protected phase + path budgets.
 
     Args:
         ctx: Display context providing glyphs and width.
@@ -401,7 +426,7 @@ def _field_overhead_and_label_budgets(
     outer_dev_glyph_len = len(ctx.glyph_for("outer_dev"))
     inner_analysis_glyph_len = len(ctx.glyph_for("inner_analysis"))
 
-    def _iter_overhead(
+    def _iter_width(
         outer_label: int,
         inner_label: int,
         with_glyph: bool,
@@ -412,8 +437,8 @@ def _field_overhead_and_label_budgets(
         """Per-iteration overhead (leading separator + glyph + space + label).
 
         Each iteration segment renders as ``separator + [glyph + " "] + label``.
-        The leading separator is included here so ``_base_overhead`` does
-        not double-count the trailing separator.
+        The leading separator is included here so the base chrome (marker +
+        phase|path separator) does not double-count the trailing separator.
 
         ``include_outer`` / ``include_inner`` let the caller drop a segment
         entirely (no separator, no glyph, no label) at very narrow widths
@@ -430,36 +455,26 @@ def _field_overhead_and_label_budgets(
                 total += inner_analysis_glyph_len + 1
         return total
 
-    def _base_overhead(with_marker: bool) -> int:
-        """Marker + phase|path separator only (no trailing iter separator)."""
-        ml = marker_len if with_marker else 0
-        return ml + separator_len
-
-    def _total_width(
+    def _chrome(
         outer_label: int,
         inner_label: int,
         with_marker: bool,
         with_glyph: bool,
-        phase_budget: int,
-        path_budget: int,
         *,
         include_outer: bool = True,
         include_inner: bool = True,
     ) -> int:
-        return (
-            _base_overhead(with_marker)
-            + _iter_overhead(
-                outer_label,
-                inner_label,
-                with_glyph,
-                include_outer=include_outer,
-                include_inner=include_inner,
-            )
-            + phase_budget
-            + path_budget
+        """Total chrome excluding phase + path: marker + sep + iter segments."""
+        ml = marker_len if with_marker else 0
+        return ml + separator_len + _iter_width(
+            outer_label,
+            inner_label,
+            with_glyph,
+            include_outer=include_outer,
+            include_inner=include_inner,
         )
 
-    def _distribute(
+    def _allocate(
         outer_label: int,
         inner_label: int,
         with_marker: bool,
@@ -467,30 +482,49 @@ def _field_overhead_and_label_budgets(
         *,
         include_outer: bool = True,
         include_inner: bool = True,
-    ) -> _FieldBudgets:
-        """Build _FieldBudgets sized so the iteration segments fit alongside phase + path."""
-        remaining = (
-            ctx.width
-            - _base_overhead(with_marker)
-            - _iter_overhead(
-                outer_label,
-                inner_label,
-                with_glyph,
-                include_outer=include_outer,
-                include_inner=include_inner,
-            )
+    ) -> _FieldBudgets | None:
+        """Allocate a budget that fits ``ctx.width`` with at least the phase+path minima.
+
+        Returns ``None`` when the requested iter configuration cannot
+        fit alongside the protected phase + path minima at
+        ``ctx.width`` (the caller tries the next iter configuration
+        in priority order).
+        """
+        available = ctx.width - _chrome(
+            outer_label,
+            inner_label,
+            with_marker,
+            with_glyph,
+            include_outer=include_outer,
+            include_inner=include_inner,
         )
-        if remaining <= 0:
-            return _FieldBudgets(
-                0,
-                0,
-                outer_label if include_outer else 0,
-                inner_label if include_inner else 0,
-                with_marker,
-                with_glyph,
-            )
-        phase_budget = min(DEFAULT_PHASE_LABEL_BUDGET, remaining // 2)
-        path_budget = remaining - phase_budget
+        if available < _MIN_PHASE_PLUS_PATH:
+            return None
+        # Allocate remaining space to phase + path. Phase gets up to
+        # DEFAULT_PHASE_LABEL_BUDGET chars (tail-truncated by the
+        # caller); anything beyond that goes to path. When the bar
+        # cannot afford the default phase cap, phase gets whatever
+        # remains after reserving the path minimum so the workspace
+        # path stays readable per AC-07.
+        if available - _MIN_PATH_BUDGET >= DEFAULT_PHASE_LABEL_BUDGET:
+            phase_budget = DEFAULT_PHASE_LABEL_BUDGET
+            path_budget = available - phase_budget
+        else:
+            phase_budget = available - _MIN_PATH_BUDGET
+            path_budget = _MIN_PATH_BUDGET
+        # Clamp: both phase and path must meet the AC-07 minimum. If
+        # available is exactly the minimum (so phase + path each get
+        # their minimum), the allocation above honours it; if not,
+        # the safety clamp below catches the corner case where
+        # DEFAULT_PHASE_LABEL_BUDGET < _MIN_PHASE_BUDGET.
+        if phase_budget < _MIN_PHASE_BUDGET:
+            phase_budget = _MIN_PHASE_BUDGET
+            path_budget = available - phase_budget
+        if path_budget < _MIN_PATH_BUDGET:
+            path_budget = _MIN_PATH_BUDGET
+            phase_budget = available - path_budget
+        if phase_budget < _MIN_PHASE_BUDGET or path_budget < _MIN_PATH_BUDGET:
+            return None
         return _FieldBudgets(
             phase_budget,
             path_budget,
@@ -506,71 +540,48 @@ def _field_overhead_and_label_budgets(
         (_OUTER_DEV_LABEL_MINIMAL_MAX_CHARS, _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS),
     )
 
-    for with_marker in (True, False):
-        for with_glyph in (True, False):
-            for outer_label, inner_label in label_forms:
-                budget = _distribute(
-                    outer_label, inner_label, with_marker, with_glyph
-                )
-                if (
-                    _total_width(
+    # Iter-bearing layouts (both segments preferred; degrade to a
+    # single segment when both cannot fit alongside phase + path).
+    iter_bearing_configs: tuple[tuple[bool, bool], ...] = (
+        (True, True),
+        (True, False),
+        (False, True),
+    )
+    for include_outer, include_inner in iter_bearing_configs:
+        for outer_label, inner_label in label_forms:
+            for with_marker in (True, False):
+                for with_glyph in (True, False):
+                    budget = _allocate(
                         outer_label,
                         inner_label,
                         with_marker,
                         with_glyph,
-                        budget.phase_budget,
-                        budget.path_budget,
+                        include_outer=include_outer,
+                        include_inner=include_inner,
                     )
-                    <= ctx.width
-                ):
-                    return budget
+                    if budget is not None:
+                        return budget
 
-    # Final degradation: drop iteration segments one at a time so the bar
-    # degrades cleanly at widths below the iteration-visibility threshold
-    # (14 cols). The bar must never overflow, even when the model has
-    # iteration fields that cannot fit alongside phase + path at the
-    # current width. We try (in order): drop outer_dev only, drop
-    # inner_analysis only, drop both. For each candidate we recompute the
-    # budget using the minimal label form so the segment that survives
-    # uses the smallest possible label.
-    for (
-        include_outer,
-        include_inner,
-    ) in (
-        (False, True),
-        (True, False),
-        (False, False),
-    ):
-        for with_marker in (True, False):
-            outer_label = (
-                _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS if include_outer else 0
-            )
-            inner_label = (
-                _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS if include_inner else 0
-            )
-            budget = _distribute(
-                outer_label,
-                inner_label,
-                with_marker,
-                with_glyph=False,
-                include_outer=include_outer,
-                include_inner=include_inner,
-            )
-            if (
-                _total_width(
-                    outer_label=outer_label if include_outer else 0,
-                    inner_label=inner_label if include_inner else 0,
-                    with_marker=with_marker,
-                    with_glyph=False,
-                    phase_budget=budget.phase_budget,
-                    path_budget=budget.path_budget,
-                    include_outer=include_outer,
-                    include_inner=include_inner,
-                )
-                <= ctx.width
-            ):
-                return budget
+    # Workspace + phase only (AC-07 fallback): drop both iter segments
+    # when they cannot fit alongside the protected phase + path
+    # budgets. The marker may still render if it fits alongside the
+    # minimum phase + path budgets; otherwise the marker is dropped.
+    for with_marker in (True, False):
+        budget = _allocate(
+            _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS,
+            _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS,
+            with_marker,
+            with_glyph=False,
+            include_outer=False,
+            include_inner=False,
+        )
+        if budget is not None:
+            return budget
 
+    # Final fallback: width is so narrow that the phase + path
+    # minimum cannot be honoured. Render an empty bar (the
+    # ``render_status_bar`` caller clamps the rendered text to
+    # ``ctx.width`` so the no-overflow invariant still holds).
     return _FieldBudgets(
         0,
         0,

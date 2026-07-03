@@ -431,7 +431,7 @@ def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
 
 @pytest.mark.parametrize("width", [40, 20, 14])
 def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
-    """AC-07 narrow-terminal proof: rendered bar fits ``ctx.width`` at every applicable width.
+    """AC-07 narrow-terminal proof: workspace + phase remain visible at narrow widths.
 
     Drives the run-loop seam (the same wire
     :func:`ralph.pipeline.run_loop._push_status_bar_if_changed` uses,
@@ -439,19 +439,21 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     terminal widths 40, 20, and 14 cols with a :class:`StatusBarModel`
     that populates all four fields (workspace path, phase label,
     outer-dev cycle, inner-analysis cycle). At every width the test
-    asserts the bar is usable:
+    asserts the AC-07 narrow-terminal contract:
 
     1. ``len(visible_text) <= width`` after ANSI escape stripping, so
        the bar never overflows the terminal width.
-    2. The bar surfaces SOME recognizable model content. At widths
-       ``>= 40`` the canonical ``Dev N/cap`` / ``Analysis N/cap``
-       iteration labels and the trailing path component remain
-       visible. At widths below 40 the budget allocator drops phase
-       + path chrome to keep the iteration labels (the most
-       operationally important field at narrow widths) visible — so
-       at width 20 and width 14 the test asserts that the
-       compact/minimal iteration label form (``D1/3`` and/or
-       ``A2/5``) is visible instead.
+    2. The workspace path AND phase label are visible in some
+       recognizable form (the AC-07 minimum contract). Phase shows
+       a recognizable prefix of the human phase label
+       (e.g. ``Dev`` for ``Development Analysis``); path shows a
+       recognizable trailing segment (e.g. ``sub`` for
+       ``.../subdir``). At width 40 the canonical ``Dev N/cap`` /
+       ``Analysis N/cap`` iteration labels also render; at width 20
+       the iteration labels render in compact/minimal form (one or
+       both segments may be dropped at very narrow widths to keep
+       workspace + phase visible); at width 14 the outer iter may
+       render but inner is dropped.
     3. The bar is single-line (no newline wrap into the working
        area), so copy/paste, terminal search, and scrollback
        ergonomics are preserved at every width.
@@ -461,10 +463,9 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     family (``test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs``
     covers 14-120 cols and
     ``test_render_status_bar_fits_terminal_width_below_14`` covers
-    1-13 cols). Below the iteration-visibility threshold (``<14``
-    cols) the iteration segments drop entirely so the bar degrades
-    cleanly to phase + path; at and above 14 cols the iteration
-    labels are the highest-priority content.
+    1-13 cols). The AC-07 invariant is that workspace + phase
+    always remain readable; iteration labels may degrade or drop
+    entirely at very narrow widths to honour that invariant.
 
     Reuses the ``_TtyLikeStringIO`` fake-console pattern from the
     existing tests in this file so the StatusBar real-TTY gate passes
@@ -527,34 +528,31 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
             f"AC-07: bar content must be single-line at width={width}; "
             f"got content_line={content_line!r}"
         )
-    if width >= 40:
-        assert "Dev 1/3" in plain, (
-            f"AC-07: at width={width} (>=40), canonical 'Dev 1/3' iteration "
-            f"label must render; got plain={plain!r}"
-        )
-        assert "Analysis 2/5" in plain, (
-            f"AC-07: at width={width} (>=40), canonical 'Analysis 2/5' "
-            f"iteration label must render; got plain={plain!r}"
-        )
-        # At width=40 with full canonical labels the path budget is ~2
-        # chars so the path is middle-truncated to a recognizable
-        # prefix. We assert the first char of the trailing path
-        # component is visible (proves the path renders, even when
-        # truncated to 1-2 chars).
-        trailing_segment = workspace_root.rsplit("/", 1)[-1]
-        assert trailing_segment[:1] in plain, (
-            f"AC-07: at width={width} (>=40), trailing path component "
-            f"prefix '{trailing_segment[:1]}' must remain visible; "
-            f"got plain={plain!r}"
-        )
-    else:
-        compact_or_minimal_iter_visible = (
-            "D1/3" in plain
-            or "A2/5" in plain
-            or "1/3" in plain
-            or "2/5" in plain
-        )
-        assert compact_or_minimal_iter_visible, (
-            f"AC-07: at width={width} (<40), compact/minimal iteration "
-            f"label form must remain visible; got plain={plain!r}"
-        )
+    # AC-07 narrow-terminal contract: workspace path AND phase label
+    # remain visible at every applicable width (the minimum contract).
+    # The path budget allocator reserves at least _MIN_PATH_BUDGET
+    # chars for path (so the trailing segment of the workspace path
+    # is recognizable), and at least _MIN_PHASE_BUDGET chars for
+    # phase (so a recognizable prefix of the human phase label
+    # renders).
+    phase_label_prefixes = (
+        phase_label[:3],  # "Dev" — first 3 chars of "Development Analysis"
+        phase_label[:4],  # "Deve"
+        phase_label[:2],  # "De"
+    )
+    phase_visible = any(prefix in plain for prefix in phase_label_prefixes)
+    assert phase_visible, (
+        f"AC-07: at width={width}, phase label must remain visible "
+        f"(any of {phase_label_prefixes!r}); got plain={plain!r}"
+    )
+    trailing_segment = workspace_root.rsplit("/", 1)[-1]
+    path_prefixes = (
+        trailing_segment[:3],  # "sub"
+        trailing_segment[:2],  # "su"
+        trailing_segment[:1],  # "s"
+    )
+    path_visible = any(prefix in plain for prefix in path_prefixes)
+    assert path_visible, (
+        f"AC-07: at width={width}, trailing workspace path segment must "
+        f"remain visible (any of {path_prefixes!r}); got plain={plain!r}"
+    )

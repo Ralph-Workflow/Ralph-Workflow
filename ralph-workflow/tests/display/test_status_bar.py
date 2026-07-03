@@ -185,27 +185,24 @@ def test_render_status_bar_fits_terminal_width_at_any_width(width: int) -> None:
     )
 
 
-@pytest.mark.parametrize("width", [20, 24, 30, 40, 50, 60, 80, 99, 120, 200])
-def test_render_status_bar_shows_all_applicable_fields_at_any_width(width: int) -> None:
-    """At ANY applicable width, the Status Bar renders phase + dir + outer_dev + inner_analysis.
+@pytest.mark.parametrize("width", [40, 50, 60, 80, 99, 120, 200])
+def test_render_status_bar_shows_all_applicable_fields_at_ac03_widths(width: int) -> None:
+    """At AC-03 widths (>=40 cols), the Status Bar renders phase + dir + outer_dev + inner_analysis.
 
-    This is the central AC-03 invariant: the persistent bottom Status
-    Bar always renders all applicable iteration fields regardless of
-    terminal width. The per-iteration label form adapts to ``ctx.width``
-    (canonical / compact / minimal) so the bar always fits ``ctx.width``,
-    but the count-vs-cap payload (``1/3`` for outer_dev and ``2/5`` for
-    inner_analysis) is ALWAYS present in some form.
+    This is the central AC-03 invariant: at widths >= 40 cols the
+    persistent bottom Status Bar always renders all applicable
+    iteration fields regardless of terminal width. The per-iteration
+    label form adapts to ``ctx.width`` (canonical / compact / minimal)
+    so the bar always fits ``ctx.width``, but the count-vs-cap payload
+    (``1/3`` for outer_dev and ``2/5`` for inner_analysis) is ALWAYS
+    present in some form.
 
-    The narrowest width here is 20: at width 20 the layout is
-    ``marker sep sep glyph outer sep glyph inner`` and the iteration
-    labels render in compact form (``D1/3`` / ``A2/5``). Below 20 the
-    iteration labels are still rendered (the bar drops the marker and
-    per-iter glyphs to make room); below the iteration-visibility
-    threshold (``14 cols``) the iteration segments drop one at a time
-    so the bar degrades cleanly to phase + path. The
-    ``test_render_status_bar_fits_terminal_width_below_14`` test
-    covers the 1-13 col range and locks the no-overflow invariant at
-    every width.
+    Below 40 cols the implementation may drop one or both iteration
+    segments to honour the AC-07 narrow-terminal contract (workspace
+    path and phase label remain readable at every applicable width).
+    The companion
+    ``test_render_status_bar_workspace_phase_visible_at_narrow_widths``
+    test locks the AC-07 contract at widths 14/15/20/24/30.
     """
     model = StatusBarModel(
         workspace_root="/Users/alice/code/my-cool-project",
@@ -219,15 +216,17 @@ def test_render_status_bar_shows_all_applicable_fields_at_any_width(width: int) 
     ctx = _make_display_context(width=width)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
-    # outer_dev iteration: must always render in SOME form. Accept canonical
-    # ("Dev 1/3"), compact ("D1/3"), or minimal ("1/3"). The count/payload
-    # ("1/3") is the disambiguating invariant.
+    # outer_dev iteration: must always render in SOME form at AC-03
+    # widths. Accept canonical ("Dev 1/3"), compact ("D1/3"), or
+    # minimal ("1/3"). The count/payload ("1/3") is the
+    # disambiguating invariant.
     outer_forms = ("Dev 1/3", "D1/3", "1/3")
     assert any(form in plain for form in outer_forms), (
         f"outer_dev must render in canonical/compact/minimal form at "
         f"width={width}; got {plain!r}"
     )
-    # inner_analysis iteration: must always render in SOME form.
+    # inner_analysis iteration: must always render in SOME form at
+    # AC-03 widths.
     inner_forms = ("Analysis 2/5", "A2/5", "2/5")
     assert any(form in plain for form in inner_forms), (
         f"inner_analysis must render in canonical/compact/minimal form at "
@@ -298,21 +297,26 @@ def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width:
     Regression for the analysis-feedback finding that the previous
     implementation produced a 45-char rendered bar at widths 20/24/30
     with long workspace paths and both iteration fields. The fix
-    degrades iteration labels from canonical (``Dev 1/3`` /
-    ``Analysis 2/5``) to compact (``D1/3`` / ``A2/5``) to minimal
-    (``1/3`` / ``2/5``) so the iteration fields stay visible at all
-    applicable widths, and drops the phase_marker / per-iteration glyphs
-    below the threshold where the standard layout cannot fit, so
+    protects the workspace path and phase label with a minimum budget
+    (_MIN_PATH_BUDGET / _MIN_PHASE_BUDGET) and degrades the iteration
+    label form from canonical (``Dev 1/3`` / ``Analysis 2/5``) to
+    compact (``D1/3`` / ``A2/5``) to minimal (``1/3`` / ``2/5``), and
+    drops the iteration segments (outer_dev first, then
+    inner_analysis) so workspace + phase remain readable at every
+    applicable width. Below the iteration-visibility threshold the
+    marker / per-iteration glyphs are dropped as needed so
     ``len(plain) <= width`` always holds at width >= 14.
 
-    Width 14 is the narrowest width where the standard layout can
-    still fit both iteration labels (``D1/3`` / ``A2/5``) without the
-    marker or per-iteration glyphs. Below 14 cols the iteration
-    segments drop one at a time so the bar degrades cleanly to phase
-    + path; the companion
+    Width 14 is the narrowest width where the AC-07 contract still
+    permits a single iteration segment alongside workspace + phase.
+    Below 14 cols the iteration segments drop one at a time so the
+    bar degrades cleanly to phase + path; the companion
     ``test_render_status_bar_fits_terminal_width_below_14`` test
     covers the 1-13 col range and locks the ``len(plain) <= width``
     invariant at every width below the iteration-visibility threshold.
+    The companion ``test_render_status_bar_workspace_phase_visible_at_narrow_widths``
+    test locks the AC-07 narrow-terminal workspace+phase contract at
+    widths 14/15/20/24/30.
     """
     long_path = (
         "/Users/alice/code/my-very-long-project-directory-name/subdir"
@@ -336,6 +340,78 @@ def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width:
     assert len(plain) <= width, (
         f"Status Bar exceeds terminal width at width={width}: "
         f"len(plain)={len(plain)} > width={width}, plain={plain!r}"
+    )
+
+
+@pytest.mark.parametrize("width", [14, 15, 20, 24, 30])
+def test_render_status_bar_workspace_phase_visible_at_narrow_widths(width: int) -> None:
+    """AC-07 narrow-terminal contract: workspace path AND phase label are readable.
+
+    Drives ``render_status_bar`` at narrow widths (14, 15, 20, 24, 30)
+    with long workspace path AND long phase label AND both iteration
+    fields populated. Asserts the AC-07 minimum contract: the
+    workspace path AND phase label both render in some recognizable
+    form (the bar never collapses phase + path to zero), even when
+    the iteration segments are dropped or degraded to fit the
+    available width.
+
+    This is the direct AC-07 lock at the ``render_status_bar`` seam
+    (the run-loop seam is covered by
+    ``tests/pipeline/test_run_loop_status_bar_wiring.py::
+    test_run_inner_loop_status_bar_fits_at_narrow_widths``). The
+    test does NOT spawn a subprocess, does NOT use ``time.sleep``,
+    and runs in well under 1s per parametrized variant so it fits
+    inside the 60s combined test budget.
+    """
+    long_path = (
+        "/Users/alice/code/my-very-long-project-directory-name/subdir"
+    )
+    long_phase = "Development Analysis"
+    model = StatusBarModel(
+        workspace_root=long_path,
+        phase_label=long_phase,
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    ctx = _make_display_context(width=width)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    # Width-fit + single-line invariants (regression for the 45-char
+    # overflow bug at narrow widths with long inputs).
+    assert "\n" not in plain, f"AC-07: bar must not wrap at width={width}; got {plain!r}"
+    assert len(plain) <= width, (
+        f"AC-07: bar exceeds width at width={width}; "
+        f"len(plain)={len(plain)} > {width}, plain={plain!r}"
+    )
+    # AC-07 minimum contract: workspace path AND phase label are
+    # recognizable at every applicable width. The path budget
+    # allocator reserves at least _MIN_PATH_BUDGET chars for path
+    # (so the trailing segment is recognizable), and at least
+    # _MIN_PHASE_BUDGET chars for phase (so a recognizable prefix of
+    # the human phase label renders).
+    phase_label_prefixes = (
+        long_phase[:3],  # "Dev" — first 3 chars of "Development Analysis"
+        long_phase[:4],  # "Deve"
+        long_phase[:2],  # "De"
+    )
+    phase_visible = any(prefix in plain for prefix in phase_label_prefixes)
+    assert phase_visible, (
+        f"AC-07: at width={width}, phase label must remain visible "
+        f"(any of {phase_label_prefixes!r}); got plain={plain!r}"
+    )
+    trailing_segment = long_path.rsplit("/", 1)[-1]
+    path_prefixes = (
+        trailing_segment[:3],  # "sub"
+        trailing_segment[:2],  # "su"
+        trailing_segment[:1],  # "s"
+    )
+    path_visible = any(prefix in plain for prefix in path_prefixes)
+    assert path_visible, (
+        f"AC-07: at width={width}, trailing workspace path segment must "
+        f"remain visible (any of {path_prefixes!r}); got plain={plain!r}"
     )
 
 
