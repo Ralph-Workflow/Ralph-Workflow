@@ -159,3 +159,74 @@ report tells you exactly which check failed and what it expected.
 - [CLI reference](cli.md) — every CLI flag including the diagnostic flags
 - [Troubleshooting](troubleshooting.md) — when a real run has already failed
 - [Configuration](configuration.md) — the config files diagnostics validates
+
+## External-volume filesystem hygiene
+
+Long Ralph Workflow runs on an external (or root) volume can drive the
+macOS `fseventsd` daemon to a sustained full CPU core when the volume is
+configured two different ways: Spotlight is indexing the churned paths,
+or the volume's `.fseventsd` journal has become pathologically bloated.
+
+The `ralph --diagnose` flow includes an `fs_health` check that reports
+both conditions as operator warnings; the section below is the
+mitigation playbook for each one.
+
+### 1. Disable Spotlight on the scratch volume
+
+Spotlight (`mds`, `mds_stores`) is the largest single consumer of
+filesystem events on a scratch volume because it re-indexes every
+churned path. Disable it once per machine:
+
+```bash
+sudo mdutil -i off "/Volumes/<work volume>"
+```
+
+The volume still works normally for `ralph`; only Spotlight searches
+and the Quick Look previews stop updating. Re-enable later with
+`sudo mdutil -i on "<volume>"`.
+
+### 2. Reset a bloated `.fseventsd` journal
+
+`fseventsd` journals events to per-volume `.fseventsd/` directories.
+On a long-running scratch volume that journal can grow into the
+gigabytes; when it does, the daemon itself slows down and the symptom
+shows up as host-wide CPU use with no obvious owner.
+
+With all `ralph` runs stopped, remove the journal — `fseventsd`
+recreates a small one on the next remount or reboot:
+
+```bash
+sudo rm -rf "/Volumes/<vol>/.fseventsd"
+```
+
+### 3. (Optional, aggressive) Disable journaling entirely for the volume
+
+For pure scratch volumes where the historical event log is not useful,
+drop a `no_log` sentinel so `fseventsd` stops journaling on-disk events
+for the volume. Live FSEvents subscribers still work; Time Machine and
+Spotlight on that volume degrade to full rescans.
+
+```bash
+sudo mkdir -p "/Volumes/<vol>/.fseventsd"
+sudo touch "/Volumes/<vol>/.fseventsd/no_log"
+```
+
+Then remount the volume (or reboot) for the change to take effect.
+
+### 4. Keep project-under-test logs bounded
+
+Ralph Workflow drives filesystem activity inside the project under test (test
+logs at ~100 KB/s, Active-Storage temp blobs, git objects, full
+docs rebuilds). That activity is the project's, not Ralph Workflow's. Keep the
+verify loop from accumulating unbounded artifacts in the project under
+test:
+
+- Rails: add log rotation to `config.logger`, or truncate
+  `log/test.log` at the start of the verify script.
+- Other projects: prefer bounded log sizes or per-run log directories.
+
+### When the warning appears
+
+If `ralph --diagnose` reports `fs_health` warnings, apply mitigations
+1 and 2 before the next long-running session. Mitigation 3 is optional
+and only useful on dedicated scratch volumes.

@@ -148,7 +148,10 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["PLR2004"]  # Magic values in tests are acceptable
+"tests/**/*.py" = [
+    "PLR2004",  # Magic values in tests are acceptable
+    "TC003",   # Tests legitimately use Path() at runtime for fixture construction (tmp_path / "...") and literal-path assertions; cannot be TYPE_CHECKING only.
+]
 "ralph/cli/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in CLI
 "ralph/config/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in config package
 "ralph/display/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in display package

@@ -37,6 +37,11 @@ def test_configure_logging_creates_per_run_directory_and_structured_log(tmp_path
     assert structured_log_path is not None
     assert structured_log_path.exists()
 
+    # RFC-013 P1: the structured JSONL sink uses block buffering
+    # (buffering=8192). logger.remove() closes the file and flushes the
+    # buffered tail to disk before the assertion reads it.
+    logger.remove()
+
     structured_lines = structured_log_path.read_text().strip().splitlines()
     payload = json.loads(structured_lines[-1])
 
@@ -74,6 +79,9 @@ def test_ralph_logger_emits_structured_phase_events(tmp_path: Path) -> None:
     )
 
     session.ralph.phase_start("planning", "planner")
+
+    # RFC-013 P1: flush the buffered JSONL sink before reading.
+    logger.remove()
 
     structured_log_path = session.paths.structured_log_path
     assert structured_log_path is not None

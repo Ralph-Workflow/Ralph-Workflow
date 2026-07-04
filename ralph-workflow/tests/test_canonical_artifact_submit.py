@@ -13,11 +13,17 @@ from typing import TYPE_CHECKING
 import pytest
 
 import ralph.mcp.artifacts as artifacts_package
-from ralph.agents.completion_signals import CompletionSignals, is_artifact_submitted
+from ralph.agents.completion_signals import (
+    CompletionSignals,
+    _check_completion_sentinel,
+    is_artifact_submitted,
+)
 from ralph.agents.execution_state._helpers import _check_signals_terminal
 from ralph.mcp.artifacts import SubmitResult, submit_artifact_canonical
+from ralph.mcp.artifacts import state_db as state_db_module
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
@@ -97,14 +103,19 @@ def test_submit_artifact_canonical_writes_artifact_receipt_sentinel_and_handoff(
     assert result.artifact_path is not None
     assert backend.exists(result.artifact_path)
 
+    # RFC-013 P3: receipt and sentinel are DB-backed (canonical paths are
+    # still returned for callers that expect them, but production does
+    # NOT write legacy files). Verify via the DB-backed read API.
     assert result.receipt_path is not None
-    assert backend.exists(result.receipt_path)
     assert artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
 
     assert result.sentinel_path is not None
-    assert backend.exists(result.sentinel_path)
-    sentinel_payload = json.loads(backend.read_text(result.sentinel_path, encoding="utf-8"))
-    assert sentinel_payload == {"run_id": "run-1"}
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_completion_sentinel_hmac("run-1") is not MISSING
+    finally:
+        db.close()
+    assert _check_completion_sentinel(tmp_path, "run-1") is True
 
     assert result.handoff_path is None
 
@@ -165,8 +176,9 @@ def test_submit_artifact_canonical_does_not_write_sentinel_for_plan(
 
     assert result.artifact_path is not None
     assert backend.exists(result.artifact_path)
+    # RFC-013 P3: receipt is DB-backed; legacy file is no longer written.
     assert result.receipt_path is not None
-    assert backend.exists(result.receipt_path)
+    assert artifact_receipt_present(tmp_path, "run-1", "plan", backend=backend)
     assert result.sentinel_path is None
     assert result.handoff_path is not None
 
@@ -174,15 +186,19 @@ def test_submit_artifact_canonical_does_not_write_sentinel_for_plan(
 def test_submit_artifact_canonical_rolls_back_on_failure(
     tmp_path: Path,
     backend: MemoryBackend,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _FailingBackend(MemoryBackend):
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if ".agent/receipts/" in str(path):
-                raise RuntimeError("receipt write failed")
-            super().write_text(path, content, encoding=encoding)
+    # RFC-013 P3: receipts are DB-backed, so the canonical submit's
+    # receipt op writes through ``RunStateDB.upsert_receipt``. Patch
+    # that method to simulate a write failure.
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("receipt write failed")
 
-    failing_backend = _FailingBackend()
-    deps = ArtifactHandlerDeps(backend=failing_backend)
+    monkeypatch.setattr(
+        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
+    )
+
+    deps = ArtifactHandlerDeps(backend=backend)
 
     with pytest.raises(RuntimeError):
         submit_artifact_canonical(
@@ -194,21 +210,29 @@ def test_submit_artifact_canonical_rolls_back_on_failure(
         )
 
     assert not artifact_receipt_present(
-        tmp_path, "run-1", "commit_message", backend=failing_backend
+        tmp_path, "run-1", "commit_message", backend=backend
     )
-    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+    # Sentinel must also be absent (no DB row was inserted because the
+    # earlier receipt op failure triggered the rollback).
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_completion_sentinel_hmac("run-1") is MISSING
+    finally:
+        db.close()
 
 
 def test_submit_artifact_canonical_rolls_back_named_artifact_on_failure(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _FailingBackend(MemoryBackend):
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if ".agent/receipts/" in str(path):
-                raise RuntimeError("receipt write failed")
-            super().write_text(path, content, encoding=encoding)
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("receipt write failed")
 
-    failing_backend = _FailingBackend()
+    monkeypatch.setattr(
+        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
+    )
+
+    failing_backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=failing_backend)
 
     with pytest.raises(RuntimeError):
@@ -341,8 +365,14 @@ def test_default_backend_is_used_when_deps_is_none(
         run_id="run-1",
     )
 
+    # RFC-013 P3: receipt is DB-backed. The artifact file (always
+    # written through the backend) is the canonical artifact target.
+    assert result.artifact_path is not None
+    assert DEFAULT_FILE_BACKEND.exists(result.artifact_path)
     assert result.receipt_path is not None
-    assert DEFAULT_FILE_BACKEND.exists(result.receipt_path)
+    assert artifact_receipt_present(
+        tmp_path, "run-1", "commit_message", backend=DEFAULT_FILE_BACKEND
+    )
 
 
 def test_fallback_promotion_returns_false_on_schema_invalid_payload(
@@ -477,15 +507,20 @@ def test_atomic_rollback_when_handoff_sync_fails(
 
 def test_atomic_rollback_when_receipt_write_fails(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _FailingBackend(MemoryBackend):
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if ".agent/receipts/" in str(path):
-                raise RuntimeError("receipt write failed")
-            super().write_text(path, content, encoding=encoding)
+    # RFC-013 P3: receipt writes go through RunStateDB.upsert_receipt.
+    # Patch that to simulate a write failure and confirm the rest of
+    # the submit ops roll back (no artifact file, no sentinel row).
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("receipt write failed")
 
-    failing_backend = _FailingBackend()
-    deps = ArtifactHandlerDeps(backend=failing_backend)
+    monkeypatch.setattr(
+        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
+    )
+
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
 
     with pytest.raises(RuntimeError):
         submit_artifact_canonical(
@@ -500,25 +535,36 @@ def test_atomic_rollback_when_receipt_write_fails(
             run_id="run-1",
         )
 
-    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
-    assert not failing_backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
-    )
-    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+    # No receipt row in DB (upsert raised before commit)
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_receipt_hmac("run-1", "development_result") is MISSING
+        # Sentinel op must have rolled back too
+        assert db.get_completion_sentinel_hmac("run-1") is MISSING
+    finally:
+        db.close()
 
 
 def test_atomic_rollback_when_sentinel_write_fails(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _FailingBackend(MemoryBackend):
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if ".agent/completion_seen_" in str(path):
-                raise RuntimeError("sentinel write failed")
-            super().write_text(path, content, encoding=encoding)
+    # RFC-013 P3: sentinel writes go through RunStateDB.upsert_completion_sentinel.
+    # Patch that to simulate a write failure; earlier receipt op must roll back.
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("sentinel write failed")
 
-    failing_backend = _FailingBackend()
-    deps = ArtifactHandlerDeps(backend=failing_backend)
+    monkeypatch.setattr(
+        state_db_module.RunStateDB,
+        "upsert_completion_sentinel",
+        _raise,
+        raising=True,
+    )
+
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
 
     with pytest.raises(RuntimeError):
         submit_artifact_canonical(
@@ -533,29 +579,35 @@ def test_atomic_rollback_when_sentinel_write_fails(
             run_id="run-1",
         )
 
-    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
-    assert not failing_backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
-    )
-    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+    # The earlier receipt op succeeded (it is the sentinel that failed),
+    # but the rollback undoes it too. Confirm both DB rows are absent.
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_receipt_hmac("run-1", "development_result") is MISSING
+        assert db.get_completion_sentinel_hmac("run-1") is MISSING
+    finally:
+        db.close()
 
 
 def test_atomic_rollback_preserves_artifact_dir_state(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     artifact_dir = tmp_path / ".agent" / "artifacts"
 
-    class _FailingBackend(MemoryBackend):
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if ".agent/receipts/" in str(path):
-                raise RuntimeError("receipt write failed")
-            super().write_text(path, content, encoding=encoding)
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("receipt write failed")
 
-    failing_backend = _FailingBackend()
-    deps = ArtifactHandlerDeps(backend=failing_backend)
+    monkeypatch.setattr(
+        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
+    )
 
-    pre_submit_files = set(failing_backend.glob(artifact_dir, "*.json"))
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+
+    pre_submit_files = set(backend.glob(artifact_dir, "*.json"))
 
     with pytest.raises(RuntimeError):
         submit_artifact_canonical(
@@ -570,7 +622,7 @@ def test_atomic_rollback_preserves_artifact_dir_state(
             run_id="run-1",
         )
 
-    post_failure_files = set(failing_backend.glob(artifact_dir, "*.json"))
+    post_failure_files = set(backend.glob(artifact_dir, "*.json"))
     assert post_failure_files == pre_submit_files
 
 

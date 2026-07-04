@@ -1152,3 +1152,8 @@ class PtyLineReader:
             if self._monitor is not None:
                 self._monitor.set_on_event(None)
             self._cleanup([reader, transcript_reader, sentinel_reader], unsubscribe, interrupted[0])
+            # Flush and release the raw-overflow log so buffered tail bytes
+            # reach disk deterministically (RFC-013 P1: per-line open/close
+            # churn on .agent/raw/*.log was a top engine event source).
+            # close() is idempotent and never raises.
+            self._raw_overflow.close()

@@ -562,7 +562,11 @@ def _print_user_global_update_hint() -> None:
     )
 
 
-def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> None:
+def _sync_shipped_skills_on_pipeline_run(
+    workspace_root: Path | None = None,
+    *,
+    keep_run_id: str | None = None,
+) -> None:
     target_root = workspace_root or Path.cwd()
     update_available = False
     try:
@@ -601,6 +605,21 @@ def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> 
             logger.info("Auto-committed skill updates: {}", sha[:8])
     except Exception as exc:  # auto-commit is best-effort; never break the pipeline
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
+    # RFC-013 P2: run-start retention sweep deletes aged bookkeeping
+    # under ``.agent`` (completion sentinels, receipt dirs, retry scratch)
+    # so long multi-instance runs do not accumulate one-file-per-event
+    # state under fseventsd. Best-effort: any error is swallowed so the
+    # pipeline always proceeds.
+    try:
+        from ralph.workspace.agent_dir_retention import sweep_agent_dir
+
+        removed = sweep_agent_dir(target_root, keep_run_id=keep_run_id)
+        if removed:
+            logger.debug(
+                "Retention sweep removed {} stale .agent entries", removed
+            )
+    except Exception as exc:  # sweep is best-effort; never break the pipeline
+        logger.debug("Retention sweep failed (non-fatal): {}", exc)
 
 
 sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run

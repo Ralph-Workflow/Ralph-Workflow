@@ -570,6 +570,12 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     ".agent/artifact-formats/x.md",
     # Completion-sentinel glob (canonical on-disk filename pattern).
     ".agent/completion_seen_abc-123.json",
+    # StateDB WAL files (RFC-013 P3): engine-internal bookkeeping store.
+    # The db/-wal/-shm trio is referenced when persistence write/read
+    # code paths mention ``.agent/state.db`` (or the WAL index).
+    ".agent/state.db",
+    ".agent/state.db-wal",
+    ".agent/state.db-shm",
     # Root-level canonical basename.
     "checkpoint.json",
 )

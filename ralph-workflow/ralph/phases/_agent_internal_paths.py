@@ -61,6 +61,13 @@ AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
         "rebase.lock",
         "start_commit",
         "mcp.toml",
+        # RFC-013 P3: per-workspace RunStateDB file (and its WAL/SHM
+        # siblings). Engine-internal bookkeeping store. All three are
+        # owned by the engine and must be exempt from the universal
+        # HEAD veto.
+        "state.db",
+        "state.db-wal",
+        "state.db-shm",
     }
 )
 

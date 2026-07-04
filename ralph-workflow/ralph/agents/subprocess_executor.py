@@ -106,10 +106,14 @@ class SubprocessAgentExecutor:
 
         Removes the unit's raw overflow log entry from ``self._raw_logs``
         so the memory the log holds (up to ``DEFAULT_MAX_OVERFLOW_FILE_BYTES``
-        per unit) is released when the unit is no longer needed. Safe to
-        call for a unit that was never added; it just no-ops.
+        per unit) is released when the unit is no longer needed. Calls
+        ``close()`` on the log first so any buffered tail bytes reach
+        disk deterministically. Safe to call for a unit that was never
+        added; it just no-ops.
         """
-        self._raw_logs.pop(unit_id, None)
+        raw_log = self._raw_logs.pop(unit_id, None)
+        if raw_log is not None:
+            raw_log.close()
 
     async def run(
         self,

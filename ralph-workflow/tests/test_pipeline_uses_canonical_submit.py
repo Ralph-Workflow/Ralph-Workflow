@@ -13,11 +13,16 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents.completion_signals import is_artifact_submitted
+from ralph.agents.completion_signals import (
+    _check_completion_sentinel,
+    is_artifact_submitted,
+)
 from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.mcp.artifacts import state_db as state_db_module
 from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
 )
+from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps, handle_submit_artifact
 from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -97,8 +102,9 @@ def test_pipeline_phase_stamps_canonical_receipt(
 
     assert result == PipelineEvent.AGENT_SUCCESS
     assert artifact_receipt_present(tmp_path, _RUN_ID, "development_result", backend=backend)
-    sentinel_path = tmp_path / ".agent" / f"completion_seen_{_RUN_ID}.json"
-    assert backend.exists(sentinel_path)
+    # RFC-013 P3: completion sentinel is DB-backed. Verify via the
+    # completion-signal check which honors both DB and legacy file.
+    assert _check_completion_sentinel(tmp_path, _RUN_ID) is True
 
 
 @pytest.mark.timeout_seconds(3)
@@ -142,25 +148,31 @@ def test_pipeline_fallback_promotion_uses_canonical_helper(
 class _FailableBackend(MemoryBackend):
     """MemoryBackend that raises when write_text targets a receipt path."""
 
-    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-        if "receipts" in str(path):
-            msg = f"Simulated write failure on receipt path: {path}"
-            raise OSError(msg)
-        super().write_text(path, content, encoding=encoding)
-
 
 def test_pipeline_atomic_rollback_on_phase_failure(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """When the receipt write fails, the artifact is rolled back atomically."""
-    del monkeypatch
-    backend = _FailableBackend()
+    """When the receipt write fails, the artifact is rolled back atomically.
+
+    RFC-013 P3: receipt writes go through RunStateDB. Patch
+    ``upsert_receipt`` to simulate the failure so the rest of the
+    submit ops roll back (no artifact file, no sentinel row).
+    """
+    backend = MemoryBackend()
+
+    def _raise(*args: object, **kwargs: object) -> None:
+        msg = "Simulated DB write failure on receipt"
+        raise OSError(msg)
+
+    monkeypatch.setattr(
+        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
+    )
     workspace = MockWorkspace(tmp_path)
 
     session = _PipelineSession()
 
-    with pytest.raises(OSError, match="Simulated write failure on receipt path"):
+    with pytest.raises(OSError, match="Simulated DB write failure on receipt"):
         handle_submit_artifact(
             session,
             workspace,
@@ -178,3 +190,11 @@ def test_pipeline_atomic_rollback_on_phase_failure(
     assert not backend.exists(artifact_file), (
         "Artifact file should have been rolled back after receipt write failure"
     )
+    # DB-side rollback: no receipt row, no sentinel row.
+    db = RunStateDB(tmp_path)
+    try:
+        run_id = _RUN_ID
+        assert db.get_receipt_hmac(run_id, "development_result") is MISSING
+        assert db.get_completion_sentinel_hmac(run_id) is MISSING
+    finally:
+        db.close()

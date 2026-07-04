@@ -122,6 +122,7 @@ from ralph.mcp.artifacts.smoke_test_result import (
     SmokeTestResultValidationError,
     normalize_smoke_test_result_content,
 )
+from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.artifacts.store import (
     ArtifactSubmitOptions,
     delete_artifact,
@@ -2887,20 +2888,40 @@ def _submit_ops_for_artifact_with_options(
     ):
         _rid_sentinel = run_id
         _wr_sentinel = workspace_root
-        _sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=_rid_sentinel)
-        _backend = deps.backend
-        _sentinel_dict: dict[str, str] = {"run_id": _rid_sentinel}
-        _sentinel_payload = json.dumps(_sentinel_dict, ensure_ascii=False)
 
         def _run_write_sentinel() -> None:
-            sentinel_path = _wr_sentinel / _sentinel_relpath
-            _backend.mkdir(sentinel_path.parent, parents=True, exist_ok=True)
-            _backend.write_text(sentinel_path, _sentinel_payload, encoding="utf-8")
+            # RFC-013 P3: completion sentinel is stored in
+            # ``.agent/state.db`` via ``RunStateDB``. Production does NOT
+            # write the legacy ``.agent/completion_seen_<run_id>.json``
+            # file path; the read path honors legacy files left behind
+            # by the pre-upgrade release during the dual-read window.
+            try:
+                db = RunStateDB(_wr_sentinel)
+            except (OSError, RuntimeError):
+                return
+            try:
+                db.upsert_completion_sentinel(_rid_sentinel, None)
+            finally:
+                db.close()
 
         def _undo_write_sentinel() -> None:
-            sentinel_path = _wr_sentinel / _sentinel_relpath
+            # Dual-target delete: drop the DB row AND unlink any stale
+            # legacy file so an in-flight run cannot inherit a sentinel
+            # after a rolled-back submit.
+            try:
+                db = RunStateDB(_wr_sentinel)
+            except (OSError, RuntimeError):
+                pass
+            else:
+                try:
+                    db.delete_completion_sentinel(_rid_sentinel)
+                finally:
+                    db.close()
+            sentinel_path = _wr_sentinel / COMPLETION_SENTINEL_RELPATHFMT.format(
+                run_id=_rid_sentinel
+            )
             with suppress(OSError):
-                _backend.unlink(sentinel_path, missing_ok=True)
+                deps.backend.unlink(sentinel_path, missing_ok=True)
 
         ops.append(SubmitOp(run=_run_write_sentinel, undo=_undo_write_sentinel))
 

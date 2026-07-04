@@ -29,6 +29,12 @@ ALLOWLIST: list[tuple[str, str]] = [
         "testing/audit_mcp_timeout.py",
         "references subprocess.run/Popen as detection-pattern strings; does not call subprocess",
     ),
+    (
+        "diagnostics/fs_health.py",
+        "RFC-013 P4: read-only ``mdutil -s`` probe for Spotlight status "
+        "via injected ``run_command`` (default subprocess.run with timeout=10, "
+        "DI seam for tests). No state-changing subprocess calls.",
+    ),
 ]
 
 # Files under TESTS_ROOT that are allowed to use subprocess directly.

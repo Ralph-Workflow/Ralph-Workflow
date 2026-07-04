@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -108,6 +109,48 @@ def _sentinel_hmac_matches(content: str, sentinel_secret: str, run_id: str) -> b
     return hmac.compare_digest(stored, expected)
 
 
+def _db_sentinel_lookup(workspace: Path, run_id: str) -> tuple[bool | None, str | None]:
+    """Open ``.agent/state.db`` and look up the sentinel hmac.
+
+    Returns ``(db_match, db_value)``:
+    - ``(True, str|None)`` when the DB has a row
+    - ``(False, None)`` when the row is absent (caller falls back to file)
+    - ``(None, None)`` when the DB is unavailable
+
+    Best-effort: a missing or locked DB returns ``(None, None)``.
+    """
+    try:
+        db = RunStateDB(workspace)
+    except (OSError, RuntimeError):
+        return None, None
+    try:
+        stored = db.get_completion_sentinel_hmac(run_id)
+    finally:
+        db.close()
+    if stored is MISSING:
+        return False, None
+    return True, stored if isinstance(stored, str) else None
+
+
+def _check_legacy_file_sentinel(
+    workspace: Path,
+    run_id: str,
+    *,
+    _read_fn: Callable[[Path], str] | None,
+    sentinel_secret: str | None,
+) -> bool:
+    """Read the legacy sentinel file (or the test seam)."""
+    sentinel_path = workspace / _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
+    read_fn = _read_fn or (lambda path: path.read_text(encoding="utf-8"))
+    try:
+        content = read_fn(sentinel_path)
+    except (FileNotFoundError, OSError):
+        return False
+    if sentinel_secret is None:
+        return True
+    return _sentinel_hmac_matches(content, sentinel_secret, run_id)
+
+
 def _check_completion_sentinel(
     workspace: Path,
     run_id: str | None,
@@ -122,18 +165,40 @@ def _check_completion_sentinel(
     fails HMAC verification returns ``False``. This pins the sentinel
     to the broker-owned secret so a model with workspace write
     capabilities cannot forge a valid completion sentinel.
+
+    Storage (RFC-013 P3): reads the ``.agent/state.db`` row first via
+    ``RunStateDB``; falls back to the legacy
+    ``.agent/completion_seen_<run_id>.json`` file when the DB has no
+    row or is unavailable. The DB read is skipped entirely when an
+    ``_read_fn`` test seam is provided, matching the pre-P3 file-only
+    contract that the existing unit tests rely on.
     """
     if run_id is None:
         return False
-    sentinel_path = workspace / _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
-    read_fn = _read_fn or (lambda path: path.read_text(encoding="utf-8"))
-    try:
-        content = read_fn(sentinel_path)
-    except (FileNotFoundError, OSError):
-        return False
-    if sentinel_secret is None:
-        return True
-    return _sentinel_hmac_matches(content, sentinel_secret, run_id)
+
+    # 1) DB-first lookup (skipped when a file-only test seam is in play).
+    db_match: bool | None = None
+    db_value: str | None = None
+    if _read_fn is None:
+        db_match, db_value = _db_sentinel_lookup(workspace, run_id)
+
+    if db_match is True:
+        if sentinel_secret is None:
+            return True
+        if db_value is None:
+            return False
+        expected = hmac.new(
+            sentinel_secret.encode(), run_id.encode(), hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(db_value, expected)
+
+    # 2) File-fallback path (legacy file or test seam).
+    return _check_legacy_file_sentinel(
+        workspace,
+        run_id,
+        _read_fn=_read_fn,
+        sentinel_secret=sentinel_secret,
+    )
 
 
 def _artifact_is_schema_valid(artifact_path: Path) -> bool:

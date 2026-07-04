@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
+from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.multimodal import ImageContent
 
 from .capability_denied_error import CapabilityDeniedError
@@ -117,11 +118,18 @@ def _write_completion_sentinel(
     sentinel. ``_check_completion_sentinel`` in
     ``ralph.agents.completion_signals`` verifies the HMAC the same way
     when the secret is provided.
+
+    Storage (RFC-013 P3): sentinels are written to ``.agent/state.db``
+    via ``RunStateDB`` (one row per ``run_id``). The legacy ``.agent/
+    completion_seen_<run_id>.json`` file path is NOT written during
+    production rollout; it is preserved only as a read-fallback in
+    ``_check_completion_sentinel`` so an in-flight run surviving an
+    upgrade still passes its completion gate. When ``_write_fn`` is
+    provided the test seam captures the payload without performing any
+    disk or DB I/O.
     """
     if workspace is None:
         return
-    sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
-    sentinel_abspath = workspace.absolute_path(sentinel_relpath)
     sentinel_payload: dict[str, str] = {"run_id": run_id}
     if sentinel_hmac is not None:
         digest = hmac.new(
@@ -132,9 +140,24 @@ def _write_completion_sentinel(
         sentinel_payload["hmac"] = digest
     payload = json.dumps(sentinel_payload, ensure_ascii=False)
     if _write_fn is not None:
+        # Test seam: keep the file-format assertion path working without
+        # touching the real workspace or DB.
+        try:
+            sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
+            sentinel_abspath = workspace.absolute_path(sentinel_relpath)
+        except Exception:
+            sentinel_abspath = f".agent/completion_seen_{run_id}.json"
         _write_fn(sentinel_abspath, payload)
         return
-    Path(sentinel_abspath).write_text(payload, encoding="utf-8")
+
+    root_value: object | None = getattr(workspace, "root", None)
+    if isinstance(root_value, Path):
+        db = RunStateDB(root_value)
+        try:
+            hmac_hex_value: str | None = sentinel_payload.get("hmac")
+            db.upsert_completion_sentinel(run_id, hmac_hex_value)
+        finally:
+            db.close()
 
 
 #: Stable machine-readable marker appended to every progress report. The idle

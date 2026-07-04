@@ -150,6 +150,9 @@ def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
         )
 
     asyncio.run(run())
+    # RFC-013 P1: raw overflow log uses block buffering. drop_unit()
+    # flushes the buffered tail to disk before the assertion reads it.
+    executor.drop_unit("unit-exec")
 
     raw_log = tmp_path / ".agent" / "raw" / "unit-exec.log"
     assert raw_log.exists(), "Raw log file should be created"

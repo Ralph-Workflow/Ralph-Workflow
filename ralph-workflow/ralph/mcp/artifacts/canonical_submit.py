@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT, InvalidParamsError
 
 if TYPE_CHECKING:
@@ -208,12 +209,37 @@ def submit_artifact_canonical(
     receipt_path: Path | None = None
     if run_id is not None:
         candidate_receipt = _receipt_path(workspace_root, run_id, artifact_type)
-        receipt_path = candidate_receipt if backend.exists(candidate_receipt) else None
+        # RFC-013 P3: receipts may be DB-backed (no file) OR legacy-file-backed.
+        # Return the receipt path when EITHER store has the row so callers see a
+        # canonical Path regardless of which storage backend was used.
+        try:
+            db = RunStateDB(workspace_root)
+            try:
+                hmac_value = db.get_receipt_hmac(run_id, artifact_type)
+            finally:
+                db.close()
+        except (OSError, RuntimeError):
+            hmac_value = MISSING
+        if hmac_value is not MISSING or backend.exists(candidate_receipt):
+            receipt_path = candidate_receipt
 
     sentinel_path: Path | None = None
     if run_id is not None:
         candidate_sentinel = _sentinel_path(workspace_root, run_id)
-        if backend.exists(candidate_sentinel):
+        # RFC-013 P3: completion sentinel may be DB-backed (no file).
+        # Set the canonical path when EITHER the DB row exists OR the
+        # legacy file path exists so callers see a sentinel_path for
+        # either storage backend.
+        sentinel_in_db = False
+        try:
+            db = RunStateDB(workspace_root)
+            try:
+                sentinel_in_db = db.get_completion_sentinel_hmac(run_id) is not MISSING
+            finally:
+                db.close()
+        except (OSError, RuntimeError):
+            sentinel_in_db = False
+        if sentinel_in_db or backend.exists(candidate_sentinel):
             sentinel_path = candidate_sentinel
 
     handoff_path: Path | None = None
