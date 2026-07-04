@@ -128,7 +128,19 @@ def advance_phase(
     *,
     policy: PipelinePolicy | None,
 ) -> PipelineState:
-    """Advance phases while applying only canonical routing-budget bookkeeping."""
+    """Advance phases while applying only canonical routing-budget bookkeeping.
+
+    Resets ``recovery_epoch`` to ``0`` on every normal forward advance so the
+    missing-plan recovery loop counter is scoped to the CURRENT consecutive
+    recovery loop, not the lifetime total of unrelated recoveries. Callers
+    that need to override ``recovery_epoch`` (e.g. ``recover_missing_plan_handoff``
+    in ``ralph/pipeline/_runner_state_helpers.py`` and ``_advance_to_failed``
+    in ``ralph/pipeline/reducer.py``) explicitly set it after this function
+    returns, so the reset is invisible to the recovery bookkeeping contract
+    and visible to every other forward-progress path. This keeps
+    ``pipeline_policy.recovery.cycle_cap`` scoped to the current missing-plan
+    recovery loop rather than inflating across successful forward transitions.
+    """
     if policy is None:
         msg = (
             f"advance_phase requires PipelinePolicy to advance to '{target_phase}'; "
@@ -141,6 +153,7 @@ def advance_phase(
         "previous_phase": state.phase,
         "last_agent_session_id": None,
         "agent_retry_intent": cleared_agent_retry_intent(),
+        "recovery_epoch": 0,
     }
 
     phase_def = policy.phases.get(target_phase)
