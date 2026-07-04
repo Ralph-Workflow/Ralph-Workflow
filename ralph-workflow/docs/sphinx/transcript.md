@@ -194,6 +194,15 @@ read the working directory, current phase, and applicable cycle counts at a glan
 without scrollback, copy/paste, terminal search, or post-run log review being worse
 than before.
 
+### Status Bar during a missing-plan-handoff recovery loop
+
+When a non-planning phase (e.g. `development`) tries to materialize a prompt but `.agent/PLAN.md` is missing, the runner catches `MissingPlanHandoffError` and routes through `recover_missing_plan_handoff` back to `pipeline_policy.entry_phase` (`"planning"` for the default policy). Operators watching the run see:
+
+- The persistent bottom Status Bar keeps displaying the **active phase** throughout the recovery loop. While `_run_inner_loop` is routing through the recovery helper, the bar updates once per `(phase, outer_dev_iteration, inner_analysis)` signature change so a recovery that returns the state to `"planning"` refreshes the bar rather than leaving a stale `development` footer visible.
+- The bar's dedupe contract (`signature != last_sig` in `_push_status_bar_if_changed`) suppresses flicker on unchanged signatures, so the footer stays steady even if the loop re-evaluates the same phase on consecutive ticks.
+- The underlying `MissingPlanHandoffError` message is preserved on the recovered state's `last_error` field (matching the `ExitFailureEffect` convention), so the operator transcript and the Status Bar's lifecycle still surface the real cause.
+- The recovery is bounded by `pipeline_policy.recovery.cycle_cap` (default 200); when `recovery_epoch >= cycle_cap` the helper routes to `failed_route` instead of re-entering `entry_phase`, so an unbounded loop is impossible. The mechanism itself is documented in `display.rst`; this subsection only describes the operator-visible behavior.
+
 ## Line Format
 
 ```

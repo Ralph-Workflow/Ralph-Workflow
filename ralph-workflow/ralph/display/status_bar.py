@@ -126,13 +126,18 @@ _MIN_BUDGET: int = _ELLIPSIS_LEN + 1
 # much as possible:
 #   * CRLF / LF / CR collapse to a single ASCII space so a stray
 #     newline can never wrap the bar into the working area.
-#   * ASCII DEL and the C0 control block (excluding ``\t``) are dropped
-#     so embedded NULs / BELs cannot poison the live region.
+#   * ASCII DEL and the C0 control block (including ``\t``) are
+#     replaced with a single ASCII space so embedded NULs, BELs, and
+#     tabs cannot poison the live region. ``\t`` is included here
+#     because the bar width budget accounts column count via ``len()``
+#     while a terminal expands ``\t`` to the next tab stop (typically
+#     8 columns), which would otherwise blow up alignment / truncation
+#     for any tab-containing path or phase label.
 #   * CSI / SGR escape sequences (``ESC[...m`` and friends) are
 #     stripped so a hostile path cannot inject color or cursor moves
 #     into the bar.
 _SAFE_LINE_NEWLINE_RE: re.Pattern[str] = re.compile(r"[\r\n]+")
-_SAFE_LINE_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_SAFE_LINE_CONTROL_RE: re.Pattern[str] = re.compile(r"[\x00-\x09\x0b-\x1f\x7f]")
 _SAFE_LINE_ESCAPE_RE: re.Pattern[str] = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
@@ -142,15 +147,23 @@ def _safe_single_line(text: str) -> str:
     Neutralises three hostile-input classes that the live Status Bar
     cannot tolerate (see :data:`_SAFE_LINE_NEWLINE_RE`,
     :data:`_SAFE_LINE_CONTROL_RE`, :data:`_SAFE_LINE_ESCAPE_RE`).
-    Collapses line breaks to a single space (preserving readability)
-    and drops control characters and CSI escape sequences entirely.
-    Leading / trailing whitespace is trimmed so a path that is
-    otherwise non-empty cannot render as an invisible bar segment.
+    Collapses line breaks AND tab characters AND other C0 control
+    bytes to a single ASCII space (preserving readability), and drops
+    CSI escape sequences entirely. The tab-to-space normalization is
+    required because the bar's width budget accounts column count via
+    ``len()`` (terminal-cell-aware measurement is intentionally
+    out-of-scope here) while a terminal expands ``\t`` to the next
+    tab stop; without this normalization a single tab in a path or
+    phase label would silently inflate the rendered width and break
+    the ``len(text.plain) <= ctx.width`` invariant the Live region
+    is sized against. Leading / trailing whitespace is trimmed so a
+    path that is otherwise non-empty cannot render as an invisible
+    bar segment.
     """
     if not text:
         return ""
     cleaned = _SAFE_LINE_ESCAPE_RE.sub("", text)
-    cleaned = _SAFE_LINE_CONTROL_RE.sub("", cleaned)
+    cleaned = _SAFE_LINE_CONTROL_RE.sub(" ", cleaned)
     cleaned = _SAFE_LINE_NEWLINE_RE.sub(" ", cleaned)
     return cleaned.strip()
 

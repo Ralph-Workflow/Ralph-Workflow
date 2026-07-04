@@ -61,13 +61,23 @@ def recover_missing_plan_handoff(
 ) -> PipelineState:
     """Recover from a missing plan handoff by routing back to the entry phase.
 
-    Mirrors the byte-identical side-effect order of the original inline
-    ``except MissingPlanHandoffError`` block in
-    ``_handle_inline_effect`` and the parallel call site in
-    ``_run_pipeline_step``:
+    When ``current_epoch >= pipeline_policy.recovery.cycle_cap``, the recovery
+    routes to ``pipeline_policy.recovery.failed_route`` (default
+    ``"failed_terminal"``) instead of ``entry_phase``, preventing an infinite
+    recovery loop when a planning agent persistently fails to produce a plan
+    artifact. On the success path (below the bound) the helper advances to
+    ``pipeline_policy.entry_phase``. Both paths preserve
+    ``last_error=str(exc)`` so the operator sees the underlying
+    ``MissingPlanHandoffError`` message regardless of which branch fires,
+    matching the ``ExitFailureEffect`` convention.
 
-    1. ``logger.warning`` with the missing handoff message.
-    2. ``progress.advance_phase`` to ``pipeline_policy.entry_phase``.
+    Mirrors the side-effect order of the original inline ``except`` blocks in
+    ``_handle_inline_effect`` and ``_run_pipeline_step``:
+
+    1. ``logger.warning`` (success path) or ``logger.error`` (bound-exceeded
+       path) with the missing handoff message.
+    2. ``progress.advance_phase`` to ``entry_phase`` (success) or
+       ``failed_route`` (bound-exceeded).
     3. ``copy_with(last_error=str(exc), recovery_epoch=current_epoch + 1)``.
     4. ``ckpt.save(recovered_state, checkpoint_path)``.
     5. ``_notify_pipeline_subscriber(subscriber, recovered_state)``.
@@ -79,15 +89,32 @@ def recover_missing_plan_handoff(
     Returns the recovered ``PipelineState``. Callers MUST return the
     recovered state to their caller (do not continue the current effect).
     """
-    logger.warning(
-        "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
-        phase=state.phase,
-        err=exc,
-    )
     current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
+    cycle_cap = pipeline_policy.recovery.cycle_cap
+    bound_exceeded = current_epoch >= cycle_cap
+
+    if bound_exceeded:
+        logger.error(
+            "Missing plan handoff for phase={phase}: {err}; recovery_epoch={epoch} "
+            "has reached cycle_cap={cap}, routing to failed_route={route}",
+            phase=state.phase,
+            err=exc,
+            epoch=current_epoch,
+            cap=cycle_cap,
+            route=pipeline_policy.recovery.failed_route,
+        )
+        target_phase = pipeline_policy.recovery.failed_route
+    else:
+        logger.warning(
+            "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
+            phase=state.phase,
+            err=exc,
+        )
+        target_phase = pipeline_policy.entry_phase
+
     recovered_state = progress.advance_phase(
         state,
-        pipeline_policy.entry_phase,
+        target_phase,
         policy=pipeline_policy,
     ).copy_with(
         last_error=str(exc),

@@ -18,6 +18,14 @@ Scanned checks:
    lives there) and ``ralph/display/__init__.py`` (which documents the
    single mode in its module docstring).
 
+3. No production file under ``ralph/cli/main.py`` or ``ralph/cli/commands/``
+   declares a CLI flag whose name matches EITHER forbidden form:
+   - Form A: joined ``--display-mode`` / ``--display_mode`` (case-insensitive
+     substring match in the flag name or in the ``help=`` keyword value);
+   - Form B: bare ``--display`` with strict word-boundary (NOT followed by
+     ``-``, ``_``, or ``[a-z]``, so ``--display-mode`` / ``--displayfoo``
+     do NOT match Form B — Form A covers them).
+
 The AST cache is populated at module import time so the test runs in
 < 1 s.
 """
@@ -25,6 +33,7 @@ The AST cache is populated at module import time so the test runs in
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 from functools import cache, lru_cache
 from pathlib import Path
@@ -36,6 +45,10 @@ from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.mode import DEFAULT_MODE
 
 _DISPLAY_DIR = Path(__file__).parent.parent.parent / "ralph" / "display"
+_CLI_MAIN = Path(__file__).resolve().parent.parent.parent / "ralph" / "cli" / "main.py"
+_CLI_COMMANDS_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "ralph" / "cli" / "commands"
+)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DRIFT_SCRIPT = _PROJECT_ROOT / "scripts" / "wt028-drift-check.sh"
 _ALLOWLIST = frozenset({"mode.py", "__init__.py"})
@@ -331,3 +344,245 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token(
         f"drift-check PASS output must include the PASS marker; "
         f"got stdout={result_after.stdout!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Dual-form CLI-flag anti-drift guard (AC-04)
+# ---------------------------------------------------------------------------
+#
+# This complements ``scripts/wt028-drift-check.sh``: the bash script greps
+# for the historic legacy token corpus (mode-tier literals and the legacy
+# threshold / force-mode / global-mode env-var families named during the
+# single-mode consolidation) but does NOT scan ``ralph/cli/main.py`` or
+# ``ralph/cli/commands/*.py`` for CLI flag declarations. The AST scan
+# below closes that gap for EITHER of two forbidden CLI forms:
+#
+# Form A -- joined ``--display-mode`` / ``--display_mode``:
+#   case-insensitive substring match in the flag name OR in the
+#   ``help=`` keyword value. Covers joined flags that re-introduce
+#   the legacy mode-tier concept.
+#
+# Form B -- bare ``--display`` with strict word-boundary:
+#   matches the literal substring ``--display`` followed by a strict
+#   boundary (NOT followed by ``-``, ``_``, or ``[a-z]``). Catches
+#   ``--display``, ``--display=``, ``--display foo``, ``--display)``
+#   while EXCLUDING ``--display-mode`` / ``--display_mode`` /
+#   ``--displayfoo`` (Form A handles those).
+#
+# The detection rule is split into TWO strict forms so a future
+# legitimate CLI flag named e.g. ``--display-config-with-mode`` or
+# ``--display-target`` is NOT a false positive: those are long-form
+# joined names that fail BOTH the Form A substring and the Form B
+# word-boundary (Form B excludes any ``--display`` followed by
+# ``[-_a-z]``). Only ``--display`` / ``--display-mode`` / ``--display_mode``
+# trip the guard.
+
+
+_BARE_DISPLAY_RE = re.compile(r"--display(?![-_a-z])")
+
+
+def _is_forbidden_display_cli_flag(name: str, help_text: str | None) -> bool:
+    """Return True iff the CLI flag is forbidden by Form A or Form B."""
+    name_lower = name.lower()
+    help_lower = (help_text or "").lower()
+    # Form A: joined --display-mode / --display_mode (case-insensitive)
+    if "display-mode" in name_lower or "display_mode" in name_lower:
+        return True
+    if "display-mode" in help_lower or "display_mode" in help_lower:
+        return True
+    # Form B: bare --display with strict word-boundary
+    return bool(_BARE_DISPLAY_RE.search(name))
+
+
+@lru_cache(maxsize=1)
+def _cli_files() -> tuple[Path, ...]:
+    """Return all .py files under ralph/cli/ to scan for CLI flags."""
+    files: list[Path] = []
+    if _CLI_MAIN.is_file():
+        files.append(_CLI_MAIN)
+    if _CLI_COMMANDS_DIR.is_dir():
+        files.extend(sorted(_CLI_COMMANDS_DIR.glob("*.py")))
+    return tuple(files)
+
+
+# AST-scanned calls whose function name matches one of these identifiers
+# (last segment of the attribute path, case-insensitive) are treated as
+# CLI flag declarations. The match is case-insensitive because typer
+# uses ``typer.Option(...)`` (capital O) while click uses ``click.option(...)``
+# (lowercase); both spell out the same CLI declaration concept.
+_CLI_FLAG_FUNC_NAMES = frozenset({"option", "argument"})
+
+
+def _is_cli_flag_call_func_name(func_name: str | None) -> bool:
+    """Case-insensitive matcher for click/typer CLI flag call names.
+
+    Returns False when func_name is None so the caller can use a single
+    guard without separate None-checking: an AST call's func attribute
+    is normally a Name or Attribute, but a malformed AST or wrapped
+    decorator chain can yield other node types; we skip those.
+    """
+    if not isinstance(func_name, str):
+        return False
+    return func_name.lower() in _CLI_FLAG_FUNC_NAMES
+
+
+def _extract_help_text(call: ast.Call) -> str | None:
+    """Return the help= keyword value as a string, or None if absent/not literal."""
+    for kw in call.keywords:
+        if (
+            kw.arg == "help"
+            and isinstance(kw.value, ast.Constant)
+            and isinstance(kw.value.value, str)
+        ):
+            return kw.value.value
+    return None
+
+
+def _first_string_positional(call: ast.Call) -> str | None:
+    """Return the first string positional arg of an AST call, or None."""
+    if not call.args:
+        return None
+    first = call.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    return None
+
+
+def _scan_cli_file_for_forbidden_flags(
+    path: Path,
+) -> list[str]:
+    """Return a list of ``path:lineno: form-name: matched-flag`` hits."""
+    tree = _parsed(path)
+    hits: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        func_name: str | None = None
+        if isinstance(func, ast.Name):
+            func_name = func.id
+        elif isinstance(func, ast.Attribute):
+            func_name = func.attr
+        if not _is_cli_flag_call_func_name(func_name):
+            continue
+        flag_name = _first_string_positional(node)
+        if flag_name is None:
+            continue
+        help_text = _extract_help_text(node)
+        if _is_forbidden_display_cli_flag(flag_name, help_text):
+            form = (
+                "joined"
+                if (
+                    "display-mode" in flag_name.lower()
+                    or "display_mode" in flag_name.lower()
+                    or (help_text is not None and (
+                        "display-mode" in help_text.lower()
+                        or "display_mode" in help_text.lower()
+                    ))
+                )
+                else "bare"
+            )
+            hits.append(
+                f"{path.name}:{node.lineno}: {form}: flag={flag_name!r}"
+                + (f" help={help_text!r}" if help_text else "")
+            )
+    return hits
+
+
+# Pre-populate the AST cache at import time so the per-test SIGALRM
+# window is not spent re-parsing files.
+for _f in _cli_files():
+    _parsed(_f)
+
+
+def _write_synthetic_probe(form: str, target_dir: Path) -> Path:
+    """Write a synthetic CLI-flag probe file to ``target_dir`` and return its path.
+
+    form == 'joined' -> writes ``typer.Option('--display-mode', help=...)``
+    form == 'bare'   -> writes ``typer.Option('--display', help=...)``
+    Both probes intentionally use ``typer.Option`` with the forbidden flag
+    name so the AST scanner trips on them; the test then deletes the
+    probe via a try/finally.
+    """
+    if form == "joined":
+        flag = "--display-mode"
+    elif form == "bare":
+        flag = "--display"
+    else:
+        raise ValueError(f"Unknown form {form!r}; expected 'joined' or 'bare'")
+    probe_name = f"_anti_drift_probe_{form}.py"
+    probe_path = target_dir / probe_name
+    target_dir.mkdir(parents=True, exist_ok=True)
+    probe_path.write_text(
+        "import typer\n"
+        "\n"
+        f"_FLAG = typer.Option({flag!r}, help='synthetic probe ({form})')\n",
+        encoding="utf-8",
+    )
+    return probe_path
+
+
+@pytest.mark.parametrize("form", ["joined", "bare"])
+def test_no_cli_flag_introduces_display_mode_or_bare_display(
+    form: str, tmp_path: Path
+) -> None:
+    """CLI-flag anti-drift guard: catches joined --display-mode AND bare --display.
+
+    Asserts three properties:
+
+    1. The AST scanner applied to the production CLI surface
+       (``ralph/cli/main.py`` and ``ralph/cli/commands/*.py``) returns NO
+       violations \u2014 there is no legitimate ``--display`` /
+       ``--display-mode`` / ``--display_mode`` flag in production code.
+
+    2. A synthetic probe file written under ``tmp_path/ralph/cli/commands/``
+       containing the forbidden flag DOES trip the AST scanner, proving
+       the scanner is sensitive to the offending form. The probe is
+       deleted in a try/finally block whether the assertion succeeds
+       or fails.
+
+    3. The scanner trips on BOTH forms (parametrized over ``'joined'``
+       and ``'bare'``), so the guard covers the joined legacy form AND
+       the bare ``--display`` form rather than only one of them.
+    """
+    # (1) Production surface must be free of the forbidden flags.
+    production_hits: list[str] = []
+    for cli_file in _cli_files():
+        production_hits.extend(_scan_cli_file_for_forbidden_flags(cli_file))
+    assert not production_hits, (
+        "Forbidden CLI flags (joined --display-mode / --display_mode OR "
+        "bare --display) found in production CLI code:\n"
+        + "\n".join(production_hits)
+        + "\nThis is the dual-form CLI anti-drift guard. Ralph Workflow "
+        "exposes exactly ONE display mode called 'default'; re-introduce "
+        "no CLI flag whose name matches 'display' (with or without '-mode' / "
+        "'_mode' suffix)."
+    )
+
+    # (2) Synthesize a probe in the scanned directories and prove the
+    # scanner catches it. Use the CLI main file's parent dir for the
+    # probe target so the scanner's _cli_files() picks it up.
+    target_dir = tmp_path / "ralph" / "cli" / "commands"
+    probe_path = _write_synthetic_probe(form, target_dir)
+    try:
+        synthetic_hits = _scan_cli_file_for_forbidden_flags(probe_path)
+        assert len(synthetic_hits) >= 1, (
+            f"Anti-drift scanner FAILED to catch synthetic {form!r} probe; "
+            f"the detection rule is broken for this form. Probe file: "
+            f"{probe_path}. Scanned hits: {synthetic_hits!r}"
+        )
+        # Confirm the probe hit actually names the forbidden form.
+        assert any(form in hit for hit in synthetic_hits), (
+            f"Synthetic {form!r} probe hit must self-identify its form; "
+            f"got hits {synthetic_hits!r}"
+        )
+    finally:
+        if probe_path.exists():
+            probe_path.unlink()
+        # Best-effort cleanup of the synthetic dir if it is now empty.
+        if target_dir.is_dir() and not any(target_dir.iterdir()):
+            target_dir.rmdir()
+            # Walk up: remove parent dirs only if empty.
+            _tmp_ralph = tmp_path / "ralph"
+            if _tmp_ralph.is_dir() and not any(_tmp_ralph.iterdir()):
+                _tmp_ralph.rmdir()

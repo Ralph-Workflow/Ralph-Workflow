@@ -934,6 +934,140 @@ def test_render_status_bar_collapses_hostile_newlines_to_spaces() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "tab_label",
+    [
+        "Dev\tPhase",
+        "Dev\tAnalysis",
+        "\tDevelopment",
+        "Development\t",
+    ],
+)
+def test_render_status_bar_collapses_tab_chars_to_spaces(tab_label: str) -> None:
+    """Tabs in phase_label collapse to a space so the bar's width budget stays honest.
+
+    Pins the analysis-feedback correctness fix at
+    ``ralph/display/status_bar.py:_safe_single_line``: the persistent
+    live footer's width budget accounts column count via ``len()``
+    while a terminal expands ``\t`` to the next tab stop (typically
+    8 columns). Without tab normalization a single tab in a label
+    would silently inflate the rendered width and break the
+    ``len(text.plain) <= ctx.width`` invariant the Live region is
+    sized against.
+
+    The test feeds a tab-containing ``phase_label`` (the same hostile
+    payload class that broke the operator's display before the fix)
+    through ``render_status_bar`` and asserts:
+
+    - the rendered text contains NO tab character (the tab is
+      normalized to a single ASCII space),
+    - the rendered text stays single-line (no ``\n`` wrap into the
+      working area),
+    - the rendered text still fits the configured width
+      (``len(plain) <= ctx.width``), so a tab-containing label
+      cannot blow up the bar's layout at any width,
+    - the label is collapsed to ``"Dev Phase"`` / ``"Dev Analysis"``
+      / ``" Development"`` / ``"Development"`` form (whitespace
+      trimmed), so the bar reads cleanly.
+    """
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label=tab_label,
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\t" not in plain, (
+        f"Status Bar must not contain a tab from phase_label={tab_label!r}: "
+        f"{plain!r}"
+    )
+    assert "\n" not in plain, (
+        f"Status Bar must not wrap from tab in phase_label={tab_label!r}: "
+        f"{plain!r}"
+    )
+    assert "\r" not in plain, (
+        f"Status Bar must not contain CR from tab in phase_label={tab_label!r}: "
+        f"{plain!r}"
+    )
+    assert len(plain) <= ctx.width, (
+        f"Status Bar must fit ctx.width={ctx.width} after tab "
+        f"normalization; len(plain)={len(plain)} for "
+        f"phase_label={tab_label!r}, plain={plain!r}"
+    )
+
+
+def test_render_status_bar_collapses_tab_in_workspace_root_keeps_width_budget() -> None:
+    """Tabs in workspace_root collapse to a space so the path width budget stays honest.
+
+    Companion to the ``phase_label`` tab test: the same bug class
+    applies when a tab appears in the workspace path (e.g. a path
+    pasted from a tab-separated source). The bar must not let the tab
+    inflate the rendered width past ``ctx.width``.
+
+    The test feeds a tab-containing path that would otherwise inflate
+    the rendered width via tab-stop expansion, asserts the tab is
+    normalized to a single ASCII space, and verifies the rendered
+    text still fits ``ctx.width``.
+    """
+    tab_path = "/Users/alice/code/evil\tpath/subdir"
+    model = StatusBarModel(
+        workspace_root=tab_path,
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=80)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "\t" not in plain, (
+        f"Status Bar must not contain a tab from workspace_root={tab_path!r}: "
+        f"{plain!r}"
+    )
+    assert "\n" not in plain, (
+        f"Status Bar must not wrap from tab in workspace_root={tab_path!r}: "
+        f"{plain!r}"
+    )
+    assert len(plain) <= ctx.width, (
+        f"Status Bar must fit ctx.width={ctx.width} after tab "
+        f"normalization; len(plain)={len(plain)} for "
+        f"workspace_root={tab_path!r}, plain={plain!r}"
+    )
+
+
+def test_render_status_bar_collapses_tab_counted_in_len_after_normalization() -> None:
+    """After tab normalization, ``len(plain)`` is the width the bar allocates.
+
+    Pins the single-line single-column width contract end-to-end:
+    after normalization, the tab character counts as one column (a
+    single ASCII space replacement), NOT eight (the typical tab-stop
+    expansion). The test asserts that a 10-char input string
+    containing 2 tabs renders as 10 chars wide after normalization
+    (the tabs each become a single space, no inflation).
+
+    Without this fix the rendered width would be larger than the
+    ``len()`` budget the allocator reserved, blowing up alignment
+    and truncation.
+    """
+    tab_label = "Dev\t\tEnd"
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/proj",
+        phase_label=tab_label,
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "Dev  End" in plain or "Dev End" in plain, (
+        f"expected the tabs to collapse to spaces (one space per tab "
+        f"or run of whitespace trimmed); got plain={plain!r}"
+    )
+    assert "\t" not in plain, (
+        f"tab characters MUST be normalized away so the width budget "
+        f"is honest; got plain={plain!r}"
+    )
+
+
+
 def test_render_status_bar_preserves_meaningful_path_chars() -> None:
     """Sanitization must not strip non-hostile, meaningful characters from a path.
 
