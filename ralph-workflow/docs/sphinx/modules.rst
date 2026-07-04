@@ -1714,6 +1714,13 @@ ralph.mcp.artifacts.typed_artifacts
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.state_db
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.state_db
+   :members:
+   :show-inheritance:
+
 ralph.mcp.protocol
 ~~~~~~~~~~~~~~~~~~
 
@@ -2349,6 +2356,13 @@ ralph.workspace.skip
    :members:
    :show-inheritance:
 
+ralph.workspace.agent_dir_retention
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.workspace.agent_dir_retention
+   :members:
+   :show-inheritance:
+
 ----
 
 Recovery
@@ -2665,6 +2679,13 @@ ralph.diagnostics
 ~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.diagnostics
+   :members:
+   :show-inheritance:
+
+ralph.diagnostics.fs_health
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.diagnostics.fs_health
    :members:
    :show-inheritance:
 

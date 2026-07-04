@@ -200,6 +200,14 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
         "pattern": "tests/**/*.py",
         "reason": "Magic values in tests are acceptable",
     },
+    "TC003": {
+        "pattern": "tests/**/*.py",
+        "reason": (
+            "Tests legitimately use Path() at runtime for fixture "
+            "construction (tmp_path / '...' join) and literal-path "
+            "assertions; cannot be TYPE_CHECKING only."
+        ),
+    },
     "PLC0415": {
         "pattern": [
             "ralph/cli/**/*.py",

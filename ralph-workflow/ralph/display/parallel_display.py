@@ -3012,7 +3012,9 @@ class ParallelDisplay:
         ``ActivityRouter``. Safe to call for a unit that was never
         added; missing entries are silently skipped.
         """
-        self._overflow_logs.pop(unit_id, None)
+        overflow = self._overflow_logs.pop(unit_id, None)
+        if overflow is not None:
+            overflow.close()
         self._overflow_warned.discard(unit_id)
         self._drop_last_warned.pop(unit_id, None)
         self._last_emitted_tool_signature.pop(unit_id, None)

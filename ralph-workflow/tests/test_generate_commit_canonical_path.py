@@ -16,6 +16,9 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.agents.completion_signals import (
+    _check_completion_sentinel,
+)
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
@@ -117,8 +120,11 @@ def test_generate_commit_end_to_end_uses_canonical_submit(
         backend=backend,
     )
 
-    sentinel_path = tmp_path / ".agent" / f"completion_seen_{plumbing_module._COMMIT_RUN_ID}.json"
-    assert backend.exists(sentinel_path)
+    # RFC-013 P3: completion sentinel is DB-backed. Verify via the
+    # completion-signal check which honors both DB and legacy file.
+    assert (
+        _check_completion_sentinel(tmp_path, plumbing_module._COMMIT_RUN_ID) is True
+    )
 
     artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.json"
     assert backend.exists(artifact_path)

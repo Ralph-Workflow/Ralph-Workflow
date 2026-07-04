@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 import threading
-from typing import TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, BinaryIO, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 _SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 DEFAULT_MAX_OVERFLOW_FILE_BYTES = 50 * 1024 * 1024
+#: Userspace buffer for the persistent handle. Amortizes write syscalls
+#: (and the fsevents they generate) across many appended lines.
+_BUFFER_BYTES = 64 * 1024
+#: Default seconds between forced flushes. MUST stay well below
+#: ralph.timeout_defaults.LOG_GROWTH_SECONDS (30.0): operators tail this
+#: file and the on-disk copy must never look wedged while the unit is live.
+DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
 
 
 def _sanitize_unit_id(unit_id: str) -> str:
@@ -20,8 +30,11 @@ def _sanitize_unit_id(unit_id: str) -> str:
 class RawOverflowLog:
     """Append-mode raw log for a single work unit.
 
-    Thread-safe. Silently no-ops on filesystem errors so the display path
-    never crashes due to a read-only workspace.
+    Thread-safe. Holds one buffered file handle open for the unit's
+    lifetime instead of opening/closing per line (the per-line pattern
+    generated an fsevent storm on long runs). Silently no-ops on
+    filesystem errors so the display path never crashes due to a
+    read-only workspace.
     """
 
     def __init__(
@@ -30,6 +43,8 @@ class RawOverflowLog:
         unit_id: str,
         *,
         max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
+        flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
+        now: Callable[[], float] = time.monotonic,
     ) -> None:
         safe_id = _sanitize_unit_id(unit_id)
         self.path = workspace_root / ".agent" / "raw" / f"{safe_id}.log"
@@ -38,10 +53,15 @@ class RawOverflowLog:
         self._disabled = False
         self._max_bytes = max(max_bytes, 0)
         self._bytes_written = 0
+        self._flush_interval = max(flush_interval_seconds, 0.0)
+        self._now = now
+        self._fh: BinaryIO | None = None
+        self._last_flush = now()
 
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""
         with self._lock:
+            self._close_locked()
             self._disabled = True
 
     def append(self, line: str) -> bool:
@@ -57,20 +77,50 @@ class RawOverflowLog:
                 text = line.rstrip("\n") + "\n"
                 encoded = text.encode("utf-8")
                 if self._bytes_written + len(encoded) > self._max_bytes:
+                    self._close_locked()
                     self._disabled = True
                     return False
-                self.path.parent.mkdir(parents=True, exist_ok=True)
-                if self._first_write:
-                    self.path.write_bytes(encoded)
+                if self._fh is None:
+                    self.path.parent.mkdir(parents=True, exist_ok=True)
+                    mode = "wb" if self._first_write else "ab"
+                    handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
+                    self._fh = cast("BinaryIO", handle_obj)
                     self._first_write = False
-                else:
-                    with self.path.open("ab") as fh:
-                        fh.write(encoded)
+                fh: BinaryIO | None = self._fh
+                if fh is None:
+                    return False
+                fh.write(encoded)
                 self._bytes_written += len(encoded)
+                if self._now() - self._last_flush >= self._flush_interval:
+                    fh.flush()
+                    self._last_flush = self._now()
                 return True
             except (OSError, PermissionError):
+                self._close_locked()
                 self._disabled = True
                 return False
+
+    def flush(self) -> None:
+        """Force buffered bytes to disk. Never raises."""
+        with self._lock:
+            if self._fh is not None:
+                try:
+                    self._fh.flush()
+                    self._last_flush = self._now()
+                except (OSError, PermissionError):
+                    self._close_locked()
+                    self._disabled = True
+
+    def close(self) -> None:
+        """Flush and release the file handle. Idempotent; appends may reopen."""
+        with self._lock:
+            self._close_locked()
+
+    def _close_locked(self) -> None:
+        if self._fh is not None:
+            with contextlib.suppress(OSError, PermissionError):
+                self._fh.close()
+            self._fh = None
 
     def relative_reference(self, workspace_root: Path) -> str:
         """Return POSIX path relative to *workspace_root*, or absolute on error."""
@@ -81,13 +131,11 @@ class RawOverflowLog:
 
     @property
     def size_bytes(self) -> int:
-        """Current on-disk size of the overflow log file in bytes.
+        """Bytes appended so far (buffered bytes included).
 
-        Returns 0 when the file does not exist yet, has been deleted by a
-        different process, or is inaccessible due to an OS error. The
-        property is a probe — it never raises — so the log-growth
-        corroborator can read it without coordination with the append()
-        lock.
+        The idle watchdog's log-growth corroborator reads this to prove the
+        unit is alive; it must advance on every append, not only on flush.
+        Returns 0 before the first write. Never raises.
         """
         if self._disabled:
             return self._bytes_written
@@ -107,4 +155,8 @@ class RawOverflowLog:
         return self._disabled
 
 
-__all__ = ["DEFAULT_MAX_OVERFLOW_FILE_BYTES", "RawOverflowLog"]
+__all__ = [
+    "DEFAULT_FLUSH_INTERVAL_SECONDS",
+    "DEFAULT_MAX_OVERFLOW_FILE_BYTES",
+    "RawOverflowLog",
+]

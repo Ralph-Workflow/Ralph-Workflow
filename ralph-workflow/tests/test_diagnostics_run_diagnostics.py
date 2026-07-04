@@ -9,9 +9,13 @@ Tests cover:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig
@@ -21,6 +25,7 @@ from ralph.diagnostics import (
     SystemInfo,
     run_diagnostics,
 )
+from ralph.diagnostics.fs_health import FsHealth
 
 # run_diagnostics() calls SystemInfo.gather(), which executes real git
 # subprocesses (rev-parse, branch, status). Wall-clock cost under
@@ -43,6 +48,16 @@ class TestRunDiagnostics:
         assert isinstance(report, DiagnosticReport)
         assert isinstance(report.system, SystemInfo)
         assert isinstance(report.agents, AgentDiagnostics)
+
+    def test_run_diagnostics_populates_fs_health(self, tmp_path: Path) -> None:
+        """Test that run_diagnostics() populates ``fs_health`` when
+        ``workspace_root`` is provided (RFC-013 P4)."""
+        mock_registry = MagicMock()
+        mock_registry.list_agents.return_value = []
+
+        report = run_diagnostics(mock_registry, workspace_root=tmp_path)
+        assert report.fs_health is not None
+        assert isinstance(report.fs_health, FsHealth)
 
     def test_run_diagnostics_gathers_system_info(self) -> None:
         """Test that run_diagnostics() gathers system information."""

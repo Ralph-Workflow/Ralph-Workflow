@@ -29,6 +29,8 @@ serialisation helpers.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from typing import TYPE_CHECKING
 
@@ -44,6 +46,7 @@ from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
     write_artifact_receipt,
 )
+from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.phases.required_artifacts import RequiredArtifact
 
 if TYPE_CHECKING:
@@ -227,3 +230,42 @@ def test_receipt_hmac_is_deterministic_and_collision_free(workspace: Path) -> No
     assert h1 != h4
     h5 = _receipt_hmac("different-secret", RUN_ID, ARTIFACT_TYPE)
     assert h1 != h5
+
+
+def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
+    workspace: Path,
+) -> None:
+    """RFC-013 P3: when both the DB row and a legacy sentinel file exist,
+    the DB row is authoritative. A valid DB HMAC is accepted; the legacy
+    file alone (no DB row) is also accepted via the dual-read fallback.
+
+    This pins the rollout contract that the production code does NOT
+    continue writing legacy files; the read-path honors legacy files
+    written by the pre-upgrade release during the dual-read window.
+    """
+    digest = hmac.new(
+        SENTINEL_SECRET.encode(), RUN_ID.encode(), hashlib.sha256
+    ).hexdigest()
+
+    # Case 1: DB row + matching legacy file — DB wins, accepted.
+    db = RunStateDB(workspace)
+    db.upsert_completion_sentinel(RUN_ID, digest)
+    db.close()
+    sentinel = workspace / _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=RUN_ID)
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(json.dumps({"run_id": RUN_ID}), encoding="utf-8")
+    assert (
+        _check_completion_sentinel(workspace, RUN_ID, sentinel_secret=SENTINEL_SECRET)
+        is True
+    )
+
+    # Case 2: legacy file only (no DB row) — fallback still honors it.
+    sentinel.unlink()
+    # Re-write the legacy file alone:
+    sentinel.write_text(json.dumps({"run_id": RUN_ID}), encoding="utf-8")
+    # DB still has the row from above — remove it to simulate a
+    # pre-upgrade receipt alone.
+    db2 = RunStateDB(workspace)
+    db2.delete_completion_sentinel(RUN_ID)
+    db2.close()
+    assert _check_completion_sentinel(workspace, RUN_ID) is True

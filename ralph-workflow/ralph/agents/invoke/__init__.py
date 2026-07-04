@@ -98,6 +98,7 @@ from ralph.api.opencode import validate_local_model_support
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
+from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -230,7 +231,22 @@ def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> Non
 
     Also clears fallback artifacts in .agent/tmp/ to prevent a fresh run from
     promoting stale fallback files from previous runs.
+
+    Storage (RFC-013 P3): the sentinel row in ``.agent/state.db`` is
+    cleared via ``RunStateDB``; the legacy on-disk sentinel file (left
+    behind by pre-upgrade releases) is also unlinked (dual-target) so a
+    stale sentinel cannot survive the clear.
     """
+    try:
+        db = RunStateDB(workspace_path)
+        try:
+            db.delete_completion_sentinel(run_id)
+            db.clear_run_receipts(run_id)
+        finally:
+            db.close()
+    except (OSError, RuntimeError):
+        # Best-effort: a missing state.db or locked DB must not block start-up.
+        pass
     sentinel_path = workspace_path / f".agent/completion_seen_{run_id}.json"
     sentinel_path.unlink(missing_ok=True)
     clear_run_receipts(workspace_path, run_id)

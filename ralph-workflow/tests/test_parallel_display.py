@@ -174,6 +174,9 @@ def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
 
     big_content = "A" * 5000  # exceeds hard_limit=4000
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, big_content, None, {})
+    # The raw overflow log uses block buffering (RFC-013 P1); close() via
+    # drop_unit() flushes the buffered tail to disk before the assertion.
+    pd.drop_unit("unit-1")
     overflow_log = tmp_path / ".agent" / "raw" / "unit-1.log"
     assert overflow_log.exists(), "overflow log should be created for oversized content"
     written = overflow_log.read_text(encoding="utf-8")
@@ -327,6 +330,8 @@ def test_malformed_input_written_to_overflow_log(tmp_path: Path) -> None:
 
     bad_line = '{"broken": true, "this_will_fail": }'
     pd._activity_router.push_raw_line("unit-bad", bad_line, provider=ActivityProvider.GENERIC)
+    # Flush buffered tail to disk (RFC-013 P1).
+    pd.drop_unit("unit-bad")
 
     overflow_log = tmp_path / ".agent" / "raw" / "unit-bad.log"
     assert overflow_log.exists(), "malformed line should be written to overflow log"

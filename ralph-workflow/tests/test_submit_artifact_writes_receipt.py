@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ralph.agents.completion_signals import _check_completion_sentinel
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps, handle_submit_artifact
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
@@ -68,7 +69,7 @@ def test_submit_artifact_also_writes_completion_sentinel_for_single_shot(
 
     Architectural fix (2026-06-14): for single-shot artifact types
     (commit_message, development_result, commit_cleanup, issues, etc.),
-    the receipt and the completion sentinel are the SAME event — the
+    the receipt and the completion sentinel are the SAME event - the
     agent has nothing left to do. Marking completion implicitly prevents
     the production failure mode where a small model interprets the
     submit's success text as "done" and stops without calling
@@ -79,6 +80,13 @@ def test_submit_artifact_also_writes_completion_sentinel_for_single_shot(
     The completion gate's two-signal contract is preserved: receipt
     (artifact persisted) AND sentinel (run finished). The sentinel is
     no longer opt-in for single-shot flows; it is automatic.
+
+    RFC-013 P3: the sentinel is DB-backed. Production does NOT write
+    the legacy ``.agent/completion_seen_<run_id>.json`` file path; the
+    completion gate reads the DB row first and falls back to the file
+    path so an in-flight run surviving an upgrade still passes the
+    completion gate. Verify via ``_check_completion_sentinel`` which
+    honors both stores.
     """
     backend = MemoryBackend()
     workspace = MockWorkspace(tmp_path)
@@ -87,15 +95,13 @@ def test_submit_artifact_also_writes_completion_sentinel_for_single_shot(
     result = handle_submit_artifact(_Session(), workspace, _commit_params(), deps=deps)
 
     assert result.is_error is False
-    sentinel_path = tmp_path / ".agent" / "completion_seen_run-1.json"
-    assert backend.exists(sentinel_path), (
+    assert _check_completion_sentinel(tmp_path, "run-1") is True, (
         "submit_artifact for a single-shot artifact type MUST atomically "
-        "write the completion sentinel; otherwise a small model that "
-        "interprets the submit success text as 'done' will leave the run "
-        "without a completion signal and the gate will force-retry."
+        "register the completion sentinel (DB-backed in RFC-013 P3); "
+        "otherwise a small model that interprets the submit success "
+        "text as 'done' will leave the run without a completion signal "
+        "and the gate will force-retry."
     )
-    payload = json.loads(backend.read_text(sentinel_path, encoding="utf-8"))
-    assert payload == {"run_id": "run-1"}
 
 
 def test_submit_artifact_does_not_write_sentinel_for_planning_decision(

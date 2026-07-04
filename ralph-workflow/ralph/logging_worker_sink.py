@@ -36,7 +36,12 @@ def bind_worker_sink(
         unit_id_value = extra.get("unit_id")
         return isinstance(unit_id_value, str) and unit_id_value == unit_id
 
-    sink_id = logger.add(log_path, filter=worker_filter, format="{time} {level} {message}")
+    sink_id = logger.add(
+        log_path,
+        filter=worker_filter,
+        format="{time} {level} {message}",
+        buffering=8192,
+    )
     return WorkerSinkHandle(sink_id=sink_id, log_path=log_path)
 
 

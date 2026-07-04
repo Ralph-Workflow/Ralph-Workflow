@@ -158,6 +158,7 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
             backtrace=True,
             diagnose=False,
             rotation=config.rotation,
+            buffering=8192,
         )
 
     return LoggingPaths(

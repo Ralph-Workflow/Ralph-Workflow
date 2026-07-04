@@ -836,6 +836,7 @@ class _ProcessLineReader:
             reset_subagent_sink(subagent_token)
             if self._monitor is not None:
                 self._monitor.set_on_event(None)
+            self._raw_overflow.close()
             self._unsubscribe()
 
 

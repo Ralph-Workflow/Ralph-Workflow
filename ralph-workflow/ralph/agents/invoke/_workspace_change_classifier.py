@@ -84,7 +84,12 @@ CACHE_PARENT_DIRS: frozenset[str] = frozenset(
 
 #: Basename glob patterns for CACHE files. Matched against the
 #: ``PurePosixPath`` basename (no directory portion) using fnmatch.
-CACHE_FILENAME_GLOBS: tuple[str, ...] = ("completion_seen_*.json",)
+CACHE_FILENAME_GLOBS: tuple[str, ...] = (
+    "completion_seen_*.json",
+    "state.db",
+    "state.db-wal",
+    "state.db-shm",
+)
 
 #: Parent directories that mark a path as ARTIFACT (i.e. NOT activity
 #: for the NO_OUTPUT_DEADLINE verdict). Checked AFTER CACHE so internal
