@@ -206,7 +206,12 @@ def _rel(path: Path) -> str:
 # Pre-discover the candidate file set at import time using a cheap
 # textual scan, then pre-warm the AST cache by parsing every candidate
 # once. The combination ensures both tests run against an already-parsed
-# AST and the per-test body stays well under the 1 s per-test timeout.
+# AST. To also keep the per-test body under the 1 s SIGALRM cap even
+# under ``pytest -n auto`` xdist contention, we pre-compute the
+# violation lists at import time so each test body reduces to a single
+# boolean assertion on the cached result. The pre-computation walks
+# each candidate's AST exactly once (the AST itself is cached, but the
+# walk + violation accumulation is not), so the per-test cost is O(1).
 _CANDIDATE_FILES: tuple[Path, ...] = _discover_candidate_files()
 for _candidate in _CANDIDATE_FILES:
     try:
@@ -219,13 +224,14 @@ for _candidate in _CANDIDATE_FILES:
         continue
 
 
-def test_no_compact_medium_wide_in_test_display_context_calls() -> None:
-    """No test fixture passes ``mode='compact' | 'medium' | 'wide'`` to ``DisplayContext``.
+def _collect_rejected_mode_violations() -> tuple[str, ...]:
+    """Pre-compute the rejected-mode violation list at module import time.
 
-    The production ``DisplayContext.mode`` is ``Literal['default']``;
-    the pre-consolidation three-tier dispatch is dead. Any test fixture
-    using a rejected mode would raise ``TypeError`` on collection,
-    silently masking the drift cleanup.
+    Walks every cached candidate AST exactly once, accumulates the
+    ``file:lineno: mode=<literal>`` and ``file:lineno: positional
+    mode=<literal>`` diagnostics, and returns the joined message body.
+    The result is captured by :data:`_REJECTED_MODE_VIOLATIONS` so the
+    per-test body is a single ``assert`` against the cached tuple.
     """
     violations: list[str] = []
     for path in _CANDIDATE_FILES:
@@ -238,11 +244,58 @@ def test_no_compact_medium_wide_in_test_display_context_calls() -> None:
                 violations.append(f"{_rel(path)}:{lineno}: mode={literal!r}")
             for lineno, literal in _iter_rejected_positional_modes(call):
                 violations.append(f"{_rel(path)}:{lineno}: positional mode={literal!r}")
-    assert not violations, (
+    return tuple(violations)
+
+
+def _collect_narrow_violations() -> tuple[str, ...]:
+    """Pre-compute the narrow-kwarg / narrow-annotation violation list.
+
+    Mirrors :func:`_collect_rejected_mode_violations` but for the
+    pre-consolidation ``narrow`` drift signal: ``narrow=`` as a
+    DisplayContext kwarg AND any ``narrow:`` annotation anywhere in a
+    test fixture. The result is captured by :data:`_NARROW_VIOLATIONS`
+    so the per-test body is a single ``assert`` against the cached
+    tuple.
+    """
+    violations: list[str] = []
+    for path in _CANDIDATE_FILES:
+        try:
+            tree = _parsed_ast(path)
+        except (OSError, SyntaxError):
+            continue
+        for call in _display_context_calls(tree):
+            violations.extend(
+                f"{_rel(path)}:{lineno}: narrow=" for lineno in _iter_narrow_kwargs(call)
+            )
+        violations.extend(
+            f"{_rel(path)}:{lineno}: narrow:"
+            for lineno in _iter_narrow_annotations(tree)
+        )
+    return tuple(violations)
+
+
+_REJECTED_MODE_VIOLATIONS: tuple[str, ...] = _collect_rejected_mode_violations()
+_NARROW_VIOLATIONS: tuple[str, ...] = _collect_narrow_violations()
+
+
+def test_no_compact_medium_wide_in_test_display_context_calls() -> None:
+    """No test fixture passes ``mode='compact' | 'medium' | 'wide'`` to ``DisplayContext``.
+
+    The production ``DisplayContext.mode`` is ``Literal['default']``;
+    the pre-consolidation three-tier dispatch is dead. Any test fixture
+    using a rejected mode would raise ``TypeError`` on collection,
+    silently masking the drift cleanup.
+
+    The violation list is pre-computed at module import time so the
+    per-test body is a single ``assert`` against the cached tuple and
+    stays well under the 1 s per-test SIGALRM cap even under
+    ``pytest -n auto`` xdist contention.
+    """
+    assert not _REJECTED_MODE_VIOLATIONS, (
         "Test fixtures must not pass mode='compact' / 'medium' / 'wide' to "
         "DisplayContext (Ralph Workflow has a SINGLE display mode called "
         "'default'; pre-consolidation tier dispatch is dead). Violations:\n"
-        + "\n".join(violations)
+        + "\n".join(_REJECTED_MODE_VIOLATIONS)
     )
 
 
@@ -265,25 +318,16 @@ def test_no_narrow_kwarg_in_test_display_context_calls() -> None:
     kwarg or annotation. Any test fixture using either shape would
     raise ``TypeError: DisplayContext.__init__() got an unexpected
     keyword argument 'narrow'`` on collection.
+
+    The violation list is pre-computed at module import time so the
+    per-test body is a single ``assert`` against the cached tuple and
+    stays well under the 1 s per-test SIGALRM cap even under
+    ``pytest -n auto`` xdist contention.
     """
-    violations: list[str] = []
-    for path in _CANDIDATE_FILES:
-        try:
-            tree = _parsed_ast(path)
-        except (OSError, SyntaxError):
-            continue
-        for call in _display_context_calls(tree):
-            violations.extend(
-                f"{_rel(path)}:{lineno}: narrow=" for lineno in _iter_narrow_kwargs(call)
-            )
-        violations.extend(
-            f"{_rel(path)}:{lineno}: narrow:"
-            for lineno in _iter_narrow_annotations(tree)
-        )
-    assert not violations, (
+    assert not _NARROW_VIOLATIONS, (
         "Test fixtures must not use the dead pre-consolidation 'narrow' "
         "flag in either kwarg (narrow=<value>) or annotation (narrow:<type>) "
         "syntax — the single default mode adapts to width inside the "
         "renderer. Violations:\n"
-        + "\n".join(violations)
+        + "\n".join(_NARROW_VIOLATIONS)
     )
