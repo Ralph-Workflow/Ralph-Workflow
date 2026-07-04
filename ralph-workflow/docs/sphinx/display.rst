@@ -17,6 +17,42 @@
        iteration segments drop one at a time (outer_dev first, then
        inner_analysis, then both) so the bar never overflows the working
        area; phase and path remain visible at every applicable width.
+     - What changed (recovery bound fix, wt-028 follow-up): fixed
+       ``recover_missing_plan_handoff`` in
+       ``ralph/pipeline/_runner_state_helpers.py`` to honor
+       ``pipeline_policy.recovery.cycle_cap`` as the upper bound on
+       the recovery loop. When the bound is exceeded the recovery now
+       routes to ``pipeline_policy.recovery.failed_route`` (default
+       ``"failed_terminal"``) instead of indefinitely re-routing to
+       ``entry_phase``. ``last_error=str(exc)`` is preserved on BOTH
+       the success and bound-exceeded paths so the operator always
+       sees the underlying ``MissingPlanHandoffError`` message,
+       matching the ``ExitFailureEffect`` convention at
+       ``ralph/pipeline/runner.py``. A ``logger.error`` fires on the
+       bound-exceeded path so the operator is informed of the bound
+       reached, while the success path continues to use ``logger.warning``
+       (the prior severity).
+     - What was added: ``test_recover_helper_routes_to_failed_route_when_cycle_cap_exceeded``
+       in ``tests/pipeline/test_runner_missing_plan_handoff_recovery.py``
+       exercises the bounded routing path using ``cycle_cap=3`` so the
+       test runs in milliseconds while covering the same production
+       code path. ``test_no_cli_flag_introduces_display_mode_or_bare_display``
+       in ``tests/display/test_single_mode_anti_drift.py`` (parametrized
+       over ``"joined"`` and ``"bare"``) walks ``ralph/cli/main.py`` and
+       ``ralph/cli/commands/*.py`` via the ``ast`` module, finds every
+       ``typer.Option`` / ``typer.Argument`` / ``click.option`` /
+       ``click.argument`` call, and fails if EITHER the joined
+       ``--display-mode`` / ``--display_mode`` substring (Form A) OR a
+       bare ``--display`` literal not followed by ``-`` / ``_`` / ``[a-z]``
+       (Form B) is reintroduced.
+     - Anti-drift lock: the shell script
+       ``scripts/wt028-drift-check.sh`` (regex-based scan for the historic
+       legacy tokens across ``ralph/``, ``tests/``, ``docs/``) plus the
+       new dual-form AST CLI-flag test together assert that no display-tier
+       mode token, env-var, or CLI flag (joined or bare) can be
+       reintroduced without failing the suite. The CLI-flag guard is
+       parametrized so it surfaces BOTH the joined legacy form AND a
+       bare ``--display`` flag, not just one of them.
      - Why it belongs here: this is the operator-facing display reference
        page (DisplayContext / ParallelDisplay ownership surface).
        Operators who relied on the legacy override need to know the
