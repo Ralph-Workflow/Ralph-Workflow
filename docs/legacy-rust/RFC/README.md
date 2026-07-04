@@ -61,6 +61,7 @@ An RFC is a design document that describes a proposed change to Ralph. RFCs are 
 | [RFC-010](./RFC-010-agent-success-ordering-postmortem.md) | Post-Mortem: Agent Success Ordering Regression Across Phases | Implemented |
 | [RFC-011](./RFC-011-mcp-tool-availability-postmortem.md) | Post-Mortem: MCP Tool Availability Drift Across Prompt, Harness, and Runtime | Implemented |
 | [RFC-012](./RFC-012-parallel-fanout-unreachable-postmortem.md) | Post-Mortem: Parallel Fan-Out Was Never Reachable In Production | Implemented |
+| [RFC-013](./RFC-013-fs-churn-fseventsd-reduction.md) | Filesystem Churn Reduction for Long-Running Workflows (fseventsd) | Review |
 
 ## Creating a New RFC
 
