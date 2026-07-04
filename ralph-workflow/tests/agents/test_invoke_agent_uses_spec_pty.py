@@ -166,7 +166,15 @@ def test_unregistered_claude_interactive_uses_subprocess_default(
     )
 
     config = AgentConfig(cmd="unregistered-binary", transport=AgentTransport.CLAUDE_INTERACTIVE)
-    options = InvokeOptions(workspace_path=tmp_path, show_progress=False)
+    # Skip the real WorkspaceMonitor watchdog observer: this test
+    # only exercises routing decisions (PTY vs subprocess), so the
+    # observer's start/stop cost would otherwise eat the 1-second
+    # per-test budget on a slow machine or under xdist contention.
+    options = InvokeOptions(
+        workspace_path=tmp_path,
+        show_progress=False,
+        workspace_monitor_factory=lambda *args, **kwargs: None,
+    )
 
     res = list(invoke_agent(config, str(prompt_file), options=options))
 

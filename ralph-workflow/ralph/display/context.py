@@ -7,11 +7,27 @@ console, theme, terminal width, color policy, mode, and adaptive limits.
 After the wt-028-display consolidation, ``DisplayContext.mode`` is
 always the string ``'default'``. There is no width-based dispatch, no
 ``compact`` / ``medium`` / ``wide`` tier, and no per-mode limits
-table. The persistent bottom Status Bar always renders all applicable
-fields (working directory, active phase, applicable outer development
-iteration, and applicable inner analysis iteration) regardless of
-terminal width — only the long-path middle-truncation and long-phase
-tail-truncation adapt to width.
+table. The persistent bottom Status Bar is the single owner of
+run-level layout, color, spacing, truncation, and live-update
+behavior; width-driven degradation happens in the documented order
+below so the bar always fits ``ctx.width`` and remains readable at
+every applicable width:
+
+1. Long paths middle-truncate to absorb excess length on long paths.
+2. Long phase labels tail-truncate to absorb excess length on labels.
+3. Iteration label form degrades canonical (``Dev 1/3`` /
+   ``Analysis 2/5``) -> compact (``D1/3`` / ``A2/5``) -> minimal
+   (``1/3`` / ``2/5``) below the canonical-fit threshold (40 cols).
+4. The phase marker is dropped below the marker-fit threshold.
+5. Per-iteration glyphs are dropped below the glyph-fit threshold.
+6. Iteration segments drop one at a time (outer_dev first, then
+   inner_analysis, then both) below the iteration-visibility
+   threshold (14 cols). Below that threshold the bar degrades
+   cleanly to whatever subset of phase + path fits.
+
+See :mod:`ralph.display.status_bar` for the full implementation
+contract and ``tests/display/test_status_bar.py`` for the regression
+suite that locks these invariants end-to-end.
 """
 
 from __future__ import annotations

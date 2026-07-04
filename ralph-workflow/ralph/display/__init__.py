@@ -54,14 +54,24 @@ views used by CLI diagnostics and listing commands.
    ``DisplayContext.mode`` is always the literal string ``"default"``. There
    is no width-based dispatch, no ``compact`` / ``medium`` / ``wide`` tier,
    and no per-mode limits table. The historical ``RALPH_FORCE_NARROW``
-   env var is silently ignored. The persistent bottom Status Bar always
-   renders all applicable fields (working directory, active phase,
-   applicable outer development iteration, applicable inner analysis
-   iteration) for any applicable terminal width (>= 14 cols) — at
-   very narrow widths the bar drops the phase marker and per-iteration
-   glyphs so both iteration labels remain visible, and only the
-   long-path middle-truncation and long-phase tail-truncation
-   budgets adapt to width.
+   env var is silently ignored. The persistent bottom Status Bar is
+   the single owner of run-level layout, color, spacing, truncation,
+   and live-update behavior. Width-driven degradation happens in the
+   documented order below so the bar always fits ``ctx.width`` and
+   remains readable at every applicable width (see
+   :mod:`ralph.display.status_bar` for the full implementation):
+
+   1. Long paths middle-truncate to absorb excess length on long paths.
+   2. Long phase labels tail-truncate to absorb excess length on labels.
+   3. Iteration label form degrades canonical (``Dev 1/3`` /
+      ``Analysis 2/5``) -> compact (``D1/3`` / ``A2/5``) -> minimal
+      (``1/3`` / ``2/5``) below the canonical-fit threshold (40 cols).
+   4. The phase marker is dropped below the marker-fit threshold.
+   5. Per-iteration glyphs are dropped below the glyph-fit threshold.
+   6. Iteration segments drop one at a time (outer_dev first, then
+      inner_analysis, then both) below the iteration-visibility
+      threshold (14 cols). Below that threshold the bar degrades
+      cleanly to whatever subset of phase + path fits.
 
    **Environment variable precedence (highest to lowest):**
 
