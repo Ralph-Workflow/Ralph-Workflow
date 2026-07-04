@@ -139,8 +139,21 @@ class _LoopContext:
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
-    """Keep the runner's active display on the same context as the runner."""
-    display._ctx = ctx
+    """Keep the runner's active display on the same context as the runner.
+
+    Mutates the existing ``display._ctx`` in place (via
+    ``object.__setattr__`` to bypass :class:`DisplayContext`'s
+    ``frozen=True`` constraint) so the *identity* of the context object
+    is preserved across width refreshes. Callers holding a reference
+    to the original context (e.g. ``_LoopContext.display_context``)
+    therefore see the updated width automatically, with no need to
+    re-fetch ``active._ctx`` after every refresh. Mutating in place
+    avoids the staleness bug where the refresher would otherwise
+    replace ``display._ctx`` with a new object, leaving the caller's
+    separate reference pointing at the stale original.
+    """
+    existing = display._ctx
+    object.__setattr__(existing, "width", ctx.width)
 
 
 def _signal_if_now_online(monitor: _ConnectivityMonitorLike, wake: threading.Event) -> None:
@@ -216,7 +229,16 @@ def _setup_active_display(
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
 ) -> tuple[ParallelDisplay, DisplayContext, Callable[[], None]]:
-    """Resolve active display and display context; return (display, ctx, stop_fn)."""
+    """Resolve active display and display context; return (display, ctx, stop_fn).
+
+    The returned ``DisplayContext`` is ``active._ctx`` itself (the same
+    Python object, not a snapshot copy). The width refresher mutates
+    that object in place via
+    :func:`_sync_live_display_context` so callers holding the
+    returned reference automatically see the post-refresh width —
+    there is no divergence between ``_LoopContext.display_context``
+    and ``active._ctx`` after a SIGWINCH or poll-refresh tick.
+    """
     if display is not None:
         resolved_ctx = display._ctx
     elif display_context is not None:
@@ -237,6 +259,7 @@ def _setup_active_display(
     def _stop() -> None:
         pass
 
+    ctx_holder: list[DisplayContext] | None = None
     if hasattr(active, "_ctx"):
         ctx_holder = [active._ctx]
         _stop = _runner_module.install_width_refresher(
@@ -246,7 +269,13 @@ def _setup_active_display(
             ),
         )
 
-    return active, resolved_ctx, _stop
+    # Return ``active._ctx`` so the caller holds the SAME Python object
+    # the refresher mutates in place. This way, after a refresh tick
+    # both ``_LoopContext.display_context`` and ``active._ctx`` observe
+    # the same updated width (the in-place mutation preserves object
+    # identity across refreshes; see ``_sync_live_display_context``).
+    live_ctx: DisplayContext = active._ctx if ctx_holder is not None else resolved_ctx
+    return active, live_ctx, _stop
 
 
 def _emit_run_start(

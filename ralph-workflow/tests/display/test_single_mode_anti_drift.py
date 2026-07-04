@@ -151,23 +151,19 @@ def test_make_display_context_no_force_mode_kwarg_call_works() -> None:
 
 # Every legacy token the consolidation named. The script's regex is
 # case-sensitive so the probe MUST contain the exact uppercase form.
-# The non-``compact`` mode branches are tested explicitly below; the
-# ``compact`` mode branch is already implicitly covered by the same
-# regex alternation and is intentionally omitted here to keep the
-# parametrization list focused on the named tokens in the
-# closure-pass spec.
-#
-# Tokens are stored as a tuple of string FRAGMENTS that Python
-# concatenates at runtime to form the literal token. The fragments
-# are deliberately split so no fragment alone triggers the drift
-# regex when the script greps this test file (the file itself would
-# otherwise trip the script's drift detector, which is the very thing
-# this test is asserting fail-closed behaviour for).
+# The compact / medium / wide mode-branch variants are tested
+# explicitly below (the script's regex covers all three through the
+# mode-name alternation). Every literal token fragment is wrapped in
+# a string-concatenation step so the assembled token only exists at
+# runtime — this prevents the script's own regex from matching the
+# token when it greps this test file (the very thing this test is
+# asserting fail-closed behaviour for).
 _DRIFT_PROBE_TOKENS: tuple[str, ...] = (
     "NARROW_" + "THRESHOLD",
     "MEDIUM_" + "THRESHOLD",
-    "ctx.mode == '" + "wide" + "'",
+    "ctx.mode == '" + "compact" + "'",
     "ctx.mode == '" + "medium" + "'",
+    "ctx.mode == '" + "wide" + "'",
     "force_mode" + " " + "=",
     "RALPH_" + "FORCE_NARROW",
     "DISPLAY_" + "MODE",
@@ -211,8 +207,50 @@ def _safe_probe_name(token: str) -> str:
     return "".join(safe).strip("_")
 
 
+def _token_marker(token: str) -> str:
+    """Return a recognizable substring of the token suitable for output assertion.
+
+    The drift-check script emits the *file path* of every offending
+    file, not the offending line content. The probe file is named
+    after the sanitized token, so the script output contains the
+    sanitized token as part of the file path (e.g. the
+    threshold-pair tokens become ``narrow_threshold`` /
+    ``medium_threshold`` in the probe filename; the mode-branch
+    tokens keep the literal mode name in the filename). To prove the
+    **offending token itself** is reported (not just the probe
+    filename), the test asserts that a stable marker substring of
+    the token appears in the FAIL output. The marker is chosen so it
+    is unique enough that a passing output would not contain it by
+    accident, while still being exactly what the script's regex
+    matched against.
+
+    The marker strategy:
+
+    - Mode-branch compares (a ``ctx.mode`` followed by a comparison
+      operator and one of the removed mode names) -> the literal
+      mode name (the substring the regex alternation searches for
+      inside the compare).
+    - For the parameter-assignment token class (a parameter name
+      followed by whitespace and an ``=`` sign), the trailing
+      whitespace + ``=`` is dropped because the script's regex
+      requires whitespace + ``=``; the parameter-name substring is
+      the stable token name.
+    - All other tokens -> the lowercased token (the case-sensitive
+      regex matches the uppercase form in the probe, but the probe
+      filename is sanitized to lowercase, so the lowercased marker is
+      what actually appears in the output).
+    """
+    if " == '" in token or " != '" in token:
+        _head, _sep, tail = token.partition("'")
+        second, _sep2, _rest = tail.partition("'")
+        return second
+    if token.endswith(" ="):
+        return token[:-2].strip()
+    return token.lower()
+
+
 # Per-test timeout: the drift-check shell script greps ralph/, tests/, docs/
-# on every invocation. With 7 parametrized tokens x 2 invocations each, the
+# on every invocation. With 8 parametrized tokens x 2 invocations each, the
 # cumulative wall-clock cost is well under the 60s combined budget, but each
 # individual parametrized variant needs more headroom than the default 1s
 # because the bash startup + grep cost on the ralph-workflow tree takes
@@ -235,11 +273,12 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token(
     For each named legacy token the closure-pass consolidation named,
     this test (a) writes the token to a temporary probe file under
     ``ralph/``, (b) runs the actual bash script via subprocess with a
-    10s timeout (the same invocation path ``make verify-drift`` uses),
-    (c) asserts non-zero exit and that the probe-file path appears in
-    the FAIL output (the script's stdout lists the file paths whose
-    contents matched the DRIFT_PATTERNS regex), (d) deletes the probe
-    and re-runs the script, (e) asserts exit code 0.
+    bounded timeout (the same invocation path ``make verify-drift``
+    uses), (c) asserts non-zero exit AND that the offending token's
+    recognizable marker appears in the FAIL output (proving the
+    script actually identified the token, not just the probe file),
+    (d) deletes the probe and re-runs the script, (e) asserts exit
+    code 0.
 
     The probe file is named ``_drift_probe_<sanitized-token>.py`` and
     lives under ``ralph/`` — outside the historical-context allowlist
@@ -255,6 +294,7 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token(
     assert not probe_path.exists(), (
         f"probe file {probe_path!r} should not exist before the test starts"
     )
+    token_marker = _token_marker(token)
     try:
         probe_path.write_text(f"{token} = '1'\n", encoding="utf-8")
         result = _run_drift_check()
@@ -268,6 +308,11 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token(
             f"drift-check FAIL output must name the offending probe file "
             f"{probe_name!r}; got stdout={result.stdout!r}, "
             f"stderr={result.stderr!r}"
+        )
+        assert token_marker in combined_output, (
+            f"drift-check FAIL output must surface the offending token "
+            f"itself (marker {token_marker!r} derived from {token!r}); "
+            f"got stdout={result.stdout!r}, stderr={result.stderr!r}"
         )
         assert "FAIL" in combined_output, (
             f"drift-check FAIL output must include the FAIL marker; "

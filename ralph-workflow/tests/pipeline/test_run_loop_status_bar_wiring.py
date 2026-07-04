@@ -59,7 +59,13 @@ from ralph.config.verbosity import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBar, StatusBarModel
-from ralph.pipeline.run_loop import _LoopContext, _run_inner_loop
+from ralph.pipeline.run_loop import (
+    _LoopContext,
+    _push_status_bar_if_changed,
+    _run_inner_loop,
+    _setup_active_display,
+    _sync_live_display_context,
+)
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.connectivity import ConnectivityState
@@ -431,19 +437,31 @@ def test_run_inner_loop_dedupes_status_bar_on_unchanged_signature(
 
 @pytest.mark.parametrize("width", [40, 20, 14])
 def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
-    """AC-07 narrow-terminal proof: workspace + phase remain visible at narrow widths.
+    """AC-07 proof at the run-loop seam: workspace + phase stay visible at narrow widths.
 
-    Drives the run-loop seam (the same wire
-    :func:`ralph.pipeline.run_loop._push_status_bar_if_changed` uses,
-    which is the public ``display.update_status_bar`` entry point) at
-    terminal widths 40, 20, and 14 cols with a :class:`StatusBarModel`
-    that populates all four fields (workspace path, phase label,
-    outer-dev cycle, inner-analysis cycle). At every width the test
-    asserts the AC-07 narrow-terminal contract:
+    Drives the actual run-loop helper
+    :func:`ralph.pipeline.run_loop._push_status_bar_if_changed` (NOT a
+    direct ``pd.update_status_bar`` call) at terminal widths 40, 20,
+    and 14 cols. This is the AC-07 proof at the seam the analysis
+    feedback named: the helper that the run loop body calls every
+    iteration to push the Status Bar model through to the composed
+    ``ParallelDisplay.update_status_bar``. By driving the helper at
+    narrow widths, the test proves the same production wire honors
+    AC-07 even at widths that would force width-driven degradation of
+    the Status Bar's content layout.
 
-    1. ``len(visible_text) <= width`` after ANSI escape stripping, so
-       the bar never overflows the terminal width.
-    2. The workspace path AND phase label are visible in some
+    The test feeds a real :class:`PipelineState` for
+    ``development_analysis`` (an analysis phase that exercises BOTH
+    the outer-dev and inner-analysis iteration paths) through the
+    helper, and asserts:
+
+    1. The captured push reached ``ParallelDisplay.update_status_bar``
+       (verified via ``pd.status_bar.last_model`` after the helper
+       call, since the production entry point stores the model on the
+       StatusBar).
+    2. ``len(visible_text) <= width`` after ANSI escape stripping, so
+       the bar never overflows the terminal width at any narrow width.
+    3. The workspace path AND phase label are visible in some
        recognizable form (the AC-07 minimum contract). Phase shows
        a recognizable prefix of the human phase label
        (e.g. ``Dev`` for ``Development Analysis``); path shows a
@@ -454,18 +472,15 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
        both segments may be dropped at very narrow widths to keep
        workspace + phase visible); at width 14 the outer iter may
        render but inner is dropped.
-    3. The bar is single-line (no newline wrap into the working
+    4. The bar is single-line (no newline wrap into the working
        area), so copy/paste, terminal search, and scrollback
        ergonomics are preserved at every width.
 
     Width-driven degradation is intentional and consistent with the
     existing :mod:`tests.display.test_status_bar` narrow-width test
-    family (``test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs``
-    covers 14-120 cols and
-    ``test_render_status_bar_fits_terminal_width_below_14`` covers
-    1-13 cols). The AC-07 invariant is that workspace + phase
-    always remain readable; iteration labels may degrade or drop
-    entirely at very narrow widths to honour that invariant.
+    family. The AC-07 invariant is that workspace + phase always
+    remain readable; iteration labels may degrade or drop entirely at
+    very narrow widths to honour that invariant.
 
     Reuses the ``_TtyLikeStringIO`` fake-console pattern from the
     existing tests in this file so the StatusBar real-TTY gate passes
@@ -485,27 +500,72 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     pd = ParallelDisplay(ctx)
     assert pd._ctx.console.is_terminal is True
     assert pd._ctx.console.file.isatty() is True
+    assert pd._ctx.console.width == width, (
+        f"AC-07: console width MUST be {width} for this parametrized variant; "
+        f"got {pd._ctx.console.width!r}"
+    )
     sb = cast("StatusBar", pd.status_bar)
     assert isinstance(sb, StatusBar)
-    workspace_root = "/Users/alice/code/very-long-project-name/subdir"
-    phase_label = "Development Analysis"
-    full_model = StatusBarModel(
-        workspace_root=workspace_root,
-        phase_label=phase_label,
-        phase_style="theme.phase.development",
-        outer_dev_iteration=1,
-        outer_dev_cap=3,
-        inner_analysis=2,
-        inner_analysis_cap=5,
+    workspace_root = Path("/Users/alice/code/very-long-project-name/subdir")
+    workspace_root_str = str(workspace_root)
+    policy_bundle = _load_default_policy()
+
+    # ``development_analysis`` is an analysis phase that exercises BOTH
+    # the outer-dev (``iteration`` counter, cap 5) and inner-analysis
+    # (``development_analysis_iteration`` counter, cap 10) paths, so the
+    # StatusBar model is fully populated and the bar's narrow-width
+    # layout is forced to make every field compete for space.
+    state = PipelineState(
+        phase="development_analysis",
+        phase_chains={
+            "development_analysis": AgentChainState(
+                agents=["claude"], current_index=0, retries=0
+            ),
+        },
+        outer_progress={"iteration": 0},
+        budget_caps={"iteration": 5},
+        loop_iterations={"development_analysis_iteration": 2},
     )
-    pd.update_status_bar(full_model)
+
     captured_inside_active = False
     with pd:
         captured_inside_active = sb.is_active
+        # Drive the run-loop seam directly. ``last_sig=None`` forces
+        # an unconditional first push (the dedupe check skips when the
+        # signature differs from ``last_sig`` and starts as None).
+        new_sig = _push_status_bar_if_changed(
+            pd,
+            state,
+            policy_bundle,
+            workspace_root,
+            last_sig=None,
+        )
+        assert new_sig is not None, (
+            f"AC-07: _push_status_bar_if_changed must return a fresh "
+            f"signature after a first push at width={width}; got None"
+        )
+        assert isinstance(new_sig, tuple) and len(new_sig) == 3, (
+            f"AC-07: _push_status_bar_if_changed must return a "
+            f"(phase, outer, inner) tuple; got {new_sig!r}"
+        )
     assert captured_inside_active is True, (
         f"StatusBar must be active inside the production context manager "
         f"at width={width}"
     )
+
+    # The captured push reached the production entry point: the
+    # StatusBar's ``last_model`` slot is populated by
+    # ``update_status_bar`` forwarding into ``StatusBar.update``.
+    pushed_model = sb.last_model
+    assert pushed_model is not None, (
+        f"AC-07: _push_status_bar_if_changed at width={width} must push "
+        f"a StatusBarModel through to the production entry point; "
+        f"got sb.last_model is None"
+    )
+    assert isinstance(pushed_model, StatusBarModel)
+    assert pushed_model.workspace_root == workspace_root_str
+    assert pushed_model.phase_label == "Development Analysis"
+
     raw_out = buf.getvalue()
     plain = _strip_ansi(raw_out)
     # The Rich Live region emits a trailing CRLF for cursor positioning
@@ -535,8 +595,9 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     # is recognizable), and at least _MIN_PHASE_BUDGET chars for
     # phase (so a recognizable prefix of the human phase label
     # renders).
+    phase_label = "Development Analysis"
     phase_label_prefixes = (
-        phase_label[:3],  # "Dev" — first 3 chars of "Development Analysis"
+        phase_label[:3],  # "Dev" -- first 3 chars of "Development Analysis"
         phase_label[:4],  # "Deve"
         phase_label[:2],  # "De"
     )
@@ -545,7 +606,7 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
         f"AC-07: at width={width}, phase label must remain visible "
         f"(any of {phase_label_prefixes!r}); got plain={plain!r}"
     )
-    trailing_segment = workspace_root.rsplit("/", 1)[-1]
+    trailing_segment = workspace_root_str.rsplit("/", 1)[-1]
     path_prefixes = (
         trailing_segment[:3],  # "sub"
         trailing_segment[:2],  # "su"
@@ -556,3 +617,110 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
         f"AC-07: at width={width}, trailing workspace path segment must "
         f"remain visible (any of {path_prefixes!r}); got plain={plain!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# DisplayContext refresh-consistency regression test (analysis-feedback how_to_fix)
+# ---------------------------------------------------------------------------
+
+
+def test_setup_active_display_returns_live_context_object() -> None:
+    """``_setup_active_display`` returns the SAME context object the refresher mutates.
+
+    The original implementation returned a snapshot
+    ``resolved_ctx = display._ctx`` that was only equal (by identity)
+    to ``active._ctx`` at construction time. The width refresher
+    installed by the function REPLACED ``active._ctx`` with a new
+    ``DisplayContext`` object on every tick, leaving the caller's
+    separate reference pointing at the stale original. Code reading
+    ``_LoopContext.display_context`` and code reading
+    ``active._ctx`` could therefore observe different widths after
+    a refresh.
+
+    The fix mutates the existing context in place via
+    :func:`ralph.pipeline.run_loop._sync_live_display_context` (using
+    ``object.__setattr__`` to bypass ``DisplayContext``'s
+    ``frozen=True`` constraint), so the identity of the context
+    object is preserved across refreshes. ``_setup_active_display``
+    now returns ``active._ctx`` itself so the caller holds the SAME
+    object that's mutated in place.
+
+    This test proves the contract directly:
+
+    1. After ``_setup_active_display`` returns, the caller's
+       ``display_context`` and ``active._ctx`` are the SAME Python
+       object (object identity, not just equal width).
+    2. After the refresher fires (simulated by invoking the
+       ``on_refresh`` callback directly with a refreshed context
+       whose width differs from the original), BOTH
+       ``display_context.width`` AND ``active._ctx.width`` observe
+       the updated width, with NO divergence.
+    3. After the refresh, ``display_context is active._ctx`` is
+       still True (object identity preserved across the in-place
+       mutation).
+
+    The test does NOT spawn a real subprocess, does NOT use
+    ``time.sleep``, and runs in well under 1s.
+    """
+    workspace_root = Path("/tmp/wt028-display-context-refresh")
+    with tempfile.TemporaryDirectory() as d:
+        policy_bundle = load_policy(Path(d) / ".agent")
+
+    buf = _TtyLikeStringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        width=120,
+        color_system="standard",
+    )
+    initial_ctx = make_display_context(console=console, env={})
+    workspace_scope = WorkspaceScope(root=workspace_root)
+
+    active, display_context, stop_fn = _setup_active_display(
+        display=None,
+        is_quiet=False,
+        display_context=initial_ctx,
+        workspace_scope=workspace_scope,
+        policy_bundle=policy_bundle,
+    )
+
+    try:
+        # Identity contract: caller holds the SAME object as active._ctx.
+        assert display_context is active._ctx, (
+            f"_setup_active_display must return the SAME object as "
+            f"active._ctx so the in-place refresher mutation is visible "
+            f"to the caller; got display_context is active._ctx -> "
+            f"{display_context is active._ctx}"
+        )
+        original_width = display_context.width
+        assert active._ctx.width == original_width
+
+        # Simulate a width refresh: produce a refreshed context whose
+        # width differs from the original, then invoke the live-sync
+        # callback directly. The original implementation's
+        # ``display._ctx = ctx`` would replace ``active._ctx`` (and
+        # leave ``display_context`` stale); the in-place mutation in
+        # ``_sync_live_display_context`` preserves identity and makes
+        # both reads observe the new width.
+        refreshed_ctx = active._ctx.refreshed()
+        # Force a different width on the refreshed context so the
+        # assertion catches the staleness bug.
+        object.__setattr__(refreshed_ctx, "width", original_width + 17)
+        _sync_live_display_context(active, refreshed_ctx)
+
+        assert active._ctx is display_context, (
+            f"Object identity MUST be preserved across the in-place "
+            f"refresher mutation; got display_context is active._ctx -> "
+            f"{display_context is active._ctx} after refresh"
+        )
+        assert display_context.width == original_width + 17, (
+            f"display_context.width MUST observe the refreshed width "
+            f"({original_width + 17}); got {display_context.width} "
+            f"(the original would have been {original_width})"
+        )
+        assert active._ctx.width == original_width + 17, (
+            f"active._ctx.width MUST observe the refreshed width "
+            f"({original_width + 17}); got {active._ctx.width}"
+        )
+    finally:
+        stop_fn()

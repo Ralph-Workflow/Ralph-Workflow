@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
+import rich.live
 from rich.console import Console
 
 import ralph.pipeline.run_loop as _run_loop_module
@@ -1583,39 +1584,53 @@ def test_build_status_bar_model_uses_entry_semantics(monkeypatch: pytest.MonkeyP
 
 
 def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> None:
-    """AC-08: the persistent Live region emits an erase sequence on stop so scrollback stays clean.
+    """AC-08: the persistent Live region is fully erased after ``StatusBar.stop()``.
 
     This is the direct observable proof that ``_STATUS_BAR_TRANSIENT is True``
     actually translates to a clean scrollback at runtime (complementing the
     import-time constant pin in
     ``test_status_bar_pins_steady_cadence_config``). It drives a real
     ``StatusBar`` through ``start()`` -> ``update(StatusBarModel(...))``
-    -> ``stop()`` on a Rich ``Console(file=StringIO, force_terminal=True,
-    width=120)`` and asserts:
+    -> ``stop()`` on a Rich ``Console(file=_TtyLikeStringIO,
+    force_terminal=True, width=120)`` and asserts:
 
     1. The captured buffer CONTAINS the rendered model content (the
-       workspace path and phase label appear), proving the Live region
-       actually rendered the model.
-    2. The captured buffer ENDS with the ANSI "erase entire line"
-       escape sequence (``ESC[2K``), which is the standard Rich
-       Live-transient erasure that wipes the bar's row from the
-       terminal on stop. This is the contract that scrollback,
+       workspace path, phase label, and outer-dev iteration appear),
+       proving the Live region actually rendered the model.
+    2. After ``stop()``, the captured buffer's FINAL visible line is
+       empty (only the cursor-positioning + erase-line escape
+       sequences remain). This is the contract that scrollback,
        copy/paste, terminal search, and post-run log review remain
-       usable for unattended runs.
+       usable for unattended runs: when a real terminal interprets
+       the escape codes in the buffer, the only remaining visible
+       line is the cursor position itself.
 
-    The combination of (1) and (2) proves the transient behavior is
-    active at runtime: the bar DID render, AND its rendered row was
-    erased on stop. Without the transient erasure (e.g. if
-    ``_STATUS_BAR_TRANSIENT`` were ``False``), the buffer would still
-    contain the rendered text but would NOT end with the ``ESC[2K``
-    erase sequence \u2014 the rendered row would persist in scrollback
-    forever.
+    The proof is structural rather than textual. The buffer is split
+    by ``\n`` (the line terminator that introduces the final
+    post-render line) and the LAST line is checked after ANSI
+    stripping. The standard Rich transient Live cleanup pattern
+    writes ``\r\x1b[1A\x1b[2K`` at the end of the buffer (CR, cursor
+    up one row, erase entire line) which, when interpreted by a real
+    terminal, erases the rendered row and leaves the cursor on a new
+    line below. In the StringIO buffer this manifests as: the
+    rendered model content lives on the FIRST captured line (before
+    the ``\n``); the LAST captured line carries only the trailing
+    carriage-return byte from the cleanup sequence. The structural
+    assertion proves the cleanup happened AND that no rendered
+    content survived on the final visible line.
+
+    Without the transient erasure (e.g. if ``_STATUS_BAR_TRANSIENT``
+    were ``False``), the buffer would NOT end with the
+    ``\r\x1b[1A\x1b[2K`` cleanup sequence and the LAST captured
+    line would carry rendered model content that would persist in
+    scrollback.
 
     Uses the same ``_TtyLikeStringIO`` fake-console pattern as the
     existing live-region tests so the StatusBar real-TTY gate passes
     without a real pseudo-tty. The test does NOT use ``time.sleep``,
     does NOT spawn a subprocess, and runs in well under 1s.
     """
+    ansi_escape_re = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
     buf = _TtyLikeStringIO()
     console = Console(
         file=buf,
@@ -1661,8 +1676,127 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
         f"AC-08: Live region must have rendered the outer-dev iteration "
         f"'Dev 1/3' before stop; got out={out!r}"
     )
-    assert out.endswith("\x1b[2K"), (
-        f"AC-08: captured buffer must end with the ANSI 'erase entire "
-        f"line' escape sequence (\\x1b[2K) so scrollback stays clean after "
-        f"StatusBar.stop(); got tail={out[-20:]!r}, full out={out!r}"
+    assert out.endswith("\r\x1b[1A\x1b[2K"), (
+        f"AC-08: captured buffer must end with the Rich transient "
+        f"Live cleanup sequence ('\\r\\x1b[1A\\x1b[2K') so scrollback "
+        f"stays clean after StatusBar.stop(); got tail={out[-20:]!r}, "
+        f"full out={out!r}"
+    )
+    lines = out.split("\n")
+    last_line = lines[-1]
+    last_line_visible = ansi_escape_re.sub("", last_line).strip()
+    assert last_line_visible == "", (
+        f"AC-08: after StatusBar.stop(), the LAST visible line of the "
+        f"captured buffer must be empty (only the cleanup escape "
+        f"sequences remain) so a real terminal shows no rendered model "
+        f"content in scrollback; got last_line_visible={last_line_visible!r}, "
+        f"full last_line={last_line!r}, full out={out!r}"
+    )
+    for forbidden_substr in (workspace_root, phase_label, "Dev 1/3"):
+        assert forbidden_substr not in last_line, (
+            f"AC-08: the LAST captured line must NOT contain rendered "
+            f"model content; got {forbidden_substr!r} in last_line={last_line!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# StatusBar.start() failure-isolation regression test
+# ---------------------------------------------------------------------------
+
+
+def test_status_bar_start_rolls_back_live_on_startup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """StatusBar.start() must keep ``is_active`` False when ``Live.start()`` raises.
+
+    The original implementation assigned ``self._live = Live(...)``
+    BEFORE calling ``self._live.start()``, then wrapped the whole block
+    in ``contextlib.suppress(Exception)``. When ``Live.start()``
+    failed, the exception was swallowed but ``self._live`` stayed
+    non-None, so ``is_active`` (defined as ``self._live is not None``)
+    returned True even though no Live region was actually active. This
+    also blocked a later retry because ``_gate()`` short-circuits when
+    ``self._live is not None``.
+
+    The fix commits ``self._live = live`` ONLY after a successful
+    ``live.start()``. This test exercises both halves of the contract:
+
+    1. When ``Live.start()`` raises, ``is_active`` stays False (the
+       failed Live instance is discarded, not committed to ``_live``).
+    2. ``stop()`` on an unstarted bar is still a no-op (it must not
+       try to call ``Live.stop()`` on the discarded instance).
+    3. Once the patched-failure is removed, a subsequent ``start()``
+       succeeds and ``is_active`` flips True.
+
+    The harness uses a tty-like StringIO-backed Console so the
+    StatusBar real-TTY gate is open. ``monkeypatch.setattr`` targets
+    ``rich.live.Live.start`` (the method called inside the function)
+    so the patch survives the function-local ``from rich.live import
+    Live`` import (Python resolves ``Live.start`` via the rich.live
+    module, so patching the class method on the original class
+    object is honored even when callers import it via ``from``).
+    The patch is cleaned up automatically by ``monkeypatch``.
+    """
+    class _BoomError(RuntimeError):
+        """Marker exception raised by the patched Live.start() to simulate a startup failure."""
+
+    boom_count = {"n": 0}
+
+    def boom_start(self: object) -> None:
+        boom_count["n"] += 1
+        raise _BoomError("simulated Live.start() failure")
+
+    monkeypatch.setattr(rich.live.Live, "start", boom_start)
+
+    buf = _TtyLikeStringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        width=120,
+        color_system="standard",
+    )
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    assert console.is_terminal is True
+    assert console.file.isatty() is True
+
+    sb.update(
+        StatusBarModel(
+            workspace_root="/Users/alice/code/startup-failure-probe",
+            phase_label="StartupFailureProbe",
+            phase_style="theme.phase.development",
+            outer_dev_iteration=1,
+            outer_dev_cap=3,
+        )
+    )
+
+    sb.start()
+    assert sb.is_active is False, (
+        "StatusBar.start() must NOT commit _live when Live.start() raises; "
+        "is_active must stay False so a later retry is possible"
+    )
+    assert boom_count["n"] == 1, (
+        f"patched Live.start() must have been called exactly once during "
+        f"the failing start(); got {boom_count['n']} calls"
+    )
+
+    sb.stop()
+    assert sb.is_active is False, (
+        "StatusBar.stop() on a bar whose Live.start() failed must be a "
+        "no-op (it must NOT call .stop() on the discarded Live instance)"
+    )
+
+    monkeypatch.undo()
+
+    sb.start()
+    assert sb.is_active is True, (
+        "StatusBar.start() must succeed on retry once Live.start() is no "
+        "longer patched to raise; is_active must flip True"
+    )
+
+    sb.stop()
+    assert sb.is_active is False, (
+        "StatusBar.stop() must tear down a successfully-started Live "
+        "region and flip is_active back to False"
     )

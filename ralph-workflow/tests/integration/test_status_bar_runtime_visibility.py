@@ -82,19 +82,23 @@ def _make_parallel_display(
     *,
     is_quiet: bool = False,
     tty_like: bool = True,
+    width: int = 120,
 ) -> tuple[ParallelDisplay, _TtyLikeStringIO | io.StringIO]:
     """Build a ``ParallelDisplay`` with a tty-like or plain StringIO console.
 
     ``tty_like=True`` uses :class:`_TtyLikeStringIO` so the StatusBar
     real-TTY gate passes. ``tty_like=False`` uses a plain ``io.StringIO``
     so ``console.file.isatty()`` is False; force_terminal+StringIO
-    exercises the second conjunct of the real-TTY gate.
+    exercises the second conjunct of the real-TTY gate. ``width``
+    controls the Rich Console width (default 120 — the canonical
+    external-monitor width used by the existing tests; the AC-01..AC-04
+    test passes width=100 to cover a common laptop-monitor width).
     """
     buf = _TtyLikeStringIO() if tty_like else io.StringIO()
     console = Console(
         file=buf,
         force_terminal=True,
-        width=120,
+        width=width,
         color_system="standard",
     )
     ctx = make_display_context(console=console, env={})
@@ -262,9 +266,13 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
     Reuses the existing ``_TtyLikeStringIO`` fake-console pattern so
     the StatusBar real-TTY gate passes without a real pseudo-tty.
     """
-    pd_full, buf_full = _make_parallel_display()
+    pd_full, buf_full = _make_parallel_display(width=100)
     assert pd_full._ctx.console.is_terminal is True
     assert pd_full._ctx.console.file.isatty() is True
+    assert pd_full._ctx.console.width == 100, (
+        f"AC-01: console width MUST be 100 for this focused test; "
+        f"got {pd_full._ctx.console.width!r}"
+    )
     sb = cast("StatusBar", pd_full.status_bar)
     full_model = StatusBarModel(
         workspace_root="/tmp/ac01-workspace",
@@ -300,7 +308,7 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
         f"'Analysis 2/5'; got {full_out!r}"
     )
 
-    pd_none, buf_none = _make_parallel_display()
+    pd_none, buf_none = _make_parallel_display(width=100)
     none_model = StatusBarModel(
         workspace_root="/tmp/ac01-workspace",
         phase_label="commit",

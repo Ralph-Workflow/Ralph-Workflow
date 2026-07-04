@@ -813,13 +813,22 @@ class StatusBar:
         The Live region is constructed with ``get_renderable=self._renderable``
         so each refresh tick re-reads the latest model — the initial
         ``renderable`` argument is only the first-frame content.
+
+        Correctness: ``_live`` is committed to ``self._live`` ONLY after
+        ``Live.start()`` succeeds. If ``Live.start()`` raises (e.g. on a
+        console whose ``Live.start()`` path is broken, or a parent that
+        suppresses the underlying terminal), the exception is swallowed
+        but ``self._live`` stays ``None``. This keeps ``is_active`` honest
+        (``is_active`` is defined as ``self._live is not None``) so a
+        later ``start()`` retry still succeeds and ``stop()`` on an
+        unstarted bar remains a no-op.
         """
         if not self._gate():
             return
         with contextlib.suppress(Exception):
             from rich.live import Live
 
-            self._live = Live(
+            live = Live(
                 self._renderable(),
                 console=self._ctx().console,
                 transient=_STATUS_BAR_TRANSIENT,
@@ -827,7 +836,8 @@ class StatusBar:
                 screen=False,
                 get_renderable=self._renderable,
             )
-            self._live.start()
+            live.start()
+            self._live = live
 
     def stop(self) -> None:
         """Tear down the Live region. Idempotent and safe to call without :meth:`start`."""
