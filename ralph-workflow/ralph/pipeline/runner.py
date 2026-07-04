@@ -724,8 +724,6 @@ def _handle_inline_effect(
                     config=config,
                 )
             except MissingPlanHandoffError as exc:
-                if state.phase != pipeline_policy.recovery.failed_route:
-                    raise
                 logger.warning(
                     "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
                     phase=effect.phase,

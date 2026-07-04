@@ -69,6 +69,15 @@ TESTS_ALLOWLIST: set[str] = {
     # drives scripts/wt028-drift-check.sh via subprocess.run as the
     # system-under-test (the bash script is the artifact being probed;
     # subprocess is the same invocation path make verify-drift uses)
+    "test_status_bar_pty_e2e.py",
+    # PTY regression test for the persistent Status Bar; the production
+    # entry point must render inside a real kernel PTY at a fixed
+    # 120x40 window size, mirroring test_claude_interactive_interrupt_realtime.py.
+    # subprocess.run drives a non-PTY probe variant for AC-08 (subprocess.PIPE
+    # silence contract); os.setsid puts the child into a fresh session so the
+    # PTY slave becomes its controlling terminal. Both required to reproduce
+    # the production-path entry point end-to-end with no production-code
+    # equivalent under ralph/process/manager
 }
 
 _MCP_FIXTURE_FILES = {

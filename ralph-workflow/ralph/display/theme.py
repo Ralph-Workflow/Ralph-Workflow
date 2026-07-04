@@ -197,14 +197,21 @@ def make_console(
         no_color: If True, disables color output. If False, enables color.
             If None, defaults to False (color enabled).
         force_terminal: If True, forces terminal detection on. If False, forces it off.
-            If None, defaults to False.
+            If None, defaults to None so Rich auto-detects terminal support via
+            ``sys.stdout.isatty()`` (this is the production default: forcing
+            ``force_terminal=False`` would hard-code ``Console.is_terminal=False``
+            and break the StatusBar real-TTY gate in real PTY sessions).
         width: Optional terminal width override.
 
     Returns:
         Configured Console instance with Ralph's theme.
     """
     resolved_no_color = no_color if no_color is not None else False
-    resolved_force_terminal = force_terminal if force_terminal is not None else False
+    # Default ``force_terminal`` to ``None`` (not ``False``) so Rich auto-detects
+    # via ``sys.stdout.isatty()``. Hard-coding ``False`` would set
+    # ``Console.is_terminal = False`` even on a real PTY, which closes the
+    # StatusBar real-TTY gate and prevents the persistent footer from rendering.
+    resolved_force_terminal = force_terminal
     return Console(
         theme=RALPH_THEME,
         no_color=resolved_no_color,
