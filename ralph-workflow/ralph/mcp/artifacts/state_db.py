@@ -148,19 +148,29 @@ class RunStateDB:
 
     # -- retention ---------------------------------------------------------
 
-    def prune_older_than(self, cutoff: float) -> int:
+    def prune_older_than(self, cutoff: float, *, keep_run_id: str | None = None) -> int:
         """Delete aged rows from both tables. Returns total row count removed.
 
         Used by the run-start retention sweep (RFC-013 P3) so DB rows do
         not accumulate alongside the file-glob bookkeeping sweep.
+
+        When ``keep_run_id`` is provided, rows for that run are skipped
+        regardless of age — mirrors the file-path ``keep_run_id``
+        contract so the DB-backed retention behavior matches the
+        on-disk convention during the rollout.
         """
+        receipt_sql = "DELETE FROM receipts WHERE created_at < ?"
+        sentinel_sql = "DELETE FROM completion_sentinels WHERE created_at < ?"
+        params: tuple[float | str, ...]
+        if keep_run_id is not None:
+            receipt_sql += " AND run_id != ?"
+            sentinel_sql += " AND run_id != ?"
+            params = (cutoff, keep_run_id)
+        else:
+            params = (cutoff,)
         with self._conn:
-            receipt_rows = self._conn.execute(
-                "DELETE FROM receipts WHERE created_at < ?", (cutoff,)
-            ).rowcount
-            sentinel_rows = self._conn.execute(
-                "DELETE FROM completion_sentinels WHERE created_at < ?", (cutoff,)
-            ).rowcount
+            receipt_rows = self._conn.execute(receipt_sql, params).rowcount
+            sentinel_rows = self._conn.execute(sentinel_sql, params).rowcount
         return int(receipt_rows) + int(sentinel_rows)
 
     def close(self) -> None:

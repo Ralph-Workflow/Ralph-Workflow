@@ -111,14 +111,25 @@ def _sweep_scratch_files(tmp_dir: Path, *, cutoff: float) -> int:
     return removed
 
 
-def _sweep_run_state_db_rows(workspace_root: Path, *, cutoff: float) -> int:
-    """RFC-013 P3: prune aged rows in ``.agent/state.db`` (never raises)."""
+def _sweep_run_state_db_rows(
+    workspace_root: Path,
+    *,
+    cutoff: float,
+    keep_run_id: str | None,
+) -> int:
+    """RFC-013 P3: prune aged rows in ``.agent/state.db`` (never raises).
+
+    Mirrors the file-path ``keep_run_id`` contract: when ``keep_run_id``
+    is provided, rows for that run are preserved regardless of age so
+    the DB-backed retention behavior does not regress the in-flight
+    run's own receipts and sentinels.
+    """
     try:
         db = RunStateDB(workspace_root)
     except (OSError, RuntimeError):
         return 0
     try:
-        return db.prune_older_than(cutoff)
+        return db.prune_older_than(cutoff, keep_run_id=keep_run_id)
     except (OSError, RuntimeError):
         return 0
     finally:
@@ -166,7 +177,9 @@ def sweep_agent_dir(
         keep_run_id=keep_run_id,
     )
     removed += _sweep_scratch_files(agent_dir / "tmp", cutoff=cutoff)
-    removed += _sweep_run_state_db_rows(workspace_root, cutoff=cutoff)
+    removed += _sweep_run_state_db_rows(
+        workspace_root, cutoff=cutoff, keep_run_id=keep_run_id
+    )
     return removed
 
 

@@ -89,3 +89,58 @@ def test_sweep_also_prunes_aged_db_rows(tmp_path: Path) -> None:
     assert db2.get_receipt_hmac("old-run", "plan") is MISSING
     assert db2.get_completion_sentinel_hmac("old-run") is MISSING
     db2.close()
+
+
+def test_db_sweep_preserves_current_run_rows(tmp_path: Path) -> None:
+    """RFC-013 P3 + keep_run_id contract: aged DB rows for the current
+    run are preserved so the in-flight run does not lose its own
+    completion sentinels and receipts at run-start."""
+    db = RunStateDB(tmp_path)
+    db.upsert_receipt("current", "plan", "sig-current-plan")
+    db.upsert_receipt("current", "commit_message", "sig-current-commit")
+    db.upsert_completion_sentinel("current", "sig-current-sentinel")
+    db.upsert_receipt("old-run", "plan", "sig-old-plan")
+    db.upsert_completion_sentinel("old-run", "sig-old-sentinel")
+    db.close()
+
+    future_now = time.time() + _WEEK * 2 + 60
+
+    sweep_agent_dir(tmp_path, keep_run_id="current", now=lambda: future_now)
+
+    db2 = RunStateDB(tmp_path)
+    # current-run rows are preserved despite their age
+    assert db2.get_receipt_hmac("current", "plan") == "sig-current-plan"
+    assert db2.get_receipt_hmac("current", "commit_message") == (
+        "sig-current-commit"
+    )
+    assert db2.get_completion_sentinel_hmac("current") == "sig-current-sentinel"
+    # other-run rows are still pruned
+    assert db2.get_receipt_hmac("old-run", "plan") is MISSING
+    assert db2.get_completion_sentinel_hmac("old-run") is MISSING
+    db2.close()
+
+
+def test_runstate_db_prune_preserves_keep_run_id(tmp_path: Path) -> None:
+    """RunStateDB.prune_older_than honours ``keep_run_id`` keyword — keeps
+    the in-flight run's rows regardless of age even when invoked
+    directly (no sweep_agent_dir wrapper)."""
+    db = RunStateDB(tmp_path)
+    db.upsert_receipt("current", "plan", "sig-c")
+    db.upsert_receipt("old", "plan", "sig-o")
+    db.close()
+
+    # Both rows are aged (cutoff is large), but ``current`` is kept.
+    cutoff = time.time() + 1000.0
+    db2 = RunStateDB(tmp_path)
+    try:
+        removed = db2.prune_older_than(cutoff, keep_run_id="current")
+    finally:
+        db2.close()
+
+    assert removed == 1  # only the old-row delete; current-run row skipped
+    db3 = RunStateDB(tmp_path)
+    try:
+        assert db3.get_receipt_hmac("current", "plan") == "sig-c"
+        assert db3.get_receipt_hmac("old", "plan") is MISSING
+    finally:
+        db3.close()

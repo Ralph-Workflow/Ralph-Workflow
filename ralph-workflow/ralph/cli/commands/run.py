@@ -562,7 +562,11 @@ def _print_user_global_update_hint() -> None:
     )
 
 
-def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> None:
+def _sync_shipped_skills_on_pipeline_run(
+    workspace_root: Path | None = None,
+    *,
+    keep_run_id: str | None = None,
+) -> None:
     target_root = workspace_root or Path.cwd()
     update_available = False
     try:
@@ -609,7 +613,7 @@ def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> 
     try:
         from ralph.workspace.agent_dir_retention import sweep_agent_dir
 
-        removed = sweep_agent_dir(target_root, keep_run_id=None)
+        removed = sweep_agent_dir(target_root, keep_run_id=keep_run_id)
         if removed:
             logger.debug(
                 "Retention sweep removed {} stale .agent entries", removed
