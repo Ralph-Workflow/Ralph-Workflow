@@ -56,6 +56,9 @@ from ralph.pipeline._runner_state_helpers import (
     notify_pipeline_subscriber as _notify_pipeline_subscriber,
 )
 from ralph.pipeline._runner_state_helpers import (
+    recover_missing_plan_handoff as _recover_missing_plan_handoff,
+)
+from ralph.pipeline._runner_state_helpers import (
     reset_phase_chain_for_recovery as _reset_phase_chain_for_recovery,
 )
 from ralph.pipeline.activity_stream import (
@@ -543,16 +546,28 @@ def _run_pipeline_step(
                 workspace,
                 policy_bundle,
             )
-            materialize_agent_prompt_if_needed(
-                effect,
-                state,
-                workspace,
-                policy_bundle,
-                registry,
-                materialize_fn=(
-                    pipeline_deps.phase_prompt_materializer if pipeline_deps is not None else None
-                ),
-            )
+            try:
+                _materialize_fn = (
+                    pipeline_deps.phase_prompt_materializer
+                    if pipeline_deps is not None
+                    else None
+                )
+                materialize_agent_prompt_if_needed(
+                    effect,
+                    state,
+                    workspace,
+                    policy_bundle,
+                    registry,
+                    materialize_fn=_materialize_fn,
+                )
+            except MissingPlanHandoffError as exc:
+                return _recover_missing_plan_handoff(
+                    state=state,
+                    pipeline_policy=policy_bundle.pipeline,
+                    checkpoint_path=_checkpoint_path(workspace_scope),
+                    subscriber=pipeline_subscriber,
+                    exc=exc,
+                )
             event = invoke_execute_effect_with_optional_display(
                 effect,
                 config,
@@ -724,22 +739,13 @@ def _handle_inline_effect(
                     config=config,
                 )
             except MissingPlanHandoffError as exc:
-                logger.warning(
-                    "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
-                    phase=effect.phase,
-                    err=exc,
+                recovered_state = _recover_missing_plan_handoff(
+                    state=state,
+                    pipeline_policy=pipeline_policy,
+                    checkpoint_path=checkpoint_path,
+                    subscriber=effective_subscriber,
+                    exc=exc,
                 )
-                current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
-                recovered_state = progress.advance_phase(
-                    state,
-                    pipeline_policy.entry_phase,
-                    policy=pipeline_policy,
-                ).copy_with(
-                    last_error=str(exc),
-                    recovery_epoch=current_epoch + 1,
-                )
-                ckpt.save(recovered_state, checkpoint_path)
-                _notify_pipeline_subscriber(effective_subscriber, recovered_state)
                 return recovered_state
         prepared_state = state
         if state.phase == pipeline_policy.recovery.failed_route:

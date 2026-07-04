@@ -15,6 +15,7 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -56,6 +57,7 @@ def _run_pipeline_step(
     workspace_scope: WorkspaceScope,
     monkeypatch: MonkeyPatch,
     stub_materialize: bool,
+    raise_missing_plan_handoff: bool = False,
 ) -> object:
     bundle = _load_default_policy_bundle()
 
@@ -64,7 +66,22 @@ def _run_pipeline_step(
         "call_determine_effect_from_policy",
         lambda *_args, **_kwargs: effect,
     )
-    if stub_materialize:
+    if raise_missing_plan_handoff:
+        # `raise` takes precedence: the new flag deliberately bypasses the
+        # stub-with-None short-circuit so the recovery helper's try/except
+        # branch can be exercised through the real seam.
+        def _raise_missing_plan_handoff(*_args: object, **_kwargs: object) -> None:
+            raise MissingPlanHandoffError(
+                "Template 'developer_iteration.jinja' requires an existing "
+                "plan handoff at .agent/PLAN.md"
+            )
+
+        monkeypatch.setattr(
+            runner_module,
+            "materialize_agent_prompt_if_needed",
+            _raise_missing_plan_handoff,
+        )
+    elif stub_materialize:
         monkeypatch.setattr(
             runner_module,
             "materialize_agent_prompt_if_needed",
@@ -85,7 +102,9 @@ def _run_pipeline_step(
         "reducer_reduce",
         lambda current_state, _event, _policy, recovery=None: (current_state, []),
     )
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(
+        runner_module.ckpt, "save", lambda *_args, **_kwargs: None
+    )
 
     display_context = make_display_context()
     display = runner_module.ParallelDisplay(display_context)
@@ -427,3 +446,54 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         assert not workspace.exists(".agent/DEVELOPMENT_RESULT.md")
         assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
         assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
+
+    def test_invoke_agent_effect_recovers_missing_plan_handoff(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """An InvokeAgentEffect path that raises MissingPlanHandoffError recovers
+        to the entry phase instead of leaking to the failure classifier.
+
+        Anchors the real seam in ``_run_pipeline_step`` (the
+        ``materialize_agent_prompt_if_needed`` call). Before the recovery
+        helper is added, this test fails because the missing-handoff
+        exception escapes through the outer ``except BaseException`` arm
+        in ``_run_pipeline_step`` and routes to the recovery controller
+        instead of landing on the plan-handoff recovery path. After the
+        helper lands, the test passes: the recovered state advances to
+        planning (entry_phase), recovery_epoch increments to 1, and the
+        plan-handoff error text is recorded in last_error.
+        """
+        workspace_scope = WorkspaceScope(tmp_path)
+        effect = InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file=".agent/tmp/development_prompt.md",
+            drain="development",
+        )
+        state = PipelineState(
+            phase="development",
+            previous_phase=None,
+            recovery_epoch=0,
+        )
+
+        result = _run_pipeline_step(
+            state=state,
+            effect=effect,
+            workspace_scope=workspace_scope,
+            monkeypatch=monkeypatch,
+            stub_materialize=False,
+            raise_missing_plan_handoff=True,
+        )
+
+        assert isinstance(result, PipelineState)
+        assert result.phase == "planning", (
+            f"Recovered phase must be planning (entry_phase), got {result.phase}"
+        )
+        assert result.recovery_epoch == 1, (
+            f"recovery_epoch must be 1 after one recovery, got {result.recovery_epoch}"
+        )
+        assert "plan handoff" in (result.last_error or ""), (
+            f"last_error must describe the plan handoff failure, got {result.last_error!r}"
+        )

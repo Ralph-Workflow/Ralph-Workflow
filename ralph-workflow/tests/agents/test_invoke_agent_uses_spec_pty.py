@@ -196,7 +196,15 @@ def test_unregistered_codex_uses_subprocess_fallback(
     )
 
     config = AgentConfig(cmd="unregistered-binary-codex", transport=AgentTransport.CODEX)
-    options = InvokeOptions(workspace_path=tmp_path, show_progress=False)
+    # Skip the real WorkspaceMonitor watchdog observer: this test
+    # only exercises routing decisions (PTY vs subprocess), so the
+    # observer's start/stop cost would otherwise eat the 1-second
+    # per-test budget on a slow machine.
+    options = InvokeOptions(
+        workspace_path=tmp_path,
+        show_progress=False,
+        workspace_monitor_factory=lambda *args, **kwargs: None,
+    )
 
     res = list(invoke_agent(config, str(prompt_file), options=options))
 
