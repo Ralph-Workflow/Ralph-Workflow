@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import uuid
 from contextlib import ExitStack
 from importlib import import_module
 from inspect import signature
@@ -730,7 +731,18 @@ def run_pipeline(
 
     # Phase 2b: sync shipped skills (TTL-cached), then warn if capabilities are degraded
     if load_result.workspace_scope is not None:
-        _sync_shipped_skills_on_pipeline_run(workspace_root=load_result.workspace_scope.root)
+        # RFC-013 P2: thread a run identifier into the retention sweep so the
+        # 7-day sweep honors the "always keeps the current run" contract.
+        # NOTE: ``load_result`` does not currently carry a canonical ``run_id``
+        # field; fall back to a fresh ``uuid.uuid4().hex`` so the sweep is
+        # keyed by a non-None value (the in-flight run's own artifacts are
+        # younger than the 7-day cutoff in practice). Threading the real run
+        # id through ``load_result`` is tracked as a follow-up.
+        sweep_keep_run_id = uuid.uuid4().hex
+        _sync_shipped_skills_on_pipeline_run(
+            workspace_root=load_result.workspace_scope.root,
+            keep_run_id=sweep_keep_run_id,
+        )
         _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
 
     # Phase 3: Handle dry-run
