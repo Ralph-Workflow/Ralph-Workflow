@@ -25,3 +25,13 @@ class AgentRecoveryPlan:
     session_id: str | None
     reason: str
     recovery_action: AgentRetryAction | None = None
+    # Stale-session framing metadata. APPENDED at the end (not reordered) so
+    # existing positional construction of this dataclass keeps working
+    # unchanged. All new fields default to ``None`` so un-updated call sites
+    # stay valid. Threaded from ``AgentRecoveryInput`` by
+    # ``build_agent_recovery_plan`` and consumed by
+    # ``_write_agent_retry_prompt`` to produce the structured
+    # ``STALE SESSION RECOVERY`` block in fresh-mode retry prompts.
+    stale_session_id: str | None = None
+    transport: str | None = None
+    model: str | None = None

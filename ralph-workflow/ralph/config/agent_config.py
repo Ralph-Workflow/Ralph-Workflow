@@ -50,6 +50,11 @@ class AgentConfig(RalphBaseModel):
     display_name: str | None = None
     transport: AgentTransport | None = None
     subagent_capability: bool | None = None
+    # Optional model identifier (e.g. ``zai-coding-plan/glm-5.2``). Surfaced
+    # in stale-session retry prompts so the retry agent knows which model
+    # rejected the prior session. Optional because not every agent config
+    # names a model (some resolve the model via flag/env at invocation time).
+    model: str | None = None
 
     def model_post_init(self, _context: object) -> None:
         if self.transport is not None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import KW_ONLY, dataclass, field, replace
 from typing import IO, TYPE_CHECKING, cast
 
@@ -495,6 +496,40 @@ def _check_process_result(
             )
 
 
+def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str | None:
+    """Return the rejected session id extracted from a stale-session failure.
+
+    Scans ``exc.stderr`` and ``exc.parsed_output`` for a session id that
+    appears immediately after one of the canonical
+    ``SESSION_NOT_FOUND_SUBSTRINGS`` markers (e.g. ``"Session not found: <id>"``).
+    The id suffix is required to look id-shaped (alphanumeric plus
+    ``-`` / ``_``, length >= 4) so a coincidental substring (e.g. the
+    word "session" in a free-form error message) is NOT picked up.
+
+    Returns the first matching id, or ``None`` when no canonical
+    stale-session marker is present. Single source of truth so the
+    operator WARNING line is consistent across all stale-session exits.
+    """
+    # Match "<marker><sep><id>" where <marker> is one of the canonical
+    # SESSION_NOT_FOUND_SUBSTRINGS (case-insensitive), <sep> is whitespace
+    # or a colon, and <id> is an id-shaped token. The id token regex
+    # requires at least 4 alphanumeric/dash/underscore characters so a
+    # coincidental substring like "session not found" alone does not match.
+    _marker_pattern = "|".join(re.escape(m) for m in SESSION_NOT_FOUND_SUBSTRINGS)
+    _pattern = re.compile(
+        rf"(?i)(?:{_marker_pattern})[\s:]+([A-Za-z0-9_\-]{{4,}})",
+    )
+    haystack = [exc.stderr] if exc.stderr else []
+    haystack.extend(exc.parsed_output)
+    for line in haystack:
+        if not line:
+            continue
+        match = _pattern.search(line)
+        if match is not None:
+            return match.group(1)
+    return None
+
+
 def _log_invocation_exit(exc: AgentInvocationError) -> None:
     classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
     retryable = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
@@ -525,6 +560,23 @@ def _log_invocation_exit(exc: AgentInvocationError) -> None:
             else summarize_retry_failure_evidence(exc.parsed_output)
         )
         stderr_field = exc.stderr if (exc.stderr and exc.stderr.strip()) else "(empty)"
+        rejected_session_id = _extract_rejected_session_id_from_failure(exc)
+        # Append-only invariant: new fields are added at the tail of the
+        # WARNING line, never in the middle of the existing format string.
+        # When the helper returns ``None`` (no canonical marker present),
+        # omit the field entirely -- do NOT print ``session_id=None``.
+        if rejected_session_id is not None:
+            logger.warning(
+                "Stale session detected for agent={} (phase=invoke): "
+                "resetting session id, retrying with a fresh session. "
+                "code={} stderr={} evidence=[{}] session_id={}",
+                exc.agent_name,
+                exc.returncode,
+                stderr_field,
+                evidence_field,
+                rejected_session_id,
+            )
+            return
         logger.warning(
             "Stale session detected for agent={} (phase=invoke): "
             "resetting session id, retrying with a fresh session. "

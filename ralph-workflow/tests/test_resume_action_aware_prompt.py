@@ -257,3 +257,187 @@ def test_non_fresh_actions_omit_inlined_body(tmp_path: Path, recovery_action: st
     content = Path(result).read_text(encoding="utf-8")
     assert _ORIGINAL_TASK_BODY_TOKEN not in content
     assert "continue from where you left off" in content.lower()
+
+
+# ---------------------------------------------------------------------------
+# Stale-session framing: a fresh-mode retry produced AFTER a stale-session
+# failure must carry a structured STALE SESSION RECOVERY block naming the
+# rejected session id, transport, and model -- so the retry agent has
+# structured context instead of restarting from a generic error block.
+# AC-01, AC-03, AC-05.
+# ---------------------------------------------------------------------------
+
+
+def test_write_agent_retry_prompt_fresh_after_stale_session_includes_stale_session_block(
+    tmp_path: Path,
+) -> None:
+    """Fresh-mode retry AFTER stale-session failure names the rejected session id, transport, model.
+
+    Pins the new behavior: when ``recovery_action='fresh'`` AND ``stale_session_id`` is set,
+    the retry prompt carries a structured ``STALE SESSION RECOVERY`` block that names
+    the rejected session id, the transport, and the model. The original task body is
+    STILL inlined (fresh-style). The new block uses fresh-session framing so the retry
+    agent treats the run as a fresh-session retry with prior output as starting context.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="StaleSession",
+        context_lines=["last line"],
+        recovery_action="fresh",
+        stale_session_id="deadbeef-original-id",
+        transport="opencode",
+        model="zai-coding-plan/glm-5.2",
+    )
+
+    content = Path(result).read_text(encoding="utf-8")
+
+    # (a) Existing fresh behavior preserved: original task body still inlined.
+    assert _ORIGINAL_TASK_BODY_TOKEN in content, (
+        "fresh stale-session retry must STILL inline the original task body"
+    )
+    # (b) Structured STALE SESSION RECOVERY header present.
+    assert "STALE SESSION RECOVERY" in content, (
+        "fresh stale-session retry must include the STALE SESSION RECOVERY block"
+    )
+    # (c) Rejected session id named.
+    assert "deadbeef-original-id" in content, (
+        "fresh stale-session retry must name the rejected session id"
+    )
+    # (d) Transport named.
+    assert "opencode" in content, (
+        "fresh stale-session retry must name the transport"
+    )
+    # (e) Model named.
+    assert "zai-coding-plan/glm-5.2" in content, (
+        "fresh stale-session retry must name the model"
+    )
+    # (f) Fresh-session framing present (NOT resume framing).
+    assert "starting a FRESH session" in content, (
+        "fresh stale-session retry must use fresh-session framing"
+    )
+
+
+def test_write_agent_retry_prompt_resume_after_stale_session_does_not_include_stale_session_block(
+    tmp_path: Path,
+) -> None:
+    """Resume path takes precedence: stale_session_id is ignored when recovery_action='resume'.
+
+    The resume path owns the framing via ``_resume_mode_tail``; the stale-session block
+    must NOT appear in a resume prompt even when ``stale_session_id`` is set. This pins
+    that the two paths do not collide.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="StaleSession",
+        context_lines=["last line"],
+        recovery_action="resume",
+        stale_session_id="deadbeef-original-id",
+        transport="opencode",
+        model="zai-coding-plan/glm-5.2",
+    )
+
+    content = Path(result).read_text(encoding="utf-8")
+    assert "STALE SESSION RECOVERY" not in content, (
+        "resume path must NOT include the STALE SESSION RECOVERY block"
+    )
+    assert "deadbeef-original-id" not in content, (
+        "resume path must NOT name the rejected session id"
+    )
+    # Resume path retains its own framing.
+    assert "continue from where you left off" in content.lower()
+
+
+def test_write_agent_retry_prompt_fresh_without_stale_session_id_omits_stale_session_block(
+    tmp_path: Path,
+) -> None:
+    """Defensive default: when stale_session_id is None, omit the block.
+
+    A fresh-mode retry that is NOT triggered by a stale-session failure (e.g. transient
+    connectivity) must not gain stale-session framing. The ``stale_session_id=None`` default
+    guards against false-positive framing for non-stale fresh retries.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="StaleSession",
+        context_lines=["last line"],
+        recovery_action="fresh",
+        # stale_session_id omitted (defaults to None)
+    )
+
+    content = Path(result).read_text(encoding="utf-8")
+    assert "STALE SESSION RECOVERY" not in content, (
+        "fresh retry without stale_session_id must NOT include the STALE SESSION RECOVERY block"
+    )
+    # Original task body still inlined (fresh behavior preserved).
+    assert _ORIGINAL_TASK_BODY_TOKEN in content
+
+
+def test_write_agent_retry_prompt_fresh_after_stale_session_no_double_inline_task(
+    tmp_path: Path,
+) -> None:
+    """The STALE SESSION RECOVERY block must NOT duplicate the original task body.
+
+    The new block is structured framing placed AFTER the original task body, never
+    as a copy. The original task body is inlined EXACTLY ONCE.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="StaleSession",
+        context_lines=["last line"],
+        recovery_action="fresh",
+        stale_session_id="deadbeef-original-id",
+        transport="opencode",
+        model="zai-coding-plan/glm-5.2",
+    )
+
+    content = Path(result).read_text(encoding="utf-8")
+    assert content.count(_ORIGINAL_TASK_BODY_TOKEN) == 1, (
+        f"original task body must be inlined EXACTLY ONCE; got "
+        f"{content.count(_ORIGINAL_TASK_BODY_TOKEN)} occurrences in:\n{content}"
+    )
+
+
+def test_write_agent_retry_prompt_fresh_after_stale_session_omits_resume_restart_directive(
+    tmp_path: Path,
+) -> None:
+    """Fresh stale-session retry must NOT include resume-style wording.
+
+    The STALE SESSION RECOVERY block uses fresh-session framing only. The retry agent
+    must NOT see ``CONTINUE FROM WHERE YOU LEFT OFF`` or ``Do not restart from the
+    beginning`` -- those phrases belong to the resume tail, not to a fresh-session
+    retry. AC-05.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="StaleSession",
+        context_lines=["last line"],
+        recovery_action="fresh",
+        stale_session_id="deadbeef-original-id",
+        transport="opencode",
+        model="zai-coding-plan/glm-5.2",
+    )
+
+    content = Path(result).read_text(encoding="utf-8")
+    assert "CONTINUE FROM WHERE YOU LEFT OFF" not in content, (
+        "fresh stale-session retry must NOT include resume-style wording "
+        "'CONTINUE FROM WHERE YOU LEFT OFF'"
+    )
+    assert "Do not restart from the beginning" not in content, (
+        "fresh stale-session retry must NOT include resume-style wording "
+        "'Do not restart from the beginning'"
+    )

@@ -232,6 +232,21 @@ def _agent_invocation_error_from_opts(opts: dict[str, object]) -> type[Exception
 class _AttemptState:
     prompt_file: str
     resume_session_id: str | None
+    # Captured from ``ctx.state.last_agent_session_id`` at attempt entry so
+    # the retry prompt can name the rejected session id without re-reading
+    # ``ctx.state`` inside the recovery path. None when no prior session
+    # id is recorded.
+    last_agent_session_id: str | None = None
+
+
+def _safe_last_agent_session_id(state: PipelineState | None) -> str | None:
+    """Read ``last_agent_session_id`` defensively, returning None on any issue."""
+    if state is None:
+        return None
+    raw_value: object = getattr(state, "last_agent_session_id", None)
+    if isinstance(raw_value, str):
+        return raw_value
+    return None
 
 
 def _invoke_agent_with_recovery(
@@ -273,6 +288,7 @@ def _invoke_agent_with_recovery(
         state = _AttemptState(
             prompt_file=ctx.effect.prompt_file,
             resume_session_id=session_id or _initial_resume_session_id(ctx),
+            last_agent_session_id=_safe_last_agent_session_id(ctx.state),
         )
         progress_guard = RetryProgressGuard()
 
@@ -311,18 +327,13 @@ def _invoke_agent_with_recovery(
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
                 recovery_plan = build_agent_recovery_plan(
-                    AgentRecoveryInput(
+                    _build_recovery_input_for_attempt(
+                        ctx=ctx,
                         exc=exc,
-                        attempt_index=0,
-                        max_recovery_attempts=ctx.max_recovery_attempts,
-                        effect=ctx.effect,
-                        workspace_root=ctx.workspace_scope.root,
-                        raw_output=list(raw_output),
-                        rendered_output=list(rendered_output),
-                        extracted_session_id=(
-                            extract_transport_session_id(tuple(raw_output)) or session_id
-                        ),
-                        inactivity_error_type=AgentInactivityTimeoutError,
+                        state=state,
+                        session_id=session_id,
+                        raw_output=raw_output,
+                        rendered_output=rendered_output,
                     )
                 )
                 if recovery_plan is None:
@@ -710,12 +721,18 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         context_lines=context_lines,
         recovery_action=recovery_action,
         untruncated=untruncated,
+        stale_session_id=recovery_input.stale_session_id,
+        transport=recovery_input.transport,
+        model=recovery_input.model,
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
         session_id=session_id,
         reason=reason,
         recovery_action=recovery_action,
+        stale_session_id=recovery_input.stale_session_id,
+        transport=recovery_input.transport,
+        model=recovery_input.model,
     )
 
 
@@ -770,6 +787,48 @@ def _is_stale_session_failure(exc: Exception) -> bool:
 
 def _recovery_error_parts(exc: Exception) -> list[str]:
     return failure_detail_parts(exc)
+
+
+def _build_recovery_input_for_attempt(
+    *,
+    ctx: _AgentInvocationCtx,
+    exc: Exception,
+    state: _AttemptState,
+    session_id: str | None,
+    raw_output: deque[str],
+    rendered_output: deque[str],
+) -> AgentRecoveryInput:
+    """Build an ``AgentRecoveryInput`` from an attempt-failure context.
+
+    Centralizes the construction so the per-attempt failure handler in
+    ``_invoke_agent_with_recovery`` stays compact. Also populates the
+    stale-session framing metadata (``stale_session_id``, ``transport``,
+    ``model``) so the retry prompt can name the rejected session id
+    and the runtime that rejected it. ``getattr`` defaults guard against
+    ``AttributeError`` if a future ``AgentConfig`` omits the ``model``
+    field.
+    """
+    _transport_obj: object = getattr(ctx.agent_config, "transport", None)
+    _transport_value: str | None = (
+        _transport_obj.value if isinstance(_transport_obj, AgentTransport) else None
+    )
+    _model_value: str | None = getattr(ctx.agent_config, "model", None)
+    return AgentRecoveryInput(
+        exc=exc,
+        attempt_index=0,
+        max_recovery_attempts=ctx.max_recovery_attempts,
+        effect=ctx.effect,
+        workspace_root=ctx.workspace_scope.root,
+        raw_output=list(raw_output),
+        rendered_output=list(rendered_output),
+        extracted_session_id=(
+            extract_transport_session_id(tuple(raw_output)) or session_id
+        ),
+        inactivity_error_type=AgentInactivityTimeoutError,
+        stale_session_id=state.last_agent_session_id,
+        transport=_transport_value,
+        model=_model_value,
+    )
 
 
 def _recovery_context_lines(
@@ -838,6 +897,9 @@ def _retry_prompt_file_for_context(
     context_lines: list[str],
     recovery_action: str | None = None,
     untruncated: bool = False,
+    stale_session_id: str | None = None,
+    transport: str | None = None,
+    model: str | None = None,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
@@ -846,6 +908,9 @@ def _retry_prompt_file_for_context(
         context_lines=context_lines,
         recovery_action=recovery_action,
         untruncated=untruncated,
+        stale_session_id=stale_session_id,
+        transport=transport,
+        model=model,
     )
 
 
@@ -861,6 +926,30 @@ def _resume_mode_tail(prompt_path: Path) -> str:
         "task is being resumed. Do not restart from the beginning; "
         f"refer to the original prompt at {prompt_path} for context "
         "only and pick up from the most recent state in the resumed session."
+    )
+
+
+def _stale_session_recovery_block(
+    *, stale_session_id: str, transport: str | None, model: str | None
+) -> str:
+    """Return the structured ``STALE SESSION RECOVERY`` block for fresh-mode retry prompts.
+
+    Single source of truth so the stale-session framing wording is one
+    change in one place (and tests can import the helper as a stable
+    token source). The block is layered ON TOP OF (not replacing)
+    ``build_retry_error_block`` and the original task body. Uses
+    fresh-session framing only -- NOT resume-style wording -- because
+    a stale-session retry is a fresh-session retry with the prior
+    session id explicitly rejected.
+    """
+    transport_label = transport if transport else "unknown"
+    model_label = model if model else "unknown"
+    return (
+        "STALE SESSION RECOVERY\n"
+        f"The previous attempt's session id `{stale_session_id}` was rejected by "
+        f"`{transport_label}` (model={model_label}).\n"
+        "You are starting a FRESH session. Do NOT attempt to re-use that session id.\n"
+        "Treat the original task and the prior output summary below as your starting context."
     )
 
 
@@ -884,6 +973,9 @@ def _write_agent_retry_prompt(
     context_lines: list[str],
     recovery_action: str | None = None,
     untruncated: bool = False,
+    stale_session_id: str | None = None,
+    transport: str | None = None,
+    model: str | None = None,
 ) -> str:
     prompt_path = Path(prompt_file)
     prompt_dir = workspace_root / ".agent" / "tmp"
@@ -908,6 +1000,8 @@ def _write_agent_retry_prompt(
         # re-inlining it defeats resume (the documented property L wedge).
         # The agent is told to continue from where it left off and to refer
         # to the original prompt by path only if it needs context.
+        # The stale-session block does NOT appear here -- resume path owns
+        # the framing.
         tail = _resume_mode_tail(prompt_path)
         retry_prompt_path.write_text(
             (f"{error_block}\n\nPREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}\n"),
@@ -920,14 +1014,35 @@ def _write_agent_retry_prompt(
     # new-chain) and for un-updated callers that have not been threaded
     # the new ``recovery_action`` keyword.
     base_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+    body_parts: list[str] = [
+        error_block,
+        "PREVIOUS OUTPUT SUMMARY EXCERPT:",
+        summary,
+        "",
+        "ORIGINAL TASK PROMPT:",
+        base_prompt,
+    ]
+    # Stale-session framing: when this fresh-mode retry was triggered by a
+    # stale-session failure (i.e. ``stale_session_id`` is set), append a
+    # structured ``STALE SESSION RECOVERY`` block AFTER the original task
+    # body. The block names the rejected session id, transport, and model
+    # so the retry agent has structured context (instead of restarting
+    # from a generic error block). Uses fresh-session framing only --
+    # NOT resume-style wording -- because a stale-session retry is a
+    # fresh-session retry with the prior session id explicitly rejected.
+    if stale_session_id:
+        body_parts.extend(
+            [
+                "",
+                _stale_session_recovery_block(
+                    stale_session_id=stale_session_id,
+                    transport=transport,
+                    model=model,
+                ),
+            ]
+        )
     retry_prompt_path.write_text(
-        (
-            f"{error_block}\n\n"
-            "PREVIOUS OUTPUT SUMMARY EXCERPT:\n"
-            f"{summary}\n\n"
-            "ORIGINAL TASK PROMPT:\n"
-            f"{base_prompt}\n"
-        ),
+        "\n".join(body_parts) + "\n",
         encoding="utf-8",
     )
     return str(retry_prompt_path)

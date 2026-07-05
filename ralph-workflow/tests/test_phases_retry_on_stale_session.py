@@ -1495,3 +1495,132 @@ def test_inactivity_timeout_with_session_resume_safe_false_still_uses_12_line_ta
     )
     assert huge_line not in retry_content
     assert " ... (truncated)" in retry_content
+
+
+# ---------------------------------------------------------------------------
+# End-to-end stale-session retry-prompt contract: the retry prompt
+# produced AFTER a stale-session failure must (a) be a fresh-mode prompt
+# (inlines the original task body), (b) include the structured
+# ``STALE SESSION RECOVERY`` block naming the rejected session id,
+# transport, and model. AC-01, AC-04.
+# ---------------------------------------------------------------------------
+
+
+def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block_with_session_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """End-to-end: execute_agent_effect -> retry prompt carries the structured stale-session block.
+
+    Pins the full pipeline path: ``_run_attempt`` captures
+    ``state.last_agent_session_id``, threads it as
+    ``AgentRecoveryInput.stale_session_id``, ``build_agent_recovery_plan``
+    threads it as ``AgentRecoveryPlan.stale_session_id``, and
+    ``_write_agent_retry_prompt`` appends the structured ``STALE SESSION
+    RECOVERY`` block naming the rejected session id, the transport, and
+    the model. The original task body is STILL inlined (fresh-mode
+    behavior preserved). AC-04.
+    """
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("ORIGINAL_TASK_BODY_E2E_TOKEN\n", encoding="utf-8")
+
+    stale_session_id = "development_analysis-c448ac22"
+    transport_name = "opencode"
+    model_name = "zai-coding-plan/glm-5.2"
+
+    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                f"Error: Session not found: {stale_session_id}",
+            )
+        return []
+
+    effect = InvokeAgentEffect(
+        agent_name="opencode",
+        phase="development",
+        prompt_file=str(prompt_file),
+    )
+    config = _make_config()
+    state = _make_state(last_session_id=stale_session_id)
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+                model=model_name,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=state,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    # (a) End-to-end success.
+    assert result == PipelineEvent.AGENT_SUCCESS, (
+        f"expected AGENT_SUCCESS after stale-session retry; got {result!r}"
+    )
+    # (b) Two invocations: first uses stale session, second uses None.
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT, (
+        f"expected {_EXPECTED_INVOCATION_COUNT} invocations; got {len(captured_calls)}"
+    )
+    second_session_id, second_prompt = captured_calls[1]
+    assert second_session_id is None, (
+        f"second invocation must use session_id=None; got {second_session_id!r}"
+    )
+
+    # Read the retry prompt produced by the pipeline.
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    # (c) Original task body inlined (fresh-mode behavior preserved).
+    assert "ORIGINAL_TASK_BODY_E2E_TOKEN" in retry_content, (
+        "retry prompt must STILL inline the original task body (fresh-mode behavior)"
+    )
+
+    # (d) Structured ``STALE SESSION RECOVERY`` block present.
+    assert "STALE SESSION RECOVERY" in retry_content, (
+        "retry prompt must include the STALE SESSION RECOVERY block"
+    )
+
+    # (e) Rejected session id named.
+    assert stale_session_id in retry_content, (
+        f"retry prompt must name the rejected session id {stale_session_id!r}"
+    )
+
+    # (f) Transport named.
+    assert transport_name in retry_content, (
+        f"retry prompt must name the transport {transport_name!r}"
+    )
+
+    # (g) Model named.
+    assert model_name in retry_content, (
+        f"retry prompt must name the model {model_name!r}"
+    )

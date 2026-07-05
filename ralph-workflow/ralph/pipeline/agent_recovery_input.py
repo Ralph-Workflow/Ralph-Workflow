@@ -26,3 +26,13 @@ class AgentRecoveryInput:
     rendered_output: list[str]
     extracted_session_id: str | None
     inactivity_error_type: type[Exception]
+    # Stale-session framing metadata. APPENDED at the end (not reordered)
+    # so existing positional construction of this dataclass keeps working
+    # unchanged. All new fields default to ``None`` so un-updated call sites
+    # stay valid. ``stale_session_id`` carries the rejected session id
+    # captured from the prior attempt's state so the retry prompt can
+    # name it; ``transport`` and ``model`` describe the runtime that
+    # rejected the session id.
+    stale_session_id: str | None = None
+    transport: str | None = None
+    model: str | None = None

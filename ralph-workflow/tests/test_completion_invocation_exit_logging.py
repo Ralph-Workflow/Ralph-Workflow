@@ -12,7 +12,10 @@ from __future__ import annotations
 
 from loguru import logger
 
-from ralph.agents.invoke._completion import _log_invocation_exit
+from ralph.agents.invoke._completion import (
+    _extract_rejected_session_id_from_failure,
+    _log_invocation_exit,
+)
 from ralph.agents.invoke._errors import AgentInvocationError
 
 
@@ -201,3 +204,67 @@ def test_stale_session_exit_with_generic_stderr_surfaces_parsed_output_evidence(
     # The generic stderr is still surfaced too, for completeness.
     assert "agent exited" in logged
     assert "1" in logged
+
+
+# ---------------------------------------------------------------------------
+# Rejected session id surfacing on stale-session WARNING line (AC-02, AC-06).
+# ---------------------------------------------------------------------------
+
+
+def test_stale_session_exit_logs_surfaces_rejected_session_id_when_present() -> None:
+    """Stale-session WARNING line surfaces the rejected session id when available.
+
+    The user-visible opaque log line ``Retryable agent exit with code 1:
+    Error: Session not found [(no output captured)]`` was missing the
+    rejected session id. The fix adds a ``session_id=<id>`` field to the
+    WARNING line so an operator can correlate the log line with the
+    prior ``--session <id>`` invocation visible in the run log. AC-02.
+    """
+    exc = AgentInvocationError(
+        "opencode",
+        1,
+        "Error: Session not found: development_analysis-c448ac22",
+    )
+
+    logged = _capture_logs(exc)
+    levels = _capture_levels(exc)
+
+    assert "WARNING" in levels
+    # Existing structured phrase preserved.
+    assert "stale session" in logged.lower()
+    assert "resetting session" in logged.lower() or "fresh session" in logged.lower()
+    # New: rejected session id surfaced.
+    assert "development_analysis-c448ac22" in logged, (
+        "stale-session WARNING line must surface the rejected session id "
+        "so an operator can correlate the log line with the prior --session invocation"
+    )
+
+
+def test_stale_session_exit_with_no_session_id_marker_does_not_emit_session_id_field() -> None:
+    """Helper returns None and WARNING line omits ``session_id=`` for non-stale failures.
+
+    AC-06: when the failure payload does NOT match a canonical
+    ``SESSION_NOT_FOUND_SUBSTRINGS`` marker, the WARNING line must omit
+    the ``session_id=`` field. No false-positive id extraction, no
+    ``session_id=None`` literal in the operator log line.
+    """
+    exc = AgentInvocationError(
+        "opencode",
+        1,
+        "Some unrelated connectivity failure",
+        parsed_output=["just a regular error", "no session marker here"],
+    )
+
+    # Helper returns None for non-stale payloads.
+    assert _extract_rejected_session_id_from_failure(exc) is None, (
+        "_extract_rejected_session_id_from_failure must return None for non-stale payloads"
+    )
+
+    logged = _capture_logs(exc)
+
+    # The session_id= field is NOT in the log line -- no `session_id=None` literal,
+    # no false-positive id extraction.
+    assert "session_id=" not in logged, (
+        "stale-session WARNING line must omit session_id= when the failure has no "
+        f"canonical SESSION_NOT_FOUND_SUBSTRINGS marker; got: {logged!r}"
+    )
