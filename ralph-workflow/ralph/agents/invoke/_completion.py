@@ -496,6 +496,16 @@ def _check_process_result(
             )
 
 
+#: Canonical session-id character class, shared with the parsers in
+#: :mod:`ralph.agents.invoke._session`. Mirrors the
+#: ``[A-Za-z0-9._:-]+`` shape used by ``_TRANSPORT_TEXT_SESSION_PATTERNS``
+#: so the operator WARNING line surfaces session ids containing ``.`` and
+#: ``:`` (e.g. ``abc.def:ghi``) instead of silently dropping them. The
+#: minimum-length guard (>= 4 chars) prevents coincidental substrings
+#: (e.g. the bare word "session") from being picked up as an id.
+_SESSION_ID_TOKEN_REGEX = r"[A-Za-z0-9._:\-]{4,}"
+
+
 def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str | None:
     """Return the rejected session id extracted from a stale-session failure.
 
@@ -513,9 +523,12 @@ def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str 
     - ``"No conversation found with session ID: <id>"``
     - ``"session does not exist: <id>"``
 
-    The id suffix is required to look id-shaped (alphanumeric plus
-    ``-`` / ``_``, length >= 4) so a coincidental substring (e.g. the
-    word "session" in a free-form error message) is NOT picked up.
+    The id suffix is required to look id-shaped (the canonical session-id
+    character class shared with :mod:`ralph.agents.invoke._session` --
+    alphanumeric plus ``-`` / ``_`` / ``.`` / ``:``, length >= 4) so a
+    coincidental substring (e.g. the word "session" in a free-form error
+    message) is NOT picked up, but valid transport session ids
+    containing ``.`` or ``:`` ARE surfaced. AC-02.
 
     Returns the first matching id, or ``None`` when no canonical
     stale-session marker is present. Single source of truth so the
@@ -528,13 +541,14 @@ def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str 
     # "Session not found for ID: <id>" in addition to the direct
     # colon-separated shape), <sep> is whitespace or a colon, and <id>
     # is an id-shaped token. The id token regex requires at least 4
-    # alphanumeric/dash/underscore characters so a coincidental
-    # substring like "session not found" alone does not match.
+    # id-shaped characters -- so a coincidental substring like
+    # "session not found" alone does not match, but a valid session id
+    # such as ``abc.def:ghi`` (containing ``.`` and ``:``) DOES match.
     _marker_pattern = "|".join(re.escape(m) for m in SESSION_NOT_FOUND_SUBSTRINGS)
     _pattern = re.compile(
         rf"(?i)(?:{_marker_pattern})"
         rf"(?:\s+(?:for\s+ID|for\s+id|ID|id))?"
-        rf"[\s:]+([A-Za-z0-9_\-]{{4,}})",
+        rf"[\s:]+({_SESSION_ID_TOKEN_REGEX})",
     )
     haystack = [exc.stderr] if exc.stderr else []
     haystack.extend(exc.parsed_output)

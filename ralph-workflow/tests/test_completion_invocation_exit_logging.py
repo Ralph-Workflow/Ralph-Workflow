@@ -295,6 +295,53 @@ def test_stale_session_exit_logs_surfaces_rejected_session_id_for_id_label_varia
     )
 
 
+def test_stale_session_exit_logs_surfaces_rejected_session_id_with_dot_and_colon_chars() -> None:
+    """Stale-session WARNING line surfaces rejected session ids containing ``.`` and ``:``.
+
+    The canonical session-id character class shared with
+    :mod:`ralph.agents.invoke._session` accepts ``[A-Za-z0-9._:-]+``
+    (see ``_TRANSPORT_TEXT_SESSION_PATTERNS`` and
+    ``_COMPLETION_SESSION_ID_PATTERNS`` in that module). The earlier
+    helper regex (``[A-Za-z0-9_-]{4,}``) silently dropped valid session
+    ids containing ``.`` or ``:`` -- e.g. ``abc.def:ghi`` -- so the
+    operator WARNING line for a stale-session exit with such an id was
+    missing the ``session_id=`` field entirely.
+
+    Regression test pinning the widening: the helper extracts
+    ``abc.def:ghi`` from the canonical ``Session not found: <id>`` shape
+    AND the operator WARNING line surfaces it as a dedicated
+    ``session_id=abc.def:ghi`` field. AC-02.
+    """
+    exc = AgentInvocationError(
+        "opencode",
+        1,
+        "Error: Session not found: abc.def:ghi",
+    )
+
+    # Helper extracts the dot/colon-containing id, NOT None.
+    assert _extract_rejected_session_id_from_failure(exc) == "abc.def:ghi", (
+        "_extract_rejected_session_id_from_failure must surface session ids "
+        "containing '.' and ':' (the canonical session-id character class in "
+        "_session.py); got None for 'Error: Session not found: abc.def:ghi'"
+    )
+
+    logged = _capture_logs(exc)
+    levels = _capture_levels(exc)
+
+    assert "WARNING" in levels
+    # Existing structured phrase preserved.
+    assert "stale session" in logged.lower()
+    assert "resetting session" in logged.lower() or "fresh session" in logged.lower()
+    # The dedicated session_id=<id> field carries the dot/colon-containing id
+    # so an operator can correlate the log line with the prior --session
+    # invocation visible in the run log.
+    assert "session_id=abc.def:ghi" in logged, (
+        "stale-session WARNING line must surface the dedicated "
+        "session_id=abc.def:ghi field for ids containing '.' and ':'; "
+        f"got: {logged!r}"
+    )
+
+
 def test_stale_session_exit_with_no_session_id_marker_does_not_emit_session_id_field() -> None:
     """Helper returns None and WARNING line omits ``session_id=`` for non-stale failures.
 

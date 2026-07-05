@@ -838,6 +838,16 @@ def _build_recovery_input_for_attempt(
     NOT trigger the ``STALE SESSION RECOVERY`` block -- that block
     carries the false claim that the prior session id was rejected,
     which only happens for actual stale-session failures. AC-03.
+
+    ``stale_session_id`` falls back to ``state.resume_session_id`` (and
+    then to the ``session_id`` parameter) when ``state.last_agent_session_id``
+    is absent. This matters for callers that pass ``session_id``
+    explicitly without providing pipeline ``state`` -- e.g.
+    ``ralph.pipeline.plumbing.commit_plumbing`` invokes
+    ``execute_agent_effect(..., session_id=prior_session_id, ...)``
+    without a pipeline-state object. On those paths, the rejected
+    session id is the one we just attempted -- not the one captured in
+    pipeline state -- so the prompt must still surface it. AC-01, AC-04.
     """
     _transport_obj: object = getattr(ctx.agent_config, "transport", None)
     _transport_value: str | None = (
@@ -858,7 +868,11 @@ def _build_recovery_input_for_attempt(
         ),
         inactivity_error_type=AgentInactivityTimeoutError,
         stale_session_id=(
-            state.last_agent_session_id if is_stale_session_failure else None
+            state.last_agent_session_id
+            or state.resume_session_id
+            or session_id
+            if is_stale_session_failure
+            else None
         ),
         transport=_transport_value if is_stale_session_failure else None,
         model=_model_value if is_stale_session_failure else None,

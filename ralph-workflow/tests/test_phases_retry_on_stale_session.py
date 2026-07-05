@@ -1624,3 +1624,138 @@ def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block
     assert model_name in retry_content, (
         f"retry prompt must name the model {model_name!r}"
     )
+
+
+def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Explicit-session retry without pipeline state still emits the STALE SESSION RECOVERY block.
+
+    End-to-end companion to
+    ``test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block_with_session_id``:
+    that test exercises the pipeline-state path (state=...); this one
+    exercises the explicit-session path used by
+    ``commit_plumbing.execute_agent_effect(..., session_id=prior_session_id, ...)``
+    where the caller passes ``session_id`` directly WITHOUT a pipeline
+    ``state`` object.
+
+    The earlier fix threaded ``stale_session_id`` from
+    ``state.last_agent_session_id`` ONLY, so when the caller omitted
+    ``state`` the retry prompt silently dropped the
+    ``STALE SESSION RECOVERY`` block even though the first failure was
+    a real stale-session failure (``Error: Session not found: <id>``).
+    The fix falls back to ``state.resume_session_id`` (which captures
+    the explicit ``session_id`` parameter) when
+    ``state.last_agent_session_id`` is absent, so the prompt carries the
+    rejected session id, the transport, the model, AND the original
+    task body. AC-01, AC-04.
+    """
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("ORIGINAL_TASK_BODY_E2E_TOKEN_EXPLICIT_SESSION\n", encoding="utf-8")
+
+    stale_session_id = "explicit-session-1234"
+    transport_name = "opencode"
+    model_name = "zai-coding-plan/glm-5.2"
+
+    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                f"Error: Session not found: {stale_session_id}",
+            )
+        return []
+
+    effect = InvokeAgentEffect(
+        agent_name="opencode",
+        phase="commit",
+        prompt_file=str(prompt_file),
+    )
+    config = _make_config()
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+                model=model_name,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    # Explicit-session retry: ``session_id`` passed directly, ``state``
+    # omitted (commit_plumbing-style invocation). ``state`` default is
+    # ``None`` inside ``execute_agent_effect`` so
+    # ``_safe_last_agent_session_id(ctx.state)`` returns ``None`` -- the
+    # fallback to ``state.resume_session_id`` is the ONLY way the
+    # rejected session id surfaces in the prompt.
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        session_id=stale_session_id,
+        # state=...                # NO state passed (the bug surface)
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    # (a) End-to-end success.
+    assert result == PipelineEvent.AGENT_SUCCESS, (
+        f"expected AGENT_SUCCESS after stale-session retry; got {result!r}"
+    )
+    # (b) Two invocations: first uses the explicit session id, second uses None.
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT, (
+        f"expected {_EXPECTED_INVOCATION_COUNT} invocations; got {len(captured_calls)}"
+    )
+    second_session_id, second_prompt = captured_calls[1]
+    assert second_session_id is None, (
+        f"second invocation must use session_id=None; got {second_session_id!r}"
+    )
+
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    # (c) Original task body inlined (fresh-mode behavior preserved).
+    assert "ORIGINAL_TASK_BODY_E2E_TOKEN_EXPLICIT_SESSION" in retry_content, (
+        "retry prompt must STILL inline the original task body (fresh-mode behavior)"
+    )
+    # (d) Structured STALE SESSION RECOVERY block present -- the fix that
+    # was missing on this path: the fallback to state.resume_session_id
+    # makes the rejected session id visible even when state was omitted.
+    assert "STALE SESSION RECOVERY" in retry_content, (
+        "explicit-session retry (no state) must include the STALE SESSION RECOVERY "
+        "block via the state.resume_session_id fallback; got:\n" + retry_content
+    )
+    # (e) Rejected session id named.
+    assert stale_session_id in retry_content, (
+        f"explicit-session retry (no state) must name the rejected session id "
+        f"{stale_session_id!r}"
+    )
+    # (f) Transport named.
+    assert transport_name in retry_content, (
+        f"explicit-session retry (no state) must name the transport {transport_name!r}"
+    )
+    # (g) Model named.
+    assert model_name in retry_content, (
+        f"explicit-session retry (no state) must name the model {model_name!r}"
+    )
