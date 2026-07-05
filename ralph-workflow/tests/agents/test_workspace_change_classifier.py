@@ -27,6 +27,7 @@ for weight-1 events. The __post_init__ arity check rejects 1-arg and
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import pytest
@@ -41,6 +42,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
     SOURCE_EXTENSIONS,
     WorkspaceChangeClassifier,
     WorkspaceChangeKind,
+    _is_agent_internal_state_db_path,
     _normalize_workspace_change_weights,
 )
 
@@ -208,6 +210,88 @@ def test_classify_cache_completion_seen_sentinel() -> None:
 def test_cache_filename_globs_contains_completion_seen() -> None:
     """``CACHE_FILENAME_GLOBS`` includes the ``completion_seen_*.json`` glob."""
     assert "completion_seen_*.json" in CACHE_FILENAME_GLOBS
+
+
+# ---------------------------------------------------------------------------
+# (d') CACHE agent-internal state.db trio (RFC-013 P3 wiring)
+# ---------------------------------------------------------------------------
+
+
+def test_classify_cache_agent_internal_state_db() -> None:
+    """``.agent/state.db`` (the WAL-mode SQLite store) is CACHE.
+
+    The idle watchdog MUST ignore writes to the engine-internal
+    bookkeeping store; otherwise its per-channel evidence surface
+    would treat DB writes as workspace progress and incorrectly
+    defer the NO_OUTPUT_DEADLINE verdict.
+    """
+    classifier = WorkspaceChangeClassifier()
+    for path in (
+        "/repo/.agent/state.db",
+        "/repo/.agent/state.db-wal",
+        "/repo/.agent/state.db-shm",
+    ):
+        kind, weight = classifier.classify(path)
+        assert kind is WorkspaceChangeKind.CACHE, f"{path} should be CACHE"
+        assert weight == 0.0
+
+
+def test_classify_user_file_state_db_is_not_cache() -> None:
+    """A user file matching the state.db* basename is NOT CACHE.
+
+    Regression: pre-fix, ``CACHE_FILENAME_GLOBS`` matched
+    ``state.db``/``state.db-wal``/``state.db-shm`` by basename only,
+    so a user file at ``/repo/src/state.db`` was incorrectly dropped
+    as CACHE. The fix scopes the rule to ``.agent/state.db*`` via
+    ``_is_agent_internal_state_db_path`` so user files matching the
+    basename fall through to OTHER/SOURCE.
+    """
+    classifier = WorkspaceChangeClassifier()
+    for path in (
+        "/repo/src/state.db",
+        "/repo/docs/state.db-wal",
+        "/repo/foo/state.db-shm",
+    ):
+        kind, _weight = classifier.classify(path)
+        assert kind is not WorkspaceChangeKind.CACHE, (
+            f"{path} must NOT be classified CACHE (user file, not engine-internal)"
+        )
+
+
+def test_is_agent_internal_state_db_path_matches_dot_agent_only() -> None:
+    """``_is_agent_internal_state_db_path`` is True iff parent is exactly ``.agent``."""
+    # Engine-internal paths -> True
+    for path in ("/repo/.agent/state.db", "/repo/.agent/state.db-wal", "/repo/.agent/state.db-shm"):
+        posix = PurePosixPath(path)
+        assert _is_agent_internal_state_db_path(posix.parts, posix.name) is True
+
+    # User paths -> False
+    for path in ("/repo/src/state.db", "/repo/docs/state.db-wal", "/repo/foo/state.db-shm"):
+        posix = PurePosixPath(path)
+        assert _is_agent_internal_state_db_path(posix.parts, posix.name) is False
+
+    # Unknown sibling suffixes -> False (only the canonical trio is allowed)
+    posix = PurePosixPath("/repo/.agent/state.db-journal")
+    assert _is_agent_internal_state_db_path(posix.parts, posix.name) is False
+
+    # Basename only with no parent -> False
+    assert _is_agent_internal_state_db_path(("state.db",), "state.db") is False
+
+
+def test_cache_filename_globs_does_not_contain_state_db() -> None:
+    """``CACHE_FILENAME_GLOBS`` no longer contains ``state.db*`` globs.
+
+    The state.db trio is matched by the path-scoped
+    ``_is_agent_internal_state_db_path`` rule (parent must be
+    ``.agent``), NOT by basename-only matching. This regression
+    ensures future edits do not reintroduce basename-only matching
+    for the engine-internal bookkeeping store.
+    """
+    for forbidden in ("state.db", "state.db-wal", "state.db-shm"):
+        assert forbidden not in CACHE_FILENAME_GLOBS, (
+            f"CACHE_FILENAME_GLOBS must not contain {forbidden!r};"
+            f" use _is_agent_internal_state_db_path for path-scoped matching"
+        )
 
 
 # ---------------------------------------------------------------------------

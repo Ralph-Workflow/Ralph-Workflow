@@ -54,6 +54,7 @@ __all__ = [
     "SOURCE_EXTENSIONS",
     "WorkspaceChangeClassifier",
     "WorkspaceChangeKind",
+    "_is_agent_internal_state_db_path",
     "_normalize_workspace_change_weights",
 ]
 
@@ -84,11 +85,29 @@ CACHE_PARENT_DIRS: frozenset[str] = frozenset(
 
 #: Basename glob patterns for CACHE files. Matched against the
 #: ``PurePosixPath`` basename (no directory portion) using fnmatch.
+#:
+#: Note: the engine-internal ``.agent/state.db`` trio (the WAL-mode
+#: SQLite store and its ``-wal`` / ``-shm`` siblings) is NOT in this
+#: tuple. Treating those basenames as CACHE-by-basename would
+#: incorrectly drop user files matching the same name (e.g.
+#: ``/repo/src/state.db``, ``/repo/docs/state.db-wal``). The trio is
+#: matched by the path-scoped rule ``_is_agent_internal_state_db_path``
+#: instead, which requires the parent directory to be ``.agent``.
 CACHE_FILENAME_GLOBS: tuple[str, ...] = (
     "completion_seen_*.json",
-    "state.db",
-    "state.db-wal",
-    "state.db-shm",
+)
+
+#: Exact basenames for the engine-internal ``.agent/state.db`` trio.
+#: Used only by ``_is_agent_internal_state_db_path`` to scope CACHE
+#: matching to ``.agent/state.db*`` so user files with the same
+#: basename fall through to the OTHER/SOURCE rules. The WAL-mode
+#: SQLite store is engine-internal bookkeeping, not user data.
+_AGENT_INTERNAL_STATE_DB_BASENAMES: frozenset[str] = frozenset(
+    {
+        "state.db",
+        "state.db-wal",
+        "state.db-shm",
+    }
 )
 
 #: Parent directories that mark a path as ARTIFACT (i.e. NOT activity
@@ -232,20 +251,27 @@ class WorkspaceChangeClassifier:
         2. **CACHE filename glob** - if the basename matches
            ``completion_seen_*.json`` (or any future glob in
            ``CACHE_FILENAME_GLOBS``), return ``(CACHE, 0.0)``.
-        3. **ARTIFACT parent walk** - if any parent directory is in
+        3. **CACHE agent-internal state.db trio** - if the basename is
+           ``state.db``, ``state.db-wal``, or ``state.db-shm`` AND the
+           immediate parent directory is exactly ``.agent``, return
+           ``(CACHE, 0.0)``. This scopes the WAL-mode SQLite store to
+           the engine-internal bookkeeping path so a user file at
+           ``/repo/src/state.db`` falls through to OTHER/SOURCE rather
+           than being incorrectly dropped as CACHE.
+        4. **ARTIFACT parent walk** - if any parent directory is in
            ``ARTIFACT_PARENT_DIRS`` (= ``{".agent/artifacts"}``),
            return ``(ARTIFACT, 0.0)``. ARTIFACT is checked AFTER
            CACHE so an internal temp subdir of an artifact tree
            still wins.
-        4. **LOG name/extension** - if the basename ends with any
+        5. **LOG name/extension** - if the basename ends with any
            suffix in ``LOG_SUFFIXES`` (``*.log``, ``*.tmp``,
            ``*.bak``, ``*.swp``, ``*~``, ``*.pyc``, ``*.pyo``),
            return ``(LOG, 0.0)``.
-        5. **SOURCE extension** - if the basename ends with any
+        6. **SOURCE extension** - if the basename ends with any
            extension in ``SOURCE_EXTENSIONS``, return
            ``(SOURCE, weights["source"])``. The default weight is
            ``1.0`` so source-code changes count as full activity.
-        6. **OTHER** - return ``(OTHER, weights["other"])``. The
+        7. **OTHER** - return ``(OTHER, weights["other"])``. The
            default weight is ``0.0`` so unmatched paths are dropped.
 
         Args:
@@ -267,48 +293,66 @@ class WorkspaceChangeClassifier:
         # OS-native paths.
         posix = PurePosixPath(src_path.replace("\\", "/"))
         parts = posix.parts
-
-        # (1) CACHE parent walk. Match every directory in the path
-        # against CACHE_PARENT_DIRS as either a single-part name
-        # (``/.git``) or a multi-part name (``/.agent/tmp``). The
-        # single-part match lets ``/repo/.git/HEAD`` resolve to
-        # CACHE; the multi-part match lets ``/repo/.agent/tmp/foo``
-        # resolve to CACHE without putting the ``.agent`` top-level
-        # itself into the CACHE set (which would have made
-        # ``.agent/artifacts/plan.json`` unreachable as ARTIFACT).
-        cache_set = CACHE_PARENT_DIRS
-        for window_size in range(1, len(parts) + 1):
-            for start in range(len(parts) - window_size + 1):
-                candidate = "/".join(parts[start : start + window_size])
-                if candidate in cache_set:
-                    return WorkspaceChangeKind.CACHE, self._weight(WorkspaceChangeKind.CACHE)
-
         basename = posix.name
-        # (2) CACHE filename glob
-        for glob in CACHE_FILENAME_GLOBS:
-            if fnmatch.fnmatch(basename, glob):
-                return WorkspaceChangeKind.CACHE, self._weight(WorkspaceChangeKind.CACHE)
 
-        # (3) ARTIFACT parent walk. Same windowed-match semantics as
-        # CACHE so ``.agent/artifacts/plan.json`` matches
-        # ``.agent/artifacts`` (an explicit two-part entry).
-        for window_size in range(1, len(parts) + 1):
-            for start in range(len(parts) - window_size + 1):
-                candidate = "/".join(parts[start : start + window_size])
-                if candidate in ARTIFACT_PARENT_DIRS:
-                    return WorkspaceChangeKind.ARTIFACT, self._weight(WorkspaceChangeKind.ARTIFACT)
+        # The rule order is fixed (see the docstring). Each tuple is
+        # (predicate, kind); the first matching predicate wins. Keeping
+        # the rules in a list lets ``classify`` return at most once,
+        # which satisfies the PLR0911 complexity ceiling while still
+        # preserving the documented 7-rule evaluation order.
+        rules: tuple[tuple[bool, WorkspaceChangeKind], ...] = (
+            # (1) CACHE parent walk. Match every directory in the path
+            # against CACHE_PARENT_DIRS as either a single-part name
+            # (``/.git``) or a multi-part name (``/.agent/tmp``). The
+            # single-part match lets ``/repo/.git/HEAD`` resolve to
+            # CACHE; the multi-part match lets ``/repo/.agent/tmp/foo``
+            # resolve to CACHE without putting the ``.agent`` top-level
+            # itself into the CACHE set (which would have made
+            # ``.agent/artifacts/plan.json`` unreachable as ARTIFACT).
+            (
+                _matches_parent_walk(parts, CACHE_PARENT_DIRS),
+                WorkspaceChangeKind.CACHE,
+            ),
+            # (2) CACHE filename glob
+            (
+                _matches_filename_glob(basename, CACHE_FILENAME_GLOBS),
+                WorkspaceChangeKind.CACHE,
+            ),
+            # (3) CACHE agent-internal state.db trio. Scoped to
+            # ``.agent/`` parent so user files matching the basename
+            # (``/repo/src/state.db``, ``/repo/docs/state.db-wal``) are
+            # NOT classified CACHE. Uses the in-memory
+            # ``_AGENT_INTERNAL_STATE_DB_BASENAMES`` set so an unknown
+            # suffix (e.g. ``state.db-journal``) is correctly NOT CACHE
+            # unless explicitly listed.
+            (
+                _is_agent_internal_state_db_path(parts, basename),
+                WorkspaceChangeKind.CACHE,
+            ),
+            # (4) ARTIFACT parent walk. Same windowed-match semantics as
+            # CACHE so ``.agent/artifacts/plan.json`` matches
+            # ``.agent/artifacts`` (an explicit two-part entry).
+            (
+                _matches_parent_walk(parts, ARTIFACT_PARENT_DIRS),
+                WorkspaceChangeKind.ARTIFACT,
+            ),
+            # (5) LOG name/extension
+            (
+                _matches_suffix(basename, LOG_SUFFIXES),
+                WorkspaceChangeKind.LOG,
+            ),
+            # (6) SOURCE extension
+            (
+                _matches_suffix(basename, SOURCE_EXTENSIONS),
+                WorkspaceChangeKind.SOURCE,
+            ),
+        )
 
-        # (4) LOG name/extension
-        for suffix in LOG_SUFFIXES:
-            if basename.endswith(suffix):
-                return WorkspaceChangeKind.LOG, self._weight(WorkspaceChangeKind.LOG)
+        for predicate, kind in rules:
+            if predicate:
+                return kind, self._weight(kind)
 
-        # (5) SOURCE extension
-        for ext in SOURCE_EXTENSIONS:
-            if basename.endswith(ext):
-                return WorkspaceChangeKind.SOURCE, self._weight(WorkspaceChangeKind.SOURCE)
-
-        # (6) OTHER
+        # (7) OTHER — default fallback when no rule matches.
         return WorkspaceChangeKind.OTHER, self._weight(WorkspaceChangeKind.OTHER)
 
     def _weight(self, kind: WorkspaceChangeKind) -> float:
@@ -340,3 +384,79 @@ def _normalize_workspace_change_weights(
     if partial is not None:
         merged.update(partial)
     return merged
+
+
+def _is_agent_internal_state_db_path(
+    path_parts: tuple[str, ...],
+    basename: str,
+) -> bool:
+    """Return True iff the path is the engine-internal ``.agent/state.db`` trio.
+
+    The WAL-mode SQLite store at ``.agent/state.db`` and its
+    ``-wal`` / ``-shm`` siblings are engine-internal bookkeeping
+    and MUST be classified CACHE so the idle watchdog ignores their
+    writes. The basename alone is not enough: a user file at
+    ``/repo/src/state.db`` or ``/repo/docs/state.db-wal`` is NOT
+    bookkeeping and must fall through to OTHER/SOURCE so it counts
+    as workspace activity. The scoped check is:
+
+    - The basename is exactly one of ``state.db``, ``state.db-wal``,
+      ``state.db-shm`` (looked up in
+      ``_AGENT_INTERNAL_STATE_DB_BASENAMES``).
+    - The immediate parent directory is exactly ``.agent``.
+
+    Args:
+        path_parts: The POSIX path components (``PurePosixPath.parts``)
+            of the source path. Used to inspect the immediate parent.
+        basename: The POSIX path basename (``PurePosixPath.name``).
+
+    Returns:
+        ``True`` when both conditions hold; ``False`` otherwise
+        (including when the path has no parent or when the basename
+        is not in the trio set).
+    """
+    if basename not in _AGENT_INTERNAL_STATE_DB_BASENAMES:
+        return False
+    if len(path_parts) < _PARENT_DIR_LOOKUP_DEPTH:
+        return False
+    return path_parts[-_PARENT_DIR_LOOKUP_DEPTH] == ".agent"
+
+
+#: Depth into ``PurePosixPath.parts`` at which the immediate parent
+#: directory lives. Used by ``_is_agent_internal_state_db_path`` and
+#: ``_matches_parent_walk`` so the magic number ``2`` is named in
+#: one place rather than scattered across helpers.
+_PARENT_DIR_LOOKUP_DEPTH: int = 2
+
+
+def _matches_parent_walk(
+    path_parts: tuple[str, ...],
+    parent_set: frozenset[str],
+) -> bool:
+    """Return True iff any windowed substring of ``path_parts`` matches ``parent_set``.
+
+    ``CACHE_PARENT_DIRS`` and ``ARTIFACT_PARENT_DIRS`` are matched as
+    either a single-part name (``/.git``) or a multi-part name
+    (``/.agent/tmp``). The single-part match lets ``/repo/.git/HEAD``
+    resolve to CACHE; the multi-part match lets
+    ``/repo/.agent/tmp/foo`` resolve to CACHE without putting the
+    ``.agent`` top-level itself into the CACHE set (which would
+    have made ``.agent/artifacts/plan.json`` unreachable as
+    ARTIFACT).
+    """
+    for window_size in range(1, len(path_parts) + 1):
+        for start in range(len(path_parts) - window_size + 1):
+            candidate = "/".join(path_parts[start : start + window_size])
+            if candidate in parent_set:
+                return True
+    return False
+
+
+def _matches_filename_glob(basename: str, globs: tuple[str, ...]) -> bool:
+    """Return True iff ``basename`` matches any glob in ``globs``."""
+    return any(fnmatch.fnmatch(basename, glob) for glob in globs)
+
+
+def _matches_suffix(basename: str, suffixes: frozenset[str]) -> bool:
+    """Return True iff ``basename`` ends with any string in ``suffixes``."""
+    return any(basename.endswith(suffix) for suffix in suffixes)

@@ -157,7 +157,12 @@ class FsHealth:
 
         if sys.platform == "darwin":
             health.spotlight_indexing_enabled = _probe_spotlight(volume, run_command)
-        health.fsevents_journal_bytes = _probe_journal_size(journal_dir)
+            health.fsevents_journal_bytes = _probe_journal_size(journal_dir)
+        # On non-darwin hosts ``.fseventsd`` is not present and the
+        # Spotlight probe is meaningless, so the documented contract
+        # holds: only ``volume_root`` is populated. The dataclass
+        # defaults leave the other fields at ``None`` so the caller
+        # can distinguish "not probed" from "probed and zero".
 
         if health.spotlight_indexing_enabled is True:
             health.warnings.append(
