@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
-from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
+from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -119,6 +119,13 @@ def _db_sentinel_lookup(workspace: Path, run_id: str) -> tuple[bool | None, str 
     - ``(False, None)`` when the row is absent (caller falls back to file)
     - ``(None, None)`` when the DB is unavailable
 
+    Tombstone handling: a row whose ``hmac`` equals
+    ``CLEARED_SENTINEL_HMAC`` is treated as cleared
+    (``(False, None)``) so the read path honours a clear attempt that
+    could not physically remove the row because ``RunStateDB`` raised
+    on ``delete_completion_sentinel``. Without this, a reused
+    ``run_id`` would inherit the previous run's "completed" verdict.
+
     Best-effort: a missing or locked DB returns ``(None, None)``.
     """
     try:
@@ -134,6 +141,8 @@ def _db_sentinel_lookup(workspace: Path, run_id: str) -> tuple[bool | None, str 
         with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
             db.close()
     if stored is MISSING:
+        return False, None
+    if isinstance(stored, str) and stored == CLEARED_SENTINEL_HMAC:
         return False, None
     return True, stored if isinstance(stored, str) else None
 

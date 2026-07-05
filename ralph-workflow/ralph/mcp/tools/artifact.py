@@ -2769,6 +2769,86 @@ def _raise_format_doc_error(
 
 
 # === BEGIN CANONICAL SUBMIT OPS ===
+def _run_write_implicit_completion_sentinel(
+    workspace_root: Path, run_id: str
+) -> None:
+    """Write the implicit completion sentinel for a single-shot artifact submit.
+
+    RFC-013 P3: completion sentinel is stored in ``.agent/state.db``
+    via ``RunStateDB``. Production does NOT write the legacy
+    ``.agent/completion_seen_<run_id>.json`` file path under normal
+    conditions; the read path honors legacy files left behind by the
+    pre-upgrade release during the dual-read window.
+
+    Durable-fallback contract (mirrors
+    ``coordination._write_completion_sentinel``): when ``RunStateDB``
+    raises ``sqlite3.Error`` / ``OSError`` on open OR on
+    ``upsert_completion_sentinel`` (locked / corrupt / unsupported
+    WAL), fall back to writing the legacy
+    ``.agent/completion_seen_<run_id>.json`` file path so the
+    completion gate always has durable evidence. The implicit
+    sentinel has no HMAC (the broker-owned secret is not threaded
+    through the artifact-submit path; only ``handle_declare_complete``
+    threads ``sentinel_hmac``).
+    """
+    sentinel_payload: dict[str, str] = {"run_id": run_id}
+    payload = json.dumps(sentinel_payload, ensure_ascii=False)
+    db: RunStateDB | None = None
+    try:
+        db = RunStateDB(workspace_root)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    db_written = False
+    if db is not None:
+        try:
+            db.upsert_completion_sentinel(run_id, None)
+            db_written = True
+        except sqlite3.Error:
+            pass  # Falls through to legacy-file durable fallback.
+        finally:
+            with suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
+    if db_written:
+        return
+    sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(
+        run_id=run_id
+    )
+    with suppress(OSError):
+        sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+        sentinel_path.write_text(payload, encoding="utf-8")
+
+
+def _undo_write_implicit_completion_sentinel(
+    workspace_root: Path, run_id: str, *, backend: FileBackend
+) -> None:
+    """Dual-target delete: drop the DB row AND unlink any stale legacy file.
+
+    Used as the rollback handler for the implicit completion sentinel
+    written by :func:`_run_write_implicit_completion_sentinel`. The
+    DB delete is best-effort; the legacy file unlink always runs so
+    an in-flight run cannot inherit a sentinel after a rolled-back
+    submit.
+    """
+    db: RunStateDB | None = None
+    try:
+        db = RunStateDB(workspace_root)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
+        try:
+            db.delete_completion_sentinel(run_id)
+        except (OSError, RuntimeError, sqlite3.Error):
+            pass
+        finally:
+            with suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
+    sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(
+        run_id=run_id
+    )
+    with suppress(OSError):
+        backend.unlink(sentinel_path, missing_ok=True)
+
+
 def _submit_ops_for_artifact_with_options(
     artifact_type: str,
     workspace_root: Path,
@@ -2906,42 +2986,17 @@ def _submit_ops_for_artifact_with_options(
     ):
         _rid_sentinel = run_id
         _wr_sentinel = workspace_root
-
-        def _run_write_sentinel() -> None:
-            # RFC-013 P3: completion sentinel is stored in
-            # ``.agent/state.db`` via ``RunStateDB``. Production does NOT
-            # write the legacy ``.agent/completion_seen_<run_id>.json``
-            # file path; the read path honors legacy files left behind
-            # by the pre-upgrade release during the dual-read window.
-            try:
-                db = RunStateDB(_wr_sentinel)
-            except (OSError, RuntimeError, sqlite3.Error):
-                return
-            try:
-                db.upsert_completion_sentinel(_rid_sentinel, None)
-            finally:
-                db.close()
-
-        def _undo_write_sentinel() -> None:
-            # Dual-target delete: drop the DB row AND unlink any stale
-            # legacy file so an in-flight run cannot inherit a sentinel
-            # after a rolled-back submit.
-            try:
-                db = RunStateDB(_wr_sentinel)
-            except (OSError, RuntimeError, sqlite3.Error):
-                pass
-            else:
-                try:
-                    db.delete_completion_sentinel(_rid_sentinel)
-                finally:
-                    db.close()
-            sentinel_path = _wr_sentinel / COMPLETION_SENTINEL_RELPATHFMT.format(
-                run_id=_rid_sentinel
+        _backend_sentinel = deps.backend
+        ops.append(
+            SubmitOp(
+                run=lambda: _run_write_implicit_completion_sentinel(
+                    _wr_sentinel, _rid_sentinel
+                ),
+                undo=lambda: _undo_write_implicit_completion_sentinel(
+                    _wr_sentinel, _rid_sentinel, backend=_backend_sentinel
+                ),
             )
-            with suppress(OSError):
-                deps.backend.unlink(sentinel_path, missing_ok=True)
-
-        ops.append(SubmitOp(run=_run_write_sentinel, undo=_undo_write_sentinel))
+        )
 
     return ops
 

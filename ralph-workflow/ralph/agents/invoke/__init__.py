@@ -238,9 +238,16 @@ def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> Non
     behind by pre-upgrade releases) is also unlinked (dual-target) so a
     stale sentinel cannot survive the clear.
 
-    Best-effort: ``sqlite3.Error`` is included in the catch tuple so a
-    locked / corrupt / unsupported SQLite state does not block startup;
-    the legacy file unlink still runs in that case.
+    Durable-fallback: when ``delete_completion_sentinel`` raises
+    ``sqlite3.Error`` / ``OSError`` (locked / corrupt / unsupported
+    WAL), ``mark_completion_sentinel_cleared`` is called as a
+    tombstone write so ``_db_sentinel_lookup`` honours the cleared
+    state even though the row was not physically removed. Without
+    this fallback, a reused ``run_id`` would inherit the previous
+    run's "completed" verdict because the DB read is authoritative
+    ahead of the legacy-file fallback. The tombstone write is itself
+    best-effort: if it also raises, the legacy file unlink still
+    runs so a pre-upgrade sentinel is cleared as the secondary path.
     """
     try:
         db = RunStateDB(workspace_path)
@@ -252,9 +259,13 @@ def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> Non
                 db.delete_completion_sentinel(run_id)
                 db.clear_run_receipts(run_id)
             except (OSError, RuntimeError, sqlite3.Error):
-                # Best-effort: a missing state.db or locked DB must not
-                # block start-up; the legacy file unlink still runs.
-                pass
+                # Physical delete failed: try to tombstone the sentinel
+                # row so the reader honours the cleared state. Both
+                # follow-up writes are best-effort.
+                with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                    db.mark_completion_sentinel_cleared(run_id)
+                with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                    db.clear_run_receipts(run_id)
         finally:
             with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
                 db.close()
