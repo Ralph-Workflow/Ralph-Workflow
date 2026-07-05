@@ -28,7 +28,9 @@ from ralph.mcp.artifacts.completion_receipts import (
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
+from ralph.mcp.tools import artifact as artifact_module
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+from ralph.mcp.tools.coordination import CompletionSentinelPersistenceError
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
@@ -798,3 +800,73 @@ def test_submit_artifact_canonical_succeeds_when_db_upsert_fails_but_legacy_writ
     # Legacy file path holds the receipt in the in-memory backend.
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     assert backend.exists(legacy)
+
+
+# ---------------------------------------------------------------------------
+# RFC-013 P3 fail-closed regression: ``_run_write_implicit_completion_sentinel``
+# MUST raise ``CompletionSentinelPersistenceError`` when BOTH the RunStateDB
+# write AND the legacy-file write fail. Pre-fix the function suppressed the
+# final OSError so single-shot artifact submission could falsely report
+# success against no durable sentinel evidence.
+# ---------------------------------------------------------------------------
+
+
+def test_run_write_implicit_completion_sentinel_raises_when_both_targets_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail-closed regression: when ``RunStateDB`` raises on open AND the
+    legacy ``.agent/completion_seen_<run_id>.json`` ``OSError``s on
+    ``Path.write_text``, the implicit sentinel helper MUST raise
+    ``CompletionSentinelPersistenceError`` so the caller can refuse to
+    report a successful completion.
+
+    Pre-fix the helper wrapped the ``Path.write_text`` call in
+    ``with suppress(OSError):`` and returned ``None`` on failure, so
+    callers could falsely report success with no durable sentinel.
+    """
+
+    def _raise_sqlite_open(*_args: object, **_kwargs: object) -> RunStateDB:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(artifact_module, "RunStateDB", _raise_sqlite_open)
+    # Force the legacy-file path to OSError at write_text; mkdir succeeds
+    # so the test reaches the write_text branch deterministically.
+    monkeypatch.setattr(
+        "pathlib.Path.write_text",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+
+    with pytest.raises(CompletionSentinelPersistenceError):
+        artifact_module._run_write_implicit_completion_sentinel(
+            workspace_root=tmp_path, run_id="run-x"
+        )
+
+
+def test_run_write_implicit_completion_sentinel_succeeds_via_legacy_when_db_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard for the dual-read window: when the RunStateDB
+    open raises ``sqlite3.Error`` BUT the legacy ``.agent/completion_seen_<run_id>.json``
+    file path writes successfully, the helper MUST return ``None``
+    without raising. The fail-closed ``CompletionSentinelPersistenceError``
+    tightening must NOT regress callers that depend on the legacy
+    fallback during the P3 rollout window."""
+
+    def _raise_sqlite_open(*_args: object, **_kwargs: object) -> RunStateDB:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(artifact_module, "RunStateDB", _raise_sqlite_open)
+
+    artifact_module._run_write_implicit_completion_sentinel(
+        workspace_root=tmp_path, run_id="run-y"
+    )
+
+    # The legacy ``.agent/completion_seen_run-y.json`` file was written
+    # using the real (default) backend, so it lives at the literal
+    # workspace_root-relative path.
+    legacy = tmp_path / ".agent" / "completion_seen_run-y.json"
+    assert legacy.exists(), "legacy fallback file MUST be written when DB open fails"
+    payload = json.loads(legacy.read_text(encoding="utf-8"))
+    assert payload == {"run_id": "run-y"}

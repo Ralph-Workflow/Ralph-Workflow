@@ -1357,8 +1357,8 @@ class ParallelDisplay:
         )
 
         if condensed_flag:
-            self._check_overflow_size(unit_id, overflow)
             overflow.append(text)
+            self._check_overflow_size(unit_id, overflow)
 
         effective_summary_line = summary_line
         if (

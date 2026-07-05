@@ -141,6 +141,7 @@ from ralph.mcp.tools._submit_op import SubmitOp
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
     COMPLETION_SENTINEL_RELPATHFMT,
+    CompletionSentinelPersistenceError,
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
@@ -2813,9 +2814,22 @@ def _run_write_implicit_completion_sentinel(
     sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(
         run_id=run_id
     )
-    with suppress(OSError):
+    legacy_written = False
+    try:
         sentinel_path.parent.mkdir(parents=True, exist_ok=True)
         sentinel_path.write_text(payload, encoding="utf-8")
+        legacy_written = True
+    except OSError:
+        legacy_written = False
+    if not legacy_written:
+        raise CompletionSentinelPersistenceError(
+            f"_run_write_implicit_completion_sentinel: RunStateDB write "
+            f"failed (sqlite3.Error) and legacy file fallback "
+            f"{sentinel_path} could not be written (OSError). "
+            f"Cannot persist completion sentinel for run_id={run_id!r}; "
+            f"single-shot artifact submission must fail closed instead "
+            f"of returning a false success."
+        )
 
 
 def _undo_write_implicit_completion_sentinel(

@@ -25,6 +25,7 @@ import pytest
 from rich.console import Console
 
 import ralph.display.parallel_display as pd_module
+from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.raw_overflow import RawOverflowLog
@@ -194,3 +195,60 @@ def test_check_overflow_size_emits_for_already_disabled_log(
         f"got output: {output!r}"
     )
     assert unit_id in display._overflow_warned
+
+
+def test_emit_activity_event_warns_when_append_disables_overflow(
+    display_with_small_cap: tuple[ParallelDisplay, StringIO],
+) -> None:
+    """Regression for the analysis-feedback finding on the condensed path.
+
+    Pre-fix, ``_emit_activity_event`` called ``_check_overflow_size``
+    BEFORE ``overflow.append(text)``. When ``RawOverflowLog.append``
+    itself auto-disabled the log (the byte cap was reached mid-write),
+    the size check ran against a log whose in-memory ``size_bytes``
+    counter was still below the cap, so no warning was emitted even
+    though raw capture was being silently dropped.
+
+    The fix swaps the order: ``overflow.append(text)`` first, then
+    ``_check_overflow_size`` so the post-append state (including the
+    auto-disabled flag) is observed. This test asserts all three
+    contracts the operator relies on:
+
+    1. ``RawOverflowLog.is_disabled`` is ``True`` (append disabled it)
+    2. ``unit_id`` is in ``display._overflow_warned`` (debouncing fires)
+    3. The operator-facing output contains the ``[overflow log full ...]``
+       warning text the operator keys off of
+    """
+    display, buf = display_with_small_cap
+    unit_id = "condensed-overflow-unit"
+
+    # A tool_result large enough to force ``condense_content`` to mark
+    # the output as condensed (and therefore route through the
+    # overflow.append branch) but bigger than the tiny ``max_bytes=16``
+    # cap so the append itself auto-disables the log.
+    soft_limit = display._ctx.condenser_soft_limit
+    oversized_text = "X" * (max(soft_limit, 32) + 64)
+
+    display._emit_activity_event(
+        unit_id,
+        ActivityEventKind.TOOL_RESULT,
+        oversized_text,
+        None,
+    )
+
+    overflow = display._overflow_logs.get(unit_id)
+    assert overflow is not None, (
+        "the condensed branch must have created a per-unit overflow log"
+    )
+    assert overflow.is_disabled, (
+        "append() must auto-disable when the single-line byte budget is exceeded"
+    )
+    assert unit_id in display._overflow_warned, (
+        "unit_id must be in _overflow_warned so the one-shot debouncing fires"
+    )
+
+    output = buf.getvalue()
+    assert "overflow log full" in output, (
+        "operator-facing warning missing from rendered output: "
+        f"{output!r}"
+    )
