@@ -48,7 +48,7 @@ def resolve_retry_intent(
         return None
     classified = FailureClassifier().classify(exc, phase=phase, agent=agent)
     return agent_retry_intent_for_failure(
-        failure_reason=str(exc),
+        failure_reason=type(exc).__name__,
         session_id=session_id,
         reset_tool_registry=classified.reset_tool_registry,
     )
