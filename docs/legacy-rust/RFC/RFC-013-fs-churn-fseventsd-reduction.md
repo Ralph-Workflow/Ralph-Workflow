@@ -325,7 +325,7 @@ can remove.
    legacy-file fallback one release later.
 
 Task-level breakdown with TDD steps, code, and exact file paths:
-`docs/plans/2026-07-03-fs-churn-reduction.md`.
+`ralph-workflow/docs/plans/2026-07-03-fs-churn-reduction.md`.
 
 ## References
 
