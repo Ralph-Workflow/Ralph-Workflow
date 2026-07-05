@@ -9,9 +9,28 @@ what it protects, and how to stay on the right side of the audit.
 Artifact submission touches several run-scoped files:
 
 - ``.agent/artifacts/<artifact_type>.json`` — the canonical artifact file
-- ``.agent/receipts/<run_id>/<artifact_type>.json`` — the completion receipt
-- ``.agent/completion_seen_<run_id>.json`` — the completion sentinel
+- ``.agent/state.db`` (RFC-013 P3) — the **canonical** durable store for
+  completion receipts and completion sentinels, backed by
+  ``RunStateDB`` (one WAL-mode SQLite database per workspace, ``state.db``
+  alongside the auxiliary ``state.db-wal`` / ``state.db-shm`` files that
+  the kernel manages for the WAL)
+- ``.agent/receipts/<run_id>/<artifact_type>.json`` — the legacy
+  completion-receipt file path; **read-fallback only** during the dual-read
+  rollout window so an in-flight run that was upgraded mid-run still
+  passes its completion gate. Production writes do not create this file.
+- ``.agent/completion_seen_<run_id>.json`` — the legacy completion-sentinel
+  file path; **read-fallback / durable-fallback only** (used when the DB
+  write fails and during the dual-read rollout window). Production writes
+  do not create this file.
 - ``.agent/tmp/<artifact_type>.json`` — the prompt-side fallback file
+
+The classification matters: ``.agent/receipts/<run_id>/<artifact_type>.json``
+and ``.agent/completion_seen_<run_id>.json`` are **legacy paths**, not the
+normal canonical store. They appear in the audit allowlist (under
+``ralph/testing/audit_artifact_submission_canonical_path.py``) only as
+read-fallback / durable-fallback surfaces, never as production write targets.
+Anything that writes one of these files outside a documented fallback path
+is a contract bypass.
 
 When different code paths write these files directly, the following failures
 become possible:
@@ -24,6 +43,10 @@ become possible:
   written.
 - A bypass write evades validation, logging, history snapshotting, or
   markdown handoff.
+- A bypass writer writes to the legacy file paths under the impression
+  that they are still the canonical store, which silently breaks the DB-
+  backed completion gate for any reader that does not also fall back to
+  the file path.
 
 ## Contract
 
@@ -43,9 +66,16 @@ The only allowed writers are:
 No other module may:
 
 - call ``store.submit_artifact``,
-- call ``write_artifact_receipt`` or ``delete_artifact_receipt``,
-- write to ``.agent/receipts/``,
-- write to ``.agent/completion_seen_*.json``,
+- call ``write_artifact_receipt`` or ``delete_artifact_receipt`` directly,
+- write to ``.agent/receipts/`` as a **production** write (the audit
+  recognises the read-fallback / durable-fallback surfaces only; a
+  direct write of a fresh receipt file outside the documented fallback
+  path is a contract bypass),
+- write to ``.agent/completion_seen_*.json`` as a **production** write
+  (same caveat as above),
+- write to ``.agent/state.db`` directly — the SQLite surface is owned by
+  ``RunStateDB`` and the canonical-submit chain; bypass writers bypass
+  validation, logging, and history snapshotting,
 - write to ``.agent/artifacts/<canonical-type>.json``,
 - write to ``.agent/tmp/<canonical-type>.json``.
 
@@ -72,15 +102,24 @@ result = submit_artifact_canonical(
 The function:
 
 1. Parses and validates the content against the artifact type.
-2. Persists the artifact file.
+2. Persists the artifact file under ``.agent/artifacts/<type>.json``.
 3. Syncs the markdown handoff file.
 4. Snapshots history (when enabled).
-5. Stamps the run-scoped receipt.
-6. For single-shot artifact types, writes the completion sentinel so a model
-   that stops without calling ``declare_complete`` is not force-retried. For the
-   current completion gate, a run-scoped artifact receipt is already sufficient
-   completion evidence for required-artifact flows; ``declare_complete`` remains
-   useful as an explicit signal but is not the sole path to terminal completion.
+5. Stamps the run-scoped receipt by upserting one row into
+   ``.agent/state.db`` via ``RunStateDB.upsert_receipt`` (RFC-013 P3).
+   When the DB write raises ``sqlite3.Error`` or ``OSError`` on open or
+   upsert, a durable-fallback write lands at the legacy
+   ``.agent/receipts/<run_id>/<artifact_type>.json`` path so the gate
+   still has evidence.
+6. For single-shot artifact types, writes the completion sentinel by
+   upserting one row into ``.agent/state.db`` via
+   ``RunStateDB.upsert_completion_sentinel`` so a model that stops without
+   calling ``declare_complete`` is not force-retried. The same durable-
+   fallback rule applies to ``.agent/completion_seen_<run_id>.json``.
+   For the current completion gate, a run-scoped artifact receipt is
+   already sufficient completion evidence for required-artifact flows;
+   ``declare_complete`` remains useful as an explicit signal but is not
+   the sole path to terminal completion.
 
 If the function raises, none of the run-scoped files are visible to the gate.
 
@@ -89,11 +128,20 @@ If the function raises, none of the run-scoped files are visible to the gate.
 The bridge ``run_id`` is the receipt key. There is no separate label or
 secondary source of truth for the receipt namespace. Every caller — the MCP
 handler, the completion-signal layer, and the fallback promoter — threads the
-same ``run_id`` into ``submit_artifact_canonical``. The receipt is always
-written to ``.agent/receipts/<run_id>/<artifact_type>.json`` and the completion
-sentinel (for single-shot types) to ``.agent/completion_seen_<run_id>.json``.
-See ``commit_plumbing.py:611-620`` for the prior fix that locked this binding
-into the commit plumbing path.
+same ``run_id`` into ``submit_artifact_canonical``. After RFC-013 P3, the
+receipt is **always written to ``.agent/state.db``** (one row keyed on
+``(run_id, artifact_type)``) via ``RunStateDB.upsert_receipt``; the completion
+sentinel (for single-shot types) is **always written to ``.agent/state.db``**
+(one row keyed on ``run_id``) via ``RunStateDB.upsert_completion_sentinel``.
+The legacy file paths ``.agent/receipts/<run_id>/<artifact_type>.json`` and
+``.agent/completion_seen_<run_id>.json`` are **legacy read-fallback and
+durable-fallback paths only** — production writes never create them under
+RFC-013 P3. They exist so an in-flight run that was upgraded mid-run still
+passes its completion gate, and so a DB write failure (``sqlite3.Error`` /
+``OSError`` on open or upsert) can still produce durable evidence through
+the legacy file path. See ``commit_plumbing.py:611-620`` for the prior fix
+that locked the ``run_id`` binding into the commit plumbing path, and
+``ralph/mcp/artifacts/state_db.py`` for the canonical SQLite surface.
 
 ## Fallback promotion
 
@@ -120,7 +168,10 @@ result = promote_fallback_artifact(
 the outer ``{name, type, content, ...}`` envelope produced by the AGY smoke
 prompt wrapper, extracts the payload, and routes it through
 ``submit_artifact_canonical`` so a canonical receipt is stamped under the
-current ``run_id``.
+current ``run_id`` in ``.agent/state.db`` (the RFC-013 P3 canonical store).
+After promotion, no fresh files are created under ``.agent/receipts/`` — the
+legacy file path is only consulted during the dual-read rollout window
+and during a DB write failure as a durable fallback.
 
 ``is_artifact_submitted`` performs the same check during completion
 evaluation. If a fallback file exists, it is promoted and the run is treated
