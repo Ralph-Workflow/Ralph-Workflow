@@ -20,7 +20,16 @@ from pathlib import Path
 
 import pytest
 
-from ralph.pipeline.effect_executor import _write_agent_retry_prompt
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+)
+from ralph.pipeline.effect_executor import (
+    AgentRecoveryInput,
+    _write_agent_retry_prompt,
+    build_agent_recovery_plan,
+)
+from ralph.pipeline.effects import InvokeAgentEffect
 
 _ORIGINAL_TASK_BODY_TOKEN = "ORIGINAL_TASK_BODY_TOKEN_xyz"
 
@@ -441,3 +450,155 @@ def test_write_agent_retry_prompt_fresh_after_stale_session_omits_resume_restart
         "fresh stale-session retry must NOT include resume-style wording "
         "'Do not restart from the beginning'"
     )
+
+
+def test_build_agent_recovery_plan_fresh_non_stale_with_prior_id_omits_stale_session_block(
+    tmp_path: Path,
+) -> None:
+    """Non-stale fresh retry with prior session id must NOT emit STALE SESSION RECOVERY.
+
+    Pins AC-03 at the ``build_agent_recovery_plan`` boundary: stale-session
+    framing is scoped STRICTLY to failures that match
+    ``SESSION_NOT_FOUND_SUBSTRINGS``. A prior session id captured in
+    ``AgentRecoveryInput.stale_session_id`` must NOT trigger the
+    ``STALE SESSION RECOVERY`` block when the failure is non-stale (e.g.
+    ``AgentInactivityTimeoutError`` with ``session_resume_safe=False``,
+    ``OpenCodeResumableExitError``, generic connectivity failures).
+
+    Reproduces the bug from the development-analysis feedback:
+    ``AgentInactivityTimeoutError(session_resume_safe=False)`` plus
+    ``stale_session_id='nonstale-prior-session'`` previously produced a
+    prompt containing ``STALE SESSION RECOVERY`` and the false statement
+    ``The previous attempt's session id `nonstale-prior-session` was
+    rejected by `opencode`...`` -- even though the failure was only an
+    inactivity timeout and the prior session id was never actually
+    rejected. The fix gates the stale-session metadata trio on
+    ``_is_stale_session_failure(exc)`` in both ``_build_recovery_input_for_attempt``
+    (production path) and ``build_agent_recovery_plan`` (defense-in-depth).
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    exc = AgentInactivityTimeoutError(
+        "opencode", 60.0, parsed_output=["agent stalled"]
+    )
+    effect = InvokeAgentEffect(
+        agent_name="opencode", phase="development", prompt_file=str(prompt)
+    )
+
+    plan = build_agent_recovery_plan(
+        AgentRecoveryInput(
+            exc=exc,
+            attempt_index=0,
+            max_recovery_attempts=3,
+            effect=effect,
+            workspace_root=tmp_path,
+            raw_output=[],
+            rendered_output=[],
+            extracted_session_id=None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+            stale_session_id="nonstale-prior-session",
+            transport="opencode",
+            model="zai-coding-plan/glm-5.2",
+        )
+    )
+
+    assert plan is not None
+    assert plan.recovery_action == "fresh", (
+        f"non-stale inactivity timeout with no prior resumable session must "
+        f"produce a fresh recovery_action; got {plan.recovery_action!r}"
+    )
+    # Defense-in-depth: the stale-session metadata trio on the plan must
+    # be cleared when the failure was non-stale, even though the input
+    # AgentRecoveryInput had stale_session_id set. This prevents the
+    # downstream prompt constructor from emitting the stale-session block.
+    assert plan.stale_session_id is None, (
+        f"plan.stale_session_id must be None for non-stale failures; got "
+        f"{plan.stale_session_id!r}"
+    )
+    assert plan.transport is None
+    assert plan.model is None
+
+    content = Path(plan.prompt_file).read_text(encoding="utf-8")
+
+    # (a) The structured STALE SESSION RECOVERY block must NOT appear for
+    # non-stale failures, even when stale_session_id is set on the input.
+    assert "STALE SESSION RECOVERY" not in content, (
+        "non-stale fresh retry with prior session id must NOT include the "
+        "STALE SESSION RECOVERY block; got:\n" + content
+    )
+    # (b) The false claim that the prior session was rejected must NOT
+    # appear -- this is the precise wedge documented in the analysis.
+    assert "was rejected by" not in content, (
+        "non-stale fresh retry must NOT falsely claim the prior session was rejected"
+    )
+    # (c) The captured prior session id must NOT appear in the prompt at
+    # all (no `STALE SESSION RECOVERY` block, no other use). AC-03.
+    assert "nonstale-prior-session" not in content, (
+        "non-stale fresh retry must NOT name the captured prior session id "
+        "anywhere in the prompt"
+    )
+    # (d) Fresh-mode original task body inlining must STILL happen -- the
+    # stale-session gating must not break the existing fresh-mode behavior.
+    assert _ORIGINAL_TASK_BODY_TOKEN in content, (
+        "fresh retry must still inline the original task body"
+    )
+
+
+def test_build_agent_recovery_plan_fresh_true_stale_session_failure_still_emits_stale_session_block(
+    tmp_path: Path,
+) -> None:
+    """True stale-session failure must still emit STALE SESSION RECOVERY block.
+
+    Pins the positive case end-to-end through ``build_agent_recovery_plan``
+    (not just the leaf ``_write_agent_retry_prompt``): a fresh-mode retry
+    produced after an ``AgentInvocationError`` whose stderr contains a
+    canonical ``SESSION_NOT_FOUND_SUBSTRINGS`` marker must carry the
+    structured ``STALE SESSION RECOVERY`` block naming the rejected
+    session id, transport, and model. The ``_is_stale_session_failure``
+    gate must NOT regress the legitimate stale-session framing path.
+    AC-01, AC-04.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    rejected_session_id = "development_analysis-c448ac22"
+    exc = AgentInvocationError(
+        "opencode",
+        1,
+        stderr=f"Error: Session not found: {rejected_session_id}",
+    )
+    effect = InvokeAgentEffect(
+        agent_name="opencode", phase="development", prompt_file=str(prompt)
+    )
+
+    plan = build_agent_recovery_plan(
+        AgentRecoveryInput(
+            exc=exc,
+            attempt_index=0,
+            max_recovery_attempts=3,
+            effect=effect,
+            workspace_root=tmp_path,
+            raw_output=[],
+            rendered_output=[],
+            extracted_session_id=None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+            stale_session_id=rejected_session_id,
+            transport="opencode",
+            model="zai-coding-plan/glm-5.2",
+        )
+    )
+
+    assert plan is not None
+    assert plan.recovery_action == "fresh"
+    # The stale-session metadata trio must survive into the plan when the
+    # failure was actually a stale-session failure.
+    assert plan.stale_session_id == rejected_session_id
+    assert plan.transport == "opencode"
+    assert plan.model == "zai-coding-plan/glm-5.2"
+
+    content = Path(plan.prompt_file).read_text(encoding="utf-8")
+    assert "STALE SESSION RECOVERY" in content
+    assert rejected_session_id in content
+    assert "opencode" in content
+    assert "zai-coding-plan/glm-5.2" in content
+    # Fresh-mode original task body inlining preserved.
+    assert _ORIGINAL_TASK_BODY_TOKEN in content

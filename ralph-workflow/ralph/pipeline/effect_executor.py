@@ -681,6 +681,18 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     single owner of ``recovery_action`` is this function; the only
     consumer is ``_write_agent_retry_prompt`` via
     ``_retry_prompt_file_for_context``.
+
+    Defense-in-depth: the stale-session prompt metadata trio
+    (``stale_session_id``, ``transport``, ``model``) is gated on
+    ``_is_stale_session_failure(recovery_input.exc)`` -- the canonical
+    predicate that scopes to ``SESSION_NOT_FOUND_SUBSTRINGS``. A prior
+    session id captured on ``AgentRecoveryInput.stale_session_id``
+    must NOT trigger the ``STALE SESSION RECOVERY`` block when the
+    failure is non-stale (e.g. ``AgentInactivityTimeoutError``,
+    ``OpenCodeResumableExitError``, generic connectivity failures).
+    This guards against direct ``AgentRecoveryInput`` construction
+    that bypasses ``_build_recovery_input_for_attempt`` (tests, future
+    callers). AC-03.
     """
     if recovery_input.attempt_index >= recovery_input.max_recovery_attempts:
         return None
@@ -714,6 +726,14 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         has_prior_session=bool(session_id),
         reset_tool_registry=reset_tool_registry,
     )
+    # Stale-session prompt metadata: only forward when the failure was
+    # actually a stale-session failure. See module docstring note on
+    # AC-03. ``untruncated`` already encodes the canonical predicate.
+    prompt_stale_session_id = (
+        recovery_input.stale_session_id if untruncated else None
+    )
+    prompt_transport = recovery_input.transport if untruncated else None
+    prompt_model = recovery_input.model if untruncated else None
     prompt_file = _retry_prompt_file_for_context(
         workspace_root=recovery_input.workspace_root,
         prompt_file=recovery_input.effect.prompt_file,
@@ -721,18 +741,18 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         context_lines=context_lines,
         recovery_action=recovery_action,
         untruncated=untruncated,
-        stale_session_id=recovery_input.stale_session_id,
-        transport=recovery_input.transport,
-        model=recovery_input.model,
+        stale_session_id=prompt_stale_session_id,
+        transport=prompt_transport,
+        model=prompt_model,
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
         session_id=session_id,
         reason=reason,
         recovery_action=recovery_action,
-        stale_session_id=recovery_input.stale_session_id,
-        transport=recovery_input.transport,
-        model=recovery_input.model,
+        stale_session_id=prompt_stale_session_id,
+        transport=prompt_transport,
+        model=prompt_model,
     )
 
 
@@ -807,12 +827,24 @@ def _build_recovery_input_for_attempt(
     and the runtime that rejected it. ``getattr`` defaults guard against
     ``AttributeError`` if a future ``AgentConfig`` omits the ``model``
     field.
+
+    The stale-session framing trio (``stale_session_id``, ``transport``,
+    ``model``) is gated on ``_is_stale_session_failure(exc)`` -- the
+    single-source-of-truth predicate that scopes to
+    ``SESSION_NOT_FOUND_SUBSTRINGS``. For non-stale failures (e.g.
+    ``AgentInactivityTimeoutError`` with ``session_resume_safe=False``,
+    ``OpenCodeResumableExitError``, generic connectivity failures) a
+    prior session id captured in ``state.last_agent_session_id`` does
+    NOT trigger the ``STALE SESSION RECOVERY`` block -- that block
+    carries the false claim that the prior session id was rejected,
+    which only happens for actual stale-session failures. AC-03.
     """
     _transport_obj: object = getattr(ctx.agent_config, "transport", None)
     _transport_value: str | None = (
         _transport_obj.value if isinstance(_transport_obj, AgentTransport) else None
     )
     _model_value: str | None = getattr(ctx.agent_config, "model", None)
+    is_stale_session_failure = _is_stale_session_failure(exc)
     return AgentRecoveryInput(
         exc=exc,
         attempt_index=0,
@@ -825,9 +857,11 @@ def _build_recovery_input_for_attempt(
             extract_transport_session_id(tuple(raw_output)) or session_id
         ),
         inactivity_error_type=AgentInactivityTimeoutError,
-        stale_session_id=state.last_agent_session_id,
-        transport=_transport_value,
-        model=_model_value,
+        stale_session_id=(
+            state.last_agent_session_id if is_stale_session_failure else None
+        ),
+        transport=_transport_value if is_stale_session_failure else None,
+        model=_model_value if is_stale_session_failure else None,
     )
 
 
