@@ -251,11 +251,14 @@ def _load_configuration(
         if initial_state is None:
             display.emit_warning("No checkpoint found to resume from")
 
+    canonical_run_id = uuid.uuid4().hex
+
     return _LoadResult(
         config=config,
         workspace_scope=workspace_scope,
         initial_state=initial_state,
         policy_bundle=policy_bundle,
+        run_id=canonical_run_id,
     )
 
 
@@ -731,14 +734,13 @@ def run_pipeline(
 
     # Phase 2b: sync shipped skills (TTL-cached), then warn if capabilities are degraded
     if load_result.workspace_scope is not None:
-        # RFC-013 P2: thread a run identifier into the retention sweep so the
-        # 7-day sweep honors the "always keeps the current run" contract.
-        # NOTE: ``load_result`` does not currently carry a canonical ``run_id``
-        # field; fall back to a fresh ``uuid.uuid4().hex`` so the sweep is
-        # keyed by a non-None value (the in-flight run's own artifacts are
-        # younger than the 7-day cutoff in practice). Threading the real run
-        # id through ``load_result`` is tracked as a follow-up.
-        sweep_keep_run_id = uuid.uuid4().hex
+        # RFC-013 P2: thread a canonical run identifier into the retention
+        # sweep so the 7-day sweep honors the "always keeps the current run"
+        # contract. The id is generated once in ``_load_configuration``
+        # (stored on ``_LoadResult.run_id``) and threaded through the
+        # pipeline so receipts, completion sentinels, and the retention
+        # sweep share a single identity.
+        sweep_keep_run_id = load_result.run_id
         _sync_shipped_skills_on_pipeline_run(
             workspace_root=load_result.workspace_scope.root,
             keep_run_id=sweep_keep_run_id,

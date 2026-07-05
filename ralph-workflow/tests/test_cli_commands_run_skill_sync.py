@@ -21,6 +21,7 @@ from loguru import logger
 from rich.console import Console
 
 from ralph.cli.commands import run as run_module
+from ralph.cli.commands._load_result import _LoadResult
 from ralph.display.context import make_display_context
 from ralph.git.commit_cleanup import untrack_engine_internal_files
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
@@ -807,3 +808,78 @@ def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
         f"'Skipping tracked skill-root path' (positive early-skip evidence); "
         f"got captured: {captured!r}"
     )
+
+
+@pytest.mark.timeout_seconds(3)
+@pytest.mark.subprocess_e2e
+def test_run_pipeline_threads_canonical_run_id_to_sweep(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression for the analysis feedback: ``run_pipeline`` MUST forward
+    the canonical run identifier produced by ``_load_configuration`` into
+    ``_sync_shipped_skills_on_pipeline_run`` as ``keep_run_id``.
+
+    The previous implementation generated a fresh ``uuid.uuid4().hex`` at
+    the call site, which meant the sweep never matched the real receipts
+    or completion sentinels written by downstream bridges. This test
+    patches ``_load_configuration`` to return a ``_LoadResult`` carrying
+    a known ``run_id``, captures the ``keep_run_id`` argument the
+    pipeline forwards, and asserts the forwarded value equals the
+    canonical ``run_id`` byte-for-byte (NOT a freshly-generated UUID).
+
+    Pins: wt-029 / ANALYSIS-001 / how_to_fix (run_id wiring).
+    """
+    canonical_run_id = "canonical-pipeline-run-id-deadbeef"
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+
+    workspace_scope_stub = MagicMock()
+    workspace_scope_stub.root = tmp_path
+
+    load_result = _LoadResult(
+        config=MagicMock(),
+        workspace_scope=workspace_scope_stub,
+        initial_state=None,
+        policy_bundle=None,
+        run_id=canonical_run_id,
+    )
+
+    monkeypatch.setattr(run_module, "_load_configuration", lambda *_a, **_kw: load_result)
+
+    def _fake_preflight(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    monkeypatch.setattr(run_module, "_run_preflight_checks", _fake_preflight)
+
+    sync_mock = MagicMock()
+    monkeypatch.setattr(run_module, "_sync_shipped_skills_on_pipeline_run", sync_mock)
+    monkeypatch.setattr(run_module, "_warn_if_capabilities_degraded", lambda *_a, **_kw: None)
+
+    captured_keep_run_id: list[object] = []
+
+    def _capture(**kwargs: object) -> None:
+        captured_keep_run_id.append(kwargs.get("keep_run_id"))
+
+    sync_mock.side_effect = _capture
+
+    result = run_module.run_pipeline(dry_run=True, inline_prompt="quick canonical run")
+    assert result == 0
+
+    assert sync_mock.called, "production sweep call site must invoke the sweep"
+    forwarded = sync_mock.call_args.kwargs.get("keep_run_id")
+    assert forwarded == canonical_run_id, (
+        f"Production sweep MUST forward the canonical load_result.run_id; "
+        f"expected {canonical_run_id!r}, got {forwarded!r}"
+    )
+    assert forwarded is not None, (
+        "Production sweep MUST NOT pass keep_run_id=None (RFC-013 P2 contract)"
+    )
+
+    # Snapshot the captured keep_run_id across every call; the production
+    # caller must be consistent.
+    assert captured_keep_run_id, "the production caller did not invoke the sweep"
+    for value in captured_keep_run_id:
+        assert value == canonical_run_id, (
+            f"every sweep call MUST forward the canonical run_id; got {value!r}"
+        )

@@ -16,6 +16,7 @@ class _LoadResult(NamedTuple):
     workspace_scope: WorkspaceScope | None
     initial_state: PipelineState | None
     policy_bundle: PolicyBundle | None
+    run_id: str
 
 
 __all__ = ["_LoadResult"]

@@ -72,6 +72,7 @@ class TestInjectedDisplayContextIsHonored:
             workspace_scope=None,
             initial_state=None,
             policy_bundle=None,
+            run_id="test-display-context-fixture",
         )
 
         with (
