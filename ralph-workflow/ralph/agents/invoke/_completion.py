@@ -501,7 +501,18 @@ def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str 
 
     Scans ``exc.stderr`` and ``exc.parsed_output`` for a session id that
     appears immediately after one of the canonical
-    ``SESSION_NOT_FOUND_SUBSTRINGS`` markers (e.g. ``"Session not found: <id>"``).
+    ``SESSION_NOT_FOUND_SUBSTRINGS`` markers. Recognized shapes (single
+    source of truth -- the marker vocabulary is the same vocabulary the
+    classifier uses to set ``reset_session=True``):
+
+    - ``"Session not found: <id>"``
+    - ``"Session not found for ID: <id>"`` (label-separated variant
+      already exercised in
+      ``tests/test_phases_retry_on_stale_session.py``)
+    - ``"Unknown session: <id>"``
+    - ``"No conversation found with session ID: <id>"``
+    - ``"session does not exist: <id>"``
+
     The id suffix is required to look id-shaped (alphanumeric plus
     ``-`` / ``_``, length >= 4) so a coincidental substring (e.g. the
     word "session" in a free-form error message) is NOT picked up.
@@ -510,14 +521,20 @@ def _extract_rejected_session_id_from_failure(exc: AgentInvocationError) -> str 
     stale-session marker is present. Single source of truth so the
     operator WARNING line is consistent across all stale-session exits.
     """
-    # Match "<marker><sep><id>" where <marker> is one of the canonical
-    # SESSION_NOT_FOUND_SUBSTRINGS (case-insensitive), <sep> is whitespace
-    # or a colon, and <id> is an id-shaped token. The id token regex
-    # requires at least 4 alphanumeric/dash/underscore characters so a
-    # coincidental substring like "session not found" alone does not match.
+    # Match "<marker>(<optional label>)<sep><id>" where <marker> is one of
+    # the canonical SESSION_NOT_FOUND_SUBSTRINGS (case-insensitive),
+    # <optional label> is a bounded label such as " for ID" / " ID" /
+    # " for id" / " id" (the codebase emits label-separated shapes like
+    # "Session not found for ID: <id>" in addition to the direct
+    # colon-separated shape), <sep> is whitespace or a colon, and <id>
+    # is an id-shaped token. The id token regex requires at least 4
+    # alphanumeric/dash/underscore characters so a coincidental
+    # substring like "session not found" alone does not match.
     _marker_pattern = "|".join(re.escape(m) for m in SESSION_NOT_FOUND_SUBSTRINGS)
     _pattern = re.compile(
-        rf"(?i)(?:{_marker_pattern})[\s:]+([A-Za-z0-9_\-]{{4,}})",
+        rf"(?i)(?:{_marker_pattern})"
+        rf"(?:\s+(?:for\s+ID|for\s+id|ID|id))?"
+        rf"[\s:]+([A-Za-z0-9_\-]{{4,}})",
     )
     haystack = [exc.stderr] if exc.stderr else []
     haystack.extend(exc.parsed_output)

@@ -240,6 +240,61 @@ def test_stale_session_exit_logs_surfaces_rejected_session_id_when_present() -> 
     )
 
 
+def test_stale_session_exit_logs_surfaces_rejected_session_id_for_id_label_variant() -> None:
+    r"""Label-separated ``Error: Session not found for ID: <id>`` variant.
+
+    Regression test pinning the dedicated ``session_id=<id>`` field for
+    the label-separated stale-session stderr shape already used in
+    ``tests/test_phases_retry_on_stale_session.py``::
+
+        Error: Session not found for ID: opencode-stale-stderr-marker
+
+    This shape trips up a regex that expects the id to appear
+    immediately after the canonical ``SESSION_NOT_FOUND_SUBSTRINGS``
+    marker -- the literal ``for ID`` label sits between the marker
+    and the id, so a naive ``<marker>[\s:]+<id>`` pattern misses it.
+
+    The fix widens the regex with a bounded optional label group
+    (``for ID`` / ``for id`` / ``ID`` / ``id``) between marker and
+    id, so the operator WARNING line still surfaces the rejected
+    session id as the dedicated ``session_id=<id>`` field (not just
+    the bare id embedded in the raw stderr string). AC-02.
+    """
+    exc = AgentInvocationError(
+        "opencode",
+        1,
+        "Error: Session not found for ID: opencode-stale-stderr-marker",
+    )
+
+    # The dedicated helper must extract the id for this label-separated
+    # variant -- not return None, which would silently regress AC-02 for
+    # the existing ``for ID`` shape used in the codebase.
+    assert _extract_rejected_session_id_from_failure(exc) == "opencode-stale-stderr-marker", (
+        "_extract_rejected_session_id_from_failure must extract the id from the "
+        "'Session not found for ID: <id>' label-separated variant"
+    )
+
+    logged = _capture_logs(exc)
+    levels = _capture_levels(exc)
+
+    assert "WARNING" in levels
+    # Existing structured phrase preserved.
+    assert "stale session" in logged.lower()
+    assert "resetting session" in logged.lower() or "fresh session" in logged.lower()
+    # The dedicated session_id=<id> FIELD must be present (not just the
+    # bare id embedded somewhere in the raw stderr text). This pins the
+    # operator-correlation contract: the WARNING line ends with
+    # ``session_id=opencode-stale-stderr-marker`` so an operator can
+    # grep / alert on the dedicated field rather than relying on a
+    # substring match against the stderr blob.
+    assert "session_id=opencode-stale-stderr-marker" in logged, (
+        "stale-session WARNING line must surface the dedicated "
+        "session_id=opencode-stale-stderr-marker field for the "
+        "'Session not found for ID: <id>' label-separated variant; "
+        f"got: {logged!r}"
+    )
+
+
 def test_stale_session_exit_with_no_session_id_marker_does_not_emit_session_id_field() -> None:
     """Helper returns None and WARNING line omits ``session_id=`` for non-stale failures.
 
