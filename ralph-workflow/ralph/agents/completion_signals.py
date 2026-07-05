@@ -115,16 +115,23 @@ def _db_sentinel_lookup(workspace: Path, run_id: str) -> tuple[bool | None, str 
     """Open ``.agent/state.db`` and look up the sentinel hmac.
 
     Returns ``(db_match, db_value)``:
-    - ``(True, str|None)`` when the DB has a row
-    - ``(False, None)`` when the row is absent (caller falls back to file)
-    - ``(None, None)`` when the DB is unavailable
+    - ``(True, str|None)`` when the DB has a real sentinel row
+    - ``(False, None)`` when the DB has a tombstoned row
+      (``hmac == CLEARED_SENTINEL_HMAC``). The cleared state is
+      terminal — the caller MUST NOT fall back to the legacy file
+      path because a stale legacy file would resurrect a reused
+      ``run_id``'s "completed" verdict.
+    - ``(None, None)`` when the DB has no row OR is unavailable.
+      The caller MAY fall back to the legacy file path.
 
     Tombstone handling: a row whose ``hmac`` equals
-    ``CLEARED_SENTINEL_HMAC`` is treated as cleared
-    (``(False, None)``) so the read path honours a clear attempt that
-    could not physically remove the row because ``RunStateDB`` raised
-    on ``delete_completion_sentinel``. Without this, a reused
-    ``run_id`` would inherit the previous run's "completed" verdict.
+    ``CLEARED_SENTINEL_HMAC`` is treated as cleared so the read path
+    honours a clear attempt that could not physically remove the row
+    because ``RunStateDB`` raised on ``delete_completion_sentinel``.
+    Without this, a reused ``run_id`` would inherit the previous
+    run's "completed" verdict (either directly via the DB hit or
+    indirectly via a stale ``completion_seen_<run_id>.json`` file
+    left behind from before the clear).
 
     Best-effort: a missing or locked DB returns ``(None, None)``.
     """
@@ -141,7 +148,7 @@ def _db_sentinel_lookup(workspace: Path, run_id: str) -> tuple[bool | None, str 
         with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
             db.close()
     if stored is MISSING:
-        return False, None
+        return None, None
     if isinstance(stored, str) and stored == CLEARED_SENTINEL_HMAC:
         return False, None
     return True, stored if isinstance(stored, str) else None
@@ -207,7 +214,16 @@ def _check_completion_sentinel(
         ).hexdigest()
         return hmac.compare_digest(db_value, expected)
 
-    # 2) File-fallback path (legacy file or test seam).
+    # 1b) DB tombstone (CLEARED_SENTINEL_HMAC) — the cleared state is
+    # terminal. Do NOT fall through to the legacy file path: a stale
+    # ``completion_seen_<run_id>.json`` left from before the clear
+    # would otherwise resurrect a reused ``run_id``'s "completed"
+    # verdict.
+    if db_match is False:
+        return False
+
+    # 2) File-fallback path (legacy file or test seam). Only reached
+    # when the DB had no row or was unavailable.
     return _check_legacy_file_sentinel(
         workspace,
         run_id,

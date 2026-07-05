@@ -179,8 +179,17 @@ def _convert_idle_stream_timeout_to_agent_error(
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     env = os.environ.copy()
+    # ``RALPH_BROKER_SECRET`` is the broker-owned HMAC secret used by the
+    # orchestrator to bind completion sentinels / receipts to forge-proof
+    # claims. It MUST NOT leak to spawned agent subprocesses — the
+    # anti-forgery boundary is enforced by keeping the secret on the
+    # parent side only. Strip from both the inherited environment AND
+    # any caller-supplied ``extra_env`` so neither path can smuggle the
+    # secret into the child process.
+    env.pop("RALPH_BROKER_SECRET", None)
     if extra_env:
         env.update(extra_env)
+    env.pop("RALPH_BROKER_SECRET", None)
     return env
 
 
