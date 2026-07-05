@@ -678,8 +678,12 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     )
     if reason is None:
         return None
+    untruncated = _is_stale_session_failure(recovery_input.exc)
     context_lines = _recovery_context_lines(
-        recovery_input.exc, recovery_input.raw_output, recovery_input.rendered_output
+        recovery_input.exc,
+        recovery_input.raw_output,
+        recovery_input.rendered_output,
+        untruncated=untruncated,
     )
     session_id = _resolve_recovery_session_id(
         recovery_input.exc,
@@ -705,6 +709,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         reason=reason,
         context_lines=context_lines,
         recovery_action=recovery_action,
+        untruncated=untruncated,
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
@@ -746,6 +751,23 @@ def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[
     return contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS)
 
 
+def _is_stale_session_failure(exc: Exception) -> bool:
+    """Return True when the failure exception surfaces a stale-session marker.
+
+    Single-owner for the untruncated retry-context branch. Scoped to
+    SESSION_NOT_FOUND_SUBSTRINGS markers ONLY (stderr / str(exc) /
+    parsed_output per the canonical classifier vocabulary); deliberately
+    narrower than ``_failure_requires_fresh_session`` which is also True
+    for ``AgentInactivityTimeoutError`` with ``session_resume_safe=False``.
+
+    The marker scan stays scoped to the FAILURE EXCEPTION surfaces via
+    ``_recovery_error_parts``; ``rendered_output`` and ``raw_output`` are
+    NOT inspected, so an incidental ``session not found`` substring inside
+    a long rendered output line does not widen the behavior.
+    """
+    return contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS)
+
+
 def _recovery_error_parts(exc: Exception) -> list[str]:
     return failure_detail_parts(exc)
 
@@ -756,28 +778,37 @@ def _recovery_context_lines(
     rendered_output: list[str],
     *,
     _fn: Callable[[Exception], list[str]] | None = None,
+    untruncated: bool = False,
 ) -> list[str]:
     _error_parts_fn = _fn or _recovery_error_parts
     if rendered_output:
-        return _tail_recovery_context_lines(rendered_output)
+        return _tail_recovery_context_lines(rendered_output, untruncated=untruncated)
     parsed_output = cast("object", getattr(exc, "parsed_output", None))
     if isinstance(parsed_output, list) and parsed_output:
-        return _tail_recovery_context_lines([str(item) for item in parsed_output])
+        return _tail_recovery_context_lines(
+            [str(item) for item in parsed_output], untruncated=untruncated
+        )
     stripped_raw = [line.strip() for line in raw_output if line.strip()]
     if stripped_raw:
-        return _tail_recovery_context_lines(stripped_raw)
+        return _tail_recovery_context_lines(stripped_raw, untruncated=untruncated)
     error_parts = [part.strip() for part in _error_parts_fn(exc) if part.strip()]
-    return _tail_recovery_context_lines(error_parts)
+    return _tail_recovery_context_lines(error_parts, untruncated=untruncated)
 
 
-def _tail_recovery_context_lines(lines: list[str]) -> list[str]:
+def _tail_recovery_context_lines(lines: list[str], *, untruncated: bool = False) -> list[str]:
+    if untruncated:
+        return list(lines)
     if len(lines) <= _RECOVERY_CONTEXT_LINES:
         return lines
     omitted = len(lines) - _RECOVERY_CONTEXT_LINES
     return [f"<previous log omitted> ({omitted} earlier lines)", *lines[-_RECOVERY_CONTEXT_LINES:]]
 
 
-def _condense_recovery_context_lines(context_lines: list[str]) -> list[str]:
+def _condense_recovery_context_lines(
+    context_lines: list[str], *, untruncated: bool = False
+) -> list[str]:
+    if untruncated:
+        return [_condense_recovery_line(line) for line in context_lines]
     condensed = [_condense_recovery_line(line) for line in context_lines]
     if (
         len(context_lines) > _RECOVERY_CONTEXT_LINES
@@ -806,6 +837,7 @@ def _retry_prompt_file_for_context(
     reason: str,
     context_lines: list[str],
     recovery_action: str | None = None,
+    untruncated: bool = False,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
@@ -813,6 +845,7 @@ def _retry_prompt_file_for_context(
         reason=reason,
         context_lines=context_lines,
         recovery_action=recovery_action,
+        untruncated=untruncated,
     )
 
 
@@ -831,11 +864,13 @@ def _resume_mode_tail(prompt_path: Path) -> str:
     )
 
 
-def _write_retry_context_file(*, workspace_root: Path, context_lines: list[str]) -> Path:
+def _write_retry_context_file(
+    *, workspace_root: Path, context_lines: list[str], untruncated: bool = False
+) -> Path:
     prompt_dir = workspace_root / ".agent" / "tmp"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     context_path = prompt_dir / f"agent_retry_context_{uuid.uuid4().hex}.md"
-    condensed = _condense_recovery_context_lines(context_lines)
+    condensed = _condense_recovery_context_lines(context_lines, untruncated=untruncated)
     summary = "\n".join(condensed) if condensed else "(no output captured)"
     context_path.write_text(summary, encoding="utf-8")
     return context_path
@@ -848,6 +883,7 @@ def _write_agent_retry_prompt(
     reason: str,
     context_lines: list[str],
     recovery_action: str | None = None,
+    untruncated: bool = False,
 ) -> str:
     prompt_path = Path(prompt_file)
     prompt_dir = workspace_root / ".agent" / "tmp"
@@ -856,8 +892,9 @@ def _write_agent_retry_prompt(
     context_path = _write_retry_context_file(
         workspace_root=workspace_root,
         context_lines=context_lines,
+        untruncated=untruncated,
     )
-    condensed = _condense_recovery_context_lines(context_lines)
+    condensed = _condense_recovery_context_lines(context_lines, untruncated=untruncated)
     summary = "\n".join(condensed) if condensed else "(no output captured)"
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",

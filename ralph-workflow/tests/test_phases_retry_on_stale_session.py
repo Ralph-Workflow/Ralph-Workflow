@@ -23,6 +23,8 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
+from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
+from ralph.pipeline.effect_executor import build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -831,3 +833,665 @@ def test_stale_session_phase_remains_active(
 
     assert new_state.phase == "development"
     assert effects == []
+
+
+# ---------------------------------------------------------------------------
+# Stale-session retry prompt: full prior-output (untruncated) regression suite
+#
+# These tests pin that when the failure surfaces a stale-session marker
+# (SESSION_NOT_FOUND_SUBSTRINGS), the retry prompt and its companion
+# ``agent_retry_context_<uuid>.md`` file both contain the FULL captured
+# prior output (no <previous log omitted> marker, no 12-line tail cap).
+#
+# Tests 1-5 are RED on the current code (12-line cap truncates regardless
+# of failure type) and GREEN after the untruncated flag is wired.
+# Tests 6-8 are GREEN on the current code (scope-confirmation: 12-line
+# cap is preserved for resume / non-stale-fresh / inactivity-not-resume-safe).
+# ---------------------------------------------------------------------------
+
+
+def _extract_context_path(retry_content: str) -> Path:
+    """Extract the ``agent_retry_context_<uuid>.md`` path from a retry prompt."""
+    context_match = re.search(r"Previous context summary:\s*`([^`]+)`", retry_content)
+    assert context_match is not None, (
+        f"retry prompt is missing 'Previous context summary:' path line:\n{retry_content}"
+    )
+    return Path(context_match.group(1))
+
+
+def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """OpenCode stale-session marker in stderr: full 30-line context preserved in retry prompt."""
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    prior_lines = [f"prior-output-line-{idx:03d}" for idx in range(30)]
+    stale_session_id = "opencode-stale-stderr-marker"
+
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        captured_calls.append((options.session_id if options is not None else None, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                stderr=f"Error: Session not found for ID: {stale_session_id}",
+                parsed_output=list(prior_lines),
+            )
+        return []
+
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="opencode",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=_make_state(last_session_id=stale_session_id),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    # No omission marker: the FULL captured prior output must be preserved.
+    assert "<previous log omitted>" not in retry_content, (
+        "stale-session retry must NOT inject <previous log omitted> marker"
+    )
+
+    # Every line of the 30-line prior output must appear in the retry prompt.
+    for line in prior_lines:
+        assert line in retry_content, (
+            f"stale-session retry prompt is missing prior output line {line!r}"
+        )
+
+    # Same invariant must hold for the companion context file.
+    context_path = _extract_context_path(retry_content)
+    assert context_path.exists()
+    context_text = context_path.read_text(encoding="utf-8")
+    assert "<previous log omitted>" not in context_text, (
+        "stale-session agent_retry_context file must NOT inject <previous log omitted> marker"
+    )
+    for line in prior_lines:
+        assert line in context_text, (
+            f"stale-session agent_retry_context file is missing prior output line {line!r}"
+        )
+
+
+def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_str_exc(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Claude 'No conversation found' marker in str(exc): full 30-line context preserved."""
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    prior_lines = [f"claude-stale-line-{idx:03d}" for idx in range(30)]
+    stale_session_id = "claude-stale-str-exc-marker"
+
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        captured_calls.append((options.session_id if options is not None else None, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "claude",
+                1,
+                stderr=f"No conversation found with session ID: {stale_session_id}",
+                parsed_output=list(prior_lines),
+            )
+        return []
+
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="claude",
+                output_flag="--json-stream",
+                session_flag="--resume {}",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=_make_state(last_session_id=stale_session_id),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    assert "<previous log omitted>" not in retry_content
+    for line in prior_lines:
+        assert line in retry_content, (
+            f"claude stale-session retry prompt is missing prior output line {line!r}"
+        )
+
+    context_path = _extract_context_path(retry_content)
+    context_text = context_path.read_text(encoding="utf-8")
+    assert "<previous log omitted>" not in context_text
+    for line in prior_lines:
+        assert line in context_text
+
+
+def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_parsed_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Stale-session marker surfaced via parsed_output: full 25-line context preserved."""
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    prior_lines = [f"parsed-output-line-{idx:03d}" for idx in range(24)]
+    marker_item = '{"type":"error","message":"Session not found: parsed-output-stale-marker"}'
+    parsed_output_items = [*prior_lines, marker_item]
+
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        captured_calls.append((options.session_id if options is not None else None, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                stderr="agent exited",
+                parsed_output=parsed_output_items,
+            )
+        return []
+
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="opencode",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=_make_state(last_session_id="parsed-output-stale-marker"),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    assert "<previous log omitted>" not in retry_content
+    for line in prior_lines:
+        assert line in retry_content
+    assert "Session not found: parsed-output-stale-marker" in retry_content
+
+    context_path = _extract_context_path(retry_content)
+    context_text = context_path.read_text(encoding="utf-8")
+    assert "<previous log omitted>" not in context_text
+    for line in prior_lines:
+        assert line in context_text
+    assert "Session not found: parsed-output-stale-marker" in context_text
+
+
+def test_stale_session_retry_with_rendered_output_includes_full_rendered_lines(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Stale-session with rendered_output fast-path: full 20 rendered lines preserved.
+
+    The fast-path in ``_recovery_context_lines`` prefers rendered_output over
+    parsed_output; this test pins that the untruncated branch still applies
+    when rendered_output is the chosen source.
+    """
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    rendered_lines = [f"rendered-line-{idx:03d}" for idx in range(20)]
+    stale_session_id = "rendered-output-stale-id"
+
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="development",
+        prompt_file=str(prompt_file),
+    )
+    exc = AgentInvocationError(
+        "claude",
+        1,
+        stderr=f"No conversation found with session ID: {stale_session_id}",
+    )
+    plan = build_agent_recovery_plan(
+        AgentRecoveryInput(
+            exc=exc,
+            attempt_index=0,
+            max_recovery_attempts=3,
+            effect=effect,
+            workspace_root=tmp_path,
+            raw_output=[],
+            rendered_output=rendered_lines,
+            extracted_session_id=None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
+    )
+    assert plan is not None
+    retry_content = Path(plan.prompt_file).read_text(encoding="utf-8")
+
+    assert "<previous log omitted>" not in retry_content, (
+        "stale-session rendered_output retry must NOT inject <previous log omitted> marker"
+    )
+    for line in rendered_lines:
+        assert line in retry_content, (
+            f"stale-session rendered_output retry prompt is missing line {line!r}"
+        )
+
+    context_path = _extract_context_path(retry_content)
+    context_text = context_path.read_text(encoding="utf-8")
+    assert "<previous log omitted>" not in context_text
+    for line in rendered_lines:
+        assert line in context_text
+
+
+def test_stale_session_retry_preserves_per_line_character_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Per-line 240-char cap still applies on stale-session retry, but line count is preserved."""
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    huge_line = "stale-result: " + ("x" * 1200)
+    prior_lines = [huge_line for _ in range(20)]
+    stale_session_id = "per-line-trunc-stale-id"
+
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        captured_calls.append((options.session_id if options is not None else None, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "claude",
+                1,
+                stderr=f"Session not found: {stale_session_id}",
+                parsed_output=list(prior_lines),
+            )
+        return []
+
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="claude",
+                output_flag="--json-stream",
+                session_flag="--resume {}",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=_make_state(last_session_id=stale_session_id),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    assert "<previous log omitted>" not in retry_content, (
+        "stale-session retry must NOT inject <previous log omitted> marker even for huge lines"
+    )
+    assert huge_line not in retry_content, (
+        "per-line 240-char cap must still apply: full 1200-char line must be truncated"
+    )
+    assert " ... (truncated)" in retry_content, (
+        "per-line 240-char cap must still apply: '... (truncated)' suffix must be present"
+    )
+
+    context_path = _extract_context_path(retry_content)
+    context_text = context_path.read_text(encoding="utf-8")
+    assert "<previous log omitted>" not in context_text
+    assert huge_line not in context_text
+    assert " ... (truncated)" in context_text
+
+
+def test_resume_retry_still_uses_12_line_tail_for_non_stale_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Scope confirmation: resume path keeps the 12-line tail cap (no untruncated widening)."""
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+    huge_line = "claude result: " + ("x" * 1200)
+    prior_lines = [huge_line for _ in range(20)]
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInactivityTimeoutError(
+                "claude",
+                300.0,
+                list(prior_lines),
+                InactivityTimeoutOpts(
+                    reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                    session_resume_safe=True,
+                ),
+            )
+        return []
+
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="claude",
+                output_flag="--json-stream",
+                session_flag="--resume {}",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=_make_state(),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    assert "<previous log omitted>" in retry_content, (
+        "resume path must still use the 12-line tail cap; <previous log omitted> is required"
+    )
+    assert huge_line not in retry_content
+    assert " ... (truncated)" in retry_content
+
+
+def test_non_stale_fresh_retry_still_uses_12_line_tail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Scope confirmation: transient-connectivity fresh retry keeps the 12-line cap."""
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+    prior_lines = [f"transient-line-{idx:03d}" for idx in range(25)]
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        captured_calls.append((options.session_id if options is not None else None, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                stderr="client offline",
+                parsed_output=list(prior_lines),
+            )
+        return []
+
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="opencode",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=_make_state(last_session_id="prior-transient-session"),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    assert "<previous log omitted>" in retry_content, (
+        "non-stale fresh retry must still use the 12-line tail cap"
+    )
+    assert "transient-line-000" not in retry_content, (
+        "non-stale fresh retry must drop lines beyond the 12-line tail cap"
+    )
+    assert "transient-line-013" in retry_content, (
+        "non-stale fresh retry must keep the last 12 lines"
+    )
+    assert "transient-line-024" in retry_content, (
+        "non-stale fresh retry must keep the last 12 lines (last entry in tail)"
+    )
+
+    context_path = _extract_context_path(retry_content)
+    context_text = context_path.read_text(encoding="utf-8")
+    assert "<previous log omitted>" in context_text
+
+
+def test_inactivity_timeout_with_session_resume_safe_false_still_uses_12_line_tail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Scope confirmation: inactivity timeout with session_resume_safe=False keeps the 12-line cap.
+
+    ``_failure_requires_fresh_session`` returns True for this case (fresh session)
+    but ``_is_stale_session_failure`` (the new helper) returns False because no
+    SESSION_NOT_FOUND_SUBSTRINGS marker is present. The 12-line cap MUST still
+    apply -- the untruncated branch is scoped to stale-session markers ONLY per
+    the user prompt.
+    """
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+    huge_line = "claude result: " + ("x" * 1200)
+    prior_lines = [huge_line for _ in range(20)]
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInactivityTimeoutError(
+                "claude",
+                300.0,
+                list(prior_lines),
+                InactivityTimeoutOpts(
+                    reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                    session_resume_safe=False,
+                ),
+            )
+        return []
+
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="claude",
+                output_flag="--json-stream",
+                session_flag="--resume {}",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=_make_state(),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    assert "<previous log omitted>" in retry_content, (
+        "inactivity timeout with session_resume_safe=False must still use the 12-line tail cap; "
+        "the untruncated branch is scoped to stale-session markers ONLY"
+    )
+    assert huge_line not in retry_content
+    assert " ... (truncated)" in retry_content
