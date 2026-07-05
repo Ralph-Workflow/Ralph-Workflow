@@ -17,6 +17,7 @@ _PLANNING_GRANTED: frozenset[str] = frozenset(
 class MockSession:
     session_id: str = "test-session"
     drain: str = "development"
+    broker_secret: str | None = None
     granted_capabilities: frozenset[str] = field(default_factory=lambda: _DEFAULT_GRANTED)
 
     def check_capability(self, capability: str) -> object:

@@ -174,6 +174,8 @@ class TestOptionalArtifactCompletion:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 

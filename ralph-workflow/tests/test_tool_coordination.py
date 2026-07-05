@@ -47,7 +47,13 @@ def test_declare_complete_uses_session_run_id_for_sentinel_key(
 ) -> None:
     seen: list[tuple[str, str]] = []
 
-    def fake_write_completion_sentinel(workspace: object, run_id: str) -> None:
+    def fake_write_completion_sentinel(
+        workspace: object,
+        run_id: str,
+        *,
+        _write_fn: object = None,
+        sentinel_hmac: object = None,
+    ) -> None:
         assert isinstance(workspace, MockWorkspace)
         seen.append((workspace.absolute_path(f".agent/completion_seen_{run_id}.json"), run_id))
 
@@ -64,6 +70,62 @@ def test_declare_complete_uses_session_run_id_for_sentinel_key(
 
     assert "timestamp=456" in cast("ToolContent", result.content[0]).text
     assert seen == [(".agent/completion_seen_run-1.json", "run-1")]
+
+
+def test_declare_complete_threads_broker_secret_to_sentinel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RFC-013 P3: when the session carries a broker_secret,
+    handle_declare_complete threads it through to _write_completion_sentinel
+    so the sentinel payload is HMAC-signed against the secret."""
+    captured: dict[str, object] = {}
+
+    def capture_write(
+        workspace: object,
+        run_id: str,
+        *,
+        sentinel_hmac: object = None,
+        _write_fn: object = None,
+    ) -> None:
+        captured["workspace"] = workspace
+        captured["run_id"] = run_id
+        captured["sentinel_hmac"] = sentinel_hmac
+
+    monkeypatch.setattr(
+        coordination_module, "_write_completion_sentinel", capture_write
+    )
+
+    session = MockSession()
+    session.broker_secret = "live-broker-secret-12345"
+    handle_declare_complete(session, MockWorkspace(), {"summary": "done"})
+
+    assert captured["run_id"] == "run-1"
+    assert captured["sentinel_hmac"] == "live-broker-secret-12345"
+
+
+def test_declare_complete_without_broker_secret_omits_hmac(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the session has no broker_secret, sentinel_hmac=None so the
+    pre-P3 contract (no HMAC enforcement) applies."""
+    captured: dict[str, object] = {}
+
+    def capture_write(
+        workspace: object,
+        run_id: str,
+        *,
+        sentinel_hmac: object = None,
+        _write_fn: object = None,
+    ) -> None:
+        captured["sentinel_hmac"] = sentinel_hmac
+
+    monkeypatch.setattr(
+        coordination_module, "_write_completion_sentinel", capture_write
+    )
+
+    handle_declare_complete(MockSession(), MockWorkspace(), {"summary": "done"})
+
+    assert captured["sentinel_hmac"] is None
 
 
 def test_declare_complete_best_effort_when_sentinel_write_fails(

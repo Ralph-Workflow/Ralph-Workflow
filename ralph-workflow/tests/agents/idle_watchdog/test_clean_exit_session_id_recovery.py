@@ -61,6 +61,8 @@ def _no_signals(
     *,
     required_artifact: object = None,
     run_id: object = None,
+    sentinel_secret: object = None,
+    receipt_secret: object = None,
 ) -> CompletionSignals:
     return CompletionSignals(False, False, ())
 

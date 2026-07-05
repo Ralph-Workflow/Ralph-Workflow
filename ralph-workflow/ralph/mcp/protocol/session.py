@@ -82,6 +82,18 @@ class McpSession(Protocol):
         ...
 
     @property
+    def broker_secret(self) -> str | None:
+        """RFC-013 P3: broker-owned secret threaded into the run-scoped
+        receipt / completion sentinel HMAC. ``None`` means the pre-P3
+        contract (no HMAC enforcement).
+
+        Both implementations expose this as a read-only attribute:
+        ``AgentSession`` declares it as a dataclass field (with a
+        default of ``None``) and ``FileBackedSession`` exposes it as
+        a property backed by the constructor-supplied value."""
+        ...
+
+    @property
     def drain(self) -> str:
         """Logical phase drain the session is bound to (e.g. ``planning``, ``development``)."""
         ...
@@ -183,6 +195,11 @@ class AgentSession:
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
     stored_capability_profile: ResolvedCapabilityProfile | None = field(default=None)
+    #: RFC-013 P3: broker-owned secret threaded into the run-scoped
+    #: receipt / completion sentinel HMAC. ``None`` means the pre-P3
+    #: contract (no HMAC enforcement). The broker process owns the
+    #: secret; the agent never sees it.
+    broker_secret: str | None = field(default=None, repr=False)
     #: Atomic (owner thread ident, sink) pair for exec output streaming. The
     #: session is shared across concurrent request threads; without ownership,
     #: overlapping exec streams route output to whichever connection swapped

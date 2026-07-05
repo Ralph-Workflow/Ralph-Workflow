@@ -5,6 +5,7 @@ from __future__ import annotations
 
 class MockSession:
     session_id = "test-session"
+    broker_secret = None
 
     def __init__(self, *args: object) -> None:
         self.run_id = "test-run"

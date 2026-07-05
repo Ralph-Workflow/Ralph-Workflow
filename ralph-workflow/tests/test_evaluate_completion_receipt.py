@@ -9,15 +9,13 @@ desync completion detection from a successful submission.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import json
+from pathlib import Path
 
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.mcp.artifacts.completion_receipts import write_artifact_receipt
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.phases.required_artifacts import RequiredArtifact
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _required(json_path: str) -> RequiredArtifact:
@@ -56,3 +54,26 @@ def test_receipt_for_other_run_does_not_satisfy(tmp_path: Path) -> None:
     signals = evaluate_completion(tmp_path, [], required_artifact=ra, run_id="run-1")
 
     assert signals.required_artifact_present is False
+
+
+def test_evaluate_receipt_from_legacy_file(tmp_path: Path) -> None:
+    """A legacy ``.agent/receipts/<run>/<type>.json`` still satisfies evaluation.
+
+    RFC-013 P3 dual-read: production writes receipts to
+    ``.agent/state.db`` only, but the completion gate must still
+    honor receipts left behind by the previous release during the
+    dual-read rollout window. Without this fallback an in-flight run
+    that was upgraded mid-run would fail its completion gate despite
+    having a valid pre-upgrade receipt file on disk.
+    """
+
+    ra = _required(".agent/tmp/nowhere/commit_message.json")
+    legacy_receipt = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    legacy_receipt.parent.mkdir(parents=True)
+    legacy_receipt.write_text(
+        json.dumps({"run_id": "run-1", "artifact_type": "commit_message"})
+    )
+
+    signals = evaluate_completion(tmp_path, [], required_artifact=ra, run_id="run-1")
+
+    assert signals.required_artifact_present is True

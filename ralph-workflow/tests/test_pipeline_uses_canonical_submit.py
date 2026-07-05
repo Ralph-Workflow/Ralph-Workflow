@@ -41,6 +41,7 @@ class _PipelineSession:
     session_id = "sess-pipeline"
     run_id = _RUN_ID
     drain = "execution"
+    broker_secret = None
 
     def check_capability(self, capability: str) -> object:
         del capability

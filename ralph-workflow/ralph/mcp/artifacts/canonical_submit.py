@@ -9,8 +9,10 @@ Markdown handoff are written atomically (or rolled back together).
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import json
+import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -218,7 +220,7 @@ def submit_artifact_canonical(
                 hmac_value = db.get_receipt_hmac(run_id, artifact_type)
             finally:
                 db.close()
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, sqlite3.Error):
             hmac_value = MISSING
         if hmac_value is not MISSING or backend.exists(candidate_receipt):
             receipt_path = candidate_receipt
@@ -237,7 +239,7 @@ def submit_artifact_canonical(
                 sentinel_in_db = db.get_completion_sentinel_hmac(run_id) is not MISSING
             finally:
                 db.close()
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, sqlite3.Error):
             sentinel_in_db = False
         if sentinel_in_db or backend.exists(candidate_sentinel):
             sentinel_path = candidate_sentinel
@@ -257,6 +259,67 @@ def submit_artifact_canonical(
         artifact_type=artifact_type,
         run_id=run_id,
     )
+
+
+def _has_other_run_receipt(
+    workspace_root: Path,
+    artifact_type: str,
+    run_id: str,
+    *,
+    backend: FileBackend,
+) -> bool:
+    """RFC-013 P3: stale-artifact guard for ``promote_fallback_artifact``.
+
+    Returns True when a receipt for ``artifact_type`` already exists under
+    a *different* ``run_id`` in either ``.agent/state.db`` (the new
+    canonical store) or the legacy ``.agent/receipts/<run>/`` directory
+    tree (the pre-upgrade read-only fallback). The DB-first lookup honors
+    a freshly-issued receipt whose legacy file may not yet exist; the
+    legacy-file scan catches receipts left behind by pre-upgrade runs
+    that never wrote a DB row.
+
+    Best-effort: ``sqlite3.Error`` is in the catch tuple so a locked /
+    corrupt / unsupported SQLite state does not block promotion — the
+    legacy file scan still runs in that case.
+
+    Extracted from ``promote_fallback_artifact`` to keep its branch count
+    under the PLR0912 cap.
+    """
+    try:
+        db = RunStateDB(workspace_root)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
+        other_receipts_present = False
+        try:
+            try:
+                cursor = db._conn.execute(
+                    "SELECT run_id FROM receipts "
+                    "WHERE artifact_type = ? AND run_id != ?",
+                    (artifact_type, run_id),
+                )
+                row: object = cursor.fetchone()
+                if row is not None:
+                    other_receipts_present = True
+            except (OSError, RuntimeError, sqlite3.Error):
+                other_receipts_present = False
+        finally:
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
+        if other_receipts_present:
+            return True
+    receipts_dir = workspace_root / ".agent" / "receipts"
+    if not backend.exists(receipts_dir):
+        return False
+    for receipt_path in backend.glob(receipts_dir, "*/*.json"):
+        parts = receipt_path.relative_to(receipts_dir).parts
+        if len(parts) < len(["run_id", "artifact_type.json"]):
+            continue
+        receipt_run_id = parts[0]
+        receipt_artifact_type = receipt_path.stem
+        if receipt_artifact_type == artifact_type and receipt_run_id != run_id:
+            return True
+    return False
 
 
 def promote_fallback_artifact(
@@ -298,25 +361,14 @@ def promote_fallback_artifact(
         # (but not the current run), this artifact was already submitted through
         # the canonical path and should not be promoted again. This prevents a
         # fresh run from inheriting stale artifacts from previous runs.
-        if path != tmp_fallback and run_id is not None:
-            receipts_dir = workspace_root / ".agent" / "receipts"
-            if backend.exists(receipts_dir):
-                has_other_run_receipt = False
-                # Check each run directory by looking for receipt files
-                # Use glob pattern to find all receipt files across all run directories
-                for receipt_path in backend.glob(receipts_dir, "*/*.json"):
-                    # Extract run_id from the path: receipts_dir/run_id/artifact_type.json
-                    parts = receipt_path.relative_to(receipts_dir).parts
-                    if len(parts) >= len(["run_id", "artifact_type.json"]):
-                        receipt_run_id = parts[0]
-                        receipt_artifact_type = receipt_path.stem
-                        # Check if this is the same artifact type and a different run
-                        if receipt_artifact_type == artifact_type and receipt_run_id != run_id:
-                            # A receipt exists for a different run - this is stale
-                            has_other_run_receipt = True
-                            break
-                if has_other_run_receipt:
-                    return None
+        if (
+            path != tmp_fallback
+            and run_id is not None
+            and _has_other_run_receipt(
+                workspace_root, artifact_type, run_id, backend=backend
+            )
+        ):
+            return None
 
         parsed = _read_fallback_payload(path, backend)
         if parsed is None:

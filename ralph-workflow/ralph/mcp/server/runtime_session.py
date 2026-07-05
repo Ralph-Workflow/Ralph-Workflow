@@ -54,6 +54,7 @@ class FileBackedSession:
         session_id_factory: Callable[[], str] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         env_getter: Callable[[str], str | None] | None = None,
+        broker_secret: str | None = None,
     ) -> None:
         self._path = path
         self._loader = loader or _load_session_payload
@@ -62,6 +63,12 @@ class FileBackedSession:
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
         self._env_getter = env_getter if env_getter is not None else os.environ.get
+        # RFC-013 P3: broker-owned secret threaded into receipt / sentinel
+        # HMACs. ``None`` preserves the pre-P3 contract (no HMAC). The
+        # constructor accepts it explicitly so the broker process can
+        # supply the secret at MCP-server boot without re-routing it
+        # through the JSON session payload.
+        self._broker_secret: str | None = broker_secret
         self._media_manifest = MediaManifest()
         self._created_at = time.time()
         # wt-024 M3 (AC-06): parsed-payload cache keyed on (st_mtime_ns,
@@ -164,6 +171,15 @@ class FileBackedSession:
         if isinstance(payload_raw, str) and payload_raw:
             return Path(payload_raw)
         return None
+
+    @property
+    def broker_secret(self) -> str | None:
+        """RFC-013 P3: broker-owned secret threaded into the run-scoped
+        receipt / completion sentinel HMAC. The value is set at
+        ``FileBackedSession`` construction time and never round-trips
+        through the on-disk payload (the secret must not be visible to
+        the on-disk session file)."""
+        return self._broker_secret
 
     @property
     def allowed_roots(self) -> tuple[Path, ...]:
@@ -272,10 +288,19 @@ def session_from_env(
     env_map = os.environ if env is None else env
     session_file = env_map.get(SESSION_FILE_ENV)
     if session_file:
+        # RFC-013 P3: the broker-owned secret is intentionally NOT read
+        # from the on-disk session payload (the secret must not be
+        # visible to the on-disk file). The orchestrator process
+        # supplies it via the ``BROKER_RECEIPT_SECRET`` /
+        # ``BROKER_SENTINEL_SECRET`` env vars at MCP-server boot; both
+        # are reduced to a single ``broker_secret`` value used by the
+        # HMAC contract.
+        broker_secret_value: str | None = env_map.get("RALPH_BROKER_SECRET") or None
         return FileBackedSession(
             Path(session_file),
             session_id_factory=session_id_factory,
             run_id_factory=run_id_factory,
+            broker_secret=broker_secret_value,
         )
 
     raw = env_map.get(SESSION_ENV)

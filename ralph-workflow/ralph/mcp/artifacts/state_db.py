@@ -177,4 +177,4 @@ class RunStateDB:
         self._conn.close()
 
 
-__all__ = ["DB_RELPATH", "MISSING", "RunStateDB"]
+__all__ = ["DB_RELPATH", "MISSING", "RunStateDB", "_Missing"]

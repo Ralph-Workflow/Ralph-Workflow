@@ -193,6 +193,36 @@ def test_evaluate_completion_rejects_forged_receipt_without_receipt_secret(
     )
 
 
+def test_evaluate_completion_threads_receipt_secret_to_verifier(
+    workspace: Path,
+) -> None:
+    """End-to-end: ``evaluate_completion`` with ``receipt_secret``
+    rejects a forged legacy-file receipt. Pins the live-wiring contract
+    that the orchestrator can enable HMAC enforcement by setting
+    ``receipt_secret`` on the completion gate.
+    """
+    _write_forged_receipt(workspace, RUN_ID, ARTIFACT_TYPE)
+
+    # Without a secret, the forged legacy-file receipt is accepted (pre-P3 contract).
+    signals_forged = evaluate_completion(
+        workspace,
+        raw_output=[],
+        required_artifact=_required_artifact(),
+        run_id=RUN_ID,
+    )
+    assert signals_forged.required_artifact_present is True
+
+    # With a real secret configured, the forged receipt is rejected.
+    signals_real = evaluate_completion(
+        workspace,
+        raw_output=[],
+        required_artifact=_required_artifact(),
+        run_id=RUN_ID,
+        receipt_secret=RECEIPT_SECRET,
+    )
+    assert signals_real.required_artifact_present is False
+
+
 def test_evaluate_completion_rejects_forged_completion_sentinel_with_secret(
     workspace: Path,
 ) -> None:
