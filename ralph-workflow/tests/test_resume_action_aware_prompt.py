@@ -602,3 +602,74 @@ def test_build_agent_recovery_plan_fresh_true_stale_session_failure_still_emits_
     assert "zai-coding-plan/glm-5.2" in content
     # Fresh-mode original task body inlining preserved.
     assert _ORIGINAL_TASK_BODY_TOKEN in content
+
+
+# ---------------------------------------------------------------------------
+# Stale-session retry-prompt source-of-truth regression (wt-030).
+# Pins the strengthened wording produced by ``_write_agent_retry_prompt``
+# via the strengthened ``_stale_session_recovery_block`` helper. AC-02.
+# ---------------------------------------------------------------------------
+
+
+def test_write_agent_retry_prompt_fresh_after_stale_session_strengthens_source_of_truth(
+    tmp_path: Path,
+) -> None:
+    """Strengthened source-of-truth wording lands in the fresh-mode stale-session retry prompt.
+
+    Companion / extension of
+    ``test_write_agent_retry_prompt_fresh_after_stale_session_includes_stale_session_block``:
+    that test pins the EXISTING wording (header + session id + transport +
+    model + FRESH session); this test pins the NEW STRENGTHENED wording
+    that hardens the retry agent against treating prior output (or
+    incoherent/confused prior agent ranting) as ground truth. AC-02.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="StaleSession",
+        context_lines=[],
+        recovery_action="fresh",
+        stale_session_id="opencode-stale-empty",
+        transport="opencode",
+        model="m",
+    )
+
+    content = Path(result).read_text(encoding="utf-8")
+
+    # (i) Strengthened Sentence 2 substring.
+    assert "INFORMATIONAL ONLY" in content, (
+        "strengthened stale-session retry prompt must include the "
+        "'INFORMATIONAL ONLY' substring; got:\n" + content
+    )
+    # (ii) Strengthened Sentence 3 substring.
+    assert "ONLY source of truth" in content, (
+        "strengthened stale-session retry prompt must include the "
+        "'ONLY source of truth' substring; got:\n" + content
+    )
+    # (iii) Strengthened Sentence 4 first substring.
+    assert "FRESH attempt" in content, (
+        "strengthened stale-session retry prompt must include the "
+        "'FRESH attempt' substring; got:\n" + content
+    )
+    # (iv) Strengthened Sentence 1 substring (helper-prefixed; pins the
+    # same substring inside the body of the freshly written retry prompt).
+    assert "rejected the prior session id BEFORE" in content, (
+        "strengthened stale-session retry prompt must include the "
+        "'rejected the prior session id BEFORE' substring; got:\n" + content
+    )
+
+    # Existing pinned tokens preserved.
+    assert "`opencode-stale-empty`" in content, (
+        "strengthened stale-session retry prompt must keep the backticked session id"
+    )
+    assert "opencode" in content, (
+        "strengthened stale-session retry prompt must keep the transport label"
+    )
+    assert "(model=m)" in content, (
+        "strengthened stale-session retry prompt must keep the (model=...) label"
+    )
+    assert "STALE SESSION RECOVERY" in content, (
+        "strengthened stale-session retry prompt must keep the STALE SESSION RECOVERY header"
+    )

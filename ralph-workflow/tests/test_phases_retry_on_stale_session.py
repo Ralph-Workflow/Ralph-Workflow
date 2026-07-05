@@ -24,7 +24,7 @@ from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
-from ralph.pipeline.effect_executor import build_agent_recovery_plan
+from ralph.pipeline.effect_executor import _stale_session_recovery_block, build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -1758,4 +1758,316 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
     # (g) Model named.
     assert model_name in retry_content, (
         f"explicit-session retry (no state) must name the model {model_name!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stale-session retry prompt: empty-prior-output source-of-truth regression
+#
+# These tests pin the strengthened retry-prompt wording implemented in
+# wt-030. When a stale-session failure surfaces with EMPTY prior output
+# (always true for stale-session errors because the transport rejected
+# the session id before any work was attempted), the retry prompt must
+# (a) include a structured STALE SESSION EMPTY PRIOR OUTPUT banner with
+# pinned explanation sentences, AND (b) the original task body is still
+# the sole source of truth -- not the (no output captured) placeholder
+# line.
+# ---------------------------------------------------------------------------
+
+
+def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Stale-session failure with EMPTY prior output adds an empty-prior-output explanation.
+
+    Pins AC-01 at the end-to-end boundary: ``_write_agent_retry_prompt``
+    must insert the STALE SESSION EMPTY PRIOR OUTPUT note (banner + 4
+    pinned sentences) between the (no output captured) summary element
+    and the ORIGINAL TASK PROMPT: header when ``stale_session_id`` is set
+    AND ``context_lines`` is empty AND the recovery_action is fresh.
+    """
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    # Force the ``_recovery_context_lines`` helper to return an empty list so
+    # the pipeline-level enrichment cannot populate context_lines from the
+    # exception's stderr/str(exc)/parsed_output (the stale-session marker
+    # is detected separately via ``_is_stale_session_failure`` and routed
+    # into ``stale_session_id``, so the marker scan must still see the
+    # marker -- patching ``_recovery_context_lines`` only -- NOT
+    # ``_recovery_error_parts`` -- preserves the marker detection while
+    # wiping the context_lines enrichment path).
+    monkeypatch.setattr(
+        effect_executor_module,
+        "_recovery_context_lines",
+        lambda *args, **kwargs: [],
+    )
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        captured_calls.append((options.session_id if options is not None else None, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                "Error: Session not found: opencode-stale-empty",
+                parsed_output=[],
+            )
+        return []
+
+    effect = InvokeAgentEffect(
+        agent_name="opencode",
+        phase="development",
+        prompt_file=str(prompt_file),
+    )
+    config = _make_config()
+    state = _make_state(last_session_id="opencode-stale-empty")
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=state,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    second_session_id, second_prompt = captured_calls[1]
+    assert second_session_id is None, (
+        f"second invocation must use session_id=None after stale-session reset; "
+        f"got {second_session_id!r}"
+    )
+
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    # (i) New banner.
+    assert "STALE SESSION EMPTY PRIOR OUTPUT" in retry_content, (
+        "empty-prior-output stale-session retry must include the "
+        "STALE SESSION EMPTY PRIOR OUTPUT banner; got:\n" + retry_content
+    )
+    # (ii) Sentence 1 pinned prefix.
+    assert "the transport rejected the prior session id" in retry_content.lower(), (
+        "empty-prior-output stale-session retry must explain that the "
+        "transport rejected the prior session id; got:\n" + retry_content
+    )
+    # (iii) Sentence 2 pinned phrase.
+    assert (
+        "do NOT interpret this as the prior agent having failed to do work" in retry_content
+    ), (
+        "empty-prior-output stale-session retry must include the 'do NOT "
+        "interpret this as the prior agent having failed to do work' note; "
+        "got:\n" + retry_content
+    )
+    # (iv) Sentence 3 pinned suffix substring.
+    assert "ORIGINAL TASK PROMPT below is your ONLY source of truth" in retry_content, (
+        "empty-prior-output stale-session retry must declare the original "
+        "task prompt as the sole source of truth; got:\n" + retry_content
+    )
+
+    # Original task body still inlined AFTER the new note.
+    assert "implement the change" in retry_content, (
+        "empty-prior-output stale-session retry must still inline the original task body"
+    )
+    # Existing STALE SESSION RECOVERY block still present.
+    assert "STALE SESSION RECOVERY" in retry_content, (
+        "empty-prior-output stale-session retry must still carry the "
+        "STALE SESSION RECOVERY block; got:\n" + retry_content
+    )
+    # The opencode-stale-empty session id is named in the prompt.
+    assert "opencode-stale-empty" in retry_content, (
+        "empty-prior-output stale-session retry must name the rejected session id"
+    )
+
+
+def test_stale_session_recovery_block_declares_original_task_as_source_of_truth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_stale_session_recovery_block`` pins source-of-truth framing in the recovered block.
+
+    Imports the helper directly so the contract is pinned at the helper
+    boundary (not just through the public surface). The returned string
+    MUST contain the four pinned new sentences (case-sensitive) AND the
+    four existing helper substring tokens. AC-02.
+    """
+    rendered = _stale_session_recovery_block(
+        stale_session_id="abc",
+        transport="opencode",
+        model="m",
+    )
+
+    # (i) Sentence 2 pinned substring.
+    assert "the prior output is INFORMATIONAL ONLY" in rendered, (
+        "recovery block must warn that prior output is INFORMATIONAL ONLY; "
+        "got:\n" + rendered
+    )
+    # (ii) Sentence 3 pinned substring.
+    assert "the ORIGINAL TASK PROMPT below is your ONLY source of truth" in rendered, (
+        "recovery block must declare the original task prompt as the sole "
+        "source of truth; got:\n" + rendered
+    )
+    # (iii) Sentence 4 first pinned substring.
+    assert "do not treat the prior attempt output as ground truth" in rendered, (
+        "recovery block must warn against treating prior output as ground "
+        "truth; got:\n" + rendered
+    )
+    # (iv) Sentence 4 second pinned substring.
+    assert "FRESH attempt" in rendered, (
+        "recovery block must tell the retry agent to execute as a FRESH "
+        "attempt; got:\n" + rendered
+    )
+
+    # Existing helper invariants preserved.
+    assert "STALE SESSION RECOVERY" in rendered, (
+        "recovery block must keep the STALE SESSION RECOVERY header"
+    )
+    assert "`abc`" in rendered, "recovery block must keep the backticked session id"
+    assert "opencode" in rendered, "recovery block must keep the transport label"
+    assert "(model=m)" in rendered, (
+        "recovery block must keep the (model=...) label; got:\n" + rendered
+    )
+
+
+def test_stale_session_retry_prompt_nonempty_prior_output_keeps_existing_block(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Stale-session failure with NON-EMPTY prior output: recovery block emitted; banner absent.
+
+    Pins AC-03 at the end-to-end boundary: prior_output is non-empty, so
+    the empty-output banner must NOT appear, BUT the strengthened
+    STALE SESSION RECOVERY block (with the four pinned new sentences) IS
+    emitted, AND the prior output is preserved as informational content.
+    """
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        captured_calls.append((options.session_id if options is not None else None, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                "Error: Session not found: opencode-stale-nonempty",
+                parsed_output=["some prior output line"],
+            )
+        return []
+
+    effect = InvokeAgentEffect(
+        agent_name="opencode",
+        phase="development",
+        prompt_file=str(prompt_file),
+    )
+    config = _make_config()
+    state = _make_state(last_session_id="opencode-stale-nonempty")
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+                model="m",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        pipeline_deps,
+        WorkspaceScope(tmp_path),
+        display_context=ctx,
+        state=state,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    _second_session_id, second_prompt = captured_calls[1]
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+
+    # Strengthened recovery block IS present (the four pinned new substrings).
+    assert "STALE SESSION RECOVERY" in retry_content, (
+        "nonempty-prior-output stale-session retry must include the "
+        "STALE SESSION RECOVERY block; got:\n" + retry_content
+    )
+    assert "the prior output is INFORMATIONAL ONLY" in retry_content, (
+        "nonempty-prior-output stale-session retry must carry the strengthened "
+        "INFORMATIONAL ONLY substring; got:\n" + retry_content
+    )
+    assert "the ORIGINAL TASK PROMPT below is your ONLY source of truth" in retry_content, (
+        "nonempty-prior-output stale-session retry must carry the strengthened "
+        "'ORIGINAL TASK PROMPT ... your ONLY source of truth' substring; "
+        "got:\n" + retry_content
+    )
+    assert "do not treat the prior attempt output as ground truth" in retry_content, (
+        "nonempty-prior-output stale-session retry must carry the strengthened "
+        "'do not treat the prior attempt output as ground truth' substring; "
+        "got:\n" + retry_content
+    )
+    assert "FRESH attempt" in retry_content, (
+        "nonempty-prior-output stale-session retry must carry the strengthened "
+        "'FRESH attempt' substring; got:\n" + retry_content
+    )
+
+    # Empty-prior-output banner is NOT present (negative case).
+    assert "STALE SESSION EMPTY PRIOR OUTPUT" not in retry_content, (
+        "nonempty-prior-output stale-session retry must NOT include the "
+        "STALE SESSION EMPTY PRIOR OUTPUT banner; got:\n" + retry_content
+    )
+
+    # Prior output is preserved as informational content.
+    assert "some prior output line" in retry_content, (
+        "nonempty-prior-output stale-session retry must preserve the prior "
+        "output as informational content; got:\n" + retry_content
+    )
+
+    # The original task body is still inlined (fresh-mode preserved).
+    assert "implement the change" in retry_content, (
+        "nonempty-prior-output stale-session retry must still inline the original task body"
     )

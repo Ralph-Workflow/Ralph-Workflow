@@ -997,7 +997,12 @@ def _stale_session_recovery_block(
         f"The previous attempt's session id `{stale_session_id}` was rejected by "
         f"`{transport_label}` (model={model_label}).\n"
         "You are starting a FRESH session. Do NOT attempt to re-use that session id.\n"
-        "Treat the original task and the prior output summary below as your starting context."
+        "Treat the original task and the prior output summary below as your starting context.\n"
+        "the transport rejected the prior session id BEFORE the agent could produce any work.\n"
+        "the prior output is INFORMATIONAL ONLY and may be empty, incoherent, or confused.\n"
+        "the ORIGINAL TASK PROMPT below is your ONLY source of truth.\n"
+        "do not treat the prior attempt output as ground truth; "
+        "execute the task as a FRESH attempt."
     )
 
 
@@ -1070,6 +1075,35 @@ def _write_agent_retry_prompt(
         "ORIGINAL TASK PROMPT:",
         base_prompt,
     ]
+    # Empty-prior-output stale-session explanation: when ``stale_session_id``
+    # is set AND the prior output is empty (``condensed`` is empty, so the
+    # summary placeholder falls through to ``(no output captured)``),
+    # insert a structured ``STALE SESSION EMPTY PRIOR OUTPUT`` note
+    # IMMEDIATELY AFTER the summary element and IMMEDIATELY BEFORE the
+    # blank-string element that precedes the ``ORIGINAL TASK PROMPT:``
+    # header. This explicitly tells the retry agent that prior output is
+    # empty BY DESIGN (the transport rejected the session id before any
+    # work was attempted) and the original task prompt is the sole source
+    # of truth, so a confused retry agent does not mistake
+    # ``(no output captured)`` for the prior agent having run and
+    # produced nothing useful.
+    if stale_session_id and not condensed:
+        body_parts[3:3] = [
+            "STALE SESSION EMPTY PRIOR OUTPUT",
+            "",
+            (
+                f"the transport rejected the prior session id `{stale_session_id}` "
+                "before any output was produced."
+            ),
+            (
+                "the PREVIOUS OUTPUT SUMMARY EXCERPT above is empty BY DESIGN "
+                "for stale-session retries -- do NOT interpret this as the "
+                "prior agent having failed to do work."
+            ),
+            "the ORIGINAL TASK PROMPT below is your ONLY source of truth.",
+            "Execute the task as a FRESH attempt.",
+            "",
+        ]
     # Stale-session framing: when this fresh-mode retry was triggered by a
     # stale-session failure (i.e. ``stale_session_id`` is set), append a
     # structured ``STALE SESSION RECOVERY`` block AFTER the original task
