@@ -392,7 +392,7 @@ Deletes accumulated machine-only bookkeeping from prior runs: `completion_seen_*
 
 **Files:**
 - Create: `ralph/workspace/agent_dir_retention.py`
-- Modify: `ralph/config/bootstrap.py` (call the sweep where the workspace `.agent` scaffolding is prepared at run start)
+- Modify: `ralph-workflow/ralph/cli/commands/run.py` (call the sweep at run start, around the run-start flow at line 614 where the workspace `.agent` scaffolding is prepared)
 - Test: `tests/unit/test_agent_dir_retention.py`
 
 **Interfaces:**
@@ -585,7 +585,7 @@ Expected: ALL PASS.
 
 - [ ] **Step 5: Hook the sweep into run start**
 
-In `ralph/config/bootstrap.py`, locate the function that prepares the workspace `.agent` scaffolding / gitignore entries at run start (the one calling `_atomic_append_text(exclude_path, ...)` around line 556 is in the right area; pick the single entry point that runs once per `ralph` invocation with the workspace root and run id in scope). Add:
+In `ralph-workflow/ralph/cli/commands/run.py`, locate the run-start flow around line 614 (the single entry point that runs once per `ralph` invocation with the workspace root and run id in scope). Add:
 
 ```python
 from ralph.workspace.agent_dir_retention import sweep_agent_dir
@@ -605,7 +605,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ralph/workspace/agent_dir_retention.py ralph/config/bootstrap.py tests/unit/test_agent_dir_retention.py
+git add ralph/workspace/agent_dir_retention.py ralph-workflow/ralph/cli/commands/run.py tests/unit/test_agent_dir_retention.py
 git commit -m "perf(workspace): run-start retention sweep for .agent bookkeeping"
 ```
 
@@ -1142,7 +1142,7 @@ Make the environmental half visible: `ralph doctor`-style diagnostics warn when 
 **Files:**
 - Create: `ralph/diagnostics/fs_health.py`
 - Modify: `ralph/diagnostics/__init__.py` (include the check in `run_diagnostics`)
-- Modify: `docs/operator-manual.md` (new "External-volume filesystem hygiene" section with the four mitigations from the plan preamble, verbatim commands included)
+- Modify: `ralph-workflow/docs/sphinx/diagnostics.md` (the new "External-volume filesystem hygiene" section at line 163 with the four mitigations from the plan preamble, verbatim commands included)
 - Test: `tests/unit/test_fs_health.py`
 
 **Interfaces:**
@@ -1204,7 +1204,7 @@ Long multi-instance runs on an external volume can drive the macOS
 ``fseventsd`` daemon to a full core when (a) Spotlight indexes the
 churned paths and (b) the volume's ``.fseventsd`` journal bloats.
 This check surfaces both so operators apply the documented mitigations
-(see docs/operator-manual.md, "External-volume filesystem hygiene").
+(see `ralph-workflow/docs/sphinx/diagnostics.md`, "External-volume filesystem hygiene" at line 163).
 """
 
 from __future__ import annotations
@@ -1285,7 +1285,7 @@ __all__ = ["FsHealth"]
 
 - [ ] **Step 4: Wire into `run_diagnostics` and the docs**
 
-Add an `fs_health: FsHealth` field to `DiagnosticReport` in `ralph/diagnostics/__init__.py`, populate it in `run_diagnostics`, and surface `health.warnings` through the same channel other diagnostics use. Then add the "External-volume filesystem hygiene" section to `docs/operator-manual.md` with the four mitigations from this plan's preamble (copy the commands verbatim, including the `no_log` trade-off sentence).
+Add an `fs_health: FsHealth` field to `DiagnosticReport` in `ralph/diagnostics/__init__.py`, populate it in `run_diagnostics`, and surface `health.warnings` through the same channel other diagnostics use. Then add the "External-volume filesystem hygiene" section to `ralph-workflow/docs/sphinx/diagnostics.md` (line 163) with the four mitigations from this plan's preamble (copy the commands verbatim, including the `no_log` trade-off sentence).
 
 - [ ] **Step 5: Run tests**
 
@@ -1295,7 +1295,7 @@ Expected: ALL PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ralph/diagnostics/fs_health.py ralph/diagnostics/__init__.py docs/operator-manual.md tests/unit/test_fs_health.py
+git add ralph/diagnostics/fs_health.py ralph/diagnostics/__init__.py ralph-workflow/docs/sphinx/diagnostics.md tests/unit/test_fs_health.py
 git commit -m "feat(diagnostics): fs-health check for Spotlight and fsevents journal bloat"
 ```
 

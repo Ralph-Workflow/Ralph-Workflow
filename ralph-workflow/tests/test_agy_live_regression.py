@@ -24,7 +24,6 @@ when the live binary is healthy.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import shutil
@@ -47,6 +46,7 @@ from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
 
 # Capture the real HOME at import time, BEFORE the conftest
@@ -496,9 +496,16 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     artifact submission path: the live AGY writes
     ``.agent/artifacts/smoke_test_result.json`` directly and the
     ``promote_fallback_artifact`` / ``write_artifact_receipt`` machinery
-    in ``ralph.mcp.artifacts`` stamps a canonical receipt at
-    ``.agent/receipts/<run_id>/smoke_test_result.json`` with the exact
-    payload shape ``{"run_id": run_id, "artifact_type": artifact_type}``.
+    in ``ralph.mcp.artifacts`` durably stamps a canonical receipt keyed
+    on ``(run_id, artifact_type)``. Under RFC-013 P3 that receipt lives
+    in the per-workspace ``.agent/state.db`` (one row per
+    ``(run_id, artifact_type)``); the legacy
+    ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is
+    read-only fallback during the dual-read rollout window.
+
+    Asserting via the public ``artifact_receipt_present`` read API
+    verifies the behavioral promotion contract without coupling to
+    which physical store the receipt landed in.
 
     There is NO auth/quota permits allowance; the upstream-blocked xfail
     gate converts documented transient conditions into a clear xfail.
@@ -514,24 +521,20 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     )
 
     expected_run_id = live_smoke_session.expected_run_id
-    receipt_path = (
-        live_smoke_session.workspace
-        / ".agent"
-        / "receipts"
-        / expected_run_id
-        / "smoke_test_result.json"
+    # RFC-013 P3: assert the canonical receipt is durably present via
+    # the public artifact_receipt_present read API. The legacy
+    # .agent/receipts/<run_id>/<type>.json path is read-only fallback;
+    # production writes go to the per-workspace .agent/state.db only.
+    assert artifact_receipt_present(
+        live_smoke_session.workspace,
+        expected_run_id,
+        "smoke_test_result",
+    ) is True, (
+        f"Expected a canonical receipt for run_id={expected_run_id!r} "
+        f"artifact_type='smoke_test_result'. Artifact present: "
+        f"{artifact_path.is_file()}. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
-    assert receipt_path.is_file(), (
-        f"Expected canonical receipt at {receipt_path}\n"
-        f"Artifact present: {artifact_path.is_file()}. "
-        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
-    )
-
-    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-    assert receipt_payload == {
-        "run_id": expected_run_id,
-        "artifact_type": "smoke_test_result",
-    }, f"Unexpected receipt payload: {receipt_payload}. cli.log tail: {cli_log_tail[-200:]!r}"
 
 
 @pytest.mark.timeout_seconds(240)
@@ -562,28 +565,26 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
 
     expected_run_id = live_smoke_session.expected_run_id
     artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
-    receipt_path = (
-        live_smoke_session.workspace
-        / ".agent"
-        / "receipts"
-        / expected_run_id
-        / "smoke_test_result.json"
-    )
 
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
-    assert receipt_path.is_file(), (
-        f"Expected canonical receipt at {receipt_path}. "
-        f"Artifact present: {artifact_path.is_file()}. "
-        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+    # RFC-013 P3: the canonical receipt store is the per-workspace
+    # .agent/state.db. Asserting via the public artifact_receipt_present
+    # read API verifies the end-to-end promotion contract without
+    # coupling to which physical store the receipt landed in (the legacy
+    # .agent/receipts/<run_id>/<type>.json path is read-only fallback).
+    assert artifact_receipt_present(
+        live_smoke_session.workspace,
+        expected_run_id,
+        "smoke_test_result",
+    ) is True, (
+        f"Expected canonical receipt for run_id={expected_run_id!r} "
+        f"artifact_type='smoke_test_result'. Artifact present: "
+        f"{artifact_path.is_file()}. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
-    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-    assert receipt_payload == {
-        "run_id": expected_run_id,
-        "artifact_type": "smoke_test_result",
-    }, f"Unexpected receipt payload: {receipt_payload!r}"
 
     text_lines = re.findall(r"- text: [^\n]+", output) or []
     assert any(line.startswith("- text:") for line in text_lines), (

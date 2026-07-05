@@ -36,6 +36,15 @@ class _Missing:
 
 MISSING: Final = _Missing()
 
+#: Tombstone marker written to ``completion_sentinels.hmac`` when a
+#: ``delete_completion_sentinel`` call raises ``sqlite3.Error`` so the
+#: downstream reader (``_db_sentinel_lookup``) honours the cleared
+#: state even though the row could not be physically removed. A model
+#: with workspace write access cannot forge a sentinel with this exact
+#: marker because the read path treats it as "not completed" and the
+#: HMAC secret is owned by the broker, not the agent.
+CLEARED_SENTINEL_HMAC: Final[str] = "__ralph_internal_cleared__"
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS receipts (
     run_id        TEXT NOT NULL,
@@ -146,6 +155,30 @@ class RunStateDB:
                 "DELETE FROM completion_sentinels WHERE run_id = ?", (run_id,)
             )
 
+    def mark_completion_sentinel_cleared(self, run_id: str) -> None:
+        """Write a tombstone marker so the reader honours the cleared state.
+
+        Used as the durable-fallback when ``delete_completion_sentinel``
+        raises ``sqlite3.Error`` (locked / corrupt / unsupported WAL):
+        physically removing the row is best-effort, but the read path
+        must observe the cleared state so a reused ``run_id`` cannot
+        inherit a previous run's "completed" verdict.
+
+        ``_db_sentinel_lookup`` recognises ``CLEARED_SENTINEL_HMAC`` and
+        returns ``(False, None)`` so ``_check_completion_sentinel``
+        falls through to the legacy-file path. A successful upsert
+        here replaces any existing row (including a valid HMAC row),
+        so even if a future retry of ``delete_completion_sentinel``
+        fails the cleared state remains authoritative.
+        """
+        with self._conn:
+            params: tuple[str, ...] = (run_id, CLEARED_SENTINEL_HMAC)
+            self._conn.execute(
+                "INSERT INTO completion_sentinels (run_id, hmac) VALUES (?, ?) "
+                "ON CONFLICT(run_id) DO UPDATE SET hmac=excluded.hmac",
+                params,
+            )
+
     # -- retention ---------------------------------------------------------
 
     def prune_older_than(self, cutoff: float, *, keep_run_id: str | None = None) -> int:
@@ -177,4 +210,10 @@ class RunStateDB:
         self._conn.close()
 
 
-__all__ = ["DB_RELPATH", "MISSING", "RunStateDB", "_Missing"]
+__all__ = [
+    "CLEARED_SENTINEL_HMAC",
+    "DB_RELPATH",
+    "MISSING",
+    "RunStateDB",
+    "_Missing",
+]

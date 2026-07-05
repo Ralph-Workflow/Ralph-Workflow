@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ralph.agents import completion_signals as completion_signals_module
 from ralph.agents.completion_signals import CompletionSignals, evaluate_completion
-from ralph.mcp.artifacts.state_db import RunStateDB
+from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, RunStateDB
 
 
 def _eval(
@@ -229,3 +229,99 @@ def test_evaluate_completion_threads_sentinel_secret_to_verifier(
     # With a real secret configured, the forged DB row is rejected.
     signals_real = _eval(tmp_path, "run-1", sentinel_secret="broker-real")
     assert signals_real.completion_sentinel_present is False
+
+
+# RFC-013 P3 regression: a DB tombstone (CLEARED_SENTINEL_HMAC) MUST be
+# terminal. A stale ``completion_seen_<run>.json`` file left over from
+# before the clear MUST NOT resurrect a reused ``run_id``'s "completed"
+# verdict, otherwise a clear-then-reuse cycle leaks prior-run state.
+
+
+def test_check_completion_sentinel_db_tombstone_overrides_legacy_file(
+    tmp_path: Path,
+) -> None:
+    """A tombstoned DB row (``hmac == CLEARED_SENTINEL_HMAC``) must
+    return ``False`` even when a legacy ``completion_seen_<run>.json``
+    file exists on disk. The clear attempt is authoritative; the
+    legacy file is stale.
+    """
+    db = RunStateDB(tmp_path)
+    db.upsert_completion_sentinel("run-1", CLEARED_SENTINEL_HMAC)
+    db.close()
+
+    # Plant a stale legacy sentinel that would otherwise indicate completion.
+    legacy = tmp_path / ".agent" / "completion_seen_run-1.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(
+        json.dumps({"run_id": "run-1", "hmac": "stale-pre-clear-value"}),
+        encoding="utf-8",
+    )
+
+    # With no secret: tombstone still wins; the legacy file MUST NOT
+    # resurrect the "completed" verdict.
+    assert (
+        completion_signals_module._check_completion_sentinel(tmp_path, "run-1")
+        is False
+    )
+
+
+def test_check_completion_sentinel_db_tombstone_overrides_legacy_file_with_secret(
+    tmp_path: Path,
+) -> None:
+    """Same as above with a sentinel_secret configured — the tombstone
+    is terminal regardless of HMAC verification settings.
+    """
+    db = RunStateDB(tmp_path)
+    db.upsert_completion_sentinel("run-1", CLEARED_SENTINEL_HMAC)
+    db.close()
+
+    legacy = tmp_path / ".agent" / "completion_seen_run-1.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(
+        json.dumps({"run_id": "run-1", "hmac": "stale-pre-clear-value"}),
+        encoding="utf-8",
+    )
+
+    assert (
+        completion_signals_module._check_completion_sentinel(
+            tmp_path, "run-1", sentinel_secret="broker-real"
+        )
+        is False
+    )
+
+
+def test_check_completion_sentinel_db_tombstone_alone_returns_false(
+    tmp_path: Path,
+) -> None:
+    """A tombstone with NO legacy file on disk must return ``False``
+    (no spurious resurrection via either path)."""
+    db = RunStateDB(tmp_path)
+    db.upsert_completion_sentinel("run-1", CLEARED_SENTINEL_HMAC)
+    db.close()
+    assert (
+        completion_signals_module._check_completion_sentinel(tmp_path, "run-1")
+        is False
+    )
+
+
+def test_evaluate_completion_db_tombstone_does_not_resurrect_via_legacy_file(
+    tmp_path: Path,
+) -> None:
+    """End-to-end: ``evaluate_completion`` with a tombstoned DB row and
+    a stale legacy file reports ``completion_sentinel_present=False``,
+    not ``True``. Pins the live-wiring contract that the orchestrator
+    cannot be tricked into accepting a reused ``run_id`` as already
+    completed."""
+    db = RunStateDB(tmp_path)
+    db.upsert_completion_sentinel("run-1", CLEARED_SENTINEL_HMAC)
+    db.close()
+
+    legacy = tmp_path / ".agent" / "completion_seen_run-1.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(
+        json.dumps({"run_id": "run-1"}),
+        encoding="utf-8",
+    )
+
+    signals = _eval(tmp_path, "run-1", sentinel_secret="broker-real")
+    assert signals.completion_sentinel_present is False

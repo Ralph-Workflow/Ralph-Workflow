@@ -6,7 +6,7 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 **RFC Number**: RFC-013
 **Title**: Filesystem Churn Reduction for Long-Running Workflows (fseventsd)
-**Status**: Review
+**Status**: Implemented
 **Author**: Claude (Fable 5), commissioned by Mistlight
 **Created**: 2026-07-03
 
@@ -68,18 +68,21 @@ docs HTML files in a single verify cycle.
 
 ### Engine-owned event sources (fixable in Ralph)
 
-1. **`RawOverflowLog.append()` opens and closes the file per line**
-   (`ralph/display/raw_overflow.py:47`). A raw overflow log captures
-   the full stdout of one *work unit* — a single agent invocation —
-   at `.agent/raw/<unit_id>.log`. Every agent stdout line pays
-   `mkdir` + `open("ab")` + `write` + `close`. All four construction
-   sites funnel here (`subprocess_executor.py:99`,
-   `_process_reader.py:225`, `_pty_line_reader.py:1061`,
-   `parallel_display.py:1244`). At observed sizes (10 MB logs, ~100–200
-   bytes per NDJSON line) this is on the order of 10⁵ open/close
-   cycles over one unit's multi-hour lifetime; each cycle emits
-   filesystem events beyond the write itself. This is the single
-   worst engine-owned pattern.
+1. **`RawOverflowLog.append()` opened and closed the file per line** —
+   the original pre-fix behavior. The post-fix implementation
+   (`ralph/display/raw_overflow.py:67`, landed by RFC-013 Task 1)
+   replaces that pattern with a persistent buffered handle. A raw
+   overflow log captures the full stdout of one *work unit* — a single
+   agent invocation — at `.agent/raw/<unit_id>.log`. In the pre-fix
+   implementation, every agent stdout line paid `mkdir` + `open("ab")`
+   + `write` + `close`. All four construction sites funneled there
+   (`subprocess_executor.py:99`, `_process_reader.py:225`,
+   `_pty_line_reader.py:1061`, `parallel_display.py:1244`). At observed
+   sizes (10 MB logs, ~100–200 bytes per NDJSON line) this was on the
+   order of 10⁵ open/close cycles over one unit's multi-hour lifetime;
+   each cycle emitted filesystem events beyond the write itself. This
+   was the single worst engine-owned pattern, and is the behavior
+   RFC-013 Task 1 replaces with a persistent buffered handle.
 
 2. **Loguru file sinks are line-buffered** (`buffering=1`, verified in
    the vendored loguru `FileSink.__init__`). One write syscall per log
@@ -136,7 +139,7 @@ one open per server start — a correct pattern).
   `close()` at unit/reader teardown.
   * **Hard invariant:** the idle watchdog uses raw-log growth as a
     liveness signal (`LOG_GROWTH_SECONDS = 30.0`,
-    `ralph/timeout_defaults.py:250`), and its probe reads
+    `ralph/timeout_defaults.py:256`), and its probe reads
     `RawOverflowLog.size_bytes` — so `size_bytes` must keep advancing
     per `append()` from an in-memory counter, independent of flushing.
     Buffering must never make a live unit look wedged.
@@ -322,7 +325,7 @@ can remove.
    legacy-file fallback one release later.
 
 Task-level breakdown with TDD steps, code, and exact file paths:
-`docs/plans/2026-07-03-fs-churn-reduction.md`.
+`ralph-workflow/docs/plans/2026-07-03-fs-churn-reduction.md`.
 
 ## References
 

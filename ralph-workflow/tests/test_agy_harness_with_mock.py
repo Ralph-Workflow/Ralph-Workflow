@@ -12,6 +12,7 @@ from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.smoke_test_result import SmokeTestResult
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.factory import DefaultPipelineFactory
@@ -207,13 +208,19 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     1. The agent's direct artifact file write exists at
        ``tmp_path / '.agent' / 'artifacts' / 'smoke_test_result.json'``
        (the AGY-side write that the prompt instructs the model to perform).
-    2. The canonical receipt is promoted at
-       ``tmp_path / '.agent' / 'receipts' / <run_id> / 'smoke_test_result.json'``
-       via ``promote_fallback_artifact`` at
-       ``ralph/mcp/artifacts/canonical_submit.py:236``.
-    3. The receipt payload equals the exact shape written at
-       ``ralph/mcp/artifacts/completion_receipts.py:53``:
-       ``{"run_id": run_id, "artifact_type": "smoke_test_result"}``.
+    2. The canonical receipt is durably present for
+       ``(run_id, artifact_type)`` — under RFC-013 P3 the canonical
+       receipt store is the per-workspace ``.agent/state.db`` (one row
+       per ``(run_id, artifact_type)``); ``promote_fallback_artifact`` at
+       ``ralph/mcp/artifacts/canonical_submit.py`` calls
+       ``write_artifact_receipt`` which inserts that row. The legacy
+       ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is
+       read-only fallback during the dual-read rollout window.
+    3. The receipt is identified by ``(run_id, artifact_type)`` with
+       ``artifact_type == "smoke_test_result"``. Asserting presence via
+       the public ``artifact_receipt_present`` API verifies the
+       promotion contract without coupling to the storage-layout choice
+       between the DB and the legacy file path.
     4. The mock wrote the file the prompt asked for at
        ``tmp_path / 'tmp' / 'interactive-agy-smoke' / 'todo-list.js'``.
 
@@ -243,15 +250,20 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     assert todo_path.is_file(), f"Expected the mock-written todo file at {todo_path}"
 
     expected_run_id = resolve_smoke_harness_spec("agy/Gemini 3.5 Flash (Medium)").run_id
-    receipt_path = tmp_path / ".agent" / "receipts" / expected_run_id / "smoke_test_result.json"
-    assert receipt_path.is_file(), (
-        f"Expected canonical receipt at {receipt_path}. The harness's "
+    # RFC-013 P3: the canonical receipt store is the per-workspace
+    # .agent/state.db. The legacy .agent/receipts/<run_id>/<type>.json
+    # path is read-only fallback during the dual-read rollout window,
+    # so production writes don't double-write to both stores. Asserting
+    # via artifact_receipt_present (the public read API) verifies the
+    # behavioral promotion contract -- the agent's direct
+    # .agent/artifacts/ write was promoted to a durable receipt -- without
+    # coupling to which physical store the receipt landed in.
+    assert artifact_receipt_present(tmp_path, expected_run_id, "smoke_test_result") is True, (
+        f"Expected a canonical receipt for run_id={expected_run_id!r} "
+        f"artifact_type='smoke_test_result'. The harness's "
         f"_is_smoke_artifact_submitted must call is_artifact_submitted -> "
-        f"promote_fallback_artifact to write the receipt from the agent's "
-        f"direct .agent/artifacts/ write."
+        f"promote_fallback_artifact -> write_artifact_receipt to durably "
+        f"stamp the receipt. Under RFC-013 P3 this lands as a row in "
+        f"{tmp_path}/.agent/state.db (with the legacy file path preserved "
+        f"as read-only fallback during the dual-read rollout window)."
     )
-    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-    assert receipt_payload == {
-        "run_id": expected_run_id,
-        "artifact_type": "smoke_test_result",
-    }, f"Unexpected receipt payload: {receipt_payload!r}"

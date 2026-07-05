@@ -791,6 +791,75 @@ def test_diagnose_command_displays_capability_state_table(
     assert "Managed" in output
 
 
+def test_diagnose_command_displays_filesystem_health_section(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """RFC-013 P4: ``ralph --diagnose`` must surface FsHealth diagnostics.
+
+    Pins the contract documented in docs/sphinx/diagnostics.md
+    ("External-volume filesystem hygiene"): the diagnose command has
+    to render an FsHealth section built from a real FsHealth.gather()
+    call against the workspace root.
+    """
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(env={"COLUMNS": "120"})
+    recording_ctx = dataclasses.replace(ctx, console=console)
+
+    monkeypatch.setattr(diagnose_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(diagnose_module, "is_repo_clean", lambda root: True)
+    monkeypatch.setattr(
+        diagnose_module,
+        "resolve_workspace_scope",
+        lambda: __import__("ralph.workspace.scope", fromlist=["WorkspaceScope"]).WorkspaceScope(
+            tmp_path
+        ),
+    )
+    monkeypatch.setattr(
+        diagnose_module,
+        "load_config",
+        lambda *a, **kw: SimpleNamespace(
+            general=SimpleNamespace(
+                developer_iters=5,
+                workflow=SimpleNamespace(checkpoint_enabled=True),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        diagnose_module,
+        "AgentRegistry",
+        SimpleNamespace(from_config=lambda c: SimpleNamespace(list_agents=lambda: [])),
+    )
+
+    sentinel_volume = "/Volumes/sentinel-volume"
+    fake_volume = SimpleNamespace(
+        volume_root=sentinel_volume,
+        spotlight_indexing_enabled=True,
+        fsevents_journal_bytes=120 * 1024 * 1024,
+        warnings=[
+            f"Spotlight indexing is enabled on {sentinel_volume}. "
+            "Disable with `sudo mdutil -i off <volume>`.",
+            f"fseventsd journal on {sentinel_volume} is 120.0 MB "
+            "(threshold 50 MB). Reset it with "
+            "`sudo rm -rf <volume>/.fseventsd` after stopping runs.",
+        ],
+    )
+    monkeypatch.setattr(
+        diagnose_module,
+        "_run_fs_health_for_diagnose",
+        lambda workspace_root: fake_volume,
+    )
+
+    diagnose_module.diagnose_command(display_context=recording_ctx)
+
+    output = stream.getvalue()
+    assert "Filesystem Health" in output
+    assert sentinel_volume in output
+    assert "Spotlight" in output
+    assert "fseventsd" in output
+    assert "warnings" in output.lower()
+
+
 def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)

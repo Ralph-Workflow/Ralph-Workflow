@@ -37,6 +37,19 @@ from ralph.mcp.artifacts.state_db import MISSING, RunStateDB, _Missing
 RECEIPT_DIR_RELPATH_FMT = ".agent/receipts/{run_id}"
 
 
+class ReceiptPersistenceError(RuntimeError):
+    """Raised when both the RunStateDB and legacy-file paths fail to persist a receipt.
+
+    Without this guard, ``write_artifact_receipt`` returns successfully even
+    when no durable receipt was written \u2014 letting artifact submission
+    continue against a missing receipt and producing a silent failure
+    downstream when the completion gate reads it. ``execute_ops_with_rollback``
+    already propagates this exception upward to rollback the in-flight
+    submit (the receipt op is the last step, so the artifact and its
+    handoff would also be unrolled).
+    """
+
+
 def _receipt_dir(workspace_root: Path, run_id: str) -> Path:
     return workspace_root / RECEIPT_DIR_RELPATH_FMT.format(run_id=run_id)
 
@@ -109,12 +122,20 @@ def write_artifact_receipt(
     because the secret is never exposed to the agent.
 
     Storage (RFC-013 P3): the canonical store is the per-workspace
-    ``.agent/state.db``. To preserve the atomic-rollback contract for
-    tests and the legacy file-based callers, this implementation also
-    writes the legacy file path when ``backend`` is the default backend
-    (production path); explicit ``backend`` arguments from callers
-    continue to write only the file so existing test seams (the
-    ``FailingBackend`` pattern) still work.
+    ``.agent/state.db``. Production writes go to the DB ONLY when the
+    DB write succeeds; the legacy ``.agent/receipts/<run_id>/<artifact_type>.json``
+    file path is then read-only fallback during the dual-read rollout
+    window so receipts left behind by the pre-upgrade release are still
+    honored.
+
+    Durable-fallback: when ``RunStateDB`` raises ``sqlite3.Error``
+    (locked / corrupt / unsupported WAL) on either open or upsert,
+    this function falls back to writing the legacy file path so the
+    completion gate always has durable evidence. Atomic-rollback for
+    tests and callers using explicit ``backend`` kwargs still works
+    because ``backend`` continues to control where the legacy bytes
+    land (see ``FailingBackend`` pattern). The HMAC is included in
+    both stores when ``receipt_secret`` is provided.
     """
     hmac_hex: str | None
     if receipt_secret is not None:
@@ -122,26 +143,73 @@ def write_artifact_receipt(
     else:
         hmac_hex = None
 
-    # DB canonical store (RFC-013 P3). Production writes ONLY to the DB;
-    # the legacy ``.agent/receipts/<run_id>/<artifact_type>.json`` file
-    # path is read-only fallback during the dual-read rollout window so
-    # receipts left behind by the pre-upgrade release are still honored.
-    # Best-effort for SQLite failures: ``sqlite3.Error`` (locked/corrupt/
-    # unsupported WAL) is silently ignored so artifact submission can succeed
-    # even when RunStateDB is unavailable. The receipt is not persisted, but
-    # the artifact file is written. Other errors (RuntimeError, OSError from
-    # bad args) propagate to trigger rollback in ``execute_ops_with_rollback``.
+    db_written = False
+    db: RunStateDB | None = None
     try:
         db = _open_db(workspace_root)
     except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
+        try:
+            db.upsert_receipt(run_id, artifact_type, hmac_hex)
+            db_written = True
+        except sqlite3.Error:
+            pass  # Will fall through to legacy-file durable fallback below.
+        finally:
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
+
+    if db_written:
         return
+
+    legacy_written = _write_legacy_receipt_fallback(
+        workspace_root,
+        run_id,
+        artifact_type,
+        hmac_hex=hmac_hex,
+        backend=backend,
+    )
+    if not legacy_written:
+        raise ReceiptPersistenceError(
+            f"Both DB and legacy paths failed to persist receipt for "
+            f"run_id={run_id!r} artifact_type={artifact_type!r}"
+        )
+
+
+def _write_legacy_receipt_fallback(
+    workspace_root: Path,
+    run_id: str,
+    artifact_type: str,
+    *,
+    hmac_hex: str | None,
+    backend: FileBackend,
+) -> bool:
+    """Write the legacy ``.agent/receipts/<run_id>/<artifact_type>.json`` fallback.
+
+    Used by ``write_artifact_receipt`` only when the RunStateDB write
+    fails (sqlite3.Error on open or upsert). The HMAC is included in
+    the payload when one was provided so a subsequent read with the
+    same secret verifies and a mismatching secret rejects.
+
+    Returns:
+        ``True`` when the legacy receipt file was written;
+        ``False`` when ``OSError`` blocked the write (either the
+        ``.agent/receipts/<run_id>/`` mkdir or the file write).
+        A ``False`` return is the fail-closed signal that
+        ``write_artifact_receipt`` escalates into a
+        ``ReceiptPersistenceError`` so the artifact submit also
+        fails closed.
+    """
+    path = _receipt_path(workspace_root, run_id, artifact_type)
+    payload: dict[str, object] = {"run_id": run_id, "artifact_type": artifact_type}
+    if hmac_hex is not None:
+        payload["hmac"] = hmac_hex
     try:
-        db.upsert_receipt(run_id, artifact_type, hmac_hex)
-    except sqlite3.Error:
-        pass  # Best-effort: SQLite failures are OK
-    finally:
-        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
-            db.close()
+        backend.mkdir(_receipt_dir(workspace_root, run_id), parents=True, exist_ok=True)
+        backend.write_text(path, json.dumps(payload), encoding="utf-8")
+    except OSError:
+        return False  # Both DB and legacy paths failed - nothing durable to write.
+    return True
 
 
 def artifact_receipt_present(
@@ -251,7 +319,12 @@ def clear_run_receipts(
     with a reused ``run_id`` never inherits a stale "already submitted"
     signal. Clears both the DB rows and the legacy file paths.
     Best-effort: a missing or read-only ``.agent/state.db`` does not
-    block the call (the legacy file cleanup still proceeds).
+    block the call (the legacy file cleanup still proceeds). The DB
+    clear itself is also best-effort — a transient ``sqlite3.Error``
+    during ``RunStateDB.clear_run_receipts`` is suppressed so the
+    legacy-file cleanup below always runs, matching the RFC-013
+    retention contract that a single failure mode cannot abort
+    rerun / session cleanup.
     """
     try:
         db = _open_db(workspace_root)
@@ -259,7 +332,8 @@ def clear_run_receipts(
         db = None
     if db is not None:
         try:
-            db.clear_run_receipts(run_id)
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.clear_run_receipts(run_id)
         finally:
             with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
                 db.close()
@@ -270,6 +344,7 @@ def clear_run_receipts(
 
 __all__ = [
     "RECEIPT_DIR_RELPATH_FMT",
+    "ReceiptPersistenceError",
     "artifact_receipt_present",
     "clear_run_receipts",
     "delete_artifact_receipt",

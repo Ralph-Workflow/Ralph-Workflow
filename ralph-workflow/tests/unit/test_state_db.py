@@ -57,3 +57,18 @@ def test_cross_connection_visibility(tmp_path: Path) -> None:
     assert reader.get_receipt_hmac("run-1", "plan") == "sig"
     writer.close()
     reader.close()
+
+
+# RFC-013 P3 storage-mode contract: the per-workspace ``.agent/state.db``
+# MUST enable WAL journaling and ``synchronous=NORMAL``. A regression
+# to default SQLite settings would pass the CRUD tests above but
+# silently reintroduce the per-commit fsync that the RFC eliminated.
+def test_pragmas_journal_mode_wal_synchronous_normal(tmp_path: Path) -> None:
+    db = RunStateDB(tmp_path)
+    try:
+        journal_mode_row = db._conn.execute("PRAGMA journal_mode").fetchone()
+        synchronous_row = db._conn.execute("PRAGMA synchronous").fetchone()
+    finally:
+        db.close()
+    assert journal_mode_row is not None and journal_mode_row[0].lower() == "wal"
+    assert synchronous_row is not None and synchronous_row[0] == 1

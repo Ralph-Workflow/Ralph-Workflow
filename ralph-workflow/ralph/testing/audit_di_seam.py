@@ -135,9 +135,11 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     "pipeline/plumbing/smoke_plumbing.py:490",
     # agents/invoke/_process_reader.py, _pty_runner.py - RALPH_BROKER_SECRET
     # is the composition-root seam for completion receipt validation; justified
-    # by di-seam-allowlist comment at each call site.
-    "agents/invoke/_process_reader.py:989",
-    "agents/invoke/_process_reader.py:990",
+    # by di-seam-allowlist comment at each call site. The broker secret is
+    # read on the parent (orchestrator) side; the subprocess-env isolation
+    # fix in _subprocess_env ensures it does NOT leak to spawned children.
+    "agents/invoke/_process_reader.py:998",
+    "agents/invoke/_process_reader.py:999",
     "agents/invoke/_pty_runner.py:190",
     "agents/invoke/_pty_runner.py:191",
     # pipeline/plumbing/smoke_plumbing.py - RALPH_BROKER_SECRET in

@@ -136,18 +136,14 @@ class RawOverflowLog:
         The idle watchdog's log-growth corroborator reads this to prove the
         unit is alive; it must advance on every append, not only on flush.
         Returns 0 before the first write. Never raises.
+
+        The in-memory ``_bytes_written`` counter is the authoritative
+        liveness signal — an on-disk ``stat()`` probe is intentionally
+        avoided because a missing or unfetchable file (operator unlink,
+        watcher quarantine, transient I/O error) must NOT silence the
+        watchdog while the unit itself is still appending.
         """
-        if self._disabled:
-            return self._bytes_written
-        if self._first_write:
-            return 0
-        if self._bytes_written == 0:
-            return 0
-        try:
-            self.path.stat()
-            return self._bytes_written
-        except (OSError, PermissionError):
-            return 0
+        return self._bytes_written
 
     @property
     def is_disabled(self) -> bool:

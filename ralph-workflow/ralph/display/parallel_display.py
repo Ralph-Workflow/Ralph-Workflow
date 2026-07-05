@@ -1247,23 +1247,42 @@ class ParallelDisplay:
         return self._overflow_logs[unit_id]
 
     def _raw_overflow_write(self, unit_id: str, raw_line: str) -> None:
-        """Write a raw malformed line to the per-unit overflow log for diagnosis."""
+        """Write a raw malformed line to the per-unit overflow log for diagnosis.
+
+        Routes through ``_check_overflow_size`` so the parser-failure
+        path inherits the same size-guard + one-shot warning logic
+        the condensed-content path uses. Without this, raw overflow
+        could silently hit the 50 MB cap and disable without
+        surfacing the ``[overflow log full ...]`` warning the
+        operator relies on.
+        """
         overflow = self._get_overflow_log(unit_id)
         overflow.append(raw_line)
+        self._check_overflow_size(unit_id, overflow)
 
     def _check_overflow_size(self, unit_id: str, overflow: RawOverflowLog) -> None:
-        """Emit a single WARN and disable the log if it exceeds the size guard."""
+        """Emit a single WARN and disable the log if it exceeds the size guard.
+
+        Uses the in-memory ``size_bytes`` counter (NOT a
+        ``path.stat().st_size`` probe) so the size guard is
+        flush-independent: the warning fires on the first append
+        that crosses the cap rather than waiting for the next 5 s
+        flush to catch up. Also covers the ``is_disabled`` branch
+        where ``append()`` auto-disabled the log when the byte cap
+        was reached mid-write — ``size_bytes`` is authoritative in
+        that case, and the warning still has to surface so the
+        operator learns the cap was hit.
+        """
         if unit_id in self._overflow_warned:
             return
-        with contextlib.suppress(OSError):
-            if overflow.path.exists() and overflow.path.stat().st_size >= _MAX_OVERFLOW_FILE_BYTES:
-                self._overflow_warned.add(unit_id)
-                overflow.disable()
-                self.emit_activity_line(
-                    unit_id,
-                    "progress",
-                    f"[overflow log full, raw content for {unit_id} discarded]",
-                )
+        if overflow.size_bytes >= _MAX_OVERFLOW_FILE_BYTES or overflow.is_disabled:
+            self._overflow_warned.add(unit_id)
+            overflow.disable()
+            self.emit_activity_line(
+                unit_id,
+                "progress",
+                f"\\[overflow log full, raw content for {unit_id} discarded]",
+            )
 
     def _emit_drop_warning(self, unit_id: str) -> None:
         """Check and emit a debounced WARN for dropped ring-buffer lines."""
@@ -1338,8 +1357,8 @@ class ParallelDisplay:
         )
 
         if condensed_flag:
-            self._check_overflow_size(unit_id, overflow)
             overflow.append(text)
+            self._check_overflow_size(unit_id, overflow)
 
         effective_summary_line = summary_line
         if (

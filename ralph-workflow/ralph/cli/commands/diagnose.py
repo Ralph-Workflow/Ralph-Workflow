@@ -15,6 +15,7 @@ from rich.text import Text
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
+from ralph.diagnostics.fs_health import FsHealth
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.operations import find_repo_root, is_repo_clean
@@ -65,6 +66,16 @@ def _load_starter_prompt_sentinel() -> str:
     )
 
 
+def _run_fs_health_for_diagnose(workspace_root: Path) -> FsHealth:
+    """Build an :class:`FsHealth` snapshot for the diagnose CLI.
+
+    Test seam: production delegates to :meth:`FsHealth.gather`; tests
+    monkeypatch this attribute to inject a stubbed snapshot without
+    running ``mdutil`` / ``.fseventsd`` probes.
+    """
+    return FsHealth.gather(workspace_root)
+
+
 def diagnose_command(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
@@ -95,6 +106,7 @@ def diagnose_command(
     config_ok &= _check_mcp_servers(workspace_scope, display=display)
     config_ok &= _check_workspace_files(display=display)
     _check_capability_state(display=display)
+    _check_filesystem_health(workspace_scope.root, display=display)
 
     # Pre-flight validation using policy system
     validation_ok = _run_preflight_validation(
@@ -690,6 +702,68 @@ def _check_workspace_files(*, display: object) -> bool:
             rows.append((file_label, Text("Not found", style="theme.status.warning"), "", "", ""))
 
     _emit_simple_table(display, "Workspace Files", rows)
+    return True
+
+
+def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
+    """Render the FsHealth snapshot (RFC-013 P4) into the diagnose output.
+
+    Builds the section from a real :class:`FsHealth.gather` (via the
+    :func:`_run_fs_health_for_diagnose` test seam) so the operator-facing
+    "External-volume filesystem hygiene" mitigations surface here as the
+    docs/sphinx/diagnostics.md documentation promises. The function
+    always returns True — fs-health findings are advisory and must not
+    flip ``config_ok``.
+    """
+    from ralph.display.parallel_display import ParallelDisplay
+
+    assert isinstance(display, ParallelDisplay)
+    fs_health = _run_fs_health_for_diagnose(workspace_root)
+
+    spotlight_cell: Text
+    if fs_health.spotlight_indexing_enabled is True:
+        spotlight_cell = Text("Enabled", style="theme.status.warning")
+    elif fs_health.spotlight_indexing_enabled is False:
+        spotlight_cell = Text("Disabled", style="theme.status.success")
+    else:
+        spotlight_cell = Text("Unknown", style="theme.text.muted")
+
+    journal_bytes = fs_health.fsevents_journal_bytes
+    if journal_bytes is None:
+        journal_cell: Text = Text("Unknown", style="theme.text.muted")
+    else:
+        journal_mb = journal_bytes / (1024 * 1024)
+        style = (
+            "theme.status.warning"
+            if journal_bytes > 50 * 1024 * 1024
+            else "theme.status.success"
+        )
+        journal_cell = Text(f"{journal_mb:.1f} MB", style=style)
+
+    warnings_count = len(fs_health.warnings)
+    if warnings_count == 0:
+        warnings_cell: Text = Text("none", style="theme.status.success")
+    else:
+        warnings_cell = Text(
+            f"{warnings_count} warning(s)", style="theme.status.warning"
+        )
+
+    rows: list[tuple[object, ...]] = [
+        (
+            fs_health.volume_root,
+            spotlight_cell,
+            journal_cell,
+            warnings_cell,
+            "",
+        )
+    ]
+    _emit_simple_table(display, "Filesystem Health", rows)
+
+    if fs_health.warnings:
+        warning_lines = "\n".join(f"  \u2022 {warning}" for warning in fs_health.warnings)
+        warning_lines = warning_lines + "\n\n  See: External-volume filesystem hygiene in docs."
+        display.emit_info_panel(title="Filesystem Health Warnings", content=warning_lines)
+
     return True
 
 
