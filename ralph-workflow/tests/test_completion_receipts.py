@@ -186,3 +186,89 @@ def test_delete_receipt_silent_when_db_unavailable(
     # unlink path below the DB block.
     delete_artifact_receipt(tmp_path, "run-1", "commit_message")
     assert not legacy.exists()
+
+
+def test_write_receipt_falls_back_to_legacy_when_db_write_fails(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Durable-fallback contract: when the DB write raises ``sqlite3.Error``
+    (locked / corrupt / unsupported), the receipt MUST land in the legacy
+    file path so the completion gate still has durable evidence. A
+    silent no-op under DB failure would report success while leaving no
+    authoritative completion marker.
+    """
+    class _FakeFailingDB:
+        def upsert_receipt(self, *args: object, **kwargs: object) -> None:
+            raise sqlite3.OperationalError("database is locked")
+
+        def close(self) -> None:
+            return None
+
+    def _open_failing_db(workspace_root: Path) -> object:
+        return _FakeFailingDB()
+
+    monkeypatch.setattr(receipts_module, "_open_db", _open_failing_db)
+
+    # Call should NOT raise \u2014 the durable fallback is the legacy file.
+    write_artifact_receipt(tmp_path, "run-1", "commit_message")
+
+    # Legacy file now holds the authoritative receipt.
+    legacy_path = (
+        tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    )
+    assert legacy_path.exists()
+    payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+    assert payload["run_id"] == "run-1"
+    assert payload["artifact_type"] == "commit_message"
+
+
+def test_write_receipt_dual_persistence_db_and_legacy(
+    tmp_path: Path,
+) -> None:
+    """When the DB write succeeds AND the legacy-write fallback path is
+    invoked, both stores must agree: receipt is present after either
+    delete-one-side test."""
+    write_artifact_receipt(tmp_path, "run-1", "commit_message")
+    # Success path: legacy file is NOT created (production writes go to DB only).
+    legacy_path = (
+        tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    )
+    assert not legacy_path.exists()
+    # Read returns True: DB row is present.
+    assert artifact_receipt_present(tmp_path, "run-1", "commit_message") is True
+
+
+def test_write_receipt_legacy_file_with_hmac_round_trips(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Durable fallback path stores the HMAC so a read with a different
+    secret is still rejected."""
+
+    def _open_failing_db(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.DatabaseError("locked")
+
+    monkeypatch.setattr(receipts_module, "_open_db", _open_failing_db)
+
+    write_artifact_receipt(
+        tmp_path, "run-1", "commit_message", receipt_secret="s3cret"
+    )
+
+    legacy_path = (
+        tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    )
+    payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+    assert payload["hmac"] == _receipt_hmac("s3cret", "run-1", "commit_message")
+    # HMAC must verify under the same secret:
+    assert (
+        artifact_receipt_present(
+            tmp_path, "run-1", "commit_message", receipt_secret="s3cret"
+        )
+        is True
+    )
+    # ... and reject under a mismatching secret:
+    assert (
+        artifact_receipt_present(
+            tmp_path, "run-1", "commit_message", receipt_secret="wrong"
+        )
+        is False
+    )

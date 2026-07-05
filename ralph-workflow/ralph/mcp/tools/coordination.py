@@ -122,12 +122,16 @@ def _write_completion_sentinel(
 
     Storage (RFC-013 P3): sentinels are written to ``.agent/state.db``
     via ``RunStateDB`` (one row per ``run_id``). The legacy ``.agent/
-    completion_seen_<run_id>.json`` file path is NOT written during
-    production rollout; it is preserved only as a read-fallback in
-    ``_check_completion_sentinel`` so an in-flight run surviving an
-    upgrade still passes its completion gate. When ``_write_fn`` is
-    provided the test seam captures the payload without performing any
-    disk or DB I/O.
+    completion_seen_<run_id>.json`` file path is preserved as a
+    read-fallback during the dual-read rollout window.
+
+    Durable-fallback: when ``RunStateDB`` raises ``sqlite3.Error`` or
+    ``OSError`` (locked / corrupt / unsupported WAL / disk full), this
+    function falls back to writing the legacy file path so the
+    completion gate always has durable evidence. The HMAC is included
+    in both stores when ``sentinel_hmac`` is provided. When ``_write_fn``
+    is provided the test seam captures the payload without performing
+    any disk or DB I/O.
     """
     if workspace is None:
         return
@@ -152,14 +156,56 @@ def _write_completion_sentinel(
         return
 
     root_value: object | None = getattr(workspace, "root", None)
-    if isinstance(root_value, Path):
+    if not isinstance(root_value, Path):
+        return
+
+    db_written = False
+    db: RunStateDB | None = None
+    try:
         db = RunStateDB(root_value)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
         try:
             hmac_hex_value: str | None = sentinel_payload.get("hmac")
             db.upsert_completion_sentinel(run_id, hmac_hex_value)
+            db_written = True
+        except sqlite3.Error:
+            pass  # Will fall through to legacy-file durable fallback below.
         finally:
-            db.close()
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
 
+    if db_written:
+        return
+
+    _write_legacy_sentinel_fallback(root_value, run_id, payload)
+
+
+def _write_legacy_sentinel_fallback(
+    workspace_root: Path, run_id: str, payload: str
+) -> None:
+    """Write the legacy ``.agent/completion_seen_<run_id>.json`` fallback.
+
+    Used by ``_write_completion_sentinel`` only when the RunStateDB write
+    fails (sqlite3.Error / OSError on open or upsert). The payload is
+    already JSON-encoded by the caller; this helper only handles the
+    file creation path under ``.agent/``.
+
+    Failure modes: when the workspace filesystem itself is unwritable
+    (both ``.agent`` mkdir and the file write raise ``OSError``), the
+    function returns silently. The completion gate will then fall
+    through to file-only reads, which is the same contract as a
+    pre-P3 rollout.
+    """
+    sentinel_path = workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(
+        run_id=run_id
+    )
+    try:
+        sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+        sentinel_path.write_text(payload, encoding="utf-8")
+    except OSError:
+        return  # Both DB and legacy paths failed - nothing durable to write.
 
 #: Stable machine-readable marker appended to every progress report. The idle
 #: watchdog's activity classifier keys on this to route repeated progress reports

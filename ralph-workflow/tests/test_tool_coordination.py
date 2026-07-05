@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -158,6 +160,76 @@ def test_report_progress_accepts_injected_timestamp() -> None:
     )
 
     assert "timestamp=123" in cast("ToolContent", result.content[0]).text
+
+
+def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RFC-013 P3 durable-fallback: when ``RunStateDB`` raises
+    ``sqlite3.Error`` (locked / corrupt / unsupported WAL), the
+    completion sentinel MUST land in the legacy
+    ``.agent/completion_seen_<run_id>.json`` file path so the completion
+    gate still has durable evidence.
+    """
+
+    class _RootWorkspace:
+        def __init__(self, root: Path) -> None:
+            self.root = root
+
+        def absolute_path(self, path: str) -> str:
+            return str(self.root / path)
+
+    workspace = _RootWorkspace(tmp_path)
+
+    def _raise_sqlite(*args: object, **kwargs: object) -> object:
+        raise sqlite3.DatabaseError("locked")
+
+    monkeypatch.setattr(coordination_module, "RunStateDB", _raise_sqlite)
+
+    # Must not raise; the durable fallback is the legacy file.
+    coordination_module._write_completion_sentinel(workspace, "run-fallback-1")
+
+    legacy_path = (
+        tmp_path / ".agent" / "completion_seen_run-fallback-1.json"
+    )
+    assert legacy_path.exists()
+    payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+    assert payload["run_id"] == "run-fallback-1"
+
+
+def test_write_completion_sentinel_durable_fallback_with_hmac(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same durable-fallback contract, but threaded with the broker secret
+    so the HMAC is bound and a forged secret cannot read it back."""
+
+    class _RootWorkspace:
+        def __init__(self, root: Path) -> None:
+            self.root = root
+
+        def absolute_path(self, path: str) -> str:
+            return str(self.root / path)
+
+    workspace = _RootWorkspace(tmp_path)
+
+    def _raise_sqlite(*args: object, **kwargs: object) -> object:
+        raise sqlite3.DatabaseError("locked")
+
+    monkeypatch.setattr(coordination_module, "RunStateDB", _raise_sqlite)
+
+    coordination_module._write_completion_sentinel(
+        workspace, "run-fallback-hmac", sentinel_hmac="broker-real"
+    )
+
+    legacy_path = (
+        tmp_path / ".agent" / "completion_seen_run-fallback-hmac.json"
+    )
+    payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+    assert payload["run_id"] == "run-fallback-hmac"
+    expected_hmac = __import__("hmac").new(
+        b"broker-real", b"run-fallback-hmac", __import__("hashlib").sha256
+    ).hexdigest()
+    assert payload["hmac"] == expected_hmac
 
 
 def test_coordinate_accepts_injected_timestamp() -> None:

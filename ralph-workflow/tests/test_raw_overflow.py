@@ -139,14 +139,25 @@ def test_size_bytes_returns_bytes_written_when_disabled(tmp_path: Path) -> None:
     assert log.size_bytes == log._bytes_written
 
 
-def test_size_bytes_returns_zero_when_file_missing_after_write(tmp_path: Path) -> None:
+def test_size_bytes_authoritative_even_when_file_unlinked_after_write(
+    tmp_path: Path,
+) -> None:
+    """Watchdog liveness contract: size_bytes must advance on every append,
+    independent of on-disk visibility. A file that an operator, a sanitizer,
+    or a chmod-000 directory just unlinked must NOT zero the counter back.
+    """
     log = RawOverflowLog(tmp_path, "unit-1")
     log.append("some content")
     log.flush()
+    expected = len(b"some content\n")
     assert log.path.exists()
     log.path.unlink()
     assert not log.path.exists()
-    assert log.size_bytes == 0
+    # The in-memory counter is the authoritative liveness signal;
+    # the watchdog must still see growth.
+    assert log.size_bytes == expected
+    assert log.size_bytes == log._bytes_written
+    log.close()
 
 
 def test_size_bytes_returns_zero_when_prior_run_file_exists(tmp_path: Path) -> None:
