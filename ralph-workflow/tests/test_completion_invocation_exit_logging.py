@@ -167,3 +167,37 @@ def test_stale_session_exit_with_empty_stderr_does_not_crash_and_logs_meaningful
     assert "stale session" in logged.lower()
     assert "1" in logged
     assert "WARNING" in levels
+
+
+def test_stale_session_exit_with_generic_stderr_surfaces_parsed_output_evidence() -> None:
+    """Mixed case: ``reset_session=True`` is inferred from a stale-session
+    marker carried in ``parsed_output`` (e.g. an agent that prints
+    ``Error: Session not found`` to stdout while stderr says something
+    generic like ``agent exited``). The structured stale-session log line
+    must STILL surface the parsed-output evidence -- the generic stderr does
+    not name the failure, so suppressing the parsed_output evidence here
+    would drop the only concrete stale-session clue and the operator would
+    see the misleading ``(suppressed -- stderr already names the failure)``
+    placeholder next to a stderr that doesn't actually name anything."""
+    exc = AgentInvocationError(
+        "opencode",
+        1,
+        "agent exited",
+        parsed_output=["Error: Session not found"],
+    )
+
+    logged = _capture_logs(exc)
+    levels = _capture_levels(exc)
+
+    # The structured stale-session recovery branch is taken.
+    assert "stale session" in logged.lower()
+    assert "resetting session" in logged.lower() or "fresh session" in logged.lower()
+    assert "WARNING" in levels
+    assert "ERROR" not in levels
+    # The parsed_output evidence is surfaced (NOT suppressed) because the
+    # generic stderr does not actually name a stale-session marker.
+    assert "Error: Session not found" in logged
+    assert "(suppressed -- stderr already names the failure)" not in logged
+    # The generic stderr is still surfaced too, for completeness.
+    assert "agent exited" in logged
+    assert "1" in logged

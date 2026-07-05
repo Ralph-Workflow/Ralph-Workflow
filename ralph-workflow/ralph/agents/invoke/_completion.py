@@ -27,7 +27,11 @@ from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.teardown import teardown_subtree
-from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.failure_classifier import (
+    SESSION_NOT_FOUND_SUBSTRINGS,
+    FailureClassifier,
+)
+from ralph.recovery.failure_details import contains_casefolded_marker
 
 #: Hard upper bound on the bytes captured from the subprocess stderr pipe on
 #: a non-zero exit. A crashing agent that spews megabytes of traceback to
@@ -498,22 +502,29 @@ def _log_invocation_exit(exc: AgentInvocationError) -> None:
         # Stale-session recovery: the operator-visible log line must name the
         # recovery action ("resetting session id, retrying with a fresh
         # session") so this is clearly distinguishable from a generic retryable
-        # exit. When stderr already names the failure (e.g. "Error: Session
-        # not found"), suppress the misleading "(no output captured)"
-        # placeholder; appending it next to meaningful stderr is confusing.
+        # exit. The "(no output captured)" placeholder from
+        # ``summarize_retry_failure_evidence`` is suppressed ONLY when stderr
+        # actually carries a stale-session marker -- matching the same
+        # ``SESSION_NOT_FOUND_SUBSTRINGS`` vocabulary the classifier already
+        # used to set ``reset_session=True``. Generic non-empty stderr (e.g.
+        # ``"agent exited"``) is not sufficient: the parsed_output often holds
+        # the only concrete stale-session clue (a marker like ``Error: Session
+        # not found`` carried in stdout) and the operator must still see it.
         # When stderr is empty, fall back to the summarized evidence (which
         # itself may return "(no output captured)") so the operator still gets
         # a useful diagnostic line. Any future hardening of the evidence
         # payload (e.g. deque(maxlen=N) per AGENTS.md bounded-accumulator rule)
         # is a follow-up; the same risk applies to the existing
         # summarize_retry_failure_evidence path used by the legacy branches.
-        stderr_meaningful = bool(exc.stderr and exc.stderr.strip())
+        stderr_has_session_marker = contains_casefolded_marker(
+            [exc.stderr] if exc.stderr else [], SESSION_NOT_FOUND_SUBSTRINGS
+        )
         evidence_field = (
             "(suppressed -- stderr already names the failure)"
-            if stderr_meaningful
+            if stderr_has_session_marker
             else summarize_retry_failure_evidence(exc.parsed_output)
         )
-        stderr_field = exc.stderr if stderr_meaningful else "(empty)"
+        stderr_field = exc.stderr if (exc.stderr and exc.stderr.strip()) else "(empty)"
         logger.warning(
             "Stale session detected for agent={} (phase=invoke): "
             "resetting session id, retrying with a fresh session. "
