@@ -22,14 +22,16 @@ read-only fallback.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
+import sqlite3
 from pathlib import Path
 from typing import cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
+from ralph.mcp.artifacts.state_db import MISSING, RunStateDB, _Missing
 
 #: Directory (workspace-relative) holding every receipt for a single run.
 RECEIPT_DIR_RELPATH_FMT = ".agent/receipts/{run_id}"
@@ -124,19 +126,22 @@ def write_artifact_receipt(
     # the legacy ``.agent/receipts/<run_id>/<artifact_type>.json`` file
     # path is read-only fallback during the dual-read rollout window so
     # receipts left behind by the pre-upgrade release are still honored.
-    # The ``backend`` parameter is preserved for API compatibility but is
-    # no longer used to write the receipt file in production.
-    # Best-effort: a DB-init failure (read-only filesystem, locked DB)
-    # must not break the receipt contract because the legacy file is
-    # read-only fallback during the dual-read window.
+    # Best-effort for SQLite failures: ``sqlite3.Error`` (locked/corrupt/
+    # unsupported WAL) is silently ignored so artifact submission can succeed
+    # even when RunStateDB is unavailable. The receipt is not persisted, but
+    # the artifact file is written. Other errors (RuntimeError, OSError from
+    # bad args) propagate to trigger rollback in ``execute_ops_with_rollback``.
     try:
         db = _open_db(workspace_root)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, sqlite3.Error):
         return
     try:
         db.upsert_receipt(run_id, artifact_type, hmac_hex)
+    except sqlite3.Error:
+        pass  # Best-effort: SQLite failures are OK
     finally:
-        db.close()
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            db.close()
 
 
 def artifact_receipt_present(
@@ -163,7 +168,7 @@ def artifact_receipt_present(
     """
     try:
         db = _open_db(workspace_root)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, sqlite3.Error):
         # DB unavailable — fall back to the legacy file path.
         return _legacy_file_receipt_present(
             workspace_root,
@@ -172,9 +177,21 @@ def artifact_receipt_present(
             backend=backend,
             receipt_secret=receipt_secret,
         )
+    stored: str | None | _Missing
     try:
         stored = db.get_receipt_hmac(run_id, artifact_type)
-    finally:
+    except (OSError, RuntimeError, sqlite3.Error):
+        # DB read failed; close and fall back to legacy file path.
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            db.close()
+        return _legacy_file_receipt_present(
+            workspace_root,
+            run_id,
+            artifact_type,
+            backend=backend,
+            receipt_secret=receipt_secret,
+        )
+    with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
         db.close()
 
     if stored is not MISSING:
@@ -211,13 +228,14 @@ def delete_artifact_receipt(
     """
     try:
         db = _open_db(workspace_root)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, sqlite3.Error):
         db = None
     if db is not None:
         try:
             db.delete_receipt(run_id, artifact_type)
         finally:
-            db.close()
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
     backend.unlink(_receipt_path(workspace_root, run_id, artifact_type), missing_ok=True)
 
 
@@ -237,13 +255,14 @@ def clear_run_receipts(
     """
     try:
         db = _open_db(workspace_root)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, sqlite3.Error):
         db = None
     if db is not None:
         try:
             db.clear_run_receipts(run_id)
         finally:
-            db.close()
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
     receipt_dir = _receipt_dir(workspace_root, run_id)
     for path in backend.glob(receipt_dir, "*.json"):
         backend.unlink(path, missing_ok=True)

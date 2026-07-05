@@ -985,6 +985,9 @@ def _run_subprocess_and_read_lines(
                 last_evidence_summary=evidence_summary_str,
                 elapsed_seconds=elapsed_value,
                 transcript_tail=transcript_tail,
+                # di-seam-allowlist: composition-root reads broker secret for completion validation.
+                sentinel_secret=os.environ.get("RALPH_BROKER_SECRET"),
+                receipt_secret=os.environ.get("RALPH_BROKER_SECRET"),
             ),
             _clock=clock,
         )

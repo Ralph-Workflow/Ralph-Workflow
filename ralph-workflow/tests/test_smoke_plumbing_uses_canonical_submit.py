@@ -82,6 +82,7 @@ class _SmokeSession:
     session_id = "sess-smoke"
     run_id = "interactive-claude-smoke"
     drain = "development"
+    broker_secret = None
 
     def check_capability(self, capability: str) -> object:
         del capability

@@ -173,7 +173,15 @@ class TestPostExitViaCheckProcessResult:
         )
 
 
-def _no_signals() -> CompletionSignals:
+def _no_signals(
+    workspace: object = None,
+    raw_output: object = None,
+    *,
+    required_artifact: object = None,
+    run_id: object = None,
+    sentinel_secret: object = None,
+    receipt_secret: object = None,
+) -> CompletionSignals:
     return CompletionSignals(
         explicit_complete=False,
         required_artifact_present=False,

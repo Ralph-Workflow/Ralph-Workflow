@@ -13,8 +13,11 @@ DB only; legacy file paths are read-fallback during the dual-read window.
 from __future__ import annotations
 
 import json
+import sqlite3
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts import completion_receipts as receipts_module
 from ralph.mcp.artifacts.completion_receipts import (
     _receipt_hmac,
     artifact_receipt_present,
@@ -24,7 +27,7 @@ from ralph.mcp.artifacts.completion_receipts import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from _pytest.monkeypatch import MonkeyPatch
 
 
 def test_receipt_present_after_write(tmp_path: Path) -> None:
@@ -120,3 +123,66 @@ def test_dual_target_delete_removes_legacy_file(tmp_path: Path) -> None:
     # legacy file is gone (dual-target), DB row gone
     assert not legacy.exists()
     assert artifact_receipt_present(tmp_path, "run-1", "plan") is False
+
+
+# ----------------------------------------------------------------------------
+# RFC-013 P3 risk-mitigation: ``sqlite3.Error`` from ``RunStateDB`` must
+# never break the receipt contract. The write helper fallbacks to a
+# silent no-op (the legacy read-only fallback window still has the
+# pre-upgrade receipt on disk). The read helper falls back to the
+# legacy file path so a forged / corrupt DB does not block the
+# completion gate.
+# ----------------------------------------------------------------------------
+
+
+def test_write_receipt_silent_when_db_unavailable(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """``write_artifact_receipt`` swallows ``sqlite3.Error`` from the
+    DB open path; no exception propagates to the caller."""
+    def _raise_sqlite_error(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite_error)
+
+    # Must not raise; the receipt write is best-effort during the
+    # dual-read window.
+    write_artifact_receipt(tmp_path, "run-1", "commit_message")
+
+
+def test_read_receipt_falls_back_to_legacy_when_db_unavailable(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """``artifact_receipt_present`` falls back to the legacy file path
+    when the DB raises (locked / corrupt / unsupported state)."""
+    legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(json.dumps({"run_id": "run-1", "artifact_type": "commit_message"}))
+
+    def _raise_sqlite_error(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.DatabaseError("unsupported")
+
+    monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite_error)
+
+    # Legacy file path is honored despite the DB failure.
+    assert artifact_receipt_present(tmp_path, "run-1", "commit_message") is True
+
+
+def test_delete_receipt_silent_when_db_unavailable(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """``delete_artifact_receipt`` swallows ``sqlite3.Error`` from the
+    DB open path and still unlinks the legacy file (dual-target)."""
+    legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(json.dumps({"run_id": "run-1", "artifact_type": "commit_message"}))
+
+    def _raise_sqlite_error(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.DatabaseError("unsupported")
+
+    monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite_error)
+
+    # Must not raise; legacy file is still removed by the dual-target
+    # unlink path below the DB block.
+    delete_artifact_receipt(tmp_path, "run-1", "commit_message")
+    assert not legacy.exists()

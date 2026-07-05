@@ -404,8 +404,18 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
 
 
 def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_ID) -> bool:
-    """Return whether a smoke test result artifact was submitted via canonical path."""
-    return is_artifact_submitted(workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
+    """Return whether a smoke test result artifact was submitted via canonical path.
+
+    Direct os.environ.get() is a composition-root read for a test infrastructure
+    bridge that constructs per-test environments; not injectable in test context.
+    di-seam-allowlist: composition-root test infrastructure.
+    """
+    return is_artifact_submitted(
+        workspace_root,
+        run_id,
+        SMOKE_TEST_RESULT_ARTIFACT_TYPE,
+        receipt_secret=os.environ.get("RALPH_BROKER_SECRET"),
+    )
 
 
 def _explicit_completion_seen(
@@ -486,7 +496,12 @@ def _meaningful_output_error(
 
 
 def _agy_binary_override_env() -> str | None:
-    """Return the raw ``RALPH_AGY_BINARY`` env value, if set."""
+    """Return the raw ``RALPH_AGY_BINARY`` env value, if set.
+
+    Direct os.environ.get() is a composition-root read for a test infrastructure
+    bridge that constructs per-test environments; not injectable in test context.
+    di-seam-allowlist: composition-root test infrastructure.
+    """
     return os.environ.get("RALPH_AGY_BINARY")
 
 

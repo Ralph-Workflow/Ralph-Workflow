@@ -68,6 +68,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 
@@ -127,6 +129,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             evaluate_calls[0] += 1
             return CompletionSignals(False, False, ())
@@ -191,6 +195,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 
@@ -265,6 +271,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
@@ -311,6 +319,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
@@ -372,6 +382,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
@@ -417,6 +429,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             call_count[0] += 1
             # First poll (inside wait loop): no completion
@@ -476,6 +490,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] == 1:
@@ -523,6 +539,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 
@@ -601,6 +619,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
             *,
             required_artifact: object = None,
             run_id: object = None,
+            sentinel_secret: object = None,
+            receipt_secret: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 

@@ -27,6 +27,8 @@ if TYPE_CHECKING:
             *,
             required_artifact: RequiredArtifact | None = None,
             run_id: str | None = None,
+            sentinel_secret: str | None = None,
+            receipt_secret: str | None = None,
         ) -> CompletionSignals: ...
 
 

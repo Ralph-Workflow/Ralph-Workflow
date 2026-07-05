@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -121,10 +122,13 @@ def _db_sentinel_lookup(workspace: Path, run_id: str) -> tuple[bool | None, str 
     """
     try:
         db = RunStateDB(workspace)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, sqlite3.Error):
         return None, None
     try:
-        stored = db.get_completion_sentinel_hmac(run_id)
+        try:
+            stored = db.get_completion_sentinel_hmac(run_id)
+        except (OSError, RuntimeError, sqlite3.Error):
+            return None, None
     finally:
         db.close()
     if stored is MISSING:
@@ -219,6 +223,7 @@ def is_artifact_submitted(
     artifact_type: str,
     *,
     deps: ArtifactHandlerDeps | None = None,
+    receipt_secret: str | None = None,
 ) -> bool:
     """Return True when a canonical receipt exists or can be promoted from fallback.
 
@@ -227,8 +232,13 @@ def is_artifact_submitted(
     promote a fallback file written by the agent (``.agent/tmp/<type>.json`` or
     ``.agent/artifacts/<type>.json``) through the canonical submit path so a
     receipt is stamped.
+
+    Args:
+        receipt_secret: RFC-013 P3 broker-owned secret for HMAC verification
+            of the receipt. ``None`` falls back to the pre-P3 contract (no
+            HMAC verification).
     """
-    if artifact_receipt_present(workspace, run_id, artifact_type):
+    if artifact_receipt_present(workspace, run_id, artifact_type, receipt_secret=receipt_secret):
         return True
 
     result = promote_fallback_artifact(workspace, artifact_type, deps=deps, run_id=run_id)
@@ -241,6 +251,8 @@ def evaluate_completion(
     *,
     required_artifact: RequiredArtifact | None = None,
     run_id: str | None = None,
+    sentinel_secret: str | None = None,
+    receipt_secret: str | None = None,
 ) -> CompletionSignals:
     """Check whether the agent run produced a required artifact or explicit completion.
 
@@ -256,6 +268,22 @@ def evaluate_completion(
         workspace: Workspace root path.
         raw_output: Raw NDJSON lines from agent stdout for explicit-completion detection.
         required_artifact: Policy-derived artifact metadata.
+        run_id: Run id used to key the run-scoped completion sentinel.
+        sentinel_secret: RFC-013 P3: broker-owned secret for HMAC verification
+            of the completion sentinel. ``None`` falls back to the pre-P3
+            contract (no HMAC verification; legacy fall-through path).
+            Threading a secret through this parameter is what stops a
+            model with workspace write capabilities from forging a
+            sentinel — the matching write side must also thread the
+            same secret (see ``handle_declare_complete`` in
+            ``ralph.mcp.tools.coordination``).
+        receipt_secret: RFC-013 P3: broker-owned secret for HMAC verification
+            of the artifact submission receipt. ``None`` falls back to the
+            pre-P3 contract (no HMAC verification). Threading a secret through
+            this parameter stops a model with workspace write capabilities from
+            forging a receipt — the matching write side must also thread the
+            same secret (see ``handle_submit_artifact`` in
+            ``ralph.mcp.tools.artifact``).
 
     Returns:
         CompletionSignals reflecting current artifact state and explicit completion.
@@ -263,7 +291,9 @@ def evaluate_completion(
     explicit = extract_explicit_completion(raw_output or [])
     ra = required_artifact
     sentinel_present = (
-        _check_completion_sentinel(workspace, run_id) if run_id is not None else False
+        _check_completion_sentinel(workspace, run_id, sentinel_secret=sentinel_secret)
+        if run_id is not None
+        else False
     )
     if ra is None:
         return CompletionSignals(
@@ -282,13 +312,15 @@ def evaluate_completion(
     # not threaded, completion cannot be determined from the artifact
     # alone; callers that need a fallback must thread ``run_id``.
     present = (
-        is_artifact_submitted(workspace, run_id, ra.artifact_type)
+        is_artifact_submitted(workspace, run_id, ra.artifact_type, receipt_secret=receipt_secret)
         if (run_id is not None)
         else False
     )
     optional = not ra.artifact_required
     sentinel_present = (
-        _check_completion_sentinel(workspace, run_id) if run_id is not None else False
+        _check_completion_sentinel(workspace, run_id, sentinel_secret=sentinel_secret)
+        if run_id is not None
+        else False
     )
     return CompletionSignals(
         explicit_complete=explicit,

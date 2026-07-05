@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+import sqlite3
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -236,17 +237,26 @@ def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> Non
     cleared via ``RunStateDB``; the legacy on-disk sentinel file (left
     behind by pre-upgrade releases) is also unlinked (dual-target) so a
     stale sentinel cannot survive the clear.
+
+    Best-effort: ``sqlite3.Error`` is included in the catch tuple so a
+    locked / corrupt / unsupported SQLite state does not block startup;
+    the legacy file unlink still runs in that case.
     """
     try:
         db = RunStateDB(workspace_path)
+    except (OSError, RuntimeError, sqlite3.Error):
+        db = None
+    if db is not None:
         try:
-            db.delete_completion_sentinel(run_id)
-            db.clear_run_receipts(run_id)
+            try:
+                db.delete_completion_sentinel(run_id)
+                db.clear_run_receipts(run_id)
+            except (OSError, RuntimeError, sqlite3.Error):
+                # Best-effort: a missing state.db or locked DB must not
+                # block start-up; the legacy file unlink still runs.
+                pass
         finally:
             db.close()
-    except (OSError, RuntimeError):
-        # Best-effort: a missing state.db or locked DB must not block start-up.
-        pass
     sentinel_path = workspace_path / f".agent/completion_seen_{run_id}.json"
     sentinel_path.unlink(missing_ok=True)
     clear_run_receipts(workspace_path, run_id)

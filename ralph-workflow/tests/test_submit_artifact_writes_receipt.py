@@ -9,6 +9,7 @@ simultaneously).
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,7 @@ class _Session:
     run_id: str = "run-1"
     drain: str = "development_commit"
     granted_capabilities: frozenset[str] = field(default_factory=lambda: _GRANTED)
+    broker_secret: str | None = None
 
     def check_capability(self, capability: str) -> bool:
         return capability in self.granted_capabilities
@@ -131,3 +133,77 @@ def test_submit_artifact_does_not_write_sentinel_for_planning_decision(
         "auto-write the completion sentinel; completion is the explicit "
         "finalize_plan / declare_complete call."
     )
+
+
+def test_submit_artifact_threads_broker_secret_to_receipt_hmac(
+    tmp_path: Path,
+) -> None:
+    """RFC-013 P3: when the session carries a broker_secret, the receipt
+    written by ``handle_submit_artifact`` is HMAC-bound to that secret.
+
+    This pins the live-wiring contract: a forged receipt (or a receipt
+    written without the secret) is rejected by the completion gate when
+    the broker configures HMAC enforcement.
+    """
+    backend = MemoryBackend()
+    workspace = MockWorkspace(tmp_path)
+    deps = ArtifactHandlerDeps(backend=backend)
+    session = _Session()
+    session.broker_secret = "live-broker-secret-12345"
+
+    result = handle_submit_artifact(session, workspace, _commit_params(), deps=deps)
+
+    assert result.is_error is False
+    assert (
+        artifact_receipt_present(
+            tmp_path,
+            "run-1",
+            "commit_message",
+            backend=backend,
+            receipt_secret="live-broker-secret-12345",
+        )
+        is True
+    )
+    assert (
+        artifact_receipt_present(
+            tmp_path,
+            "run-1",
+            "commit_message",
+            backend=backend,
+            receipt_secret="wrong-secret",
+        )
+        is False
+    )
+
+
+def test_submit_artifact_silent_when_runstate_db_raises_sqlite_error(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    """RFC-013 P3: every RunStateDB touch on the submit path is best-effort.
+
+    If ``RunStateDB`` raises ``sqlite3.Error`` (locked/corrupt/unsupported
+    WAL), the artifact submission itself must still succeed without
+    propagating the exception. The receipt and sentinel cannot be persisted
+    while the DB is unavailable, but the canonical artifact file must still
+    be written.
+    """
+    backend = MemoryBackend()
+    workspace = MockWorkspace(tmp_path)
+    deps = ArtifactHandlerDeps(backend=backend)
+
+    def _exploding_init(
+        self: object,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(
+        "ralph.mcp.artifacts.state_db.RunStateDB.__init__", _exploding_init
+    )
+
+    result = handle_submit_artifact(_Session(), workspace, _commit_params(), deps=deps)
+
+    assert result.is_error is False
+    assert backend.exists(tmp_path / ".agent" / "artifacts" / "commit_message.json")

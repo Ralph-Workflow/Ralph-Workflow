@@ -15,6 +15,7 @@ P3) is invoked with the same best-effort contract.
 from __future__ import annotations
 
 import shutil
+import sqlite3
 import time
 from typing import TYPE_CHECKING
 
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-from ralph.mcp.artifacts.state_db import RunStateDB
+from ralph.mcp.artifacts.state_db import DB_RELPATH, RunStateDB
 
 DEFAULT_MAX_AGE_SECONDS = 7 * 24 * 3600.0
 
@@ -123,15 +124,24 @@ def _sweep_run_state_db_rows(
     is provided, rows for that run are preserved regardless of age so
     the DB-backed retention behavior does not regress the in-flight
     run's own receipts and sentinels.
+
+    Side-effect free: when ``.agent/state.db`` is absent the sweep
+    does NOT create one. ``RunStateDB.__init__`` creates the database
+    on open, so this helper short-circuits on absence to avoid
+    turning the cleanup path into a state.db-creation path.
     """
+    db_path = workspace_root / DB_RELPATH
+    if not db_path.exists():
+        return 0
     try:
         db = RunStateDB(workspace_root)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, sqlite3.Error):
         return 0
     try:
-        return db.prune_older_than(cutoff, keep_run_id=keep_run_id)
-    except (OSError, RuntimeError):
-        return 0
+        try:
+            return db.prune_older_than(cutoff, keep_run_id=keep_run_id)
+        except (OSError, RuntimeError, sqlite3.Error):
+            return 0
     finally:
         db.close()
 

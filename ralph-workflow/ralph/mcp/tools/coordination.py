@@ -48,6 +48,7 @@ import hashlib
 import hmac
 import json
 import os
+import sqlite3
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -264,8 +265,20 @@ def handle_declare_complete(
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
-    with contextlib.suppress(OSError):
-        _write_completion_sentinel(workspace, session.run_id)
+    # RFC-013 P3: thread the broker-owned secret through the live
+    # write path so the sentinel payload includes an HMAC binding the
+    # run id to the secret. ``session.broker_secret`` is ``None`` when
+    # the broker has not configured HMAC enforcement; the underlying
+    # ``_write_completion_sentinel`` treats ``sentinel_hmac=None`` as
+    # "no HMAC" (pre-P3 contract).
+    broker_secret: str | None = getattr(session, "broker_secret", None)
+    # Best-effort: a transient filesystem / DB issue cannot mask the
+    # completion event. ``sqlite3.Error`` covers RunStateDB failure
+    # modes (locked / corrupt / unsupported) under RFC-013 P3.
+    with contextlib.suppress(OSError, sqlite3.Error):
+        _write_completion_sentinel(
+            workspace, session.run_id, sentinel_hmac=broker_secret
+        )
     message = (
         "Task declared complete: "
         f"session_id={session.session_id}, summary='{summary}', timestamp={now_fn()}\n"

@@ -65,10 +65,15 @@ def _all_mcp_session_members() -> list[str]:
 
 
 def test_mcp_session_protocol_has_expected_member_count() -> None:
-    """The Protocol must declare 20 members (the production contract)."""
+    """The Protocol must declare 21 members (the production contract).
+
+    Updated for RFC-013 P3: ``broker_secret`` is added to the
+    surface so the broker-owned HMAC secret can be threaded through
+    the live receipt / sentinel write paths.
+    """
     members = _all_mcp_session_members()
-    assert len(members) == 20, (
-        f"McpSession expected to declare 20 members, found {len(members)}: {members}"
+    assert len(members) == 21, (
+        f"McpSession expected to declare 21 members, found {len(members)}: {members}"
     )
 
 
@@ -110,6 +115,7 @@ def test_file_backed_session_returns_sensible_values_for_all_properties(
         "worker_namespace",
         "policy_flags",
         "stored_capability_profile",
+        "broker_secret",
     }
     for name in _all_mcp_session_members():
         if name in nullable:
