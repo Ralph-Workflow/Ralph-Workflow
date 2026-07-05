@@ -7,6 +7,7 @@ run-scoped completion receipt and the completion sentinel for single-shot types.
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import fields
 from typing import TYPE_CHECKING
 
@@ -21,7 +22,10 @@ from ralph.agents.completion_signals import (
 from ralph.agents.execution_state._helpers import _check_signals_terminal
 from ralph.mcp.artifacts import SubmitResult, submit_artifact_canonical
 from ralph.mcp.artifacts import state_db as state_db_module
-from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.artifacts.completion_receipts import (
+    ReceiptPersistenceError,
+    artifact_receipt_present,
+)
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
@@ -705,3 +709,92 @@ def test_stale_fallback_not_promoted_when_other_run_has_db_receipt(
     # Current run must NOT see the stale artifact as submitted.
     assert not is_artifact_submitted(tmp_path, "run-new", "development_result", deps=deps)
     assert not artifact_receipt_present(tmp_path, "run-new", "development_result", backend=backend)
+
+
+# ----------------------------------------------------------------------------
+# RFC-013 P3 fail-closed regression: ``ReceiptPersistenceError`` raised
+# by ``write_artifact_receipt`` MUST propagate through ``submit_artifact_canonical``
+# so the entire submit (artifact, handoff, implicit completion sentinel)
+# is unwound atomically. Without this, the agent could falsely claim the
+# run is complete against a missing receipt.
+# ----------------------------------------------------------------------------
+
+
+def test_submit_artifact_canonical_rolls_back_when_no_durable_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail-closed integration: when ``write_artifact_receipt`` cannot
+    persist the receipt through EITHER the DB OR the legacy-file path,
+    ``submit_artifact_canonical`` MUST raise ``ReceiptPersistenceError``
+    and roll back every previous op (artifact file, handoff)."""
+
+    def _raise_persistence(
+        *_args: object, **_kwargs: object
+    ) -> None:
+        raise ReceiptPersistenceError(
+            "Both DB and legacy paths failed to persist receipt for "
+            "run_id='run-1' artifact_type='commit_message'"
+        )
+
+    monkeypatch.setattr(
+        "ralph.mcp.tools.artifact.write_artifact_receipt",
+        _raise_persistence,
+    )
+
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+
+    with pytest.raises(ReceiptPersistenceError):
+        submit_artifact_canonical(
+            workspace_root=tmp_path,
+            artifact_type="commit_message",
+            parsed_content={"type": "commit", "subject": "feat: test"},
+            deps=deps,
+            run_id="run-1",
+        )
+
+    # Atomic rollback: artifact file is gone.
+    assert not backend.exists(
+        tmp_path / ".agent" / "artifacts" / "commit_message.json"
+    )
+    # No receipt row leaked into the DB.
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_receipt_hmac("run-1", "commit_message") is MISSING
+    finally:
+        db.close()
+
+
+def test_submit_artifact_canonical_succeeds_when_db_upsert_fails_but_legacy_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard for the dual-read window: when the DB upsert
+    raises ``sqlite3.Error`` BUT the legacy-file backend succeeds, the
+    submit MUST complete normally. The fail-closed ``ReceiptPersistenceError``
+    tightening must NOT regress callers that depend on the legacy
+    fallback during the P3 rollout window."""
+
+    def _raise_sqlite(*_args: object, **_kwargs: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(
+        state_db_module.RunStateDB, "upsert_receipt", _raise_sqlite, raising=True
+    )
+
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+
+    # Default backend writes the legacy fallback file successfully.
+    submit_artifact_canonical(
+        workspace_root=tmp_path,
+        artifact_type="commit_message",
+        parsed_content={"type": "commit", "subject": "feat: dual-read"},
+        deps=deps,
+        run_id="run-1",
+    )
+
+    # Legacy file path holds the receipt in the in-memory backend.
+    legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
+    assert backend.exists(legacy)

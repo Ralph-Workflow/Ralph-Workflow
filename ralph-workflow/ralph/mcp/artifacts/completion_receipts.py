@@ -37,6 +37,19 @@ from ralph.mcp.artifacts.state_db import MISSING, RunStateDB, _Missing
 RECEIPT_DIR_RELPATH_FMT = ".agent/receipts/{run_id}"
 
 
+class ReceiptPersistenceError(RuntimeError):
+    """Raised when both the RunStateDB and legacy-file paths fail to persist a receipt.
+
+    Without this guard, ``write_artifact_receipt`` returns successfully even
+    when no durable receipt was written \u2014 letting artifact submission
+    continue against a missing receipt and producing a silent failure
+    downstream when the completion gate reads it. ``execute_ops_with_rollback``
+    already propagates this exception upward to rollback the in-flight
+    submit (the receipt op is the last step, so the artifact and its
+    handoff would also be unrolled).
+    """
+
+
 def _receipt_dir(workspace_root: Path, run_id: str) -> Path:
     return workspace_root / RECEIPT_DIR_RELPATH_FMT.format(run_id=run_id)
 
@@ -149,13 +162,18 @@ def write_artifact_receipt(
     if db_written:
         return
 
-    _write_legacy_receipt_fallback(
+    legacy_written = _write_legacy_receipt_fallback(
         workspace_root,
         run_id,
         artifact_type,
         hmac_hex=hmac_hex,
         backend=backend,
     )
+    if not legacy_written:
+        raise ReceiptPersistenceError(
+            f"Both DB and legacy paths failed to persist receipt for "
+            f"run_id={run_id!r} artifact_type={artifact_type!r}"
+        )
 
 
 def _write_legacy_receipt_fallback(
@@ -165,13 +183,22 @@ def _write_legacy_receipt_fallback(
     *,
     hmac_hex: str | None,
     backend: FileBackend,
-) -> None:
+) -> bool:
     """Write the legacy ``.agent/receipts/<run_id>/<artifact_type>.json`` fallback.
 
     Used by ``write_artifact_receipt`` only when the RunStateDB write
     fails (sqlite3.Error on open or upsert). The HMAC is included in
     the payload when one was provided so a subsequent read with the
     same secret verifies and a mismatching secret rejects.
+
+    Returns:
+        ``True`` when the legacy receipt file was written;
+        ``False`` when ``OSError`` blocked the write (either the
+        ``.agent/receipts/<run_id>/`` mkdir or the file write).
+        A ``False`` return is the fail-closed signal that
+        ``write_artifact_receipt`` escalates into a
+        ``ReceiptPersistenceError`` so the artifact submit also
+        fails closed.
     """
     path = _receipt_path(workspace_root, run_id, artifact_type)
     payload: dict[str, object] = {"run_id": run_id, "artifact_type": artifact_type}
@@ -181,7 +208,8 @@ def _write_legacy_receipt_fallback(
         backend.mkdir(_receipt_dir(workspace_root, run_id), parents=True, exist_ok=True)
         backend.write_text(path, json.dumps(payload), encoding="utf-8")
     except OSError:
-        return  # Both DB and legacy paths failed - nothing durable to write.
+        return False  # Both DB and legacy paths failed - nothing durable to write.
+    return True
 
 
 def artifact_receipt_present(
@@ -291,7 +319,12 @@ def clear_run_receipts(
     with a reused ``run_id`` never inherits a stale "already submitted"
     signal. Clears both the DB rows and the legacy file paths.
     Best-effort: a missing or read-only ``.agent/state.db`` does not
-    block the call (the legacy file cleanup still proceeds).
+    block the call (the legacy file cleanup still proceeds). The DB
+    clear itself is also best-effort — a transient ``sqlite3.Error``
+    during ``RunStateDB.clear_run_receipts`` is suppressed so the
+    legacy-file cleanup below always runs, matching the RFC-013
+    retention contract that a single failure mode cannot abort
+    rerun / session cleanup.
     """
     try:
         db = _open_db(workspace_root)
@@ -299,7 +332,8 @@ def clear_run_receipts(
         db = None
     if db is not None:
         try:
-            db.clear_run_receipts(run_id)
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.clear_run_receipts(run_id)
         finally:
             with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
                 db.close()
@@ -310,6 +344,7 @@ def clear_run_receipts(
 
 __all__ = [
     "RECEIPT_DIR_RELPATH_FMT",
+    "ReceiptPersistenceError",
     "artifact_receipt_present",
     "clear_run_receipts",
     "delete_artifact_receipt",

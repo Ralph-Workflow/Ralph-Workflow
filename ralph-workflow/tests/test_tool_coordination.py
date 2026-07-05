@@ -55,9 +55,10 @@ def test_declare_complete_uses_session_run_id_for_sentinel_key(
         *,
         _write_fn: object = None,
         sentinel_hmac: object = None,
-    ) -> None:
+    ) -> bool:
         assert isinstance(workspace, MockWorkspace)
         seen.append((workspace.absolute_path(f".agent/completion_seen_{run_id}.json"), run_id))
+        return True
 
     monkeypatch.setattr(
         coordination_module, "_write_completion_sentinel", fake_write_completion_sentinel
@@ -130,15 +131,23 @@ def test_declare_complete_without_broker_secret_omits_hmac(
     assert captured["sentinel_hmac"] is None
 
 
-def test_declare_complete_best_effort_when_sentinel_write_fails(
+def test_declare_complete_fails_closed_when_sentinel_cannot_be_persisted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def raising_write_completion_sentinel(*args: object, **kwargs: object) -> None:
+    """Fail-closed contract: when ``_write_completion_sentinel`` reports
+    no durable sentinel was written, ``handle_declare_complete`` MUST
+    return ``ToolResult(is_error=True)`` instead of masquerading as a
+    success. A successful return without a durable sentinel would
+    let the agent falsely claim completion against a sentinel the
+    completion gate cannot see."""
+    def returning_false_write_completion_sentinel(*args: object, **kwargs: object) -> bool:
         del args, kwargs
-        raise OSError("disk full")
+        return False
 
     monkeypatch.setattr(
-        coordination_module, "_write_completion_sentinel", raising_write_completion_sentinel
+        coordination_module,
+        "_write_completion_sentinel",
+        returning_false_write_completion_sentinel,
     )
 
     result = handle_declare_complete(
@@ -148,7 +157,11 @@ def test_declare_complete_best_effort_when_sentinel_write_fails(
         now_fn=lambda: 456,
     )
 
-    assert "timestamp=456" in cast("ToolContent", result.content[0]).text
+    assert result.is_error is True
+    text = cast("ToolContent", result.content[0]).text
+    assert "Task completion rejected" in text
+    assert "durable completion sentinel" in text
+    assert "timestamp=456" not in text
 
 
 def test_report_progress_accepts_injected_timestamp() -> None:
@@ -266,3 +279,138 @@ def test_read_env_returns_not_found_when_missing() -> None:
 def test_read_env_requires_capability() -> None:
     with pytest.raises(CapabilityDeniedError):
         handle_read_env(MockDeniedSession(), MockWorkspace(), {"name": "X"}, env={})
+
+
+def test_read_env_refuses_broker_secret() -> None:
+    """A session granted ``env.read`` MUST NOT be able to recover the
+    broker-owned HMAC secret even when ``RALPH_BROKER_SECRET`` is in
+    the injected environment. Exposing it would let any agent forge
+    receipt/sentinel HMACs."""
+    result = handle_read_env(
+        MockCapableSession(),
+        MockWorkspace(),
+        {"name": "RALPH_BROKER_SECRET"},
+        env={"RALPH_BROKER_SECRET": "topsecret-broker-key"},
+    )
+    text = cast("ToolContent", result.content[0]).text
+    assert "topsecret-broker-key" not in text
+    assert "redacted" in text.lower()
+    assert "RALPH_BROKER_SECRET=" in text
+
+
+def test_read_env_value_redacts_broker_secret_when_present() -> None:
+    """``read_env_value`` is the seam the handler uses; pin the
+    broker-secret redaction there so a future refactor cannot
+    accidentally bypass it."""
+    assert (
+        "topsecret"
+        not in coordination_module.read_env_value(
+            {"RALPH_BROKER_SECRET": "topsecret-broker-key"}, "RALPH_BROKER_SECRET"
+        )
+    )
+    assert (
+        coordination_module.read_env_value(
+            {"RALPH_BROKER_SECRET": "topsecret-broker-key"}, "RALPH_BROKER_SECRET"
+        )
+        == coordination_module._BROKER_SECRET_DENIED_TEXT
+    )
+
+
+def test_read_env_value_redacts_broker_secret_even_when_absent() -> None:
+    """The redacted sentinel is returned even when the variable is
+    absent from ``env`` — confirming presence vs absence is preserved
+    (the redacted marker is distinct from ``"[not found]"``)."""
+    assert (
+        coordination_module.read_env_value({}, "RALPH_BROKER_SECRET")
+        == coordination_module._BROKER_SECRET_DENIED_TEXT
+    )
+
+
+def test_read_env_value_discloses_non_broker_secrets() -> None:
+    """The deny-list in ``_BROKER_SECRET_ENV_NAMES`` is narrowly
+    scoped: non-broker env vars are still disclosed normally so the
+    agent's diagnostic / orchestrator can keep using ``env.read``
+    for unrelated lookups."""
+    assert (
+        "hello"
+        in coordination_module.read_env_value({"MY_VAR": "hello"}, "MY_VAR")
+    )
+    assert (
+        coordination_module.read_env_value({}, "MY_VAR") == "[not found]"
+    )
+
+
+def test_write_completion_sentinel_returns_true_when_workspace_uses_test_seam() -> None:
+    """The ``_write_fn`` test seam persists the payload in memory
+    only; the helper must return ``True`` to honor the durable-sentinel
+    contract for fail-closed callers like ``handle_declare_complete``."""
+    seen: list[tuple[str, str]] = []
+
+    class _Workspace:
+        def absolute_path(self, path: str) -> str:
+            return f"/abs/{path}"
+
+    result = coordination_module._write_completion_sentinel(
+        _Workspace(),
+        "run-test-seam",
+        _write_fn=lambda path, payload: seen.append((path, payload)),
+    )
+
+    assert result is True
+    assert len(seen) == 1
+
+
+def test_write_completion_sentinel_returns_false_when_workspace_is_none() -> None:
+    """When the workspace surface is missing (no root to write to),
+    the helper returns ``False`` so callers fail closed."""
+    result = coordination_module._write_completion_sentinel(None, "run-no-ws")
+    assert result is False
+
+
+def test_write_completion_sentinel_returns_false_when_db_and_legacy_both_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When ``RunStateDB`` raises AND the legacy-file write also
+    fails (the workspace filesystem is unwritable), the helper MUST
+    return ``False`` so the handler can refuse to declare the run
+    complete. Silent return paths let the agent falsely claim
+    completion against a sentinel the completion gate cannot see."""
+
+    class _RootWorkspace:
+        def __init__(self, root: Path) -> None:
+            self.root = root
+
+        def absolute_path(self, path: str) -> str:
+            return str(self.root / path)
+
+    workspace = _RootWorkspace(tmp_path)
+
+    def _raise_sqlite(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.DatabaseError("locked")
+
+    monkeypatch.setattr(coordination_module, "RunStateDB", _raise_sqlite)
+
+    # Force every OS-level mkdir/write to fail too.
+    original_mkdir = Path.mkdir
+    original_write_text = Path.write_text
+
+    def _raise_oserror_mkdir(self: Path, *args: object, **kwargs: object) -> None:
+        raise OSError("disk full")
+
+    def _raise_oserror_write(self: Path, *args: object, **kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "mkdir", _raise_oserror_mkdir)
+    monkeypatch.setattr(Path, "write_text", _raise_oserror_write)
+
+    try:
+        result = coordination_module._write_completion_sentinel(
+            workspace, "run-fail-closed"
+        )
+    finally:
+        monkeypatch.setattr(Path, "mkdir", original_mkdir)
+        monkeypatch.setattr(Path, "write_text", original_write_text)
+
+    assert result is False
+    # And neither side wrote anything.
+    assert not (tmp_path / ".agent" / "completion_seen_run-fail-closed.json").exists()
