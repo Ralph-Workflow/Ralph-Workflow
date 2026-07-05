@@ -256,7 +256,8 @@ def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> Non
                 # block start-up; the legacy file unlink still runs.
                 pass
         finally:
-            db.close()
+            with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+                db.close()
     sentinel_path = workspace_path / f".agent/completion_seen_{run_id}.json"
     sentinel_path.unlink(missing_ok=True)
     clear_run_receipts(workspace_path, run_id)

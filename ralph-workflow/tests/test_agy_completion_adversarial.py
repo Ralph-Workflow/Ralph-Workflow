@@ -40,6 +40,7 @@ from ralph.agents.completion_signals import (
     _COMPLETION_SENTINEL_RELPATHFMT,
     _check_completion_sentinel,
     evaluate_completion,
+    is_artifact_submitted,
 )
 from ralph.mcp.artifacts.completion_receipts import (
     _receipt_hmac,
@@ -299,3 +300,112 @@ def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
     db2.delete_completion_sentinel(RUN_ID)
     db2.close()
     assert _check_completion_sentinel(workspace, RUN_ID) is True
+
+
+def test_promote_fallback_thread_receipt_secret_to_promoted_receipt(
+    workspace: Path,
+) -> None:
+    """Adversarial regression: when ``is_artifact_submitted`` promotes a
+    fallback artifact into a run-scoped receipt, the promoted receipt
+    must carry a valid HMAC bound to the broker-owned secret enforced
+    on the read path.
+
+    Without the secret thread, the analysis-decision reproduction
+    observed: ``is_artifact_submitted(..., receipt_secret='real')``
+    returned ``True`` (promoted) while
+    ``artifact_receipt_present(..., receipt_secret='real')`` returned
+    ``False`` (no HMAC to verify). This pins the patched contract that
+    promotion with a secret produces a receipt the verifier accepts
+    under the same secret, and rejects under a different secret.
+    """
+    promotion_run_id = "adversarial-promotion-run"
+
+    # Seed a fallback artifact the orchestrator would promote. The
+    # smoke_test_result schema accepts a plain dict, so no extra
+    # envelope is required for promotion.
+    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.json"
+    fallback_path.parent.mkdir(parents=True, exist_ok=True)
+    fallback_path.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "output_file": "tmp/promotion/sentinel.js",
+                "observed_working": ["promotion secret thread"],
+                "observed_breaks": [],
+                "headless_guide_checks": ["tool activity"],
+                "summary": "Promoted fallback under broker secret.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Promotion with secret writes a receipt the verifier accepts.
+    assert (
+        is_artifact_submitted(
+            workspace,
+            promotion_run_id,
+            "smoke_test_result",
+            receipt_secret=RECEIPT_SECRET,
+        )
+        is True
+    )
+    assert (
+        artifact_receipt_present(
+            workspace,
+            promotion_run_id,
+            "smoke_test_result",
+            receipt_secret=RECEIPT_SECRET,
+        )
+        is True
+    )
+
+    # Wrong secret is rejected even when the row exists.
+    assert (
+        artifact_receipt_present(
+            workspace,
+            promotion_run_id,
+            "smoke_test_result",
+            receipt_secret="wrong-secret",
+        )
+        is False
+    )
+
+
+def test_promote_fallback_without_secret_keeps_legacy_no_hmac_contract(
+    workspace: Path,
+) -> None:
+    """When ``is_artifact_submitted`` is called WITHOUT ``receipt_secret``,
+    promotion keeps the pre-P3 contract: the receipt has no HMAC, but
+    ``artifact_receipt_present`` (no secret) accepts the promoted
+    receipt. This proves the fix preserves the pre-existing behavior
+    for the no-secret call site.
+    """
+    no_secret_run_id = "adversarial-no-secret-run"
+    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.json"
+    fallback_path.parent.mkdir(parents=True, exist_ok=True)
+    fallback_path.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "output_file": "tmp/promotion/no-secret.js",
+                "observed_working": ["promotion without secret"],
+                "observed_breaks": [],
+                "headless_guide_checks": ["tool activity"],
+                "summary": "Promoted fallback without broker secret.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        is_artifact_submitted(
+            workspace, no_secret_run_id, "smoke_test_result"
+        )
+        is True
+    )
+    assert (
+        artifact_receipt_present(
+            workspace, no_secret_run_id, "smoke_test_result"
+        )
+        is True
+    )

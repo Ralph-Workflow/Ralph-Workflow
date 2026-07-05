@@ -10,6 +10,7 @@ Markdown handoff are written atomically (or rolled back together).
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import importlib
 import json
 import sqlite3
@@ -328,6 +329,7 @@ def promote_fallback_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
     run_id: str | None = None,
+    receipt_secret: str | None = None,
 ) -> SubmitResult | None:
     """Promote an agent-written fallback file to a canonical submission.
 
@@ -341,12 +343,27 @@ def promote_fallback_artifact(
     have a receipt for ANY run_id (including the current one), preventing stale
     artifacts from previous runs from being promoted to a new receipt.
 
+    Args:
+        receipt_secret: Optional broker-owned secret to thread into the
+            resolved :class:`ArtifactHandlerDeps`. When provided, the
+            promoted receipt carries the HMAC binding ``(run_id, artifact_type)``
+            to the secret so the verifier accepts it under the same secret
+            and rejects it under any other. Without this, promotion writes
+            a no-HMAC receipt which the verifier rejects under HMAC enforcement.
+
     Returns:
         The :class:`SubmitResult` from the canonical submit, or ``None`` when no
         fallback file exists or parsing fails.
     """
     tools_artifact = _tools_artifact()
     resolved_deps = deps or tools_artifact.DEFAULT_ARTIFACT_HANDLER_DEPS
+    if receipt_secret is not None and resolved_deps.receipt_secret is None:
+        # ``dataclasses.replace`` builds a new ``ArtifactHandlerDeps``
+        # without re-importing the artifact module, which sidesteps the
+        # canonical_submit <-> artifact.py import cycle.
+        resolved_deps = dataclasses.replace(
+            resolved_deps, receipt_secret=receipt_secret
+        )
     backend = resolved_deps.backend
 
     tmp_fallback = workspace_root / ".agent" / "tmp" / f"{artifact_type}.json"

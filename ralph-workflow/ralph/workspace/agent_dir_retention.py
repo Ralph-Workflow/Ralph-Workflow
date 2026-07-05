@@ -14,6 +14,7 @@ P3) is invoked with the same best-effort contract.
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import sqlite3
 import time
@@ -143,7 +144,8 @@ def _sweep_run_state_db_rows(
         except (OSError, RuntimeError, sqlite3.Error):
             return 0
     finally:
-        db.close()
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            db.close()
 
 
 def sweep_agent_dir(

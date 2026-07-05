@@ -20,6 +20,7 @@ rather than relying on implicit success.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -130,7 +131,8 @@ def _db_sentinel_lookup(workspace: Path, run_id: str) -> tuple[bool | None, str 
         except (OSError, RuntimeError, sqlite3.Error):
             return None, None
     finally:
-        db.close()
+        with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
+            db.close()
     if stored is MISSING:
         return False, None
     return True, stored if isinstance(stored, str) else None
@@ -241,7 +243,13 @@ def is_artifact_submitted(
     if artifact_receipt_present(workspace, run_id, artifact_type, receipt_secret=receipt_secret):
         return True
 
-    result = promote_fallback_artifact(workspace, artifact_type, deps=deps, run_id=run_id)
+    result = promote_fallback_artifact(
+        workspace,
+        artifact_type,
+        deps=deps,
+        run_id=run_id,
+        receipt_secret=receipt_secret,
+    )
     return result is not None and result.receipt_path is not None
 
 
