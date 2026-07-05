@@ -6,7 +6,7 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 **RFC Number**: RFC-013
 **Title**: Filesystem Churn Reduction for Long-Running Workflows (fseventsd)
-**Status**: Review
+**Status**: Implemented
 **Author**: Claude (Fable 5), commissioned by Mistlight
 **Created**: 2026-07-03
 
