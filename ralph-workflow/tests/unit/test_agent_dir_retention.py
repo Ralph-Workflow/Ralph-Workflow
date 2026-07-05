@@ -144,3 +144,25 @@ def test_runstate_db_prune_preserves_keep_run_id(tmp_path: Path) -> None:
         assert db3.get_receipt_hmac("old", "plan") is MISSING
     finally:
         db3.close()
+
+
+def test_sweep_does_not_create_state_db_when_absent(tmp_path: Path) -> None:
+    """sweep_agent_dir must NOT create ``.agent/state.db`` as a side effect.
+
+    RFC-013 P3: ``RunStateDB.__init__`` creates the database on open.
+    The retention sweep is intended to reduce filesystem churn, not
+    introduce new state files. The DB prune must short-circuit when
+    ``state.db`` does not already exist so workspace bootstrapping on
+    a fresh repo does not suddenly gain a sqlite WAL pair.
+    """
+    agent = tmp_path / ".agent"
+    agent.mkdir(parents=True, exist_ok=True)
+
+    assert not (tmp_path / ".agent" / "state.db").exists()
+
+    fixed_now = time.time()
+    sweep_agent_dir(tmp_path, keep_run_id=None, now=lambda: fixed_now)
+
+    assert not (tmp_path / ".agent" / "state.db").exists()
+    assert not (tmp_path / ".agent" / "state.db-wal").exists()
+    assert not (tmp_path / ".agent" / "state.db-shm").exists()

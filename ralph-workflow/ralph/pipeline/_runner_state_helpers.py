@@ -71,6 +71,18 @@ def recover_missing_plan_handoff(
     ``MissingPlanHandoffError`` message regardless of which branch fires,
     matching the ``ExitFailureEffect`` convention.
 
+    On the success path (rerouting to ``entry_phase``) the helper ALSO
+    resets the target entry phase's ``AgentChainState`` via
+    ``reset_phase_chain_for_recovery`` so the recovered planning pass
+    starts with ``current_index=0`` and ``retries=0`` rather than
+    resuming on a fallback planner or with retry debt carried over from
+    the prior planning attempt. This mirrors the chain-reset behaviour
+    already used by the failed-route re-entry branch in
+    ``ralph/pipeline/runner.py`` so every re-entry into a phase starts
+    a fresh chain. The bound-exceeded path does NOT reset the chain:
+    the pipeline is heading to ``failed_route`` (terminal), so the
+    planning chain state is irrelevant on that branch.
+
     Mirrors the side-effect order of the original inline ``except`` blocks in
     ``_handle_inline_effect`` and ``_run_pipeline_step``:
 
@@ -78,9 +90,12 @@ def recover_missing_plan_handoff(
        path) with the missing handoff message.
     2. ``progress.advance_phase`` to ``entry_phase`` (success) or
        ``failed_route`` (bound-exceeded).
-    3. ``copy_with(last_error=str(exc), recovery_epoch=current_epoch + 1)``.
-    4. ``ckpt.save(recovered_state, checkpoint_path)``.
-    5. ``_notify_pipeline_subscriber(subscriber, recovered_state)``.
+    3. ``reset_phase_chain_for_recovery(state, target_phase)`` on the
+       success path only, so the recovered planning phase restarts its
+       agent chain from scratch.
+    4. ``copy_with(last_error=str(exc), recovery_epoch=current_epoch + 1)``.
+    5. ``ckpt.save(recovered_state, checkpoint_path)``.
+    6. ``_notify_pipeline_subscriber(subscriber, recovered_state)``.
 
     The on-disk checkpoint write happens before the subscriber is notified
     so the next run can resume from the recovered state even if the
@@ -112,11 +127,18 @@ def recover_missing_plan_handoff(
         )
         target_phase = pipeline_policy.entry_phase
 
-    recovered_state = progress.advance_phase(
+    advanced_state = progress.advance_phase(
         state,
         target_phase,
         policy=pipeline_policy,
-    ).copy_with(
+    )
+
+    if not bound_exceeded:
+        advanced_state = reset_phase_chain_for_recovery(
+            advanced_state, target_phase
+        )
+
+    recovered_state = advanced_state.copy_with(
         last_error=str(exc),
         recovery_epoch=current_epoch + 1,
     )

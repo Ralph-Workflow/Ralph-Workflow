@@ -60,6 +60,7 @@ from __future__ import annotations
 
 import ast
 import json
+import sqlite3
 import tomllib
 from contextlib import suppress
 from dataclasses import dataclass
@@ -245,6 +246,7 @@ class ArtifactHandlerDeps:
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _noop_now_iso
     history_enabled: bool = False
+    receipt_secret: str | None = None
 
     @property
     def artifact_persistence(self) -> ArtifactPersistence:
@@ -369,6 +371,7 @@ def handle_submit_artifact(
         backend=resolved_deps.backend,
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
+        receipt_secret=session.broker_secret,
     )
     artifact_dir = _resolve_artifact_dir(session, workspace)
     # === BEGIN CANONICAL SUBMIT OPS ===
@@ -676,6 +679,7 @@ def handle_finalize_plan(
         backend=resolved_deps.backend,
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
+        receipt_secret=session.broker_secret,
     )
     # === BEGIN CANONICAL SUBMIT OPS ===
     from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
@@ -2861,10 +2865,24 @@ def _submit_ops_for_artifact_with_options(
         _rid = run_id
         _at_receipt = artifact_type
         _wr_receipt = workspace_root
+        # RFC-013 P3: thread the broker-owned secret through the live
+        # write path so the receipt row in ``.agent/state.db`` includes
+        # an HMAC binding ``(run_id, artifact_type)`` to the secret.
+        # ``deps.receipt_secret`` is ``None`` when the broker has not
+        # configured HMAC enforcement (the pre-P3 contract). The
+        # ``_submit_ops_for_artifact_with_options`` signature does NOT
+        # accept a session, so the receipt secret is sourced from the
+        # ``deps`` bundle (which the orchestrator populates from the
+        # same broker-owned value as ``session.broker_secret``).
+        _receipt_secret: str | None = getattr(deps, "receipt_secret", None)
         ops.append(
             SubmitOp(
                 run=lambda: write_artifact_receipt(
-                    _wr_receipt, _rid, _at_receipt, backend=deps.backend
+                    _wr_receipt,
+                    _rid,
+                    _at_receipt,
+                    backend=deps.backend,
+                    receipt_secret=_receipt_secret,
                 ),
                 undo=lambda: delete_artifact_receipt(
                     _wr_receipt, _rid, _at_receipt, backend=deps.backend
@@ -2897,7 +2915,7 @@ def _submit_ops_for_artifact_with_options(
             # by the pre-upgrade release during the dual-read window.
             try:
                 db = RunStateDB(_wr_sentinel)
-            except (OSError, RuntimeError):
+            except (OSError, RuntimeError, sqlite3.Error):
                 return
             try:
                 db.upsert_completion_sentinel(_rid_sentinel, None)
@@ -2910,7 +2928,7 @@ def _submit_ops_for_artifact_with_options(
             # after a rolled-back submit.
             try:
                 db = RunStateDB(_wr_sentinel)
-            except (OSError, RuntimeError):
+            except (OSError, RuntimeError, sqlite3.Error):
                 pass
             else:
                 try:

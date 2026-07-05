@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from ralph.display.activity_router import ActivityProvider, ActivityRouter
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.raw_overflow import RawOverflowLog
+
+_ = MagicMock  # re-export for inline monkeypatching below
 
 
 class TestDropUnitCleanup:
@@ -107,6 +110,37 @@ class TestDropUnitCleanup:
         display = ParallelDisplay(display_context=ctx, workspace_root=ws)
         # Must not raise on a unit we never saw
         display.drop_unit("never-added-unit")
+
+    def test_drop_unit_closes_raw_log(self) -> None:
+        """drop_unit must call ``RawOverflowLog.close()`` so buffered tails flush.
+
+        RFC-013 P1 regression: the per-unit overflow log holds a 64 KB
+        userspace buffer for fseventsd amortization; if ``drop_unit``
+        only popped the dict entry the buffered tail would never reach
+        disk. Inject a ``RawOverflowLog`` with a closed sentinel and
+        assert the close() method is observed on drop.
+        """
+
+        ws = Path("/tmp/ralph-drop-unit-closes-raw-log").resolve()
+        ws.mkdir(parents=True, exist_ok=True)
+        ctx = make_display_context()
+        display = ParallelDisplay(display_context=ctx, workspace_root=ws)
+        unit_id = "unit-closes-raw-log"
+        # Use a MagicMock so we can assert close() was called WITHOUT
+        # writing a 64 KB buffer to disk. The production code only
+        # needs to know ``close()`` ran; the buffered tail is the
+        # implementation detail the watchdog doesn't care about here.
+        mock_log = MagicMock(spec=RawOverflowLog)
+        mock_log.path = ws / ".agent" / "raw" / f"{unit_id}.log"
+        display._overflow_logs[unit_id] = mock_log
+
+        display.drop_unit(unit_id)
+
+        assert mock_log.close.call_count == 1, (
+            "drop_unit must call close() on the per-unit RawOverflowLog so buffered "
+            "tails reach disk deterministically"
+        )
+        assert unit_id not in display._overflow_logs
 
     def test_parallel_coordinator_drops_unit_after_teardown(self, monkeypatch: object) -> None:
         """parallel_coordinator worker's finally block must call drop_unit on display and router."""

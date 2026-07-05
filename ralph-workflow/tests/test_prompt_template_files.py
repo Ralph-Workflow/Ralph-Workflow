@@ -27,6 +27,7 @@ SKILLS_ROOT = REPO_ROOT / "ralph" / "skills" / "content"
 
 class _ApprovedSession:
     session_id = "session-1"
+    broker_secret = None
 
     def __init__(self, *, drain: str = "development_analysis") -> None:
         self.drain = drain

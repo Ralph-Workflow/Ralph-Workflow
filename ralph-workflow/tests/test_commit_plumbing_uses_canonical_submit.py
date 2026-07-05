@@ -177,6 +177,7 @@ class _CommitSession:
     session_id = "sess-commit"
     run_id = "commit-plumbing"
     drain = "commit"
+    broker_secret = None
 
     def check_capability(self, capability: str) -> object:
         del capability

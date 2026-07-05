@@ -25,6 +25,17 @@
 PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
+# ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points
+# outside the current project (``warning: VIRTUAL_ENV=... does not
+# match the project environment path .venv``). Make targets below
+# already run from the project root, so re-point ``VIRTUAL_ENV`` at
+# the canonical project-local ``.venv`` before any ``uv run`` is
+# invoked. This silences the warning without weakening the
+# environment-detection contract: if ``.venv`` does not exist
+# ``uv run`` will recreate it as it would without ``VIRTUAL_ENV``.
+ifneq ($(wildcard .venv/pyvenv.cfg),)
+  export VIRTUAL_ENV := $(abspath .venv)
+endif
 # NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.
 # The combined total test budget (60 s, ABSOLUTE and IMMUTABLE) for
 # `make verify` is enforced in ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS,

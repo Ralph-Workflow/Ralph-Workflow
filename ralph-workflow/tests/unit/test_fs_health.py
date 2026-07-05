@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.diagnostics import fs_health as fs_health_module
 from ralph.diagnostics.fs_health import (
     _JOURNAL_WARN_BYTES,
     FsHealth,
@@ -68,3 +69,41 @@ def test_probe_journal_size_thresholds_warning(tmp_path: Path) -> None:
             "(threshold 50 MB)."
         )
     assert len(health.warnings) == 2
+
+
+def test_warns_on_spotlight_and_fat_journal(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """End-to-end: FsHealth.gather() emits both warnings when both probes trigger.
+
+    Stubs ``_volume_root`` so the journal probe targets the tmp_path
+    directory (the production resolver treats ``tmp_path`` as a
+    boot-volume path and would otherwise look at ``/.fseventsd``,
+    which is not writable in test environments). The fake
+    ``run_command`` makes Spotlight report enabled; the inflated
+    ``.fseventsd`` file trips the journal-size threshold. Both
+    warnings must land in the ``FsHealth.warnings`` list so the
+    operator sees both mitigations at once.
+    """
+    monkeypatch.setattr(fs_health_module, "_volume_root", lambda _p: tmp_path)
+
+    def fake_run(cmd: object, **kwargs: object) -> object:
+        class _R:
+            returncode = 0
+            stdout = f"{tmp_path}:\n\tIndexing enabled. \n"
+
+        return _R()
+
+    journal = tmp_path / ".fseventsd"
+    journal.mkdir()
+    (journal / "big").write_bytes(b"x" * (_JOURNAL_WARN_BYTES + 1))
+
+    health = FsHealth.gather(tmp_path, run_command=fake_run)
+
+    assert health.spotlight_indexing_enabled is True
+    assert health.fsevents_journal_bytes is not None
+    assert health.fsevents_journal_bytes > _JOURNAL_WARN_BYTES
+    assert len(health.warnings) == 2
+    assert any("Spotlight indexing is enabled" in w for w in health.warnings)
+    assert any("fseventsd journal" in w for w in health.warnings)
+    assert any("50" in w for w in health.warnings)

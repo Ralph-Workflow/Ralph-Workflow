@@ -1,51 +1,51 @@
-"""Buffered file sinks still deliver records after sink removal (flush-on-close)."""
+"""Tests for loguru buffering behavior in Ralph Workflow logging."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
-import pytest
 from loguru import logger
 
 from ralph.logging_worker_sink import bind_worker_sink, remove_worker_sink
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-
-@pytest.fixture(autouse=True)
-def _reset_loguru() -> None:
-    logger.remove()
-    yield
-    logger.remove()
-
 
 def test_worker_sink_flushes_on_remove(tmp_path: Path) -> None:
-    handle = bind_worker_sink("unit-9", tmp_path, run_id="run-1")
-    logger.bind(unit_id="unit-9").info("hello worker")
-    remove_worker_sink(handle)  # closes the file -> flush
-    assert "hello worker" in handle.log_path.read_text(encoding="utf-8")
+    """Verify that a per-worker sink flushes on logger.remove()."""
+    unit_id = "test-unit"
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    handle = bind_worker_sink(unit_id, log_dir, run_id="test-run")
+
+    logger.bind(unit_id=unit_id).info("test message")
+
+    assert handle.log_path.exists()
+
+    remove_worker_sink(handle)
+
+    content = handle.log_path.read_text()
+    assert "test message" in content
 
 
 def test_worker_sink_uses_block_buffering(tmp_path: Path) -> None:
-    """A single small record must NOT hit disk immediately under block
-    buffering (the syscall-batching property, RFC-013 P1).
+    """Verify that a single small record does not hit disk immediately under block buffering."""
+    unit_id = "test-unit-buffered"
+    log_dir = tmp_path / "logs-buffered"
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    On an exceptionally fast machine where the buffer flushes between the
-    write and the stat, fall back to asserting the record content is not
-    visible: the proof is the absence of an immediate write.
-    """
-    handle = bind_worker_sink("unit-8", tmp_path, run_id="run-1")
-    try:
-        logger.bind(unit_id="unit-8").info("small record")
-        # The 8 KB buffer cannot be filled by a single ~50-byte record,
-        # so the bytes must NOT have hit disk yet.
-        if handle.log_path.exists():
-            st_size = handle.log_path.stat().st_size
-            if st_size > 0:
-                content = handle.log_path.read_text(encoding="utf-8")
-                assert "small record" not in content, (
-                    "block buffering should delay small writes to disk"
-                )
-    finally:
-        remove_worker_sink(handle)
+    handle = bind_worker_sink(unit_id, log_dir, run_id="test-run-buffered")
+
+    logger.bind(unit_id=unit_id).info("small record")
+
+    size_before = handle.log_path.stat().st_size
+
+    assert size_before == 0, "Block buffering should delay small records from hitting disk"
+
+    remove_worker_sink(handle)
+
+    size_after = handle.log_path.stat().st_size
+
+    assert size_after > 0, (
+        "After remove(), the buffer should be flushed and file should have content"
+    )
+    assert "small record" in handle.log_path.read_text()

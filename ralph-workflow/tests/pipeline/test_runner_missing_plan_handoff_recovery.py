@@ -27,7 +27,7 @@ from ralph.pipeline import _runner_state_helpers
 from ralph.pipeline import progress as progress_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import PreparePromptEffect
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models._recovery_policy import RecoveryPolicy
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
@@ -344,5 +344,206 @@ class TestRunnerMissingPlanHandoffRecovery:
         assert second_recovery.phase == first_recovery.phase, (
             "Second recovery must route to the same entry_phase as the "
             "first recovery (default policy entry_phase='planning')"
+        )
+
+    @pytest.mark.timeout_seconds(15)
+    def test_recover_helper_resets_entry_phase_chain_on_success_path(
+        self, tmp_path: Path
+    ) -> None:
+        """Success-path recovery resets the entry phase's ``AgentChainState``.
+
+        Regression for the analysis-feedback correctness bug: prior to
+        the fix, ``recover_missing_plan_handoff`` routed back to
+        ``pipeline_policy.entry_phase`` WITHOUT resetting that phase's
+        ``AgentChainState``. A planning chain that had advanced to
+        ``current_index=1`` (fallback planner) and accumulated
+        ``retries=2`` was preserved verbatim on the recovered state, so
+        ``ralph/pipeline/orchestrator.py::_current_agent_name`` resumed
+        on the fallback planner with retry debt instead of starting
+        fresh from ``current_index=0, retries=0`` like the explicit
+        failed-route re-entry branch in ``ralph/pipeline/runner.py``.
+
+        The fix calls ``reset_phase_chain_for_recovery`` on the
+        success path so the recovered entry phase starts a fresh
+        ``AgentChainState`` matching the failed-route re-entry
+        behaviour. The bound-exceeded path (``failed_route``) does
+        NOT reset the chain because the pipeline is heading to a
+        terminal phase where the planning chain is irrelevant.
+
+        Asserts:
+
+        - A state primed with a planning chain at
+          ``current_index=1`` and ``retries=2`` recovers to a state
+          whose ``planning`` chain has ``current_index=0`` and
+          ``retries=0``.
+        - The recovered chain still carries the original ``agents``
+          list (the chain identity is preserved; only the index and
+          retry counter reset).
+        - The chain reset does NOT affect the bound-exceeded path:
+          a recovery with ``recovery_epoch >= cycle_cap`` that
+          routes to ``failed_route`` does NOT mutate the planning
+          chain (because that branch never re-enters planning).
+        """
+        pipeline_policy, _ = _load_default_policy_bundle()
+
+        # The planning agent chain is sourced from the AgentsPolicy on the
+        # PolicyBundle (not the PipelinePolicy itself). Resolve the
+        # chain by the entry_phase key so the regression test mirrors
+        # the production plumbing.
+        bundle_defaults_dir = (
+            Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+        )
+        full_bundle = load_policy(bundle_defaults_dir)
+        planning_agents = full_bundle.agents.agent_chains[
+            pipeline_policy.entry_phase
+        ].agents
+
+        primed_state = PipelineState(
+            phase="development",
+            previous_phase=None,
+            recovery_epoch=0,
+            phase_chains={
+                pipeline_policy.entry_phase: AgentChainState(
+                    agents=planning_agents,
+                    current_index=1,
+                    retries=2,
+                ),
+            },
+        )
+
+        primed_chain = primed_state.chain_for_phase(
+            pipeline_policy.entry_phase
+        )
+        assert primed_chain is not None, (
+            "primed_chain must exist for the entry_phase before recovery"
+        )
+        assert primed_chain.current_index == 1, (
+            f"primed_chain.current_index must be 1 (regression seed); "
+            f"got {primed_chain.current_index}"
+        )
+        assert primed_chain.retries == 2, (
+            f"primed_chain.retries must be 2 (regression seed); "
+            f"got {primed_chain.retries}"
+        )
+
+        recovered = _runner_state_helpers.recover_missing_plan_handoff(
+            state=primed_state,
+            pipeline_policy=pipeline_policy,
+            checkpoint_path=tmp_path / "ckpt.json",
+            subscriber=None,
+            exc=MissingPlanHandoffError("missing plan handoff"),
+        )
+
+        assert recovered.phase == pipeline_policy.entry_phase, (
+            f"Success-path recovery must route to entry_phase "
+            f"({pipeline_policy.entry_phase!r}); got {recovered.phase!r}"
+        )
+
+        recovered_chain = recovered.chain_for_phase(
+            pipeline_policy.entry_phase
+        )
+        assert recovered_chain is not None, (
+            "recovered planning chain must exist on the recovered state"
+        )
+        assert recovered_chain.current_index == 0, (
+            "recovered planning chain must have current_index=0; "
+            "without the reset, the chain preserves current_index=1 and "
+            f"resumes on the fallback planner. got {recovered_chain.current_index}"
+        )
+        assert recovered_chain.retries == 0, (
+            "recovered planning chain must have retries=0; "
+            "without the reset, the chain preserves retries=2 and "
+            f"resumes with retry debt. got {recovered_chain.retries}"
+        )
+        assert tuple(recovered_chain.agents) == tuple(planning_agents), (
+            "Chain reset MUST preserve the original agents list (only "
+            "current_index and retries reset); agents list changed: "
+            f"{recovered_chain.agents!r} != {planning_agents!r}"
+        )
+
+    @pytest.mark.timeout_seconds(15)
+    def test_recover_helper_does_not_reset_chain_on_bound_exceeded_path(
+        self, tmp_path: Path
+    ) -> None:
+        """Bound-exceeded recovery does NOT touch the planning chain.
+
+        The bound-exceeded path routes to ``failed_route`` (a terminal
+        phase), so the planning chain state is irrelevant on that
+        branch and the reset must NOT fire (otherwise it would
+        needlessly mutate state that will never be read again).
+
+        Asserts: with ``recovery_epoch=3 >= cycle_cap=3`` and a primed
+        planning chain at ``current_index=1, retries=2``, the recovered
+        state routes to ``failed_route`` and the planning chain is
+        preserved verbatim (current_index and retries unchanged).
+        """
+        pipeline_policy, _ = _load_default_policy_bundle()
+
+        override_recovery = RecoveryPolicy(
+            cycle_cap=3,
+            failed_route="failed_terminal",
+            terminal_failure_phase=None,
+            preserve_session_on_categories=("agent",),
+        )
+        pipeline_policy = pipeline_policy.model_copy(
+            update={"recovery": override_recovery}
+        )
+
+        # The planning agent chain is sourced from the AgentsPolicy on the
+        # PolicyBundle (not the PipelinePolicy itself). Resolve the
+        # chain by the entry_phase key so the regression test mirrors
+        # the production plumbing.
+        bundle_defaults_dir = (
+            Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+        )
+        full_bundle = load_policy(bundle_defaults_dir)
+        planning_agents = full_bundle.agents.agent_chains[
+            pipeline_policy.entry_phase
+        ].agents
+
+        primed_state = PipelineState(
+            phase="development",
+            previous_phase=None,
+            recovery_epoch=3,
+            last_error=None,
+            phase_chains={
+                pipeline_policy.entry_phase: AgentChainState(
+                    agents=planning_agents,
+                    current_index=1,
+                    retries=2,
+                ),
+            },
+        )
+
+        recovered = _runner_state_helpers.recover_missing_plan_handoff(
+            state=primed_state,
+            pipeline_policy=pipeline_policy,
+            checkpoint_path=tmp_path / "ckpt.json",
+            subscriber=None,
+            exc=MissingPlanHandoffError("missing plan handoff"),
+        )
+
+        assert recovered.phase == "failed_terminal", (
+            f"Bound-exceeded recovery must route to failed_route "
+            f"('failed_terminal'); got {recovered.phase!r}"
+        )
+
+        bound_chain = recovered.chain_for_phase(
+            pipeline_policy.entry_phase
+        )
+        assert bound_chain is not None, (
+            "Bound-exceeded recovery MUST NOT clear the planning chain; "
+            "the chain is irrelevant on the failed_route branch but the "
+            "reset must not fire on that branch"
+        )
+        assert bound_chain.current_index == 1, (
+            "Bound-exceeded recovery MUST NOT reset the planning chain; "
+            "without the path-gate, the chain would be wrongly reset to "
+            f"current_index=0. got {bound_chain.current_index}"
+        )
+        assert bound_chain.retries == 2, (
+            "Bound-exceeded recovery MUST NOT reset the planning chain; "
+            "without the path-gate, the chain would be wrongly reset to "
+            f"retries=0. got {bound_chain.retries}"
         )
 

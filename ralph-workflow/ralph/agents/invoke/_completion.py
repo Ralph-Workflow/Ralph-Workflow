@@ -7,7 +7,11 @@ from typing import IO, TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents.completion_signals import _check_completion_sentinel, evaluate_completion
+from ralph.agents.completion_signals import (
+    CompletionSignals,
+    _check_completion_sentinel,
+    evaluate_completion,
+)
 from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
@@ -137,6 +141,67 @@ class _CompletionCheckOptions:
     elapsed_seconds: float | None = None
     transcript_tail: tuple[str, ...] = ()
     _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
+    #: RFC-013 P3: broker-owned secret threaded into the sentinel HMAC
+    #: verifier on the live read path. ``None`` means the pre-P3
+    #: contract (no HMAC verification). Threads only into the default
+    #: ``_check_completion_sentinel`` call; the unit-test
+    #: ``_sentinel_check_fn`` injection ignores it because the stub
+    #: returns a deterministic boolean rather than verifying the
+    #: production HMAC.
+    sentinel_secret: str | None = None
+    #: RFC-013 P3: broker-owned secret threaded into the receipt HMAC
+    #: verifier on the live read path. ``None`` means the pre-P3
+    #: contract (no HMAC verification). Threads into every
+    #: ``evaluate_completion`` call so a forged receipt is rejected
+    #: when the broker configures HMAC enforcement.
+    receipt_secret: str | None = None
+
+
+def _apply_sentinel_signal(
+    signals: CompletionSignals,
+    opts: _CompletionCheckOptions,
+    *,
+    sentinel_run_id: str | None,
+) -> CompletionSignals:
+    """Run the configured sentinel check and merge the result into ``signals``.
+
+    When ``opts._sentinel_check_fn`` is set (unit-test stub) it is
+    called without any kwargs because its signature is fixed at
+    ``(Path, str | None) -> bool``. When it is not set, the live
+    ``_check_completion_sentinel`` is called with the
+    ``sentinel_secret`` kwarg so the broker-owned HMAC is verified
+    on the read path (RFC-013 P3). Extracted from
+    ``_check_process_result`` to keep its branch count under the
+    PLR0912 cap. ``opts.workspace_path`` is ``Path`` at this point
+    (the caller checks ``opts.workspace_path is not None`` before
+    entering the session-continuation / completion-enforcement
+    branches that reach this helper).
+    """
+    workspace: Path = cast("Path", opts.workspace_path)
+    if opts._sentinel_check_fn is not None:
+        sentinel_found = opts._sentinel_check_fn(
+            workspace,
+            sentinel_run_id,
+        )
+    else:
+        sentinel_found = _check_completion_sentinel(
+            workspace,
+            sentinel_run_id,
+            sentinel_secret=opts.sentinel_secret,
+        )
+    if sentinel_found:
+        return replace(
+            signals,
+            explicit_complete=True,
+            completion_sentinel_present=True,
+        )
+    if not signals.explicit_complete:
+        return replace(
+            signals,
+            explicit_complete=False,
+            completion_sentinel_present=False,
+        )
+    return signals
 
 
 def _wait_for_completion_grace(
@@ -177,6 +242,8 @@ def _wait_for_completion_grace(
             ),
             required_artifact=opts.required_artifact,
             run_id=_completion_run_id(opts),
+            sentinel_secret=opts.sentinel_secret,
+            receipt_secret=opts.receipt_secret,
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
@@ -239,6 +306,8 @@ def _wait_for_descendants_then_recheck(
             ),
             required_artifact=opts.required_artifact,
             run_id=_completion_run_id(opts),
+            sentinel_secret=opts.sentinel_secret,
+            receipt_secret=opts.receipt_secret,
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
@@ -322,29 +391,14 @@ def _check_process_result(
             bounded_output,
             required_artifact=opts.required_artifact,
             run_id=_completion_run_id(opts),
+            sentinel_secret=opts.sentinel_secret,
+            receipt_secret=opts.receipt_secret,
         )
-        sentinel_check_fn = (
-            opts._sentinel_check_fn
-            if opts._sentinel_check_fn is not None
-            else _check_completion_sentinel
+        signals = _apply_sentinel_signal(
+            signals,
+            opts,
+            sentinel_run_id=_completion_run_id(opts),
         )
-        sentinel_run_id = _completion_run_id(opts)
-        sentinel_found = sentinel_check_fn(
-            opts.workspace_path,
-            sentinel_run_id,
-        )
-        if sentinel_found:
-            signals = replace(
-                signals,
-                explicit_complete=True,
-                completion_sentinel_present=True,
-            )
-        elif not signals.explicit_complete:
-            signals = replace(
-                signals,
-                explicit_complete=False,
-                completion_sentinel_present=False,
-            )
         exit_state = opts.execution_strategy.classify_exit(
             handle, signals, liveness_probe=opts.liveness_probe
         )
@@ -414,29 +468,14 @@ def _check_process_result(
             bounded_output,
             required_artifact=opts.required_artifact,
             run_id=_completion_run_id(opts),
+            sentinel_secret=opts.sentinel_secret,
+            receipt_secret=opts.receipt_secret,
         )
-        sentinel_check_fn = (
-            opts._sentinel_check_fn
-            if opts._sentinel_check_fn is not None
-            else _check_completion_sentinel
+        signals = _apply_sentinel_signal(
+            signals,
+            opts,
+            sentinel_run_id=_completion_run_id(opts),
         )
-        sentinel_run_id = _completion_run_id(opts)
-        sentinel_found = sentinel_check_fn(
-            opts.workspace_path,
-            sentinel_run_id,
-        )
-        if sentinel_found:
-            signals = replace(
-                signals,
-                explicit_complete=True,
-                completion_sentinel_present=True,
-            )
-        elif not signals.explicit_complete:
-            signals = replace(
-                signals,
-                explicit_complete=False,
-                completion_sentinel_present=False,
-            )
         exit_state = opts.execution_strategy.classify_exit(
             handle, signals, liveness_probe=opts.liveness_probe
         )

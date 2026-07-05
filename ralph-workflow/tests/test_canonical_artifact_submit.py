@@ -669,3 +669,39 @@ def test_stale_fallback_not_promoted_for_fresh_run(
     # Current run should not see stale artifact as submitted
     assert not is_artifact_submitted(tmp_path, "run-new", "development_result", deps=deps)
     assert not artifact_receipt_present(tmp_path, "run-new", "development_result", backend=backend)
+
+
+def test_stale_fallback_not_promoted_when_other_run_has_db_receipt(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    """RFC-013 P3: stale-artifact guard must consult ``RunStateDB`` rows.
+
+    Production writes receipts to ``.agent/state.db`` (RFC-013 P3), so
+    the stale-artifact guard inside ``promote_fallback_artifact`` must
+    scan DB rows for OTHER run_ids, not only legacy
+    ``.agent/receipts/<run>/<type>.json`` files. A canonical artifact
+    with only a DB-backed receipt from another run must NOT be promoted
+    for the fresh run.
+    """
+    # Seed a receipt row in the DB for the previous run (no legacy file).
+    db = RunStateDB(tmp_path)
+    db.upsert_receipt("run-old", "development_result", "sig-old")
+    db.close()
+
+    # Create stale fallback artifact from previous run under .agent/artifacts/.
+    backend.write_text(
+        tmp_path / ".agent" / "artifacts" / "development_result.json",
+        json.dumps(
+            {
+                "status": "completed",
+                "summary": "from old run",
+                "files_changed": "- x.py",
+            }
+        ),
+    )
+
+    # Current run must NOT see the stale artifact as submitted.
+    assert not is_artifact_submitted(tmp_path, "run-new", "development_result", deps=deps)
+    assert not artifact_receipt_present(tmp_path, "run-new", "development_result", backend=backend)
