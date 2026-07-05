@@ -455,7 +455,37 @@ def _check_process_result(
 def _log_invocation_exit(exc: AgentInvocationError) -> None:
     classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
     retryable = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
-    if classified.reset_tool_registry or classified.reset_session or retryable:
+    if classified.reset_session:
+        # Stale-session recovery: the operator-visible log line must name the
+        # recovery action ("resetting session id, retrying with a fresh
+        # session") so this is clearly distinguishable from a generic retryable
+        # exit. When stderr already names the failure (e.g. "Error: Session
+        # not found"), suppress the misleading "(no output captured)"
+        # placeholder; appending it next to meaningful stderr is confusing.
+        # When stderr is empty, fall back to the summarized evidence (which
+        # itself may return "(no output captured)") so the operator still gets
+        # a useful diagnostic line. Any future hardening of the evidence
+        # payload (e.g. deque(maxlen=N) per AGENTS.md bounded-accumulator rule)
+        # is a follow-up; the same risk applies to the existing
+        # summarize_retry_failure_evidence path used by the legacy branches.
+        stderr_meaningful = bool(exc.stderr and exc.stderr.strip())
+        evidence_field = (
+            "(suppressed -- stderr already names the failure)"
+            if stderr_meaningful
+            else summarize_retry_failure_evidence(exc.parsed_output)
+        )
+        stderr_field = exc.stderr if stderr_meaningful else "(empty)"
+        logger.warning(
+            "Stale session detected for agent={} (phase=invoke): "
+            "resetting session id, retrying with a fresh session. "
+            "code={} stderr={} evidence=[{}]",
+            exc.agent_name,
+            exc.returncode,
+            stderr_field,
+            evidence_field,
+        )
+        return
+    if classified.reset_tool_registry or retryable:
         logger.warning(
             "Retryable agent exit with code {}: {} [{}]",
             exc.returncode,
