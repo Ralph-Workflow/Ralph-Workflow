@@ -1,8 +1,7 @@
 # Policy Explanation
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page documents the policy-driven pipeline model: where policy is declared, what the runtime enforces, and what the operator can override.
+
 
 Ralph Workflow can render a human-readable explanation of the active policy configuration with a single command. Use it when you want to sanity-check your pipeline before a run or document the workflow your team is relying on.
 

@@ -1,19 +1,9 @@
-<!--
-  Review note: rewrote the opening to lead with the canonical autopilot
-  positioning language so the page agrees with the README and the manual
-  home (rubric hard failure: surfaces fight each other). The "Brand-new
-  here?" callout was kept on the same page so the test that ensures
-  the page links to getting-started.md within the first 1000 characters
-  still sees it.
--->
-
 # Recovery
 
+This page documents the recovery controller: what gets retried, what gets surfaced as a partial result, and what marks a session non-recoverable.
 > **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) first. This page explains how Ralph Workflow behaves when a run is interrupted or something fails.
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+
 
 Ralph Workflow treats recovery as a built-in part of the product, not an afterthought. In normal use, you do not need to turn anything on. Ralph Workflow retries transient failures, keeps checkpoints up to date, and can resume safely after interruptions.
 

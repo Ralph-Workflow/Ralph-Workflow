@@ -1,8 +1,7 @@
 # Prompts
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page documents the prompt templates that ralph-workflow ships and the contracts they expect from a spec.
+
 
 
 > **Most operators do not need this page.** Start with [Getting Started](getting-started.md) unless you are customizing how Ralph Workflow builds prompts.

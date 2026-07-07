@@ -1,5 +1,6 @@
 # Documentation Rubric
 
+This page is the documentation rubric the project applies to every reader-facing docs change.
 This is the canonical rubric for Ralph Workflow documentation.
 
 Every docs-related change must refer to this file.

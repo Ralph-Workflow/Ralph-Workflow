@@ -57,11 +57,10 @@ html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
 }
-html_title = "Ralph Workflow — AI Agent Orchestration CLI for Unattended Coding"
+html_title = "Ralph Workflow"
 html_description = (
-    "Ralph Workflow is a free, open-source AI agent orchestration CLI. "
-    "Run Claude Code, Codex, OpenCode, and Google Anti Gravity unattended. "
-    "Wake up to completed code, real checks, and an honest blocked state."
+    "Ralph Workflow is the maintained Python CLI for running an "
+    "autonomous coding-agent loop."
 )
 language = "en"
 html_show_sourcelink = True

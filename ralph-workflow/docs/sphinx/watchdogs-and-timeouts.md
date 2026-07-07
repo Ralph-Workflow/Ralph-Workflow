@@ -1,9 +1,8 @@
 # Watchdogs and timeouts
 
-> **Mental model page.** This is explanation, not a how-to. For the practical
-> configuration path, see [Timeout policy](../agents/timeout-policy.md) and
-> the [Idle watchdog configuration](#idle-watchdog) section of the package
-> README.
+> **Mental model page.** This is explanation, not a how-to. The policy-side
+> timeout declarations, the watchdog architecture, and the practical
+> configuration path all live on this single page.
 
 Ralph Workflow uses **watchdogs** to detect stuck or crashed agents and
 **timeout policies** to bound how long any operation may take. Both are
@@ -118,8 +117,6 @@ See [Recovery](recovery.md) for the full recovery controller contract.
 ## Related pages
 
 - [Recovery](recovery.md) — the recovery controller
-- [Timeout policy](../agents/timeout-policy.md) — policy-side timeout
-  declarations
 - [MCP tools](mcp-tools.md) — the MCP timeout contract
 - [Idle watchdog configuration](cli.md#idle-watchdog) — runtime flags
 - [Verification model](verification-model.md) — what verification checks

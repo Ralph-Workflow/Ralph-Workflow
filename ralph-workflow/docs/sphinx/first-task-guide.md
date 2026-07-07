@@ -1,8 +1,7 @@
 # Your First Ralph Workflow Task
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything. Its composable loop — planning → development → verification — drives each phase into the next, and it runs the coding agents you already use (Claude Code, Codex, OpenCode) on your own machine.
+This page helps you pick a first task that is well-specified enough for an unattended run to be worth the trust you place in it.
+ Its composable loop — planning → development → verification — drives each phase into the next, and it runs the coding agents you already use (Claude Code, Codex, OpenCode) on your own machine.
 
 This guide helps you pick the right first task, set it up, and judge the outcome honestly. It is not a feature tour — it is a minimal path to your first verdict: *does this produce code I would actually merge?*
 

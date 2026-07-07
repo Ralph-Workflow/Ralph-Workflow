@@ -1,8 +1,7 @@
 # Changelog
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page tracks the operator-visible changes shipped in each ralph-workflow release.
+
 
 This page is the manual entry point for Ralph Workflow release notes.
 

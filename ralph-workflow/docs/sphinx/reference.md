@@ -12,7 +12,7 @@ If you need runtime internals or Python implementation details, use [Developer R
 - [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) — workflow graph, phases, counters, recovery, fan-out
 - [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, summaries
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web integrations
-- [End-User Stories](user-stories.md) — common user goals and the shortest next doc for each one
+- [End-User Stories](agent-compatibility.md) — common user goals and the shortest next doc for each one
 - [MCP Tools](mcp-tools.md) — the built-in tool surface exposed to agents
 - [Local Web Access](local-web-access.md) — search, visit, and crawl behavior
 
@@ -23,7 +23,7 @@ If you need runtime internals or Python implementation details, use [Developer R
 - **I need advanced docs for `pipeline.toml`** → [Advanced Pipeline Configuration](advanced-pipeline-configuration.md)
 - **I need advanced docs for `artifacts.toml`** → [Advanced Artifact Configuration](advanced-artifact-configuration.md)
 - **I need advanced docs for `mcp.toml`** → [Advanced MCP Configuration](advanced-mcp-configuration.md)
-- **I want the shortest docs path for my use case** → [End-User Stories](user-stories.md)
+- **I want the shortest docs path for my use case** → [End-User Stories](agent-compatibility.md)
 
 ## Related pages
 

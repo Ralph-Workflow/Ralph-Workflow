@@ -20,19 +20,13 @@ anything.
 Install and run
 ---------------
 
-The first-run sequence below matches the path used on
-:doc:`getting-started`, :doc:`quickstart`, and the two
-``START_HERE`` files. Run every step from a human-operated shell
-outside any Ralph-managed agent session.
-
-.. code-block:: bash
-
-   pipx install ralph-workflow      # 1. install the autopilot
-   cd /path/to/your/project         # 2. move into the repo you want agents on
-   ralph --init                     # 3. scaffold .agent/ + PROMPT.md
-   ralph --diagnose                 # 4. pre-flight: agents, MCP, capabilities
-   $EDITOR PROMPT.md                # 5. write the task — see PROMPT.md template
-   ralph                            # 6. run the unattended workflow
+The first-run sequence (install → init → diagnose → write spec →
+run → review) is the single source of truth in the root
+``README.md`` and ``START_HERE.md``. Run every step from a
+human-operated shell outside any Ralph-managed agent session. The
+``pipx install ralph-workflow`` line is the only install command
+you need; the rest of the walkthrough is on the repo-root
+``START_HERE.md``.
 
 ``ralph --diagnose`` is the **pre-flight check** — it shows which
 baseline helpers are healthy, missing, unreachable, degraded, or
@@ -46,7 +40,7 @@ This page is the maintained operator manual home.
 
 If you are brand new, start with :doc:`getting-started`.
 If you need configuration or operator detail, start with :doc:`configuration` or :doc:`reference`.
-If you need docs grouped by real user goal, start with :doc:`user-stories`.
+If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
 
 .. note::
 
@@ -82,16 +76,8 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    advanced-pipeline-configuration
    advanced-artifact-configuration
    advanced-mcp-configuration
+   parallel-mode
    policy-explanation
-
-.. toctree::
-   :hidden:
-   :caption: Use-case routing
-   :maxdepth: 1
-
-   user-stories
-   when-unattended-coding-fits
-   agent-compatibility
 
 .. toctree::
    :hidden:
@@ -129,6 +115,7 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    mcp-tool-restriction
    display
    transcript
+   agent-compatibility
 
 .. toctree::
    :hidden:
@@ -150,4 +137,3 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    :maxdepth: 1
 
    policy-driven-overhaul-migration
-   parallel-mode

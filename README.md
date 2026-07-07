@@ -1,30 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rebalanced the README so product positioning leads.
-    The finish-receipt / terminal-capture proof that previously anchored the
-    page is demoted to a clearly-marked "What a run leaves you" section
-    lower on the page. Apply canonical positioning language verbatim.
-  - Why it belongs here: this is the repo-storefront README. Its first job
-    is to state what Ralph Workflow is, who it is for, and the shortest
-    honest path to a first run. Proof must not dominate onboarding
-    (rubric hard failure: "reviewable-output framing dominates the
-    product story").
-  - What was pruned, merged, or explicitly left alone: demoted the finish
-    receipt from H2 to a bullet inside a secondary "What a run leaves you"
-    section; the previous "What it is / Who it's for / Why it's different"
-    block is preserved with minor rewording; the rubric-compliant review
-    note is left at the top of this file.
-  - How duplication was reduced or contained: the start-your-first-run
-    block remains the only install/usage primer; the
-    trust-and-safety section is preserved without restating the
-    install/usage commands.
-  - How the route is clearer now than before: what-it-is → who-it's-for →
-    shortest-honest-next-step → install → trust-and-safety
-    boundary → supported-agents → runtime/license/home →
-    documentation-route → ecosystem-and-attribution → what-a-run-leaves-you
-    → calls-to-action. The finish receipt is no longer the front door.
--->
-
 # Ralph Workflow — the autopilot for coding agents
 
 > **Codeberg is primary.** Star, watch, fork, and report issues there first:
@@ -46,7 +19,14 @@ every step. See [USERS.md](USERS.md) for the broader community directory.
 verify, and fix, and come back to reviewable, tested work.**
 
 The default workflow is strong enough to adopt as-is, before you customize
-anything.
+anything. The full operator manual lives under
+[`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/index.rst)
+and covers the
+[Quickstart](ralph-workflow/docs/sphinx/quickstart.md),
+[Developer reference](ralph-workflow/docs/sphinx/developer-reference.md),
+and the [API reference (`modules.rst`)](ralph-workflow/docs/sphinx/modules.rst).
+This page intentionally leaves out the deeper operator material
+because that material lives in the canonical pages above.
 
 ## Who it's for
 

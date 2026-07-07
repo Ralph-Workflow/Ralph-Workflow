@@ -5,7 +5,7 @@
 Use this page when your question is about files, precedence, validation commands, or configuration edits.
 This page answers the operator question quickly: which file do I edit, at which scope, and how do I validate the change safely?
 Ralph Workflow keeps the core simple, but the docs should still point you straight to the right TOML file instead of making you reverse-engineer the policy layout.
-If you want docs routed by use case instead of page type, open [End-User Stories](user-stories.md).
+If you want docs routed by use case instead of page type, open [End-User Stories](agent-compatibility.md).
 
 Bring your existing coding agents and keep your keys to yourself.
 Most operators mainly need to wire Ralph Workflow into agent CLIs they already trust, not re-home their model secrets.
@@ -450,7 +450,7 @@ Use the more detailed docs when you need them:
 - [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
 - [Developer Reference](developer-reference.md) — implementation-oriented detail
-- [End-User Stories](user-stories.md) — common user goals and the shortest docs path for each one
+- [End-User Stories](agent-compatibility.md) — common user goals and the shortest docs path for each one
 If you want the advanced/operator version of this topic — phases, counters, commit policy, recovery, and parallel fan-out — use [Advanced Pipeline Configuration](advanced-pipeline-configuration.md).
 
 ## `artifacts.toml` in plain language

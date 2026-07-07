@@ -1,35 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: de-duplicated the finish-receipt block. The verbatim
-    empty-name-validation `development_result` block previously lived
-    here AND on the root README AND on `ralph-workflow/START_HERE.md`
-    AND on the Sphinx index. Root README is now the single source of
-    the verbatim receipt; this page links there and uses a one-line
-    summary instead.
-  - Why it belongs here: this page is the public storefront's guided-
-    first-run surface for a repo visitor. The receipt block is one
-    click away via `README.md#what-a-run-leaves-you` so the reader
-    still sees it, but the START_HERE page no longer competes with
-    README as a second source of the verbatim artifact.
-  - What was pruned, merged, or explicitly left alone: the duplicated
-    finish-receipt code block (≈30 lines) is replaced by a 1-line
-    pointer plus a 2-line summary. The rubric-aligned page-family
-    minimum structure (evaluator kind → one realistic first-run goal
-    → prerequisites → exact first steps → success signal → next click)
-    is preserved as the spine.
-  - How duplication was reduced or contained: root README is now the
-    single source of the verbatim empty-name-validation receipt. The
-    package-side START_HERE also defers to root README for the receipt.
-    The diagnostics healthy-output sample is preserved here because
-    `--diagnose` is a per-invocation check, not a receipt — it's the
-    pre-flight that belongs on the first-run path, not the post-run
-    artifact.
-  - How the route is clearer now than before: evaluator role →
-    prerequisites → exact first steps → pre-flight signal (verbatim)
-    → post-run signal (pointer to README) → morning-after review note
-    → next click.
--->
-
 # Start Here: try Ralph Workflow on one real backlog task
 
 > **Codeberg is the primary repo.** Star, watch, and report issues there:
@@ -77,15 +45,6 @@ Have these ready before you start:
 
 Run these commands from a human-operated shell outside any Ralph-managed
 agent session:
-
-<!--
-  Canonical-source marker for the install block:
-  README.md is the single source for this verbatim 6-step first-run block.
-  The same block is intentionally duplicated in README.md#start-your-first-run
-  so the first-run path on each page is self-contained. Future editors MUST
-  keep both blocks in sync; this comment is the marker. The finish-receipt
-  block defers to README.md#what-a-run-leaves-you as the single source.
--->
 
 ```bash
 pipx install ralph-workflow        # 1. install the autopilot

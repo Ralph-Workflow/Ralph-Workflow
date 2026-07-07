@@ -1,16 +1,10 @@
 # Documentation Map
 
-Ralph Workflow is **the autopilot for coding agents** — a free and
-open-source operating system for autonomous coding, an AI agent
-orchestrator built around a simple Ralph-loop core that becomes powerful
-through composition. **Hand it a well-specified coding task, let the
-agents plan, build, verify, and fix, and come back to reviewable, tested
-work.** The default workflow is already strong enough to adopt as-is
-before you customize anything.
-
-Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.md).
-Those pages explain what Ralph Workflow is and how to judge one honest first run.
-This page routes you to the next page that best matches your question.
+This page routes readers to the one maintained doc that matches their
+question. Use this page after [README.md](../README.md) and
+[START_HERE.md](../START_HERE.md). Those pages explain what Ralph
+Workflow is and how to judge one honest first run. This page routes
+you to the next page that best matches your question.
 
 ## Choose one route
 
@@ -23,28 +17,28 @@ This page routes you to the next page that best matches your question.
 ### I want the maintained operator manual
 
 - [Manual home](../ralph-workflow/docs/sphinx/index.rst)
-- [Configuration + Reference](../ralph-workflow/docs/sphinx/configuration.md)
+- [Configuration](../ralph-workflow/docs/sphinx/configuration.md)
 - [Reference](../ralph-workflow/docs/sphinx/reference.md)
-- [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
-- [Run diagnostics before a workflow](../ralph-workflow/docs/sphinx/diagnostics.md)
 - [Agent CLI lifecycle (selection, auth, invocation)](../ralph-workflow/docs/sphinx/agents.md)
+- [Run diagnostics before a workflow](../ralph-workflow/docs/sphinx/diagnostics.md)
 
 ### I want to contribute or change Ralph Workflow itself
 
-These repo-root docs are a **map of the surrounding documentation system**, not the main operator manual.
-The maintained day-to-day operator path is the Sphinx manual above.
-Use these folders only when you know you need contributor guidance or deeper background.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for contribution intent and
+source-of-truth ordering, and
+[`ralph-workflow/CONTRIBUTING.md`](../ralph-workflow/CONTRIBUTING.md)
+for Python-specific contributor guidance. The contributor-policy
+directory is [`docs/agents/`](agents/README.md). The
+[docs/code-style](../code-style/index.md) family is the documentation
+rubric and style guide; [docs/tooling](../tooling/python-tooling.md)
+covers Python-tooling setup and Homebrew-formula notes for the
+maintained package.
 
-- [Claims ledger](CLAIMS_LEDGER.md) — every factual claim tracked for fabrication-guard
-- [Verification gate](VERIFICATION_GATE.md) — process that prevents hallucinated claims from reaching public surfaces
-- `docs/agents/` — contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
-- `docs/code-style/` — documentation rubric plus maintained style/process guidance
-- `docs/tooling/` — tooling setup and support notes for the Python implementation (`python-tooling.md`)
-- `docs/architecture/` — Python-runtime architecture: an `overview.md` plus the
-  maintained topical pages `pipeline-lifecycle.md`, `event-loop-and-reducers.md`,
-  and `parallel-fan-out.md`
-- [Superpowers skill bundles](../ralph-workflow/docs/superpowers/README.md) —
-  spec layouts and plan metadata for the maintained Python package
+### I want to see who is using it
+
+See [`docs/community/users.md`](community/users.md) for the canonical
+adopters list, including pattern implementations and active
+community projects.
 
 ### I want to see a real overnight run before I decide
 
@@ -53,18 +47,11 @@ Use these folders only when you know you need contributor guidance or deeper bac
 
 ### Legacy (Rust-era)
 
-Pages describing the **retired Rust implementation** are quarantined under
-[`docs/legacy-rust/`](legacy-rust/README.md), including the archived
-`docs/legacy-rust/performance/` performance notes. They are kept for
-historical context only; do not rely on them for current behavior.
-
-Start with [Rust Implementation Retired](migration/rust-implementation-retired.md)
-for the one-sentence status and the path to the maintained Python package.
-
-## Keep proof secondary
-
-Use proof-oriented pages only after you already understand the product story or the operator route.
-If you need deeper evidence, the manual and linked supporting pages will take you there.
+Pages describing the **retired Rust implementation** are quarantined
+under [`docs/legacy-rust/`](legacy-rust/README.md), including the
+archived `docs/legacy-rust/performance/` performance notes. They are
+kept for historical context only; do not rely on them for current
+behavior.
 
 ## Primary repo
 

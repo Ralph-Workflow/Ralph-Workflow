@@ -1,11 +1,10 @@
 # Getting Started with Ralph Workflow
 
+This page walks you from install to one honest unattended run in a repository you already care about.
 New to Ralph Workflow? This page takes you from install to one honest unattended run in a repository you already care about.
 If you already know the shape of the product and just want the shortest checklist, use [Quickstart](quickstart.md).
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+
 
 ## What this page gives you
 
@@ -18,7 +17,7 @@ Use this guide when you want the full first-run path, not just the short version
 - where to go next if you need configuration or deeper operator docs
 
 If you need config answers while reading, open [Configuration Reference](configuration.md).
-If you want docs routed by use case instead of by document type, open [End-User Stories](user-stories.md).
+If you want docs routed by use case instead of by document type, open [End-User Stories](agent-compatibility.md).
 
 ## Before you run Ralph Workflow
 
@@ -194,8 +193,10 @@ Run completed. Review the branch/worktree before merging.
 ```
 
 The exact transcript varies by task and agent. What matters is that the
-run ends with a concrete, reviewable change: modified files, test output,
-and a completion artifact you can inspect.
+run ends with a concrete change: modified files, test output, and a
+completion artifact you can inspect. See
+[Example Review Bundle](example-review-bundle.md) for what a complete
+finish-receipt looks like.
 
 ## Validate the result in reality
 
@@ -210,9 +211,10 @@ world:
 5. Decide the next action: push the branch, ask for changes, revert, rerun, or
 discard the result.
 
-Ralph Workflow handles the long middle — plan, build, verify, fix, recover,
-and return a reviewable handoff. You remain responsible for the destination
-and final judgment.
+You remain responsible for the destination and final judgment; the
+finish-receipt tells you what to inspect. See
+[Example Review Bundle](example-review-bundle.md) for what a complete
+receipt contains.
 
 If you need the underlying concepts first, open [Concepts](concepts.md).
 If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
@@ -222,4 +224,4 @@ If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
 - Need the shortest operator checklist? Use [Quickstart](quickstart.md).
 - Need to inspect what trustworthy output looks like? Use [Example Review Bundle](example-review-bundle.md).
 - Need to change settings or file locations? Use [Configuration Reference](configuration.md).
-- Need docs by goal instead of by section? Use [End-User Stories](user-stories.md).
+- Need docs by goal instead of by section? Use [End-User Stories](agent-compatibility.md).

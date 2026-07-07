@@ -1,8 +1,7 @@
 # MCP Tools Reference
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page documents the MCP tools that ralph-workflow exposes and the timeout contract every tool call must satisfy.
+
 
 Ralph Workflow runs a private MCP (Model Context Protocol) server for each agent invocation. Agents connect to it automatically; you do not need to wire it up by hand. The server exposes workspace access, artifact submission, coordination, and web tools, all gated by the capability set for the current session drain.
 

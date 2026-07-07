@@ -1,7 +1,6 @@
 # Architecture Docs
 
-Ralph Workflow is **the autopilot for coding agents** and a free and
-open-source AI agent orchestrator built around a simple Ralph-loop core.
+This page is the architecture-doc index for readers who need to understand Ralph Workflow's system boundaries before editing code.
 The simple core composes into a stronger workflow system for serious repo
 work, and the default workflow is strong enough to start with before you
 customize anything.
@@ -31,7 +30,7 @@ These pages are kept current with the Python implementation in
 - **[event-loop-and-reducers.md](event-loop-and-reducers.md)** — Event loop,
   reducer architecture, and policy-based routing. Covers
   `ralph/pipeline/orchestrator.py` and `ralph/pipeline/reducer.py`.
-- **[parallel-fan-out.md](parallel-fan-out.md)** — Same-workspace v1 parallel
+- **[parallel-mode.md (see ralph-workflow/docs/sphinx/parallel-mode.md)](parallel-mode.md (see ralph-workflow/docs/sphinx/parallel-mode.md))** — Same-workspace v1 parallel
   fan-out. Key constraints: `allowed_directories` path isolation,
   `.agent/workers/<unit_id>/` namespaces, artifact-based worker completion.
   No per-worker git branches or post-development merge step. The bundled

@@ -265,7 +265,7 @@ and an explicit justification.
 
 - [`pipeline-lifecycle.md`](pipeline-lifecycle.md)
 - [`event-loop-and-reducers.md`](event-loop-and-reducers.md)
-- [`parallel-fan-out.md`](parallel-fan-out.md)
+- [`parallel-mode.md` (see ralph-workflow/docs/sphinx/parallel-mode.md)](parallel-mode.md (see ralph-workflow/docs/sphinx/parallel-mode.md))
 - [`ralph-workflow/docs/sphinx/ralph-loop.md`](../../ralph-workflow/docs/sphinx/ralph-loop.md)
 - [`ralph-workflow/docs/sphinx/policy-driven-pipeline.md`](../../ralph-workflow/docs/sphinx/policy-driven-pipeline.md)
 - [`ralph-workflow/docs/sphinx/phase-routing.md`](../../ralph-workflow/docs/sphinx/phase-routing.md)

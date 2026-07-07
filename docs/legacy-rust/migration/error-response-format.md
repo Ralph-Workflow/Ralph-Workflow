@@ -1,5 +1,6 @@
 # Directive-Style Error Response Format for MCP Artifact Validation
 
+This page documents the legacy error-response format retained for backwards compatibility.
 > **Status: Design proposal / deferred — NOT current behavior.** The
 > error codes (`MISSING_FIELD` / `INVALID_ENUM` / `TYPE_MISMATCH` /
 > `CONSTRAINT_VIOLATION`), the `next_actions` / `prohibition` field

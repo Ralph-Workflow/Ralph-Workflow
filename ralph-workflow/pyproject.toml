@@ -12,7 +12,7 @@ license = { text = "AGPL-3.0-or-later" }
 license-files = ["LICENSE"]
 authors = [{ name = "Mistlight" }]
 maintainers = [{ name = "Mistlight" }]
-keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent", "loop-engineering", "loop", "autonomous-coding", "unattended", "claude-code", "opencode", "ollama", "unattended-loop", "quality-gate", "ralph-loop", "vendor-neutral", "ai-coding", "coding-agent", "overnight", "local-first", "codex", "codeberg", "oss", "loop-ecosystem", "nanocoder", "agy", "pi"]
+keywords = ["ai", "agent", "orchestration", "loop", "autonomous-coding", "unattended", "coding-agent"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",

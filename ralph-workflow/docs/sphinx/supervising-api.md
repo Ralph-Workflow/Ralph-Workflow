@@ -1,8 +1,7 @@
 # Supervising API
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page documents the supervising API that callers use to drive an unattended ralph-workflow run.
+
 
 This page is for developers and integrators building orchestrators that supervise one or more Ralph Workflow instances.
 

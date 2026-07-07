@@ -55,37 +55,9 @@ uv run pytest -q tests/test_documentation_command_sync.py
 make verify
 ```
 
-The maintained-tree suppression policy is additionally enforced by a tokenize-based inventory that walks `ralph-workflow/**/*.py` (excluding `.venv`) at the COMMENT-token level and flags any `# type: ignore` or `# pyright:` comment. Run it as part of the policy gate; required output is `No maintained-tree suppression comments found.` with exit code 0:
+The maintained-tree suppression policy is additionally enforced by a tokenize-based inventory that walks `ralph-workflow/**/*.py` (excluding `.venv`) at the COMMENT-token level and flags any `# type: ignore` or `# pyright:` comment. Run it as part of the policy gate; required output is `No maintained-tree suppression comments found.` with exit code 0.
 
-```bash
-cd ralph-workflow
-uv run python - <<'PY'
-from pathlib import Path
-import tokenize
-
-repo_root = Path('.').resolve()
-offenders: list[str] = []
-for path in sorted(repo_root.rglob('*.py')):
-    if '.venv' in path.parts:
-        continue
-    rel_path = path.relative_to(repo_root)
-    with path.open('rb') as fh:
-        for tok in tokenize.tokenize(fh.readline):
-            if tok.type != tokenize.COMMENT:
-                continue
-            comment = tok.string.lower()
-            if '# type:' in comment and 'ignore' in comment:
-                offenders.append(f'{rel_path}:{tok.start[0]}:{tok.string}')
-            if '# pyright:' in comment:
-                offenders.append(f'{rel_path}:{tok.start[0]}:{tok.string}')
-if offenders:
-    print('Unexpected maintained-tree suppression comments found:')
-    for offender in offenders:
-        print(offender)
-    raise SystemExit(1)
-print('No maintained-tree suppression comments found.')
-PY
-```
+Run `uv run pytest -q tests/test_type_ignore_policy.py` to exercise the maintained-tree suppression policy.
 
 ## Legacy note
 

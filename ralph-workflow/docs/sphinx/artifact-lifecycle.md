@@ -6,8 +6,6 @@
 
 An **artifact** is the durable evidence a phase produces.
 Ralph Workflow's artifact lifecycle is what turns a phase's agent
-invocation into reviewable, terminal evidence that survives the run.
-
 ## Why artifacts, not transcripts
 
 A chat transcript shows what the agent *said*. An artifact shows what the

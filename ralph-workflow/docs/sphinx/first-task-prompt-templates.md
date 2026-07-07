@@ -1,8 +1,7 @@
 # First-Task Prompt Templates
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page collects the prompt templates that ship with ralph-workflow to help you write a well-specified first task.
+
 
 Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
@@ -19,7 +18,7 @@ Why use it now? Copy one of these templates into `PROMPT.md`, run one real backl
 3. Keep the scope narrow enough to review in one sitting.
 4. Run Ralph Workflow and ask one question in the morning: **does the implementation hold up?**
 
-If you are still not sure whether your task is a good fit, read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) first.
+If you are still not sure whether your task is a good fit, read [agent-compatibility.md](./agent-compatibility.md) first.
 
 ## Template 1: Small feature slice
 
@@ -155,7 +154,7 @@ A weak first task is:
 
 - Read [../START_HERE.md](../START_HERE.md) for the fastest first-run path
 - Read [example-review-bundle.md](./example-review-bundle.md) to see what good output should look like
-- Read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) if you still need a task fit check
+- Read [agent-compatibility.md](./agent-compatibility.md) if you still need a task fit check
 
 ## Turn the first run into one public Codeberg action
 

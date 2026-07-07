@@ -5,8 +5,6 @@ Use it when you need to edit contracts, decision vocabularies, or summary paths 
 The core loop stays simple, but the artifact layer is where you make the workflow reviewable and predictable for your team.
 
 Treat artifacts as operator-facing contracts, not generic notes.
-The goal is to keep the workflow reviewable and predictable while the core loop stays simple.
-
 If your question is about workflow routing, use [Advanced Pipeline Configuration](advanced-pipeline-configuration.md). If your question is about MCP servers, use [Advanced MCP Configuration](advanced-mcp-configuration.md).
 
 ## Which file am I editing?

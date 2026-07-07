@@ -1,33 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: this file is the single canonical community surface for
-    Ralph Workflow. ECOSYSTEM.md, SHOWCASE.md, and CREDIT_TEMPLATE.md
-    were merged into USERS.md and deleted as part of the docs cleanup;
-    the 28 SEO-positioning sphinx pages were deleted in the same pass.
-  - Why it belongs here: USERS.md is the only reader-facing surface that
-    catalogs pattern implementations, active adopters, the shadow
-    ecosystem, and the Geoffrey Huntley attribution. Folding three
-    near-duplicate files into one canonical surface removes the
-    social-proof sprawl the rubric calls out.
-  - What was pruned, merged, or explicitly left alone: the Featured
-    projects section was preserved at the top; the 3 unique Active
-    community projects entries from ECOSYSTEM.md (Th0rgal, AnandChowdhary,
-    vercel-labs) were merged into the Pattern implementations table; the
-    "Want to be listed" + CREDIT_TEMPLATE badge markdown were merged into
-    a single "How to add your project" section. No project rows were
-    lost; the credit count for each featured entry is 0 per the project's
-    honesty marker.
-  - How duplication was reduced or contained: four near-duplicate
-    top-level files (USERS.md, ECOSYSTEM.md, SHOWCASE.md, CREDIT_TEMPLATE.md)
-    are now one file. External repo links carry the (verify: repo-exists)
-    annotation; star counts were removed in favor of neutral descriptions.
-  - How the route is clearer now than before: a reader evaluating the
-    tool can find every pattern implementation, active adopter, and
-    shadow-ecosystem signal in one place, with a single "How to add
-    your project" section at the bottom. There is no longer an
-    authoritative-feeling duplicate list to second-guess.
--->
-
 # Who's Using Ralph Loop?
 
 Ralph Workflow is **the autopilot for coding agents** — a free and
@@ -43,11 +13,8 @@ agent until tests pass — is used by a growing ecosystem of practitioners,
 tool builders, and enterprises. This page tracks the community: pattern
 implementations, tool integrations, and active adopters.
 
-> **Using Ralph Loop or Ralph Workflow?** Add yourself by [opening an
-> issue](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) or
-> submitting a PR. Grab the
-> [Built with Ralph Loop](assets/built-with-ralph-loop.svg) badge for
-> your README (see [How to add your project](#how-to-add-your-project)).
+> **Adding your project?** Submissions are welcome via issue or PR (see
+> [Pattern implementations](#pattern-implementations)).
 
 ---
 
@@ -109,7 +76,7 @@ Ralph Workflow reference implementation.
 | [dscherm/comfyprompts](https://github.com/dscherm/comfyprompts) | Mini-ralphs with delegation matrix | (verify: repo-exists) |
 | [Delqhi-Projects/ZOE-Solar-Accounting-OCR](https://github.com/Delqhi-Projects/ZOE-Solar-Accounting-OCR) | Ralph/Lisa pipeline executor for accounting OCR | (verify: repo-exists) |
 
-## Shadow ecosystem — Skill registries, MCP & media (last scouted 2026-06-30)
+## Shadow ecosystem — Skill registries, MCP & media
 
 | Project | Type | Description | Verify |
 |---------|------|-------------|--------|
@@ -155,41 +122,16 @@ code-level GitHub search.
 
 [**awesome-ralph**](https://github.com/snwfdhmp/awesome-ralph) (verify: repo-exists) is the community-maintained directory of Ralph Loop implementations, workshops, skill packs, and academic references. Start there to understand the full scope of the ecosystem.
 
-## How to add your project
+## How to add a project
 
-If you built something with the Ralph Loop pattern or with Ralph Workflow
-itself, add the badge below to your README — it takes 30 seconds and
-creates a discoverable backlink. Then open an issue or send a PR to be
-listed on this page.
-
-```markdown
-[![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
-```
-
-Renders as:
-
-[![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
-
-The badge signals that you're using the Ralph Loop pattern — plan →
-build → verify, iterated by an AI coding agent until tests pass. It
-links back to the Ralph Workflow reference implementation, helping
-others discover the pattern and the toolkit.
-
-After you add the badge:
-
-1. Your project becomes discoverable via
-   [GitHub code search](https://github.com/search?q=built-with-ralph-loop&type=code)
-   for `built-with-ralph-loop`.
-2. Open an issue on
-   [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues)
-   or submit a PR to be listed in the Pattern implementations table
-   above.
-
-What makes a good entry:
+If you built something with the Ralph Loop pattern or with Ralph
+Workflow itself, open an issue or send a PR. A good entry is:
 
 1. **Real project** — a repo with commits, not a template or fork
-2. **Ralph Loop usage** — your agent runs plan-build-verify cycles, whether via Ralph Workflow directly or your own implementation
-3. **Shipped software** — the agent produced working commits, not just artifacts
+2. **Ralph Loop usage** — your agent runs plan-build-verify cycles,
+   whether via Ralph Workflow directly or your own implementation
+3. **Shipped software** — the agent produced working commits, not
+   just artifacts
 
 ---
 

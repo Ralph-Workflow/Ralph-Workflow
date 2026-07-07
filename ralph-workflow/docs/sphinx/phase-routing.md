@@ -112,8 +112,7 @@ A run ends in one of four terminal outcomes:
 | `done`         | Every phase produced its artifact; commit is ready                        |
 | `blocked`      | A phase returned `blocked`; human intervention needed                    |
 | `budget-exceeded` | The retry budget or session ceiling was hit; current state is recoverable |
-| `regression`   | Verification failed after retry; reviewable as a partial result         |
-
+| `regression`   | Verification failed after retry; partial result |
 The terminal outcome is what the runtime hands back to the user via
 `declare_complete`. It is what the user reviews in the morning.
 

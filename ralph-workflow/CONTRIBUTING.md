@@ -139,67 +139,12 @@ Update the relevant `pipeline.toml` fields instead of adding code branches. If b
 
 ## Required verification
 
-Run this before opening or updating a PR:
-
-```bash
-make verify
-```
-
-`make verify` now emits a high-visibility failure banner that cites `AGENTS.md` so AI agents are explicitly told to stop and fix the failing check immediately.
-
-`make verify` runs two Make prerequisites before invoking the Python
-verify runner:
-
-- **`verify-drift`** — scans the source tree for banned literals
-  (out-of-place `PROMPT.md` references, ad-hoc `.ralph/run.json`
-  mentions, drift of `RALPH_*` environment variables into places that
-  do not own them). Catches documentation/code drift early.
-- **`docs`** — runs `uv run --extra docs sphinx-build -W --keep-going`
-  against `docs/sphinx/`. Sphinx warnings are treated as errors, so
-  orphan metadata, broken cross-references, or malformed toctrees fail
-  the build before any Python check runs.
-
-### Test budget policy — 60 seconds, combined total
-
-`make verify` enforces an **immutable 60-second combined test budget** across all test suites:
-
-| Scope | Limit | Enforcer |
-|-------|-------|----------|
-| Per individual test | 1 s | `conftest.py` SIGALRM watchdog |
-| Per suite invocation | 60 s (SECONDARY cap) | `python -m ralph.verify_timeout --suite-timeout 60` |
-| All test suites combined (`make test`) | 60 s (AUTHORITATIVE cap) | `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 60.0` (enforced via cumulative `time.monotonic()` tracking) |
-
-This 60-second combined budget is **absolute** and cannot be circumvented by:
-- Splitting tests into more suites or shards (cumulative tracker sums ALL tracked steps)
-- Moving slow tests to a different target
-- Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`
-- Modifying `_TOTAL_TEST_BUDGET_SECONDS` or `_BUDGET_TRACKED_STEPS` (blocked by import-time `if`/`raise RuntimeError` checks — immune to `python -O`)
-
-The combined budget is enforced at the verify runner level (`ralph/verify.py`). Per-suite timeouts are secondary caps only. The total elapsed time of every test suite running sequentially under `make verify` must not exceed 60 s. Splitting tests across N suites does NOT give N × 60 s.
-
-A slow test is a design defect. Fix the production coupling (extract I/O behind `MemoryWorkspace`, use `FakeAgentExecutor`). See `../docs/agents/testing-guide.md` for the full no-I/O test policy.
-
-For cumulative volume bottlenecks (many fast tests with per-item overhead dominating), valid fix strategies include consolidating parameterized tests with overlapping coverage, optimizing shared fixtures, or reducing redundant test coverage. Do NOT disable, skip, or quarantine tests to work around the budget.
-
-The dead-code audit is available separately while the existing dead-code backlog is still being cleaned up:
-
-```bash
-make dead-code
-```
-
-`make dead-code` uses Vulture and is expected to fail until the repo is fully cleaned. Keep it separate from `make verify` for now so the tooling can be validated without blocking unrelated work.
-
-You can narrow failures with:
-
-```bash
-make lint                 # uv run ruff check ralph/ tests/
-make format-check         # uv run ruff format --check ralph/ tests/
-make typecheck            # uv run python -m mypy ralph/
-make test                 # full combined 60s budget run
-make test-unit            # unit tests only
-make test-integration     # integration tests only
-make test-cov             # coverage report — enforces --fail-under=80
-```
+The canonical verification command is `make verify`; its full
+description, the layered gate it runs, the immutable 60-second
+combined test budget, and the non-circumvention rules all live on the
+root [`../CONTRIBUTING.md`](../CONTRIBUTING.md) under **Required
+verification**. This page does not duplicate the description; it
+points to the canonical source.
 
 ## Guardrails
 

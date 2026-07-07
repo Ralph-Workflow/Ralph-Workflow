@@ -1,8 +1,7 @@
 # Transcript and Display Reference
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page is a reference transcript of an unattended ralph-workflow run, kept for inspection.
+
 
 This page explains the terminal transcript Ralph Workflow prints during a run. It is mainly for contributors and operators who want to decode the exact line format, display rules, and lifecycle banners.
 

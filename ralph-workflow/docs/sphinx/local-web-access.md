@@ -1,8 +1,7 @@
 # Local Web Access
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+This page documents how ralph-workflow mediates local web access during an unattended run.
+
 
 Ralph Workflow supports three related web capabilities: **search**, **visit**, and **crawl**. They solve different problems, so the fastest way to stay productive is to pick the smallest tool that fits the job.
 

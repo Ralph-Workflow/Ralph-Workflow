@@ -18,7 +18,7 @@ adding or modifying the agent subsystem inside the Python package.
 - `type-ignore-policy.md` — when (and when not) `# type: ignore` is allowed
 - `python-verification.md` — Python-specific verification policy
 - `integration-tests.md` — how integration tests are organized
-- `parallelization.md` — parallelization expectations and audit contracts
+- `parallel-mode.md` (see ralph-workflow/docs/sphinx/parallel-mode.md) — parallelization expectations and audit contracts
 - `workspace-trait.md` — workspace abstraction contract
 - `agent-support-architecture.md` — how this repo supports Ralph Workflow
   agents

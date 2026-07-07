@@ -1,5 +1,6 @@
 # Policy-Driven Overhaul Migration Guide
 
+This page is the historical migration note for the policy-driven pipeline overhaul.
 !!! info "Historical migration note — not current product framing"
     This page documents the policy-driven overhaul as a historical
     migration. It is preserved so users upgrading from earlier
@@ -7,9 +8,7 @@
     the current product framing. For the current operator manual,
     start with :doc:`reference` or :doc:`getting-started`.
 
-Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
-**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
-The default workflow is strong enough to adopt as-is, before you customize anything.
+
 
 This guide is for users upgrading from an earlier Ralph Workflow release to the current policy-driven model. It focuses on the assumptions that changed, the config updates you may need to make, and the commands to run before you trust the migrated workflow.
 

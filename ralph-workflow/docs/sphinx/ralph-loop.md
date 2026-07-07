@@ -17,7 +17,7 @@ original insight is disarmingly simple:
 
 That's it. No multi-agent hierarchy, no phase router, no policy engine. Just
 one prompt, fed back into the model, until the model produces something
-reviewable.
+useful.
 
 The original Ralph loop is useful for tiny one-shot work. It does not scale
 to multi-hour engineering pipelines, and it does not survive the failure
@@ -37,7 +37,7 @@ it in the machinery that real engineering needs:
   phase (see [phase-routing](phase-routing.md))
 - A **four-channel watchdog** that catches idle, stuck, and crashed agents
   before they waste hours (see [watchdogs-and-timeouts](watchdogs-and-timeouts.md))
-- An **artifact lifecycle** that produces reviewable evidence per phase and
+- An **artifact lifecycle** that produces evidence per phase and
   a single terminal `development_result` (see
   [artifact-lifecycle](artifact-lifecycle.md))
 - A **verification model** that gates the whole pipeline on real checks
