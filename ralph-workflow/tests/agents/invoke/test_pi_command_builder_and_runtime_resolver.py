@@ -11,12 +11,15 @@ MCP-closure rules cannot silently regress.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.agents.invoke import BuildCommandOptions
+from ralph.agents.execution_state import CompletionEnforcingStrategy, strategy_for_transport
+from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.invoke import BuildCommandOptions, CompletionCheckOptions, check_process_result
 from ralph.agents.invoke._command_builders import PiCommandBuilder
+from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.invoke._runtime_resolvers import (
     RUNTIME_RESOLVERS,
     PiRuntimeResolver,
@@ -25,9 +28,13 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, pi_mcp_extension_path
+from ralph.phases.required_artifacts import RequiredArtifact
+from tests.fake_handle import _FakeHandle
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.process.manager import ManagedProcess
 
 
 def _make_prompt(tmp_path: Path) -> str:
@@ -390,3 +397,50 @@ class TestPiRuntimeResolver:
         assert runtime.server_env is None
         assert runtime.mcp_endpoint == endpoint
         assert extension_path.exists()
+
+
+class TestPiCompletionEnforcement:
+    """Pi clean exits without required artifacts must stay resumable."""
+
+    def test_pi_transport_uses_completion_enforcing_session_strategy(self) -> None:
+        strategy = strategy_for_transport(AgentTransport.PI)
+
+        assert isinstance(strategy, CompletionEnforcingStrategy)
+        assert strategy.supports_session_continuation() is True
+        assert strategy.supports_completion_enforcement() is True
+
+    def test_missing_required_artifact_raises_resumable_exit_with_pi_session(
+        self, tmp_path: Path
+    ) -> None:
+        strategy = strategy_for_transport(AgentTransport.PI)
+        handle = _FakeHandle(returncode=0)
+        required = RequiredArtifact(
+            phase="planning",
+            artifact_type="plan",
+            json_path=".agent/artifacts/plan.json",
+            markdown_path=None,
+            normalizer=None,
+        )
+
+        with pytest.raises(OpenCodeResumableExitError) as excinfo:
+            check_process_result(
+                cast("ManagedProcess", handle),
+                "pi",
+                parsed_output=[
+                    '{"type":"session","id":"pi-session-123","version":3}',
+                    '{"type":"agent_end","messages":[]}',
+                ],
+                check_options=CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    required_artifact=required,
+                    captured_session_id="pi-session-123",
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
+                ),
+            )
+
+        assert excinfo.value.agent_name == "pi"
+        assert excinfo.value.resumable_session_id == "pi-session-123"

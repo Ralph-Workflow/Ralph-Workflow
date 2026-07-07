@@ -32,7 +32,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.builtin_spec import BuiltinAgentSpec
-from ralph.agents.execution_state._factory import _make_agy_strategy
+from ralph.agents.execution_state._factory import _make_agy_strategy, _make_pi_strategy
 from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
 from ralph.agents.execution_state.claude_interactive_execution_strategy import (
     ClaudeInteractiveExecutionStrategy,
@@ -124,7 +124,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
     BuiltinAgentSpec(
         transport=AgentTransport.PI,
         parser_factory=PiParser,
-        strategy_factory=GenericExecutionStrategy,
+        strategy_factory=_make_pi_strategy,
         json_parser=JsonParserType.PI,
         cmd="pi",
         output_flag="--mode json",

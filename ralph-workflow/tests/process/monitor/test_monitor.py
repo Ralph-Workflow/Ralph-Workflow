@@ -145,7 +145,7 @@ def test_default_monitor_handles_missing_host() -> None:
         (AgentTransport.CLAUDE_INTERACTIVE, ["claude", "--interactive"]),
         (AgentTransport.OPENCODE, ["opencode", "run", "hello"]),
         (AgentTransport.CODEX, ["codex", "hello"]),
-        (AgentTransport.NANOCODER, ["nanocoder", "run", "hello"]),
+        (AgentTransport.NANOCODER, ["nanocoder", "--mode", "yolo"]),
         (AgentTransport.GENERIC, ["some-agent", "hello"]),
         (AgentTransport.AGY, ["agy", "--print", "hello"]),
     ],

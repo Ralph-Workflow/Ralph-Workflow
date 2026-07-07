@@ -433,9 +433,9 @@ class NanocoderCommandBuilder(ConfigurableCommandBuilder):
         base_argv=("nanocoder",),
         format_flag=None,
         output_flag=None,
-        yolo_flag=None,
+        yolo_flag="--mode yolo",
         model_flag_template=None,
-        positional_prompt=True,
+        positional_prompt=False,
         print_flag=None,
         extra_flags_before_prompt=(),
     )

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from ralph.agents.builtin import builtin_supports
 from ralph.agents.execution_state._base import BaseExecutionStrategy
-from ralph.agents.execution_state._factory import _make_agy_strategy
+from ralph.agents.execution_state._factory import _make_agy_strategy, _make_pi_strategy
 from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
 from ralph.agents.execution_state.claude_interactive_execution_strategy import (
     ClaudeInteractiveExecutionStrategy,
@@ -107,7 +107,7 @@ class TestBuiltinSupportsFrozen:
             "pi",
             AgentTransport.PI,
             PiParser,
-            GenericExecutionStrategy,
+            _make_pi_strategy,
             "pi",
             "--session {}",
             JsonParserType.PI,

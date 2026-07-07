@@ -13,6 +13,7 @@ Key features:
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -138,6 +139,7 @@ from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.timeout_defaults import (
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
@@ -224,9 +226,24 @@ def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
         monitor.stop()
 
 
+def _resolve_interactive_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
+    prompt_path = Path(prompt_file)
+    if prompt_path.is_absolute() or workspace_path is None:
+        return prompt_path
+    if prompt_file == "PROMPT.md":
+        return resolve_effective_prompt_path(workspace_path, os.environ)
+    return workspace_path / prompt_path
+
+
+def _nanocoder_initial_input(prompt_file: str, workspace_path: Path | None) -> str:
+    prompt_path = _resolve_interactive_prompt_path(prompt_file, workspace_path)
+    return f"Read and follow the full task in {prompt_path}.\r"
+
+
 def _shared_interactive_pty_extras(
     transport: AgentTransport,
     opts: InvokeOptions,
+    prompt_file: str,
 ) -> _PtyExtras:
     """Build PTY extras for transports that share the interactive runner."""
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
@@ -234,6 +251,11 @@ def _shared_interactive_pty_extras(
             expected_session_id=opts.session_id,
             stop_sentinel_path=opts.stop_sentinel_path,
             permission_prompt_listener=opts.permission_prompt_listener,
+        )
+    if transport == AgentTransport.NANOCODER:
+        return _PtyExtras(
+            expected_session_id=opts.session_id,
+            initial_input=_nanocoder_initial_input(prompt_file, opts.workspace_path),
         )
     return _PtyExtras(expected_session_id=opts.session_id)
 
@@ -243,12 +265,13 @@ def _run_shared_interactive_pty(
     ctx: _AgentRunCtx,
     opts: InvokeOptions,
     transport: AgentTransport,
+    prompt_file: str,
 ) -> Iterator[str]:
     """Run a PTY-backed interactive agent through the common terminal path."""
     yield from run_pty_and_read_lines(
         cmd,
         ctx,
-        _shared_interactive_pty_extras(transport, opts),
+        _shared_interactive_pty_extras(transport, opts, prompt_file),
     )
 
 
@@ -500,7 +523,7 @@ def invoke_agent(
                 AgentTransport.CLAUDE_INTERACTIVE,
                 AgentTransport.NANOCODER,
             }:
-                yield from _run_shared_interactive_pty(cmd, ctx, opts, transport)
+                yield from _run_shared_interactive_pty(cmd, ctx, opts, transport, prompt_file)
             elif transport == AgentTransport.AGY:
                 run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
                 if opts.workspace_path is not None:

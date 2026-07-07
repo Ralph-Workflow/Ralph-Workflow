@@ -182,8 +182,9 @@ subagent_capability = true
 #   npm install -g @earendil-works/pi-coding-agent     # https://www.npmjs.com/package/@earendil-works/pi-coding-agent
 #   curl -fsSL https://pi.dev/install.sh | sh           # https://pi.dev/ (official install script)
 # Pi streams NDJSON events on stdout per https://pi.dev/docs/latest/json
-# and intentionally has no built-in MCP per https://pi.dev/docs/latest/usage
-# so the runtime resolver fails closed when MCP wiring is requested.
+# and has no native MCP config file; Ralph Workflow wires MCP through a
+# generated Pi extension and retries clean exits without completion evidence
+# against the captured Pi session.
 # cmd = "pi"
 # output_flag = "--mode json"
 # yolo_flag = "--approve"

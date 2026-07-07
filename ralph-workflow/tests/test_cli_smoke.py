@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.factory import PipelineDeps
 
+from ralph.agents.invoke import InvokeOptions
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -502,6 +503,134 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     assert "agy/Gemini 3.5 Flash (Medium)" in output
     assert "agy/Gemini 3.5 Flash (Medium) parity smoke test" in output
     assert "agy/Gemini 3.5 Flash (Medium) parity smoke report" in output
+
+
+def test_smoke_interactive_nanocoder_command_runs_nanocoder_harness_when_binary_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch)
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/nanocoder")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "nanocoder":
+                return AgentConfig(
+                    cmd="nanocoder",
+                    transport=AgentTransport.NANOCODER,
+                )
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
+        captured["agent_name"] = kwargs["agent_name"]
+        return smoke_module.SmokeRunResult(
+            agent_name="nanocoder",
+            transport="nanocoder",
+            output_file=tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js",
+            file_created=True,
+            session_id=None,
+            explicit_completion_seen=True,
+            raw_line_count=1,
+            parsed_event_count=1,
+            tool_activity_seen=True,
+            artifact_submitted=True,
+            meaningful_output_lines=["ok"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
+
+    exit_code = smoke_module.smoke_interactive_nanocoder_command(display_context=None)
+
+    assert exit_code == 0
+    assert captured["agent_name"] == "nanocoder"
+    output = stream.getvalue()
+    assert "nanocoder parity smoke test" in output
+    assert "nanocoder parity smoke report" in output
+
+
+def test_smoke_interactive_nanocoder_command_exits_when_binary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: None)
+
+    exit_code = smoke_module.smoke_interactive_nanocoder_command(display_context=None)
+
+    assert exit_code == 2
+
+
+def test_smoke_interactive_nanocoder_command_exits_when_transport_is_wrong(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/nanocoder")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, _name: str) -> AgentConfig | None:
+            return AgentConfig(
+                cmd="claude",
+                transport=AgentTransport.CLAUDE_INTERACTIVE,
+            )
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    exit_code = smoke_module.smoke_interactive_nanocoder_command(display_context=None)
+
+    assert exit_code == 2
+
+
+def test_nanocoder_smoke_errors_do_not_require_session_id(tmp_path: Path) -> None:
+    output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
+    params = smoke_module.SmokeRunParams(
+        agent_name="nanocoder",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=tmp_path / "tmp" / "interactive-nanocoder-smoke" / "PROMPT.md",
+        output_file=output_file,
+        options=InvokeOptions(),
+        display_context=None,
+        pipeline_deps=None,
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        lines=[
+            "[plain] text: writing file",
+            "[plain] tool: write_file",
+            "[plain] text: done",
+            "Task declared complete: session_id=nanocoder-smoke, summary=done, timestamp=1",
+        ],
+        live_output_lines=["writing file", "tool use", "done"],
+        session_id=None,
+        final_exception=None,
+        tool_activity_seen=True,
+        artifact_submitted=True,
+    )
+
+    assert "session ID was not observed" not in errors
 
 
 @pytest.mark.timeout_seconds(10)

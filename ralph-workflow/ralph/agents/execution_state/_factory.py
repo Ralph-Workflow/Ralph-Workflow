@@ -68,6 +68,26 @@ def _make_agy_strategy(
     )
 
 
+def _make_pi_strategy(
+    *,
+    label_scope: str | None = None,
+    registry: ChildLivenessRegistry | None = None,
+    subagent_pid_source: SubagentPidSource | None = None,
+    **_kwargs: object,
+) -> BaseExecutionStrategy:
+    """Factory for Pi's session-capable completion-enforcing strategy."""
+
+    class PiExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
+        def supports_session_continuation(self) -> bool:
+            return True
+
+    return PiExecutionStrategy(
+        label_scope=label_scope,
+        registry=registry,
+        subagent_pid_source=subagent_pid_source,
+    )
+
+
 # Public read-only view over the default catalog's ``state.strategies`` dict.
 #
 # The catalog is the single source of truth for the transport-to-strategy

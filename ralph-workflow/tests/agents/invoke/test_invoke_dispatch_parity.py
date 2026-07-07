@@ -492,11 +492,12 @@ class TestResolveInvocationRuntimeParity:
                 None,
                 [
                     "nanocoder",
+                    "--mode",
+                    "yolo",
                     "--provider",
                     "openai",
                     "--model",
                     "gpt-4",
-                    "hello world",
                 ],
             ),
             (

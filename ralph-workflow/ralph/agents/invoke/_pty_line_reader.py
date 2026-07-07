@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import contextlib
+import errno
 import os
 import threading
 import time
@@ -159,6 +160,8 @@ class PtyLineReader:
         self._expected_session_id = _extras.expected_session_id
         self._stop_sentinel_path = _extras.stop_sentinel_path
         self._permission_prompt_listener = _extras.permission_prompt_listener
+        self._initial_input = _extras.initial_input
+        self._initial_input_sent = False
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=256)
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
@@ -450,12 +453,21 @@ class PtyLineReader:
                 if self._handle.poll() is not None:
                     pending = self._drain_after_exit(decoder, pending)
                     break
-                if not wait_for_master_readable(self._handle.master_fd, 0.05):
-                    continue
+                try:
+                    if not wait_for_master_readable(self._handle.master_fd, 0.05):
+                        continue
+                except OSError as exc:
+                    if exc.errno == errno.EBADF:
+                        break
+                    raise
                 try:
                     chunk = read_master_chunk(self._handle.master_fd)
                 except BlockingIOError:
                     continue
+                except OSError as exc:
+                    if exc.errno == errno.EBADF:
+                        break
+                    raise
                 if not chunk:
                     break
                 pending += decoder.decode(chunk)
@@ -580,6 +592,17 @@ class PtyLineReader:
                     )
                 return
             self._monitor_stop.wait(0.05)
+
+    def _send_initial_input(self) -> None:
+        if self._initial_input_sent or self._initial_input is None:
+            return
+        self._initial_input_sent = True
+        with contextlib.suppress(OSError):
+            _write_pty_input(
+                self._input_writer_fd,
+                self._initial_input,
+                lock=self._input_writer_lock,
+            )
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -1073,6 +1096,7 @@ class PtyLineReader:
         if self._is_waiting_state_provider is not None:
             watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
+        self._send_initial_input()
         # R7 (Trustworthy Idle Watchdog): expose the watchdog
         # reference on the PTY line reader so the line-reader
         # layer can populate the R7 diagnostic fields on

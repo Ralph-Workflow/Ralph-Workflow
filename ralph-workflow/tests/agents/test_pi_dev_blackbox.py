@@ -14,7 +14,7 @@ The test pins:
       (cmd='pi', output_flag='--mode json', yolo_flag='--approve',
       session_flag='--session {}', can_commit=True, display_name='Pi',
       transport=AgentTransport.PI, json_parser=JsonParserType.PI,
-      parser_factory=PiParser, strategy_factory=GenericExecutionStrategy).
+      parser_factory=PiParser, strategy_factory=_make_pi_strategy).
   (2) ``catalog.get_parser('pi')`` returns a ``PiParser`` instance.
   (3) ``catalog.get_strategy(AgentTransport.PI, command='pi')`` returns
       a ``BaseExecutionStrategy`` instance.
@@ -45,10 +45,7 @@ import pytest
 
 from ralph.agents.catalog import default_catalog
 from ralph.agents.execution_state._base import BaseExecutionStrategy
-from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
-from ralph.agents.execution_state.generic_execution_strategy import (
-    GenericExecutionStrategy,
-)
+from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH, _make_pi_strategy
 from ralph.agents.invoke import BuildCommandOptions, build_command
 from ralph.agents.parsers import _CUSTOM_COMMAND_REGISTRY, _PARSER_REGISTRY
 from ralph.agents.parsers.pi import PiParser
@@ -136,8 +133,8 @@ class TestPiDevBlackboxPublicSurface:
         assert support.parser_factory is PiParser, (
             f"pi parser_factory must be PiParser, got {support.parser_factory!r}"
         )
-        assert support.strategy_factory is GenericExecutionStrategy, (
-            f"pi strategy_factory must be GenericExecutionStrategy, "
+        assert support.strategy_factory is _make_pi_strategy, (
+            f"pi strategy_factory must be _make_pi_strategy, "
             f"got {support.strategy_factory!r}"
         )
 
@@ -273,14 +270,14 @@ class TestPiDevBlackboxPublicSurface:
             "alias, matching the registry.get() public contract"
         )
         # The synthesized support must keep the pi built-in's parser and
-        # strategy factories (PiParser + GenericExecutionStrategy).
+        # strategy factories (PiParser + _make_pi_strategy).
         assert support.parser_factory is PiParser, (
             f"pi/<model> support parser_factory must be PiParser, "
             f"got {support.parser_factory!r}"
         )
-        assert support.strategy_factory is GenericExecutionStrategy, (
+        assert support.strategy_factory is _make_pi_strategy, (
             f"pi/<model> support strategy_factory must be "
-            f"GenericExecutionStrategy, got {support.strategy_factory!r}"
+            f"_make_pi_strategy, got {support.strategy_factory!r}"
         )
         # The model flag must preserve the full provider/id suffix.
         config = support.config
@@ -442,7 +439,7 @@ class TestPiDevBlackboxConfigOverride:
         # The override must preserve the built-in's parser factory and
         # strategy factory (they are structural to the pi transport).
         assert catalog_pi.parser_factory is PiParser
-        assert catalog_pi.strategy_factory is GenericExecutionStrategy
+        assert catalog_pi.strategy_factory is _make_pi_strategy
 
     def test_override_propagates_to_dynamic_alias_endpoints(self) -> None:
         """The ``pi/<model>`` dynamic alias must use the override base.
@@ -489,4 +486,4 @@ class TestPiDevBlackboxConfigOverride:
         # The synthesized dynamic-alias support must keep the built-in's
         # parser factory and strategy factory.
         assert catalog_alias.parser_factory is PiParser
-        assert catalog_alias.strategy_factory is GenericExecutionStrategy
+        assert catalog_alias.strategy_factory is _make_pi_strategy

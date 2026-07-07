@@ -13,3 +13,4 @@ class _PtyExtras:
     expected_session_id: str | None = None
     stop_sentinel_path: Path | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
+    initial_input: str | None = None

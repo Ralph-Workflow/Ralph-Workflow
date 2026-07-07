@@ -35,6 +35,7 @@ from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import (
     smoke_interactive_agy_command,
     smoke_interactive_claude_command,
+    smoke_interactive_nanocoder_command,
 )
 from ralph.cli.commands.star import star
 from ralph.config.bootstrap import (
@@ -1035,6 +1036,14 @@ def smoke_interactive_agy(
 
 
 app.command(name="smoke-interactive-agy")(smoke_interactive_agy)
+
+
+def smoke_interactive_nanocoder() -> None:
+    """Run the manual PTY smoke test for Nanocoder interactive mode."""
+    raise typer.Exit(code=smoke_interactive_nanocoder_command(display_context=_get_cli_context()))
+
+
+app.command(name="smoke-interactive-nanocoder")(smoke_interactive_nanocoder)
 app.command()(star)
 
 

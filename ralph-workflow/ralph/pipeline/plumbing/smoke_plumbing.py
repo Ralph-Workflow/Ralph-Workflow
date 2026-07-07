@@ -56,6 +56,9 @@ _INTERACTIVE_AGENT = "claude/haiku"
 _SMOKE_RUN_ID = "interactive-claude-smoke"
 _AGY_SMOKE_RELATIVE_DIR = Path("tmp/interactive-agy-smoke")
 _AGY_SMOKE_OUTPUT_FILE = _AGY_SMOKE_RELATIVE_DIR / "todo-list.js"
+_NANOCODER_SMOKE_RELATIVE_DIR = Path("tmp/interactive-nanocoder-smoke")
+_NANOCODER_SMOKE_OUTPUT_FILE = _NANOCODER_SMOKE_RELATIVE_DIR / "todo-list.js"
+_NANOCODER_SMOKE_RUN_ID = "interactive-nanocoder-smoke"
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,13 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             relative_dir=_AGY_SMOKE_RELATIVE_DIR,
             output_file=_AGY_SMOKE_OUTPUT_FILE,
             run_id=run_id,
+        )
+    if agent_name == "nanocoder":
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_NANOCODER_SMOKE_RELATIVE_DIR,
+            output_file=_NANOCODER_SMOKE_OUTPUT_FILE,
+            run_id=_NANOCODER_SMOKE_RUN_ID,
         )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
 
@@ -656,7 +666,10 @@ def _detect_smoke_errors(
         errors.append(str(final_exception))
     if not params.output_file.exists():
         errors.append("expected todo-list.js was not created")
-    if session_id is None and params.config.transport != AgentTransport.AGY:
+    if session_id is None and params.config.transport not in {
+        AgentTransport.AGY,
+        AgentTransport.NANOCODER,
+    }:
         errors.append("session ID was not observed")
 
     if not _explicit_completion_seen(

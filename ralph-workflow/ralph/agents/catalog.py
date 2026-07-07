@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar
 
 from ralph.agents._contracts import StrategyFactory
-from ralph.agents.execution_state._factory import _make_agy_strategy
+from ralph.agents.execution_state._factory import _make_agy_strategy, _make_pi_strategy
 from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
 from ralph.agents.execution_state.claude_interactive_execution_strategy import (
     ClaudeInteractiveExecutionStrategy,
@@ -190,7 +190,7 @@ _DEFAULT_BUILTIN_PARSER_TYPES: dict[
     "codex": (CodexParser, AgentTransport.CODEX, GenericExecutionStrategy),
     "gemini": (GeminiParser, AgentTransport.GENERIC, GenericExecutionStrategy),
     "opencode": (OpenCodeParser, AgentTransport.OPENCODE, GenericExecutionStrategy),
-    "pi": (PiParser, AgentTransport.PI, GenericExecutionStrategy),
+    "pi": (PiParser, AgentTransport.PI, _make_pi_strategy),
     "generic": (GenericParser, AgentTransport.GENERIC, GenericExecutionStrategy),
 }
 
@@ -227,7 +227,7 @@ def _default_strategy_factories() -> dict[AgentTransport, StrategyFactory]:
         AgentTransport.AGY: _make_agy_strategy,
         AgentTransport.CODEX: GenericExecutionStrategy,
         AgentTransport.NANOCODER: GenericExecutionStrategy,
-        AgentTransport.PI: GenericExecutionStrategy,
+        AgentTransport.PI: _make_pi_strategy,
         AgentTransport.GENERIC: GenericExecutionStrategy,
     }
 

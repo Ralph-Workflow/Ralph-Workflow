@@ -167,18 +167,23 @@ includes the corresponding AGY-side flag.
 
 The Pi builder invokes `pi --mode json <prompt>` and parses the resulting
 NDJSON stream per Pi's documented `AgentSessionEvent` vocabulary at
-<https://pi.dev/docs/latest/json>. Pi has no documented CLI MCP wiring path,
-so Ralph Workflow runs Pi **without** forwarding `RALPH_MCP_ENDPOINT`;
-Pi workflow phases rely on the prompt-side artifact fallback instead of MCP
-tool calls.
+<https://pi.dev/docs/latest/json>. Pi has no native MCP config file or CLI
+flag, so Ralph Workflow materializes a per-run Pi extension and launches Pi
+with `--no-builtin-tools --extension <generated file>` when the Ralph MCP
+endpoint is available. The extension registers Ralph MCP tools through Pi's
+custom-tool API and proxies calls to the active HTTP MCP endpoint.
+Pi is session-capable in JSON mode: a clean `rc=0` exit without required
+artifact or completion evidence is retried against the captured Pi session
+rather than treated as terminal success.
 
 ## End-to-end verification paths
 
 Each agent has a documented verification path that targets its own contract:
 
 - **Claude Code (interactive)**: `ralph smoke-interactive-claude`
+- **Nanocoder (interactive)**: `ralph smoke-interactive-nanocoder`
 - **AGY (interactive)**: `ralph smoke-interactive-agy` (mock-backed by default)
-- **Codex, OpenCode, Nanocoder, Pi**: public-surface black-box pytest suite
+- **Codex, OpenCode, Pi**: public-surface black-box pytest suite
   (`uv run pytest tests/agents/<agent>_blackbox.py -q`)
 
 These suites verify Ralph Workflow's public registry / catalog / parser /

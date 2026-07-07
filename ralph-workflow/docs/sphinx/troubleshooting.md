@@ -120,7 +120,7 @@ Both tests are pure-Python (no `time.sleep`, no real subprocess, no network), so
 
 The argv assertion in the black-box test ends with the actual prompt TEXT loaded from a `tmp_path` fixture (e.g. `hello world`) per the public contract in `ralph-workflow/ralph/agents/invoke/_command_builders/__init__.py:_load_prompt_text` with `positional_prompt=True`. Do NOT assert the literal `'PROMPT.md'` - that is the prompt file PATH, not the file CONTENT that the positional argv element carries.
 
-For the live `pi` binary end-to-end path, see <https://pi.dev/docs/latest/usage> for the documented `--mode json` invocation and the documented `--approve` (`-a`) project-trust override. Note that pi.dev has no documented CLI MCP wiring path (the "Pi keeps the core small" design philosophy explicitly omits built-in MCP), so Ralph Workflow removes `RALPH_MCP_ENDPOINT` from the Pi subprocess environment and relies on the prompt-side artifact fallback instead of MCP tool calls.
+For the live `pi` binary end-to-end path, see <https://pi.dev/docs/latest/usage> for the documented `--mode json` invocation and the documented `--approve` (`-a`) project-trust override. Pi has no native CLI MCP config file, so Ralph Workflow removes `RALPH_MCP_ENDPOINT` from the Pi subprocess environment, writes a generated Pi extension, and passes it with `--no-builtin-tools --extension` so Pi receives Ralph MCP tools through its custom-tool API.
 
 ## MCP servers fail to start
 

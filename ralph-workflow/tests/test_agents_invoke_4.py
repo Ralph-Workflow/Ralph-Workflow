@@ -229,7 +229,7 @@ def test_build_command_nanocoder_uses_interactive_prompt_mode(tmp_path: Path) ->
         options=BuildCommandOptions(workspace_path=tmp_path),
     )
 
-    assert cmd == ["nanocoder", "hello"]
+    assert cmd == ["nanocoder", "--mode", "yolo"]
 
 
 def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path) -> None:
@@ -249,12 +249,12 @@ def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path)
 
     assert cmd[:5] == [
         "nanocoder",
+        "--mode",
+        "yolo",
         "--provider",
         "ollama",
-        "--model",
-        "llama3.1",
     ]
-    assert cmd[-1] == "hello"
+    assert cmd[-2:] == ["--model", "llama3.1"]
 
 
 def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_path: Path) -> None:
@@ -273,12 +273,12 @@ def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_pa
 
     assert cmd[:5] == [
         "nanocoder",
+        "--mode",
+        "yolo",
         "--provider",
         "MiniMax Coding",
-        "--model",
-        "MiniMax-M3",
     ]
-    assert cmd[-1] == "hello"
+    assert cmd[-2:] == ["--model", "MiniMax-M3"]
 
 
 def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:

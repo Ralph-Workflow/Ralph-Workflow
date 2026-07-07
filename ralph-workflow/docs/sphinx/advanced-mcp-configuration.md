@@ -39,17 +39,17 @@ Common fields:
 - `url`
 - `env`
 
-> **Pi.dev has no documented CLI MCP wiring path.** PiRuntimeResolver (in
+> **Pi.dev has no native CLI MCP config file.** PiRuntimeResolver (in
 > `ralph/agents/invoke/_runtime_resolvers/__init__.py`) removes
-> `RALPH_MCP_ENDPOINT` from the Pi subprocess environment rather than wiring
-> MCP into the agent.
-> This follows the documented upstream constraint from
-> [https://pi.dev/docs/latest/usage](https://pi.dev/docs/latest/usage) (Pi
-> keeps the core small — no built-in MCP) and is pinned by
+> `RALPH_MCP_ENDPOINT` from the Pi subprocess environment, writes a generated
+> Pi extension, and passes that extension with `--no-builtin-tools --extension`.
+> The extension registers Ralph MCP tools through Pi's custom-tool API and
+> proxies calls to the active HTTP MCP endpoint. This is pinned by
 > `tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py::TestPiRuntimeResolver`
-> (`test_mcp_endpoint_in_extra_env_is_removed`,
-> `test_mcp_endpoint_in_base_env_is_not_forwarded`). If a future pi.dev release adds a
-> CLI MCP flag, update both the resolver and the test in the same diff.
+> (`test_mcp_endpoint_in_extra_env_writes_extension`,
+> `test_mcp_endpoint_in_base_env_writes_extension`). If a future pi.dev
+> release adds a CLI MCP flag, update both the resolver and the tests in the
+> same diff.
 
 ### `[web_search]`
 
