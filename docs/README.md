@@ -24,11 +24,6 @@ question, after [`README.md`](../README.md) and
 - [`docs/agents/`](agents/README.md) — contributor-policy directory
 - [`docs/code-style/`](../code-style/index.md) — documentation rubric and style guide
 
-### I want to see audited adoption claims
-
-- [`.agent/claims-ledger-process.md`](../.agent/claims-ledger-process.md) —
-  canonical, process-ledger-style adoption claims
-
 ### Legacy Rust-era reference (archived)
 
 [`docs/legacy-rust/`](legacy-rust/README.md) — describes the retired

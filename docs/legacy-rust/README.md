@@ -32,37 +32,11 @@ the current Python implementation.
 
 ## Subdirectories
 
-- `performance/` — Performance notes for the retired Rust runtime
-  (monitoring, optimization, memory budgets, baselines).
-- `architecture/` — Architecture pages for the retired Rust runtime
-  (checkpoint-and-resume, agents-and-prompts, git-and-rebase, etc.).
-  Includes `code-style-architecture.md` (formerly misfiled under
-  `docs/code-style/`, moved here as part of the legacy quarantine).
-- `plans/` — Design and implementation plans from the Rust era, archived
-  after the Python rewrite. The maintained Python-era plans remain in
-  `docs/plans/`. As of 2026-07-07, the 6 plans in this directory
-  remain intact — the docs cleanup audit (see
-  `tmp/legacy-rust-decisions.md`) determined that every file was
-  modified after the 2026-05-01 post-Python-rewrite boundary and was
-  therefore retained by the keep rule.
-- `RFC/` — Rust-era request-for-comment process artifacts
-  (RFC-001 through RFC-013). As of 2026-07-07, all 13 RFCs remain
-  intact; the three required override keeps (RFC-004 reducer-based
-  pipeline architecture, RFC-005 event-loop savecheckpoint bypass,
-  RFC-009 mcp-agent-orchestrator communication) are preserved per the
-  audit decision file.
-- `tooling/` — Rust-era tooling notes (`dylint`, `remote-build`). The
-  maintained Python tooling notes remain in `docs/tooling/python-tooling.md`.
+This directory holds only the pointer page; the historical Rust-era design material lives under `tmp/legacy-rust-archive/` per the 2026-07-07 quarantine.
 
 ## Cleanup audit trail
 
-The 2026-07-07 docs cleanup pass applied an executable keep/delete
-rule to every RFC and plan in this directory. The audit decision log
-lives in `tmp/legacy-rust-decisions.md`; the per-file decision table
-shows every RFC and plan alongside its keep justification. No files
-were deleted in this directory during the cleanup; the 19 files
-present before the cleanup are still present, retained by the
-post-2026-05-01 timestamp clause of the keep rule.
+The 2026-07-07 docs cleanup quarantined the historical Rust-era design material under `tmp/legacy-rust-archive/` (60 files). The pointer page here is intentionally tiny so the quarantine cannot be picked up by Sphinx toctrees or linkcheckers.
 
 ## Cross-reference policy
 

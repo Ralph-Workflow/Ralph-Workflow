@@ -1,6 +1,6 @@
 # Example Review Bundle
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+See the canonical product description in [README.md](../../README.md).
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 

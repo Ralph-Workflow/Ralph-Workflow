@@ -3,7 +3,7 @@
 This guide covers the conceptual changes and breaking changes introduced when Ralph Workflow
 moved to fully policy-driven orchestration, and explains how to migrate existing configurations.
 
-See also: [docs/migration/parallel-mode.md](parallel-mode.md) for parallel execution migration.
+See also: [ralph-workflow/docs/sphinx/parallel-mode.md](../../ralph-workflow/docs/sphinx/parallel-mode.md) for parallel execution migration.
 
 ---
 

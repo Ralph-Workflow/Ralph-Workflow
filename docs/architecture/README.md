@@ -27,7 +27,7 @@ These pages are kept current with the Python implementation in
 - **[event-loop-and-reducers.md](event-loop-and-reducers.md)** — Event loop,
   reducer architecture, and policy-based routing. Covers
   `ralph/pipeline/orchestrator.py` and `ralph/pipeline/reducer.py`.
-- **[parallel-mode.md (see ralph-workflow/docs/sphinx/parallel-mode.md)](parallel-mode.md (see ralph-workflow/docs/sphinx/parallel-mode.md))** — Same-workspace v1 parallel
+- **[Parallel mode](../../ralph-workflow/docs/sphinx/parallel-mode.md)** — same-workspace v1 parallel
   fan-out. Key constraints: `allowed_directories` path isolation,
   `.agent/workers/<unit_id>/` namespaces, artifact-based worker completion.
   No per-worker git branches or post-development merge step. The bundled

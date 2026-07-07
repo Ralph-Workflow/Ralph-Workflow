@@ -16,7 +16,7 @@ adding or modifying the agent subsystem inside the Python package.
 - `testing-guide.md` — black-box testing expectations and the 60-second
   combined test budget
 - `type-ignore-policy.md` — when (and when not) `# type: ignore` is allowed
-- `parallel-mode.md` (see ralph-workflow/docs/sphinx/parallel-mode.md) — parallelization expectations and audit contracts
+- `parallel-mode.md` — parallelization expectations and audit contracts (canonical home: ralph-workflow/docs/sphinx/parallel-mode.md)
 - `workspace-trait.md` — workspace abstraction contract
 - `agent-support-architecture.md` — how this repo supports Ralph Workflow
   agents
