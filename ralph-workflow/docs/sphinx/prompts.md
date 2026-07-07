@@ -163,7 +163,7 @@ they are the maintainer-contributed details this page documents.
 - [first-task-prompt-templates](first-task-prompt-templates.md) —
   concrete templates you can copy into `PROMPT.md`.
 
-### Review note
+### Page scope
 
 This page is intentionally scoped to the agent-side prompt
 machinery. The user-facing run-spec role of `PROMPT.md` is the
