@@ -256,6 +256,7 @@ def _shared_interactive_pty_extras(
         return _PtyExtras(
             expected_session_id=opts.session_id,
             initial_input=_nanocoder_initial_input(prompt_file, opts.workspace_path),
+            initial_input_ready_markers=("What would you like me to help with?",),
         )
     return _PtyExtras(expected_session_id=opts.session_id)
 

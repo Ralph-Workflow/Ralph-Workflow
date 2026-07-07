@@ -129,6 +129,10 @@ def _make_pty_line_reader_with_session_id(
     reader._last_tool_result_at = None
     reader._last_tool_result_excerpt = None
     reader._last_tool_use_name = None
+    reader._initial_input = None
+    reader._initial_input_ready = True
+    reader._initial_input_ready_marker_labels = ()
+    reader._initial_input_sent = False
     reader._captured_session_id = session_id
     reader._transcript_session_ids = deque([session_id], maxlen=64)
     reader._transcript_session_ids_lock = threading.Lock()

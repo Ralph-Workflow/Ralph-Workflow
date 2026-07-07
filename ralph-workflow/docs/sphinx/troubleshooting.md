@@ -166,6 +166,27 @@ python -m ralph smoke-interactive-nanocoder --agent 'nanocoder/MiniMax Coding/Mi
 
 If the smoke report shows the same provider/model error, fix the agent's provider/model alias or local agent config before starting an unattended run.
 
+## Nanocoder shows the welcome screen but does not start the task
+
+**Symptom:** Nanocoder prints its banner and `Tips for getting started`, then
+shows the task text as pasted input or sits at `What would you like me to help
+with?` without tool or model progress.
+
+**Cause:** Nanocoder is an interactive TUI. Ralph Workflow must wait until
+Nanocoder's input prompt is ready before sending the task path. Sending the
+task during startup can leave the prompt text in Nanocoder's editor instead
+of submitting a turn.
+
+**Fix:** Run the Nanocoder smoke test with the same alias used by the pipeline:
+
+```bash
+python -m ralph smoke-interactive-nanocoder --agent 'nanocoder/MiniMax Coding/MiniMax-M3'
+```
+
+The smoke test should fail if prompt submission regresses. If an older run is
+already stuck at the Nanocoder welcome screen, stop that run and restart it
+after upgrading Ralph Workflow.
+
 ## Nanocoder exits with "Conversation exceeded 50 turns"
 
 **Symptom:** A Nanocoder run fails partway through a complex task with the message `Conversation exceeded 50 turns` in the run log.

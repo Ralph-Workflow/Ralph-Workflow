@@ -184,6 +184,7 @@ def test_invoke_agent_injects_nanocoder_prompt_path_into_interactive_pty(
     manager = _FakePtyManager()
     captured_cmds: list[list[str]] = []
     captured_initial_inputs: list[str | None] = []
+    captured_ready_markers: list[tuple[str, ...]] = []
 
     def fake_run_pty_and_read_lines(
         cmd: list[str],
@@ -192,6 +193,7 @@ def test_invoke_agent_injects_nanocoder_prompt_path_into_interactive_pty(
     ) -> Iterator[str]:
         captured_cmds.append(cmd)
         captured_initial_inputs.append(getattr(extras, "initial_input", None))
+        captured_ready_markers.append(getattr(extras, "initial_input_ready_markers", ()))
         yield "Task declared complete: session_id=nanocoder-session, summary=done, timestamp=1\n"
 
     monkeypatch.setattr(invoke_module, "get_process_manager", lambda: manager)
@@ -213,3 +215,4 @@ def test_invoke_agent_injects_nanocoder_prompt_path_into_interactive_pty(
     assert captured_initial_inputs == [
         f"Read and follow the full task in {prompt_file}.\r"
     ]
+    assert captured_ready_markers == [("What would you like me to help with?",)]
