@@ -396,7 +396,13 @@ class TestExecuteAgentEffectA:
 
     def test_development_session_gets_expected_mcp_capabilities(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
-        registry = _registry_factory(MagicMock())
+        registry = _registry_factory(
+            AgentConfig(
+                cmd="dev",
+                json_parser=JsonParserType.GENERIC,
+                transport=AgentTransport.GENERIC,
+            )
+        )
         recording_factory = make_recording_bridge_factory(_FakeBridge())
 
         pipeline_deps = make_test_pipeline_deps(

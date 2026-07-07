@@ -217,33 +217,10 @@ def test_pi_dynamic_alias_rejects_malformed_model_ids() -> None:
     assert registry.get("pi/:") is None
 
 
-def test_pi_dynamic_alias_rejects_multi_slash_model_ids() -> None:
-    """Multi-slash ``pi/<model>`` aliases must return ``None``.
-
-    Per https://pi.dev/docs/latest/usage the documented ``--model`` pattern
-    is ``provider/id`` (exactly one ``/``) with an optional ``:<thinking>``
-    suffix.  Aliases with more than one ``/`` inside the model id (e.g.
-    ``pi/provider/model/extra`` or ``pi/anthropic/claude/extra``) are
-    undocumented and must NOT resolve, since accepting them would emit
-    a silently-misparsed ``--model provider/model/extra`` flag downstream.
-
-    The single-segment bare id form (``pi/sonnet``,
-    ``pi/claude-sonnet-4-20250514``) and the documented two-segment
-    ``provider/id`` form (``pi/anthropic/claude-sonnet-4-20250514``,
-    ``pi/anthropic/claude-sonnet-4-20250514:high``) must still resolve.
-    """
+def test_pi_dynamic_alias_accepts_nested_provider_model_paths() -> None:
+    """``pi/<model>`` aliases must preserve nested provider/model paths."""
     registry = AgentRegistry()
 
-    # Three segments after the ``pi/`` prefix (one ``/`` too many).
-    assert registry.get("pi/provider/model/extra") is None
-    # Three segments with a real provider and two extra model segments.
-    assert registry.get("pi/anthropic/claude/extra") is None
-    # Three segments with a thinking suffix still has one slash too many.
-    assert registry.get("pi/provider/model/extra:high") is None
-    # Four segments (deeply nested multi-slash) must also be rejected.
-    assert registry.get("pi/anthropic/claude/foo/bar") is None
-
-    # Sanity: documented shapes still resolve and carry the suffix verbatim.
     bare = registry.get("pi/anthropic/claude-sonnet-4-20250514")
     assert bare is not None
     assert bare.model_flag == "--model anthropic/claude-sonnet-4-20250514"
@@ -255,6 +232,14 @@ def test_pi_dynamic_alias_rejects_multi_slash_model_ids() -> None:
     thinking = registry.get("pi/anthropic/claude-sonnet-4-20250514:high")
     assert thinking is not None
     assert thinking.model_flag == "--model anthropic/claude-sonnet-4-20250514:high"
+
+    nested = registry.get("pi/provider/model/extra:high")
+    assert nested is not None
+    assert nested.model_flag == "--model provider/model/extra:high"
+
+    deep = registry.get("pi/anthropic/claude/foo/bar")
+    assert deep is not None
+    assert deep.model_flag == "--model anthropic/claude/foo/bar"
 
 
 def test_configured_pi_override_propagates_to_catalog() -> None:

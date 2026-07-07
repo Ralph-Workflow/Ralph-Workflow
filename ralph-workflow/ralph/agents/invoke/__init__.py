@@ -134,6 +134,7 @@ from ralph.mcp.transport.nanocoder import (
     load_existing_nanocoder_upstream_servers,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
+from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
@@ -221,6 +222,34 @@ def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
     """Stop workspace monitoring."""
     if monitor is not None:
         monitor.stop()
+
+
+def _shared_interactive_pty_extras(
+    transport: AgentTransport,
+    opts: InvokeOptions,
+) -> _PtyExtras:
+    """Build PTY extras for transports that share the interactive runner."""
+    if transport == AgentTransport.CLAUDE_INTERACTIVE:
+        return _PtyExtras(
+            expected_session_id=opts.session_id,
+            stop_sentinel_path=opts.stop_sentinel_path,
+            permission_prompt_listener=opts.permission_prompt_listener,
+        )
+    return _PtyExtras(expected_session_id=opts.session_id)
+
+
+def _run_shared_interactive_pty(
+    cmd: list[str],
+    ctx: _AgentRunCtx,
+    opts: InvokeOptions,
+    transport: AgentTransport,
+) -> Iterator[str]:
+    """Run a PTY-backed interactive agent through the common terminal path."""
+    yield from run_pty_and_read_lines(
+        cmd,
+        ctx,
+        _shared_interactive_pty_extras(transport, opts),
+    )
 
 
 def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> None:
@@ -374,6 +403,9 @@ def invoke_agent(
                 initial_session_id=opts.initial_session_id,
                 settings_json=opts.settings_json,
                 stop_sentinel_path=opts.stop_sentinel_path,
+                pi_mcp_extension_path=runtime_env.get(PI_MCP_EXTENSION_ENV)
+                if runtime_env is not None
+                else None,
             ),
         )
         logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
@@ -464,13 +496,11 @@ def invoke_agent(
             requires_pty = support.spec.requires_pty
 
         if requires_pty:
-            if transport == AgentTransport.CLAUDE_INTERACTIVE:
-                extras = _PtyExtras(
-                    expected_session_id=opts.session_id,
-                    stop_sentinel_path=opts.stop_sentinel_path,
-                    permission_prompt_listener=opts.permission_prompt_listener,
-                )
-                yield from run_pty_and_read_lines(cmd, ctx, extras)
+            if transport in {
+                AgentTransport.CLAUDE_INTERACTIVE,
+                AgentTransport.NANOCODER,
+            }:
+                yield from _run_shared_interactive_pty(cmd, ctx, opts, transport)
             elif transport == AgentTransport.AGY:
                 run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
                 if opts.workspace_path is not None:

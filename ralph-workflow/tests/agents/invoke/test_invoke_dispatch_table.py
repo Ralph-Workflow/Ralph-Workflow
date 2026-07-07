@@ -69,15 +69,19 @@ def test_invoke_dispatch_table(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     config_agy = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     assert check_routing(config_agy) == "pty"
 
-    # (c) transport=CLAUDE (built-in claude-headless, now in default_catalog()) routes to subprocess
+    # (c) transport=NANOCODER (built-in nanocoder, now in default_catalog()) routes to PTY
+    config_nanocoder = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
+    assert check_routing(config_nanocoder) == "pty"
+
+    # (d) transport=CLAUDE (built-in claude-headless, now in default_catalog()) routes to subprocess
     config_headless = AgentConfig(cmd="claude -p", transport=AgentTransport.CLAUDE)
     assert check_routing(config_headless) == "subprocess"
 
-    # (d) transport=CODEX (built-in codex, now in default_catalog()) routes to subprocess
+    # (e) transport=CODEX (built-in codex, now in default_catalog()) routes to subprocess
     config_codex = AgentConfig(cmd="codex exec", transport=AgentTransport.CODEX)
     assert check_routing(config_codex) == "subprocess"
 
-    # (e) unregistered transport=CLAUDE_INTERACTIVE agent routes to subprocess (the new default)
+    # (f) unregistered transport=CLAUDE_INTERACTIVE agent routes to subprocess (the new default)
     config_unregistered = AgentConfig(
         cmd="unregistered-claude", transport=AgentTransport.CLAUDE_INTERACTIVE
     )

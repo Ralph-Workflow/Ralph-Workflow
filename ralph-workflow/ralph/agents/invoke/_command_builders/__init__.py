@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from ralph.agents.invoke._process_reader import _agent_command_name
 from ralph.config.enums import AgentTransport
 from ralph.mcp.tools.names import CLAUDE_NATIVE_TOOLS_TO_KEEP
+from ralph.mcp.transport.pi import pi_mcp_extension_path
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 if TYPE_CHECKING:
@@ -429,7 +430,7 @@ class NanocoderCommandBuilder(ConfigurableCommandBuilder):
     """CommandBuilder for AgentTransport.NANOCODER."""
 
     SPEC = CommandBuilderSpec(
-        base_argv=("nanocoder", "--mode", "yolo", "run"),
+        base_argv=("nanocoder",),
         format_flag=None,
         output_flag=None,
         yolo_flag=None,
@@ -533,6 +534,31 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
 
     def __init__(self) -> None:
         super().__init__(self.SPEC)
+
+    def build(
+        self,
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: _BuildCommandOptions,
+    ) -> list[str]:
+        cmd = self._init_cmd(config)
+        if self.spec.output_flag is not None:
+            cmd.extend(_split_optional_flag(self.spec.output_flag))
+
+        extension_path = options.pi_mcp_extension_path
+        if extension_path is None and options.mcp_endpoint and options.workspace_path is not None:
+            extension_path = str(pi_mcp_extension_path(options.workspace_path))
+        if extension_path is not None:
+            cmd.extend(["--no-builtin-tools", "--extension", extension_path])
+
+        cmd.extend(self._build_yolo_session_flags(config, options))
+        if options.verbose and config.verbose_flag:
+            cmd.append(config.verbose_flag)
+        cmd.extend(self._build_model_flag(config, options))
+        prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
+        cmd.append(prompt_text)
+        return cmd
 
 
 class DefaultCommandBuilder:

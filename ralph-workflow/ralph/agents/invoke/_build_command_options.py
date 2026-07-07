@@ -21,3 +21,4 @@ class _BuildCommandOptions:
     initial_session_id: str | None = None
     settings_json: str | None = None
     stop_sentinel_path: Path | None = None
+    pi_mcp_extension_path: str | None = None

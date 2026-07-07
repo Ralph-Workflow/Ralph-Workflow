@@ -535,9 +535,8 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
         base_config = _base("pi")
         if base_config is None:
             return None
-        # Pi's documented --model pattern is `provider/id` (e.g.
-        # `anthropic/claude-sonnet-4-20250514`) with an optional
-        # `:<thinking>` suffix (e.g. `:high`).  The full suffix after
+        # Pi's --model pattern accepts provider/model identifiers with
+        # an optional `:<thinking>` suffix (e.g. `:high`).  The full suffix after
         # `pi/` MUST be preserved verbatim, so we use
         # ``name.removeprefix('pi/')`` (NOT ``segments[1]``) which would
         # drop everything after the first `/` inside the model id.
@@ -586,14 +585,12 @@ def _normalize_nanocoder_provider_and_model(name: str) -> tuple[str, str | None]
 
 
 def _is_valid_pi_model_id(model_id: str) -> bool:
-    """Validate a ``pi/<model>`` model id per the documented pi.dev pattern.
+    """Validate a ``pi/<model>`` model id for argv-safe provider/model parity.
 
-    Per https://pi.dev/docs/latest/usage: ``--model <pattern>`` documents
-    that the pattern may be a ``provider/id`` pair (e.g.
-    ``anthropic/claude-sonnet-4-20250514``) or a plain model id, with an
-    optional ``:<thinking>`` suffix (e.g. ``:high``).  The validator
-    rejects any shape that would emit an undocumented
-    ``--model <garbage>`` flag downstream:
+    ``--model <pattern>`` is emitted as a single argv value, so the
+    resolver accepts the same slash-delimited provider/model path shape
+    supported by the other model-addressable agents while rejecting
+    shapes that would create empty or ambiguous argv values:
 
       * empty model id (e.g. ``pi/``, ``pi//``)
       * whitespace, newline, or carriage return anywhere in the id
@@ -607,16 +604,8 @@ def _is_valid_pi_model_id(model_id: str) -> bool:
         ``:<thinking>`` suffix is allowed; multi-colon shapes like
         ``pi/foo:bar:baz`` fall outside the documented
         ``provider/id[:<thinking>]`` syntax)
-      * more than one ``/`` separator (the documented pattern is at
-        most one ``/`` between provider and id; multi-slash shapes
-        like ``pi/provider/model/extra`` or ``pi/anthropic/claude/foo``
-        are not documented at https://pi.dev/docs/latest/usage and
-        must NOT be silently accepted - they would round-trip as
-        ``--model provider/model/extra`` which is an undocumented
-        pattern and may be silently misparsed downstream)
-      * empty provider segment when ``/`` is present (e.g. ``pi//x``)
-      * empty model-name segment when ``/`` is present (e.g.
-        ``pi/provider/``)
+      * empty provider/model path segments when ``/`` is present (e.g.
+        ``pi//x``, ``pi/provider/``, ``pi/provider//model``)
       * empty base before the optional ``:<thinking>`` colon (e.g.
         ``pi/:high``)
       * empty ``:<thinking>`` suffix (e.g. ``pi/anthropic/claude:``)
@@ -634,9 +623,4 @@ def _is_valid_pi_model_id(model_id: str) -> bool:
         return False
     if has_thinking and ":" in thinking:
         return False
-    if "/" not in base:
-        return True
-    provider, _, model_name = base.partition("/")
-    if "/" in model_name:
-        return False
-    return bool(provider and model_name)
+    return all(segment for segment in base.split("/"))

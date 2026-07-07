@@ -2064,6 +2064,13 @@ ralph.mcp.transport.nanocoder
    :members:
    :show-inheritance:
 
+ralph.mcp.transport.pi
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.transport.pi
+   :members:
+   :show-inheritance:
+
 ralph.mcp.transport.agy
 ~~~~~~~~~~~~~~~~~~~~~~~
 

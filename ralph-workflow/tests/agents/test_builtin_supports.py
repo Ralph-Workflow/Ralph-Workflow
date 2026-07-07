@@ -23,9 +23,9 @@ def test_builtin_supports_properties() -> None:
         assert s.strategy_factory is not None
         assert s.spec is not None
 
-    # (d) every interactive entry (claude, agy) has spec.requires_pty is True, other 5 False
+    # (d) every interactive entry has spec.requires_pty is True, others False
     for s in supports:
-        if s.name in {"claude", "agy"}:
+        if s.name in {"claude", "nanocoder", "agy"}:
             assert s.spec.requires_pty is True, f"{s.name} should require PTY"
         else:
             assert s.spec.requires_pty is False, f"{s.name} should not require PTY"

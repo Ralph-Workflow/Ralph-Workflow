@@ -103,15 +103,12 @@ def test_nanocoder_command_builder_parity(tmp_path: Path) -> None:
         workspace_path=tmp_path,
     )
 
-    # Old logic:
-    # cmd = [cmd_name, "--mode", "yolo", "run"]
+    # Interactive nanocoder uses the common PTY path; no headless run mode.
+    # cmd = [cmd_name]
     # model -> "--provider", "openai", "--model", "gpt-4"
     # prompt -> "hello world"
     expected = [
         "nanocoder",
-        "--mode",
-        "yolo",
-        "run",
         "--provider",
         "openai",
         "--model",

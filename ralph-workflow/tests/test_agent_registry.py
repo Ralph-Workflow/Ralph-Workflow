@@ -308,6 +308,18 @@ def test_agent_registry_resolves_direct_nanocoder_provider_reference() -> None:
     assert agent.can_commit is True
 
 
+def test_agent_registry_resolves_pi_provider_model_path_reference() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("pi/anthropic/claude-sonnet-4-20250514/latest:high")
+
+    assert agent is not None
+    assert agent.cmd == "pi"
+    assert agent.transport == AgentTransport.PI
+    assert agent.model_flag == "--model anthropic/claude-sonnet-4-20250514/latest:high"
+    assert agent.can_commit is True
+
+
 @pytest.mark.parametrize(
     "name",
     [

@@ -15,6 +15,7 @@ from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationR
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.transport.codex import release_codex_home
+from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, write_pi_mcp_extension
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -134,7 +135,7 @@ class NanocoderRuntimeResolver:
         endpoint = _get_endpoint(runtime_env, _env)
 
         if not endpoint:
-            raise RuntimeError("endpoint must be set for NANOCODER transport")
+            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
 
         runtime_env.setdefault("NANOCODER_TRUST_DIRECTORY", "1")
         nanocoder_mcp_servers = runtime_env.get("NANOCODER_MCPSERVERS") or _env.get(
@@ -367,13 +368,10 @@ class DefaultRuntimeResolver:
 class PiRuntimeResolver:
     """RuntimeResolver for AgentTransport.PI.
 
-    Pi has no documented CLI MCP wiring path
-    (https://pi.dev/docs/latest/usage: "It intentionally does not include
-    built-in MCP, sub-agents, permission popups, plan mode, to-dos, or
-    background bash").  The resolver therefore does not forward Ralph's
-    MCP endpoint into the Pi process.  Pi still runs through its documented
-    NDJSON CLI path, and workflow artifacts complete through the prompt-side
-    file fallback.
+    Pi has no native MCP config file or CLI flag, but Pi extensions can
+    register tools. Ralph therefore materializes a per-invocation extension
+    that registers the visible Ralph MCP tools and proxies each call to the
+    active HTTP MCP endpoint.
     """
 
     def resolve(
@@ -386,13 +384,22 @@ class PiRuntimeResolver:
         system_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
+        endpoint = _get_endpoint(runtime_env, _env)
         runtime_env.pop(MCP_ENDPOINT_ENV, None)
+
+        if not endpoint:
+            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
+
+        extension_path, cleanup = write_pi_mcp_extension(endpoint, workspace_path=workspace_path)
+        runtime_env[PI_MCP_EXTENSION_ENV] = str(extension_path)
 
         return ResolvedInvocationRuntime(
             agent_env=runtime_env or None,
             server_env=None,
-            mcp_endpoint=None,
+            mcp_endpoint=endpoint,
+            cleanup=cleanup,
         )
 
 

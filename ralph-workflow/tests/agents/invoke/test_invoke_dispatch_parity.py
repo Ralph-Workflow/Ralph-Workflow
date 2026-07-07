@@ -163,15 +163,17 @@ class TestResolveInvocationRuntimeParity:
             assert result.server_env is None
             assert result.mcp_endpoint is None
 
-    @pytest.mark.parametrize("has_endpoint", [True])
+    @pytest.mark.parametrize("has_endpoint", [False, True])
     def test_nanocoder_resolver_parity(
         self,
         has_endpoint: bool,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Test NANOCODER resolver with endpoint (raises without)."""
-        extra_env: dict[str, str] = {MCP_ENDPOINT_ENV: "http://localhost:8080"}
+        """Test NANOCODER resolver with and without endpoint."""
+        extra_env: dict[str, str] = {}
+        if has_endpoint:
+            extra_env[MCP_ENDPOINT_ENV] = "http://localhost:8080"
         config = AgentConfig(cmd="test-agent", transport=AgentTransport.NANOCODER)
 
         fake_mcp_config = "fake-nanocoder-mcp-config"
@@ -216,11 +218,16 @@ class TestResolveInvocationRuntimeParity:
         )
 
         assert isinstance(result, ResolvedInvocationRuntime)
-        assert isinstance(result.agent_env, dict)
-        assert "NANOCODER_MCPSERVERS" in result.agent_env
-        assert result.agent_env["NANOCODER_MCPSERVERS"] == fake_mcp_config
-        assert isinstance(result.server_env, dict)
-        assert result.mcp_endpoint == "http://localhost:8080"
+        if has_endpoint:
+            assert isinstance(result.agent_env, dict)
+            assert "NANOCODER_MCPSERVERS" in result.agent_env
+            assert result.agent_env["NANOCODER_MCPSERVERS"] == fake_mcp_config
+            assert isinstance(result.server_env, dict)
+            assert result.mcp_endpoint == "http://localhost:8080"
+        else:
+            assert result.agent_env is None
+            assert result.server_env is None
+            assert result.mcp_endpoint is None
 
     @pytest.mark.parametrize("has_endpoint", [False, True])
     def test_codex_resolver_parity(
@@ -362,22 +369,26 @@ class TestResolveInvocationRuntimeParity:
                 _base_env={},
             )
 
-    def test_nanocoder_requires_endpoint(self, tmp_path: Path) -> None:
-        """NANOCODER transport requires endpoint - without it, raises RuntimeError."""
+    def test_nanocoder_without_endpoint_has_no_runtime_env(self, tmp_path: Path) -> None:
+        """NANOCODER without MCP endpoint launches interactively without injected env."""
         config = AgentConfig(cmd="test-agent", transport=AgentTransport.NANOCODER)
 
-        with pytest.raises(RuntimeError, match="endpoint must be set for NANOCODER"):
-            resolve_invocation_runtime(
-                config,
-                extra_env={},
-                workspace_path=tmp_path,
-                _base_env={},
-            )
+        result = resolve_invocation_runtime(
+            config,
+            extra_env={},
+            workspace_path=tmp_path,
+            _base_env={},
+        )
+
+        assert result.agent_env is None
+        assert result.server_env is None
+        assert result.mcp_endpoint is None
 
     @pytest.mark.parametrize(
         "transport",
         [
             AgentTransport.OPENCODE,
+            AgentTransport.NANOCODER,
             AgentTransport.CODEX,
             AgentTransport.CLAUDE,
             AgentTransport.CLAUDE_INTERACTIVE,
@@ -425,16 +436,6 @@ class TestResolveInvocationRuntimeParity:
         """Assert behavior when _base_env is provided without endpoint."""
         base_env: Mapping[str, str] = {"PATH": "/usr/bin", "HOME": "/home/test"}
         config = AgentConfig(cmd="test-agent", transport=transport)
-
-        if transport == AgentTransport.NANOCODER:
-            with pytest.raises(RuntimeError, match="endpoint must be set for NANOCODER"):
-                resolve_invocation_runtime(
-                    config,
-                    extra_env={},
-                    workspace_path=tmp_path,
-                    _base_env=base_env,
-                )
-            return
 
         result = resolve_invocation_runtime(
             config,
@@ -491,9 +492,6 @@ class TestResolveInvocationRuntimeParity:
                 None,
                 [
                     "nanocoder",
-                    "--mode",
-                    "yolo",
-                    "run",
                     "--provider",
                     "openai",
                     "--model",

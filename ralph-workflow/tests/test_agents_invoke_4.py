@@ -217,14 +217,8 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
 
-def test_build_command_nanocoder_uses_yolo_run_mode(tmp_path: Path) -> None:
-    """Nanocoder runs in ``yolo`` mode so Ralph's MCP/workspace boundary is the
-    permission control layer (matching claude/codex/agy's skip-approval flags).
-
-    ``auto-accept`` only auto-approves the Ralph MCP tools; nanocoder's native
-    tools (e.g. ``execute_bash``) still block on approval, wedging the agent
-    ("Tool approval required for: execute_bash"). ``yolo`` auto-approves them.
-    """
+def test_build_command_nanocoder_uses_interactive_prompt_mode(tmp_path: Path) -> None:
+    """Nanocoder is PTY-only; Ralph must not invoke the unsupported headless mode."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
@@ -235,8 +229,7 @@ def test_build_command_nanocoder_uses_yolo_run_mode(tmp_path: Path) -> None:
         options=BuildCommandOptions(workspace_path=tmp_path),
     )
 
-    assert cmd[:4] == ["nanocoder", "--mode", "yolo", "run"]
-    assert cmd[-1] == "hello"
+    assert cmd == ["nanocoder", "hello"]
 
 
 def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path) -> None:
@@ -254,11 +247,8 @@ def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path)
         options=BuildCommandOptions(workspace_path=tmp_path),
     )
 
-    assert cmd[:8] == [
+    assert cmd[:5] == [
         "nanocoder",
-        "--mode",
-        "yolo",
-        "run",
         "--provider",
         "ollama",
         "--model",
@@ -281,11 +271,8 @@ def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_pa
         options=BuildCommandOptions(workspace_path=tmp_path),
     )
 
-    assert cmd[:8] == [
+    assert cmd[:5] == [
         "nanocoder",
-        "--mode",
-        "yolo",
-        "run",
         "--provider",
         "MiniMax Coding",
         "--model",

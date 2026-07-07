@@ -24,6 +24,7 @@ from ralph.agents.invoke._runtime_resolvers import (
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
+from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, pi_mcp_extension_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -299,9 +300,33 @@ class TestPiCommandBuilder:
             "hello world",
         ]
 
+    def test_mcp_endpoint_loads_generated_extension_before_prompt(self, tmp_path: Path) -> None:
+        """Pi receives Ralph MCP tools through a generated extension."""
+        prompt_file = _make_prompt(tmp_path)
+        extension_path = pi_mcp_extension_path(tmp_path)
+        cmd = PiCommandBuilder().build(
+            _pi_config(),
+            prompt_file,
+            options=BuildCommandOptions(
+                mcp_endpoint="http://127.0.0.1:54321/mcp",
+                workspace_path=tmp_path,
+            ),
+        )
+
+        assert cmd == [
+            "pi",
+            "--mode",
+            "json",
+            "--no-builtin-tools",
+            "--extension",
+            str(extension_path),
+            "--approve",
+            "hello world",
+        ]
+
 
 class TestPiRuntimeResolver:
-    """Pi has no documented CLI MCP wiring path, so Ralph hides MCP env from Pi."""
+    """Pi receives Ralph MCP wiring through a generated extension."""
 
     def test_registered_in_runtime_resolvers(self) -> None:
         assert RUNTIME_RESOLVERS[AgentTransport.PI] is PiRuntimeResolver
@@ -328,30 +353,40 @@ class TestPiRuntimeResolver:
         assert runtime.server_env is None
         assert runtime.mcp_endpoint is None
 
-    def test_mcp_endpoint_in_extra_env_is_removed(self, tmp_path: Path) -> None:
+    def test_mcp_endpoint_in_extra_env_writes_extension(self, tmp_path: Path) -> None:
         config = _pi_config()
+        endpoint = "http://localhost:9999/mcp"
         runtime = PiRuntimeResolver().resolve(
             config,
             extra_env={
-                str(MCP_ENDPOINT_ENV): "http://localhost:9999/mcp",
+                str(MCP_ENDPOINT_ENV): endpoint,
                 "FOO": "bar",
             },
             workspace_path=tmp_path,
         )
 
-        assert runtime.agent_env == {"FOO": "bar"}
+        extension_path = pi_mcp_extension_path(tmp_path)
+        assert runtime.agent_env == {"FOO": "bar", PI_MCP_EXTENSION_ENV: str(extension_path)}
         assert runtime.server_env is None
-        assert runtime.mcp_endpoint is None
+        assert runtime.mcp_endpoint == endpoint
+        extension_text = extension_path.read_text(encoding="utf-8")
+        assert endpoint in extension_text
+        assert "pi.registerTool" in extension_text
+        assert "tools/list" in extension_text
+        assert "tools/call" in extension_text
 
-    def test_mcp_endpoint_in_base_env_is_not_forwarded(self, tmp_path: Path) -> None:
+    def test_mcp_endpoint_in_base_env_writes_extension(self, tmp_path: Path) -> None:
         config = _pi_config()
+        endpoint = "http://localhost:9999/mcp"
         runtime = PiRuntimeResolver().resolve(
             config,
             extra_env={"FOO": "bar"},
             workspace_path=tmp_path,
-            base_env={str(MCP_ENDPOINT_ENV): "http://localhost:9999/mcp"},
+            base_env={str(MCP_ENDPOINT_ENV): endpoint},
         )
 
-        assert runtime.agent_env == {"FOO": "bar"}
+        extension_path = pi_mcp_extension_path(tmp_path)
+        assert runtime.agent_env == {"FOO": "bar", PI_MCP_EXTENSION_ENV: str(extension_path)}
         assert runtime.server_env is None
-        assert runtime.mcp_endpoint is None
+        assert runtime.mcp_endpoint == endpoint
+        assert extension_path.exists()
