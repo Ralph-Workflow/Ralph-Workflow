@@ -110,10 +110,7 @@ Need more examples? See the [first-task prompt templates](./first-task-prompt-te
 
 ## Step 3: Start the run and walk away
 
-```bash
-pipx install ralph-workflow
-ralph
-```
+Install: see [README.md](../../README.md#start-your-first-run) for the canonical install + first-run walkthrough. The `pipx install ralph-workflow` and `ralph` recipe with expected output lives in the root README only.
 
 That is it. Ralph Workflow takes over from here:
 

@@ -15,11 +15,7 @@ Current commands for the maintained Python package.
 
 ## Install
 
-```bash
-pip install ralph-workflow
-# or
-pipx install ralph-workflow
-```
+Install: see [README.md](../../README.md#start-your-first-run) for the canonical install path. Both `pip install ralph-workflow` and `pipx install ralph-workflow` forms live in the root README only.
 
 ## Local Development
 

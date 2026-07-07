@@ -411,8 +411,9 @@ class GeneralConfig(RalphBaseModel):
             " activity to defer the verdict can opt in by setting"
             " ``agent_workspace_change_weights = { source = 1.0,"
             " log = 1.0 }`` in the [general] section of"
-            " ralph-workflow.toml. See docs/agents/timeout-policy.md"
-            " for the full migration note and example."
+            " ralph-workflow.toml. See"
+            " docs/sphinx/watchdogs-and-timeouts.md for the workspace"
+            " change kinds and example migration."
         ),
     )
 

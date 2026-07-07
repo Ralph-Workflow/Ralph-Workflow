@@ -43,17 +43,10 @@ Have these ready before you start:
 
 ## Exact first steps
 
-Run these commands from a human-operated shell outside any Ralph-managed
-agent session:
-
-```bash
-pipx install ralph-workflow        # 1. install the autopilot
-cd /path/to/your/project           # 2. pick a real repo
-ralph --init                       # 3. scaffold .agent/ + PROMPT.md
-ralph --diagnose                   # 4. pre-flight: verify agents, MCP, capabilities
-$EDITOR PROMPT.md                  # 5. write the task — see PROMPT.md template
-ralph                              # 6. run the unattended workflow
-```
+Install: see [`README.md`](README.md#start-your-first-run) for the canonical
+install commands and prerequisites. The six-step first-run walkthrough
+(install → init → diagnose → spec → run → review) is the same in both
+files; root README is the single source of truth for the install block.
 
 - `ralph --init` provisions the default local work surface and shipped
   baseline skills.

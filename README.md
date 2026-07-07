@@ -13,7 +13,7 @@ built around a simple Ralph-loop core that becomes powerful through
 composition. The product category behind it is **Loop Engineering**: a
 pattern where a coding agent iterates plan → build → verify → fix in a loop
 until checks pass, with the human reviewing outcomes rather than reading
-every step. See [USERS.md](USERS.md) for the broader community directory.
+every step. See [USERS.md](docs/community/users.md) for the broader community directory.
 
 **Hand it a well-specified coding task, let the agents plan, build,
 verify, and fix, and come back to reviewable, tested work.**
@@ -159,7 +159,7 @@ Python runtime end-to-end.
 The Ralph Loop pattern is attributed to
 [Geoffrey Huntley (ghuntley.com/ralph)](https://ghuntley.com/ralph).
 Ralph Workflow is an independent reference implementation — not the
-pattern's originator. See [USERS.md](USERS.md) for the community
+pattern's originator. See [USERS.md](docs/community/users.md) for the community
 directory of pattern derivatives and live integrations.
 
 ## What a run leaves you

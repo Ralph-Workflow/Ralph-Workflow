@@ -72,34 +72,44 @@ def test_docs_readme_covers_performance_family() -> None:
 
 
 # ---------------------------------------------------------------------------
-# ralph-workflow/docs/agents/timeout-policy.md (idle-watchdog workspace weights)
+# idle-watchdog workspace weights canonical home
+# ---------------------------------------------------------------------------
+#
+# The docs consolidation (2026-07-07) moved the canonical watchdog and
+# timeout content into ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md
+# as the single source of truth. ralph-workflow/docs/agents/timeout-policy.md
+# is now a one-paragraph redirect stub. The tests below pin the canonical
+# home to watchdogs-and-timeouts.md so future regressions cannot drift the
+# WorkspaceChangeKind values or the agent_workspace_change_weights key back
+# to a deleted surface.
 # ---------------------------------------------------------------------------
 
 _PACKAGE_TIMEOUT_POLICY = PACKAGE_DOCS_DIR / "agents" / "timeout-policy.md"
+_PACKAGE_SPHINX_WATCHDOGS = PACKAGE_DOCS_DIR / "sphinx" / "watchdogs-and-timeouts.md"
 _PACKAGE_CHANGELOG = PACKAGE_ROOT / "CHANGELOG.md"
 
 
 def test_package_timeout_policy_doc_exists() -> None:
-    """The new idle-watchdog timeout-policy doc must exist."""
+    """The timeout-policy redirect stub must still exist."""
     assert _PACKAGE_TIMEOUT_POLICY.exists(), (
         f"ralph-workflow/docs/agents/timeout-policy.md must exist ({_PACKAGE_TIMEOUT_POLICY})"
     )
 
 
-def test_package_timeout_policy_doc_lists_all_five_kinds() -> None:
-    """The timeout-policy doc must mention every WorkspaceChangeKind value."""
-    content = _PACKAGE_TIMEOUT_POLICY.read_text()
+def test_package_sphinx_watchdogs_and_timeouts_doc_lists_all_five_kinds() -> None:
+    """The canonical watchdogs-and-timeouts page must mention every WorkspaceChangeKind value."""
+    content = _PACKAGE_SPHINX_WATCHDOGS.read_text()
     for kind in ("source", "log", "cache", "artifact", "other"):
-        assert f"`{kind}`" in content, (
-            f"timeout-policy.md must mention the `{kind}` WorkspaceChangeKind"
+        assert f"`{kind}`" in content or f"| {kind} |" in content, (
+            f"watchdogs-and-timeouts.md must mention the `{kind}` WorkspaceChangeKind"
         )
 
 
-def test_package_timeout_policy_doc_mentions_new_config_key() -> None:
-    """The timeout-policy doc must mention the new config key name."""
-    content = _PACKAGE_TIMEOUT_POLICY.read_text()
+def test_package_sphinx_watchdogs_and_timeouts_doc_mentions_new_config_key() -> None:
+    """The canonical watchdogs-and-timeouts page must mention the new config key name."""
+    content = _PACKAGE_SPHINX_WATCHDOGS.read_text()
     assert "agent_workspace_change_weights" in content, (
-        "timeout-policy.md must mention the agent_workspace_change_weights key"
+        "watchdogs-and-timeouts.md must mention the agent_workspace_change_weights key"
     )
 
 
@@ -111,17 +121,26 @@ def test_package_changelog_unreleased_section_calls_out_behavior_change() -> Non
     )
 
 
-def test_package_timeout_policy_doc_mentions_new_config_key_in_canonical_home() -> None:
-    """timeout-policy.md is the canonical home for the new config key.
+def test_package_timeout_policy_doc_mentions_canonical_home() -> None:
+    """timeout-policy.md must point at the canonical watchdog/timeout page.
 
-    The original sphinx/unattended-coding-agent.md SEO page was removed during
-    the docs cleanup; the agent_workspace_change_weights key mention lives in
-    ralph-workflow/docs/agents/timeout-policy.md (the canonical home for the
-    idle-watchdog workspace weights config). This test pins the canonical
-    home so future regressions cannot drift the key back to a deleted surface.
+    The consolidation moved the WorkspaceChangeKind values and the
+    agent_workspace_change_weights key into
+    ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md as the
+    canonical home. This test pins the redirect-stub link so future
+    regressions cannot silently re-introduce duplicate content on
+    timeout-policy.md.
     """
     content = _PACKAGE_TIMEOUT_POLICY.read_text()
-    assert "agent_workspace_change_weights" in content, (
-        "timeout-policy.md must mention the agent_workspace_change_weights key "
-        "in its canonical home (replaces the deleted sphinx/unattended-coding-agent.md page)"
+    assert "../sphinx/watchdogs-and-timeouts.md" in content, (
+        "timeout-policy.md must link to the canonical watchdogs-and-timeouts.md page"
+    )
+
+
+def test_package_timeout_policy_doc_is_redirect_stub() -> None:
+    """timeout-policy.md must be a short redirect stub (not substantive content)."""
+    content = _PACKAGE_TIMEOUT_POLICY.read_text()
+    line_count = len(content.splitlines())
+    assert line_count <= 10, (
+        f"timeout-policy.md must be a one-paragraph redirect stub (got {line_count} lines)"
     )

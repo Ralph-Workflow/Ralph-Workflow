@@ -36,6 +36,34 @@ An OpenCode subagent process that is alive but has produced no output, no
 tool calls, and no file changes for the configured idle window is **not**
 evidence of progress.
 
+## Workspace change kinds
+
+The `workspace` channel classifies every file change into one of five
+`WorkspaceChangeKind` values. Each kind has a configurable weight via the
+`agent_workspace_change_weights` config key (under `[general]`); the
+weight is binary — `0.0` drops the change from the verdict (it does
+**not** defer the `NO_OUTPUT_DEADLINE` fire), `1.0` counts as full
+activity.
+
+| Kind        | What it covers (default weight)                              |
+| ----------- | ------------------------------------------------------------ |
+| `source`    | Source code and documentation (`1.0`)                        |
+| `log`       | `*.log`, `*.tmp`, `*.bak`, `*.swp`, `*~`, `*.pyc`, `*.pyo` (`0.0`) |
+| `cache`     | `.git`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `node_modules`, `.venv`, `.agent/tmp`, `.agent/raw`, `completion_seen_*.json` (`0.0`) |
+| `artifact`  | `.agent/artifacts` (`0.0`)                                   |
+| `other`     | Anything that does not match a specific rule (`0.0`)          |
+
+The default policy is conservative: only `source` is weighted `1.0`,
+so quiet unattended runs that do real code work are seen as making
+progress while log-file churn, cache writes, and artifact writes do
+not falsely defer the verdict. Operators who relied on log-file
+activity to defer the verdict can opt in by setting
+`agent_workspace_change_weights = { source = 1.0, log = 1.0 }` in
+the `[general]` section of `ralph-workflow.toml`. The full set of
+kinds and their default weights is declared in
+`ralph/policy/defaults/recovery.toml`; override per-project via
+`agent_workspace_change_weights` (format: `<kind>=<weight>` entries).
+
 ## Idle deferral
 
 While any non-stdout channel is fresher than the

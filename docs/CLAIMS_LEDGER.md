@@ -117,12 +117,12 @@ here as a historical guard, not as live public claims.
 | M2 | First-run 6-step block matches README | ✅ | `index.rst` install/run block |
 | M3 | Supported agent list matches README | ✅ | `agent-compatibility.md` matrix |
 
-### ralph-workflow/docs/agents/timeout-policy.md
+### ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md (canonical watchdog/timeout page; `docs/agents/timeout-policy.md` is now a one-paragraph redirect stub)
 
 | # | Claim | Status | Evidence |
 |---|---|---|---|
-| T1 | Five `WorkspaceChangeKind` values: source, log, cache, artifact, other | ✅ | Doc table + regression tests |
-| T2 | `agent_workspace_change_weights` config key | ✅ | Doc + test pinned canonical home |
+| T1 | Five `WorkspaceChangeKind` values: source, log, cache, artifact, other | ✅ | Doc table on the canonical page + regression tests |
+| T2 | `agent_workspace_change_weights` config key | ✅ | Doc on the canonical page + tests pinned to canonical home |
 
 ---
 

@@ -64,93 +64,10 @@ Outdated **user-global** skills are NOT auto-repaired on a normal `ralph` run; t
 
 ## Minimal first-run example
 
-```bash
-pipx install ralph-workflow
-```
+Install: see [README.md](../../README.md#start-your-first-run) for the canonical install + first-run walkthrough. The full `pipx install ralph-workflow`, `ralph --version`, `ralph --init`, and `ralph --diagnose` recipe with expected output lives in the root README only.
 
-Expected result:
+Move into the repository, scaffold it with `ralph --init`, and run `ralph --diagnose` — all covered in the canonical walkthrough at [README.md](../../README.md#start-your-first-run).
 
-```text
-  installed package ralph-workflow X.Y.Z, installed using Python 3.12
-  These apps are now globally available
-    - ralph
-```
-
-Confirm the CLI is on `PATH`:
-
-```bash
-ralph --version
-```
-
-Expected result:
-
-```text
-Ralph Workflow version 0.8.18
-```
-
-Move into the repository you want agents to work on and scaffold it:
-
-```bash
-cd /path/to/your/repo
-ralph --init
-```
-
-Expected result:
-
-```text
-─── [status]
-Created: /path/to/your/repo/PROMPT.md
-
-─── [capabilities]
-Baseline Capabilities
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Capability                 ┃ Type     ┃ Status                                             ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ Workspace Ops              │ Built-in │ OK — always available                              │
-│ Git Read Ops               │ Built-in │ OK — always available                              │
-│ Artifact Ops               │ Built-in │ OK — always available                              │
-│ Plan Read                  │ Built-in │ OK — always available                              │
-│ Skill bundles              │ Built-in │ OK                                                 │
-└────────────────────────────┴──────────┴────────────────────────────────────────────────────┘
-```
-
-Run the pre-flight check before you spend a real run on it:
-
-```bash
-ralph --diagnose
-```
-
-Expected result (your agents will differ):
-
-```text
-─── [status]
-Ralph Workflow Diagnostics
-
-Git Repository
-┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
-┃ Capability      ┃ Type                  ┃ Status ┃
-┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
-│ Repository root │ /path/to/your/repo    │        │
-│ Working tree    │ Clean                 │        │
-└─────────────────┴───────────────────────┴────────┘
-
-Agents
-┏━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
-┃ Capability┃ Type                  ┃ Status  ┃
-┡━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
-│ claude  │ Configured: claude     │ on PATH │
-│ codex   │ Configured: codex exec │ on PATH │
-│ opencode│ Configured: opencode   │ missing │
-└─────────┴────────────────────────┴─────────┘
-
-Pre-flight Validation
-┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━┓
-┃ Capability      ┃ Type        ┃ Status ┃
-┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━┩
-│ Agent chains    │ Satisfiable │        │
-│ Recovery config │ Valid       │        │
-└─────────────────┴─────────────┴────────┘
-```
 
 If an agent you want to use shows `missing`, install it before you run
 `ralph`. If `Agent chains` is not `Satisfiable`, adjust your
