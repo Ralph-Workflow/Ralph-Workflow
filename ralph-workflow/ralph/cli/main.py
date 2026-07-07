@@ -1038,9 +1038,19 @@ def smoke_interactive_agy(
 app.command(name="smoke-interactive-agy")(smoke_interactive_agy)
 
 
-def smoke_interactive_nanocoder() -> None:
+def smoke_interactive_nanocoder(
+    agent: str = typer.Option(
+        "nanocoder",
+        help="Nanocoder alias to smoke (e.g. nanocoder/MiniMax Coding/MiniMax-M3).",
+    ),
+) -> None:
     """Run the manual PTY smoke test for Nanocoder interactive mode."""
-    raise typer.Exit(code=smoke_interactive_nanocoder_command(display_context=_get_cli_context()))
+    raise typer.Exit(
+        code=smoke_interactive_nanocoder_command(
+            agent_name=agent,
+            display_context=_get_cli_context(),
+        )
+    )
 
 
 app.command(name="smoke-interactive-nanocoder")(smoke_interactive_nanocoder)

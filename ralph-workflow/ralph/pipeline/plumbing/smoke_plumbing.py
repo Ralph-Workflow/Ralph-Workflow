@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -105,6 +106,15 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             output_file=_NANOCODER_SMOKE_OUTPUT_FILE,
             run_id=_NANOCODER_SMOKE_RUN_ID,
         )
+    if agent_name.startswith("nanocoder/"):
+        suffix = agent_name.removeprefix("nanocoder/")
+        sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_NANOCODER_SMOKE_RELATIVE_DIR,
+            output_file=_NANOCODER_SMOKE_OUTPUT_FILE,
+            run_id=f"{_NANOCODER_SMOKE_RUN_ID}-{sanitized}",
+        )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
 
 
@@ -170,6 +180,9 @@ class SmokeRunResult:
     artifact_submitted: bool
     meaningful_output_lines: list[str]
     errors: list[str]
+
+
+type EnvGetter = Callable[[str], str | None]
 
 
 def _build_smoke_prompt(
@@ -506,14 +519,15 @@ def _meaningful_output_error(
     return None
 
 
-def _agy_binary_override_env() -> str | None:
+def _agy_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
     """Return the raw ``RALPH_AGY_BINARY`` env value, if set.
 
-    Direct os.environ.get() is a composition-root read for a test infrastructure
-    bridge that constructs per-test environments; not injectable in test context.
-    di-seam-allowlist: composition-root test infrastructure.
+    Callers may inject ``env_getter`` for tests and composed runtimes; the
+    production default is centralized here so smoke plumbing callers do not
+    read ambient environment directly.
     """
-    return os.environ.get("RALPH_AGY_BINARY")
+    getter = env_getter if env_getter is not None else os.environ.get
+    return getter("RALPH_AGY_BINARY")
 
 
 def is_mock_agy_override() -> bool:

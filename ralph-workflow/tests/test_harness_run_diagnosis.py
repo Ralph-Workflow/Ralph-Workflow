@@ -66,6 +66,13 @@ def test_resolve_smoke_harness_spec_nanocoder_uses_nanocoder_layout() -> None:
     assert spec.run_id == "interactive-nanocoder-smoke"
 
 
+def test_resolve_smoke_harness_spec_nanocoder_alias_uses_unique_run_id() -> None:
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("nanocoder/minimax/MiniMax-M3")
+    assert spec.relative_dir == Path("tmp/interactive-nanocoder-smoke")
+    assert spec.output_file == Path("tmp/interactive-nanocoder-smoke/todo-list.js")
+    assert spec.run_id == "interactive-nanocoder-smoke-minimax-MiniMax-M3"
+
+
 def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

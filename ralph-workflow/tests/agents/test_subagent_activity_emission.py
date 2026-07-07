@@ -387,6 +387,52 @@ def test_tool_result_without_tool_name_falls_back_to_unknown() -> None:
     )
 
 
+def test_pi_tool_execution_end_uses_documented_tool_name_for_summary() -> None:
+    """Pi ``tool_execution_end.toolName`` must name the tool-result summary.
+
+    Pi's JSON event stream documents the field as camelCase ``toolName``.
+    Losing that field made successful tool results appear as
+    ``tool_result:unknown`` in the subagent progress channel even though the
+    raw tool-result payload was present elsewhere in the transcript.
+    """
+    captured: list[str] = []
+
+    def _capture(line: str) -> None:
+        captured.append(line)
+
+    token = set_subagent_sink(_capture)
+    try:
+        stream_parsed_agent_activity(
+            [
+                json.dumps(
+                    {
+                        "type": "tool_execution_end",
+                        "toolCallId": "call_1",
+                        "toolName": "list_allowed_roots",
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": '{"allowed_roots":["/tmp/project"]}',
+                                }
+                            ]
+                        },
+                        "isError": False,
+                    }
+                )
+            ],
+            parser_type="pi",
+            agent_name="pi/test",
+            display=None,
+        )
+    finally:
+        reset_subagent_sink(token)
+
+    assert captured == ["tool_result:list_allowed_roots"], (
+        f"expected Pi toolName in tool_result summary, got {captured}"
+    )
+
+
 def test_claude_interactive_tool_result_does_not_leak_content() -> None:
     """A real ClaudeInteractiveParser tool_result line must not echo raw content.
 

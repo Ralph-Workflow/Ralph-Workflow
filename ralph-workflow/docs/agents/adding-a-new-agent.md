@@ -219,6 +219,12 @@ Parser rules:
   enough.
 - Emit `tool_use` for real tool activity; do not infer tool activity from an
   agent-authored self-report artifact.
+- Preserve provider-specific tool-name metadata for both `tool_use` and
+  `tool_result`. If the provider uses a non-canonical field such as
+  `toolName`, normalize or preserve it so the subagent progress channel emits
+  `tool_result:<name>` instead of `tool_result:unknown`. A named progress
+  summary is Ralph-side observability; the actual tool payload still comes from
+  the transport/tool-result stream.
 - Emit non-empty `content` for user-visible `status` events. The activity
   stream renders `status` content directly.
 - For TUI output, call `normalize_vt_text()`, suppress control-only frames, and

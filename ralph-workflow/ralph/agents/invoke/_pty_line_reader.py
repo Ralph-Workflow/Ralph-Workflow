@@ -6,6 +6,7 @@ import codecs
 import contextlib
 import errno
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -33,6 +34,7 @@ from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import completion_run_id_from_extra_env
 from ralph.agents.invoke._errors import (
+    AgentInvocationError,
     _IdleStreamTimeoutError,
 )
 from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
@@ -118,6 +120,22 @@ def _zero_idle_elapsed(_now: float) -> float:
 
 _EIO_DRAIN_MAX = 32
 _EIO_DRAIN_SELECT_SECONDS = 0.005
+_NANOCODER_TERMINAL_CONFIG_ERROR_PATTERNS = (
+    re.compile(r"\bProvider\s+'[^']+'\s+not found in agents\.config\.json\b", re.IGNORECASE),
+    re.compile(r"\bModel\s+'[^']+'\s+not found in agents\.config\.json\b", re.IGNORECASE),
+)
+
+
+def _terminal_interactive_startup_error(agent_name: str, line: str) -> str | None:
+    """Return a terminal startup/configuration error visible in PTY output."""
+    visible_line = _visible_tui_text(line).strip()
+    if not visible_line:
+        return None
+    if agent_name.casefold() == "nanocoder" and any(
+        pattern.search(visible_line) for pattern in _NANOCODER_TERMINAL_CONFIG_ERROR_PATTERNS
+    ):
+        return f"Nanocoder startup/configuration error: {visible_line}"
+    return None
 
 
 class PtyLineReader:
@@ -989,6 +1007,25 @@ class PtyLineReader:
                 self._stop_sentinel_path.unlink()
         unsubscribe()
 
+    def _raise_if_terminal_startup_error(self, queued_line: str) -> None:
+        terminal_startup_error = _terminal_interactive_startup_error(
+            self._agent_name,
+            queued_line,
+        )
+        if terminal_startup_error is None:
+            return
+        with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
+            self._handle.terminate(grace_period_s=0.5)
+        pid = cast("int | None", getattr(self._handle, "pid", None))
+        if pid is not None:
+            teardown_subtree(pid)
+        raise AgentInvocationError(
+            self._agent_name,
+            1,
+            terminal_startup_error,
+            parsed_output=[_visible_tui_text(queued_line).strip() or queued_line.strip()],
+        )
+
     def _handle_queued_line(self, queued_line: str, watchdog: IdleWatchdog) -> Iterator[str]:
         self._record_transcript_session_id(queued_line)
         self._observe_queued_line(queued_line)
@@ -1055,6 +1092,7 @@ class PtyLineReader:
         if self._raw_overflow is not None:
             self._raw_overflow.append(queued_line)
         yield queued_line
+        self._raise_if_terminal_startup_error(queued_line)
         fire_result = self._check_fire(
             watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
         )
