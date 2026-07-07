@@ -147,7 +147,6 @@ def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> s
         _agent_transport(config)
         in {
             AgentTransport.OPENCODE,
-            AgentTransport.NANOCODER,
             AgentTransport.CODEX,
             AgentTransport.CLAUDE,
             AgentTransport.CLAUDE_INTERACTIVE,

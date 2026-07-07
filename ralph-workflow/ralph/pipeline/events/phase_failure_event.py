@@ -31,6 +31,9 @@ class PhaseFailureEvent:
             phase-level failures such as artifact/proof validation errors. When
             present, recovery must honor this category directly instead of
             re-classifying the string reason heuristically.
+        skip_same_agent_retries: When True, recoverable routing should advance
+            to the next configured agent immediately instead of spending retry
+            attempts on the current agent.
     """
 
     phase: str
@@ -38,3 +41,4 @@ class PhaseFailureEvent:
     recoverable: bool
     retry_in_session: bool = False
     failure_category: FailureCategory | None = None
+    skip_same_agent_retries: bool = False

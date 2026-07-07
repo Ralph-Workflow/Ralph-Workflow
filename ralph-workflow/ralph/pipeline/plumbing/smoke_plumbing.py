@@ -22,9 +22,11 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
     OpenCodeResumableExitError,
+    _clear_session_completion_sentinel,
     extract_transport_session_id,
     invoke_agent,
 )
+from ralph.agents.invoke._process_reader import _parent_broker_secret
 from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
@@ -424,7 +426,7 @@ def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_
         workspace_root,
         run_id,
         SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-        receipt_secret=os.environ.get("RALPH_BROKER_SECRET"),
+        receipt_secret=_parent_broker_secret(),
     )
 
 
@@ -445,17 +447,16 @@ def _explicit_completion_seen(
       transcript marker emitted by ``handle_declare_complete`` is the
       authoritative signal, optionally corroborated by the completion
       sentinel at ``.agent/completion_seen_<run_id>.json``.
-    - For AGY: the canonical receipt at
+    - For AGY and Nanocoder: the canonical receipt at
       ``.agent/receipts/<run_id>/smoke_test_result.json`` is the
-      authoritative signal. AGY headless mode writes the artifact directly
-      without going through ``handle_declare_complete``, so there is no
-      completion sentinel to read; the receipt promoted from the agent's
-      direct artifact write is the only trusted completion path. Transcript
-      substrings are explicitly NOT accepted: the prompt no longer tells
-      the agent to print a marker, and any substring the model emits
-      incidentally is treated as ordinary model output.
+      authoritative signal. These transports can complete the smoke contract
+      by submitting the smoke artifact without emitting Claude's transcript
+      marker. Transcript substrings are explicitly NOT accepted for AGY:
+      the prompt no longer tells the agent to print a marker, and any
+      substring the model emits incidentally is treated as ordinary model
+      output.
     """
-    if transport == AgentTransport.AGY:
+    if transport in {AgentTransport.AGY, AgentTransport.NANOCODER}:
         return _is_smoke_artifact_submitted(workspace_root, run_id)
     return any("Task declared complete:" in line for line in lines)
 
@@ -607,6 +608,7 @@ def _tool_activity_seen_for_errors(
     params: SmokeRunParams,
     lines: list[str],
     tool_activity_seen: bool | None,
+    artifact_submitted: bool,
 ) -> bool:
     """Resolve whether tool activity was observed from authoritative sources only.
 
@@ -641,6 +643,8 @@ def _tool_activity_seen_for_errors(
     if tool_activity_seen is not None:
         return tool_activity_seen
     if _tool_activity_seen(params.config, lines) if lines else False:
+        return True
+    if params.config.transport == AgentTransport.NANOCODER and artifact_submitted:
         return True
     # AGY-specific authoritative signal: the expected workspace output
     # file was created (a real file-write side effect, not a model
@@ -680,7 +684,7 @@ def _detect_smoke_errors(
     if parser_error := _parser_event_error(params.config, lines):
         errors.append(parser_error)
 
-    if not _tool_activity_seen_for_errors(params, lines, tool_activity_seen):
+    if not _tool_activity_seen_for_errors(params, lines, tool_activity_seen, artifact_submitted):
         errors.append("no tool activity was observed")
 
     if not artifact_submitted:
@@ -732,11 +736,11 @@ def _run_smoke_agent(
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
     # Authoritative completion signal — see ``_explicit_completion_seen`` docstring.
-    # For AGY the receipt (==``artifact_submitted``) is the trusted signal; for
-    # other transports the ``Task declared complete:`` transcript marker from
-    # ``handle_declare_complete`` is the trusted signal. We compute the
-    # bool here so the SmokeRunResult can surface it without leaking
-    # transport-specific knowledge into the report.
+    # For AGY and Nanocoder the receipt (==``artifact_submitted``) is the
+    # trusted signal; for other transports the ``Task declared complete:``
+    # transcript marker from ``handle_declare_complete`` is the trusted
+    # signal. We compute the bool here so the SmokeRunResult can surface it
+    # without leaking transport-specific knowledge into the report.
     explicit_completion_seen = _explicit_completion_seen(
         lines, params.workspace_root, params.config.transport, run_id=run_id
     )
@@ -746,7 +750,12 @@ def _run_smoke_agent(
     # ``headless_guide_checks`` artifact. See
     # ``_tool_activity_seen_for_errors`` docstring and the regression test
     # ``test_agy_tool_activity_must_not_come_from_artifact``.
-    tool_activity_seen = _tool_activity_seen_for_errors(params, lines, tool_activity_seen=None)
+    tool_activity_seen = _tool_activity_seen_for_errors(
+        params,
+        lines,
+        tool_activity_seen=None,
+        artifact_submitted=artifact_submitted,
+    )
     parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
     live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES
@@ -868,10 +877,12 @@ def run_smoke_plumbing(
         drain="development",
         session_id_prefix="smoke",
         agents_policy=agents_policy,
+        run_id=spec.run_id,
     ) as bridge:
         if effective_output_file.exists():
             effective_output_file.unlink()
         _clear_smoke_artifact(workspace_root)
+        _clear_session_completion_sentinel(workspace_root, spec.run_id)
 
         # Honor per-agent session ceilings so AGY's longer --print-timeout is not
         # cut off by the legacy 120s default. See _AGENT_SESSION_CEILINGS.

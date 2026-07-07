@@ -460,12 +460,11 @@ def test_provider_for_transport_round_trips_supported_transports() -> None:
     assert provider_for_transport("gemini") is ActivityProvider.GEMINI
     assert provider_for_transport("agy") is ActivityProvider.AGY
     assert provider_for_transport("pi") is ActivityProvider.PI
-    # ``generic`` is the fallback parser for any transport that does
-    # not have its own parser (e.g. ``NANOCODER``); ``None`` and
-    # unknown values also fall back to GENERIC.
+    assert provider_for_transport("nanocoder") is ActivityProvider.NANOCODER
+    # ``generic`` is the fallback parser for transports that do not have
+    # their own parser; ``None`` and unknown values also fall back to GENERIC.
     assert provider_for_transport("generic") is ActivityProvider.GENERIC
     assert provider_for_transport(None) is ActivityProvider.GENERIC
-    assert provider_for_transport("nanocoder") is ActivityProvider.GENERIC
 
 
 # ---------------------------------------------------------------------------

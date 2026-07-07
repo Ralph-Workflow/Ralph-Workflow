@@ -59,17 +59,31 @@ def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
     assert spec.run_id == "interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"
 
 
+def test_resolve_smoke_harness_spec_nanocoder_uses_nanocoder_layout() -> None:
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("nanocoder")
+    assert spec.relative_dir == Path("tmp/interactive-nanocoder-smoke")
+    assert spec.output_file == Path("tmp/interactive-nanocoder-smoke/todo-list.js")
+    assert spec.run_id == "interactive-nanocoder-smoke"
+
+
 def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     captured_run_ids: list[str] = []
+    captured_bridge_run_ids: list[str | None] = []
+    cleared_run_ids: list[str] = []
 
     def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
         run_id = kwargs.get("run_id")
         if isinstance(run_id, str):
             captured_run_ids.append(run_id)
         return PipelineEvent.AGENT_SUCCESS
+
+    def fake_bridge_factory(**kwargs: object) -> object:
+        run_id = kwargs.get("run_id")
+        captured_bridge_run_ids.append(run_id if isinstance(run_id, str) else None)
+        return _fake_bridge_factory(**kwargs)
 
     monkeypatch.setattr(
         smoke_plumbing_module,
@@ -80,6 +94,11 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
         smoke_plumbing_module,
         "execute_agent_effect",
         fake_execute_agent_effect,
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "_clear_session_completion_sentinel",
+        lambda _workspace_root, run_id: cleared_run_ids.append(run_id),
     )
 
     output_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
@@ -103,12 +122,14 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
         display_context=make_display_context(),
         pipeline_deps=PipelineDeps(
             display_context=make_display_context(),
-            bridge_factory=_fake_bridge_factory,
+            bridge_factory=fake_bridge_factory,
         ),
     )
 
     assert result.agent_name == "agy/Claude Sonnet 4.6 (Thinking)"
+    assert cleared_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
     assert captured_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
+    assert captured_bridge_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
 
 
 def _fake_bridge_factory(**_kwargs: object) -> object:
@@ -723,6 +744,58 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
     # transcript-marker failure nor the artifact-not-submitted failure
     # should fire.
     assert "declare_complete marker was not observed" not in errors
+    assert "smoke_test_result artifact was not submitted" not in errors
+    assert "session ID was not observed" not in errors
+
+
+def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_activity(
+    tmp_path: Path,
+) -> None:
+    """Nanocoder interactive completion is proven by the smoke artifact receipt."""
+    output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(tmp_path, observed_breaks=[])
+
+    config = AgentConfig(
+        cmd="nanocoder",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.NANOCODER,
+    )
+    params = SmokeRunParams(
+        agent_name="nanocoder",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+    run_id = "interactive-nanocoder-smoke"
+
+    artifact_submitted = smoke_plumbing_module._is_smoke_artifact_submitted(
+        params.workspace_root,
+        run_id,
+    )
+    assert artifact_submitted is True, (
+        "Test setup invariant: the Nanocoder artifact must be promoted to "
+        "the smoke run receipt"
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        [],
+        [],
+        None,
+        None,
+        artifact_submitted=artifact_submitted,
+        run_id=run_id,
+    )
+
+    assert "declare_complete marker was not observed" not in errors
+    assert "no tool activity was observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
 

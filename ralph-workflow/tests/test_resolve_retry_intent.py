@@ -11,6 +11,7 @@ from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityT
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
+from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 
 
@@ -124,3 +125,19 @@ def test_resume_action_for_open_code_resumable_exit_error() -> None:
         f" session_id={intent.session_id!r}"
     )
     assert intent.failure_reason == "OpenCodeResumableExitError"
+
+
+def test_pi_context_exhaustion_skips_same_agent_retries() -> None:
+    exc = PiContextExhaustedExitError("pi/zai/glm-5.2")
+    intent = resolve_retry_intent(
+        exc,
+        phase="development",
+        agent="pi/zai/glm-5.2",
+        session_id="pi-session",
+        inactivity_error_type=AgentInactivityTimeoutError,
+    )
+    assert intent is not None
+    assert intent.action is None
+    assert intent.session_id is None
+    assert intent.skip_same_agent_retries is True
+    assert intent.failure_reason == "PiContextExhaustedExitError"

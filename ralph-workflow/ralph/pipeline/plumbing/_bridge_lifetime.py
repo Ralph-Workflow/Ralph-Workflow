@@ -31,6 +31,7 @@ def with_bridge_lifetime(
     drain: str,
     session_id_prefix: str,
     agents_policy: AgentsPolicy | None = None,
+    run_id: str | None = None,
 ) -> Iterator[SessionBridgeLike]:
     """Own bridge startup/shutdown for a single plumbing chain or smoke run.
 
@@ -38,13 +39,23 @@ def with_bridge_lifetime(
     ``bridge.shutdown()`` is called in the ``finally`` block, even when the
     body raises.
     """
-    bridge = bridge_factory(
-        workspace_root=repo_root,
-        drain=drain,
-        agents_policy=agents_policy,
-        session_id_prefix=session_id_prefix,
-        model_identity=pipeline_core.model_identity,
-    )
+    if run_id is None:
+        bridge = bridge_factory(
+            workspace_root=repo_root,
+            drain=drain,
+            agents_policy=agents_policy,
+            session_id_prefix=session_id_prefix,
+            model_identity=pipeline_core.model_identity,
+        )
+    else:
+        bridge = bridge_factory(
+            workspace_root=repo_root,
+            drain=drain,
+            agents_policy=agents_policy,
+            session_id_prefix=session_id_prefix,
+            run_id=run_id,
+            model_identity=pipeline_core.model_identity,
+        )
     try:
         yield bridge
     finally:

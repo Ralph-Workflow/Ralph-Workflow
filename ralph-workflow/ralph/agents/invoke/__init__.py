@@ -47,6 +47,7 @@ from ralph.agents.invoke._errors import (
     InactivityTimeoutOpts,
     InteractivePermissionPromptError,
     OpenCodeResumableExitError,
+    PiContextExhaustedExitError,
     UnsupportedMcpTransportError,
     _IdleStreamTimeoutError,
 )
@@ -136,10 +137,10 @@ from ralph.mcp.transport.nanocoder import (
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
-from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.timeout_defaults import (
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
@@ -151,7 +152,6 @@ _MODELED_FLAG_PARTS = 2
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
-    from pathlib import Path
 
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
@@ -707,6 +707,7 @@ __all__ = [
     "InvokeOptions",
     "InvokeRuntimeOptions",
     "OpenCodeResumableExitError",
+    "PiContextExhaustedExitError",
     "ProcessReaderCtx",
     "ResolvedInvocationRuntime",
     "UnsupportedMcpTransportError",

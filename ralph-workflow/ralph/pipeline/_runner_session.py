@@ -53,7 +53,7 @@ def apply_session_capture(state: PipelineState) -> PipelineState:
     captured_session_id = pop_last_captured_session_id()
     captured_retry_intent = pop_last_captured_retry_intent()
     new_state = state
-    if captured_retry_intent.action is not None:
+    if captured_retry_intent.action is not None or captured_retry_intent.skip_same_agent_retries:
         retry_session_id = (
             captured_retry_intent.session_id
             if captured_retry_intent.action in {"resume", "new_session_with_id"}

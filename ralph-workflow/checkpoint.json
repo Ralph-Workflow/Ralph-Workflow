@@ -47,7 +47,8 @@
     "action": null,
     "session_id": null,
     "reset_tool_registry": false,
-    "failure_reason": ""
+    "failure_reason": "",
+    "skip_same_agent_retries": false
   },
   "last_unavailability_reason": null,
   "is_waiting_state": false

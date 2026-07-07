@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import sys
 from collections import deque
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
 
 from tqdm import tqdm
 
@@ -27,6 +26,7 @@ from ralph.agents.invoke._process_reader import (
     _agent_command_name,
     _collect_r7_diagnostic_fields,
     _is_resumable_fire_reason,
+    _parent_broker_secret,
     _subprocess_env,
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
@@ -46,6 +46,19 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+
+
+class _CompletionExitSentReader(Protocol):
+    @property
+    def completion_exit_sent(self) -> bool: ...
+
+
+def _has_completion_exit_sent(reader: object) -> TypeGuard[_CompletionExitSentReader]:
+    return hasattr(reader, "completion_exit_sent")
+
+
+def _completion_exit_sent(reader: object) -> bool:
+    return _has_completion_exit_sent(reader) and reader.completion_exit_sent
 
 
 def run_pty_and_read_lines(
@@ -122,17 +135,18 @@ def run_pty_and_read_lines(
             if captured_session_id is None:
                 captured_session_id = expected_session_id
 
-            post_exit = PostExitWatchdog(ctx.policy, clock)
-            verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
-            if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
-                handle.terminate(grace_period_s=0.5)
-                exit_pid = cast("int | None", getattr(handle, "pid", None))
-                if exit_pid is not None:
-                    teardown_subtree(exit_pid)
-                raise _IdleStreamTimeoutError(
-                    ctx.policy.process_exit_wait_seconds,
-                    WatchdogFireReason.PROCESS_EXIT_HANG,
-                )
+            if not _completion_exit_sent(pty_reader):
+                post_exit = PostExitWatchdog(ctx.policy, clock)
+                verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
+                if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
+                    handle.terminate(grace_period_s=0.5)
+                    exit_pid = cast("int | None", getattr(handle, "pid", None))
+                    if exit_pid is not None:
+                        teardown_subtree(exit_pid)
+                    raise _IdleStreamTimeoutError(
+                        ctx.policy.process_exit_wait_seconds,
+                        WatchdogFireReason.PROCESS_EXIT_HANG,
+                    )
         except _IdleStreamTimeoutError as exc:
             session_resume_safe = _is_resumable_fire_reason(exc.reason)
             raise AgentInactivityTimeoutError(
@@ -186,9 +200,8 @@ def run_pty_and_read_lines(
                 last_evidence_summary=evidence_summary_str,
                 elapsed_seconds=elapsed_value,
                 transcript_tail=transcript_tail,
-                # di-seam-allowlist: composition-root reads broker secret for completion validation.
-                sentinel_secret=os.environ.get("RALPH_BROKER_SECRET"),
-                receipt_secret=os.environ.get("RALPH_BROKER_SECRET"),
+                sentinel_secret=_parent_broker_secret(),
+                receipt_secret=_parent_broker_secret(),
             ),
             _clock=clock,
         )

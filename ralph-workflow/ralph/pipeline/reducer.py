@@ -44,6 +44,7 @@ from ralph.pipeline._reducer_worker_state import (
     handle_workers_resumed as _handle_workers_resumed,
 )
 from ralph.pipeline.agent_retry_intent import (
+    AgentRetryIntent,
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
@@ -73,6 +74,7 @@ from ralph.recovery.classifier import ClassifiedFailure, FailureContext
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.policy.models import PipelinePolicy
     from ralph.recovery.controller import RecoveryController
 
@@ -387,6 +389,13 @@ def _handle_phase_failure(
             state_with_error = state_with_error.copy_with(
                 agent_retry_intent=cleared_agent_retry_intent()
             )
+        if event.skip_same_agent_retries:
+            state_with_error = state_with_error.copy_with(
+                agent_retry_intent=AgentRetryIntent(
+                    failure_reason=failure_message,
+                    skip_same_agent_retries=True,
+                )
+            )
         return _handle_agent_failure(state_with_error, policy=policy)
     # Non-recoverable failures: check workflow_fallback before global failure route.
     # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
@@ -447,6 +456,9 @@ def _handle_agent_failure(
         failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         return _enter_failed_recovery(state, failure_reason, policy)
 
+    if state.agent_retry_intent.skip_same_agent_retries:
+        return _handle_skip_same_agent_retries(state, chain, policy)
+
     max_retries = 3
     if chain.retries < max_retries:
         new_chain = chain.with_retry_increment()
@@ -485,6 +497,30 @@ def _handle_agent_failure(
         (
             f"Agent chain exhausted in phase='{state.phase}' after "
             f"{chain.retries} retries across {len(chain.agents)} agents"
+        ),
+    )
+    return _enter_failed_recovery(state, failure_reason, policy)
+
+
+def _handle_skip_same_agent_retries(
+    state: PipelineState,
+    chain: AgentChainState,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    if chain.current_index + 1 < len(chain.agents):
+        new_chain = chain.with_advance()
+        new_metrics = state.metrics.with_fallback_increment()
+        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(
+            metrics=new_metrics,
+            last_agent_session_id=None,
+            agent_retry_intent=cleared_agent_retry_intent(),
+        )
+        return new_state, []
+    failure_reason = _failure_reason(
+        state,
+        (
+            f"Agent chain exhausted in phase='{state.phase}' after "
+            "context-exhausted agent requested fallback"
         ),
     )
     return _enter_failed_recovery(state, failure_reason, policy)

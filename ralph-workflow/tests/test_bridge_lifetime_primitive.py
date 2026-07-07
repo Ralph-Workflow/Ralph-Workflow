@@ -114,6 +114,24 @@ def test_with_bridge_lifetime_forwards_model_identity() -> None:
     assert bridge_factory.call_args.kwargs["model_identity"] is model_identity
 
 
+def test_with_bridge_lifetime_forwards_run_id() -> None:
+    """The bridge factory receives an explicit run id for receipt alignment."""
+    core = _fake_pipeline_core()
+    bridge_factory = MagicMock(return_value=MagicMock())
+
+    with with_bridge_lifetime(
+        core,
+        bridge_factory,
+        repo_root=Path("/workspace"),
+        drain="development",
+        session_id_prefix="smoke",
+        run_id="interactive-nanocoder-smoke",
+    ):
+        pass
+
+    assert bridge_factory.call_args.kwargs["run_id"] == "interactive-nanocoder-smoke"
+
+
 def test_with_bridge_lifetime_accepts_real_callable_and_magicmock() -> None:
     """Both a real ``BridgeFactory`` callable and a ``MagicMock`` work as factories."""
     core = _fake_pipeline_core()

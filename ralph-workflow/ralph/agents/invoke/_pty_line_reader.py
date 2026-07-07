@@ -31,6 +31,7 @@ from ralph.agents.idle_watchdog import (
 )
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
+from ralph.agents.invoke._completion import completion_run_id_from_extra_env
 from ralph.agents.invoke._errors import (
     _IdleStreamTimeoutError,
 )
@@ -40,6 +41,7 @@ from ralph.agents.invoke._process_reader import (
     _TERMINAL_PROCESS_STATUSES,
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
+    _parent_broker_secret,
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._pty_helpers import (
@@ -97,8 +99,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-    from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+    from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx, _EvalCompletionFn
     from ralph.agents.timeout_clock import Clock
+    from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import ProcessMonitor
 
 type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
@@ -162,6 +165,18 @@ class PtyLineReader:
         self._permission_prompt_listener = _extras.permission_prompt_listener
         self._initial_input = _extras.initial_input
         self._initial_input_sent = False
+        self._completion_run_id = completion_run_id_from_extra_env(
+            cast("dict[str, str] | None", getattr(ctx, "extra_env", None))
+        )
+        self._evaluate_completion_fn = cast(
+            "_EvalCompletionFn | None",
+            getattr(ctx, "evaluate_completion_fn", None),
+        )
+        self._required_artifact = cast(
+            "RequiredArtifact | None",
+            getattr(ctx, "required_artifact", None),
+        )
+        self._completion_exit_sent = False
         self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=256)
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
@@ -215,6 +230,11 @@ class PtyLineReader:
         self._captured_session_id: str | None = self._expected_session_id
         if self._expected_session_id:
             self._transcript_session_ids.append(self._expected_session_id)
+
+    @property
+    def completion_exit_sent(self) -> bool:
+        """Return whether completion evidence triggered an interactive exit."""
+        return self._completion_exit_sent
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
         thread = threading.Thread(target=target, daemon=True)
@@ -442,6 +462,19 @@ class PtyLineReader:
                     self._lines_event.set()
         return pending
 
+    def _read_available_master_chunk(self) -> tuple[bool, bytes | None]:
+        try:
+            if not wait_for_master_readable(self._handle.master_fd, 0.05):
+                return (False, None)
+            chunk = read_master_chunk(self._handle.master_fd)
+        except BlockingIOError:
+            return (False, None)
+        except OSError as exc:
+            if exc.errno == errno.EBADF:
+                return (True, None)
+            raise
+        return (True, chunk or None)
+
     def _read_thread(self) -> None:
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         pending = ""
@@ -453,22 +486,10 @@ class PtyLineReader:
                 if self._handle.poll() is not None:
                     pending = self._drain_after_exit(decoder, pending)
                     break
-                try:
-                    if not wait_for_master_readable(self._handle.master_fd, 0.05):
-                        continue
-                except OSError as exc:
-                    if exc.errno == errno.EBADF:
-                        break
-                    raise
-                try:
-                    chunk = read_master_chunk(self._handle.master_fd)
-                except BlockingIOError:
+                has_chunk, chunk = self._read_available_master_chunk()
+                if not has_chunk:
                     continue
-                except OSError as exc:
-                    if exc.errno == errno.EBADF:
-                        break
-                    raise
-                if not chunk:
+                if chunk is None:
                     break
                 pending += decoder.decode(chunk)
                 completed, pending = _split_complete_vt_lines(pending)
@@ -592,6 +613,41 @@ class PtyLineReader:
                     )
                 return
             self._monitor_stop.wait(0.05)
+
+    def _request_interactive_exit(self) -> None:
+        if self._completion_exit_sent:
+            return
+        self._completion_exit_sent = True
+        with self._lines_lock:
+            self._lines_queue.append(_TURN_BOUNDARY_MARKER + "\n")
+            self._lines_event.set()
+        with contextlib.suppress(OSError):
+            _write_pty_input(self._input_writer_fd, "/exit\r\n", lock=self._input_writer_lock)
+        with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
+            self._handle.terminate(grace_period_s=0.5)
+
+    def _completion_evidence_thread(self) -> None:
+        if self._workspace_path is None or self._completion_run_id is None:
+            return
+        evaluate_completion_fn = self._evaluate_completion_fn
+        if evaluate_completion_fn is None:
+            return
+        while not self._monitor_stop.wait(0.25):
+            signals = evaluate_completion_fn(
+                self._workspace_path,
+                [],
+                required_artifact=self._required_artifact,
+                run_id=self._completion_run_id,
+                sentinel_secret=_parent_broker_secret(),
+                receipt_secret=_parent_broker_secret(),
+            )
+            if (
+                signals.explicit_complete
+                or signals.required_artifact_present
+                or signals.completion_sentinel_present
+            ):
+                self._request_interactive_exit()
+                return
 
     def _send_initial_input(self) -> None:
         if self._initial_input_sent or self._initial_input is None:
@@ -912,6 +968,7 @@ class PtyLineReader:
             0.1 if interrupted else 10,
             0.1 if interrupted else 1,
             0.1 if interrupted else 1,
+            0.1 if interrupted else 1,
         )
         for reader, timeout in zip(readers, timeouts, strict=True):
             reader.join(timeout=timeout)
@@ -1064,6 +1121,7 @@ class PtyLineReader:
         reader = self._start_thread(self._read_thread)
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
+        completion_reader = self._start_thread(self._completion_evidence_thread)
         subagent_pid_source = self._build_subagent_pid_source()
         registry, scope_prefix = self._strategy_registry_and_prefix()
         process_monitor = _make_process_monitor(
@@ -1175,7 +1233,11 @@ class PtyLineReader:
             reset_subagent_sink(subagent_token)
             if self._monitor is not None:
                 self._monitor.set_on_event(None)
-            self._cleanup([reader, transcript_reader, sentinel_reader], unsubscribe, interrupted[0])
+            self._cleanup(
+                [reader, transcript_reader, sentinel_reader, completion_reader],
+                unsubscribe,
+                interrupted[0],
+            )
             # Flush and release the raw-overflow log so buffered tail bytes
             # reach disk deterministically (RFC-013 P1: per-line open/close
             # churn on .agent/raw/*.log was a top engine event source).

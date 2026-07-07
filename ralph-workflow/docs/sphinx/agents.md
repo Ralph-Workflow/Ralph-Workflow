@@ -169,8 +169,8 @@ The Pi builder invokes `pi --mode json <prompt>` and parses the resulting
 NDJSON stream per Pi's documented `AgentSessionEvent` vocabulary at
 <https://pi.dev/docs/latest/json>. Pi has no native MCP config file or CLI
 flag, so Ralph Workflow materializes a per-run Pi extension and launches Pi
-with `--no-builtin-tools --extension <generated file>` when the Ralph MCP
-endpoint is available. The extension registers Ralph MCP tools through Pi's
+with `--no-builtin-tools --extension <generated file>` when the Ralph Workflow MCP
+endpoint is available. The extension registers Ralph Workflow MCP tools through Pi's
 custom-tool API and proxies calls to the active HTTP MCP endpoint.
 Pi is session-capable in JSON mode: a clean `rc=0` exit without required
 artifact or completion evidence is retried against the captured Pi session

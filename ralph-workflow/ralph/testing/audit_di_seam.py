@@ -133,22 +133,16 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     "pipeline/plumbing/smoke_plumbing.py:443",
     # os.environ.get(RALPH_AGY_BINARY) in _agy_binary_override_env
     "pipeline/plumbing/smoke_plumbing.py:490",
-    # agents/invoke/_process_reader.py, _pty_runner.py - RALPH_BROKER_SECRET
-    # is the composition-root seam for completion receipt validation; justified
-    # by di-seam-allowlist comment at each call site. The broker secret is
-    # read on the parent (orchestrator) side; the subprocess-env isolation
-    # fix in _subprocess_env ensures it does NOT leak to spawned children.
-    "agents/invoke/_process_reader.py:998",
-    "agents/invoke/_process_reader.py:999",
-    "agents/invoke/_pty_runner.py:190",
-    "agents/invoke/_pty_runner.py:191",
-    # pipeline/plumbing/smoke_plumbing.py - RALPH_BROKER_SECRET in
-    # _is_smoke_artifact_submitted for smoke test validation; justified by
-    # di-seam-allowlist comment.
-    "pipeline/plumbing/smoke_plumbing.py:417",
+    # agents/invoke/_process_reader.py - RALPH_BROKER_SECRET is the
+    # composition-root seam for completion receipt validation. The broker
+    # secret is read on the parent (orchestrator) side; the subprocess-env
+    # isolation fix in _subprocess_env ensures it does NOT leak to spawned
+    # children. PTY and smoke helpers call this single parent-side accessor
+    # instead of reading ambient env themselves.
+    "agents/invoke/_process_reader.py:186",
     # pipeline/plumbing/smoke_plumbing.py - RALPH_AGY_BINARY in
     # _agy_binary_override_env; justified by di-seam-allowlist comment.
-    "pipeline/plumbing/smoke_plumbing.py:505",
+    "pipeline/plumbing/smoke_plumbing.py:516",
 )
 
 # Top-level entry points and the config package — the composition root for

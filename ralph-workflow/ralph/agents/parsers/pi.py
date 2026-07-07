@@ -480,6 +480,14 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         yield from self._owner.flush_accumulators()
         self._owner.reset_emission_flags()
+        stop_reason = sub.get("stopReason")
+        if isinstance(stop_reason, str) and stop_reason.casefold() == "length":
+            yield AgentOutputLine(
+                type="error",
+                content="context length exhausted",
+                raw=stripped,
+                metadata=sub,
+            )
         yield AgentOutputLine(type="stop", raw=stripped, metadata=sub)
 
     def _handle_message_error(

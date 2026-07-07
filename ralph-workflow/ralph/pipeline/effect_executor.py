@@ -16,6 +16,7 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
     InvokeRuntimeOptions,
+    PiContextExhaustedExitError,
     build_invoke_options_from_config,
     extract_transport_session_id,
     invoke_agent,
@@ -390,8 +391,10 @@ def _invoke_agent_with_recovery(
         except ctx.deps.agent_invocation_error as exc:
             if raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError):
                 raise
-            agent_invocation_error_sink and agent_invocation_error_sink(exc)
-            return PipelineEvent.AGENT_FAILURE
+            return _handle_terminal_agent_invocation_error(
+                exc,
+                agent_invocation_error_sink=agent_invocation_error_sink,
+            )
     except McpConfigError:
         raise
     except OpenCodeResumableExitError:
@@ -1141,6 +1144,26 @@ _retry_intent_local: _threading.local = _threading.local()
 
 def _set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
     _retry_intent_local.intent = intent
+
+
+def _handle_terminal_agent_invocation_error(
+    exc: Exception,
+    *,
+    agent_invocation_error_sink: Callable[[Exception], object] | None,
+) -> PipelineEvent:
+    _set_pi_context_exhaustion_intent(exc)
+    agent_invocation_error_sink and agent_invocation_error_sink(exc)
+    return PipelineEvent.AGENT_FAILURE
+
+
+def _set_pi_context_exhaustion_intent(exc: Exception) -> None:
+    if isinstance(exc, PiContextExhaustedExitError):
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                failure_reason=type(exc).__name__,
+                skip_same_agent_retries=True,
+            )
+        )
 
 
 def pop_last_captured_retry_intent() -> AgentRetryIntent:

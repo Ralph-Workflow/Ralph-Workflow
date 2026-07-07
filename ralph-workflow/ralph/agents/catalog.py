@@ -37,6 +37,7 @@ from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
 from ralph.agents.parsers.gemini import GeminiParser
 from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
 from ralph.agents.support import AgentSupport
@@ -189,6 +190,7 @@ _DEFAULT_BUILTIN_PARSER_TYPES: dict[
     ),
     "codex": (CodexParser, AgentTransport.CODEX, GenericExecutionStrategy),
     "gemini": (GeminiParser, AgentTransport.GENERIC, GenericExecutionStrategy),
+    "nanocoder": (NanocoderParser, AgentTransport.NANOCODER, GenericExecutionStrategy),
     "opencode": (OpenCodeParser, AgentTransport.OPENCODE, GenericExecutionStrategy),
     "pi": (PiParser, AgentTransport.PI, _make_pi_strategy),
     "generic": (GenericParser, AgentTransport.GENERIC, GenericExecutionStrategy),

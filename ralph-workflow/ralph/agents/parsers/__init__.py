@@ -7,7 +7,7 @@ Main entry points:
 
 - ``get_parser(parser_type)`` — factory function; maps a parser type name string
   (``'claude'``, ``'claude_interactive'``, ``'codex'``, ``'gemini'``, ``'opencode'``,
-  ``'pi'``, ``'generic'``) to the corresponding parser instance. Raises
+  ``'nanocoder'``, ``'pi'``, ``'generic'``) to the corresponding parser instance. Raises
   ``ValueError`` for unknown names.
 - ``AgentParser`` — the protocol that all parsers implement; defines ``parse``.
 - ``AgentOutputLine`` — structured parse result (``type``, ``content``, ``raw``,
@@ -16,6 +16,7 @@ Main entry points:
 - ``ClaudeInteractiveParser`` — parses interactive Claude transcript output.
 - ``CodexParser`` — parses Codex per-event JSON output.
 - ``GeminiParser`` — parses Gemini output.
+- ``NanocoderParser`` — parses Nanocoder interactive PTY output.
 - ``OpenCodeParser`` — parses OpenCode NDJSON stream output.
 - ``PiParser`` — parses pi.dev AgentSessionEvent NDJSON stream output.
 - ``GenericParser`` — fallback parser for unknown or plain-text agent output.
@@ -48,6 +49,7 @@ from .claude_interactive import ClaudeInteractiveParser
 from .codex import CodexParser
 from .gemini import GeminiParser
 from .generic import GenericParser
+from .nanocoder import NanocoderParser
 from .opencode import OpenCodeParser
 from .pi import PiParser
 
@@ -68,6 +70,7 @@ __all__ = [
     "CodexParser",
     "GeminiParser",
     "GenericParser",
+    "NanocoderParser",
     "NdjsonParserBase",
     "OpenCodeParser",
     "PiParser",

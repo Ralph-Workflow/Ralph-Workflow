@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from ralph.agents.activity import AgentActivityKind
+from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.idle_watchdog import TimeoutPolicy, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog._evidence_tier import EvidenceSummary
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
@@ -16,6 +19,7 @@ from ralph.agents.invoke._pty_runner import run_pty_and_read_lines
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -98,6 +102,19 @@ class _FakeWatchdog:
         return WatchdogVerdict.CONTINUE
 
 
+class _StopAfterOneCompletionPoll(threading.Event):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def wait(self, timeout: float) -> bool:
+        del timeout
+        self.calls += 1
+        return self.calls > 1
+
+    def is_set(self) -> bool:
+        return False
+
+
 class _FakeStrategy:
     def classify_activity_line(self, line: str) -> object:
         if line == "tool\n":
@@ -148,6 +165,44 @@ def test_pty_line_reader_reclassifies_no_output_deadline_after_tool_result() -> 
         assert exc.reason == WatchdogFireReason.STALLED_AFTER_TOOL_RESULT
         assert "read_file" in str(exc)
         assert "after receiving a tool result" in str(exc)
+    finally:
+        os.close(master_fd)
+
+
+def test_pty_line_reader_exits_when_completion_evidence_appears(tmp_path: Path) -> None:
+    master_fd = os.open("/dev/null", os.O_WRONLY)
+    try:
+        handle = _FakeHandle(master_fd)
+        clock = FakeClock(start=25.0)
+
+        def fake_evaluate_completion(*_args: object, **_kwargs: object) -> CompletionSignals:
+            return CompletionSignals(
+                explicit_complete=False,
+                required_artifact_present=False,
+                artifact_types=(),
+                completion_sentinel_present=True,
+            )
+
+        ctx = SimpleNamespace(
+            config=AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER),
+            policy=TimeoutPolicy(idle_timeout_seconds=300.0),
+            monitor=None,
+            execution_strategy=None,
+            liveness_probe=None,
+            waiting_listener=None,
+            workspace_path=tmp_path,
+            extra_env={str(MCP_RUN_ID_ENV): "run-1"},
+            evaluate_completion_fn=fake_evaluate_completion,
+            required_artifact=None,
+        )
+        reader = PtyLineReader(handle, "nanocoder", ctx, clock, extras=None)
+        reader._monitor_stop = _StopAfterOneCompletionPoll()
+
+        reader._completion_evidence_thread()
+
+        assert reader._completion_exit_sent is True
+        assert handle.terminate_calls == [0.5]
+        os.close(reader._input_writer_fd)
     finally:
         os.close(master_fd)
 

@@ -19,6 +19,7 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     CompletionCheckOptions,
     OpenCodeResumableExitError,
+    PiContextExhaustedExitError,
     check_process_result,
 )
 from ralph.agents.invoke import _completion as completion_module
@@ -190,6 +191,40 @@ class TestCheckProcessResultCompletionSeam:
                     policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
                 ),
             )
+
+    def test_pi_length_stop_without_artifact_raises_context_exhausted(
+        self, tmp_path: Path
+    ) -> None:
+        """Pi stopReason=length is a context-exhaustion signal, not an artifact retry."""
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+        raw_output = [
+            (
+                '{"type":"message_update","message":{"role":"assistant"},'
+                '"assistantMessageEvent":{"type":"done","stopReason":"length"}}'
+            )
+        ]
+
+        with pytest.raises(PiContextExhaustedExitError) as excinfo:
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "pi/zai/glm-5.2",
+                raw_output,
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+                ),
+            )
+
+        assert excinfo.value.skip_same_agent_retries is True
 
     def test_malformed_json_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
         """An artifact that cannot be parsed as JSON must NOT set required_artifact_present."""

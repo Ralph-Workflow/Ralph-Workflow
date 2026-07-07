@@ -1193,6 +1193,22 @@ class TestPiParserMessageUpdateErrorAndDone:
         results = list(parser.parse(_lines(line)))
         assert any(r.type == "stop" for r in results)
 
+    def test_message_update_done_length_surfaces_context_exhaustion(self) -> None:
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistantMessageEvent": {
+                    "type": "done",
+                    "stopReason": "length",
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        assert any(r.type == "error" and "context length" in r.content for r in results)
+        assert any(r.type == "stop" for r in results)
+
 
 class TestPiParserMessageUpdateToolcall:
     """``message_update`` toolcall_start/delta/end must emit a single tool_use line.

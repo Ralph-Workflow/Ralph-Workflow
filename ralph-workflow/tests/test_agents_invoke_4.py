@@ -874,6 +874,22 @@ def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Pat
     assert prompt_text.strip() not in log_line
 
 
+def test_nanocoder_command_for_log_keeps_interactive_mode_value(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text("Build the feature.\n", encoding="utf-8")
+    config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+    log_line = command_for_log(config, cmd, str(prompt_file))
+
+    assert log_line == "nanocoder --mode yolo"
+    assert str(prompt_file) not in log_line
+
+
 def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"

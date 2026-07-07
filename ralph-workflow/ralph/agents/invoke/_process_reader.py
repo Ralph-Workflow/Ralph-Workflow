@@ -177,6 +177,15 @@ def _convert_idle_stream_timeout_to_agent_error(
     )
 
 
+_BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
+
+
+def _parent_broker_secret() -> str | None:
+    """Return the parent-only broker secret used for completion verification."""
+    # di-seam-allowlist: composition-root reads broker secret for completion validation.
+    return os.environ.get(_BROKER_SECRET_ENV)
+
+
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     env = os.environ.copy()
     # ``RALPH_BROKER_SECRET`` is the broker-owned HMAC secret used by the
@@ -186,10 +195,10 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     # parent side only. Strip from both the inherited environment AND
     # any caller-supplied ``extra_env`` so neither path can smuggle the
     # secret into the child process.
-    env.pop("RALPH_BROKER_SECRET", None)
+    env.pop(_BROKER_SECRET_ENV, None)
     if extra_env:
         env.update(extra_env)
-    env.pop("RALPH_BROKER_SECRET", None)
+    env.pop(_BROKER_SECRET_ENV, None)
     return env
 
 
@@ -994,9 +1003,8 @@ def _run_subprocess_and_read_lines(
                 last_evidence_summary=evidence_summary_str,
                 elapsed_seconds=elapsed_value,
                 transcript_tail=transcript_tail,
-                # di-seam-allowlist: composition-root reads broker secret for completion validation.
-                sentinel_secret=os.environ.get("RALPH_BROKER_SECRET"),
-                receipt_secret=os.environ.get("RALPH_BROKER_SECRET"),
+                sentinel_secret=_parent_broker_secret(),
+                receipt_secret=_parent_broker_secret(),
             ),
             _clock=clock,
         )

@@ -31,6 +31,7 @@ class AgentRetryIntent(RalphBaseModel):
     session_id: str | None = None
     reset_tool_registry: bool = False
     failure_reason: str = ""
+    skip_same_agent_retries: bool = False
 
     @model_validator(mode="after")
     def _validate_action_session_pair(self) -> AgentRetryIntent:

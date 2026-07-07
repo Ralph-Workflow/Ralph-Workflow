@@ -43,7 +43,7 @@ from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
-from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -101,7 +101,7 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
     ).to_support("opencode"),
     BuiltinAgentSpec(
         transport=AgentTransport.NANOCODER,
-        parser_factory=GenericParser,
+        parser_factory=NanocoderParser,
         strategy_factory=GenericExecutionStrategy,
         json_parser=JsonParserType.GENERIC,
         cmd="nanocoder",

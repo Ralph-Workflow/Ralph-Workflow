@@ -19,14 +19,9 @@ counts are invariant — do not raise them.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from ralph.pipeline.agent_retry_intent import agent_retry_intent_for_failure
+from ralph.pipeline.agent_retry_intent import AgentRetryIntent, agent_retry_intent_for_failure
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.recovery.failure_classifier import FailureClassifier
-
-if TYPE_CHECKING:
-    from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 
 
 def resolve_retry_intent(
@@ -44,6 +39,11 @@ def resolve_retry_intent(
     tool-registry reset. ``session_id`` is the caller-resolved observed session id
     (the intent clears it when the failure semantics demand a fresh session).
     """
+    if type(exc).__name__ == "PiContextExhaustedExitError":
+        return AgentRetryIntent(
+            failure_reason=type(exc).__name__,
+            skip_same_agent_retries=True,
+        )
     if retryable_agent_failure_reason(exc, inactivity_error_type) is None:
         return None
     classified = FailureClassifier().classify(exc, phase=phase, agent=agent)

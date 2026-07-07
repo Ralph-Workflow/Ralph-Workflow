@@ -36,6 +36,7 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
         CodexParser,
         GeminiParser,
         GenericParser,
+        NanocoderParser,
         OpenCodeParser,
         PiParser,
     )
@@ -49,6 +50,7 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
         ActivityProvider.OPENCODE: OpenCodeParser,
         ActivityProvider.CODEX: CodexParser,
         ActivityProvider.GEMINI: GeminiParser,
+        ActivityProvider.NANOCODER: cast("type[AgentParser]", NanocoderParser),
         ActivityProvider.PI: cast("type[AgentParser]", PiParser),
         ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
     }
@@ -83,6 +85,7 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
         ("agy", ActivityProvider.AGY),
         ("claude", ActivityProvider.CLAUDE),
         ("opencode", ActivityProvider.OPENCODE),
+        ("nanocoder", ActivityProvider.NANOCODER),
         ("codex", ActivityProvider.CODEX),
         ("aider", ActivityProvider.CODEX),
         ("gemini", ActivityProvider.GEMINI),

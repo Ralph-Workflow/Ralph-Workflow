@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import KW_ONLY, dataclass, field, replace
 from typing import IO, TYPE_CHECKING, cast
@@ -18,6 +19,7 @@ from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, Timeou
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
+from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id,
@@ -42,6 +44,7 @@ from ralph.recovery.failure_details import contains_casefolded_marker
 #: string is truncated and a ``[stderr truncated: <N> more bytes]`` marker
 #: is appended so an operator can still see the truncation (AC-05).
 _MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
+_PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 
 
 def _truncation_marker(capped_bytes: int) -> str:
@@ -111,6 +114,52 @@ def _teardown_subtree_if_pid_available(handle: object) -> None:
     pid = cast("int | None", getattr(handle, "pid", None))
     if pid is not None:
         teardown_subtree(pid)
+
+
+def _is_pi_agent(agent_name: str) -> bool:
+    normalized = agent_name.casefold()
+    return normalized == "pi" or normalized.startswith("pi/")
+
+
+def _message_has_length_stop_reason(message: object) -> bool:
+    if not isinstance(message, dict):
+        return False
+    stop_reason = message.get("stopReason")
+    return isinstance(stop_reason, str) and (
+        stop_reason.casefold() == _PI_CONTEXT_EXHAUSTED_STOP_REASON
+    )
+
+
+def _line_has_pi_context_exhaustion(line: str) -> bool:
+    try:
+        parsed = cast("object", json.loads(line))
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    obj = cast("dict[str, object]", parsed)
+    assistant_event = obj.get("assistantMessageEvent")
+    if isinstance(assistant_event, dict):
+        event_dict = cast("dict[str, object]", assistant_event)
+        event_type = event_dict.get("type")
+        stop_reason = event_dict.get("stopReason")
+        return (
+            event_type == "done"
+            and isinstance(stop_reason, str)
+            and stop_reason.casefold() == _PI_CONTEXT_EXHAUSTED_STOP_REASON
+        )
+    if _message_has_length_stop_reason(obj.get("message")):
+        return True
+    messages = obj.get("messages")
+    if isinstance(messages, list):
+        return any(_message_has_length_stop_reason(message) for message in messages)
+    return False
+
+
+def _has_pi_context_exhaustion_signal(agent_name: str, output: list[str]) -> bool:
+    if not _is_pi_agent(agent_name):
+        return False
+    return any(_line_has_pi_context_exhaustion(line) for line in output)
 
 
 @dataclass(frozen=True)
@@ -445,6 +494,8 @@ def _check_process_result(
                     if candidate is not None:
                         session_id = candidate
                         break
+            if _has_pi_context_exhaustion_signal(agent_name, bounded_output):
+                raise PiContextExhaustedExitError(agent_name)
             raise OpenCodeResumableExitError(
                 agent_name,
                 session_id=session_id,

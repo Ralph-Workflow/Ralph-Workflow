@@ -10,12 +10,12 @@ class ActivityProvider(StrEnum):
     bus (the ``AgentActivityEvent.provider`` field). The enum mirrors
     ``AgentTransport`` for the agents where one identity implies the
     other (claude, opencode, codex, gemini, agy, generic). Claude
-    Interactive and Pi are listed separately because they have their
-    own parsers (``ClaudeInteractiveParser`` / ``PiParser``) and the
-    prompt's "ALL supported agents" requirement means their
-    activity-event stream must also be surfaced through the router
-    /on_event path -- not silently collapsed to ``GENERIC`` by the
-    CLI-substring detection in ``detect_provider_from_command``.
+    Interactive, Nanocoder, and Pi are listed separately because they
+    have their own parsers and the prompt's "ALL supported agents"
+    requirement means their activity-event stream must also be surfaced
+    through the router /on_event path -- not silently collapsed to
+    ``GENERIC`` by the CLI-substring detection in
+    ``detect_provider_from_command``.
     """
 
     AGY = "agy"
@@ -23,6 +23,7 @@ class ActivityProvider(StrEnum):
     CLAUDE_INTERACTIVE = "claude_interactive"
     CODEX = "codex"
     OPENCODE = "opencode"
+    NANOCODER = "nanocoder"
     GEMINI = "gemini"
     GENERIC = "generic"
     PI = "pi"
@@ -34,6 +35,7 @@ _TRANSPORT_TO_PROVIDER: dict[str, ActivityProvider] = {
     "claude_interactive": ActivityProvider.CLAUDE_INTERACTIVE,
     "codex": ActivityProvider.CODEX,
     "opencode": ActivityProvider.OPENCODE,
+    "nanocoder": ActivityProvider.NANOCODER,
     "gemini": ActivityProvider.GEMINI,
     "agy": ActivityProvider.AGY,
     "pi": ActivityProvider.PI,
@@ -45,10 +47,8 @@ def provider_for_transport(transport: str | None) -> ActivityProvider:
     """Return the canonical ``ActivityProvider`` for an ``AgentTransport`` value.
 
     Falls back to ``ActivityProvider.GENERIC`` when ``transport`` is
-    ``None`` or unknown so callers can blindly forward any
-    ``AgentTransport`` value (including ``NANOCODER``, which shares
-    the generic fallback parser) without worrying about the
-    ActivityProvider enum.
+    ``None`` or unknown so callers can blindly forward optional
+    transport values without worrying about the ActivityProvider enum.
     """
     if transport is None:
         return ActivityProvider.GENERIC

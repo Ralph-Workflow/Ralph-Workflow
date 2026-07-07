@@ -43,7 +43,7 @@ Common fields:
 > `ralph/agents/invoke/_runtime_resolvers/__init__.py`) removes
 > `RALPH_MCP_ENDPOINT` from the Pi subprocess environment, writes a generated
 > Pi extension, and passes that extension with `--no-builtin-tools --extension`.
-> The extension registers Ralph MCP tools through Pi's custom-tool API and
+> The extension registers Ralph Workflow MCP tools through Pi's custom-tool API and
 > proxies calls to the active HTTP MCP endpoint. This is pinned by
 > `tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py::TestPiRuntimeResolver`
 > (`test_mcp_endpoint_in_extra_env_writes_extension`,

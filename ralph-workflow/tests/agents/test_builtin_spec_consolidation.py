@@ -32,7 +32,7 @@ from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
-from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
 from ralph.agents.support import AgentSupport
@@ -88,7 +88,7 @@ class TestBuiltinSupportsFrozen:
         (
             "nanocoder",
             AgentTransport.NANOCODER,
-            GenericParser,
+            NanocoderParser,
             GenericExecutionStrategy,
             "nanocoder",
             None,

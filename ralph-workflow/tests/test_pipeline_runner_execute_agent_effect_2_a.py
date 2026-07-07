@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from rich.console import Console
 
-from ralph.agents.invoke import AgentInvocationError
+from ralph.agents.invoke import AgentInvocationError, PiContextExhaustedExitError
 from ralph.config.enums import (
     AgentTransport,
     JsonParserType,
@@ -1078,6 +1078,47 @@ class TestExecuteAgentEffectA:
         assert result == PipelineEvent.AGENT_FAILURE
         assert new_state.last_agent_session_id is None
         assert new_state.agent_retry_intent.action == "fresh"
+
+    def test_apply_session_capture_preserves_pi_context_exhaustion_skip_intent(self) -> None:
+        effect = InvokeAgentEffect(
+            agent_name="pi/zai/glm-5.2",
+            phase="development",
+            prompt_file="PROMPT.md",
+        )
+        registry = _registry_factory(MagicMock())
+
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            registry_factory=registry.from_config,
+        )
+
+        def context_exhausted_invoke(
+            *_args: object,
+            **_kwargs: object,
+        ) -> object:
+            raise PiContextExhaustedExitError("pi/zai/glm-5.2")
+
+        state = PipelineState.model_validate({"phase": "development"})
+
+        result = effect_executor_module.execute_agent_effect(
+            effect,
+            self._config(),
+            pipeline_deps,
+            WorkspaceScope("/tmp/worktree"),
+            state=state,
+            display_context=make_display_context(),
+            invoke_agent=context_exhausted_invoke,
+            agent_invocation_error=AgentInvocationError,
+        )
+
+        new_state = runner_session_module.apply_session_capture(state)
+
+        assert result == PipelineEvent.AGENT_FAILURE
+        assert new_state.last_agent_session_id is None
+        assert new_state.agent_retry_intent.action is None
+        assert new_state.agent_retry_intent.skip_same_agent_retries is True
 
     def test_handles_unexpected_error_as_failure(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")

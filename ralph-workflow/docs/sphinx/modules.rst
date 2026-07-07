@@ -1494,6 +1494,13 @@ ralph.agents.parsers.generic
    :members:
    :show-inheritance:
 
+ralph.agents.parsers.nanocoder
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.nanocoder
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers.opencode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

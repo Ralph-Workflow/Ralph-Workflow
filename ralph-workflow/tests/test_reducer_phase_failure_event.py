@@ -363,6 +363,32 @@ class TestPhaseFailureEvent:
         assert new_state.chain_for_phase("development").retries == 0
         assert effects == []
 
+    def test_phase_failure_skip_same_agent_retries_falls_back_immediately(
+        self,
+    ) -> None:
+        """Context-exhausted agents should advance to the next agent without retries."""
+        state = PipelineState(
+            phase="development",
+            phase_chains={
+                "development": AgentChainState(
+                    agents=["pi/zai/glm-5.2", "codex"], current_index=0, retries=0
+                )
+            },
+        )
+        event = PhaseFailureEvent(
+            phase="development",
+            reason="Pi context length exhausted",
+            recoverable=True,
+            skip_same_agent_retries=True,
+        )
+        new_state, effects = _reduce(state, event)
+        chain = new_state.chain_for_phase("development")
+        assert chain.current_index == 1
+        assert chain.retries == 0
+        assert new_state.metrics.total_fallbacks == 1
+        assert new_state.metrics.total_retries == 0
+        assert effects == []
+
     def test_phase_failure_recoverable_with_single_agent_after_3_retries_enters_recovery(
         self,
     ) -> None:
