@@ -22,7 +22,11 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.mcp.tools.artifact import handle_submit_plan_sections, handle_validate_plan_draft
+from ralph.mcp.tools.artifact import (
+    handle_submit_plan_section,
+    handle_submit_plan_sections,
+    handle_validate_plan_draft,
+)
 from ralph.mcp.tools.coordination import InvalidParamsError
 from ralph.workspace.fs import FsWorkspace
 from tests.test_artifact_format_docs_mock_session import planning_session
@@ -54,6 +58,33 @@ def test_submit_plan_sections_empty_batch_returns_empty_submitted(tmp_path: Path
     payload = json.loads(_read_response_text(result))
     assert payload["submitted"] == []
     assert payload["staged_sections"] == []
+    assert payload["staged"] is True
+    assert payload["section_valid"] is True
+    assert payload["can_repair"] is False
+
+
+def test_submit_plan_section_empty_design_is_staged_with_warning(tmp_path: Path) -> None:
+    """Explicitly empty design can be repaired later, but agents should see a warning."""
+    workspace = FsWorkspace(tmp_path)
+
+    result = handle_submit_plan_section(
+        planning_session(),
+        workspace,
+        {"section": "design", "mode": "replace", "content": {}},
+    )
+
+    assert result.is_error is False, _read_response_text(result)
+    payload = json.loads(_read_response_text(result))
+    assert payload["submitted"] == ["design"]
+    assert payload["staged"] is True
+    assert payload["section_valid"] is False
+    assert payload["can_repair"] is True
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert len(warnings) == 1
+    assert "empty design section" in warnings[0]
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    assert sections["design"] == {}
 
 
 def test_submit_plan_sections_accepts_entries_json_string(tmp_path: Path) -> None:
@@ -100,6 +131,9 @@ def test_submit_plan_sections_accepts_entries_json_string(tmp_path: Path) -> Non
     assert result.is_error is False, _read_response_text(result)
     payload = json.loads(_read_response_text(result))
     assert payload["submitted"] == ["summary", "skills_mcp", "steps"]
+    assert payload["staged"] is True
+    assert payload["section_valid"] is True
+    assert payload["can_repair"] is False
     draft = _read_draft(tmp_path)
     sections = cast("dict[str, object]", draft["sections"])
     step = cast("list[dict[str, object]]", sections["steps"])[0]

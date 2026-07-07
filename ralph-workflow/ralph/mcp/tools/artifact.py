@@ -583,6 +583,9 @@ def handle_submit_plan_section(
                     "mode": merge_mode,
                     "staged_sections": staged,
                     "validation_warnings": validation_warnings,
+                    "staged": True,
+                    "section_valid": not validation_warnings,
+                    "can_repair": bool(validation_warnings),
                 }
             )
         ],
@@ -890,6 +893,7 @@ def handle_validate_plan_draft(
                 ToolContent.json_content(
                     {
                         "valid": False,
+                        "finalizable": False,
                         "errors": [
                             {
                                 "message": (
@@ -905,6 +909,12 @@ def handle_validate_plan_draft(
                                     )
                                 ),
                                 "type": "InvalidDraftState",
+                                "code": "NO_PLAN_DRAFT",
+                                "repair": (
+                                    "Submit plan sections first with ralph_submit_plan_section "
+                                    "or ralph_submit_plan_sections, then retry "
+                                    "ralph_validate_draft."
+                                ),
                             }
                         ],
                         "staged_sections": [],
@@ -923,6 +933,7 @@ def handle_validate_plan_draft(
                 ToolContent.json_content(
                     {
                         "valid": False,
+                        "finalizable": False,
                         "errors": [
                             {
                                 "message": _format_plan_finalize_error(
@@ -932,6 +943,8 @@ def handle_validate_plan_draft(
                                     tool_name="ralph_validate_draft",
                                 ),
                                 "type": type(exc).__name__,
+                                "code": _plan_validation_error_code(str(exc)),
+                                "repair": _plan_validation_error_repair(str(exc)),
                             }
                         ],
                     }
@@ -946,6 +959,7 @@ def handle_validate_plan_draft(
             ToolContent.json_content(
                 {
                     "valid": True,
+                    "finalizable": True,
                     "errors": [],
                     "staged_sections": sorted(sections_obj.keys()),
                 }
@@ -1169,6 +1183,13 @@ def _plan_section_validation_warnings(
     shape_error = _plan_section_shape_error(section, payload, mode)
     if shape_error is not None:
         raise shape_error
+    if section == "design" and mode == "replace" and payload == {}:
+        return [
+            "[design] staged empty design section; this is accepted so the draft can "
+            "be repaired later, but it provides no acceptance_criteria, outcome, or "
+            "testability guidance. Re-submit section='design' with the native design "
+            "object when those details are available."
+        ]
     try:
         validate_plan_section(section, payload, mode=mode)
     except PlanArtifactValidationError as exc:
@@ -1364,6 +1385,9 @@ def handle_submit_plan_sections(
                     "staged_sections": sorted(new_sections.keys()),
                     "total_bytes": len(serialized),
                     "validation_warnings": validation_warnings,
+                    "staged": True,
+                    "section_valid": not validation_warnings,
+                    "can_repair": bool(validation_warnings),
                 }
             )
         ],
@@ -2165,6 +2189,110 @@ def _format_plan_batch_envelope_error(
             "Optional: the bundled `submit-plan-artifact` skill shows the canonical batch "
             "envelope and detailed passing plan examples.",
         ]
+    )
+
+
+_PLAN_VALIDATION_ERROR_CODE_PATTERNS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        ("satisfied_by_steps cannot reference a research or verify step",),
+        "AC_REFERENCES_RESEARCH_OR_VERIFY_STEP",
+    ),
+    (("references unknown step number",), "AC_REFERENCES_UNKNOWN_STEP"),
+    (
+        ("declares satisfies entries but plan has no design.acceptance_criteria",),
+        "STEP_SATISFIES_WITHOUT_ACCEPTANCE_CRITERIA",
+    ),
+    (
+        ("satisfies unknown acceptance criterion",),
+        "STEP_SATISFIES_UNKNOWN_ACCEPTANCE_CRITERION",
+    ),
+    (("scope_items", "Field required"), "SUMMARY_MISSING_SCOPE_ITEMS"),
+    (("plan step depends_on cycle detected",), "PLAN_DEPENDS_ON_CYCLE"),
+    (
+        ("plan cannot declare both parallel_plan and work_units",),
+        "PARALLEL_PLAN_AND_WORK_UNITS",
+    ),
+    (
+        ("verification method must not invoke a shell interpreter directly",),
+        "VERIFICATION_METHOD_SHELL_INVOCATION",
+    ),
+    (
+        ("skills_mcp.skills must contain at least one skill name",),
+        "SKILLS_MCP_EMPTY_SKILLS",
+    ),
+)
+
+
+def _plan_validation_error_code(detail: str) -> str:
+    """Return a stable machine-readable code for common plan validator failures."""
+    for needles, code in _PLAN_VALIDATION_ERROR_CODE_PATTERNS:
+        if all(needle in detail for needle in needles):
+            return code
+    return "PLAN_VALIDATION_ERROR"
+
+
+def _extract_quoted_after(detail: str, marker: str) -> str | None:
+    start = detail.find(marker)
+    if start < 0:
+        return None
+    after = detail[start + len(marker) :]
+    quote_start = after.find("'")
+    if quote_start < 0:
+        return None
+    remainder = after[quote_start + 1 :]
+    quote_end = remainder.find("'")
+    if quote_end < 0:
+        return None
+    return remainder[:quote_end]
+
+
+def _plan_validation_error_repair(detail: str) -> str:
+    """Return concise repair guidance that complements the full format-doc pointer."""
+    code = _plan_validation_error_code(detail)
+    if code == "AC_REFERENCES_RESEARCH_OR_VERIFY_STEP":
+        criterion = _extract_quoted_after(detail, "criterion") or "the cited AC"
+        return (
+            f"Edit design.acceptance_criteria.criteria[id={criterion}]."
+            "satisfied_by_steps. Remove any research or verify step numbers and point "
+            "only to concrete file_change or action steps that deliver the criterion. "
+            "Do not edit verify steps unless the plan semantics are actually wrong."
+        )
+    if code == "AC_REFERENCES_UNKNOWN_STEP":
+        criterion = _extract_quoted_after(detail, "criterion") or "the cited AC"
+        return (
+            f"Edit design.acceptance_criteria.criteria[id={criterion}]."
+            "satisfied_by_steps so every number exists in steps[*].number, or add the "
+            "missing step before validating again."
+        )
+    repair_by_code = {
+        "STEP_SATISFIES_WITHOUT_ACCEPTANCE_CRITERIA": (
+            "Either stage design.acceptance_criteria.criteria with the referenced AC ids "
+            "or remove steps[*].satisfies until acceptance criteria exist."
+        ),
+        "STEP_SATISFIES_UNKNOWN_ACCEPTANCE_CRITERION": (
+            "Add the cited id to design.acceptance_criteria.criteria, or remove that id "
+            "from the step's satisfies list."
+        ),
+        "SUMMARY_MISSING_SCOPE_ITEMS": (
+            "Re-submit section='summary' with content.scope_items containing at least "
+            "three native JSON objects."
+        ),
+        "PLAN_DEPENDS_ON_CYCLE": "Edit steps[*].depends_on to break the cycle named in the error.",
+        "PARALLEL_PLAN_AND_WORK_UNITS": (
+            "Keep exactly one of parallel_plan or work_units; remove the other section."
+        ),
+        "VERIFICATION_METHOD_SHELL_INVOCATION": (
+            "Replace shell-wrapper verification methods with the executable command "
+            "directly, for example 'pytest tests/test_x.py -q'."
+        ),
+        "SKILLS_MCP_EMPTY_SKILLS": (
+            "Re-submit section='skills_mcp' with at least one task-relevant skill name."
+        ),
+    }
+    return repair_by_code.get(
+        code,
+        "Read the cited plan format doc, repair the named section with native JSON, "
+        "then retry ralph_validate_draft.",
     )
 
 

@@ -202,6 +202,25 @@ def _normalize_step_edit_payload(
     return _normalize_lenient_step_fields(payload)
 
 
+def _partial_replace_warning(existing_step: dict[str, object], step_payload: object) -> str | None:
+    """Warn when a full replacement looks like an accidental partial patch."""
+    if not isinstance(step_payload, dict):
+        return None
+    payload = cast("dict[str, object]", step_payload)
+    if "title" in payload and "content" in payload:
+        return None
+    if "title" not in existing_step or "content" not in existing_step:
+        return None
+    provided = sorted(key for key in payload if key != "number")
+    provided_text = ", ".join(provided) if provided else "no step fields"
+    return (
+        "ralph_replace_plan_step replaces the entire step. This payload looks like "
+        f"a partial update ({provided_text}); use ralph_patch_step for partial "
+        "updates, or provide a full replacement step with title, content, step_type, "
+        "targets, depends_on, satisfies, and expected_evidence as appropriate."
+    )
+
+
 def _normalize_lenient_step_fields(step: dict[str, object]) -> dict[str, object]:
     normalized = dict(step)
     for field in ("targets", "depends_on", "satisfies", "expected_evidence"):
@@ -619,6 +638,7 @@ def replace_plan_step_with_echo(
     if target_index is None:
         raise PlanArtifactValidationError(f"step {step_number} does not exist")
 
+    partial_warning = _partial_replace_warning(steps[target_index], step_payload)
     replacement_step = _normalize_step_edit_payload(
         step_payload,
         synthetic_number=step_number,
@@ -632,6 +652,8 @@ def replace_plan_step_with_echo(
         dropped_ac,
         warnings,
     ) = _apply_step_mutation(sections, steps=steps, initial_warnings=source_warnings)
+    if partial_warning is not None:
+        warnings = [partial_warning, *warnings]
     reindexed_steps = cast("list[dict[str, object]]", updated_sections.get("steps", []))
     echo = _build_step_mutation_echo(
         action="replace",

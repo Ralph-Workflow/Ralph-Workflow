@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ralph.mcp.tools.coordination import InvalidParamsError
-from ralph.mcp.tools.plan_draft_edit import handle_patch_step
+from ralph.mcp.tools.plan_draft_edit import handle_patch_step, handle_replace_plan_step
 from ralph.workspace.fs import FsWorkspace
 from tests.test_artifact_format_docs_mock_session import planning_session
 
@@ -247,3 +247,21 @@ def test_patch_step_missing_step_object_raises(tmp_path: Path) -> None:
             workspace,
             {"step_number": 1, "step": "not a dict"},
         )
+
+
+def test_replace_plan_step_partial_payload_points_to_patch_step(tmp_path: Path) -> None:
+    """Full replacement with partial fields should tell agents to use patch_step."""
+    _write_draft(tmp_path, _three_step_draft())
+    workspace = FsWorkspace(tmp_path)
+
+    result = handle_replace_plan_step(
+        planning_session(),
+        workspace,
+        {"step_number": 3, "step": {"satisfies": []}},
+    )
+
+    assert result.is_error is False
+    payload = json.loads(_read_response_text(result))
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any("ralph_patch_step" in warning for warning in warnings)
+    assert any("partial update" in warning for warning in warnings)

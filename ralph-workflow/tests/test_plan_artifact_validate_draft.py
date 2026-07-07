@@ -85,8 +85,11 @@ def test_validate_draft_no_draft_reports_missing_draft(tmp_path: Path) -> None:
     errors = cast("list[dict[str, object]]", payload["errors"])
     assert len(errors) == 1
     assert "No plan draft" in cast("str", errors[0]["message"])
+    assert errors[0]["code"] == "NO_PLAN_DRAFT"
+    assert "Submit plan sections first" in cast("str", errors[0]["repair"])
     assert ".agent/artifact-formats/plan.md" in cast("str", errors[0]["message"])
     assert "ralph_validate_draft" in cast("str", errors[0]["message"])
+    assert payload["finalizable"] is False
     assert result.is_error is False
 
 
@@ -98,6 +101,7 @@ def test_validate_draft_valid_minimal_draft_returns_valid_true(tmp_path: Path) -
     payload = json.loads(_read_response_text(result))
     assert payload["valid"] is True
     assert payload["errors"] == []
+    assert payload["finalizable"] is True
     staged = cast("list[str]", payload["staged_sections"])
     assert "summary" in staged
     assert "steps" in staged
@@ -164,6 +168,56 @@ def test_validate_draft_ac_orphan_step_returns_invalid(tmp_path: Path) -> None:
     assert payload["valid"] is False
     errors = cast("list[dict[str, str]]", payload["errors"])
     assert any("99" in e["message"] or "step" in e["message"].lower() for e in errors)
+    assert errors[0]["code"] == "AC_REFERENCES_UNKNOWN_STEP"
+    assert "satisfied_by_steps" in errors[0]["repair"]
+    assert payload["finalizable"] is False
+
+
+def test_validate_draft_ac_references_verify_step_returns_specific_repair(
+    tmp_path: Path,
+) -> None:
+    """AC links to verify steps are invalid and should get surgical repair guidance."""
+    draft = _minimal_valid_draft()
+    sections = cast("dict[str, object]", draft["sections"])
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "Change file",
+            "content": "change file",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+        },
+        {
+            "number": 2,
+            "title": "Run verification",
+            "content": "run verification",
+            "step_type": "verify",
+            "verify_command": "pytest tests/test_a.py -q",
+        },
+    ]
+    sections["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {
+                    "id": "AC-07",
+                    "description": "Verification should pass.",
+                    "satisfied_by_steps": [2],
+                }
+            ]
+        }
+    }
+    _write_draft(tmp_path, draft)
+    workspace = FsWorkspace(tmp_path)
+    result = handle_validate_plan_draft(planning_session(), workspace, {})
+    payload = json.loads(_read_response_text(result))
+    assert payload["valid"] is False
+    assert payload["finalizable"] is False
+    errors = cast("list[dict[str, str]]", payload["errors"])
+    assert errors[0]["code"] == "AC_REFERENCES_RESEARCH_OR_VERIFY_STEP"
+    assert "AC-07" in errors[0]["repair"]
+    assert "file_change" in errors[0]["repair"]
+    assert "action" in errors[0]["repair"]
+    assert "Do not edit verify steps" in errors[0]["repair"]
 
 
 def test_validate_draft_parallel_plan_and_work_units_returns_invalid(tmp_path: Path) -> None:
