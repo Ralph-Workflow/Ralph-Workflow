@@ -18,14 +18,31 @@ fast — every CLI test pays the ralph.cli.main import cost once.
 from __future__ import annotations
 
 import atexit
-from typing import TYPE_CHECKING, cast
+from functools import lru_cache
+from pathlib import Path
+from typing import TYPE_CHECKING, cast, get_args
+from unittest.mock import MagicMock
 
 import pytest
 
 import ralph.cli.main as ralph_cli_main
+from ralph.config.enums import Verbosity
+from ralph.display.context import make_display_context
+from ralph.pipeline import runner as runner_module
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
+from ralph.policy.models._types import PhaseRole
+from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    import typer
+
     from ralph.display.context import DisplayContext
+    from ralph.policy.models import PolicyBundle
+
 
 
 def _stub_display_context() -> DisplayContext:
@@ -71,6 +88,8 @@ class _TelemetrySpy:
         self.init_calls: list[dict[str, object]] = []
         self.set_context_calls: list[tuple[str, dict[str, object]]] = []
         self.record_calls: list[str] = []
+        self.wallclock_calls: list[bool] = []
+        self.command_calls: list[str] = []
         self.atexit_calls: list[object] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,6 +110,14 @@ class _TelemetrySpy:
             "ralph.telemetry._sentry.record_session_start",
             lambda now=None: self.record_calls.append("called"),
         )
+        monkeypatch.setattr(
+            "ralph.telemetry._sentry.set_session_wallclock_start",
+            lambda now_dt=None: self.wallclock_calls.append(True),
+        )
+        monkeypatch.setattr(
+            "ralph.telemetry._sentry.record_command_invocation",
+            self._on_command_invocation,
+        )
         monkeypatch.setattr(atexit, "register", self._on_atexit)
 
     def _on_user_id(self) -> str:
@@ -99,6 +126,9 @@ class _TelemetrySpy:
 
     def _on_init(self, uid: str, sid: str) -> None:
         self.init_calls.append({"uid": uid, "sid": sid})
+
+    def _on_command_invocation(self, command: str) -> None:
+        self.command_calls.append(command)
 
     def _on_atexit(self, func: object, *args: object, **kwargs: object) -> object:
         self.atexit_calls.append(func)
@@ -149,7 +179,191 @@ def test_init_telemetry_wires_full_lifecycle_when_enabled(
     assert spy.init_calls == [{"uid": "fake-user-id", "sid": "fake-session-id"}]
     assert spy.set_context_calls == [("called", {})]
     assert spy.record_calls == ["called"]
+    assert spy.wallclock_calls == [True], (
+        "set_session_wallclock_start must be wired when telemetry is enabled"
+    )
     assert spy.atexit_calls, "atexit.register must be wired when telemetry is enabled"
+
+
+def test_init_telemetry_skips_wallclock_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """set_session_wallclock_start MUST NOT fire when telemetry is opted out."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
+
+    ralph_cli_main._init_telemetry()
+
+    assert spy.wallclock_calls == []
+
+
+def test_record_cli_command_records_pipeline_when_no_subcommand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_record_cli_command`` MUST forward ``'pipeline'`` when no subcommand is invoked."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": None})())
+    ralph_cli_main._record_cli_command(ctx)
+
+    assert spy.command_calls == ["pipeline"]
+
+
+def test_record_cli_command_records_subcommand_name_when_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_record_cli_command`` MUST forward ``ctx.invoked_subcommand`` verbatim when set."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": "cleanup"})())
+    ralph_cli_main._record_cli_command(ctx)
+
+    assert spy.command_calls == ["cleanup"]
+
+
+def test_record_cli_command_noop_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When telemetry is opted out, ``record_command_invocation`` is a no-op."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
+
+    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": "cleanup"})())
+    ralph_cli_main._record_cli_command(ctx)
+
+    assert spy.command_calls == []
+
+
+def test_record_cli_command_fail_soft(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An exception from record_command_invocation MUST NOT crash the CLI."""
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    def boom(_cmd: str) -> None:
+        raise RuntimeError("simulated record_command_invocation boom")
+
+    monkeypatch.setattr("ralph.telemetry._sentry.record_command_invocation", boom)
+
+    ctx = cast("typer.Context", type("_StubCtx", (), {"invoked_subcommand": None})())
+    # Must not raise.
+    ralph_cli_main._record_cli_command(ctx)
+
+
+# ---------------------------------------------------------------------------
+# Phase recording wiring — proves _run_pipeline_step's try/finally fires
+# record_phase_execution at least once with role in PhaseRole vocabulary and
+# outcome in the coarse outcome set. Drives the REAL pipeline step (not the
+# CLI-layer run_pipeline stub) so the finally clause is exercised end-to-end.
+# ---------------------------------------------------------------------------
+
+
+def test_run_pipeline_step_records_phase_via_try_finally(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Driving the real _run_pipeline_step MUST record exactly one phase event.
+
+    The spy on ``ralph.telemetry._sentry.record_phase_execution`` substitutes
+    the real Sentry sink so the finally-clause call never reaches the network.
+    We exercise the post-with-block success path (event -> AGENT_SUCCESS ->
+    outcome='success'). role MUST come from the PhaseRole closed vocabulary
+    (auto-derived via get_args); outcome MUST come from the coarse outcome
+    set. The finally clause is the SINGLE recording site.
+    """
+
+    @lru_cache(maxsize=1)
+    def _load_default_policy_bundle() -> PolicyBundle:
+        defaults_dir = Path(__file__).resolve().parent / "ralph" / "policy" / "defaults"
+        return load_policy(defaults_dir)
+
+    recorded_calls: list[dict[str, object]] = []
+
+    def _spy_record(*, role: str, duration_s: int, outcome: str) -> None:
+        recorded_calls.append({"role": role, "duration_s": duration_s, "outcome": outcome})
+
+    monkeypatch.setattr(
+        "ralph.pipeline.runner.record_phase_execution",
+        _spy_record,
+    )
+
+    bundle = _load_default_policy_bundle()
+    workspace_path = Path(str(tmp_path))
+    workspace_scope = WorkspaceScope(workspace_path)
+    workspace = FsWorkspace(workspace_path)
+    workspace.mkdirs(".agent/tmp")
+
+    effect = InvokeAgentEffect(
+        agent_name="planner",
+        phase="planning",
+        prompt_file=".agent/tmp/planning_prompt.md",
+        drain="planning",
+    )
+    state = PipelineState(phase="planning", previous_phase=None)
+
+    monkeypatch.setattr(
+        runner_module,
+        "call_determine_effect_from_policy",
+        lambda *_a, **_kw: effect,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_agent_prompt_if_needed",
+        lambda *_a, **_kw: None,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "invoke_execute_effect_with_optional_display",
+        lambda *_a, **_kw: PipelineEvent.AGENT_SUCCESS,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "phase_event_after_agent_run",
+        lambda **_kw: PipelineEvent.AGENT_SUCCESS,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "reducer_reduce",
+        lambda current_state, _event, _policy, recovery=None: (current_state, []),
+    )
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda *_a, **_kw: None)
+
+    display_context = make_display_context()
+    display = runner_module.ParallelDisplay(display_context)
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    phase_role_set = frozenset(get_args(PhaseRole))
+    allowed_outcomes = frozenset({"success", "failure", "skipped", "crashed"})
+
+    runner_module.run_pipeline_step(
+        state=state,
+        policy_bundle=bundle,
+        workspace_scope=workspace_scope,
+        config=MagicMock(),
+        display=display,
+        display_context=display_context,
+        verbosity=Verbosity.QUIET,
+        registry=registry,
+        pipeline_subscriber=None,
+    )
+
+    assert len(recorded_calls) >= 1, (
+        "try/finally in _run_pipeline_step must record at least one phase event"
+    )
+    for call in recorded_calls:
+        assert call["role"] in phase_role_set, (
+            f"recorded role {call['role']!r} is not in PhaseRole closed vocabulary"
+        )
+        assert call["outcome"] in allowed_outcomes, (
+            f"recorded outcome {call['outcome']!r} is not in {{success, failure, skipped, crashed}}"
+        )
+        assert isinstance(call["duration_s"], int), (
+            f"duration_s MUST be int, got {type(call['duration_s']).__name__}"
+        )
 
 
 @pytest.mark.parametrize(

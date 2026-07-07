@@ -357,6 +357,7 @@ def _init_telemetry() -> None:
             init_sentry,
             record_session_start,
             set_environment_context,
+            set_session_wallclock_start,
         )
         from ralph.telemetry._user_identity import generate_session_id, get_or_create_user_id
 
@@ -365,9 +366,34 @@ def _init_telemetry() -> None:
         init_sentry(user_id, session_id)
         set_environment_context()
         record_session_start()
+        set_session_wallclock_start()
         atexit.register(finalize_session)
     except Exception as exc:
         logger.warning("Telemetry unavailable: {}", exc)
+
+
+def _record_cli_command(ctx: typer.Context) -> None:
+    """Forward the invoked subcommand (or the literal ``pipeline``) as a privacy-safe tag.
+
+    This is the single CLI chokepoint for the ``command`` telemetry tag. The
+    value is drawn from a closed vocabulary: either ``ctx.invoked_subcommand``
+    (a registered Typer command name — a developer-defined identifier, not
+    user-supplied free text) or the literal ``"pipeline"`` when no
+    subcommand is invoked (the default run path). The ``if ctx.invoked_subcommand:
+    return`` guard later short-circuits subcommand dispatch, so this single
+    call covers both paths. Opt-out-aware and fail-soft.
+    """
+    try:
+        from ralph.telemetry._sentry import is_telemetry_disabled, record_command_invocation
+    except Exception:
+        logger.warning("Telemetry command-invocation forwarding unavailable", exc_info=True)
+        return
+    if is_telemetry_disabled():
+        return
+    try:
+        record_command_invocation(ctx.invoked_subcommand or "pipeline")
+    except Exception:
+        logger.warning("Telemetry command-invocation forwarding failed", exc_info=True)
 
 
 def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
@@ -868,6 +894,7 @@ def main(
 
     bootstrap_global_configs(display_context=_cli_ctx)
     _init_telemetry()
+    _record_cli_command(ctx)
 
     # Set up logging based on verbosity
     configure_logging(verbosity)
@@ -1281,6 +1308,7 @@ def _build_cli_overrides(
 
 # Public aliases — test-accessible names and monkeypatch interception points.
 init_telemetry = _init_telemetry
+record_cli_command = _record_cli_command
 bootstrap_global_configs = _bootstrap_global_configs
 configure_logging = _configure_logging
 handle_commit_plumbing = _handle_commit_plumbing

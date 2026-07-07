@@ -7,6 +7,7 @@ plumbing that connects them.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from inspect import signature
 from typing import TYPE_CHECKING, cast
@@ -37,6 +38,7 @@ from ralph.mcp.server.lifecycle import (
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.onboarding import CODEBERG_STAR_CTA
 from ralph.phases import handle_phase, register_role_handlers
+from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
@@ -143,6 +145,7 @@ from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.materialize import MissingPlanHandoffError, materialize_prompt_for_phase
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import FailureContext
+from ralph.telemetry._sentry import record_phase_execution
 from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
@@ -486,6 +489,38 @@ def _maybe_clear_invoke_agent_entry_drains(
             )
 
 
+_PHASE_SUCCESS_EVENTS: frozenset[PipelineEvent] = frozenset(
+    {
+        PipelineEvent.AGENT_SUCCESS,
+        PipelineEvent.COMMIT_SUCCESS,
+        PipelineEvent.ANALYSIS_SUCCESS,
+        PipelineEvent.REVIEW_CLEAN,
+        PipelineEvent.FIX_SUCCESS,
+    }
+)
+
+
+def _coarse_outcome_for_event(event: Event) -> str:
+    """Map a post-with-block ``Event`` to a coarse phase-outcome tag.
+
+    Returns one of the closed vocabulary strings forwarded to Sentry:
+    ``"success"``, ``"skipped"``, or ``"failure"``. The mapping is
+    deliberately fail-safe: ``COMMIT_SKIPPED`` is its own bucket, the
+    closed success set covers agent/commit/analysis/review/fix success
+    events, and everything else (loopback/retry/failure) is conservatively
+    ``"failure"`` so a real failure can never be hidden behind
+    ``"success"``. Non-``PipelineEvent`` events (PhaseFailureEvent /
+    WorkerStartedEvent / WorkerCompletedEvent / WorkerFailedEvent /
+    PostFanoutVerificationEvent / AnalysisDecisionEvent) all map to
+    ``"failure"`` because none of them are part of the closed success set.
+    """
+    if event == PipelineEvent.COMMIT_SKIPPED:
+        return "skipped"
+    if isinstance(event, PipelineEvent) and event in _PHASE_SUCCESS_EVENTS:
+        return "success"
+    return "failure"
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -503,6 +538,18 @@ def _run_pipeline_step(
     _monitor_stop_cb: Callable[[], None] | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> PipelineState | int:
+    # Phase telemetry primitives — bound BEFORE the try/except so the
+    # ``finally`` clause can read them on every exit path. PhaseRole is
+    # derived from the EXISTING PhaseDefinition.role closed vocabulary
+    # (never the raw ``state.phase`` string — privacy invariant). The
+    # pessimistic ``_phase_outcome = "crashed"`` default ensures any
+    # unmapped path is recorded as ``crashed`` rather than ``success``.
+    phase_def = policy_bundle.pipeline.phases.get(state.phase)
+    _phase_role = (
+        phase_def.role if (phase_def is not None and phase_def.role is not None) else "execution"
+    )
+    _phase_timer = PhaseTimer.start(state.phase)
+    _phase_outcome = "crashed"
     try:
         effect = call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
         inline_result = handle_inline_effect(
@@ -518,9 +565,11 @@ def _run_pipeline_step(
             pipeline_subscriber=pipeline_subscriber,
         )
         if inline_result is not None:
+            _phase_outcome = "skipped"
             return inline_result
 
         if isinstance(effect, FanOutEffect):
+            _phase_outcome = "success"
             return execute_fan_out_sync(
                 effect=effect,
                 state=state,
@@ -561,6 +610,7 @@ def _run_pipeline_step(
                     materialize_fn=_materialize_fn,
                 )
             except MissingPlanHandoffError as exc:
+                _phase_outcome = "skipped"
                 return _recover_missing_plan_handoff(
                     state=state,
                     pipeline_policy=policy_bundle.pipeline,
@@ -604,6 +654,7 @@ def _run_pipeline_step(
             and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
         ):
             clear_cycle_baseline(workspace_scope.root)
+        _phase_outcome = _coarse_outcome_for_event(event)
         next_state, _ = reducer_reduce(
             state,
             event,
@@ -629,8 +680,10 @@ def _run_pipeline_step(
         )
         return next_state
     except KeyboardInterrupt:
+        # Re-raise — the ``finally`` clause still records ``crashed`` first.
         raise
     except BaseException as exc:
+        _phase_outcome = "crashed"
         logger.exception(
             "Pipeline step crashed in phase={phase}: {err}",
             phase=state.phase,
@@ -656,6 +709,16 @@ def _run_pipeline_step(
             path=_checkpoint_path(workspace_scope),
         )
         return recovered_state
+    finally:
+        # SINGLE recording site for all exit paths (inline/FanOut/
+        # MissingPlanHandoff/success/KeyboardInterrupt/BaseException).
+        # Fail-soft: telemetry must never break the pipeline.
+        with contextlib.suppress(Exception):
+            record_phase_execution(
+                role=_phase_role,
+                duration_s=_phase_timer.finish().elapsed_seconds,
+                outcome=_phase_outcome,
+            )
 
 
 def _load_policy_bundle_for_run(

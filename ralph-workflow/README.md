@@ -209,13 +209,27 @@ session identifier is generated on every run.
 What we collect (anonymous metadata only):
 
 - **Operating system, architecture, and environment markers** (CI,
-  container, WSL, Codespaces, SSH session, package manager).
+  container, WSL, Codespaces, SSH session, package manager). `ci` and
+  `container` are also emitted as dedicated boolean tags for aggregate
+  filtering — the values are always `bool`, never env-var strings.
 - **Python and Ralph Workflow versions** (e.g. Python `3.12.5`, Ralph Workflow `0.8.18`).
 - **Whether you are running inside a virtualenv** (boolean only — the
   virtualenv path is never sent).
 - **Session timing** (start, duration) and a **coarse exit outcome**
   (`success` / `failure` / `interrupted` / `unknown` for utility
   invocations).
+- **Which CLI command or subcommand was invoked** (closed vocabulary: the
+  registered subcommand name or the literal `"pipeline"` for the
+  default run path — never free-text user input).
+- **Pipeline phase telemetry**: which phase **role** ran (closed
+  8-value set: `execution` / `analysis` / `review` / `commit` /
+  `verification` / `terminal` / `fanout_join` / `commit_cleanup`),
+  how long it took (whole-second `int`), and a coarse outcome
+  (`success` / `failure` / `skipped` / `crashed`). Aggregated per
+  run and flushed once at session end.
+- **Coarse UTC time-of-day buckets** (hour of day 0-23, day of week
+  0-6, weekday/weekend `bool`) for aggregate usage analytics — no
+  full timestamp and no local timezone string is forwarded.
 
 What we never collect:
 
@@ -227,6 +241,11 @@ What we never collect:
   identified.
 - **Hostnames**, **usernames**, **environment-variable values**, or any
   other personally identifying detail.
+- **Raw phase names** (only the closed-vocabulary role is recorded).
+- **Full timestamps or timezone names** (only coarse UTC buckets).
+- The **codebase identity** — phase telemetry is keyed on the
+  closed-vocabulary role, never the user-customizable phase name from
+  `pipeline.toml`.
 
 How to opt out (set the environment variable before invocation):
 

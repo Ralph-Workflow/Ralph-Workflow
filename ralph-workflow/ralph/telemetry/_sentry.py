@@ -14,13 +14,15 @@ import contextlib
 import os
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, get_args
 
 import sentry_sdk
 
 from ralph import __version__ as ralph_version
 from ralph.platform.detection import current_platform
+from ralph.policy.models._types import PhaseRole
 from ralph.runtime._version_info import PythonVersionInfo
 from ralph.runtime.environment import detect_runtime_environment
 
@@ -45,6 +47,24 @@ _EXTRA_SCRUB_PREFIXES: tuple[str, ...] = ()
 _SESSION_STARTED_AT: float | None = None
 _SESSION_OUTCOME: str = "unknown"
 _INITIALIZED: bool = False
+
+# PhaseRole closed vocabulary — auto-derived from the Literal type alias via
+# ``get_args`` so the validation set cannot drift from the type. Phase telemetry
+# keys exclusively on these values; raw phase names are never forwarded.
+_PHASE_ROLES: frozenset[str] = frozenset(cast("tuple[str, ...]", get_args(PhaseRole)))
+_PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
+
+# Aggregate phase statistics across the whole pipeline run. Keyed by PhaseRole,
+# drained at session finalize. Bounded by the 8-value closed vocabulary above
+# (not by user input).
+_PHASE_STATS: dict[str, dict[str, object]] = (
+    {}
+)  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
+
+# Coarse UTC time-of-day buckets captured once at session start for aggregate
+# ``when`` analytics. ``None`` until set_session_wallclock_start() runs; the
+# session context only attaches ``wallclock`` when populated.
+_SESSION_WALLCLOCK_BUCKETS: dict[str, object] | None = None
 
 
 def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
@@ -237,6 +257,8 @@ def set_environment_context() -> None:
         sentry_sdk.set_tag("architecture", platform.architecture.value)
         sentry_sdk.set_tag("python_version", python_version)
         sentry_sdk.set_tag("ralph_version", ralph_version)
+        sentry_sdk.set_tag("ci", platform.environment.ci)
+        sentry_sdk.set_tag("container", platform.environment.container)
 
         runtime_payload: dict[str, object] = {
             "python_implementation": python_info.implementation,
@@ -267,6 +289,97 @@ def set_session_outcome(outcome: str) -> None:
     """Record the coarse session outcome: success / failure / interrupted / unknown."""
     global _SESSION_OUTCOME  # noqa: PLW0603
     _SESSION_OUTCOME = outcome
+
+
+def record_command_invocation(command: str) -> None:
+    """Record the invoked CLI command as a privacy-safe closed-vocabulary tag.
+
+    The closed-vocabulary guarantee is at the call site (the CLI passes
+    ``ctx.invoked_subcommand`` or the literal ``'pipeline'``); this function
+    forwards the value verbatim via ``sentry_sdk.set_tag('command', ...)``.
+    No-op when telemetry is disabled or Sentry was never initialized.
+    Fail-soft: any exception from ``sentry_sdk.set_tag`` is swallowed so the
+    host CLI/pipeline is never broken by telemetry.
+    """
+    if is_telemetry_disabled() or not _INITIALIZED:
+        return
+    with contextlib.suppress(Exception):
+        sentry_sdk.set_tag("command", command)
+
+
+_WEEKDAY_COUNT = 5  # Mon-Fri inclusive; weekday cutoff for weekday/weekend bucketing.
+
+
+def _compute_wallclock_buckets(dt: datetime) -> dict[str, object]:
+    """Compute coarse UTC time-of-day buckets from a timezone-aware datetime."""
+    return {
+        "hour_of_day": dt.hour,
+        "day_of_week": dt.weekday(),
+        "is_weekday": dt.weekday() < _WEEKDAY_COUNT,
+    }
+
+
+def set_session_wallclock_start(now_dt: datetime | None = None) -> None:
+    """Capture coarse UTC time-of-day buckets for aggregate when-analytics.
+
+    No full timestamp or timezone string is forwarded: only ``hour_of_day``
+    (0-23), ``day_of_week`` (0-6, Monday=0), and ``is_weekday`` (bool). The
+    buckets are attached to the session context at ``finalize_session`` time.
+    Tests inject ``now_dt=<datetime>`` for determinism; production code passes
+    ``now_dt=None`` so the call resolves to ``datetime.now(timezone.utc)``.
+    No-op when telemetry is disabled or Sentry was never initialized.
+    Fail-soft.
+    """
+    global _SESSION_WALLCLOCK_BUCKETS  # noqa: PLW0603
+    if is_telemetry_disabled() or not _INITIALIZED:
+        return
+    with contextlib.suppress(Exception):
+        dt = now_dt if now_dt is not None else datetime.now(UTC)
+        _SESSION_WALLCLOCK_BUCKETS = _compute_wallclock_buckets(dt)
+
+
+def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
+    """Record a completed phase execution aggregated by PhaseRole (closed vocabulary).
+
+    The aggregate is flushed as part of the session context at finalize time
+    (one snapshot per run, no per-phase ``capture_message`` events). Unknown
+    roles or outcomes are silently dropped — this enforces the privacy
+    invariant that no user-customizable phase identifier ever leaves the
+    process. ``duration_s`` is a whole-second ``int`` matching the production
+    ``PhaseTimingRecord.elapsed_seconds`` type.
+    No-op when telemetry is disabled or Sentry was never initialized.
+    Fail-soft.
+    """
+    if is_telemetry_disabled() or not _INITIALIZED:
+        return
+    if role not in _PHASE_ROLES or outcome not in _PHASE_OUTCOMES:
+        return
+    with contextlib.suppress(Exception):
+        slot = _PHASE_STATS.get(role)
+        if slot is None:
+            slot = {
+                "count": 0,
+                "total_duration_s": 0,
+                "outcomes": dict.fromkeys(_PHASE_OUTCOMES, 0),
+            }
+            _PHASE_STATS[role] = slot
+        current_count_raw = slot.get("count", 0)
+        current_total_raw = slot.get("total_duration_s", 0)
+        outcomes_map_raw = slot.get("outcomes")
+        if (
+            not isinstance(current_count_raw, int)
+            or not isinstance(current_total_raw, int)
+            or not isinstance(outcomes_map_raw, dict)
+        ):
+            # Defensive: ignore malformed accumulator state rather than crash.
+            return
+        current_count: int = current_count_raw
+        current_total: int = current_total_raw
+        outcomes_map: dict[str, int] = outcomes_map_raw
+        delta = int(duration_s)
+        slot["count"] = current_count + 1
+        slot["total_duration_s"] = current_total + delta
+        outcomes_map[outcome] = outcomes_map.get(outcome, 0) + 1
 
 
 def flush_telemetry(timeout: float = 2.0) -> None:
@@ -305,9 +418,18 @@ def finalize_session(
             "ended_monotonic_s": end_clock,
             "outcome": _SESSION_OUTCOME,
         }
+        if _SESSION_WALLCLOCK_BUCKETS is not None:
+            session_payload["wallclock"] = dict(_SESSION_WALLCLOCK_BUCKETS)
+        if _PHASE_STATS:
+            session_payload["phases"] = {
+                role: dict(stats) for role, stats in _PHASE_STATS.items()
+            }
         sentry_sdk.set_context("session", session_payload)
         sentry_sdk.capture_message("session end", level="info")
         flush_telemetry(flush_timeout)
     except Exception:
         pass
+    # Drain aggregates AFTER the snapshot is sent so a subsequent session can
+    # reuse the module-level accumulators safely (bounded-accumulator-ok).
+    _PHASE_STATS.clear()
     return duration

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
+from typing import cast, get_args
 
 import pytest
 
@@ -11,6 +13,7 @@ from ralph.platform.architecture import Architecture
 from ralph.platform.environment_info import EnvironmentInfo
 from ralph.platform.models import PlatformInfo
 from ralph.platform.operating_system import OperatingSystem
+from ralph.policy.models._types import PhaseRole
 from ralph.runtime import _version_info
 from ralph.runtime.environment import RuntimeEnvironment
 from ralph.telemetry import _sentry
@@ -1131,3 +1134,587 @@ def test_init_sentry_disables_local_variables_capture(
     init_sentry("a" * 32, "b" * 64)
 
     assert captured.get("include_local_variables") is False
+
+
+# ---------------------------------------------------------------------------
+# record_command_invocation — closed-vocabulary CLI command tag.
+# ---------------------------------------------------------------------------
+
+
+def test_record_command_invocation_sets_command_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A registered subcommand name forwards as a single set_tag('command', ...)."""
+    tag_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_tag",
+        lambda k, v: tag_calls.append((k, v)),
+    )
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    _sentry.record_command_invocation("cleanup")
+
+    assert tag_calls == [("command", "cleanup")]
+
+
+def test_record_command_invocation_noop_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When RALPH_DISABLE_TELEMETRY=1, record_command_invocation must not call set_tag."""
+    tag_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_tag",
+        lambda k, v: tag_calls.append((k, v)),
+    )
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
+
+    _sentry.record_command_invocation("cleanup")
+
+    assert tag_calls == []
+
+
+def test_record_command_invocation_noop_when_uninit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When Sentry was never initialized, record_command_invocation is a no-op."""
+    tag_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_tag",
+        lambda k, v: tag_calls.append((k, v)),
+    )
+    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    _sentry.record_command_invocation("cleanup")
+
+    assert tag_calls == []
+
+
+def test_record_command_invocation_fail_soft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exception from sentry_sdk.set_tag MUST NOT propagate to the caller."""
+    def boom(k: object, v: object) -> None:
+        raise RuntimeError("simulated set_tag boom")
+
+    monkeypatch.setattr("sentry_sdk.set_tag", boom)
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    # Must not raise.
+    _sentry.record_command_invocation("cleanup")
+
+
+# ---------------------------------------------------------------------------
+# set_session_wallclock_start — coarse UTC time-of-day buckets.
+# ---------------------------------------------------------------------------
+
+
+def test_set_session_wallclock_start_records_utc_buckets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The session payload contains hour_of_day / day_of_week / is_weekday only."""
+
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+
+    context_calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: context_calls.append((name, dict(data))),
+    )
+    monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    _sentry.set_session_wallclock_start(
+        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
+    )
+    _sentry.finalize_session(now=160.0, flush_timeout=2.0)
+
+    session_context = next(c for c in context_calls if c[0] == "session")
+    wallclock = session_context[1]["wallclock"]
+    assert isinstance(wallclock, dict)
+    assert wallclock["hour_of_day"] == 9
+    assert wallclock["day_of_week"] == 3  # Thursday
+    assert wallclock["is_weekday"] is True
+
+
+def test_wallclock_no_full_timestamp_no_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The wallclock payload has NO iso_timestamp / timestamp / timezone key."""
+
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: captured.setdefault(name, dict(data)),
+    )
+    monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    _sentry.set_session_wallclock_start(
+        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
+    )
+    _sentry.finalize_session(now=160.0, flush_timeout=2.0)
+
+    session = captured.get("session")
+    assert isinstance(session, dict)
+    wallclock = session["wallclock"]
+    assert isinstance(wallclock, dict)
+    forbidden = {"iso_timestamp", "timestamp", "timezone", "tz"}
+    leaked = forbidden & wallclock.keys()
+    assert not leaked, f"wallclock payload leaked forbidden keys: {leaked}"
+
+
+def test_set_session_wallclock_start_noop_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When telemetry is disabled, the wallclock buckets must not be recorded."""
+
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
+
+    _sentry.set_session_wallclock_start(
+        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
+    )
+
+    assert _sentry._SESSION_WALLCLOCK_BUCKETS is None
+
+
+def test_set_session_wallclock_start_fail_soft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exceptions during wallclock capture MUST NOT propagate to the caller."""
+
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    def boom(_dt: object = None) -> None:
+        raise RuntimeError("simulated wallclock boom")
+
+    monkeypatch.setattr(_sentry, "_compute_wallclock_buckets", boom)
+
+    # Must not raise.
+    _sentry.set_session_wallclock_start(
+        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
+    )
+
+
+# ---------------------------------------------------------------------------
+# record_phase_execution — PhaseRole-keyed aggregate.
+# ---------------------------------------------------------------------------
+
+
+def test_record_phase_execution_accumulates_by_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Three records collapse into one session payload keyed by PhaseRole."""
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: captured.setdefault(name, dict(data)),
+    )
+    monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
+    _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
+    _sentry.record_phase_execution(role="execution", duration_s=2, outcome="failure")
+    _sentry.finalize_session(now=160.0, flush_timeout=2.0)
+
+    session = captured.get("session")
+    assert isinstance(session, dict)
+    phases = session["phases"]
+    assert isinstance(phases, dict)
+    execution = phases["execution"]
+    assert isinstance(execution, dict)
+    assert execution["count"] == 3
+    assert execution["total_duration_s"] == 4
+    outcomes = execution["outcomes"]
+    assert outcomes == {"success": 2, "failure": 1, "skipped": 0, "crashed": 0}
+
+
+def test_record_phase_execution_drops_unknown_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A role outside the PhaseRole closed vocabulary MUST be silently dropped."""
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+
+    _sentry.record_phase_execution(
+        role="secret-startup-phase", duration_s=1, outcome="success"
+    )
+
+    assert _sentry._PHASE_STATS == {}
+
+
+def test_record_phase_execution_noop_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When telemetry is disabled, record_phase_execution is a no-op."""
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
+
+    _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
+
+    assert _sentry._PHASE_STATS == {}
+
+
+def test_record_phase_execution_fail_soft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exception from set_tag / collaborators MUST NOT propagate."""
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    # Force a KeyError by pre-populating with a non-dict value.
+    _sentry._PHASE_STATS["execution"] = cast("dict[str, dict[str, object]]", "this is not a dict")
+
+    # Must not raise even though the stats lookup will fail.
+    _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
+
+
+def test_phase_stats_drained_after_finalize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After finalize_session, the _PHASE_STATS accumulator MUST be cleared."""
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+
+    monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
+    monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
+    assert _sentry._PHASE_STATS != {}
+
+    _sentry.finalize_session(now=160.0, flush_timeout=2.0)
+    assert _sentry._PHASE_STATS == {}
+
+
+# ---------------------------------------------------------------------------
+# ci / container boolean tags (EnvironmentInfo reuse, no re-detection).
+# ---------------------------------------------------------------------------
+
+
+def test_set_environment_context_ci_container_false_tags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ci/container tags fire with boolean False when EnvironmentInfo is empty."""
+    tag_calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_tag",
+        lambda k, v: tag_calls.append((k, v)),
+    )
+    monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
+
+    monkeypatch.setattr(
+        _sentry,
+        "current_platform",
+        lambda: PlatformInfo(
+            os=OperatingSystem.MACOS,
+            architecture=Architecture.X86_64,
+            environment=EnvironmentInfo(ci=False, container=False),
+            package_manager=None,
+        ),
+    )
+    monkeypatch.setattr(_sentry, "ralph_version", "0.0.0-test")
+
+    monkeypatch.setattr(
+        _sentry.PythonVersionInfo,
+        "from_sys",
+        classmethod(
+            lambda cls, sys_module: _version_info.PythonVersionInfo(
+                major=3,
+                minor=12,
+                micro=5,
+                releaselevel="final",
+                serial=0,
+                implementation="CPython",
+                executable=Path("/usr/bin/python3.12"),
+                version="3.12.5",
+            )
+        ),
+    )
+
+    class _FakeSysModule:
+        prefix = "/opt/fake-venv"
+        base_prefix = "/usr"
+        exec_prefix = "/opt/fake-venv"
+        base_exec_prefix = "/usr"
+        executable = "/usr/bin/python3.12"
+
+    monkeypatch.setattr(
+        _sentry,
+        "detect_runtime_environment",
+        lambda env=None, sys_module=None: _make_runtime_env(
+            in_virtualenv=False, fake_sys=_FakeSysModule()
+        ),
+    )
+
+    _sentry.set_environment_context()
+
+    tag_map = dict(tag_calls)
+    assert "ci" in tag_map
+    assert "container" in tag_map
+    assert tag_map["ci"] is False
+    assert tag_map["container"] is False
+    assert isinstance(tag_map["ci"], bool)
+    assert isinstance(tag_map["container"], bool)
+
+
+def test_set_environment_context_ci_container_forward_bool_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ci/container tag VALUES MUST be booleans, never strings or env-var values."""
+    tag_calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_tag",
+        lambda k, v: tag_calls.append((k, v)),
+    )
+    monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
+
+    monkeypatch.setattr(
+        _sentry,
+        "current_platform",
+        lambda: PlatformInfo(
+            os=OperatingSystem.LINUX,
+            architecture=Architecture.ARM64,
+            environment=EnvironmentInfo(ci=True, container=True),
+            package_manager="apt",
+        ),
+    )
+    monkeypatch.setattr(_sentry, "ralph_version", "0.0.0-test")
+
+    monkeypatch.setattr(
+        _sentry.PythonVersionInfo,
+        "from_sys",
+        classmethod(
+            lambda cls, sys_module: _version_info.PythonVersionInfo(
+                major=3,
+                minor=12,
+                micro=5,
+                releaselevel="final",
+                serial=0,
+                implementation="CPython",
+                executable=Path("/usr/bin/python3.12"),
+                version="3.12.5",
+            )
+        ),
+    )
+
+    class _FakeSysModule:
+        prefix = "/opt/fake-venv"
+        base_prefix = "/usr"
+        exec_prefix = "/opt/fake-venv"
+        base_exec_prefix = "/usr"
+        executable = "/usr/bin/python3.12"
+
+    monkeypatch.setattr(
+        _sentry,
+        "detect_runtime_environment",
+        lambda env=None, sys_module=None: _make_runtime_env(
+            in_virtualenv=False, fake_sys=_FakeSysModule()
+        ),
+    )
+
+    _sentry.set_environment_context()
+
+    tag_map = dict(tag_calls)
+    assert isinstance(tag_map["ci"], bool)
+    assert isinstance(tag_map["container"], bool)
+    assert tag_map["ci"] is True
+    assert tag_map["container"] is True
+
+
+# ---------------------------------------------------------------------------
+# Closed-vocabulary privacy regression — proves no user-supplied string,
+# sys.argv content, prompt, or cwd/path leaves the process via the new
+# telemetry. Tagged-name scan + role-set membership + bool-only ci/container
+# are the three invariants.
+# ---------------------------------------------------------------------------
+
+
+def test_closed_vocabulary_privacy_regression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+
+
+    tag_calls: list[tuple[str, object]] = []
+    context_calls: list[tuple[str, dict[str, object]]] = []
+    message_calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        "sentry_sdk.set_tag",
+        lambda k, v: tag_calls.append((k, v)),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: context_calls.append((name, dict(data))),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.capture_message",
+        lambda msg, level=None: message_calls.append((msg, level)),
+    )
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+
+    # Use ci=True/container=True so the privacy guard can verify bool-only.
+    monkeypatch.setattr(
+        _sentry,
+        "current_platform",
+        lambda: PlatformInfo(
+            os=OperatingSystem.LINUX,
+            architecture=Architecture.ARM64,
+            environment=EnvironmentInfo(ci=True, container=True),
+            package_manager="apt",
+        ),
+    )
+    monkeypatch.setattr(_sentry, "ralph_version", "0.0.0-test")
+    monkeypatch.setattr(
+        _sentry.PythonVersionInfo,
+        "from_sys",
+        classmethod(
+            lambda cls, sys_module: _version_info.PythonVersionInfo(
+                major=3,
+                minor=12,
+                micro=5,
+                releaselevel="final",
+                serial=0,
+                implementation="CPython",
+                executable=Path("/usr/bin/python3.12"),
+                version="3.12.5",
+            )
+        ),
+    )
+
+    class _FakeSysModule:
+        prefix = "/opt/fake-venv"
+        base_prefix = "/usr"
+        exec_prefix = "/opt/fake-venv"
+        base_exec_prefix = "/usr"
+        executable = "/usr/bin/python3.12"
+
+    monkeypatch.setattr(
+        _sentry,
+        "detect_runtime_environment",
+        lambda env=None, sys_module=None: _make_runtime_env(
+            in_virtualenv=True, fake_sys=_FakeSysModule()
+        ),
+    )
+
+    _sentry.set_environment_context()
+
+    # Exercise every new function with adversarial strings.
+    _sentry.record_command_invocation("pipeline")  # closed-vocabulary command
+    _sentry.set_session_wallclock_start(
+        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
+    )
+
+    # Unknown phase role MUST be dropped (privacy invariant).
+    _sentry.record_phase_execution(
+        role="secret-startup-phase", duration_s=1, outcome="success"
+    )
+    assert _sentry._PHASE_STATS == {}
+
+    _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
+    _sentry.record_phase_execution(role="review", duration_s=2, outcome="failure")
+
+    _sentry.finalize_session(now=160.0, flush_timeout=2.0)
+
+    # Invariant (a): no adversarial echo ("secret", "startup", "mvp").
+    forbidden_substrings = ("secret", "startup", "mvp")
+    for k, v in tag_calls:
+        if isinstance(v, str):
+            for needle in forbidden_substrings:
+                assert needle not in v.lower(), (
+                    f"tag {k!r} value {v!r} leaked forbidden substring {needle!r}"
+                )
+    for _ctx_name, payload in context_calls:
+        flat = _flatten(payload)
+        for needle in forbidden_substrings:
+            for leaf in flat:
+                if isinstance(leaf, str):
+                    assert needle not in leaf.lower(), (
+                        f"context payload leaked forbidden substring {needle!r}: {leaf!r}"
+                    )
+    for msg, _ in message_calls:
+        if isinstance(msg, str):
+            for needle in forbidden_substrings:
+                assert needle not in msg.lower()
+
+    # Invariant (b): every tag NAME is in the closed vocabulary.
+    allowed_tag_names = {
+        "command",
+        "os",
+        "architecture",
+        "python_version",
+        "ralph_version",
+        "session_id",
+        "ci",
+        "container",
+    }
+    for k, _v in tag_calls:
+        assert k in allowed_tag_names, f"unknown tag name leaked: {k!r}"
+
+    # Invariant (c): ci/container tag VALUES are bool.
+    tag_map = dict(tag_calls)
+    if "ci" in tag_map:
+        assert isinstance(tag_map["ci"], bool), f"ci tag is not bool: {tag_map['ci']!r}"
+    if "container" in tag_map:
+        assert isinstance(tag_map["container"], bool), (
+            f"container tag is not bool: {tag_map['container']!r}"
+        )
+
+    # Invariant (d): phase context keys are all in PhaseRole closed vocabulary.
+    session_payload = next((c[1] for c in context_calls if c[0] == "session"), None)
+    assert session_payload is not None
+    phases = session_payload.get("phases")
+    if phases is not None:
+        assert isinstance(phases, dict)
+        phase_role_set = frozenset(get_args(PhaseRole))
+        leaked_roles = set(phases.keys()) - phase_role_set
+        assert not leaked_roles, f"phase context leaked unknown roles: {leaked_roles}"
+
+
+def _flatten(value: object) -> list[object]:
+    """Walk an arbitrary payload and yield every leaf value (depth-first)."""
+    if isinstance(value, dict):
+        out: list[object] = []
+        for k, v in value.items():
+            out.extend(_flatten(k))
+            out.extend(_flatten(v))
+        return out
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            out.extend(_flatten(item))
+        return out
+    return [value]
