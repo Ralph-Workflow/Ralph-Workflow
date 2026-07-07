@@ -6,7 +6,7 @@ Ralph Workflow's Python package is verified through the `make verify` gate in
 `ralph-workflow/`. The gate is the single source of truth for what "green"
 means, so this page orients you rather than duplicating it.
 
-- Start with [`verification.md`](verification.md) for the full 18-step gate:
+- Start with [`verification.md`](verification.md) for the full 19-step gate:
   what `verify-drift`, `docs`, and `ralph.verify` prove, the immutable
   60-second combined test budget, and how to read each failure.
 - Read [`testing-guide.md`](testing-guide.md) for the project's black-box

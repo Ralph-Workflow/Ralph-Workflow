@@ -1,17 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestration system built around a simple Ralph loop core" lead category.
-  - Why it belongs here: this is the manual's first-run entry page; when the
-    lead category differed, it fought the README and the manual home (rubric
-    hard failure: surfaces fight each other).
-  - What was pruned: nothing material; the install/diagnose/init/first-run
-    flow is preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home.
--->
-
 # Getting Started with Ralph Workflow
 
 New to Ralph Workflow? This page takes you from install to one honest unattended run in a repository you already care about.
@@ -234,6 +220,6 @@ If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
 ## Recommended next clicks after your first run
 
 - Need the shortest operator checklist? Use [Quickstart](quickstart.md).
-- Need to inspect what trustworthy output looks like? Use [What Good Ralph Workflow Output Looks Like](reviewable-output.md).
+- Need to inspect what trustworthy output looks like? Use [Example Review Bundle](example-review-bundle.md).
 - Need to change settings or file locations? Use [Configuration Reference](configuration.md).
 - Need docs by goal instead of by section? Use [End-User Stories](user-stories.md).

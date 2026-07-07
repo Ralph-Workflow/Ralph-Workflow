@@ -1,18 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestrator built around a simple ... Ralph-loop core" lead category.
-  - Why it belongs here: this page is part of the maintained Sphinx manual;
-    it must agree with the README and the manual home so the product story
-    is coherent across surfaces (rubric hard failure: surfaces fight each
-    other).
-  - What was pruned: nothing material; the page's page-specific argument is
-    preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home.
--->
-
 # When Ralph Workflow Fits — and When It Does Not
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
@@ -75,7 +60,7 @@ Why these fail:
 - "done" is unclear
 - the task needs live steering, not unattended execution
 
-If you want concrete examples before you choose a first run, read [Good Unattended AI Coding Task vs Bad One](./good-unattended-ai-coding-task.md).
+If you want concrete examples before you choose a first run, read [Choose Your First Ralph Workflow Task](./first-task-guide.md) for the first-task filter and the [First-Task Prompt Templates](./first-task-prompt-templates.md) for copy-paste starter specs.
 
 If you want the fastest copy-paste path from task choice to `PROMPT.md`, pair that with [Choose Your First Ralph Workflow Task](./first-task-guide.md) and [First-Task Prompt Templates](./first-task-prompt-templates.md).
 
@@ -108,9 +93,8 @@ That is the real product test.
 
 - Start with [../START_HERE.md](../START_HERE.md)
 - Read [Choose Your First Ralph Workflow Task](./first-task-guide.md) for the quickest first-run filter
-- Read [Good Unattended AI Coding Task vs Bad One](./good-unattended-ai-coding-task.md) for concrete task shapes before you commit to a first run
 - Read [First-Task Prompt Templates](./first-task-prompt-templates.md) if you want copy-paste starter specs
-- See [free-open-source-proof.md](./free-open-source-proof.md) for an example first task and review bundle
+- See [Example Review Bundle](./example-review-bundle.md) for an example first task and review bundle
 - Use [quick-reference.md](./quick-reference.md) when you are ready to run it
 
 After one real run, convert the result into exactly one Codeberg action:

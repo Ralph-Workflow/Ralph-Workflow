@@ -1833,7 +1833,9 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
         )
 
 
-def test_status_bar_fallback_erases_previous_row_before_active_update() -> None:
+def test_status_bar_fallback_erases_previous_row_before_active_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Rich dumb-terminal fallback cleans each active replacement row.
 
     On recent Rich versions a force-terminal ``StringIO`` that also reports
@@ -1844,6 +1846,14 @@ def test_status_bar_fallback_erases_previous_row_before_active_update() -> None:
     erased before the replacement row is written so interpreted terminal
     scrollback contains only the latest footer row.
     """
+    # Pin TERM=dumb so Rich's Console.is_dumb_terminal (and therefore
+    # Console.is_interactive) reflects the dumb-terminal branch the fallback
+    # is intended to cover. Rich reads TERM from os.environ at console
+    # construction, so the env var must be set BEFORE Console(...) is built.
+    # Without this, force_terminal=True + isatty()-faking StringIO leaves
+    # is_interactive=True and the fallback's `_live_console_is_interactive`
+    # gate short-circuits, so the fallback never writes to the buffer.
+    monkeypatch.setenv("TERM", "dumb")
     ansi_escape_re = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
     cleanup = "\r\x1b[1A\x1b[2K"
     buf = _TtyLikeStringIO()

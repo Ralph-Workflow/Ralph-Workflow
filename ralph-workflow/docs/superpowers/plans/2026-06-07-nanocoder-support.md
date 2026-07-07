@@ -148,7 +148,7 @@ Expected: PASS.
 - Modify: `ralph-workflow/README.md`
 - Modify: `ralph-workflow/docs/sphinx/agents.md`
 - Modify: `ralph-workflow/docs/sphinx/configuration.md`
-- Modify: `ralph-workflow/docs/sphinx/which-agent-should-i-start-with.md`
+- Modify: `ralph-workflow/docs/sphinx/agent-compatibility.md`
 - Modify: `ralph-workflow/docs/sphinx/troubleshooting.md`
 - Modify: `ralph-workflow/ralph/config/welcome.py`
 - Modify: `ralph-workflow/ralph/policy/defaults/ralph-workflow.toml`

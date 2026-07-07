@@ -110,10 +110,6 @@ def test_agent_compatibility_has_current_provider_info() -> None:
 def test_agy_mcp_setup_reflects_pty_injection() -> None:
     """AGY docs must reflect PTY-based injection rather than stale pre-configure wording."""
     stale_phrases_by_file = {
-        "ralph-workflow-vs-google-anti-gravity.md": [
-            "one manual step that Claude",
-            "configure the Ralph Workflow MCP endpoint",
-        ],
         "architecture/mcp-upstream-proxy.md": [
             "cannot inject a Ralph-only MCP config",
             "users must pre-configure",

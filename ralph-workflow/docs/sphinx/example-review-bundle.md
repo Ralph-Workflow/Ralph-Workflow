@@ -1,18 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestrator built around a simple ... Ralph-loop core" lead category.
-  - Why it belongs here: this page is part of the maintained Sphinx manual;
-    it must agree with the README and the manual home so the product story
-    is coherent across surfaces (rubric hard failure: surfaces fight each
-    other).
-  - What was pruned: nothing material; the page's page-specific argument is
-    preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home.
--->
-
 # Example Review Bundle: What a Morning-After Ralph Workflow Handoff Looks Like
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
@@ -71,6 +56,5 @@ If that review path feels boring and fast, the workflow is doing its job. If it 
 ## Next steps
 
 - Start with [../START_HERE.md](../START_HERE.md)
-- See [free-open-source-proof.md](./free-open-source-proof.md) for the shorter proof overview
 - Use [first-task-prompt-templates.md](./first-task-prompt-templates.md) if you want a copy-paste `PROMPT.md` shape for your own first run
 - If this proof asset makes Ralph Workflow look worth trying, put the adoption signal on **Codeberg** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>

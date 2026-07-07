@@ -12,35 +12,31 @@ Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.
 Those pages explain what Ralph Workflow is and how to judge one honest first run.
 This page routes you to the next page that best matches your question.
 
-Every route bullet below is tagged with its doc-family role
-(`tutorial` / `how-to` / `reference` / `explanation` / `proof` /
-`internals`) so you can match a route to the kind of page you need.
-
 ## Choose one route
 
-### I want the fastest first successful run (tutorial)
+### I want the fastest first successful run
 
-- [Choose your first task](../ralph-workflow/docs/sphinx/first-task-guide.md) — tutorial
-- [First-task prompt templates](../ralph-workflow/docs/sphinx/first-task-prompt-templates.md) — tutorial
-- [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md) — tutorial
+- [Choose your first task](../ralph-workflow/docs/sphinx/first-task-guide.md)
+- [First-task prompt templates](../ralph-workflow/docs/sphinx/first-task-prompt-templates.md)
+- [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md)
 
-### I want the maintained operator manual (how-to + reference)
+### I want the maintained operator manual
 
-- [Manual home](../ralph-workflow/docs/sphinx/index.rst) — how-to + reference
-- [Configuration + Reference](../ralph-workflow/docs/sphinx/configuration.md) — reference
-- [User stories](../ralph-workflow/docs/sphinx/user-stories.md) — how-to
-- [Run diagnostics before a workflow](../ralph-workflow/docs/sphinx/diagnostics.md) — how-to
-- [Agent CLI lifecycle (selection, auth, invocation)](../ralph-workflow/docs/sphinx/agents.md) — how-to
+- [Manual home](../ralph-workflow/docs/sphinx/index.rst)
+- [Configuration + Reference](../ralph-workflow/docs/sphinx/configuration.md)
+- [Reference](../ralph-workflow/docs/sphinx/reference.md)
+- [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
+- [Run diagnostics before a workflow](../ralph-workflow/docs/sphinx/diagnostics.md)
+- [Agent CLI lifecycle (selection, auth, invocation)](../ralph-workflow/docs/sphinx/agents.md)
 
-### I need the repo-root docs families mapped clearly (internals)
+### I want to contribute or change Ralph Workflow itself
 
 These repo-root docs are a **map of the surrounding documentation system**, not the main operator manual.
 The maintained day-to-day operator path is the Sphinx manual above.
 Use these folders only when you know you need contributor guidance or deeper background.
 
-- [Operator manual (docs map)](operator-manual.md) — reference
-- [Claims ledger](CLAIMS_LEDGER.md) — internals (every factual claim tracked for fabrication-guard)
-- [Verification gate](VERIFICATION_GATE.md) — internals (process that prevents hallucinated claims from reaching public surfaces)
+- [Claims ledger](CLAIMS_LEDGER.md) — every factual claim tracked for fabrication-guard
+- [Verification gate](VERIFICATION_GATE.md) — process that prevents hallucinated claims from reaching public surfaces
 - `docs/agents/` — contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
 - `docs/code-style/` — documentation rubric plus maintained style/process guidance
 - `docs/tooling/` — tooling setup and support notes for the Python implementation (`python-tooling.md`)
@@ -50,15 +46,10 @@ Use these folders only when you know you need contributor guidance or deeper bac
 - [Superpowers skill bundles](../ralph-workflow/docs/superpowers/README.md) —
   spec layouts and plan metadata for the maintained Python package
 
-### I want to see a real overnight run before I decide (proof)
+### I want to see a real overnight run before I decide
 
-- [Real overnight demo: task spec → output](../ralph-workflow/docs/sphinx/overnight-demo-real.md) — proof
-
-### I want product framing before I go deeper (explanation)
-
-- [AI agent orchestration CLI](../ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md) — explanation
-- [Why the spec still matters](../ralph-workflow/docs/sphinx/spec-driven-ai-agent.md) — explanation
-- [What unattended use should mean](../ralph-workflow/docs/sphinx/unattended-coding-agent.md) — explanation
+- [Example Review Bundle](../ralph-workflow/docs/sphinx/example-review-bundle.md)
+- [How to Review AI Coding Output Before You Merge](../ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md)
 
 ### Legacy (Rust-era)
 

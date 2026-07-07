@@ -1,18 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestrator built around a simple ... Ralph-loop core" lead category.
-  - Why it belongs here: this page is part of the maintained Sphinx manual;
-    it must agree with the README and the manual home so the product story
-    is coherent across surfaces (rubric hard failure: surfaces fight each
-    other).
-  - What was pruned: nothing material; the page's page-specific argument is
-    preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home.
--->
-
 # How to Review AI Coding Output Before You Merge
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
@@ -91,8 +76,7 @@ Best first-task companions:
 
 - [../START_HERE.md](../START_HERE.md) — shortest path to a real first run
 - [first-task-prompt-templates.md](./first-task-prompt-templates.md) — copy-paste spec shapes for strong first runs
-- [free-open-source-proof.md](./free-open-source-proof.md) — what good output should look like
-- [what-breaks-first-with-multiple-coding-agents.md](./what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, result summarys, and clean re-entry
+- [example-review-bundle.md](./example-review-bundle.md) — what good output should look like
 
 If the morning-after result gives you a clean diff, real checks, and a human review you can make quickly, Ralph Workflow is doing useful work.
 

@@ -1,20 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: new Reference page `changelog.md` created and wired into
-    the existing `Reference` toctree in `index.rst` next to `versioning`.
-    This surfaces `ralph-workflow/CHANGELOG.md` (previously unreachable
-    from the Sphinx manual) via a canonical, single-source-of-truth link.
-  - Why it belongs here: this page is part of the maintained Sphinx
-    manual; without it the manual contradicts the PyPI `[project.urls]
-    Changelog` link and the README by hiding the canonical changelog.
-    The user-facing route "where do I find release notes?" had no
-    answer inside the manual.
-  - What was pruned: nothing — this is purely additive.
-  - How the route is clearer: a one-click jump from the manual Reference
-    index to the canonical Codeberg-hosted CHANGELOG.md, plus the
-    semantic-versioning policy cross-link to `versioning.md`.
--->
-
 # Changelog
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.

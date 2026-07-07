@@ -1,17 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestration system built around a simple Ralph-loop core" lead category.
-  - Why it belongs here: this is the conversion guide for the first real
-    task; it must agree with the README and the manual home so the
-    product story is coherent across surfaces.
-  - What was pruned: nothing material; the task-selection, spec-writing,
-    run, and morning-after-review sections are preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home.
--->
-
 # Your First Ralph Workflow Task
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
@@ -20,7 +6,7 @@ The default workflow is strong enough to adopt as-is, before you customize anyth
 
 This guide helps you pick the right first task, set it up, and judge the outcome honestly. It is not a feature tour — it is a minimal path to your first verdict: *does this produce code I would actually merge?*
 
-If you want the shortest possible path, read [START_HERE.md](../../../START_HERE.md). If you want a deeper narrative walkthrough, see the [After Your First Run](./after-your-first-run.md) page. This page is the core conversion guide: task selection, spec writing, execution, and morning-after review in one place.
+If you want the shortest possible path, read [START_HERE.md](../../../START_HERE.md). This page is the core conversion guide: task selection, spec writing, execution, and morning-after review in one place.
 
 > **See it in action first.** Read [Getting started](./getting-started.md) (init → diagnose → dry-run).
 

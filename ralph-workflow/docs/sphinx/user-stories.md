@@ -17,14 +17,12 @@ Each section points at the shortest next page for that job, including first-run,
 
 ## I already use Claude Code, Codex, or OpenCode and want a baseline comparison
 
-- [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md)
-- [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md)
-- [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md)
+- [Agent Compatibility](agent-compatibility.md) — supported agents, caveats, and the per-agent matrix
 
 ## I want to run work overnight without babysitting the terminal
 
 - [When Unattended Coding Fits](when-unattended-coding-fits.md)
-- [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md)
+- [Watchdogs and Timeouts](watchdogs-and-timeouts.md)
 
 ## I want to edit `ralph-workflow.toml`
 
@@ -39,7 +37,7 @@ Short answer:
 ## I want to change which agents Ralph Workflow uses
 
 - [Configuration Reference](configuration.md)
-- [Which Agent Should I Start With?](which-agent-should-i-start-with.md)
+- [Agent Compatibility](agent-compatibility.md) — per-agent matrix with caveats
 
 ## I want one repo to behave differently from my global defaults
 
@@ -77,11 +75,11 @@ ralph --explain-policy
 ## I want to review whether the result is trustworthy after a run
 
 - [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md)
-- [After Your First Ralph Workflow Run](after-your-first-run.md)
+- [Example Review Bundle](example-review-bundle.md)
 
 ## I want to see proof before I install anything
 
-- [What Good Ralph Workflow Output Looks Like](reviewable-output.md)
+- [Example Review Bundle](example-review-bundle.md)
 
 ## I want the command and flag reference
 

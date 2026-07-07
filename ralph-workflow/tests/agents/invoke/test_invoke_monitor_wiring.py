@@ -286,11 +286,19 @@ def test_invoke_disabling_only_process_monitor_keeps_discovery(
     assert captured.get("process_monitor") is None
 
 
+@pytest.mark.timeout_seconds(5)
 def test_invoke_disabling_only_output_capture_keeps_process_monitor(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """AC-10: subagent_output_capture_enabled=false does not disable the monitor."""
+    """AC-10: subagent_output_capture_enabled=false does not disable the monitor.
+
+    The 5-second per-test timeout (raised from the 1-second default via this
+    marker) accommodates real subprocess startup latency when the full
+    verify suite runs under pytest-xdist load. The test logic itself is
+    unchanged; the assertion is the same. Other tests in this file use the
+    same ``@pytest.mark.timeout_seconds(5)`` marker for the same reason.
+    """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     monkeypatch.setattr(

@@ -76,7 +76,6 @@ def test_docs_readme_covers_performance_family() -> None:
 # ---------------------------------------------------------------------------
 
 _PACKAGE_TIMEOUT_POLICY = PACKAGE_DOCS_DIR / "agents" / "timeout-policy.md"
-_PACKAGE_UNATTENDED_DOC = PACKAGE_DOCS_DIR / "sphinx" / "unattended-coding-agent.md"
 _PACKAGE_CHANGELOG = PACKAGE_ROOT / "CHANGELOG.md"
 
 
@@ -112,9 +111,17 @@ def test_package_changelog_unreleased_section_calls_out_behavior_change() -> Non
     )
 
 
-def test_package_unattended_doc_mentions_new_config_key() -> None:
-    """The operator-facing unattended doc must cross-reference the new key."""
-    content = _PACKAGE_UNATTENDED_DOC.read_text()
+def test_package_timeout_policy_doc_mentions_new_config_key_in_canonical_home() -> None:
+    """timeout-policy.md is the canonical home for the new config key.
+
+    The original sphinx/unattended-coding-agent.md SEO page was removed during
+    the docs cleanup; the agent_workspace_change_weights key mention lives in
+    ralph-workflow/docs/agents/timeout-policy.md (the canonical home for the
+    idle-watchdog workspace weights config). This test pins the canonical
+    home so future regressions cannot drift the key back to a deleted surface.
+    """
+    content = _PACKAGE_TIMEOUT_POLICY.read_text()
     assert "agent_workspace_change_weights" in content, (
-        "unattended-coding-agent.md must mention the agent_workspace_change_weights key"
+        "timeout-policy.md must mention the agent_workspace_change_weights key "
+        "in its canonical home (replaces the deleted sphinx/unattended-coding-agent.md page)"
     )

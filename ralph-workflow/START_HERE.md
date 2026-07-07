@@ -138,6 +138,4 @@ under a minute: outcome, changed files, checks, reviewer focus.
 - [CLI reference](docs/sphinx/cli.md) — every flag and sub-command
 - [Troubleshooting](docs/sphinx/troubleshooting.md) — when something
   goes wrong
-- [After your first run](docs/sphinx/after-your-first-run.md) — turn a
-  real run into a Codeberg signal
 - [Docs map](../docs/README.md) — the docs router (routes by intent)

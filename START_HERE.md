@@ -157,8 +157,6 @@ the feature, check the receipts, then decide the next action.
   `ralph --diagnose` actually checks
 - [agents.md](ralph-workflow/docs/sphinx/agents.md) — selection,
   authentication, and invocation for every supported agent
-- [after-your-first-run.md](ralph-workflow/docs/sphinx/after-your-first-run.md) —
-  turn a real run into a Codeberg signal
 - [docs/README.md](docs/README.md) — the docs map (routes by intent)
 - [ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst) —
   the maintained operator manual

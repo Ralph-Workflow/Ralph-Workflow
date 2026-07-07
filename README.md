@@ -40,8 +40,7 @@ built around a simple Ralph-loop core that becomes powerful through
 composition. The product category behind it is **Loop Engineering**: a
 pattern where a coding agent iterates plan → build → verify → fix in a loop
 until checks pass, with the human reviewing outcomes rather than reading
-every step. See [ECOSYSTEM.md](ECOSYSTEM.md) and
-[COMPARISONS.md](COMPARISONS.md) for the broader category.
+every step. See [USERS.md](USERS.md) for the broader community directory.
 
 **Hand it a well-specified coding task, let the agents plan, build,
 verify, and fix, and come back to reviewable, tested work.**
@@ -127,8 +126,9 @@ These are not negotiable. They are how the tool is designed:
   git workflow before merge.
 - **Unattended approval implications.** "Unattended" means agents may
   keep writing while you sleep. Have backups and branch protection. See
-  [`bounded-autonomy-for-unattended-coding.md`](ralph-workflow/docs/sphinx/bounded-autonomy-for-unattended-coding.md)
-  for the safety model.
+  [`watchdogs-and-timeouts.md`](ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md)
+  and [`recovery.md`](ralph-workflow/docs/sphinx/recovery.md) for the
+  safety model.
 - **Cost.** Agent calls are on your cloud bill. Ralph Workflow itself has
   no per-run fee.
 - **Human responsibility.** Agents handle the long middle. You handle the
@@ -179,8 +179,8 @@ Python runtime end-to-end.
 The Ralph Loop pattern is attributed to
 [Geoffrey Huntley (ghuntley.com/ralph)](https://ghuntley.com/ralph).
 Ralph Workflow is an independent reference implementation — not the
-pattern's originator. See [ECOSYSTEM.md](ECOSYSTEM.md) for the broader
-ecosystem of pattern derivatives and live integrations.
+pattern's originator. See [USERS.md](USERS.md) for the community
+directory of pattern derivatives and live integrations.
 
 ## What a run leaves you
 

@@ -13,8 +13,13 @@
 
 Every contributor and reviewer of any public-facing markdown file in
 this repository. If you edit, add, or approve a change to
-`README.md`, `ralph-workflow/README.md`, `SHOWCASE.md`, `USERS.md`,
+`README.md`, `ralph-workflow/README.md`, `USERS.md` (the canonical
+community directory after the 2026-07-07 docs cleanup),
 `docs/`, or the Sphinx operator manual, this page is your contract.
+The previous near-duplicate community surfaces (`SHOWCASE.md`,
+`ECOSYSTEM.md`, `COMPARISONS.md`, `CREDIT_TEMPLATE.md`) were
+deleted in the same cleanup; USERS.md is the single canonical
+community surface.
 
 ## Read this first
 
@@ -85,7 +90,7 @@ Run these four steps for every public-facing markdown edit:
 Every public-facing claim about adoption, credits, usage, or stats
 MUST be verifiable from a third-party source.
 
-- **GitHub repo links** in claim files (`USERS.md`, `SHOWCASE.md`,
+- **GitHub repo links** in claim files (`USERS.md`,
   `README.md`) MUST carry a `verify: repo-exists` annotation.
 - **npm package claims** MUST carry a `verify: npm-@org/pkg-exists`
   annotation verified against the npm registry.

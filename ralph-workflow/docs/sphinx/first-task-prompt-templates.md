@@ -1,18 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestrator built around a simple ... Ralph-loop core" lead category.
-  - Why it belongs here: this page is part of the maintained Sphinx manual;
-    it must agree with the README and the manual home so the product story
-    is coherent across surfaces (rubric hard failure: surfaces fight each
-    other).
-  - What was pruned: nothing material; the page's page-specific argument is
-    preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home.
--->
-
 # First-Task Prompt Templates
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
@@ -169,7 +154,7 @@ A weak first task is:
 ## Next step
 
 - Read [../START_HERE.md](../START_HERE.md) for the fastest first-run path
-- Read [free-open-source-proof.md](./free-open-source-proof.md) to see what good output should look like
+- Read [example-review-bundle.md](./example-review-bundle.md) to see what good output should look like
 - Read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) if you still need a task fit check
 
 ## Turn the first run into one public Codeberg action
@@ -180,4 +165,3 @@ These templates are only useful if they end in a real evaluation and a visible n
 - **Star or watch on Codeberg** if the first run earns it: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction, weak docs, or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)

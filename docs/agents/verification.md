@@ -14,8 +14,12 @@ make verify
 ## Fabrication guardrails
 
 Any time you edit a public-facing markdown file (README, USERS.md,
-SHOWCASE.md, docs/, the Sphinx operator manual), the
+docs/, the Sphinx operator manual), the
 [fabrication guard](fabrication-guard.md) is part of the contract.
+The previous near-duplicate community surfaces (`SHOWCASE.md`,
+`ECOSYSTEM.md`, `COMPARISONS.md`, `CREDIT_TEMPLATE.md`) were
+deleted in the 2026-07-07 docs cleanup; USERS.md is the single
+canonical community directory.
 The guard runs as a pre-commit hook at Level 1 and can be re-run
 explicitly with `./scripts/fabrication_guard.py --level 1 <file>`
 or `--level 2 <file>` for network existence checks. Fabrication

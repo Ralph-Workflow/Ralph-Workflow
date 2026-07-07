@@ -90,7 +90,6 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    :maxdepth: 1
 
    user-stories
-   which-agent-should-i-start-with
    when-unattended-coding-fits
    agent-compatibility
 
@@ -133,56 +132,17 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
 
 .. toctree::
    :hidden:
-   :caption: Comparisons
-   :maxdepth: 1
-
-   ralph-workflow-vs-aider
-   ralph-workflow-vs-claude-code
-   ralph-workflow-vs-codex-cli
-   ralph-workflow-vs-google-anti-gravity
-   ralph-workflow-vs-opencode
-
-.. toctree::
-   :hidden:
    :caption: Proof
    :maxdepth: 1
 
-   after-your-first-run
-   reviewable-output
    example-review-bundle
-   overnight-demo-real
-   free-open-source-proof
-   what-a-good-ai-coding-finish-receipt-looks-like
 
 .. toctree::
    :hidden:
    :caption: How-to
    :maxdepth: 1
 
-   claude-code-approval-mode
-   claude-code-automation
-   claude-code-codex-workflow
-   claude-code-run-until-done
-   run-claude-code-overnight-without-babysitting
-   remote-supervision-of-coding-agents
    review-ai-coding-output-before-merge
-   what-breaks-first-with-multiple-coding-agents
-   why-worktrees-are-not-enough
-   bounded-autonomy-for-unattended-coding
-   how-to-tell-if-an-ai-coding-task-is-actually-done
-   good-unattended-ai-coding-task
-
-.. toctree::
-   :hidden:
-   :caption: Topics & positioning
-   :maxdepth: 1
-
-   open-source-ai-coding-orchestrator
-   unattended-coding-agent
-   spec-driven-ai-agent
-   ai-agent-orchestration-cli
-   ai-agent-workflow-composer
-   ai-coding-workflow-automation
 
 .. toctree::
    :hidden:

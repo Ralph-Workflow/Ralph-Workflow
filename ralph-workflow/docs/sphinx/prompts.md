@@ -1,22 +1,3 @@
-<!--
-  Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the opening paragraph so the page leads with the
-    canonical autopilot positioning language instead of the older "AI agent
-    orchestrator built around a simple core loop" lead category, and corrected
-    the "PROMPT.md as the run specification" section so the user-authored run
-    spec is described as `<workspace>/PROMPT.md` (the workspace root, not
-    `.agent/`). The engine-owned materialised `.agent/CURRENT_PROMPT.md` is
-    now clearly distinguished from the user-authored run spec.
-  - Why it belongs here: this is a reference page on the agent-side prompt
-    machinery; both surfaces (positioning and run-spec location) must agree
-    with the rest of the manual and with the code that resolves the path.
-  - What was pruned: nothing material; the agent-side assembly content is
-    preserved.
-  - How the route is clearer: the lead now matches the canonical autopilot
-    framing used by the README and the manual home, and the run-spec section
-    now points readers to the workspace-root path the engine actually reads.
--->
-
 # Prompts
 
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.

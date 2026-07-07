@@ -262,14 +262,14 @@ See the `Makefile` `dist-binary` target for current build configuration.
 
 ## make verify (Canonical Verification)
 
-The `make verify` target runs the complete verification suite — the docs build prerequisite plus the 18 ordered verify steps enumerated in [`docs/agents/verification.md`](../agents/verification.md). `make verify` is the authoritative gate; do **not** duplicate the step list here.
+The `make verify` target runs the complete verification suite — the docs build prerequisite plus the 19 ordered verify steps enumerated in [`docs/agents/verification.md`](../agents/verification.md). `make verify` is the authoritative gate; do **not** duplicate the step list here.
 
 ```bash
 cd ralph-workflow
 make verify
 ```
 
-`docs/agents/verification.md` is the single source of truth for what `make verify` runs: the docs build (Sphinx `-W`, wired in as a Make prerequisite and not counted against the immutable 60-second combined test budget), the per-step labels 1–18, the bypass audits, the social-proof gate, and the per-step / combined-total timeouts (including the 60-second `_TOTAL_TEST_BUDGET_SECONDS`). When in doubt, read that page first.
+`docs/agents/verification.md` is the single source of truth for what `make verify` runs: the docs build (Sphinx `-W`, wired in as a Make prerequisite and not counted against the immutable 60-second combined test budget), the per-step labels 1–19, the bypass audits, the social-proof gate, and the per-step / combined-total timeouts (including the 60-second `_TOTAL_TEST_BUDGET_SECONDS`). When in doubt, read that page first.
 
 `make test-unit`, `make test-integration`, `make test-cov`, and `make test-subprocess-e2e` remain available as focused commands, but they are **not** part of `make verify`.
 

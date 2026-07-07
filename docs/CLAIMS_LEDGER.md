@@ -6,28 +6,33 @@
 > **Rule:** No claim may appear on a public surface without a corresponding entry here
 > marked ✅ or with a `(source, date)` citation inline.
 
-**Last audit:** 2026-06-30
+**Last audit:** 2026-07-07
 
 ---
 
-## Audit Summary (2026-06-30)
+## Audit Summary (2026-07-07)
 
 | Category | Count |
 |---|---|
-| Total claims cataloged | 12 |
-| Verified true | 10 |
+| Total claims cataloged | 11 |
+| Verified true | 11 |
 | False and fixed (historical) | 12 |
 | Conflated (pattern≠product) | 7 |
-| Removed / no longer on public surface | 16 |
+| Removed / no longer on public surface | 18 |
 | Unverified (open) | 0 |
 
-The 2026-06-30 refresh reconciled all open unverified entries against the
-current repository public surfaces. Claims that only appeared on older
-website/blog surfaces and are no longer asserted in this repo were marked
-🗑️. The current surfaces (`README.md`, `START_HERE.md`, `SHOWCASE.md`,
-`USERS.md`, `ECOSYSTEM.md`, `COMPARISONS.md`) use live repo links with
-`(verify: repo-exists)` annotations; numeric claims such as star counts are
-rendered live from the source repo pages rather than stated inline.
+The 2026-07-07 refresh consolidated the public surfaces. The 2026-06-30 ledger
+tracked four near-duplicate community files (`USERS.md`, `SHOWCASE.md`,
+`ECOSYSTEM.md`, `COMPARISONS.md`); all four are now retired in favor of a
+single `USERS.md` as the canonical community surface. SHOWCASE.md, ECOSYSTEM.md,
+COMPARISONS.md, and CREDIT_TEMPLATE.md are deleted. The corresponding claim
+rows (E1-E5, C1-C3, SC1-SC3) are preserved in the Historical Surfaces
+section below as a fabrication-guard audit trail. The 28 SEO sphinx pages
+deleted in the same pass are also captured as a single 🗑️ row.
+
+The current surviving public surfaces are: `README.md`, `START_HERE.md`,
+`USERS.md` (canonical community directory), `ralph-workflow/docs/sphinx/`
+(operator manual), and the repo-root `docs/` map and contributor pages.
 
 ---
 
@@ -41,7 +46,7 @@ here as a historical guard, not as live public claims.
 3. **kodo "ottiwroteit"** — wrong owner. Actual: ikamensh/kodo. FIXED 2026-06-16.
 4. **aicom specific pipeline numbers (61K LOC, 12 agents, 5 quality gates, 11-state, 34 transitions, 6+ providers)** — none appear in README or verifiable source. FIXED 2026-06-16.
 5. **Symphony "14 merged PRs from 20 issues in a four-day sprint"** — sourced from unverifiable "early-adopter reports." FIXED 2026-06-16.
-6. **SHOWCASE.md entries #1-#3** — all conflated pattern convergence with product credit. FIXED 2026-06-16.
+6. **SHOWCASE.md entries #1-#3** — all conflated pattern convergence with product credit. FIXED 2026-06-16. The SHOWCASE.md surface itself was deleted 2026-07-07; the entries are preserved in the Conflation Register for audit-trail purposes.
 7. **"OpenAI Symphony is an open-source Elixir service"** — actually an internal OpenAI tool, community reimplementations exist. FIXED 2026-06-16.
 8. **"miserness/ralphy" (goldrush + why-5 posts)** — GitHub user `miserness` exists but has NO repo called `ralphy`. Project fabricated in two blog posts. FIXED 2026-06-16.
 9. **"cv/ralph-addons"** — wrong owner, actual is `cvemprala/ralph-addons`. FIXED 2026-06-16.
@@ -81,6 +86,7 @@ here as a historical guard, not as live public claims.
 | R5 | Codeberg primary repo + GitHub mirror | ✅ | `(verify: repo-exists)` annotations |
 | R6 | PyPI package `ralph-workflow` | ✅ | <https://pypi.org/project/ralph-workflow/> |
 | R7 | `ralph --init`, `ralph --diagnose`, `ralph` commands | ✅ | README install/run block |
+| R8 | Ralph Workflow ecosystem → USERS.md | ✅ | `Ecosystem and attribution` section points at USERS.md |
 
 ### START_HERE.md (`/START_HERE.md`)
 
@@ -90,24 +96,56 @@ here as a historical guard, not as live public claims.
 | S2 | `pipx install ralph-workflow` install path | ✅ | Documented inline |
 | S3 | First-run command sequence | ✅ | Documented inline |
 
-### SHOWCASE.md (`/SHOWCASE.md`)
+### USERS.md (`/USERS.md`) — canonical community directory
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| U1 | Listed Featured projects (5) exist and implement Ralph Loop | ✅ | Each row has `(verify: repo-exists)` |
+| U2 | "Verified Ralph Workflow Credits: 0" | ✅ | Honesty marker per the project's social-proof convention |
+| U3 | Listed Pattern-implementation repos (32) exist | ✅ | Each row has `(verify: repo-exists)` |
+| U4 | Listed Shadow-ecosystem entries (15) exist | ✅ | Each row has `(verify: repo-exists)` |
+| U5 | Listed Active-adopters entries (13) exist | ✅ | Each row has `(verify: repo-exists)` |
+| U6 | awesome-ralph community hub exists | ✅ | `(verify: repo-exists)` |
+| U7 | Ralph Loop pattern attributed to Geoffrey Huntley | ✅ | Links to ghuntley.com/ralph |
+| U8 | "How to add your project" badge markdown renders | ✅ | The `built-with-ralph-loop` badge in the project repo |
+
+### ralph-workflow/docs/sphinx/index.rst + manual home
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| M1 | Canonical autopilot positioning matches README | ✅ | `index.rst` lead paragraph |
+| M2 | First-run 6-step block matches README | ✅ | `index.rst` install/run block |
+| M3 | Supported agent list matches README | ✅ | `agent-compatibility.md` matrix |
+
+### ralph-workflow/docs/agents/timeout-policy.md
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| T1 | Five `WorkspaceChangeKind` values: source, log, cache, artifact, other | ✅ | Doc table + regression tests |
+| T2 | `agent_workspace_change_weights` config key | ✅ | Doc + test pinned canonical home |
+
+---
+
+## Historical surfaces (deleted 2026-07-07)
+
+### Surface: SHOWCASE.md (`/SHOWCASE.md`)
+
+🗑️ Deleted 2026-07-07. The 5 featured entries were merged into USERS.md
+"Featured projects" section. The historical claim rows below are preserved
+for the fabrication-guard audit trail.
 
 | # | Claim | Status | Evidence |
 |---|---|---|---|
 | SC1 | Featured projects exist and implement Ralph Loop | ✅ | Each row has `(verify: repo-exists)` |
-| SC2 | "Verified Ralph Workflow Credits: 0" | ✅ | Honest count |
+| SC2 | "Verified Ralph Workflow Credits: 0" | ✅ | Honesty marker |
 | SC3 | 46+ projects across USERS.md and ECOSYSTEM.md | ✅ | Live repo links; count refreshed 2026-06-30 |
 
-### USERS.md (`/USERS.md`)
+### Surface: ECOSYSTEM.md (`/ECOSYSTEM.md`)
 
-| # | Claim | Status | Evidence |
-|---|---|---|---|
-| U1 | Listed pattern-implementation repos exist | ✅ | Each row has `(verify: repo-exists)` |
-| U2 | Listed shadow-ecosystem repos exist | ✅ | Each row has `(verify: repo-exists)` |
-| U3 | awesome-ralph community hub exists | ✅ | `(verify: repo-exists)` |
-| U4 | Ralph Loop pattern attributed to Geoffrey Huntley | ✅ | Links to ghuntley.com/ralph |
-
-### ECOSYSTEM.md (`/ECOSYSTEM.md`)
+🗑️ Deleted 2026-07-07. The 3 unique Active-community-projects entries
+(Th0rgal, AnandChowdhary, vercel-labs) were merged into USERS.md
+Pattern-implementations table. The historical claim rows are preserved
+for the fabrication-guard audit trail.
 
 | # | Claim | Status | Evidence |
 |---|---|---|---|
@@ -117,7 +155,11 @@ here as a historical guard, not as live public claims.
 | E4 | awesome-ralph community hub exists | ✅ | `(verify: repo-exists)` |
 | E5 | Ralph Loop pattern attributed to Geoffrey Huntley | ✅ | Links to ghuntley.com/ralph |
 
-### COMPARISONS.md (`/COMPARISONS.md`)
+### Surface: COMPARISONS.md (`/COMPARISONS.md`)
+
+🗑️ Deleted 2026-07-07. The per-tool comparison content was already covered
+by `agent-compatibility.md` (per-agent matrix with caveats). The historical
+claim rows are preserved for the fabrication-guard audit trail.
 
 | # | Claim | Status | Evidence |
 |---|---|---|---|
@@ -125,17 +167,38 @@ here as a historical guard, not as live public claims.
 | C2 | 46+ projects in ecosystem | ✅ | Cross-reference to USERS.md / ECOSYSTEM.md |
 | C3 | Star counts rendered live from source repo pages | ✅ | Documented inline; audited 2026-06-30 |
 
----
+### Surface: 28 SEO sphinx pages
 
-## Historical surfaces (no longer maintained in this repo)
+🗑️ Deleted 2026-07-07. The 28 sphinx pages
+(`ai-agent-orchestration-cli.md`, `ai-agent-workflow-composer.md`,
+`ai-coding-workflow-automation.md`, `after-your-first-run.md`,
+`bounded-autonomy-for-unattended-coding.md`, `claude-code-approval-mode.md`,
+`claude-code-automation.md`, `claude-code-codex-workflow.md`,
+`claude-code-run-until-done.md`, `free-open-source-proof.md`,
+`good-unattended-ai-coding-task.md`, `how-to-tell-if-an-ai-coding-task-is-actually-done.md`,
+`open-source-ai-coding-orchestrator.md`, `overnight-demo-real.md`,
+`ralph-workflow-vs-aider.md`, `ralph-workflow-vs-claude-code.md`,
+`ralph-workflow-vs-codex-cli.md`, `ralph-workflow-vs-google-anti-gravity.md`,
+`ralph-workflow-vs-opencode.md`, `remote-supervision-of-coding-agents.md`,
+`reviewable-output.md`, `run-claude-code-overnight-without-babysitting.md`,
+`spec-driven-ai-agent.md`, `unattended-coding-agent.md`,
+`what-a-good-ai-coding-finish-receipt-looks-like.md`,
+`what-breaks-first-with-multiple-coding-agents.md`,
+`which-agent-should-i-start-with.md`,
+`why-worktrees-are-not-enough.md`) were the autopilot+Codeberg-CTA SEO
+keyword-stuffed pages. Their claim rows were (a) duplicated the canonical
+positioning language verbatim, (b) restated the agent matrix already on
+`agent-compatibility.md`, and (c) carried embedded review notes. They
+have been replaced by the surviving canonical surfaces.
 
 ### Surface: Compare Page (`ralphworkflow.com/compare`)
 
-🗑️ The local `COMPARISONS.md` was rewritten on 2026-06-30. The legacy compare-page
-claims about Continue, Nightcrawler, Emdash, Twill, Symphony, kodo, Nightshift,
-Bernstein, aicom, Freestyle, and Claude Code Routines are no longer asserted in
-this repository. They are retained in the Fabrication Register and Verified True
-Register above for historical context only.
+🗑️ The local `COMPARISONS.md` was rewritten on 2026-06-30 and deleted 2026-07-07.
+The legacy compare-page claims about Continue, Nightcrawler, Emdash, Twill,
+Symphony, kodo, Nightshift, Bernstein, aicom, Freestyle, and Claude Code
+Routines are no longer asserted in this repository. They are retained in
+the Fabrication Register and Verified True Register above for historical
+context only.
 
 ### Surface: Blog Posts
 
@@ -148,7 +211,11 @@ Fabrication Register and Conflation Register.
 
 ## Conflation Register (Ralph Loop ≠ Ralph Workflow)
 
-Claims that treated pattern credit as product credit. All fixed in SHOWCASE.md 2026-06-16.
+Claims that treated pattern credit as product credit. The original entries
+were fixed on 2026-06-16 in the now-deleted SHOWCASE.md and COMPARISONS.md
+surfaces; the entries below are preserved as a fabrication-guard audit
+trail. The 2026-07-07 docs cleanup deleted both surfaces; the table below
+is the historical record.
 
 | # | Where | The Claim | Reality |
 |---|---|---|---|

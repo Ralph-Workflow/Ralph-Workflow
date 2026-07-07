@@ -4,8 +4,8 @@ This page covers the full lifecycle of an agent CLI in Ralph Workflow:
 **selection**, **detection**, **authentication**, and **invocation**.
 It complements [Configuration](configuration.md) (which configures each
 phase to use an agent) and
-[Which Agent Should I Start With?](which-agent-should-i-start-with.md) (which
-helps you pick one for your first task).
+[Agent Compatibility](agent-compatibility.md) (which lists every
+supported agent with caveats and workarounds).
 
 ## The agent-CLI trust boundary
 
@@ -242,7 +242,5 @@ and the agent's verification path above.
 - [Configuration](configuration.md) — how phases are routed to agents
 - [Agent Compatibility](agent-compatibility.md) — known caveats and
   workarounds per agent
-- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) —
-  picking your first agent
 - [CLI reference](cli.md) — every flag including `--list-agents`,
   `--diagnose`, and `--check-mcp`

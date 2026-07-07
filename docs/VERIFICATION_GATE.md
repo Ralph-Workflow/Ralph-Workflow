@@ -27,10 +27,10 @@
 - 🔀 entries → must be reclassified as pattern-credit with clear disambiguation, or removed.
 - ❌ entries → must be removed from public surfaces immediately.
 
-### 5. SHOWCASE.md entries must credit Ralph Workflow specifically, not the Ralph Loop pattern.
-- A "showcase" entry means: a real builder used the `ralph-workflow` PyPI package and publicly acknowledged it.
-- Pattern convergence ("same primitives, independent implementation") is NOT a showcase entry.
-- Pattern convergence is valid content for a separate "Pattern Adoption" or "Ecosystem" page, clearly labeled as such.
+### 5. USERS.md (canonical community directory) entries must credit Ralph Workflow specifically, not the Ralph Loop pattern.
+- A community entry means: a real builder used the `ralph-workflow` PyPI package and publicly acknowledged it.
+- Pattern convergence ("same primitives, independent implementation") is NOT a Ralph Workflow credit and must be labeled as pattern-credit only.
+- The 2026-07-07 docs cleanup consolidated the four near-duplicate community surfaces (`USERS.md`, `SHOWCASE.md`, `ECOSYSTEM.md`, `COMPARISONS.md`) into the single canonical `USERS.md`. The rule applies to USERS.md.
 
 ---
 
@@ -43,7 +43,7 @@ It checks:
 2. `grep -r 'acquired'` → each hit must have a CLAIMS_LEDGER.md ✅ entry.
 3. `grep -r 'credits Ralph'` → each hit must NOT conflate pattern with product.
 4. `grep -r 'asciinema\|JDnY0'` → must return zero hits (dead links).
-5. SHOWCASE.md entries count: every entry must credit `ralph-workflow` PyPI package or Codeberg repo by name.
+5. USERS.md entries count: every entry must credit `ralph-workflow` PyPI package or Codeberg repo by name.
 
 ---
 
