@@ -341,12 +341,13 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
 
 
 def _init_telemetry() -> None:
-    # Opt-out guard: RALPH_DISABLE_TELEMETRY=1 skips Sentry entirely.
+    # Opt-out guard: RALPH_DISABLE_TELEMETRY=1 or
+    # [general] telemetry_enabled=false skips Sentry entirely.
     # Runs as the first statement so no sentry call, ID generation, or
     # config-file write happens when the user has opted out.
-    from ralph.telemetry._sentry import is_telemetry_disabled
+    from ralph.telemetry._sentry import is_telemetry_disabled, is_telemetry_disabled_by_config
 
-    if is_telemetry_disabled():
+    if is_telemetry_disabled() or is_telemetry_disabled_by_config():
         return
 
     try:

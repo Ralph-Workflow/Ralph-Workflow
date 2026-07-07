@@ -762,7 +762,7 @@ class StatusBar:
         _lock: Threading lock guarding ``_model`` assignment.
     """
 
-    __slots__ = ("_display", "_home", "_live", "_lock", "_model")
+    __slots__ = ("_display", "_fallback_rendered", "_home", "_live", "_lock", "_model")
 
     def __init__(self, display: ParallelDisplay) -> None:
         self._display: _StatusBarHost = display
@@ -770,6 +770,7 @@ class StatusBar:
         self._model: StatusBarModel | None = None
         self._live: _Live | None = None
         self._lock = threading.Lock()
+        self._fallback_rendered = False
 
     @property
     def is_active(self) -> bool:
@@ -816,6 +817,25 @@ class StatusBar:
             return Text(" ")
         return render_status_bar(model, self._ctx(), home=self._home)
 
+    def _live_console_is_interactive(self) -> bool:
+        is_interactive: object = getattr(self._ctx().console, "is_interactive", False)
+        return is_interactive is True
+
+    def _fallback_render_once(self) -> None:
+        if self._live_console_is_interactive():
+            return
+        self._fallback_cleanup()
+        self._ctx().console.print(self._renderable())
+        self._fallback_rendered = True
+
+    def _fallback_cleanup(self) -> None:
+        if not self._fallback_rendered:
+            return
+        self._fallback_rendered = False
+        file_obj: IO[str] = self._ctx().console.file
+        file_obj.write("\r\x1b[1A\x1b[2K")
+        file_obj.flush()
+
     def start(self) -> None:
         """Begin rendering the Status Bar inside a transient Rich Live region.
 
@@ -851,6 +871,7 @@ class StatusBar:
             )
             live.start()
             self._live = live
+            self._fallback_render_once()
 
     def stop(self) -> None:
         """Tear down the Live region. Idempotent and safe to call without :meth:`start`."""
@@ -860,6 +881,8 @@ class StatusBar:
         self._live = None
         with contextlib.suppress(Exception):
             live.stop()
+        with contextlib.suppress(Exception):
+            self._fallback_cleanup()
 
     def update(self, model: StatusBarModel) -> None:
         """Store ``model`` for the Live region to pick up on its next refresh tick.
@@ -869,15 +892,15 @@ class StatusBar:
         forwards into. Callers should NOT invoke ``status_bar.update(model)``
         directly; the consolidated contract is ``display.update_status_bar(model)``.
 
-        The update itself is intentionally a pure store: it does NOT force
-        an immediate ``live.refresh()``. The persistent footer is owned by
-        the Live region's :data:`_STATUS_BAR_REFRESH_PER_SECOND` cadence
-        (4.0 Hz / 250 ms by default), so update calls feed a fresh
-        :class:`StatusBarModel` and the next refresh tick renders it. This
-        keeps update cheap, deterministic, and free of any rendering
-        side-effects; it also keeps Live's bounded refresh rate the single
-        owner of refresh-side behavior, matching the design constraint that
-        the StatusBar is a single owner of run-level live-update cadence.
+        On interactive consoles the update is intentionally a pure store:
+        it does NOT force an immediate ``live.refresh()``. The persistent
+        footer is owned by the Live region's
+        :data:`_STATUS_BAR_REFRESH_PER_SECOND` cadence (4.0 Hz / 250 ms by
+        default), so update calls feed a fresh :class:`StatusBarModel` and
+        the next refresh tick renders it. On Rich "dumb terminal" consoles
+        where ``Live.start()`` succeeds but Rich refuses to draw frames, the
+        fallback renderer erases the previous fallback row and emits one
+        bounded replacement row so ``is_active`` stays observable.
 
         Safe to call before :meth:`start`; in that case the model is
         stored and the subsequent :meth:`start` constructs the Live region
@@ -886,3 +909,6 @@ class StatusBar:
         """
         with self._lock:
             self._model = model
+        if self._live is not None:
+            with contextlib.suppress(Exception):
+                self._fallback_render_once()

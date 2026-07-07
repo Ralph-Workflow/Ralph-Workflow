@@ -51,7 +51,18 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "before_send" in kwargs
     assert "before_send_transaction" in kwargs
     assert kwargs.get("traces_sample_rate") == 1.0
-    assert kwargs.get("profiles_sample_rate") == 1.0
+    assert kwargs.get("default_integrations") is False
+    assert kwargs.get("auto_enabling_integrations") is False
+    assert kwargs.get("profiles_sample_rate") == 0.0
+    assert kwargs.get("profile_session_sample_rate") == 0.0
+    assert "profile_lifecycle" not in kwargs
+    assert kwargs.get("auto_session_tracking") is True
+    assert kwargs.get("send_client_reports") is True
+    assert kwargs.get("enable_logs") is False
+    assert kwargs.get("environment") in {"default", "ci"}
+    release = kwargs.get("release")
+    assert isinstance(release, str)
+    assert release.startswith("ralph-workflow@")
     # Defense in depth: locals like ``inline_prompt`` must NEVER be forwarded
     # even if the scrubber misses a prefix. Disabling local-variable capture
     # at the SDK level removes the surface entirely.
@@ -886,6 +897,17 @@ def test_record_session_start_and_finalize_session(
     context_calls: list[tuple[str, dict[str, object]]] = []
     message_calls: list[tuple[str, str]] = []
     flush_calls: list[float] = []
+    start_session_calls: list[str] = []
+    end_session_calls: list[bool] = []
+    transaction_calls: list[dict[str, object]] = []
+    transaction_finishes: list[bool] = []
+    breadcrumb_calls: list[dict[str, object]] = []
+    metric_count_calls: list[tuple[str, float, dict[str, object] | None]] = []
+    metric_distribution_calls: list[tuple[str, float, str | None, dict[str, object] | None]] = []
+
+    class _Transaction:
+        def finish(self) -> None:
+            transaction_finishes.append(True)
 
     monkeypatch.setattr(
         "sentry_sdk.set_context",
@@ -900,11 +922,53 @@ def test_record_session_start_and_finalize_session(
         flush_calls.append(float(timeout) if timeout is not None else -1.0)
 
     monkeypatch.setattr("sentry_sdk.flush", capture_flush)
+    monkeypatch.setattr(
+        "sentry_sdk.start_session",
+        lambda session_mode="application": start_session_calls.append(str(session_mode)),
+    )
+    monkeypatch.setattr("sentry_sdk.end_session", lambda: end_session_calls.append(True))
+    monkeypatch.setattr(
+        "sentry_sdk.start_transaction",
+        lambda **kwargs: transaction_calls.append(dict(kwargs)) or _Transaction(),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.add_breadcrumb",
+        lambda **kwargs: breadcrumb_calls.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.count",
+        lambda name, value, unit=None, attributes=None: metric_count_calls.append(
+            (name, float(value), dict(attributes) if attributes is not None else None)
+        ),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.distribution",
+        lambda name, value, unit=None, attributes=None: metric_distribution_calls.append(
+            (
+                name,
+                float(value),
+                str(unit) if unit is not None else None,
+                dict(attributes) if attributes is not None else None,
+            )
+        ),
+    )
 
     _sentry.record_session_start(now=100.0)
     _sentry.set_session_outcome("success")
     duration = _sentry.finalize_session(now=160.0, flush_timeout=2.0)
 
+    assert start_session_calls == ["application"]
+    assert end_session_calls == [True]
+    assert transaction_calls == [{"op": "cli.run", "name": "ralph.session"}]
+    assert transaction_finishes == [True]
+    assert any(call.get("category") == "ralph.session" for call in breadcrumb_calls)
+    assert ("ralph.session", 1.0, {"outcome": "success"}) in metric_count_calls
+    assert (
+        "ralph.session.duration",
+        60.0,
+        "second",
+        {"outcome": "success"},
+    ) in metric_distribution_calls
     assert duration == pytest.approx(60.0)
     session_context = next(c for c in context_calls if c[0] == "session")
     assert session_context[1]["duration_s"] == pytest.approx(60.0)
@@ -1136,6 +1200,26 @@ def test_init_sentry_disables_local_variables_capture(
     assert captured.get("include_local_variables") is False
 
 
+def test_init_sentry_disables_profiling_for_metadata_only_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sentry profiling remains disabled because stack samples are not metadata-only."""
+    captured: dict[str, object] = {}
+
+    def capture_init(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr("sentry_sdk.init", capture_init)
+    monkeypatch.setattr("sentry_sdk.set_user", lambda arg: None)
+    monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: None)
+
+    init_sentry("a" * 32, "b" * 64)
+
+    assert captured.get("profiles_sample_rate") == 0.0
+    assert captured.get("profile_session_sample_rate") == 0.0
+    assert "profile_lifecycle" not in captured
+
+
 # ---------------------------------------------------------------------------
 # record_command_invocation — closed-vocabulary CLI command tag.
 # ---------------------------------------------------------------------------
@@ -1333,6 +1417,30 @@ def test_record_phase_execution_accumulates_by_role(
     )
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+    metric_count_calls: list[tuple[str, float, dict[str, object] | None]] = []
+    metric_distribution_calls: list[tuple[str, float, str | None, dict[str, object] | None]] = []
+    breadcrumb_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.count",
+        lambda name, value, unit=None, attributes=None: metric_count_calls.append(
+            (name, float(value), dict(attributes) if attributes is not None else None)
+        ),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.distribution",
+        lambda name, value, unit=None, attributes=None: metric_distribution_calls.append(
+            (
+                name,
+                float(value),
+                str(unit) if unit is not None else None,
+                dict(attributes) if attributes is not None else None,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.add_breadcrumb",
+        lambda **kwargs: breadcrumb_calls.append(dict(kwargs)),
+    )
 
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
@@ -1349,6 +1457,18 @@ def test_record_phase_execution_accumulates_by_role(
     assert execution["total_duration_s"] == 4
     outcomes = execution["outcomes"]
     assert outcomes == {"success": 2, "failure": 1, "skipped": 0, "crashed": 0}
+    assert (
+        "ralph.phase",
+        1.0,
+        {"role": "execution", "outcome": "success"},
+    ) in metric_count_calls
+    assert (
+        "ralph.phase.duration",
+        2.0,
+        "second",
+        {"role": "execution", "outcome": "failure"},
+    ) in metric_distribution_calls
+    assert any(call.get("category") == "ralph.phase" for call in breadcrumb_calls)
 
 
 def test_record_phase_execution_drops_unknown_role(
@@ -1557,6 +1677,84 @@ def test_set_environment_context_ci_container_forward_bool_only(
 # ---------------------------------------------------------------------------
 
 
+def _assert_no_forbidden_substrings(
+    values: list[object],
+    *,
+    source: str,
+    forbidden_substrings: tuple[str, ...],
+) -> None:
+    for needle in forbidden_substrings:
+        for leaf in values:
+            if isinstance(leaf, str):
+                assert needle not in leaf.lower(), (
+                    f"{source} leaked forbidden substring {needle!r}: {leaf!r}"
+                )
+
+
+def _assert_metrics_are_metadata_only(
+    metric_count_calls: list[tuple[str, float, dict[str, object] | None]],
+    metric_distribution_calls: list[
+        tuple[str, float, str | None, dict[str, object] | None]
+    ],
+    *,
+    forbidden_substrings: tuple[str, ...],
+) -> None:
+    allowed_metric_names = {
+        "ralph.command",
+        "ralph.phase",
+        "ralph.phase.duration",
+        "ralph.session",
+        "ralph.session.duration",
+    }
+    for metric_name, _value, attrs in metric_count_calls:
+        assert metric_name in allowed_metric_names
+        flat = [metric_name]
+        if attrs is not None:
+            flat.extend(_flatten(attrs))
+        _assert_no_forbidden_substrings(
+            flat,
+            source="metric count",
+            forbidden_substrings=forbidden_substrings,
+        )
+    for metric_name, _value, unit, attrs in metric_distribution_calls:
+        assert metric_name in allowed_metric_names
+        flat = [metric_name, unit]
+        if attrs is not None:
+            flat.extend(_flatten(attrs))
+        _assert_no_forbidden_substrings(
+            flat,
+            source="metric distribution",
+            forbidden_substrings=forbidden_substrings,
+        )
+
+
+def _assert_breadcrumbs_are_metadata_only(
+    breadcrumb_calls: list[dict[str, object]],
+    *,
+    forbidden_substrings: tuple[str, ...],
+) -> None:
+    allowed_breadcrumb_categories = {
+        "ralph.command",
+        "ralph.phase",
+        "ralph.session",
+    }
+    for breadcrumb in breadcrumb_calls:
+        assert breadcrumb.get("category") in allowed_breadcrumb_categories
+        _assert_no_forbidden_substrings(
+            _flatten(breadcrumb),
+            source="breadcrumb",
+            forbidden_substrings=forbidden_substrings,
+        )
+
+
+class _RecordingTransaction:
+    def __init__(self, transaction_calls: list[tuple[str, str]]) -> None:
+        self._transaction_calls = transaction_calls
+
+    def finish(self) -> None:
+        self._transaction_calls.append(("finish", ""))
+
+
 def test_closed_vocabulary_privacy_regression(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1565,6 +1763,12 @@ def test_closed_vocabulary_privacy_regression(
     tag_calls: list[tuple[str, object]] = []
     context_calls: list[tuple[str, dict[str, object]]] = []
     message_calls: list[tuple[str, object]] = []
+    breadcrumb_calls: list[dict[str, object]] = []
+    metric_count_calls: list[tuple[str, float, dict[str, object] | None]] = []
+    metric_distribution_calls: list[
+        tuple[str, float, str | None, dict[str, object] | None]
+    ] = []
+    transaction_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
         "sentry_sdk.set_tag",
@@ -1578,10 +1782,48 @@ def test_closed_vocabulary_privacy_regression(
         "sentry_sdk.capture_message",
         lambda msg, level=None: message_calls.append((msg, level)),
     )
+    monkeypatch.setattr(
+        "sentry_sdk.add_breadcrumb",
+        lambda **kwargs: breadcrumb_calls.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.start_session",
+        lambda session_mode=None: None,
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.start_transaction",
+        lambda op=None, name=None: (
+            transaction_calls.append((str(op), str(name)))
+            or _RecordingTransaction(transaction_calls)
+        ),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.end_session",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        _sentry.sentry_metrics,
+        "count",
+        lambda name, value, attributes=None: metric_count_calls.append(
+            (name, value, dict(attributes) if attributes is not None else None)
+        ),
+    )
+    monkeypatch.setattr(
+        _sentry.sentry_metrics,
+        "distribution",
+        lambda name, value, unit=None, attributes=None: metric_distribution_calls.append(
+            (
+                name,
+                value,
+                unit,
+                dict(attributes) if attributes is not None else None,
+            )
+        ),
+    )
     monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
 
     monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
     monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
@@ -1633,6 +1875,7 @@ def test_closed_vocabulary_privacy_regression(
     _sentry.set_environment_context()
 
     # Exercise every new function with adversarial strings.
+    _sentry.record_session_start(now=100.0)
     _sentry.record_command_invocation("pipeline")  # closed-vocabulary command
     _sentry.set_session_wallclock_start(
         now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
@@ -1653,22 +1896,39 @@ def test_closed_vocabulary_privacy_regression(
     forbidden_substrings = ("secret", "startup", "mvp")
     for k, v in tag_calls:
         if isinstance(v, str):
-            for needle in forbidden_substrings:
-                assert needle not in v.lower(), (
-                    f"tag {k!r} value {v!r} leaked forbidden substring {needle!r}"
-                )
+            _assert_no_forbidden_substrings(
+                [v],
+                source=f"tag {k!r}",
+                forbidden_substrings=forbidden_substrings,
+            )
     for _ctx_name, payload in context_calls:
-        flat = _flatten(payload)
-        for needle in forbidden_substrings:
-            for leaf in flat:
-                if isinstance(leaf, str):
-                    assert needle not in leaf.lower(), (
-                        f"context payload leaked forbidden substring {needle!r}: {leaf!r}"
-                    )
+        _assert_no_forbidden_substrings(
+            _flatten(payload),
+            source="context payload",
+            forbidden_substrings=forbidden_substrings,
+        )
     for msg, _ in message_calls:
         if isinstance(msg, str):
-            for needle in forbidden_substrings:
-                assert needle not in msg.lower()
+            _assert_no_forbidden_substrings(
+                [msg],
+                source="message",
+                forbidden_substrings=forbidden_substrings,
+            )
+    _assert_breadcrumbs_are_metadata_only(
+        breadcrumb_calls,
+        forbidden_substrings=forbidden_substrings,
+    )
+    _assert_metrics_are_metadata_only(
+        metric_count_calls,
+        metric_distribution_calls,
+        forbidden_substrings=forbidden_substrings,
+    )
+    for op, name in transaction_calls:
+        _assert_no_forbidden_substrings(
+            [op, name],
+            source="transaction",
+            forbidden_substrings=forbidden_substrings,
+        )
 
     # Invariant (b): every tag NAME is in the closed vocabulary.
     allowed_tag_names = {

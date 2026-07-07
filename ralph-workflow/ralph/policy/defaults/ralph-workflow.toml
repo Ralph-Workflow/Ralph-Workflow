@@ -33,6 +33,7 @@
 # ---------------------------------------------------------------------------
 [general]
 # verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
+# telemetry_enabled = true              # anonymous metadata-only telemetry is on by default. Set false to opt out. Ralph Workflow uses this data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising.
 # Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
 # Override budget caps with: ralph --counter <name>=<value> (e.g. --counter iteration=8).
 # developer_context = 1                 # developer context level (>=1)

@@ -4,8 +4,9 @@ Captures only anonymous metalevel telemetry: OS, architecture, runtime markers,
 Python/Ralph version, virtualenv flag, session timing, and a coarse exit
 outcome. The before_send scrubber redacts home-directory, cwd, and argv
 prefixes and drops server_name + stack-frame abs_path so no codebase identity
-leaves the process. RALPH_DISABLE_TELEMETRY=1 (or true/yes/on) skips
-initialization at the single CLI chokepoint in ``_init_telemetry``.
+leaves the process. RALPH_DISABLE_TELEMETRY=1 (or true/yes/on) or
+``telemetry_enabled = false`` in ``ralph-workflow.toml`` skips initialization
+at the single CLI chokepoint in ``_init_telemetry``.
 """
 
 from __future__ import annotations
@@ -14,17 +15,20 @@ import contextlib
 import os
 import sys
 import time
+import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, get_args
+from typing import TYPE_CHECKING, Protocol, cast, get_args, runtime_checkable
 
 import sentry_sdk
+import sentry_sdk.metrics as sentry_metrics
 
 from ralph import __version__ as ralph_version
 from ralph.platform.detection import current_platform
 from ralph.policy.models._types import PhaseRole
 from ralph.runtime._version_info import PythonVersionInfo
 from ralph.runtime.environment import detect_runtime_environment
+from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -47,6 +51,7 @@ _EXTRA_SCRUB_PREFIXES: tuple[str, ...] = ()
 _SESSION_STARTED_AT: float | None = None
 _SESSION_OUTCOME: str = "unknown"
 _INITIALIZED: bool = False
+_SESSION_TRANSACTION: object | None = None
 
 # PhaseRole closed vocabulary — auto-derived from the Literal type alias via
 # ``get_args`` so the validation set cannot drift from the type. Phase telemetry
@@ -67,6 +72,43 @@ _PHASE_STATS: dict[str, dict[str, object]] = (
 _SESSION_WALLCLOCK_BUCKETS: dict[str, object] | None = None
 
 
+@runtime_checkable
+class _FinishableTransaction(Protocol):
+    def finish(self) -> None: ...
+
+
+class _BreadcrumbRecorder(Protocol):
+    def __call__(
+        self,
+        *,
+        category: str,
+        message: str,
+        level: str,
+        data: dict[str, object],
+    ) -> None: ...
+
+
+class _MetricCounter(Protocol):
+    def __call__(
+        self,
+        name: str,
+        value: float,
+        *,
+        attributes: dict[str, object] | None = None,
+    ) -> None: ...
+
+
+class _MetricDistribution(Protocol):
+    def __call__(
+        self,
+        name: str,
+        value: float,
+        *,
+        unit: str | None = None,
+        attributes: dict[str, object] | None = None,
+    ) -> None: ...
+
+
 def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
     """Return True when RALPH_DISABLE_TELEMETRY is set to a truthy value."""
     mapping = env if env is not None else os.environ
@@ -74,6 +116,108 @@ def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
     if raw is None:
         return False
     return raw.strip().lower() in _TRUE_DISABLE_VALUES
+
+
+def is_telemetry_disabled_by_config(env: Mapping[str, str] | None = None) -> bool:
+    """Return True when a global or project-local ralph-workflow.toml opts out."""
+    mapping = env if env is not None else os.environ
+    xdg_config_home = mapping.get("XDG_CONFIG_HOME")
+    global_config_path = (
+        Path(xdg_config_home) / "ralph-workflow.toml"
+        if xdg_config_home
+        else Path.home() / ".config" / "ralph-workflow.toml"
+    )
+    return _config_file_disables_telemetry(global_config_path) or _local_config_disables_telemetry()
+
+
+def _local_config_disables_telemetry() -> bool:
+    nearest_config = _nearest_local_config_path()
+    if nearest_config is not None and _config_file_disables_telemetry(nearest_config):
+        return True
+    with contextlib.suppress(Exception):
+        scope = resolve_workspace_scope()
+        if _config_file_disables_telemetry(scope.local_config_path):
+            return True
+        return any(_config_file_disables_telemetry(path) for path in scope.propagated_config_paths)
+    return _config_file_disables_telemetry(Path(".agent") / "ralph-workflow.toml")
+
+
+def _nearest_local_config_path() -> Path | None:
+    with contextlib.suppress(OSError):
+        current = Path.cwd().resolve()
+        while True:
+            candidate = current / ".agent" / "ralph-workflow.toml"
+            if candidate.exists():
+                return candidate
+            parent = current.parent
+            if parent == current:
+                return None
+            current = parent
+    return None
+
+
+def _config_file_disables_telemetry(config_path: Path) -> bool:
+    try:
+        if not config_path.exists():
+            return False
+        with config_path.open("rb") as fh:
+            data = cast("dict[str, object]", tomllib.load(fh))
+    except (OSError, ValueError):
+        return True
+    raw_general = data.get("general")
+    if not isinstance(raw_general, dict):
+        return False
+    general = cast("dict[str, object]", raw_general)
+    return general.get("telemetry_enabled") is False
+
+
+def _telemetry_is_inactive() -> bool:
+    return is_telemetry_disabled() or is_telemetry_disabled_by_config() or not _INITIALIZED
+
+
+def _sentry_environment() -> str:
+    try:
+        platform = current_platform()
+    except Exception:
+        return "default"
+    return "ci" if platform.environment.ci else "default"
+
+
+def _add_breadcrumb(*, category: str, message: str, data: Mapping[str, object]) -> None:
+    with contextlib.suppress(Exception):
+        add_breadcrumb = cast("_BreadcrumbRecorder", sentry_sdk.add_breadcrumb)
+        payload: dict[str, object] = dict(data)
+        add_breadcrumb(
+            category=category,
+            message=message,
+            level="info",
+            data=payload,
+        )
+
+
+def _metric_count(
+    name: str,
+    value: float,
+    *,
+    attributes: Mapping[str, object],
+) -> None:
+    with contextlib.suppress(Exception):
+        count = cast("_MetricCounter", sentry_metrics.count)
+        payload: dict[str, object] = dict(attributes)
+        count(name, value, attributes=payload)
+
+
+def _metric_distribution(
+    name: str,
+    value: float,
+    *,
+    unit: str,
+    attributes: Mapping[str, object],
+) -> None:
+    with contextlib.suppress(Exception):
+        distribution = cast("_MetricDistribution", sentry_metrics.distribution)
+        payload: dict[str, object] = dict(attributes)
+        distribution(name, value, unit=unit, attributes=payload)
 
 
 def _scrub_string(value: str) -> str:
@@ -221,8 +365,24 @@ def init_sentry(user_id: str, session_id: str) -> None:
     sentry_sdk.init(
         dsn=_DSN,
         send_default_pii=False,
+        release=f"ralph-workflow@{ralph_version}",
+        environment=_sentry_environment(),
+        auto_session_tracking=True,
+        send_client_reports=True,
+        # Automatic integrations can add HTTP/subprocess spans containing
+        # URLs, argv, cwd, or other non-metadata details. Keep tracing
+        # limited to the manual ``ralph.session`` transaction below.
+        default_integrations=False,
+        auto_enabling_integrations=False,
         traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
+        # Profiling samples stack frames outside the event scrubber path, so
+        # keep it disabled to preserve Ralph Workflow's metadata-only contract.
+        profiles_sample_rate=0.0,
+        profile_session_sample_rate=0.0,
+        # Do not enable Sentry log capture by default: application logs can
+        # contain prompts, paths, or model output. Ralph emits explicit
+        # metadata-only breadcrumbs and metrics instead.
+        enable_logs=False,
         # Disable local-variable capture on stack frames: the scrubber can
         # only redact known prefixes (home/cwd/argv) so a local like
         # ``inline_prompt`` could otherwise be forwarded verbatim. We want
@@ -279,10 +439,24 @@ def record_session_start(now: float | None = None) -> None:
     ``time.monotonic()`` in test files). Production code passes ``now=None``
     so the call resolves to ``time.monotonic()`` at runtime.
     """
-    global _SESSION_STARTED_AT  # noqa: PLW0603
+    global _SESSION_STARTED_AT, _SESSION_TRANSACTION  # noqa: PLW0603
     if now is None:
         now = time.monotonic()
     _SESSION_STARTED_AT = float(now)
+    if _telemetry_is_inactive():
+        return
+    with contextlib.suppress(Exception):
+        sentry_sdk.start_session(session_mode="application")
+    with contextlib.suppress(Exception):
+        _SESSION_TRANSACTION = sentry_sdk.start_transaction(
+            op="cli.run",
+            name="ralph.session",
+        )
+    _add_breadcrumb(
+        category="ralph.session",
+        message="session start",
+        data={"event": "start"},
+    )
 
 
 def set_session_outcome(outcome: str) -> None:
@@ -301,10 +475,16 @@ def record_command_invocation(command: str) -> None:
     Fail-soft: any exception from ``sentry_sdk.set_tag`` is swallowed so the
     host CLI/pipeline is never broken by telemetry.
     """
-    if is_telemetry_disabled() or not _INITIALIZED:
+    if _telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         sentry_sdk.set_tag("command", command)
+        _metric_count("ralph.command", 1.0, attributes={"command": command})
+        _add_breadcrumb(
+            category="ralph.command",
+            message="command invocation",
+            data={"command": command},
+        )
 
 
 _WEEKDAY_COUNT = 5  # Mon-Fri inclusive; weekday cutoff for weekday/weekend bucketing.
@@ -331,7 +511,7 @@ def set_session_wallclock_start(now_dt: datetime | None = None) -> None:
     Fail-soft.
     """
     global _SESSION_WALLCLOCK_BUCKETS  # noqa: PLW0603
-    if is_telemetry_disabled() or not _INITIALIZED:
+    if _telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         dt = now_dt if now_dt is not None else datetime.now(UTC)
@@ -350,7 +530,7 @@ def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
     No-op when telemetry is disabled or Sentry was never initialized.
     Fail-soft.
     """
-    if is_telemetry_disabled() or not _INITIALIZED:
+    if _telemetry_is_inactive():
         return
     if role not in _PHASE_ROLES or outcome not in _PHASE_OUTCOMES:
         return
@@ -380,6 +560,19 @@ def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
         slot["count"] = current_count + 1
         slot["total_duration_s"] = current_total + delta
         outcomes_map[outcome] = outcomes_map.get(outcome, 0) + 1
+        attributes = {"role": role, "outcome": outcome}
+        _metric_count("ralph.phase", 1.0, attributes=attributes)
+        _metric_distribution(
+            "ralph.phase.duration",
+            float(delta),
+            unit="second",
+            attributes=attributes,
+        )
+        _add_breadcrumb(
+            category="ralph.phase",
+            message="phase execution",
+            data=attributes,
+        )
 
 
 def flush_telemetry(timeout: float = 2.0) -> None:
@@ -404,6 +597,7 @@ def finalize_session(
     values are process-local: they are meaningful only inside this
     process instance and leak no real-world clock information.
     """
+    global _SESSION_TRANSACTION  # noqa: PLW0603
     if not _INITIALIZED or _SESSION_STARTED_AT is None:
         return None
 
@@ -425,11 +619,29 @@ def finalize_session(
                 role: dict(stats) for role, stats in _PHASE_STATS.items()
             }
         sentry_sdk.set_context("session", session_payload)
+        attributes = {"outcome": _SESSION_OUTCOME}
+        _metric_count("ralph.session", 1.0, attributes=attributes)
+        _metric_distribution(
+            "ralph.session.duration",
+            duration,
+            unit="second",
+            attributes=attributes,
+        )
+        _add_breadcrumb(
+            category="ralph.session",
+            message="session end",
+            data=attributes,
+        )
         sentry_sdk.capture_message("session end", level="info")
+        transaction = _SESSION_TRANSACTION
+        if isinstance(transaction, _FinishableTransaction):
+            transaction.finish()
+        sentry_sdk.end_session()
         flush_telemetry(flush_timeout)
     except Exception:
         pass
     # Drain aggregates AFTER the snapshot is sent so a subsequent session can
     # reuse the module-level accumulators safely (bounded-accumulator-ok).
     _PHASE_STATS.clear()
+    _SESSION_TRANSACTION = None
     return duration

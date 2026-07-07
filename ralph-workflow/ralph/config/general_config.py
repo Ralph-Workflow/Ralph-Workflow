@@ -50,6 +50,14 @@ class GeneralConfig(RalphBaseModel):
     model_config = ConfigDict(frozen=True)
 
     verbosity: int = 2
+    telemetry_enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable anonymous Sentry telemetry by default. Set to false in"
+            " ralph-workflow.toml to opt out without relying on the"
+            " RALPH_DISABLE_TELEMETRY environment variable."
+        ),
+    )
     workflow: GeneralWorkflowFlags = Field(default_factory=GeneralWorkflowFlags)
     developer_iters: int = Field(default=5, ge=1)
     developer_context: int = Field(default=1, ge=1)

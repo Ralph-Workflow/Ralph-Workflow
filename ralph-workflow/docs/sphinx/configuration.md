@@ -112,7 +112,8 @@ Most end users do not need to invent a policy from scratch. They usually want on
 2. increase or decrease retry / cycle behavior
 3. raise or lower verbosity
 4. set git author info for automated commits
-5. create a project-local override without affecting every repo
+5. opt out of anonymous metadata-only telemetry
+6. create a project-local override without affecting every repo
 
 ## Bundled defaults
 
@@ -165,6 +166,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | Key | Default | Description |
 |-----|---------|-------------|
 | `verbosity` | `2` | Output verbosity: 0=quiet, 1=normal, 2=verbose, 3=full, 4=debug |
+| `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. Ralph Workflow uses the data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising. |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
@@ -184,6 +186,31 @@ verbosity = 3
 ```
 
 Use this when you want richer logs in every project.
+
+### Example: opt out of telemetry globally
+
+```toml
+[general]
+telemetry_enabled = false
+```
+
+Ralph Workflow sends anonymous metadata-only telemetry by default: random
+installation/session IDs, runtime/platform metadata, versions, command names
+from a closed vocabulary, coarse session timing/outcome, coarse UTC usage
+buckets, phase-role aggregates, Sentry release-health sessions, tracing,
+breadcrumbs, and custom metrics derived from those same closed metadata
+fields. Sentry automatic integrations are disabled, so tracing is limited to
+the manual `ralph.session` transaction and metadata-only events. It does not
+send prompts, model output, logs, profiling stack samples, codebase paths,
+hostnames, usernames, raw phase names, environment-variable values, full
+timestamps, or timezone names.
+
+The purpose is to improve reliability and product quality, understand active
+users and feature adoption, and help operators learn about useful product
+capabilities. The data is never sold, rented, or shared for advertising. You
+can also opt out per invocation with `RALPH_DISABLE_TELEMETRY=1`, or set the
+same `telemetry_enabled = false` key in `.agent/ralph-workflow.toml` for a
+project-local opt-out.
 
 ### Example: set git author info globally
 

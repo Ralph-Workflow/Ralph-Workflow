@@ -1833,6 +1833,63 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
         )
 
 
+def test_status_bar_fallback_erases_previous_row_before_active_update() -> None:
+    """Rich dumb-terminal fallback cleans each active replacement row.
+
+    On recent Rich versions a force-terminal ``StringIO`` that also reports
+    ``isatty()`` can let ``Live.start()`` succeed while ``Live`` itself
+    refuses to render because the console is considered a dumb terminal.
+    The StatusBar fallback renders the model manually in that branch. When a
+    second model arrives while active, the previous fallback row must be
+    erased before the replacement row is written so interpreted terminal
+    scrollback contains only the latest footer row.
+    """
+    ansi_escape_re = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+    cleanup = "\r\x1b[1A\x1b[2K"
+    buf = _TtyLikeStringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        width=120,
+        color_system="standard",
+    )
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(ctx)
+    sb = pd.status_bar
+    first = StatusBarModel(
+        workspace_root="/Users/alice/code/status-bar",
+        phase_label="FirstPhase",
+        phase_style="theme.phase.development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    second = StatusBarModel(
+        workspace_root="/Users/alice/code/status-bar",
+        phase_label="SecondPhase",
+        phase_style="theme.phase.review",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+    )
+
+    sb.update(first)
+    sb.start()
+    try:
+        assert sb.is_active is True
+        sb.update(second)
+    finally:
+        sb.stop()
+
+    out = buf.getvalue()
+    first_index = out.index("FirstPhase")
+    first_cleanup_index = out.index(cleanup, first_index)
+    second_index = out.index("SecondPhase")
+    final_cleanup_index = out.rindex(cleanup)
+    assert first_index < first_cleanup_index < second_index < final_cleanup_index
+    assert out.count(cleanup) >= 2
+    last_line_visible = ansi_escape_re.sub("", out.split("\n")[-1]).strip()
+    assert last_line_visible == ""
+
+
 # ---------------------------------------------------------------------------
 # StatusBar.start() failure-isolation regression test
 # ---------------------------------------------------------------------------

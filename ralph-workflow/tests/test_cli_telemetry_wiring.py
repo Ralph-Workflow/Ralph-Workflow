@@ -198,6 +198,105 @@ def test_init_telemetry_skips_wallclock_when_disabled(
     assert spy.wallclock_calls == []
 
 
+def test_init_telemetry_skips_everything_when_global_config_opts_out(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``[general] telemetry_enabled = false`` must skip Sentry and ID setup."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    config_home = tmp_path / "config"
+    config_home.mkdir()
+    (config_home / "ralph-workflow.toml").write_text(
+        "[general]\ntelemetry_enabled = false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    ralph_cli_main._init_telemetry()
+
+    assert spy.user_id_calls == []
+    assert spy.init_calls == []
+    assert spy.set_context_calls == []
+    assert spy.record_calls == []
+    assert spy.wallclock_calls == []
+    assert spy.atexit_calls == []
+
+
+def test_init_telemetry_skips_everything_when_global_config_is_malformed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Malformed telemetry config fails closed before Sentry or ID setup."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    config_home = tmp_path / "config"
+    config_home.mkdir()
+    (config_home / "ralph-workflow.toml").write_text("[general\n", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    ralph_cli_main._init_telemetry()
+
+    assert spy.user_id_calls == []
+    assert spy.init_calls == []
+    assert spy.set_context_calls == []
+    assert spy.record_calls == []
+    assert spy.wallclock_calls == []
+    assert spy.atexit_calls == []
+
+
+def test_init_telemetry_skips_everything_when_project_config_opts_out(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Project-local ``.agent/ralph-workflow.toml`` can opt out before Sentry init."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "ralph-workflow.toml").write_text(
+        "[general]\ntelemetry_enabled = false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    ralph_cli_main._init_telemetry()
+
+    assert spy.user_id_calls == []
+    assert spy.init_calls == []
+    assert spy.set_context_calls == []
+    assert spy.record_calls == []
+    assert spy.wallclock_calls == []
+    assert spy.atexit_calls == []
+
+
+def test_init_telemetry_project_config_opt_out_works_from_subdirectory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Project-local telemetry opt-out follows the resolved workspace root."""
+    spy = _TelemetrySpy()
+    spy.install(monkeypatch)
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "ralph-workflow.toml").write_text(
+        "[general]\ntelemetry_enabled = false\n",
+        encoding="utf-8",
+    )
+    nested = tmp_path / "src" / "pkg"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
+
+    ralph_cli_main._init_telemetry()
+
+    assert spy.user_id_calls == []
+    assert spy.init_calls == []
+    assert spy.set_context_calls == []
+    assert spy.record_calls == []
+    assert spy.wallclock_calls == []
+    assert spy.atexit_calls == []
+
+
 def test_record_cli_command_records_pipeline_when_no_subcommand(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

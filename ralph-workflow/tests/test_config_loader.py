@@ -215,7 +215,22 @@ def test_general_config_defaults() -> None:
     """Test GeneralConfig default values."""
     config = GeneralConfig()
     assert config.verbosity == DEFAULT_VERBOSITY
+    assert config.telemetry_enabled is True
     assert config.workflow.checkpoint_enabled is True
+
+
+def test_load_config_accepts_telemetry_opt_out_in_general(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The main config supports an explicit telemetry opt-out switch."""
+    global_path = tmp_path / GLOBAL_CONFIG_PATH.name
+    global_path.write_text("[general]\ntelemetry_enabled = false\n", encoding="utf-8")
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", global_path)
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / LOCAL_CONFIG_PATH.name)
+
+    config = load_config(workspace_scope=_scope_for(tmp_path))
+
+    assert config.general.telemetry_enabled is False
 
 
 def test_general_config_does_not_expose_removed_field() -> None:

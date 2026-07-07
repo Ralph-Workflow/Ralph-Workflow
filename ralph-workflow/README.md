@@ -193,21 +193,30 @@ Contributor material:
 
 ## Privacy & Error Reporting
 
-Ralph Workflow sends **anonymous, metalevel** crash reports and performance
-metrics to help fix bugs and improve reliability. No personal data is
-collected, and nothing about the project you are working on ever leaves
-your machine.
+Ralph Workflow sends **anonymous, metalevel** session-health data,
+performance metrics, coarse failure outcomes, and usage metadata to help fix
+bugs, improve product quality, and understand which features operators
+actually use. The data is used only to operate and improve Ralph Workflow,
+including prioritizing fixes and informing users about useful product
+capabilities. It is **never sold**. It is not rented or shared for
+advertising.
+No personal data is collected, and nothing about the project you are working
+on ever leaves your machine.
 
 Each installation generates a random 32-character identifier stored in
 `$XDG_CONFIG_HOME/ralph-workflow-user.ini` when `XDG_CONFIG_HOME` is
 set, falling back to `~/.config/ralph-workflow-user.ini` otherwise.
 This identifier is not tied to your name, email address, IP address,
 or any other personal data — it is a random string used only to
-distinguish different installations in crash reports. A fresh random
-session identifier is generated on every run.
+distinguish different installations in aggregate session-health and usage
+analytics. A fresh random session identifier is generated on every run.
 
 What we collect (anonymous metadata only):
 
+- **Anonymous installation and session identity**: a random 32-character
+  installation ID and a fresh random session ID for each run. This supports
+  aggregate active-user and session-health analysis without names, emails,
+  IP addresses, or account identifiers.
 - **Operating system, architecture, and environment markers** (CI,
   container, WSL, Codespaces, SSH session, package manager). `ci` and
   `container` are also emitted as dedicated boolean tags for aggregate
@@ -230,6 +239,12 @@ What we collect (anonymous metadata only):
 - **Coarse UTC time-of-day buckets** (hour of day 0-23, day of week
   0-6, weekday/weekend `bool`) for aggregate usage analytics — no
   full timestamp and no local timezone string is forwarded.
+- **Sentry release-health, tracing, breadcrumbs, and custom metrics**
+  derived only from the metadata above. For example, Ralph Workflow emits
+  session counts, session duration, phase counts, and phase duration with
+  closed-vocabulary attributes such as `success`, `failure`, and phase role.
+  Sentry automatic integrations are disabled, so tracing is limited to the
+  manual `ralph.session` transaction and these metadata-only events.
 
 What we never collect:
 
@@ -243,17 +258,33 @@ What we never collect:
   other personally identifying detail.
 - **Raw phase names** (only the closed-vocabulary role is recorded).
 - **Full timestamps or timezone names** (only coarse UTC buckets).
+- **Application logs, replay recordings, user-feedback text, feature-flag
+  payloads, profiling stack samples, or arbitrary user-authored strings**.
+  Ralph Workflow does not enable Sentry log capture or profiling by default
+  because logs and stack samples can contain prompts, paths, model output, or
+  codebase details outside the metadata-only contract.
 - The **codebase identity** — phase telemetry is keyed on the
   closed-vocabulary role, never the user-customizable phase name from
   `pipeline.toml`.
 
-How to opt out (set the environment variable before invocation):
+How to opt out:
 
 - Set `RALPH_DISABLE_TELEMETRY=1` (any of `1`, `true`, `yes`, `on`,
   case-insensitive). When this variable is set, the CLI skips every
-  sentry call — initialization, the atexit finalize, the session
+  Sentry call — initialization, the atexit finalize, the session
   outcome setter, and the user-id lookup — so no telemetry data
-  leaves the process. This is the only supported opt-out.
+  leaves the process.
+- Or set this in `~/.config/ralph-workflow.toml` (or
+  `$XDG_CONFIG_HOME/ralph-workflow.toml`) for a user-wide opt-out, or in
+  `.agent/ralph-workflow.toml` for a project-local opt-out:
+
+  ```toml
+  [general]
+  telemetry_enabled = false
+  ```
+
+  The config-file setting is read before Sentry initialization and before
+  anonymous user-id lookup.
 
 Note: the identity file at
 `$XDG_CONFIG_HOME/ralph-workflow-user.ini` (or
@@ -261,7 +292,8 @@ Note: the identity file at
 installation identifier used to distinguish sessions. It is **not**
 itself an opt-out — if the file is missing, Ralph Workflow will
 create a new random ID on the next run only when telemetry is
-enabled. To disable telemetry permanently, set
+enabled. To disable telemetry permanently, set `telemetry_enabled = false`
+in your user-global or project-local `ralph-workflow.toml`, or set
 `RALPH_DISABLE_TELEMETRY` in your shell profile or CI environment.
 
 ## Community
