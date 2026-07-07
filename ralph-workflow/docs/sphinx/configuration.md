@@ -143,7 +143,7 @@ The Pro↔Ralph Workflow contract uses exactly three engine-facing variables (se
 | Variable | Purpose |
 |----------|---------|
 | `RALPH_AGY_BINARY` | Path to a custom `agy` executable, or to the deterministic mock at `tests/_support/mock_agy.sh` for CI. See [CLI Reference](cli.md) and [Agent Compatibility](agent-compatibility.md). |
-| `RALPH_INLINE_SKILLS_DIR` | Directory whose skill files are inlined into prompts through `SKILLS_INLINE_CONTENT` instead of relying on the shipped skill bundle. See [Prompts](prompts.md). |
+| `RALPH_INLINE_SKILLS_DIR` | Directory whose skill files are inlined into prompts through `SKILLS_INLINE_CONTENT` instead of relying on the shipped skill bundle. See [Getting Started](getting-started.md). |
 | `XDG_CONFIG_HOME` | When set, Ralph Workflow places the user-global config at `$XDG_CONFIG_HOME/ralph-workflow.toml` instead of `~/.config/ralph-workflow.toml`. |
 
 ### Test-only timeout variables

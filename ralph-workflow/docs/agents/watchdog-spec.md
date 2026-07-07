@@ -11,10 +11,11 @@ by the consolidated pin test
 listed below); if a file is renamed or moved, `test_r8` fails and the
 doc must be updated to match.
 
-For architectural context, see
-[`watchdog-architecture.md`](watchdog-architecture.md). For the
-underpinning cross-transport subagent visibility contract, see the
-R5 section below and the per-transport parametrize at
+For architectural context, see the watchdog subsystem
+internals (`ralph/watchdogs/`) and the source-of-truth modules
+referenced in this page. For the underpinning cross-transport
+subagent visibility contract, see the R5 section below and the
+per-transport parametrize at
 `tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`.
 
 ---

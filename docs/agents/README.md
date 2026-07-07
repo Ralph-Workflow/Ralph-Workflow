@@ -16,8 +16,6 @@ adding or modifying the agent subsystem inside the Python package.
 - `testing-guide.md` — black-box testing expectations and the 60-second
   combined test budget
 - `type-ignore-policy.md` — when (and when not) `# type: ignore` is allowed
-- `python-verification.md` — Python-specific verification policy
-- `integration-tests.md` — how integration tests are organized
 - `parallel-mode.md` (see ralph-workflow/docs/sphinx/parallel-mode.md) — parallelization expectations and audit contracts
 - `workspace-trait.md` — workspace abstraction contract
 - `agent-support-architecture.md` — how this repo supports Ralph Workflow
@@ -36,9 +34,7 @@ Topics that belong in the agent-authoring tree under
 - The artifact submission contract (`artifact-submission-contract.md`)
 - The memory lifecycle for agent-owned resources (`memory-lifecycle.md`)
 - The pro contract (`pro-contract.md`)
-- Timeout policy (`timeout-policy.md`)
-- Watchdog architecture and spec (`watchdog-architecture.md`,
-  `watchdog-spec.md`)
+- Watchdog spec (`watchdog-spec.md`)
 
 If you are unsure which tree a new doc belongs in, default to this tree for
 **policy** and to the package tree for **contracts**.

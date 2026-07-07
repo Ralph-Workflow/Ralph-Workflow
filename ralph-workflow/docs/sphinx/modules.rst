@@ -319,8 +319,8 @@ This group holds the Pydantic models, loaders, and bootstrap helpers
 that back Ralph Workflow's layered config (CLI flag → project-local
 → user-global → bundled defaults). The merged ``UnifiedConfig`` is what
 the runtime sees on every run. See :doc:`configuration` for the
-operator-facing reference and :doc:`policy-driven-overhaul-migration`
-for the migration background.
+operator-facing reference (which now folds in the policy-driven
+overhaul migration background).
 
 ralph.config
 ~~~~~~~~~~~~

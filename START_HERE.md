@@ -1,15 +1,12 @@
 # Start Here: try Ralph Workflow on one real backlog task
 
 > **Codeberg is primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> GitHub is a read-only mirror.
-
-See the canonical product positioning in [README.md](README.md).
+> GitHub is a read-only mirror:
+> <https://github.com/Ralph-Workflow/Ralph-Workflow> (verify: repo-exists)
 
 This is the shortest serious first-run path for a repo visitor.
-The default workflow is strong enough to adopt as-is, before you
-customize anything.
 
-## What kind of evaluator is this for
+## What kind of evaluator this path is for
 
 You are considering Ralph Workflow for **one real backlog task** — the
 kind of ambitious, well-specified work that is too big to babysit and
@@ -32,22 +29,19 @@ Have these ready before you start:
 - One supported agent CLI already installed **and authenticated** (see
   [Agent CLI lifecycle](ralph-workflow/docs/sphinx/agents.md) for the
   selection and trust-boundary story)
-- Working authentication for that agent
 
 ## Exact first steps
 
-Install: see [`README.md`](README.md#start-your-first-run) for the canonical
-install commands and prerequisites. The six-step first-run walkthrough
-(install → init → diagnose → spec → run → review) is the same in both
-files.
+The canonical six-step install → init → diagnose → spec → run → review
+sequence is in [`README.md`](README.md#start-your-first-run). Run those
+commands from a human-operated shell outside any Ralph-managed agent
+session.
 
 - `ralph --init` provisions the default local work surface and shipped
   baseline skills.
 - `ralph --diagnose` is the **pre-flight check** — it shows which
   baseline helpers are healthy, missing, unreachable, degraded, or
-  need repair before you spend a real run on them. See
-  [diagnostics.md](ralph-workflow/docs/sphinx/diagnostics.md) for what
-  each check proves.
+  need repair before you spend a real run on them.
 
 ## What success looks like
 
@@ -56,9 +50,8 @@ morning after.
 
 ### `ralph --diagnose` should report all-healthy before you start
 
-After step 4 in [Exact first steps](#exact-first-steps), the pre-flight
-report should show every line green, with no missing, degraded, or
-needs-repair signals:
+After step 4, the pre-flight report should show every line green, with
+no missing, degraded, or needs-repair signals:
 
 ```text
 Ralph Workflow Diagnostics
@@ -74,10 +67,9 @@ Ralph Workflow Diagnostics
 All checks passed. Ready for `ralph`.
 ```
 
-If a line is red, `--diagnose` tells you what is missing (e.g. an agent
-CLI not on `PATH`), unreachable (e.g. an MCP upstream), or degraded
-(e.g. a capability whose provider key is unset). Fix that line before
-you spend a real run on it. The full failure-mode table is in
+If a line is red, `--diagnose` tells you what is missing, unreachable,
+or degraded. Fix that line before you spend a real run on it. The full
+failure-mode table is in
 [diagnostics.md](ralph-workflow/docs/sphinx/diagnostics.md).
 
 ### A successful run leaves a finish-receipt you can review
@@ -95,13 +87,11 @@ the feature, check the receipts, then decide the next action.
 
 ## Where to go next
 
-- [first-task-guide.md](ralph-workflow/docs/sphinx/first-task-guide.md) —
-  choose the right task before you draft your spec
-- [diagnostics.md](ralph-workflow/docs/sphinx/diagnostics.md) — what
-  `ralph --diagnose` actually checks
-- [agents.md](ralph-workflow/docs/sphinx/agents.md) — selection,
-  authentication, and invocation for every supported agent
+- [README.md](README.md) — back to the public storefront
 - [docs/README.md](docs/README.md) — the docs map (routes by intent)
 - [ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst) —
   the maintained operator manual
-- [README.md](README.md) — back to the public storefront
+- [ralph-workflow/docs/sphinx/diagnostics.md](ralph-workflow/docs/sphinx/diagnostics.md) —
+  what `ralph --diagnose` actually checks
+- [ralph-workflow/docs/sphinx/agents.md](ralph-workflow/docs/sphinx/agents.md) —
+  selection, authentication, and invocation for every supported agent

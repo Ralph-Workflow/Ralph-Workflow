@@ -178,7 +178,7 @@ Phases that share a drain must agree on `artifact_history.enabled`; the policy l
 
 Phases that have `artifact_history` enabled receive an `ARTIFACT_HISTORY_PATH` template variable that points to the history `index.md` when it exists, plus an `ARTIFACT_HISTORY_DIR` variable that points to the containing archive directory. These variables are empty when no history is present, and the template renders no history section in that case.
 
-This applies to both planning prompts (`planning.jinja`, `planning_edit.jinja`, and their fallbacks) and development prompts (`developer_iteration.jinja`, `developer_iteration_continuation.jinja`, `developer_iteration_fallback.jinja`). See {doc}`prompts` for details.
+This applies to both planning prompts (`planning.jinja`, `planning_edit.jinja`, and their fallbacks) and development prompts (`developer_iteration.jinja`, `developer_iteration_continuation.jinja`, `developer_iteration_fallback.jinja`). See [Getting Started](getting-started.md) for the run-spec / agent-prompt role.
 
 ### Implementation
 

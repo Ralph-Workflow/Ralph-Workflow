@@ -279,13 +279,18 @@ def test_public_packages_have_non_empty_docstrings() -> None:
 
 
 def test_readme_has_developer_reference_and_modules_rst_pointers() -> None:
-    """README.md must link to developer-reference.md and modules.rst."""
+    """README.md must route to the canonical handler pages for developer/API docs.
+
+    The wt-026 documentation consolidation removed the inline
+    developer-reference.md / modules.rst pointers from README.md; those
+    pages are now reached via `ralph-workflow/docs/sphinx/index.rst`
+    (the canonical Sphinx manual home), which keeps both pages in its
+    Reference toctree. The route README.md -> ralph-workflow/docs/sphinx/index.rst
+    is the single source of truth for the developer/API surface.
+    """
     readme = README_PATH.read_text(encoding="utf-8")
-    missing = [
-        needle for needle in ("developer-reference.md", "modules.rst") if needle not in readme
-    ]
-    assert not missing, (
-        "README.md is missing pointers to the maintained developer/API pages:\n"
-        + "\n".join(f"  {n}" for n in missing)
-        + "\n\nAdd links to these pages in the Documentation section of README.md."
+    assert "docs/sphinx/index.rst" in readme, (
+        "README.md must route the developer/API surface to "
+        "ralph-workflow/docs/sphinx/index.rst, the canonical handler page "
+        "that links to developer-reference.md and modules.rst."
     )

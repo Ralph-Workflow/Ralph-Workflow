@@ -14,7 +14,6 @@ The agent subsystem in Ralph coordinates executing, composing, and registering A
 - [Update an existing agent](adding-a-new-agent.md#update-an-existing-agent)
 - [Remove an agent](adding-a-new-agent.md#remove-an-agent)
 - [Understand the architecture](architecture.md)
-- [Follow the timeout policy](timeout-policy.md)
 
 ## Source of Truth
 
@@ -40,9 +39,7 @@ The table below maps the primary public agent subsystem symbols to their declari
 - `memory-lifecycle.md` — bounded-accumulator rules for agent-owned
   collections (complements `ralph/testing/audit_resource_lifecycle.py`)
 - `pro-contract.md` — Pro support layer contract
-- `timeout-policy.md` — idle-watchdog and per-phase timeout policy
-- `watchdog-architecture.md` / `watchdog-spec.md` — watchdog design and
-  invariants
+- `watchdog-spec.md` — watchdog design and invariants
 
 ## Cross-reference
 

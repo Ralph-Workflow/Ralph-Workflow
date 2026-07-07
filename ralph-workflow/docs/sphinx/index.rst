@@ -3,9 +3,16 @@
 Ralph Workflow
 ==============
 
-**Hand your coding agents a spec tonight. Wake up to reviewable, tested commits.**
+Ralph Workflow is **the operating system for autonomous coding** — a
+free and open-source **AI agent orchestrator** built on a **simple
+Ralph-loop core** that becomes **powerful in composition**. It ships
+with a **strong default workflow for writing software** that you can
+adopt **as-is first** and extend later.
 
-See the canonical product positioning in the [root README.md](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md).
+Hand it a well-specified coding task, let the agents plan, build,
+verify, and fix, and come back to reviewable, tested work. See the
+canonical product positioning in the
+`root README.md <https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md>`_.
 
 Install and run
 ---------------
@@ -29,19 +36,12 @@ Where to go next
 This page is the maintained operator manual home.
 
 If you are brand new, start with :doc:`getting-started`.
-If you need configuration or operator detail, start with :doc:`configuration` or :doc:`reference`.
+If you need configuration or operator detail, start with :doc:`configuration`.
 If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
 
 .. note::
 
    New here? Start with :doc:`getting-started` before you dive into the rest of the manual.
-
-.. tip::
-
-   Want a concrete artifact to judge the product by? See
-   :doc:`example-review-bundle` for a full empty-name-validation
-   finish-receipt — a real, unedited handoff you read in the
-   morning instead of a transcript.
 
 .. toctree::
    :hidden:
@@ -49,11 +49,6 @@ If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
    :maxdepth: 1
 
    getting-started
-   quickstart
-   prompts
-   first-task-guide
-   first-task-prompt-templates
-   diagnostics
 
 .. toctree::
    :hidden:
@@ -61,25 +56,16 @@ If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
    :maxdepth: 1
 
    configuration
-   agents
-   reference
-   advanced-pipeline-configuration
-   advanced-artifact-configuration
-   advanced-mcp-configuration
-   parallel-mode
-   policy-explanation
+   cli
+   troubleshooting
 
 .. toctree::
    :hidden:
-   :caption: Concepts / explanation
+   :caption: Concepts
    :maxdepth: 1
 
    concepts
    ralph-loop
-   policy-driven-pipeline
-   phase-routing
-   artifact-lifecycle
-   watchdogs-and-timeouts
    verification-model
 
 .. toctree::
@@ -87,43 +73,8 @@ If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
    :caption: Reference
    :maxdepth: 1
 
-   cli
-   mcp-tools
-   mcp-architecture
    artifacts
+   mcp-tools
    recovery
-   supervising-api
-   troubleshooting
-   versioning
-   changelog
-   pro-support
    modules
-   quick-reference
    developer-reference
-   developer-internals
-   local-web-access
-   mcp-tool-restriction
-   display
-   transcript
-   agent-compatibility
-
-.. toctree::
-   :hidden:
-   :caption: Proof
-   :maxdepth: 1
-
-   example-review-bundle
-
-.. toctree::
-   :hidden:
-   :caption: How-to
-   :maxdepth: 1
-
-   review-ai-coding-output-before-merge
-
-.. toctree::
-   :hidden:
-   :caption: Archive / Migration
-   :maxdepth: 1
-
-   policy-driven-overhaul-migration

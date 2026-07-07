@@ -431,6 +431,6 @@ after a long-running session shows OOM in production.
 
 - `ralph/process/README.md` — ProcessManager reference
 - `ralph/mcp/ARCHITECTURE.md` — MCP package architecture
-- `docs/agents/timeout-policy.md` — idle watchdog timeout policy
+- `ralph/watchdogs/` — idle watchdog timeout policy and invariants
 - `ralph/testing/audit_mcp_timeout.py` — the audit implementation
 - `tests/test_audit_mcp_timeout.py` — audit regression tests

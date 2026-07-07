@@ -69,3 +69,29 @@ post-2026-05-01 timestamp clause of the keep rule.
 When reading a legacy page, cross-check every claim against the maintained
 manual and Python source. If you find a contradiction, **the Python
 implementation is authoritative**.
+
+## Read this before opening anything in this directory
+
+The pages that used to live under `docs/legacy-rust/` have been moved
+out of the canonical docs tree into `tmp/legacy-rust-archive/` so they
+cannot compete with the maintained Python docs for the reader's
+attention or be picked up by current toctrees and linkcheckers. The
+remaining pages under `docs/legacy-rust/` are intentionally tiny — they
+exist only so historical cross-references still resolve to something
+useful instead of 404'ing into the quarantined archive.
+
+If you arrived here from a link in the maintained manual, treat every
+word in the quarantined archive as a description of the retired Rust
+implementation, not the maintained Python package. **Do not act on
+any guidance here without first confirming it is consistent with the
+current Python implementation.** When in doubt, the Python source
+under `ralph-workflow/ralph/` and the maintained operator manual at
+[`ralph-workflow/docs/sphinx/index.rst`](../../ralph-workflow/docs/sphinx/index.rst)
+are the single source of truth.
+
+The archived files are inventoried in `tmp/legacy-rust-archive/INDEX.md`,
+which records the original relative path and line count for every file
+that was moved. The archive itself is gitignored because the canonical
+docs surface does not depend on it; anyone investigating the retired
+runtime can `git log -- docs/legacy-rust/<file>` to trace the history
+of any page, or read the moved copies directly from the working tree.

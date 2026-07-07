@@ -491,7 +491,7 @@ def test_pipeline_rejects_empty_agent_chain() -> None:
 
 ## Documentation Quality
 
-- **Single source of truth:** all test strategy lives in `docs/agents/testing-guide.md`. Other files (`docs/agents/integration-tests.md`) are redirect stubs.
+- **Single source of truth:** all test strategy lives in `docs/agents/testing-guide.md`.
 - **Update docs in the same commit** as the behavior or architecture change.
 - **Keep examples runnable.** Remove stale patterns immediately when the production API changes.
 - **Every `@pytest.mark.skip` requires an issue URL** (enforced by `make verify`).

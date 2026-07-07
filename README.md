@@ -6,31 +6,21 @@
 
 ## What it is
 
-Ralph Workflow is **the autopilot for coding agents** — a free and
-open-source operating system for autonomous coding, an AI agent orchestrator
-built around a simple Ralph-loop core that becomes powerful through
-composition. The product category behind it is **Loop Engineering**: a
-pattern where a coding agent iterates plan → build → verify → fix in a loop
-until checks pass, with the human reviewing outcomes rather than reading
-every step. See [USERS.md](docs/community/users.md) for the broader community directory.
+Ralph Workflow is **the operating system for autonomous coding** — a
+free and open-source **AI agent orchestrator** built on a **simple
+Ralph-loop core** that becomes **powerful in composition**. It ships
+with a **strong default workflow for writing software** that you can
+adopt **as-is first** and extend later.
 
-**Hand it a well-specified coding task, let the agents plan, build,
-verify, and fix, and come back to reviewable, tested work.**
-
-The default workflow is strong enough to adopt as-is, before you customize
-anything. The full operator manual lives under
-[`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/index.rst)
-and covers the
-[Quickstart](ralph-workflow/docs/sphinx/quickstart.md),
-[Developer reference](ralph-workflow/docs/sphinx/developer-reference.md),
-and the [API reference (`modules.rst`)](ralph-workflow/docs/sphinx/modules.rst).
-This page intentionally leaves out the deeper operator material
-because that material lives in the canonical pages above.
+Hand it a well-specified coding task, let the agents plan, build,
+verify, and fix, and come back to reviewable, tested work. The full
+operator manual lives under
+[`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/index.rst).
 
 ## Who it's for
 
 Ralph Workflow fits developers and small teams with engineering work that
-is **too big to babysit and too risky to trust blindly**:
+is too big to babysit and too risky to trust blindly:
 
 - **The solo builder.** Side projects with real spec depth — you know
   what to build, but you're one person. Set `PROMPT.md` before bed,
@@ -39,13 +29,13 @@ is **too big to babysit and too risky to trust blindly**:
   verification that your agents shipped what you asked for, not what
   they guessed.
 - **The AI tool builder.** You are already wiring Claude Code (or
-  Codex, OpenCode, Nanocoder, AGY, Pi) into your workflow. Ralph Workflow
-  gives you the loop pattern — phase routing, recovery,
-  checkpointing — as infrastructure instead of something you'd
-  build yourself.
+  Codex, OpenCode, Nanocoder, AGY, Pi) into your workflow. Ralph
+  Workflow gives you the loop pattern — phase routing, recovery,
+  checkpointing — as infrastructure instead of something you'd build
+  yourself.
 
 **Ralph Workflow is not for** one-line fixes, vague prompts, or repos
-without tests. It is for **ambitious, well-specified work** you would
+without tests. It is for ambitious, well-specified work you would
 trust a capable colleague to do unattended. A repo without guardrails
 will produce results that reflect that.
 
@@ -65,17 +55,17 @@ agent session.
 
 - `ralph --init` provisions the default local work surface and shipped
   baseline skills.
-- `ralph --diagnose` is the **pre-flight check**: it verifies your agent
+- `ralph --diagnose` is the pre-flight check: it verifies your agent
   CLIs, MCP servers, and capability bundles are healthy. See the
-  [diagnostics page](ralph-workflow/docs/sphinx/diagnostics.md) for what each
-  check proves.
+  [diagnostics page](ralph-workflow/docs/sphinx/diagnostics.md) for
+  what each check proves.
 
 When you come back, ask one question: **would I merge this?** If yes,
 give it a harder task next. If no, tighten the spec, the checks, or
 the task choice and run again.
 
-The shortest path is [START_HERE.md](START_HERE.md). The full walkthrough
-is in the [maintained operator manual](ralph-workflow/docs/sphinx/index.rst).
+The shortest path is [START_HERE.md](START_HERE.md). The full
+walkthrough is in the [maintained operator manual](ralph-workflow/docs/sphinx/index.rst).
 
 ## Trust and safety boundaries
 
@@ -85,37 +75,32 @@ These are not negotiable. They are how the tool is designed:
   upload your code or data to a cloud service. Crash reports are
   anonymous and opt-out-able — see *Privacy* in the package README.
 - **Agent authentication is yours, not Ralph's.** Ralph Workflow does
-  not store, read, or proxy agent credentials. Each agent CLI uses its
-  own native authentication (vendor login or API key). You authenticate
-  each agent first, and Ralph Workflow then invokes those CLIs as-is.
-  See [the Agent CLI lifecycle page](ralph-workflow/docs/sphinx/agents.md)
-  for the full selection, detection, and invocation story.
+  not store, read, or proxy agent credentials. Each agent CLI uses
+  its own native authentication (vendor login or API key). You
+  authenticate each agent first, and Ralph Workflow then invokes those
+  CLIs as-is.
 - **Branch / worktree expectations.** A long run writes files and may
   create branches. Run on a clean worktree and review with your normal
   git workflow before merge.
 - **Unattended approval implications.** "Unattended" means agents may
-  keep writing while you sleep. Have backups and branch protection. See
-  [`watchdogs-and-timeouts.md`](ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md)
-  and [`recovery.md`](ralph-workflow/docs/sphinx/recovery.md) for the
-  safety model.
-- **Cost.** Agent calls are on your cloud bill. Ralph Workflow itself has
-  no per-run fee.
-- **Human responsibility.** Agents handle the long middle. You handle the
-  judgment: run the finished program against your real environment and
-  data, exercise the feature, check the behavior against your original
-  intent, inspect the receipts, then decide the next action — push a
-  solo-dev branch, merge a pull request, ask for changes, revert, rerun,
-  or throw the result away. Code review is supporting evidence, not the
-  only acceptance mechanism.
+  keep writing while you sleep. Have backups and branch protection.
+- **Cost.** Agent calls are on your cloud bill. Ralph Workflow itself
+  has no per-run fee.
+- **Human responsibility.** Agents handle the long middle. You handle
+  the judgment: run the finished program against your real environment
+  and data, exercise the feature, check the behavior against your
+  original intent, inspect the receipts, then decide the next action —
+  push a solo-dev branch, merge a pull request, ask for changes, revert,
+  rerun, or throw the result away. Code review is supporting evidence,
+  not the only acceptance mechanism.
 
 ## Supported agents
 
 Ralph Workflow ships with first-class support for six user-facing agent
 CLIs: Claude Code (interactive + headless), Codex, OpenCode, Nanocoder,
-Google Anti Gravity (AGY), and Pi. Each has a documented end-to-end
-verification path. See
-[Agent Compatibility](ralph-workflow/docs/sphinx/agent-compatibility.md) for
-the full matrix and known caveats.
+Google Anti Gravity (AGY), and Pi. See
+[Agent Compatibility](ralph-workflow/docs/sphinx/agent-compatibility.md)
+for the full matrix and known caveats.
 
 ## Runtime, license, project home
 
@@ -130,26 +115,24 @@ the full matrix and known caveats.
 
 ## Documentation route
 
-The shortest read is the README → START_HERE → docs-map → manual route:
+The shortest read is README → START_HERE → docs-map → manual:
 
 1. **README.md** (this file) — what it is, who it's for, fastest install
 2. **[START_HERE.md](START_HERE.md)** — guided first run
-3. **[docs/README.md](docs/README.md)** — route by intent (evaluate / install
-   / configure / contribute / understand architecture)
+3. **[docs/README.md](docs/README.md)** — route by intent
 4. **[ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst)**
    — the maintained operator manual
 
-For contributor and architecture detail, the
-[`docs/architecture/`](docs/architecture/README.md) overview explains the
-Python runtime end-to-end.
+For contributor and architecture detail, see
+[`docs/architecture/`](docs/architecture/README.md) and
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Ecosystem and attribution
 
 The Ralph Loop pattern is attributed to
 [Geoffrey Huntley (ghuntley.com/ralph)](https://ghuntley.com/ralph).
 Ralph Workflow is an independent reference implementation — not the
-pattern's originator. See [USERS.md](docs/community/users.md) for the community
-directory of pattern derivatives and live integrations.
+pattern's originator.
 
 ## What a run leaves you
 
@@ -177,19 +160,5 @@ test coverage for empty and whitespace-only input.
 - confirm no unrelated flow changed
 ```
 
-The inline finish-receipt block above is the current proof of what a
-successful run leaves you. Historical terminal captures from an older
-release are archived under [assets/demo/](assets/demo/README.md) for
-reference; the current output shape may differ.
-
 For the meaning of each finish-receipt block, see the
 [operator manual](ralph-workflow/docs/sphinx/index.rst).
-
-## Call to action
-
-Pick **one**. They are all signals that shape what we build next.
-
-- ▶ [Run your first real task](START_HERE.md)
-- 📖 [Read the operator manual](ralph-workflow/docs/sphinx/index.rst)
-- 🐛 [Report a first-run friction](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new)
-- 🤝 [Contribute](CONTRIBUTING.md)

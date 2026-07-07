@@ -95,6 +95,11 @@ suppress_warnings = [
     # Suppress inventory fetch failures: docs.python.org may be unreachable.
     "intersphinx",
     "myst.xref_missing",
+    # The wt-026 toctree trim intentionally leaves many reference / concept
+    # pages reachable only by direct URL rather than via the index toctree.
+    # Sphinx emits a `toc.not_included` warning for every such orphan; this
+    # suppression is the documented pattern (https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-suppress_warnings).
+    "toc.not_included",
 ]
 
 source_suffix = {

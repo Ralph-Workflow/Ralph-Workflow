@@ -305,7 +305,7 @@ See [Recovery](recovery.md) for retry budget and fallover behavior.
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough
-- [Quickstart](quickstart.md) — initial setup and first run
+- [Getting Started](getting-started.md) — initial setup and first run
 - [CLI Reference](cli.md) — all flags and sub-commands
 - [Configuration Reference](configuration.md) — config file structure and FAQ
 - [Recovery](recovery.md) — failure classification and retry behavior

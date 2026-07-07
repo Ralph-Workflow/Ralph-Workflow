@@ -104,9 +104,7 @@ def test_concepts_doc_does_not_contain_banned_phrase(concepts_doc: str, phrase: 
     )
 
 
-_ARCH_DOC_PATH = (
-    Path(__file__).parent.parent.parent / "docs" / "architecture" / "parallel-fan-out.md"
-)
+_ARCH_DOC_PATH = Path(__file__).parent.parent / "docs" / "sphinx" / "parallel-mode.md"
 
 
 @pytest.fixture()

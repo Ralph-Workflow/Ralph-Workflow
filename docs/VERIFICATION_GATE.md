@@ -22,15 +22,15 @@
 - "X credits Ralph Loop" → X credits ghuntley.com/ralph pattern — this is NOT a Ralph Workflow credit and must be labeled as pattern-credit only.
 - Conflating the two is a FALSE claim.
 
-### 4. No claim may appear on a public surface without a CLAIMS_LEDGER.md entry marked ✅.
+### 4. No claim may appear on a public surface without an entry in `.agent/claims-ledger-process.md` marked ✅.
 - ⬜ entries → surfaces must either add `(source, date)` or remove the claim.
 - 🔀 entries → must be reclassified as pattern-credit with clear disambiguation, or removed.
 - ❌ entries → must be removed from public surfaces immediately.
 
-### 5. USERS.md (canonical community directory) entries must credit Ralph Workflow specifically, not the Ralph Loop pattern.
+### 5. Adoption-claim entries must credit Ralph Workflow specifically, not the Ralph Loop pattern.
 - A community entry means: a real builder used the `ralph-workflow` PyPI package and publicly acknowledged it.
 - Pattern convergence ("same primitives, independent implementation") is NOT a Ralph Workflow credit and must be labeled as pattern-credit only.
-- The 2026-07-07 docs cleanup consolidated the four near-duplicate community surfaces (`USERS.md`, `SHOWCASE.md`, `ECOSYSTEM.md`, `COMPARISONS.md`) into the single canonical `USERS.md`. The rule applies to USERS.md.
+- The wt-026 documentation consolidation retired `USERS.md`, `SHOWCASE.md`, `ECOSYSTEM.md`, `COMPARISONS.md`, and `docs/community/`. Adoption-claim audit rows now live in `.agent/claims-ledger-process.md`; the public surfaces contain no community directory of their own.
 
 ---
 
@@ -40,17 +40,17 @@ The script at `scripts/verify_claims.sh` must pass (exit 0) before any deploy.
 
 It checks:
 1. `grep -rP '[0-9]+,\d{3}\+|[0-9]+\s+(tests|PRs|modules|agents|LOC|HN points)'` on all public surfaces → each hit must have `(source, date)` within 80 chars.
-2. `grep -r 'acquired'` → each hit must have a CLAIMS_LEDGER.md ✅ entry.
+2. `grep -r 'acquired'` → each hit must have a `.agent/claims-ledger-process.md` ✅ entry.
 3. `grep -r 'credits Ralph'` → each hit must NOT conflate pattern with product.
 4. `grep -r 'asciinema\|JDnY0'` → must return zero hits (dead links).
-5. USERS.md entries count: every entry must credit `ralph-workflow` PyPI package or Codeberg repo by name.
+5. Adoption-claim entries: every entry in `.agent/claims-ledger-process.md` must credit the `ralph-workflow` PyPI package or Codeberg repo by name.
 
 ---
 
 ## Audit Schedule
 
 - **Pre-deploy:** verify_claims.sh runs automatically.
-- **Weekly:** full CLAIMS_LEDGER.md re-audit (re-verify stale claims, check for new surfaces).
+- **Weekly:** full `.agent/claims-ledger-process.md` re-audit (re-verify stale claims, check for new surfaces).
 - **On any new blog post or page:** claim extraction and ledger entry before deploy.
 
 ---

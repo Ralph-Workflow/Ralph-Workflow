@@ -11,7 +11,7 @@ If you only need to run Ralph Workflow, start with [Operator Reference](referenc
 
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
-- [Prompts](prompts.md) — prompt template loading, rendering, and payload materialization
+- [Getting Started](getting-started.md) — run-spec authoring, prompt template shape, and proof-of-finish handoff
 - [Transcript and Display Reference](transcript.md) — output event structure and rendering behavior
 - [Supervising API](supervising-api.md) — trackable instance model for orchestration use cases
 
@@ -20,8 +20,6 @@ If you only need to run Ralph Workflow, start with [Operator Reference](referenc
 :hidden:
 
 mcp-architecture
-artifacts
-prompts
 transcript
 supervising-api
 ```
@@ -130,6 +128,6 @@ documented default in their first `--init` output.
 
 - [Developer Reference](developer-reference.md) — top-level developer docs index
 - [Configuration](configuration.md) — operator-facing configuration reference
-- [Policy-Driven Overhaul Migration](policy-driven-overhaul-migration.md) — migration details
+- [Configuration](configuration.md) — operator-facing reference including the policy-migration section
 - [Python API Reference](modules.rst) — autodoc for the `ralph.*` package
 - [Release & Versioning](versioning.md) — release and publishing policy

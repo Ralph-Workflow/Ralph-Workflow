@@ -1,8 +1,8 @@
 """Regression tests for docs/agents family synchronization.
 
 Ensures that docs/agents/{verification,testing-guide,type-ignore-policy,
-parallelization,workspace-trait}.md are current Python guidance and that
-python-verification.md and integration-tests.md remain explicit redirect stubs.
+workspace-trait}.md are current Python guidance. parallelization.md was
+merged into the canonical home and removed in the wt-026 consolidation.
 """
 
 from __future__ import annotations
@@ -11,19 +11,12 @@ import pytest
 
 from tests.doc_roots import REPO_ROOT_DOCS_AGENTS_DIR
 
-# Current Python guidance files
+# Current Python guidance files (parallelization.md removed in wt-026).
 _CURRENT_GUIDES = [
     "verification.md",
     "testing-guide.md",
     "type-ignore-policy.md",
-    "parallelization.md",
     "workspace-trait.md",
-]
-
-# Redirect stubs (should remain as compatibility shims)
-_REDIRECT_STUBS = [
-    "python-verification.md",
-    "integration-tests.md",
 ]
 
 

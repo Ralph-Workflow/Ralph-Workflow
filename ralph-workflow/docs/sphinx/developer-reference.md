@@ -8,7 +8,7 @@ If your job is simply to install, configure, and run Ralph Workflow, start with 
 
 - [Operator Reference](reference.md) stays focused on commands, config, and day-to-day lookup
 - [Developer Internals](developer-internals.md) groups the maintainer-facing runtime and architecture pages, including Agents, MCP, Artifacts, Prompts, and Transcript
-- [Policy-Driven Overhaul Migration](policy-driven-overhaul-migration.md) covers migration details and deeper policy-model background
+- [Configuration](configuration.md) covers operator-facing reference and the policy-migration background
 - [Python API Reference](modules.rst) documents the public `ralph.*` package surface. The reference is integrated with hand-written bridge paragraphs under each top-level group (Top-Level, CLI, Config, Policy, Pipeline, Skills, Git, Phases, Agents, MCP, Pro Support) — see these anchor entries for the most-edited surfaces:
   - [`ralph.pipeline.runner`](modules.html#ralph.pipeline.runner) — the Ralph-loop run loop, the effect router, and the per-iteration state transitions
   - [`ralph.mcp.server`](modules.html#ralph.mcp.server) — the in-process MCP server, factory / lifecycle / runtime, and the `RestartAwareMcpBridge` contract
