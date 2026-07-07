@@ -1,16 +1,9 @@
 # Start Here: try Ralph Workflow on one real backlog task
 
-> **Codeberg is the primary repo.** Star, watch, and report issues there:
-> <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> **Codeberg is primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 > GitHub is a read-only mirror.
 
-Ralph Workflow is **the autopilot for coding agents** — a free and
-open-source operating system for autonomous coding, an AI agent
-orchestrator built around a simple Ralph-loop core that becomes powerful
-through composition.
-
-**Hand it a well-specified coding task, let the agents plan, build,
-verify, and fix, and come back to reviewable, tested work.**
+See the canonical product positioning in [README.md](README.md).
 
 This is the shortest serious first-run path for a repo visitor.
 The default workflow is strong enough to adopt as-is, before you
@@ -46,7 +39,7 @@ Have these ready before you start:
 Install: see [`README.md`](README.md#start-your-first-run) for the canonical
 install commands and prerequisites. The six-step first-run walkthrough
 (install → init → diagnose → spec → run → review) is the same in both
-files; root README is the single source of truth for the install block.
+files.
 
 - `ralph --init` provisions the default local work surface and shipped
   baseline skills.
@@ -91,11 +84,10 @@ you spend a real run on it. The full failure-mode table is in
 
 After step 6 returns, you should find a `development_result` artifact
 that names the change, the checks, and the reviewer focus without
-reconstructing the run. The canonical finish-receipt is in
-[`README.md`](README.md) — root README is the single source for the
-verbatim empty-name-validation receipt block ("What a run leaves you"
-section). A successful run leaves a short artifact you can read in
-under a minute: outcome, changed files, checks, reviewer focus.
+reconstructing the run. The canonical finish-receipt block is in
+[`README.md`](README.md) under "What a run leaves you". A successful
+run leaves a short artifact you can read in under a minute: outcome,
+changed files, checks, reviewer focus.
 
 The morning-after review matters more than the running transcript.
 Open the diff, run the program against your real environment, exercise

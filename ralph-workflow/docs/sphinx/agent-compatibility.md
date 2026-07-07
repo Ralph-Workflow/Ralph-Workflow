@@ -3,8 +3,7 @@
 This page documents which agent CLIs Ralph Workflow supports and the per-agent compatibility story.
 
 
-> **Codeberg is the primary repo for Ralph Workflow.**
-> Inspect, follow, and report compatibility issues there first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> **Codeberg is primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
 This guide documents compatibility between Ralph Workflow and various AI coding agents in its configurable review orchestration. Ralph Workflow's review phase is designed to be agent-agnostic in its prompts, but different agents may have varying levels of success due to differences in JSON output format, tool execution behavior, and agent-specific quirks.
 

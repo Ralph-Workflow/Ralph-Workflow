@@ -1,9 +1,6 @@
 # Project Code Style Guide
 
 This page is the style guide for the ralph-workflow codebase.
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
-
 
 This directory (`docs/code-style/`) contains only Python-current
 material:

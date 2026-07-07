@@ -1,13 +1,8 @@
 # Documentation Map (package-side router)
 
-This page is the maintained operator manual home for the ralph-workflow package.
-through composition. **Hand it a well-specified coding task, let the
-agents plan, build, verify, and fix, and come back to reviewable, tested
-work.** The default workflow is already strong enough to adopt as-is
-before you customize anything.
+See the canonical product positioning in [README.md](../README.md).
 
-> **Codeberg is the primary repo.** Star, watch, and report issues there:
-> <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> **Codeberg is primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 > GitHub is a read-only mirror.
 
 This page is the **package-side documentation router**. It groups every doc
@@ -17,15 +12,11 @@ operator manual where it lives.
 Use this page after [`../README.md`](../README.md) (public storefront) and
 [`../START_HERE.md`](../START_HERE.md) (fastest first run).
 
-Every route bullet below is tagged with its doc-family role
-(`tutorial` / `how-to` / `reference` / `explanation` / `proof` /
-`internals`) so you can match a route to the kind of page you need.
-
 ## Where each kind of doc lives
 
 | Doc family                | Path                                                | Purpose                                                         |
 | ------------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
-| Operator manual           | `sphinx/`                                           | Maintained tutorial / how-to / reference / explanation          |
+| Operator manual           | `sphinx/`                                           | Maintained manual for operators and contributors                |
 | Agent-authoring contracts | `agents/`                                           | Adding or modifying the agent subsystem (Python package)        |
 | Architecture              | `architecture/`                                     | ADRs and architectural decision records                         |
 | MCP docs                  | `mcp/`                                              | MCP-specific reference and cookbook                             |
@@ -34,56 +25,52 @@ Every route bullet below is tagged with its doc-family role
 
 ## Route by intent
 
-### I'm an operator (running Ralph Workflow) — tutorial + how-to + reference
+### I'm an operator (running Ralph Workflow)
 
 Start with the maintained manual:
 
-- **[Manual home](sphinx/index.rst)** — how-to + reference
-- [Getting Started](sphinx/getting-started.md) — tutorial
-- [Diagnostics](sphinx/diagnostics.md) — how-to
-- [Agent CLI lifecycle](sphinx/agents.md) — how-to + reference
-- [Configuration](sphinx/configuration.md) — reference
-- [CLI reference](sphinx/cli.md) — reference
-- [Troubleshooting](sphinx/troubleshooting.md) — how-to
+- **[Manual home](sphinx/index.rst)**
+- [Getting Started](sphinx/getting-started.md)
+- [Diagnostics](sphinx/diagnostics.md)
+- [Agent CLI lifecycle](sphinx/agents.md)
+- [Configuration](sphinx/configuration.md)
+- [CLI reference](sphinx/cli.md)
+- [Troubleshooting](sphinx/troubleshooting.md)
 
-### I'm a contributor (changing the Python package) — how-to + internals
+### I'm a contributor (changing the Python package)
 
-- [`agents/README.md`](agents/README.md) — internals (agent-authoring contracts)
-- [`architecture/adr-0001-interrupt-architecture.md`](architecture/adr-0001-interrupt-architecture.md) —
-  internals (current ADR)
-- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — how-to (top-level contribution guide)
-- [Sphinx developer reference](sphinx/developer-reference.md) — reference
-- [Sphinx developer internals](sphinx/developer-internals.md) — internals
+- [`agents/README.md`](agents/README.md)
+- [`architecture/adr-0001-interrupt-architecture.md`](architecture/adr-0001-interrupt-architecture.md)
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md)
+- [Sphinx developer reference](sphinx/developer-reference.md)
+- [Sphinx developer internals](sphinx/developer-internals.md)
 
-### I'm comparing Ralph Workflow to other tools — explanation
+### I'm comparing Ralph Workflow to other tools
 
-- [Manual comparisons index](sphinx/index.rst) — explanation (every
+- [Manual comparisons index](sphinx/index.rst) (every
   Ralph-vs-other page in the maintained manual; see the *Comparisons*
   section)
 
-### I'm debugging an MCP-specific issue — how-to + reference
+### I'm debugging an MCP-specific issue
 
-- [`mcp/` directory](mcp/) — reference (MCP tool restriction, transport notes,
+- [`mcp/` directory](mcp/) (MCP tool restriction, transport notes,
   and cookbook pages)
-- [Advanced MCP configuration](sphinx/advanced-mcp-configuration.md) — how-to
+- [Advanced MCP configuration](sphinx/advanced-mcp-configuration.md)
 
-### I'm investigating an architectural decision — internals + explanation
+### I'm investigating an architectural decision
 
-- [`architecture/`](architecture/) — internals (ADRs)
-- [`plans/`](plans/) — internals (Python-era plans)
+- [`architecture/`](architecture/) (ADRs)
+- [`plans/`](plans/) (Python-era plans)
 
-### I want to understand the system boundary — explanation
+### I want to understand the system boundary
 
-- [Manual `concepts.md`](sphinx/concepts.md) — explanation (terminology)
-- [Manual `ralph-loop.md`](sphinx/ralph-loop.md) — explanation (Ralph-loop mental model)
-- [Manual `policy-driven-pipeline.md`](sphinx/policy-driven-pipeline.md) —
-  explanation (policy interpretation)
-- [Manual `phase-routing.md`](sphinx/phase-routing.md) — explanation (phase lifecycle)
-- [Manual `artifact-lifecycle.md`](sphinx/artifact-lifecycle.md) — explanation (artifact submission flow)
-- [Manual `watchdogs-and-timeouts.md`](sphinx/watchdogs-and-timeouts.md) —
-  explanation (watchdog model)
-- [Manual `verification-model.md`](sphinx/verification-model.md) — explanation (what each
-  verification step proves)
+- [Manual `concepts.md`](sphinx/concepts.md) (terminology)
+- [Manual `ralph-loop.md`](sphinx/ralph-loop.md) (Ralph-loop mental model)
+- [Manual `policy-driven-pipeline.md`](sphinx/policy-driven-pipeline.md) (policy interpretation)
+- [Manual `phase-routing.md`](sphinx/phase-routing.md) (phase lifecycle)
+- [Manual `artifact-lifecycle.md`](sphinx/artifact-lifecycle.md) (artifact submission flow)
+- [Manual `watchdogs-and-timeouts.md`](sphinx/watchdogs-and-timeouts.md) (watchdog model)
+- [Manual `verification-model.md`](sphinx/verification-model.md) (what each verification step proves)
 
 ## Cross-tree role split
 

@@ -5,17 +5,7 @@ Ralph Workflow
 
 **Hand your coding agents a spec tonight. Wake up to reviewable, tested commits.**
 
-Ralph Workflow is **the autopilot for coding agents** —
-a free and open-source operating system for autonomous coding, an AI agent
-orchestrator built around a simple Ralph-loop core that becomes powerful
-through composition. It runs the coding agents you already use — Claude
-Code, Codex, OpenCode, Nanocoder, AGY, or Pi.dev — on your own machine.
-
-**Hand it a well-specified coding task, let the agents plan, build,
-verify, and fix, and come back to reviewable, tested work.**
-
-The default workflow is strong enough to adopt as-is before you customize
-anything.
+See the canonical product positioning in the [root README.md](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md).
 
 Install and run
 ---------------

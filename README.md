@@ -1,7 +1,6 @@
 # Ralph Workflow — the autopilot for coding agents
 
-> **Codeberg is primary.** Star, watch, fork, and report issues there first:
-> <https://codeberg.org/RalphWorkflow/Ralph-Workflow> (verify: repo-exists)
+> **Codeberg is primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 > GitHub is a read-only mirror:
 > <https://github.com/Ralph-Workflow/Ralph-Workflow> (verify: repo-exists)
 
@@ -51,16 +50,6 @@ trust a capable colleague to do unattended. A repo without guardrails
 will produce results that reflect that.
 
 ## Start your first run
-
-<!--
-  Canonical-source marker for the install block:
-  README.md is the single source for this verbatim 6-step first-run block.
-  The same block is intentionally duplicated in START_HERE.md (its page role
-  is a guided first-run surface that needs self-contained exact steps).
-  Future editors MUST keep both blocks in sync; this comment is the marker.
-  The finish-receipt block lower on this page uses README.md as its single
-  source; START_HERE.md defers to README.md#what-a-run-leaves-you for it.
--->
 
 ```bash
 pipx install ralph-workflow        # 1. install
@@ -200,7 +189,6 @@ For the meaning of each finish-receipt block, see the
 
 Pick **one**. They are all signals that shape what we build next.
 
-- ⭐ [Star the primary repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 - ▶ [Run your first real task](START_HERE.md)
 - 📖 [Read the operator manual](ralph-workflow/docs/sphinx/index.rst)
 - 🐛 [Report a first-run friction](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new)

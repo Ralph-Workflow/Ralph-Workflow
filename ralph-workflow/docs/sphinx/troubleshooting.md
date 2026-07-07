@@ -210,10 +210,8 @@ INFO     META [run-end] agent_calls=7 content_blocks=12 thinking_blocks=4 tool_c
    width. This belongs on the troubleshooting reference page because
    operators who previously diagnosed narrow-terminal output by switching
    modes no longer have that lever; the consolidated single mode means
-   there is exactly one shape to recognise. What was pruned: the
-   wide-mode single-line counter grouping and the compact-mode 2-line
-   condensed format. What was merged: every width-driven branch in
-   ``parallel_display.py`` now renders identically.
+   there is exactly one shape to recognise. The status bar renders one
+   consistent layout at every supported terminal width.
 
 Key fields:
 

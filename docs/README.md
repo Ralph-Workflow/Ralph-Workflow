@@ -36,22 +36,21 @@ maintained package.
 
 ### I want to see who is using it
 
-See [`docs/community/users.md`](community/users.md) for the canonical
-adopters list, including pattern implementations and active
-community projects.
+See [`docs/community/users.md`](community/users.md) for community
+attribution; the canonical, audited adoption claims live in
+[`docs/CLAIMS_LEDGER.md`](CLAIMS_LEDGER.md).
 
 ### I want to see a real overnight run before I decide
 
 - [Example Review Bundle](../ralph-workflow/docs/sphinx/example-review-bundle.md)
 - [How to Review AI Coding Output Before You Merge](../ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md)
 
-### Legacy (Rust-era)
+### Legacy Rust-era reference (archived)
 
 Pages describing the **retired Rust implementation** are quarantined
 under [`docs/legacy-rust/`](legacy-rust/README.md), including the
-archived `docs/legacy-rust/performance/` performance notes. They are
-kept for historical context only; do not rely on them for current
-behavior.
+archived `docs/legacy-rust/performance/` performance notes.
+Quarantined historical material; do not use for current behavior.
 
 ## Primary repo
 

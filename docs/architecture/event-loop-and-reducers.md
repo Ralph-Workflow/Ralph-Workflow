@@ -1,9 +1,5 @@
 # Event Loop and Reducer Architecture
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 This document describes the pipeline event loop and reducer architecture: how `PipelineState`, events, and effects work together, and how the reducer dispatches routing decisions through policy rather than hardcoded match arms.
 
 The implementation lives in `ralph-workflow/ralph/`. All module references point to that package.

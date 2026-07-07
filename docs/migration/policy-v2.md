@@ -1,9 +1,5 @@
 # Policy v2 Migration Guide
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 This guide covers the conceptual changes and breaking changes introduced when Ralph Workflow
 moved to fully policy-driven orchestration, and explains how to migrate existing configurations.
 

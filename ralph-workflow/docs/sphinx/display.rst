@@ -386,10 +386,8 @@ phase and path remain visible at every applicable width.
    width. This belongs on the operator-facing reference page because
    operators who relied on the legacy override need to know the
    public API has changed; the consolidated single mode is one clear
-   surface to learn instead of three. What was pruned: the mode
-   thresholds table, the legacy env-var precedence row. What was
-   merged: every width-driven branch in ``parallel_display.py`` and
-   ``status_bar.py`` now renders identically.
+   surface to learn instead of three. The persistent bottom Status Bar
+   renders one consistent layout at every supported terminal width.
 
 The single default-mode layout:
 

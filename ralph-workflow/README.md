@@ -1,7 +1,6 @@
 # Ralph Workflow
 
-> **Codeberg is primary.** Star, watch, fork, and report issues there first:
-> <https://codeberg.org/RalphWorkflow/Ralph-Workflow> (verify: repo-exists)
+> **Codeberg is primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 > GitHub is a read-only mirror:
 > <https://github.com/Ralph-Workflow/Ralph-Workflow> (verify: repo-exists)
 
@@ -14,16 +13,7 @@ own machine, with your keys to yourself.
 
 ## What it is
 
-Ralph Workflow is an **operating system for autonomous coding**: the
-agents handle the long middle of engineering work while you handle the
-judgment that only a human can make.
-
-The simple Ralph-loop idea — plan, build, verify — becomes a
-**composable loop framework** under the hood: each phase can loop
-independently and hand off to the next, so a single `ralph` command
-spawns planning, development iteration, review, and fix cycles across
-multiple agents and then produces finished git commits you can review
-when you come back.
+See the canonical product positioning in the [root README.md](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md).
 
 ## Who it's for
 

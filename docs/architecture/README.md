@@ -1,9 +1,6 @@
 # Architecture Docs
 
 This page is the architecture-doc index for readers who need to understand Ralph Workflow's system boundaries before editing code.
-The simple core composes into a stronger workflow system for serious repo
-work, and the default workflow is strong enough to start with before you
-customize anything.
 
 This directory holds the **current Python-runtime architecture documentation**.
 For archived Rust-era design material, see

@@ -1,9 +1,5 @@
 # Weak-Model-Compatible JSON Schema Conventions
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 > Design guide for JSON Schemas that weak executor models can reliably follow.
 > Applies to all artifact schemas used in the MCP artifact submission flow.
 

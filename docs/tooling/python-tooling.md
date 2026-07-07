@@ -1,9 +1,5 @@
 # Python Tooling Guide
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 This document covers the Python tooling used in the Ralph Workflow project. All tooling commands run from the `ralph-workflow/` directory unless otherwise noted.
 
 ## Overview
@@ -281,25 +277,9 @@ make verify
 
 ## Development setup
 
-For a first-patch contributor path (`make dev` env sync, the dev-build vs stable-build `rdev` / `ralph` split, and the editable-install workflow), see [`ralph-workflow/CONTRIBUTING.md`](../../ralph-workflow/CONTRIBUTING.md). The contributor onboarding doc is the single source for local development setup; this tooling page stays focused on lint, typecheck, test, build, and distribution.
+For a first-patch contributor path (`make dev` env sync, the dev-build vs stable-build `rdev` / `ralph` split, and the editable-install workflow), see [`ralph-workflow/CONTRIBUTING.md`](../../ralph-workflow/CONTRIBUTING.md). The contributor onboarding doc covers local development setup; this tooling page stays focused on lint, typecheck, test, build, and distribution.
 
 If any step fails, `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and instructs the active AI agent to fix the failure immediately.
-
-<!-- docs-rubric review note (2026-07-01): the Homebrew row in the Distribution
-     Channels table was reframed from a working user install path
-     (`brew install ./Formula/ralph-workflow.rb`) to a contributor-only
-     non-published build scaffold. pipx remains the sole documented user
-     install path (already true in README.md and START_HERE.md). The
-     contributor formula-update recipe step 6 now cites the runnable
-     `make formula-check` (which runs `ruby -c Formula/ralph-workflow.rb`)
-     instead of the disabled `brew audit --strict Formula/...` form that
-     modern Homebrew rejects with `Error: Calling \`brew audit [path ...]\` is
-     disabled!`. The formula itself is now honest on every field: license
-     is AGPL-3.0-or-later, homepage is the project Homepage URL, head is
-     the Codeberg repo, and the url/sha256 stanzas are commented out as a
-     non-version-asserting release template. pipx as the sole user path
-     is the only difference from the previous table; the contributor
-     recipe is otherwise intact. -->
 
 ## Distribution Strategy
 
