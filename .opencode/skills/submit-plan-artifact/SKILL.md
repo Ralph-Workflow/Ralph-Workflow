@@ -33,10 +33,11 @@ Use this skill when you are about to call any of:
   echo payload rewrote the step numbers, or when you need to confirm the
   surviving step numbers before issuing another mutation.
 - `ralph_validate_draft` for a read-only dry-run of the cross-section
-  validator before finalizing. Returns `{"valid":true}` on success or
-  `{"valid":false,"errors":["summary: required field is missing"]}` on failure with the same error shape
-  the finalize path returns, so you can fix the offending sections and
-  re-run the dry-run before staging again.
+  validator before finalizing. Returns
+  `{"valid":true,"finalizable":true,"errors":[]}` on success or
+  `{"valid":false,"finalizable":false,"errors":[{"message":"summary.scope_items: Field required","type":"PlanArtifactValidationError","code":"SUMMARY_MISSING_SCOPE_ITEMS","repair":"Re-submit section='summary' with content.scope_items containing at least three native JSON objects."}]}`
+  on failure, so you can fix the offending sections and re-run the dry-run
+  before staging again.
 - `ralph_finalize_plan` once every required section is staged and valid.
 - `ralph_discard_plan_draft` only when you are truly starting over from a
   blank draft because the staged plan is unsalvageable. Do not use discard
