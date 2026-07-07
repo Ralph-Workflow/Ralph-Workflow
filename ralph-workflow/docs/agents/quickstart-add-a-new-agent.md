@@ -74,6 +74,9 @@ whose first element is the agent's `cmd`.
 ## Next steps
 
 - 14-kwarg advanced form: [adding-a-new-agent.md](adding-a-new-agent.md)
+- Full transport/runtime support, PTY behavior, parser visibility, MCP wiring,
+  and smoke-test gotchas:
+  [adding-a-new-agent.md#first-decision-registered-agent-or-new-transport](adding-a-new-agent.md#first-decision-registered-agent-or-new-transport)
 - Architecture: [architecture.md](architecture.md)
 - Update + Remove: [adding-a-new-agent.md](adding-a-new-agent.md#update-an-existing-agent),
   [adding-a-new-agent.md#remove-an-agent](adding-a-new-agent.md#remove-an-agent)

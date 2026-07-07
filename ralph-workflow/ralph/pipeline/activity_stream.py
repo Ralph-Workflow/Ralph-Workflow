@@ -483,6 +483,7 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
         "thinking": lambda: _render_text_line(agent_name, output.content, "dim"),
         "assistant": lambda: _render_text_line(agent_name, output.content, "dim"),
         "result": lambda: _render_text_line(agent_name, output.content, "dim"),
+        "status": lambda: _render_text_line(agent_name, output.content, "dim"),
         "tool_use": lambda: _render_tool_use_line(agent_name, output),
         "tool_result": lambda: _render_tool_result_line(agent_name, output.content),
         "error": lambda: _render_error_line(agent_name, output.content),

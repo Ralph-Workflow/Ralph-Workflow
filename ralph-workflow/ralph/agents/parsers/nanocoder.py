@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -13,6 +14,16 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.agents.idle_watchdog import SubagentPidRegistry
+
+_MAX_STATUS_EVENTS = 8
+_TURN_BOUNDARY_MARKER = "[claude turn boundary]"
+_CTX_PERCENT_RE = re.compile(r"\bctx:\s*\d+%")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _status_signature(text: str) -> str:
+    stable = _CTX_PERCENT_RE.sub("ctx:%", text)
+    return _WHITESPACE_RE.sub(" ", stable).strip()
 
 
 class NanocoderParser(GenericParser):
@@ -34,22 +45,27 @@ class NanocoderParser(GenericParser):
             subagent_pid_registry=subagent_pid_registry,
             subagent_source_label=subagent_source_label,
         )
-        self._status_emitted = False
+        self._status_signatures: tuple[str, ...] = ()
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
         normalized = normalize_vt_text(stripped).strip()
         yield from self._flush_accumulator()
         if not normalized:
             return
+        if normalized == _TURN_BOUNDARY_MARKER:
+            return
         if normalized.startswith("[plain] tool:"):
             yield from super()._classify_non_json_line(stripped)
             return
-        if self._status_emitted:
+        signature = _status_signature(normalized)
+        if signature in self._status_signatures:
             return
-        self._status_emitted = True
+        if len(self._status_signatures) >= _MAX_STATUS_EVENTS:
+            return
+        self._status_signatures = (*self._status_signatures, signature)
         yield AgentOutputLine(
             type="status",
-            content="interactive output",
+            content=normalized,
             raw=stripped,
             metadata={"event": "interactive_tui"},
         )
