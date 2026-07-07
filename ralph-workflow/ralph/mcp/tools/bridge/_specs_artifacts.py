@@ -454,10 +454,14 @@ def artifact_specs() -> list[ToolSpec]:
                     " satisfied_by_steps, AC id pattern, non-empty skills_mcp.skills,"
                     " 4 MB size cap) without writing"
                     " plan.json and without deleting the in-progress draft. Returns"
-                    ' {"valid":true} on success or {"valid":false,"errors":'
-                    '["summary: required field is missing"]} on'
-                    " failure. If no draft exists, returns valid=false with a named"
-                    " missing-draft error. The same checks run at finalize_plan in the write path;"
+                    ' {"valid":true,"finalizable":true,"errors":[]} on success or '
+                    '{"valid":false,"finalizable":false,"errors":[{"message":'
+                    '"summary.scope_items: Field required","type":"PlanArtifactValidationError",'
+                    '"code":"SUMMARY_MISSING_SCOPE_ITEMS","repair":"Re-submit section='
+                    "'summary' with content.scope_items containing at least three native "
+                    'JSON objects."}]} on failure. If no draft exists, returns valid=false '
+                    "with a named missing-draft error object. The same checks run at "
+                    "finalize_plan in the write path;"
                     " ralph_validate_draft exposes them in a read-only path so the agent"
                     " can dry-run validation before committing. Use errors from this tool"
                     " as analysis feedback: add concrete targets, task-relevant skills,"

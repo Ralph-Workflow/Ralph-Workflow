@@ -2220,6 +2220,7 @@ _PLAN_VALIDATION_ERROR_CODE_PATTERNS: tuple[tuple[tuple[str, ...], str], ...] = 
         ("skills_mcp.skills must contain at least one skill name",),
         "SKILLS_MCP_EMPTY_SKILLS",
     ),
+    (("design section is empty",), "DESIGN_EMPTY"),
 )
 
 
@@ -2287,6 +2288,10 @@ def _plan_validation_error_repair(detail: str) -> str:
         ),
         "SKILLS_MCP_EMPTY_SKILLS": (
             "Re-submit section='skills_mcp' with at least one task-relevant skill name."
+        ),
+        "DESIGN_EMPTY": (
+            "Re-submit section='design' with a native design object containing at least "
+            "one field, or remove the design section if no design guidance is needed."
         ),
     }
     return repair_by_code.get(

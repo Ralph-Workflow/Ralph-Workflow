@@ -237,6 +237,15 @@ def test_discard_plan_draft_description_discourages_warning_retry_loops() -> Non
     assert "ralph_validate_draft" in desc
 
 
+def test_validate_draft_description_documents_runtime_error_object_shape() -> None:
+    descs = _descs()
+    desc = descs["ralph_validate_draft"]
+    assert '{"valid":false,"finalizable":false,"errors":[{"message":' in desc
+    assert '"code":"SUMMARY_MISSING_SCOPE_ITEMS"' in desc
+    assert '"repair":"Re-submit section' in desc
+    assert 'errors":["summary: required field is missing"]' not in desc
+
+
 def test_replace_and_patch_descriptions_include_analysis_feedback_proof_fields() -> None:
     descs = _descs()
     replace_desc = descs["ralph_replace_plan_step"]

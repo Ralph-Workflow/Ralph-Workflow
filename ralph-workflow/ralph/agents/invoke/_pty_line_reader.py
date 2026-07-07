@@ -768,6 +768,14 @@ class PtyLineReader:
                 snapshot_obj = None
             if snapshot_obj:
                 merged_diag["watchdog_snapshot"] = snapshot_obj
+        repetition_diag_method: object = getattr(watchdog, "repetition_diagnostic", None)
+        if callable(repetition_diag_method):
+            try:
+                repetition_diag: dict[str, str | int] | None = repetition_diag_method()
+            except Exception:
+                repetition_diag = None
+            if repetition_diag:
+                merged_diag.update(repetition_diag)
         if diagnostic is not None:
             for key, value in diagnostic.items():
                 if key not in merged_diag:
@@ -1023,13 +1031,17 @@ class PtyLineReader:
                     if tool_call is not None:
                         tool_name, tool_args = tool_call
                         watchdog.record_tool_call_activity(tool_name, tool_args)
+                    watchdog.record_tool_use_activity()
                 elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
                     self._awaiting_post_tool_result_progress = True
                     self._last_tool_result_at = self._clock.monotonic()
                     self._last_tool_result_excerpt = activity_signal.raw.strip()[:200]
+                    watchdog.record_activity()
                 elif activity_signal.kind == AgentActivityKind.OUTPUT_LINE:
                     self._awaiting_post_tool_result_progress = False
-                watchdog.record_activity()
+                    watchdog.record_activity()
+                else:
+                    watchdog.record_activity()
                 # NEW BEHAVIOR: also record the post-tool-result
                 # activity so the watchdog's new direct-fire
                 # STALLED_AFTER_TOOL_RESULT path can detect the wedge

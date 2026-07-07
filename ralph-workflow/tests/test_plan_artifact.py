@@ -1497,9 +1497,51 @@ def test_remove_plan_step_remaps_satisfied_by_steps() -> None:
     design = cast("dict[str, object]", updated["design"])
     ac = cast("dict[str, object]", design["acceptance_criteria"])
     criteria = cast("list[dict[str, object]]", ac["criteria"])
-    assert criteria[0]["satisfied_by_steps"] == [2]
+    assert criteria[0]["satisfied_by_steps"] == [{"removed_step_number": 2}]
 
-    with pytest.raises(PlanArtifactValidationError, match="unknown step number"):
+    with pytest.raises(PlanArtifactValidationError, match="references removed step 2"):
+        normalize_plan_artifact_content(updated)
+
+
+def test_remove_plan_step_does_not_retarget_removed_ac_reference_after_reindex() -> None:
+    """A removed AC step ref must not silently point at the step reindexed into its number."""
+    sections = _valid_plan()
+    sections["design"] = {
+        "acceptance_criteria": {
+            "criteria": [{"id": "AC-01", "description": "x", "satisfied_by_steps": [2]}]
+        }
+    }
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+        },
+        {
+            "number": 2,
+            "title": "Removed",
+            "content": "removed",
+            "step_type": "file_change",
+            "targets": [{"path": "b.py", "action": "modify"}],
+        },
+        {
+            "number": 3,
+            "title": "Survivor",
+            "content": "survivor",
+            "step_type": "file_change",
+            "targets": [{"path": "c.py", "action": "modify"}],
+        },
+    ]
+
+    updated = remove_plan_step(sections, step_number=2)
+
+    design = cast("dict[str, object]", updated["design"])
+    ac = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", ac["criteria"])
+    assert criteria[0]["satisfied_by_steps"] != [2]
+    with pytest.raises(PlanArtifactValidationError, match="removed step"):
         normalize_plan_artifact_content(updated)
 
 

@@ -601,6 +601,10 @@ class IdleWatchdog:
     def diagnostic_snapshot(self, now: float | None = None) -> dict[str, object]:
         return activity_diagnostic_snapshot(self, now)
 
+    def repetition_diagnostic(self) -> dict[str, str | int]:
+        """Return bounded repeated-error/tool-call diagnostic context."""
+        return self._repetition_tracker.diagnostic()
+
     @property
     def cumulative_waiting_on_child_seconds(self) -> float:
         """Cumulative seconds spent in WAITING_ON_CHILD state across all runs."""
@@ -768,6 +772,17 @@ class IdleWatchdog:
         excluded from the NO_OUTPUT_AT_START baseline.
         """
         self._reset_idle_baseline()
+
+    def record_tool_use_activity(self) -> None:
+        """Record tool-use activity without clearing retry-loop evidence.
+
+        A tool-use event is real activity for idle timing, but the invocation
+        itself is not proof of forward progress. Clearing the repetition tracker
+        here would make repeated identical tool-call loops invisible.
+        """
+        self._reset_idle_baseline()
+        self._last_meaningful_output_at = self._clock.monotonic()
+        self._has_meaningful_output = True
 
     def record_tool_call_activity(self, tool_name: str, tool_args: object) -> None:
         activity_record_tool_call_activity(self, tool_name, tool_args)

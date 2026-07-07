@@ -57,6 +57,12 @@ class AcceptanceCriterion(RalphBaseModel):
         seen: set[int] = set()
         for raw_entry in value:
             entry: object = raw_entry
+            if isinstance(entry, dict) and isinstance(entry.get("removed_step_number"), int):
+                msg = (
+                    "satisfied_by_steps references removed step "
+                    f"{entry['removed_step_number']}; choose a surviving file_change or action step"
+                )
+                raise ValueError(msg)
             if isinstance(entry, bool) or not isinstance(entry, int):
                 msg = f"satisfied_by_steps entry must be an int, got {type(entry).__name__}"
                 raise ValueError(msg)

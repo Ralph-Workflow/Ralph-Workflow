@@ -175,6 +175,15 @@ def test_submit_plan_artifact_skill_blocks_stale_atomic_and_minimal_guidance() -
     assert body.count("## Dumb-proof checklist (plan-artifact)") == 1
 
 
+def test_submit_plan_artifact_skill_documents_validate_error_object_shape() -> None:
+    """The skill must match ralph_validate_draft's runtime error object shape."""
+    _, body = _read_skill(PLAN_SKILL_PATH)
+    assert '{"valid":false,"finalizable":false,"errors":[{"message":' in body
+    assert '"code":"SUMMARY_MISSING_SCOPE_ITEMS"' in body
+    assert '"repair":"Re-submit section' in body
+    assert 'errors":["summary: required field is missing"]' not in body
+
+
 # ---------------------------------------------------------------------------
 # AC-02 — submit-artifact.md skill shape
 # ---------------------------------------------------------------------------

@@ -126,6 +126,23 @@ def test_validate_draft_valid_draft_with_design_returns_valid_true(tmp_path: Pat
     assert payload["valid"] is True
 
 
+def test_validate_draft_empty_design_is_not_finalizable(tmp_path: Path) -> None:
+    """An explicitly staged empty design is repairable, not finalizable."""
+    draft = _minimal_valid_draft()
+    cast("dict[str, object]", draft["sections"])["design"] = {}
+    _write_draft(tmp_path, draft)
+    workspace = FsWorkspace(tmp_path)
+
+    result = handle_validate_plan_draft(planning_session(), workspace, {})
+
+    payload = json.loads(_read_response_text(result))
+    assert payload["valid"] is False
+    assert payload["finalizable"] is False
+    errors = cast("list[dict[str, str]]", payload["errors"])
+    assert errors[0]["code"] == "DESIGN_EMPTY"
+    assert "Re-submit section='design'" in errors[0]["repair"]
+
+
 def test_validate_draft_depends_on_cycle_returns_invalid(tmp_path: Path) -> None:
     """A draft with a depends_on cycle is rejected with the cycle entry named in errors."""
     draft = _minimal_valid_draft()

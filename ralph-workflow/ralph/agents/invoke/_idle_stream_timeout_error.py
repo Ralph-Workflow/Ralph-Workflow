@@ -54,6 +54,14 @@ class _IdleStreamTimeoutError(RuntimeError):
                 "Agent repeated the same error without making forward progress"
                 f"{detail}; aborting the retry loop"
             )
+        elif reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL:
+            tool_name = diagnostic.get("tool_name", "tool") if diagnostic else "tool"
+            args_preview = diagnostic.get("tool_args_preview") if diagnostic else None
+            detail = f" args={args_preview}" if args_preview else ""
+            msg = (
+                f"Agent repeated the same {tool_name} tool call{detail} without making"
+                " forward progress; aborting the identical-tool-call loop"
+            )
         elif reason == WatchdogFireReason.NO_PROGRESS_QUIET:
             duration = f"{timeout_seconds:.0f}s"
             msg = (

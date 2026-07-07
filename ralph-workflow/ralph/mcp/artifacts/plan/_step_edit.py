@@ -106,6 +106,8 @@ def _collect_ac_ids(sections: PlanArtifactDict) -> set[str]:
 def _remap_ac_step_refs(
     sections: PlanArtifactDict,
     number_map: dict[int, int],
+    *,
+    removed_step_number: int | None = None,
 ) -> tuple[PlanArtifactDict, list[str], list[str], list[str]]:
     """Keep ``AC.satisfied_by_steps`` in lockstep with the new step numbering.
 
@@ -164,6 +166,15 @@ def _remap_ac_step_refs(
                 continue
             new_number = number_map.get(ref_number)
             if new_number is None:
+                if removed_step_number is not None and ref_number == removed_step_number:
+                    remapped.append({"removed_step_number": removed_step_number})
+                    warnings.append(
+                        "AC satisfied_by_steps referenced removed step "
+                        f"{removed_step_number}; preserved it as unresolved JSON for "
+                        "validate_draft/finalize to report"
+                    )
+                    rewritten_for_this_ac = True
+                    continue
                 remapped.append(ref_number)
                 warnings.append(
                     "AC satisfied_by_steps references a step that is not currently staged; "
@@ -706,6 +717,7 @@ def remove_plan_step(
     updated_sections, _rewritten_ac, _dropped_ac, _ac_warnings = _remap_ac_step_refs(
         updated_sections,
         number_map,
+        removed_step_number=step_number,
     )
     return updated_sections
 
@@ -735,6 +747,7 @@ def remove_plan_step_with_echo(
     updated_sections, rewritten_ac, dropped_ac, ac_warnings = _remap_ac_step_refs(
         updated_sections,
         number_map,
+        removed_step_number=step_number,
     )
     warnings = [*source_warnings, *warnings, *ac_warnings]
     echo = _build_step_mutation_echo(

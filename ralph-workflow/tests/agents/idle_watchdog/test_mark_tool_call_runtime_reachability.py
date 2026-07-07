@@ -35,9 +35,15 @@ import json
 import os
 from types import MethodType, SimpleNamespace
 
+import pytest
+
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.idle_watchdog import WatchdogVerdict
+from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
+from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
+from ralph.agents.invoke._idle_stream_timeout_error import _IdleStreamTimeoutError
+from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.invoke._process_reader import (
     _extract_tool_call_from_activity_signal,
     _ProcessLineReader,
@@ -199,6 +205,9 @@ class _RecordingWatchdog:
     def record_activity(self) -> None:
         self.activity_records.append("activity")
 
+    def record_tool_use_activity(self) -> None:
+        self.activity_records.append("tool_use")
+
     def record_lifecycle_activity(self) -> None:
         self.lifecycle_records += 1
 
@@ -343,6 +352,38 @@ def test_pty_line_reader_routes_repeated_tool_use_to_trip_breaker() -> None:
     )
 
 
+def test_pty_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
+    """PTY tool-use activity must not clear the identical-tool-call breaker."""
+    raw = json.dumps(
+        {"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}}
+    )
+    reader = _build_pty_reader_with_strategy(_ToolUseStrategy(raw))
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=3,
+            repeated_error_window_count=None,
+            repeated_error_window_seconds=None,
+            activity_evidence_ttl_seconds=None,
+        ),
+        clock,
+    )
+
+    for _ in range(2):
+        list(reader._handle_queued_line(raw + "\n", watchdog))
+        clock.advance(1.0)
+
+    with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        list(reader._handle_queued_line(raw + "\n", watchdog))
+
+    assert exc_info.value.reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+    assert "exec tool call args={\"cmd\": \"long silent command\"}" in str(
+        exc_info.value
+    )
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+
+
 def test_pty_line_reader_silently_skips_unrecognised_envelopes() -> None:
     """A non-JSON tool-use envelope MUST NOT crash the line reader
     AND MUST NOT feed the breaker with garbage fingerprints.
@@ -439,6 +480,102 @@ def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
     assert len(fingerprints) == 1, (
         f"Expected identical fingerprints for repeated identical tool calls;"
         f" got {fingerprints}"
+    )
+
+
+def test_process_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
+    """Production reader activity must not clear the identical-tool-call breaker."""
+    raw = json.dumps(
+        {"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}}
+    )
+    strategy = _ToolUseStrategy(raw)
+    reader_like = SimpleNamespace(
+        _strategy=strategy,
+        _last_activity_kind="",
+        _last_activity_meaningful=[False],
+    )
+    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=3,
+            repeated_error_window_count=None,
+            repeated_error_window_seconds=None,
+            activity_evidence_ttl_seconds=None,
+        ),
+        clock,
+    )
+
+    for _ in range(3):
+        bound_method(watchdog, raw)
+        clock.advance(1.0)
+
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+    assert verdict == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+
+
+def test_repeated_tool_call_timeout_diagnostic_identifies_command() -> None:
+    """Repeated-tool timeout messages name the repeated tool and command preview."""
+    raw = json.dumps(
+        {"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}}
+    )
+    strategy = _ToolUseStrategy(raw)
+    reader_like = SimpleNamespace(
+        _strategy=strategy,
+        _last_activity_kind="",
+        _last_activity_meaningful=[False],
+    )
+    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            repeated_error_consecutive_threshold=3,
+            repeated_error_window_count=None,
+            repeated_error_window_seconds=None,
+            activity_evidence_ttl_seconds=None,
+        ),
+        clock,
+    )
+
+    for _ in range(3):
+        bound_method(watchdog, raw)
+        clock.advance(1.0)
+
+    diagnostic = watchdog.repetition_diagnostic()
+
+    assert diagnostic["tool_name"] == "exec"
+    assert diagnostic["tool_args_preview"] == '{"cmd": "long silent command"}'
+
+
+def test_repeated_tool_call_timeout_messages_identify_command() -> None:
+    """Timeout exceptions include the repeated tool args preview."""
+    diagnostic = {
+        "tool_name": "exec",
+        "tool_args_preview": '{"cmd": "long silent command"}',
+    }
+
+    stream_error = _IdleStreamTimeoutError(
+        300.0,
+        WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL,
+        diagnostic=diagnostic,
+    )
+    invocation_error = AgentInactivityTimeoutError(
+        "codex",
+        300.0,
+        [],
+        InactivityTimeoutOpts(
+            reason=WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL,
+            diagnostic=diagnostic,
+        ),
+    )
+
+    assert "exec tool call args={\"cmd\": \"long silent command\"}" in str(stream_error)
+    assert "exec tool call args={\"cmd\": \"long silent command\"}" in str(
+        invocation_error
     )
 
 

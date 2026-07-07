@@ -638,6 +638,14 @@ class _ProcessLineReader:
                 snapshot_obj = None
             if snapshot_obj:
                 merged_diag["watchdog_snapshot"] = snapshot_obj
+        repetition_diag_method: object = getattr(watchdog, "repetition_diagnostic", None)
+        if callable(repetition_diag_method):
+            try:
+                repetition_diag: dict[str, str | int] | None = repetition_diag_method()
+            except Exception:
+                repetition_diag = None
+            if repetition_diag:
+                merged_diag.update(repetition_diag)
         if hard_stop_diag is not None:
             for key, value in hard_stop_diag.items():
                 if key not in merged_diag:
@@ -721,19 +729,20 @@ class _ProcessLineReader:
             watchdog.record_progress_report(activity_signal.raw)
         elif activity_signal.kind == AgentActivityKind.LIFECYCLE:
             watchdog.record_lifecycle_activity()
+        elif activity_signal.kind == AgentActivityKind.TOOL_USE:
+            # NEW BEHAVIOR: feed the tool-call circuit breaker so
+            # the watchdog can fire REPEATED_IDENTICAL_TOOL_CALL
+            # when an agent re-issues the same (tool_name,
+            # tool_args) combination.  The extraction is
+            # best-effort -- non-JSON or unknown envelopes are
+            # silently skipped so the breaker sees only stable
+            # (name, args) fingerprints.
+            tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
+            if tool_call is not None:
+                tool_name, tool_args = tool_call
+                watchdog.record_tool_call_activity(tool_name, tool_args)
+            watchdog.record_tool_use_activity()
         else:
-            if activity_signal.kind == AgentActivityKind.TOOL_USE:
-                # NEW BEHAVIOR: feed the tool-call circuit breaker so
-                # the watchdog can fire REPEATED_IDENTICAL_TOOL_CALL
-                # when an agent re-issues the same (tool_name,
-                # tool_args) combination.  The extraction is
-                # best-effort -- non-JSON or unknown envelopes are
-                # silently skipped so the breaker sees only stable
-                # (name, args) fingerprints.
-                tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
-                if tool_call is not None:
-                    tool_name, tool_args = tool_call
-                    watchdog.record_tool_call_activity(tool_name, tool_args)
             watchdog.record_activity()
 
     def _run_drain_window(

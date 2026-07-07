@@ -183,6 +183,15 @@ class PlanArtifact(RalphBaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_explicit_design_is_not_empty(self) -> PlanArtifact:
+        """Reject an explicitly staged empty design object before finalization."""
+        if self.design is not None and not self.design.model_dump(exclude_none=True):
+            raise PlanArtifactValidationError(
+                "design section is empty; remove it or provide at least one design field"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_step_ac_cross_references(self) -> PlanArtifact:
         """Cross-validate the 2-way step<->acceptance-criterion link and 3 cross-section invariants.
 
