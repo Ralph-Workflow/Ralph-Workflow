@@ -181,7 +181,7 @@ rather than treated as terminal success.
 Each agent has a documented verification path that targets its own contract:
 
 - **Claude Code (interactive)**: `ralph smoke-interactive-claude`
-- **Nanocoder (interactive)**: `ralph smoke-interactive-nanocoder`
+- **Nanocoder (interactive)**: `ralph smoke-interactive-nanocoder --agent '<exact nanocoder alias>'`
 - **AGY (interactive)**: `ralph smoke-interactive-agy` (mock-backed by default)
 - **Codex, OpenCode, Pi**: public-surface black-box pytest suite
   (`uv run pytest tests/agents/<agent>_blackbox.py -q`)

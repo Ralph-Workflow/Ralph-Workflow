@@ -211,6 +211,17 @@ Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print return
 
 Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`.
 
+### `ralph smoke-interactive-nanocoder`
+
+Run the manual PTY smoke test for Nanocoder. Use the same alias that the pipeline will use; testing bare `nanocoder` does not prove a configured `nanocoder/<provider>/<model>` chain is valid.
+
+```bash
+python -m ralph smoke-interactive-nanocoder
+python -m ralph smoke-interactive-nanocoder --agent 'nanocoder/MiniMax Coding/MiniMax-M3'
+```
+
+Provider/model startup errors printed by Nanocoder are terminal invocation failures. The smoke report should show the exact provider/model error instead of waiting for an idle timeout.
+
 The eight canonical `agy/<display-name>` aliases accepted by `--agent` (the override flag, default `agy/Gemini 3.5 Flash (Medium)`):
 
 - `agy/Gemini 3.5 Flash (Medium)`

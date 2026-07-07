@@ -152,6 +152,20 @@ agent run that appeared active.
 
 **Fix:** Check the watchdog log line for `reason`, `last_activity_kind`, and `resume_safe`. If the next attempt reports `No conversation found with session ID`, recovery treats it as a stale session and retries fresh within the remaining budget.
 
+## Interactive agent reports an invalid provider or model
+
+**Symptom:** An interactive agent starts, prints a provider/model configuration error, and makes no task progress. For Nanocoder this can look like `Provider '...' not found in agents.config.json`.
+
+**Cause:** Interactive agents can validate provider/model configuration inside their TUI after the PTY has already started. Ralph Workflow treats these startup/configuration lines as terminal invocation failures, not as normal model output.
+
+**Fix:** Run the smoke test with the exact alias from the pipeline chain, for example:
+
+```bash
+python -m ralph smoke-interactive-nanocoder --agent 'nanocoder/MiniMax Coding/MiniMax-M3'
+```
+
+If the smoke report shows the same provider/model error, fix the agent's provider/model alias or local agent config before starting an unattended run.
+
 ## Nanocoder exits with "Conversation exceeded 50 turns"
 
 **Symptom:** A Nanocoder run fails partway through a complex task with the message `Conversation exceeded 50 turns` in the run log.

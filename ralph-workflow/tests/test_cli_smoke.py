@@ -560,6 +560,64 @@ def test_smoke_interactive_nanocoder_command_runs_nanocoder_harness_when_binary_
     assert "nanocoder parity smoke report" in output
 
 
+def test_smoke_interactive_nanocoder_command_accepts_agent_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch)
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/nanocoder")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "nanocoder/minimax/MiniMax-M3":
+                return AgentConfig(
+                    cmd="nanocoder",
+                    transport=AgentTransport.NANOCODER,
+                    model_flag="--provider minimax --model MiniMax-M3",
+                )
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
+        captured["agent_name"] = kwargs["agent_name"]
+        return smoke_module.SmokeRunResult(
+            agent_name="nanocoder/minimax/MiniMax-M3",
+            transport="nanocoder",
+            output_file=tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js",
+            file_created=True,
+            session_id=None,
+            explicit_completion_seen=True,
+            raw_line_count=1,
+            parsed_event_count=1,
+            tool_activity_seen=True,
+            artifact_submitted=True,
+            meaningful_output_lines=["ok"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
+
+    exit_code = smoke_module.smoke_interactive_nanocoder_command(
+        agent_name="nanocoder/minimax/MiniMax-M3",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+    assert captured["agent_name"] == "nanocoder/minimax/MiniMax-M3"
+    output = stream.getvalue()
+    assert "nanocoder/minimax/MiniMax-M3 parity smoke test" in output
+
+
 def test_smoke_interactive_nanocoder_command_exits_when_binary_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -416,12 +416,13 @@ def smoke_interactive_agy_command(
 
 
 def smoke_interactive_nanocoder_command(
+    agent_name: str = "nanocoder",
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
 ) -> int:
-    """Run the manual PTY smoke test for Nanocoder interactive mode."""
+    """Run the manual PTY smoke test for a Nanocoder interactive alias."""
     if shutil.which("nanocoder") is None:
         logger.error(
             "nanocoder binary not found. Install Nanocoder and ensure `nanocoder` is on PATH."
@@ -431,19 +432,24 @@ def smoke_interactive_nanocoder_command(
     workspace_scope = resolve_workspace_scope()
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_config = registry.get("nanocoder")
+    agent_config = registry.get(agent_name)
     if agent_config is None:
-        logger.error("Agent 'nanocoder' is not available in the registry.")
+        logger.error(
+            "Agent '{}' is not available. Use --agent with nanocoder or a "
+            "nanocoder/<provider>/<model> alias.",
+            agent_name,
+        )
         return 2
     if agent_config.transport is None or agent_config.transport != AgentTransport.NANOCODER:
         logger.error(
-            "Agent 'nanocoder' resolves to transport '{}', not NANOCODER.",
+            "Agent '{}' resolves to transport '{}', not NANOCODER.",
+            agent_name,
             agent_config.transport.value if agent_config.transport else "None",
         )
         return 2
 
     return smoke_harness_agent_command(
-        "nanocoder",
+        agent_name,
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
