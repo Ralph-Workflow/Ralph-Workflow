@@ -625,6 +625,8 @@ class PtyLineReader:
             _write_pty_input(self._input_writer_fd, "/exit\r\n", lock=self._input_writer_lock)
         with contextlib.suppress(AttributeError, OSError, ProcessLookupError, RuntimeError):
             self._handle.terminate(grace_period_s=0.5)
+            pid = self._handle.pid
+            teardown_subtree(pid)
 
     def _completion_evidence_thread(self) -> None:
         if self._workspace_path is None or self._completion_run_id is None:
