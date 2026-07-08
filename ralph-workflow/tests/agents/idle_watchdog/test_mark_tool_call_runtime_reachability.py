@@ -39,7 +39,7 @@ import pytest
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.execution_state import AgentExecutionState
-from ralph.agents.execution_state._factory import _make_pi_strategy
+from ralph.agents.execution_state._factory import _make_cursor_strategy, _make_pi_strategy
 from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
@@ -159,6 +159,36 @@ def test_extract_tool_call_from_pi_toolcall_end_envelope() -> None:
     tool_name, tool_args = result
     assert tool_name == "mcp__ralph__exec"
     assert tool_args == {"command": "pwd", "timeout_ms": 300000}
+
+
+def test_extract_tool_call_from_live_cursor_nested_tool_call_envelope() -> None:
+    """Cursor stream-json nests live tool calls under ``tool_call.<name>ToolCall``."""
+    line = json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "call_id": "tool-1",
+            "tool_call": {
+                "editToolCall": {
+                    "args": {
+                        "path": "/tmp/probe/tool_probe.txt",
+                        "streamContent": "cursor parser probe",
+                    }
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    )
+
+    result = _extract_tool_call_from_activity_signal(line)
+
+    assert result is not None
+    tool_name, tool_args = result
+    assert tool_name == "editToolCall"
+    assert tool_args == {
+        "path": "/tmp/probe/tool_probe.txt",
+        "streamContent": "cursor parser probe",
+    }
 
 
 def test_extract_tool_call_returns_none_for_non_tool_use_envelope() -> None:
@@ -310,6 +340,53 @@ def test_pi_strategy_classifies_tool_execution_error_as_error_line() -> None:
     assert signal is not None
     assert signal.kind == AgentActivityKind.ERROR_LINE
     assert signal.raw == "terminated"
+
+
+def test_cursor_strategy_classifies_live_tool_call_started_as_tool_use() -> None:
+    """Cursor live ``tool_call`` start events must feed the tool-use path."""
+    strategy = _make_cursor_strategy()
+    line = json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "tool_call": {
+                "editToolCall": {
+                    "args": {"path": "/tmp/probe/tool_probe.txt"},
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.raw == line
+
+
+def test_cursor_strategy_classifies_live_tool_call_completed_as_tool_result() -> None:
+    """Cursor live ``tool_call`` completed events must close the post-tool window."""
+    strategy = _make_cursor_strategy()
+    line = json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "completed",
+            "tool_call": {
+                "editToolCall": {
+                    "args": {"path": "/tmp/probe/tool_probe.txt"},
+                    "result": {"success": {"message": "ok"}},
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_RESULT
+    assert signal.raw == line
 
 
 # ---------------------------------------------------------------------------

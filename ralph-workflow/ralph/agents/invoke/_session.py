@@ -34,6 +34,10 @@ _TRANSPORT_JSON_TYPES = frozenset(
 )
 
 
+def _is_cursor_system_init_event(parsed: dict[str, object]) -> bool:
+    return parsed.get("type") == "system" and parsed.get("subtype") == "init"
+
+
 def _match_transport_text_session_id(stripped: str) -> str | None:
     if _EXPLICIT_COMPLETION_MARKER in stripped:
         for pattern in _COMPLETION_SESSION_ID_PATTERNS:
@@ -49,7 +53,9 @@ def _match_transport_text_session_id(stripped: str) -> str | None:
 
 def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
     event_type = parsed.get("type")
-    if isinstance(event_type, str) and event_type in _TRANSPORT_JSON_TYPES:
+    if (isinstance(event_type, str) and event_type in _TRANSPORT_JSON_TYPES) or (
+        _is_cursor_system_init_event(parsed)
+    ):
         for key in ("session_id", "sessionId"):
             session_id = parsed.get(key)
             if isinstance(session_id, str) and session_id:

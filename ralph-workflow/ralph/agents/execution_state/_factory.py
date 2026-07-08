@@ -91,13 +91,28 @@ def _make_cursor_strategy(
     """
 
     class CursorExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
-        pass
+        def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+            signal = _classify_cursor_activity(line)
+            if signal is not None:
+                return signal
+            return super().classify_activity_line(line)
 
     return CursorExecutionStrategy(
         label_scope=label_scope,
         registry=registry,
         subagent_pid_source=subagent_pid_source,
     )
+
+
+def _classify_cursor_activity(line: str) -> AgentActivitySignal | None:
+    """Classify Cursor stream-json tool events for watchdog control."""
+    obj = _parse_json_object(line)
+    if obj is None or obj.get("type") != "tool_call":
+        return None
+    subtype = obj.get("subtype")
+    if subtype == "completed":
+        return AgentActivitySignal(AgentActivityKind.TOOL_RESULT, raw=line)
+    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
 
 
 def _make_pi_strategy(

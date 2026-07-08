@@ -22,6 +22,8 @@ Recognised envelope shapes:
 * ``{"type": "message_update", "assistantMessageEvent":
   {"type": "toolcall_end", "toolCall": {"name": "...", "input": {...}}}}``
   (pi.dev assistant-message tool event)
+* ``{"type": "tool_call", "tool_call": {"editToolCall": {"args": {...}}}}``
+  (Cursor Agent CLI live stream-json tool event)
 * ``claude tool: <name>`` (plain-text marker from Claude execution strategy)
 * ``[plain] tool: <name>`` (plain-text marker from GenericParser convention)
 """
@@ -32,6 +34,14 @@ import json
 from typing import cast
 
 _PLAIN_TEXT_TOOL_PREFIXES = ("claude tool:", "[plain] tool:")
+_CURSOR_TOOL_CALL_METADATA_KEYS = frozenset(
+    {
+        "toolCallId",
+        "startedAtMs",
+        "completedAtMs",
+        "hookAdditionalContexts",
+    }
+)
 
 
 def extract_tool_call_from_activity_signal(
@@ -136,12 +146,17 @@ def _is_tool_use_dict(obj: dict[str, object]) -> bool:
         or "tool_name" in obj
         or "toolName" in obj
         or "toolCall" in obj
+        or (type_field == "tool_call" and "tool_call" in obj)
     )
 
 
 def _resolve_tool_name_and_args(
     obj: dict[str, object],
 ) -> tuple[str, dict[str, object]] | None:
+    cursor_tool_call = obj.get("tool_call")
+    if isinstance(cursor_tool_call, dict):
+        return _resolve_cursor_tool_call(cursor_tool_call)
+
     tool_call = obj.get("toolCall")
     if isinstance(tool_call, dict):
         tool_call_dict = cast("dict[str, object]", tool_call)
@@ -184,3 +199,25 @@ def _resolve_tool_name_and_args(
     if not isinstance(args_field, dict):
         args_field = {}
     return tool_name, cast("dict[str, object]", args_field)
+
+
+def _resolve_cursor_tool_call(
+    cursor_tool_call: object,
+) -> tuple[str, dict[str, object]] | None:
+    """Extract Cursor ``tool_call.<toolName>ToolCall.args`` from live stream-json."""
+    if not isinstance(cursor_tool_call, dict):
+        return None
+    cursor_tool_call_dict = cast("dict[str, object]", cursor_tool_call)
+    for key, value in cursor_tool_call_dict.items():
+        if key in _CURSOR_TOOL_CALL_METADATA_KEYS:
+            continue
+        if not isinstance(value, dict):
+            continue
+        payload = cast("dict[str, object]", value)
+        args_field = payload.get("args")
+        if not isinstance(args_field, dict):
+            args_field = payload.get("input")
+        if not isinstance(args_field, dict):
+            args_field = {}
+        return key, cast("dict[str, object]", args_field)
+    return None

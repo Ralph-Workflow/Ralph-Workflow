@@ -251,6 +251,195 @@ class TestCursorParserWireFormat:
         assert results[0].type == "tool_use"
         assert results[0].content == "edit_file"
 
+    def test_live_tool_call_started_extracts_nested_tool_name(self) -> None:
+        """Live Cursor streams nest the tool name under ``tool_call.<name>ToolCall``."""
+        parser = CursorParser()
+        results = list(
+            parser.parse(
+                _lines(
+                    _line(
+                        {
+                            "type": "tool_call",
+                            "subtype": "started",
+                            "call_id": "tool-1",
+                            "tool_call": {
+                                "editToolCall": {
+                                    "args": {
+                                        "path": "/tmp/probe/tool_probe.txt",
+                                        "streamContent": "cursor parser probe",
+                                    }
+                                },
+                                "toolCallId": "tool-1",
+                            },
+                        }
+                    )
+                )
+            )
+        )
+
+        assert len(results) == 1
+        assert results[0].type == "tool_use"
+        assert results[0].content == "editToolCall"
+        assert results[0].metadata["tool"] == "editToolCall"
+        assert results[0].metadata["args"] == {
+            "path": "/tmp/probe/tool_probe.txt",
+            "streamContent": "cursor parser probe",
+        }
+
+    def test_live_tool_call_completed_yields_tool_result_with_nested_tool_name(self) -> None:
+        """Live Cursor uses ``tool_call`` + ``subtype=completed`` for tool results."""
+        parser = CursorParser()
+        results = list(
+            parser.parse(
+                _lines(
+                    _line(
+                        {
+                            "type": "tool_call",
+                            "subtype": "completed",
+                            "call_id": "tool-1",
+                            "tool_call": {
+                                "editToolCall": {
+                                    "args": {
+                                        "path": "/tmp/probe/tool_probe.txt",
+                                        "streamContent": "cursor parser probe",
+                                    },
+                                    "result": {
+                                        "success": {
+                                            "path": "/tmp/probe/tool_probe.txt",
+                                            "message": (
+                                                "Wrote contents to /tmp/probe/tool_probe.txt"
+                                            ),
+                                        }
+                                    },
+                                },
+                                "toolCallId": "tool-1",
+                            },
+                        }
+                    )
+                )
+            )
+        )
+
+        assert len(results) == 1
+        assert results[0].type == "tool_result"
+        assert results[0].content == "Wrote contents to /tmp/probe/tool_probe.txt"
+        assert results[0].metadata["tool"] == "editToolCall"
+
+    def test_live_stream_json_transcript_parses_all_semantic_output(self) -> None:
+        """A live Cursor stream-json transcript surfaces every semantic event."""
+        parser = CursorParser()
+        results = list(
+            parser.parse(
+                _lines(
+                    _line(
+                        {
+                            "type": "system",
+                            "subtype": "init",
+                            "session_id": "cursor-session-1",
+                            "model": "Auto",
+                        }
+                    ),
+                    _line(
+                        {
+                            "type": "user",
+                            "message": {
+                                "role": "user",
+                                "content": [{"type": "text", "text": "write file"}],
+                            },
+                            "session_id": "cursor-session-1",
+                        }
+                    ),
+                    _line(
+                        {
+                            "type": "assistant",
+                            "message": {
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Creating `tool_probe.txt`.\n",
+                                    }
+                                ],
+                            },
+                            "session_id": "cursor-session-1",
+                        }
+                    ),
+                    _line(
+                        {
+                            "type": "tool_call",
+                            "subtype": "started",
+                            "call_id": "tool-1",
+                            "tool_call": {
+                                "editToolCall": {
+                                    "args": {
+                                        "path": "/tmp/probe/tool_probe.txt",
+                                        "streamContent": "cursor parser probe",
+                                    }
+                                },
+                                "toolCallId": "tool-1",
+                            },
+                        }
+                    ),
+                    _line(
+                        {
+                            "type": "tool_call",
+                            "subtype": "completed",
+                            "call_id": "tool-1",
+                            "tool_call": {
+                                "editToolCall": {
+                                    "args": {
+                                        "path": "/tmp/probe/tool_probe.txt",
+                                        "streamContent": "cursor parser probe",
+                                    },
+                                    "result": {
+                                        "success": {
+                                            "path": "/tmp/probe/tool_probe.txt",
+                                            "message": (
+                                                "Wrote contents to /tmp/probe/tool_probe.txt"
+                                            ),
+                                        }
+                                    },
+                                },
+                                "toolCallId": "tool-1",
+                            },
+                        }
+                    ),
+                    _line(
+                        {
+                            "type": "assistant",
+                            "message": {
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Created `tool_probe.txt`.",
+                                    }
+                                ],
+                            },
+                            "session_id": "cursor-session-1",
+                        }
+                    ),
+                    _line(
+                        {
+                            "type": "result",
+                            "subtype": "success",
+                            "is_error": False,
+                            "session_id": "cursor-session-1",
+                        }
+                    ),
+                )
+            )
+        )
+
+        assert [(line.type, line.content) for line in results] == [
+            ("status", "cursor session cursor-session-1 initialized with model Auto"),
+            ("text", "Creating `tool_probe.txt`.\n"),
+            ("tool_use", "editToolCall"),
+            ("tool_result", "Wrote contents to /tmp/probe/tool_probe.txt"),
+            ("text", "Created `tool_probe.txt`."),
+            ("stop", ""),
+        ]
+
     def test_tool_result_success_yields_tool_result(self) -> None:
         """``tool_result`` event (success path) surfaces as ``type='tool_result'``."""
         parser = CursorParser()
