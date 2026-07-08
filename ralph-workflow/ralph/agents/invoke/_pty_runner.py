@@ -53,12 +53,37 @@ class _CompletionExitSentReader(Protocol):
     def completion_exit_sent(self) -> bool: ...
 
 
+class _ClosableIterator(Protocol):
+    def close(self) -> None: ...
+
+
 def _has_completion_exit_sent(reader: object) -> TypeGuard[_CompletionExitSentReader]:
     return hasattr(reader, "completion_exit_sent")
 
 
 def _completion_exit_sent(reader: object) -> bool:
     return _has_completion_exit_sent(reader) and reader.completion_exit_sent
+
+
+def _has_close(iterator: object) -> TypeGuard[_ClosableIterator]:
+    return callable(getattr(iterator, "close", None))
+
+
+def _close_iterator(iterator: object) -> None:
+    if _has_close(iterator):
+        with contextlib.suppress(Exception):
+            iterator.close()
+
+
+def _terminate_pty_tree(handle: object) -> None:
+    terminate = getattr(handle, "terminate", None)
+    if callable(terminate):
+        with contextlib.suppress(Exception):
+            terminate(grace_period_s=0.5)
+    pid = cast("int | None", getattr(handle, "pid", None))
+    if pid is not None:
+        with contextlib.suppress(Exception):
+            teardown_subtree(pid)
 
 
 def run_pty_and_read_lines(
@@ -163,6 +188,10 @@ def run_pty_and_read_lines(
                     diagnostic=exc.diagnostic,
                 ),
             ) from exc
+        except BaseException:
+            _close_iterator(lines_iter)
+            _terminate_pty_tree(handle)
+            raise
 
         # R7 (Trustworthy Idle Watchdog): populate the diagnostic
         # fields on ``_CompletionCheckOptions`` from the watchdog

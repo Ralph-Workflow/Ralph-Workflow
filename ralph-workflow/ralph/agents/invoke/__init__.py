@@ -13,7 +13,6 @@ Key features:
 from __future__ import annotations
 
 import contextlib
-import os
 import shutil
 import sqlite3
 import subprocess
@@ -137,7 +136,6 @@ from ralph.mcp.transport.nanocoder import (
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV
-from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
@@ -226,20 +224,6 @@ def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
         monitor.stop()
 
 
-def _resolve_interactive_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
-    prompt_path = Path(prompt_file)
-    if prompt_path.is_absolute() or workspace_path is None:
-        return prompt_path
-    if prompt_file == "PROMPT.md":
-        return resolve_effective_prompt_path(workspace_path, os.environ)
-    return workspace_path / prompt_path
-
-
-def _nanocoder_initial_input(prompt_file: str, workspace_path: Path | None) -> str:
-    prompt_path = _resolve_interactive_prompt_path(prompt_file, workspace_path)
-    return f"Read and follow the full task in {prompt_path}.\r"
-
-
 def _shared_interactive_pty_extras(
     transport: AgentTransport,
     opts: InvokeOptions,
@@ -253,11 +237,7 @@ def _shared_interactive_pty_extras(
             permission_prompt_listener=opts.permission_prompt_listener,
         )
     if transport == AgentTransport.NANOCODER:
-        return _PtyExtras(
-            expected_session_id=opts.session_id,
-            initial_input=_nanocoder_initial_input(prompt_file, opts.workspace_path),
-            initial_input_ready_markers=("What would you like me to help with?",),
-        )
+        return _PtyExtras(expected_session_id=opts.session_id)
     return _PtyExtras(expected_session_id=opts.session_id)
 
 

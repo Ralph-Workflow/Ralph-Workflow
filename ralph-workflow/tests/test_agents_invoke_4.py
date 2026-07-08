@@ -217,8 +217,8 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
 
-def test_build_command_nanocoder_uses_interactive_prompt_mode(tmp_path: Path) -> None:
-    """Nanocoder is PTY-only; Ralph must not invoke the unsupported headless mode."""
+def test_build_command_nanocoder_uses_run_prompt_mode(tmp_path: Path) -> None:
+    """Nanocoder must use its CLI run command instead of driving the TUI editor."""
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
@@ -229,7 +229,7 @@ def test_build_command_nanocoder_uses_interactive_prompt_mode(tmp_path: Path) ->
         options=BuildCommandOptions(workspace_path=tmp_path),
     )
 
-    assert cmd == ["nanocoder", "--mode", "yolo"]
+    assert cmd == ["nanocoder", "--mode", "yolo", "run", "hello"]
 
 
 def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path) -> None:
@@ -254,7 +254,7 @@ def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path)
         "--provider",
         "ollama",
     ]
-    assert cmd[-2:] == ["--model", "llama3.1"]
+    assert cmd[-4:] == ["--model", "llama3.1", "run", "hello"]
 
 
 def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_path: Path) -> None:
@@ -278,7 +278,7 @@ def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_pa
         "--provider",
         "MiniMax Coding",
     ]
-    assert cmd[-2:] == ["--model", "MiniMax-M3"]
+    assert cmd[-4:] == ["--model", "MiniMax-M3", "run", "hello"]
 
 
 def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:
@@ -874,7 +874,7 @@ def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Pat
     assert prompt_text.strip() not in log_line
 
 
-def test_nanocoder_command_for_log_keeps_interactive_mode_value(tmp_path: Path) -> None:
+def test_nanocoder_command_for_log_redacts_run_prompt_text(tmp_path: Path) -> None:
     prompt_file = tmp_path / "task_prompt.md"
     prompt_file.write_text("Build the feature.\n", encoding="utf-8")
     config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
@@ -886,8 +886,8 @@ def test_nanocoder_command_for_log_keeps_interactive_mode_value(tmp_path: Path) 
     )
     log_line = command_for_log(config, cmd, str(prompt_file))
 
-    assert log_line == "nanocoder --mode yolo"
-    assert str(prompt_file) not in log_line
+    assert log_line == f"nanocoder --mode yolo run {prompt_file}"
+    assert "Build the feature." not in log_line
 
 
 def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:

@@ -435,9 +435,9 @@ class NanocoderCommandBuilder(ConfigurableCommandBuilder):
         output_flag=None,
         yolo_flag="--mode yolo",
         model_flag_template=None,
-        positional_prompt=False,
+        positional_prompt=True,
         print_flag=None,
-        extra_flags_before_prompt=(),
+        extra_flags_before_prompt=("run",),
     )
 
     def __init__(self) -> None:

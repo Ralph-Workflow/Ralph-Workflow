@@ -498,6 +498,8 @@ class TestResolveInvocationRuntimeParity:
                     "openai",
                     "--model",
                     "gpt-4",
+                    "run",
+                    "hello world",
                 ],
             ),
             (

@@ -174,7 +174,7 @@ def test_invoke_agent_does_not_invent_transcript_session_id_on_fresh_interactive
     assert captured_expected_session_ids == [None]
 
 
-def test_invoke_agent_injects_nanocoder_prompt_path_into_interactive_pty(
+def test_invoke_agent_passes_nanocoder_prompt_to_run_command_without_tui_injection(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -183,17 +183,14 @@ def test_invoke_agent_injects_nanocoder_prompt_path_into_interactive_pty(
     config = builtin_agents()["nanocoder"]
     manager = _FakePtyManager()
     captured_cmds: list[list[str]] = []
-    captured_initial_inputs: list[str | None] = []
-    captured_ready_markers: list[tuple[str, ...]] = []
 
     def fake_run_pty_and_read_lines(
         cmd: list[str],
         _ctx: object,
         extras: object = None,
     ) -> Iterator[str]:
+        del extras
         captured_cmds.append(cmd)
-        captured_initial_inputs.append(getattr(extras, "initial_input", None))
-        captured_ready_markers.append(getattr(extras, "initial_input_ready_markers", ()))
         yield "Task declared complete: session_id=nanocoder-session, summary=done, timestamp=1\n"
 
     monkeypatch.setattr(invoke_module, "get_process_manager", lambda: manager)
@@ -211,8 +208,6 @@ def test_invoke_agent_injects_nanocoder_prompt_path_into_interactive_pty(
         )
     )
 
-    assert captured_cmds == [["nanocoder", "--mode", "yolo"]]
-    assert captured_initial_inputs == [
-        f"Read and follow the full task in {prompt_file}.\r"
+    assert captured_cmds == [
+        ["nanocoder", "--mode", "yolo", "run", "Implement the Nanocoder task."]
     ]
-    assert captured_ready_markers == [("What would you like me to help with?",)]

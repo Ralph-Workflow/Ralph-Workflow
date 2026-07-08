@@ -86,6 +86,39 @@ def test_nanocoder_parser_surfaces_distinct_visible_tui_snapshots() -> None:
     ]
 
 
+def test_nanocoder_parser_surfaces_model_text_after_spinner_noise() -> None:
+    parser = NanocoderParser()
+
+    results = list(
+        parser.parse(
+            iter(
+                [
+                    "⠙ Waiting for chat to complete...",
+                    "⠹ Waiting for chat to complete...",
+                    "⠸ Waiting for chat to complete...",
+                    "Syntax is valid. Now I'll submit the artifact with the exact content schema",
+                    "specified:",
+                ]
+            )
+        )
+    )
+
+    assert ("text", "Syntax is valid. Now I'll submit the artifact with the exact content schema") in [
+        (line.type, line.content) for line in results
+    ]
+    assert ("text", "specified:") in [(line.type, line.content) for line in results]
+
+
+def test_nanocoder_parser_classifies_executed_mcp_tool_line() -> None:
+    parser = NanocoderParser()
+
+    results = list(parser.parse(iter(["⚒ Executed mcp__ralph__ralph_submit_artifact × 1"])))
+
+    assert [(line.type, line.content) for line in results] == [
+        ("tool_use", "mcp__ralph__ralph_submit_artifact")
+    ]
+
+
 def test_nanocoder_activity_stream_renders_visible_tui_snapshot() -> None:
     rendered: list[str] = []
     config = AgentConfig(

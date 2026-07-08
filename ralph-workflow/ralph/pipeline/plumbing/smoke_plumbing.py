@@ -342,6 +342,32 @@ def _detect_break_indicators(lines: list[str]) -> list[str]:
     return errors
 
 
+def _nanocoder_prompt_submission_error(
+    params: SmokeRunParams,
+    lines: list[str],
+    artifact_submitted: bool,
+) -> str | None:
+    if params.config.transport != AgentTransport.NANOCODER or artifact_submitted:
+        return None
+    normalized = "\n".join(normalize_vt_text(line).lower() for line in lines)
+    saw_startup = "welcome to nanocoder" in normalized or "tips for getting started" in normalized
+    if not saw_startup:
+        return None
+    saw_progress = any(
+        marker in normalized
+        for marker in (
+            "tool_use",
+            "tool_result",
+            "[plain] tool:",
+            "smoke_test_result",
+            "task declared complete:",
+        )
+    )
+    if saw_progress or params.output_file.exists():
+        return None
+    return "nanocoder prompt was not submitted after startup banner"
+
+
 def _execute_smoke_turns(
     params: SmokeRunParams,
     current_session_id: str | None,
@@ -682,6 +708,12 @@ def _detect_smoke_errors(
     errors = _detect_break_indicators(lines)
     if final_exception is not None:
         errors.append(str(final_exception))
+    if prompt_submission_error := _nanocoder_prompt_submission_error(
+        params,
+        lines,
+        artifact_submitted,
+    ):
+        errors.append(prompt_submission_error)
     if not params.output_file.exists():
         errors.append("expected todo-list.js was not created")
     if session_id is None and params.config.transport not in {

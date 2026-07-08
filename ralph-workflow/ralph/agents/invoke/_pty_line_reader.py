@@ -181,13 +181,6 @@ class PtyLineReader:
         self._expected_session_id = _extras.expected_session_id
         self._stop_sentinel_path = _extras.stop_sentinel_path
         self._permission_prompt_listener = _extras.permission_prompt_listener
-        self._initial_input = _extras.initial_input
-        self._initial_input_ready_marker_labels = tuple(_extras.initial_input_ready_markers)
-        self._initial_input_ready_markers = tuple(
-            marker.casefold() for marker in _extras.initial_input_ready_markers
-        )
-        self._initial_input_ready = not self._initial_input_ready_markers
-        self._initial_input_sent = False
         self._completion_run_id = completion_run_id_from_extra_env(
             cast("dict[str, str] | None", getattr(ctx, "extra_env", None))
         )
@@ -674,29 +667,6 @@ class PtyLineReader:
                 self._request_interactive_exit()
                 return
 
-    def _send_initial_input(self) -> None:
-        if (
-            self._initial_input_sent
-            or self._initial_input is None
-            or not self._initial_input_ready
-        ):
-            return
-        self._initial_input_sent = True
-        with contextlib.suppress(OSError):
-            _write_pty_input(
-                self._input_writer_fd,
-                self._initial_input,
-                lock=self._input_writer_lock,
-            )
-
-    def _mark_initial_input_ready_from_line(self, queued_line: str) -> None:
-        if self._initial_input_ready or not self._initial_input_ready_markers:
-            return
-        visible_line = _visible_tui_text(queued_line).casefold()
-        if any(marker in visible_line for marker in self._initial_input_ready_markers):
-            self._initial_input_ready = True
-            self._send_initial_input()
-
     def _classify_quiet(self) -> AgentExecutionState:
         try:
             return self._strategy.classify_quiet(self._handle, self._probe)
@@ -783,13 +753,6 @@ class PtyLineReader:
         merged_diag: dict[str, object] = {
             "evidence_summary": watchdog.last_evidence_summary(now).to_dict_list(),
         }
-        initial_input_pending = self._initial_input is not None and not self._initial_input_sent
-        if initial_input_pending:
-            merged_diag["initial_input_pending"] = True
-            merged_diag["initial_input_ready"] = self._initial_input_ready
-            merged_diag["initial_input_ready_markers"] = list(
-                self._initial_input_ready_marker_labels
-            )
         # Surface the captured session id and the real resume-safety
         # signal in the post-mortem diagnostic so an on-call grep of
         # the merged_diag payload sees the captured id here as well
@@ -1053,7 +1016,6 @@ class PtyLineReader:
     def _handle_queued_line(self, queued_line: str, watchdog: IdleWatchdog) -> Iterator[str]:
         self._record_transcript_session_id(queued_line)
         self._observe_queued_line(queued_line)
-        self._mark_initial_input_ready_from_line(queued_line)
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is not None:
             self._last_activity_kind = activity_signal.kind
@@ -1231,7 +1193,6 @@ class PtyLineReader:
         if self._is_waiting_state_provider is not None:
             watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
-        self._send_initial_input()
         # R7 (Trustworthy Idle Watchdog): expose the watchdog
         # reference on the PTY line reader so the line-reader
         # layer can populate the R7 diagnostic fields on

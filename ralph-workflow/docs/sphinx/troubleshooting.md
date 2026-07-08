@@ -172,10 +172,11 @@ If the smoke report shows the same provider/model error, fix the agent's provide
 shows the task text as pasted input or sits at `What would you like me to help
 with?` without tool or model progress.
 
-**Cause:** Nanocoder is an interactive TUI. Ralph Workflow must wait until
-Nanocoder's input prompt is ready before sending the task path. Sending the
-task during startup can leave the prompt text in Nanocoder's editor instead
-of submitting a turn.
+**Cause:** Nanocoder's interactive editor is not a stable automation surface.
+Ralph Workflow must use Nanocoder's non-interactive `run` command for
+unattended work. If Ralph Workflow ever drives the TUI editor by pasted PTY
+input, startup output can leave the task text in Nanocoder's editor instead of
+submitting a turn.
 
 **Fix:** Run the Nanocoder smoke test with the same alias used by the pipeline:
 

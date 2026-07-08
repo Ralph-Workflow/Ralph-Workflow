@@ -103,10 +103,11 @@ def test_nanocoder_command_builder_parity(tmp_path: Path) -> None:
         workspace_path=tmp_path,
     )
 
-    # Interactive nanocoder uses the common PTY path; no headless run mode.
+    # Nanocoder uses its non-interactive run command; Ralph must not drive the TUI editor.
     # cmd = [cmd_name]
     # yolo -> "--mode", "yolo"
     # model -> "--provider", "openai", "--model", "gpt-4"
+    # run -> prompt content
     expected = [
         "nanocoder",
         "--mode",
@@ -115,6 +116,8 @@ def test_nanocoder_command_builder_parity(tmp_path: Path) -> None:
         "openai",
         "--model",
         "gpt-4",
+        "run",
+        "hello world",
     ]
 
     builder = NanocoderCommandBuilder()

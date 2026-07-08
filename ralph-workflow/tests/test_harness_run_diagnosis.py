@@ -807,6 +807,49 @@ def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_act
     assert "session ID was not observed" not in errors
 
 
+def test_detect_smoke_errors_nanocoder_banner_without_progress_reports_prompt_submission_failure(
+    tmp_path: Path,
+) -> None:
+    """Nanocoder's welcome banner alone must not look like successful startup."""
+    output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
+    config = AgentConfig(
+        cmd="nanocoder",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.NANOCODER,
+    )
+    params = SmokeRunParams(
+        agent_name="nanocoder/MiniMax Coding/MiniMax-M3",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+    lines = [
+        "█▄ █ ▄▀█ █▄ █ █▀█ █▀▀ █▀█ █▀▄ █▀▀ █▀█",
+        "█ ▀█ █▀█ █ ▀█ █▄█ █▄▄ █▄█ █▄▀ ██▄ █▀▄",
+        "✻ Welcome to Nanocoder 1.28.1 ✻",
+        "│  Tips for getting started:",
+        "│  1. Use natural language to describe your task.",
+        "│  2. Ask for file analysis, editing, bash commands and more.",
+    ]
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params,
+        lines,
+        lines,
+        None,
+        None,
+        artifact_submitted=False,
+        run_id="interactive-nanocoder-smoke-MiniMax-Coding-MiniMax-M3",
+    )
+
+    assert "nanocoder prompt was not submitted after startup banner" in errors
+
+
 def test_detect_smoke_errors_non_agy_transport_keeps_missing_signal_checks(
     tmp_path: Path,
 ) -> None:

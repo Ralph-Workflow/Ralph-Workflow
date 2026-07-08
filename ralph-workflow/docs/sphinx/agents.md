@@ -153,9 +153,9 @@ provider-specific flags forwarded through `--provider`.
 ### Nanocoder
 
 Local-only TUI. The builder launches Nanocoder without autonomy flags —
-Nanocoder has no remote auth surface. Ralph Workflow waits for Nanocoder's
-visible input prompt before sending the task path; a visible welcome banner is
-not enough to prove that a turn has started.
+Nanocoder has no remote auth surface. Ralph Workflow invokes Nanocoder with
+its non-interactive `run` command and passes the prompt content as argv, rather
+than driving Nanocoder's interactive editor through pasted PTY input.
 
 ### AGY (PTY)
 

@@ -412,3 +412,80 @@ def test_ansi_wrapped_completion_marker_detected(
 
     assert lines == [ansi_line]
     assert captured_completion_seen == [True]
+
+
+def test_run_pty_tears_down_live_process_when_iterator_is_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Closing the public PTY iterator must not leave the child tree alive."""
+    teardown_calls: list[int] = []
+
+    class _FakeHandle:
+        pid = 4242
+
+        def __init__(self) -> None:
+            self.terminate_calls: list[float] = []
+
+        def __enter__(self) -> _FakeHandle:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self, grace_period_s: float = 0.5) -> None:
+            self.terminate_calls.append(grace_period_s)
+
+    handle = _FakeHandle()
+
+    class _FakeProcessManager:
+        def spawn_pty(self, *args: object, **kwargs: object) -> _FakeHandle:
+            del args, kwargs
+            return handle
+
+    class _FakePtyLineReader:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+
+        @property
+        def completion_exit_sent(self) -> bool:
+            return False
+
+        def read_lines(self) -> object:
+            yield "Nanocoder banner\n"
+
+    def fake_teardown_subtree(pid: int) -> None:
+        teardown_calls.append(pid)
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner.get_process_manager",
+        lambda: _FakeProcessManager(),
+    )
+    monkeypatch.setattr("ralph.agents.invoke._pty_runner.PtyLineReader", _FakePtyLineReader)
+    monkeypatch.setattr("ralph.agents.invoke._pty_runner.teardown_subtree", fake_teardown_subtree)
+
+    ctx = SimpleNamespace(
+        clock=FakeClock(),
+        workspace_path=tmp_path,
+        extra_env={},
+        config=AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER),
+        show_progress=False,
+        policy=SimpleNamespace(process_exit_wait_seconds=0.1),
+        execution_strategy=None,
+        liveness_probe=None,
+        waiting_listener=None,
+        monitor=None,
+        required_artifact=None,
+        evaluate_completion_fn=lambda *args, **kwargs: None,
+    )
+
+    iterator = run_pty_and_read_lines(["nanocoder"], cast("Any", ctx))
+    assert next(iterator) == "Nanocoder banner\n"
+
+    iterator.close()
+
+    assert handle.terminate_calls == [0.5]
+    assert teardown_calls == [4242]
