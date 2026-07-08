@@ -159,7 +159,13 @@ agent, or a green process exit with no useful work.
    `ralph/mcp/transport/` and wire them through the runtime resolver.
 9. If the transport is PTY-backed, decide whether it can use
    `_run_shared_interactive_pty()` and whether it needs custom `_PtyExtras`.
-10. Add or update a manual smoke command only for live, token-consuming checks;
+10. If the upstream CLI exposes both an interactive editor and a non-interactive
+    `run` / `--print` / JSON mode, choose the non-interactive contract for
+    unattended Ralph phases unless the interactive mode is the documented
+    automation API. Do not paste prompts into a TUI editor as the primary
+    invocation path; welcome banners and editor buffers are not proof that a
+    model turn started.
+11. Add or update a manual smoke command only for live, token-consuming checks;
     do not add live smoke commands to `make verify`.
 
 The guard test
@@ -202,6 +208,9 @@ Use the smallest checklist that matches the change.
   filesystem I/O.
 - Decide explicitly whether the maintained path is headless or PTY. Do not pick
   headless only because the upstream CLI exposes it.
+- Prefer a documented non-interactive `run` / `--print` / JSON mode over
+  automating an interactive editor. If a PTY is still required, prove that the
+  prompt is submitted as a turn, not merely rendered in the editor buffer.
 - Record the mode decision in this guide or the transport docs when future
   maintainers might reasonably choose the wrong path.
 
@@ -229,6 +238,11 @@ Parser rules:
   stream renders `status` content directly.
 - For TUI output, call `normalize_vt_text()`, suppress control-only frames, and
   coalesce repeated repaint frames. Keep a small cap for distinct status events.
+- Separate UI chrome from agent work. Spinner lines, banners, config paths, and
+  "waiting" frames should be `status`; model prose should be `text`; executed
+  tool summaries should be `tool_use` / `tool_result` when the upstream stream
+  exposes them. Do not let an early cap on status frames hide later model text
+  or tool activity.
 - Filter internal markers such as turn-boundary sentinels before they reach the
   display.
 - Keep parser state bounded. Long-lived sets/lists/deques in parser instances
@@ -276,6 +290,9 @@ Interactive session rules:
 - PTY readers must capture visible session IDs and thread them into recovery.
 - Terminating a PTY run must tear down the process subtree, not just the PTY
   parent process.
+- Closing or abandoning the public invocation iterator must also close the
+  inner reader and tear down the live process subtree. This is part of the
+  process-lifecycle contract, not only Ctrl-C handling.
 
 ## MCP and runtime environment contract
 
@@ -333,6 +350,12 @@ python -m ralph smoke-interactive-nanocoder
 python -m ralph smoke-interactive-agy
 ```
 
+When a live smoke fails, inspect both the parity table and the raw transcript.
+A green file/artifact result proves task completion, but it does not prove the
+operator saw useful progress. Parser tests must cover the representative raw
+lines that should appear in "Observed output" so a transport does not regress to
+spinner-only visibility.
+
 ## Definition of done for agent support
 
 Agent support is not complete until all of these are true:
@@ -346,8 +369,10 @@ Agent support is not complete until all of these are true:
 - Completion is proven by the right evidence for the transport: required
   artifact, canonical receipt, completion marker, captured session, or typed
   resumable error as appropriate.
-- PTY transports handle prompt injection, permission/trust prompts, session ID
-  capture, process-subtree teardown, and silent-background-work UX.
+- PTY transports handle permission/trust prompts, session ID capture,
+  process-subtree teardown, and silent-background-work UX. Prompt injection is
+  allowed only when the upstream interactive surface is the documented
+  automation contract; otherwise use the upstream non-interactive command.
 - Recovery behavior uses the shared classifier/retry machinery, not ad-hoc
   loops.
 - Tests cover the changed seam without real subprocess/network/file I/O unless

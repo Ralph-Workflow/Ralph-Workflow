@@ -81,8 +81,8 @@ def test_nanocoder_parser_surfaces_distinct_visible_tui_snapshots() -> None:
 
     assert [(line.type, line.content) for line in results] == [
         ("status", "⏵⏵⏵ yolo mode on · tune: full (auto) · ctx: 4%"),
-        ("status", "Reading PROMPT.md and preparing the todo list."),
-        ("status", "Wrote tmp/interactive-nanocoder-smoke/todo-list.js"),
+        ("text", "Reading PROMPT.md and preparing the todo list."),
+        ("text", "Wrote tmp/interactive-nanocoder-smoke/todo-list.js"),
     ]
 
 

@@ -16,9 +16,12 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog import SubagentPidRegistry
 
 _MAX_STATUS_EVENTS = 8
+_MAX_TEXT_EVENTS = 64
 _TURN_BOUNDARY_MARKER = "[claude turn boundary]"
 _CTX_PERCENT_RE = re.compile(r"\bctx:\s*\d+%")
 _WHITESPACE_RE = re.compile(r"\s+")
+_SPINNER_STATUS_RE = re.compile(r"^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+")
+_EXECUTED_TOOL_RE = re.compile(r"^⚒\s+Executed\s+(?P<tool>\S+)(?:\s+×\s+\d+)?$")
 
 
 def _status_signature(text: str) -> str:
@@ -46,6 +49,27 @@ class NanocoderParser(GenericParser):
             subagent_source_label=subagent_source_label,
         )
         self._status_signatures: tuple[str, ...] = ()
+        self._text_signatures: tuple[str, ...] = ()
+
+    def _text_seen(self, signature: str) -> bool:
+        if signature in self._text_signatures:
+            return True
+        if len(self._text_signatures) >= _MAX_TEXT_EVENTS:
+            self._text_signatures = (*self._text_signatures[1:], signature)
+        else:
+            self._text_signatures = (*self._text_signatures, signature)
+        return False
+
+    def _is_status_line(self, normalized: str) -> bool:
+        if _SPINNER_STATUS_RE.search(normalized):
+            return True
+        lowered = normalized.lower()
+        return (
+            "waiting for mcp servers" in lowered
+            or "waiting for chat to complete" in lowered
+            or " · " in normalized
+            or normalized.startswith("~/Library/Preferences/nanocoder/")
+        )
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
         normalized = normalize_vt_text(stripped).strip()
@@ -57,7 +81,25 @@ class NanocoderParser(GenericParser):
         if normalized.startswith("[plain] tool:"):
             yield from super()._classify_non_json_line(stripped)
             return
+        if tool_match := _EXECUTED_TOOL_RE.search(normalized):
+            yield AgentOutputLine(
+                type="tool_use",
+                content=tool_match.group("tool"),
+                raw=stripped,
+                metadata={"event": "nanocoder_tool_execution"},
+            )
+            return
         signature = _status_signature(normalized)
+        if not self._is_status_line(normalized):
+            if self._text_seen(signature):
+                return
+            yield AgentOutputLine(
+                type="text",
+                content=normalized,
+                raw=stripped,
+                metadata={"event": "nanocoder_text"},
+            )
+            return
         if signature in self._status_signatures:
             return
         if len(self._status_signatures) >= _MAX_STATUS_EVENTS:

@@ -63,6 +63,11 @@ register_my_agent(
 `interactive=True` auto-applies the `--resume {}` session template. Pass
 `no_default_session_flag=True` to opt out (used by `agy`).
 
+Before choosing an interactive transport, check whether the upstream CLI has a
+documented non-interactive `run`, `--print`, or JSON mode. For unattended Ralph
+phases, prefer that contract over pasting prompts into a TUI editor; parser and
+smoke tests must still prove that model text and tool activity are visible.
+
 ## Expected outcome
 
 After either recipe runs, `my_registry.catalog.get(name)` returns an

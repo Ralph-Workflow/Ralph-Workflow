@@ -17,7 +17,6 @@ import shutil
 import sqlite3
 import subprocess
 from dataclasses import replace
-from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -150,6 +149,7 @@ _MODELED_FLAG_PARTS = 2
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
+    from pathlib import Path
 
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
