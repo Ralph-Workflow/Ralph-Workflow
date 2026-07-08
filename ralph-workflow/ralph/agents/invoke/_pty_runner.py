@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import sys
 from collections import deque
-from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
 
 from tqdm import tqdm
 
@@ -53,8 +53,20 @@ class _CompletionExitSentReader(Protocol):
     def completion_exit_sent(self) -> bool: ...
 
 
+@runtime_checkable
 class _ClosableIterator(Protocol):
     def close(self) -> None: ...
+
+
+@runtime_checkable
+class _TerminablePtyHandle(Protocol):
+    def terminate(self, grace_period_s: float) -> None: ...
+
+
+@runtime_checkable
+class _PtyHandleWithPid(Protocol):
+    @property
+    def pid(self) -> int | None: ...
 
 
 def _has_completion_exit_sent(reader: object) -> TypeGuard[_CompletionExitSentReader]:
@@ -66,7 +78,7 @@ def _completion_exit_sent(reader: object) -> bool:
 
 
 def _has_close(iterator: object) -> TypeGuard[_ClosableIterator]:
-    return callable(getattr(iterator, "close", None))
+    return isinstance(iterator, _ClosableIterator)
 
 
 def _close_iterator(iterator: object) -> None:
@@ -76,11 +88,10 @@ def _close_iterator(iterator: object) -> None:
 
 
 def _terminate_pty_tree(handle: object) -> None:
-    terminate = getattr(handle, "terminate", None)
-    if callable(terminate):
+    if isinstance(handle, _TerminablePtyHandle):
         with contextlib.suppress(Exception):
-            terminate(grace_period_s=0.5)
-    pid = cast("int | None", getattr(handle, "pid", None))
+            handle.terminate(grace_period_s=0.5)
+    pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
     if pid is not None:
         with contextlib.suppress(Exception):
             teardown_subtree(pid)
@@ -165,7 +176,7 @@ def run_pty_and_read_lines(
                 verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
                 if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                     handle.terminate(grace_period_s=0.5)
-                    exit_pid = cast("int | None", getattr(handle, "pid", None))
+                    exit_pid = handle.pid if isinstance(handle, _PtyHandleWithPid) else None
                     if exit_pid is not None:
                         teardown_subtree(exit_pid)
                     raise _IdleStreamTimeoutError(

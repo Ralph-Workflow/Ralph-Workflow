@@ -101,12 +101,15 @@ class NanocoderParser(GenericParser):
                 raw=stripped,
                 metadata={"event": "nanocoder_text"},
             )
-        elif is_status and signature not in self._status_signatures:
-            if len(self._status_signatures) < _MAX_STATUS_EVENTS:
-                self._status_signatures = (*self._status_signatures, signature)
-                yield AgentOutputLine(
-                    type="status",
-                    content=normalized,
-                    raw=stripped,
-                    metadata={"event": "interactive_tui"},
-                )
+        elif (
+            is_status
+            and signature not in self._status_signatures
+            and len(self._status_signatures) < _MAX_STATUS_EVENTS
+        ):
+            self._status_signatures = (*self._status_signatures, signature)
+            yield AgentOutputLine(
+                type="status",
+                content=normalized,
+                raw=stripped,
+                metadata={"event": "interactive_tui"},
+            )

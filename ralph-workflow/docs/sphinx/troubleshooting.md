@@ -173,11 +173,11 @@ shows the task text as pasted input or sits at `What would you like me to help
 with?` without tool or model progress.
 
 **Cause:** Nanocoder has two bad integration traps. Its JSON/plain automation
-path has a hidden long-run action limit, observed around 100 actions, so Ralph
-Workflow must keep Nanocoder on the PTY-backed Ink runtime. At the same time,
-Nanocoder's interactive editor buffer is not a stable prompt-submission API. If
-Ralph Workflow drives the editor by pasted PTY input, startup output can leave
-the task text in the editor instead of submitting a model turn.
+path has a hidden long-run action limit, observed around 100 actions, so
+Ralph Workflow must keep Nanocoder on the PTY-backed Ink runtime. At the same
+time, Nanocoder's interactive editor buffer is not a stable prompt-submission
+API. If Ralph Workflow drives the editor by pasted PTY input, startup output can
+leave the task text in the editor instead of submitting a model turn.
 
 **Fix:** Run the Nanocoder smoke test with the same alias used by the pipeline:
 
@@ -202,8 +202,8 @@ runtime instead of relying on JSON/plain mode as the durable backend.
 **Fix options:**
 
 - **Use a different agent for complex tasks.** Claude Code, OpenCode, and Google Anti Gravity do not have an equivalent per-run turn cap when invoked headlessly. If your task regularly exceeds 50 tool exchanges, route that phase to one of those agents.
-- **Keep Nanocoder on the maintained interactive path.** Do not switch Ralph
-  Workflow's Nanocoder backend to JSON/plain mode to avoid TUI complexity; that
+- **Keep Nanocoder on the maintained interactive path.** Do not switch Ralph Workflow's
+  Nanocoder backend to JSON/plain mode to avoid TUI complexity; that
   reintroduces the hidden action-limit bug.
 - **Break the task into smaller phases.** If Nanocoder is your only option,
   split the `PROMPT.md` task into smaller steps. Ralph Workflow's checkpoint
