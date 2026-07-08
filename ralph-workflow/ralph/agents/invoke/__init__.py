@@ -129,6 +129,9 @@ from ralph.mcp.transport.common import (
 from ralph.mcp.transport.common import (
     merge_mcp_toml_into_upstreams as _merge_mcp_toml_into_upstreams,
 )
+from ralph.mcp.transport.cursor import (
+    load_existing_cursor_upstream_servers,
+)
 from ralph.mcp.transport.nanocoder import (
     build_nanocoder_mcp_config,
     load_existing_nanocoder_upstream_servers,
@@ -715,6 +718,7 @@ __all__ = [
     "is_permission_prompt_line",
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",
+    "load_existing_cursor_upstream_servers",
     "load_existing_nanocoder_upstream_servers",
     "pending_vt_snapshot_line",
     "permission_prompt_action_message",

@@ -18,6 +18,7 @@ own native authentication:
 - **Nanocoder** — local-only TUI, no remote auth
 - **Google Anti Gravity (AGY)** — `agy login` / Google account
 - **Pi** — `pi` provider configuration
+- **Cursor** — `agent login` / `CURSOR_API_KEY`
 
 You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
 Ralph Workflow then calls the agent CLI as-is and supervises the workflow.
@@ -26,10 +27,10 @@ It does not read, store, or proxy credentials.
 > This is a deliberate trust boundary: **you** own your agent credentials.
 > Ralph Workflow's job is to orchestrate work, not to handle secrets.
 
-## Selection — the seven built-in agents
+## Selection — the eight built-in agents
 
 The canonical registry is `ralph/agents/builtin.py`. Ralph Workflow ships
-with seven built-in agent specs that the bundled default policy can route
+with eight built-in agent specs that the bundled default policy can route
 phases to:
 
 | Built-in name     | CLI          | Transport            | Headless? | Use case                                              |
@@ -41,8 +42,9 @@ phases to:
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
 | `agy`             | `agy`        | Interactive (PTY)    | Yes (mock-backed) | Google's Antigravity CLI (v1.0.9+)              |
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent; `pi --mode json <prompt>`       |
+| `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; headless `--print` mode; opt-in     |
 
-Beyond the seven built-ins, the registry resolves dynamic `<agent>/<model>`
+Beyond the eight built-ins, the registry resolves dynamic `<agent>/<model>`
 aliases through `_resolve_dynamic_agent`. So `agy/Gemini 3.5 Flash (Medium)`
 is a valid agent spec that resolves at runtime to the AGY binary with the
 named model. The eight canonical `agy models` display names accepted by
@@ -92,6 +94,17 @@ The seam lives in `ralph/cli/commands/smoke.py` via
 `_maybe_apply_agy_binary_override(agent_config)` immediately after
 `registry.get(agent_name)`. The plumbing layer stays free of env-var seams;
 the CLI surface applies the override at the boundary.
+
+Cursor honors the same pattern via `RALPH_CURSOR_BINARY`:
+
+```bash
+RALPH_CURSOR_BINARY=/path/to/cursor-wrapper ralph --diagnose
+```
+
+The seam lives in `ralph/cli/commands/smoke.py` via
+`_maybe_apply_cursor_binary_override(agent_config)`. Unlike AGY there
+is no bundled mock binary for Cursor; the override points at a real
+wrapper, alternate live binary, or an operator-wired test stub.
 
 For mock-backed deterministic CI runs, point `RALPH_AGY_BINARY` at the
 bundled mock:
@@ -187,6 +200,21 @@ Pi is session-capable in JSON mode: a clean `rc=0` exit without required
 artifact or completion evidence is retried against the captured Pi session
 rather than treated as terminal success.
 
+### Cursor
+
+The Cursor builder invokes `agent --print --output-format stream-json
+--trust --yolo --approve-mcps [--model <id>] <prompt>` and parses the
+resulting NDJSON stream per Cursor's documented `system` / `user` /
+`assistant` / `thinking` / `tool_call` / `tool_result` / `result` envelope.
+`--trust` and `--approve-mcps` are the documented unattended-runner
+overrides that skip the interactive workspace-trust and MCP-approval
+prompts. `--yolo` is the documented autonomy flag for the headless
+transport. Ralph Workflow wires MCP through the documented `.cursor/mcp.json`
+(workspace-local) AND `~/.cursor/mcp.json` (user-global) JSON files so
+the agent picks up the endpoint regardless of the cwd it was launched
+from. The runtime resolver restores the original bytes on exit so
+operator-managed MCP servers are preserved across Ralph Workflow runs.
+
 ## End-to-end verification paths
 
 Each agent has a documented verification path that targets its own contract:
@@ -194,6 +222,7 @@ Each agent has a documented verification path that targets its own contract:
 - **Claude Code (interactive)**: `ralph smoke-interactive-claude`
 - **Nanocoder (interactive)**: `ralph smoke-interactive-nanocoder --agent '<exact nanocoder alias>'`
 - **AGY (interactive)**: `ralph smoke-interactive-agy` (mock-backed by default)
+- **Cursor (headless)**: `ralph smoke-interactive-cursor` (live binary required)
 - **Codex, OpenCode, Pi**: public-surface black-box pytest suite
   (`uv run pytest tests/agents/<agent>_blackbox.py -q`)
 
@@ -247,7 +276,8 @@ If `ralph --diagnose` reports an agent problem, check:
 3. Auth is valid: try a one-shot prompt in your shell
 4. PATH matches: launch `ralph` from the same shell type you tested in
 5. The right binary override is set: `RALPH_AGY_BINARY` if you're using a
-   custom or mock AGY
+   custom or mock AGY; `RALPH_CURSOR_BINARY` if you're pointing Cursor at
+   a wrapper or alternate live binary
 
 For transport-specific issues, see [Troubleshooting](troubleshooting.md)
 and the agent's verification path above.

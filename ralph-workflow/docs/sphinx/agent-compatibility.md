@@ -16,6 +16,8 @@ Ralph Workflow's review phase is designed to be agent-agnostic in its prompts, b
 | **Codex (OpenAI)** | ✅ Excellent | ✅ Excellent | Great for security-focused reviews |
 | **OpenCode** | ✅ Good | ✅ Good | Requires `opencode` parser |
 | **Google Anti Gravity (AGY)** | ✅ Good | ✅ Good | First-class; PTY-based runtime injection with `~/.gemini/antigravity-cli/mcp_config.json` managed by Ralph Workflow |
+| **Pi (pi.dev)** | ✅ Good | ✅ Good | Headless `--mode json`; Pi extension bridges MCP into the model tool surface |
+| **Cursor** | ✅ Good | ✅ Good | Headless `--print --output-format stream-json`; MCP wired via `.cursor/mcp.json` / `~/.cursor/mcp.json` |
 | **CCS/GLM** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **ZhipuAI/ZAI** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **Qwen** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
@@ -90,6 +92,78 @@ json_parser = "generic"
 - Ralph Workflow automatically injects the run-scoped Ralph Workflow MCP endpoint into AGY's **global** config file at `~/.gemini/antigravity-cli/mcp_config.json` before AGY launches and restores the original file after the run.
 - Upstream MCP server definitions are read from both the workspace `.agents/mcp_config.json` and the global `~/.gemini/antigravity-cli/mcp_config.json`, normalised into a transport-neutral model, and re-exposed through Ralph Workflow's upstream proxy.
 - See `ralph/mcp/transport/agy.py::agy_workspace_mcp_endpoint` for the implementation; run `ralph --check-mcp` to verify the wiring in your environment.
+
+**Notes**:
+- Completion contract: `declare_complete` or phase artifact, same as Claude interactive
+- Multimodal delivery uses the Gemini provider profile
+- PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.
+- The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
+- AGY is a supported orchestration path, not a replacement for Ralph Workflow
+
+### Cursor (cursor)
+
+**Status**: ✅ First-Class Supported Agent Path (8th built-in)
+
+**Configuration**:
+```toml
+[agents.cursor]
+name = "cursor"
+command = "agent"
+yolo_flag = "--yolo"
+print_flag = "--print"
+output_flag = "--output-format stream-json"
+json_parser = "generic"
+```
+
+**MCP Setup**:
+- Ralph Workflow automatically injects the run-scoped Ralph Workflow MCP
+  endpoint into Cursor's MCP config surface, which is documented as
+  BOTH the workspace-local `.cursor/mcp.json` AND the user-global
+  `~/.cursor/mcp.json`. Cursor may prefer one path over the other
+  depending on the cwd it was launched from; writing to both
+  ensures the agent picks up the MCP endpoint regardless of launch
+  directory. On exit the original bytes are restored atomically
+  (via `Path.replace`) so operator-managed MCP servers are
+  preserved across Ralph Workflow runs. The merge respects the documented
+  `unsafe_mode` semantics: in safe mode only the Ralph entry is
+  written; in unsafe mode existing operator-managed servers are
+  preserved alongside the Ralph entry.
+- Upstream MCP server definitions are read from both
+  `.cursor/mcp.json` (workspace-local) and `~/.cursor/mcp.json`
+  (user-global), normalised into a transport-neutral model, and
+  re-exposed through Ralph Workflow's upstream proxy. The
+  provider-visible config only ever contains the Ralph Workflow
+  MCP entry (in safe mode) or the Ralph entry plus operator-managed
+  servers (in unsafe mode).
+- See `ralph/mcp/transport/cursor.py::cursor_workspace_mcp_endpoint`
+  for the implementation; run `ralph --check-mcp` to verify the
+  wiring in your environment.
+
+**Notes**:
+- Headless `--print --output-format stream-json` is the documented
+  automation API. The interactive Cursor TUI is NOT the default
+  Ralph Workflow contract.
+- The `--trust` and `--approve-mcps` flags are emitted in
+  extra-flags-before-prompt order so the agent does not block on
+  the interactive workspace-trust and MCP-approval prompts.
+- `--yolo` is the documented autonomy flag for the headless
+  transport. Operators who prefer the Smart-Auto alternative can
+  override via `[agents.cursor].yolo_flag = "--auto-review"`.
+- Cursor is session-capable via the documented `--resume <chatId>`
+  flag; the built-in `session_flag = "--resume {}"` wires the
+  captured `session_id` into the next invocation.
+- The `RALPH_CURSOR_BINARY` env var is a general binary override
+  (no bundled mock for cursor). The override points at a real
+  wrapper, alternate live binary, or an operator-wired test stub.
+  Non-executable paths are ignored with a WARNING.
+- Cursor's model catalog spans multiple upstream providers (OpenAI
+  Codex variants, Claude variants, Composer, Auto, etc.); the
+  resolver preserves the full id verbatim in the `--model` flag
+  (including bracket parameterization like
+  `claude-opus-4-8[context=1m,effort=high,fast=false]` and nested
+  slash paths). Model identity is recorded for multimodal and MCP
+  planning; an unknown provider with the model id carried through
+  is acceptable, fabrication is not.
 
 ## Agents with Known Issues
 

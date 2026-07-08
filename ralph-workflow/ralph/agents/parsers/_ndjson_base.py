@@ -60,6 +60,7 @@ if TYPE_CHECKING:
         "codex",
         "nanocoder",
         "gemini",
+        "cursor",
     ]
 
 

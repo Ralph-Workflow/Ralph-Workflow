@@ -73,6 +73,42 @@ def test_resolve_smoke_harness_spec_nanocoder_alias_uses_unique_run_id() -> None
     assert spec.run_id == "interactive-nanocoder-smoke-minimax-MiniMax-M3"
 
 
+def test_resolve_smoke_harness_spec_cursor_bare_uses_cursor_layout() -> None:
+    """Bare ``cursor`` resolves to the shared cursor harness layout.
+
+    Pins AC-26: ``ralph smoke-interactive-cursor --agent cursor`` must NOT
+    raise ``ValueError: No smoke harness spec defined for agent 'cursor'``
+    from ``resolve_smoke_harness_spec``. Bare ``cursor`` uses the base
+    cursor harness layout (no per-alias run_id suffix) so on-disk artifacts
+    stay co-located with the shared output directory.
+    """
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("cursor")
+    assert spec.relative_dir == Path("tmp/interactive-cursor-smoke")
+    assert spec.output_file == Path("tmp/interactive-cursor-smoke/todo-list.js")
+    assert spec.run_id == "interactive-cursor-smoke"
+
+
+def test_resolve_smoke_harness_spec_cursor_alias_uses_unique_run_id() -> None:
+    """``cursor/<model>`` resolves to a sanitized unique run_id.
+
+    Pins AC-26: a smoke run with a non-default model alias (e.g.
+    ``cursor/auto`` or ``cursor/gpt-5.3-codex-high``) MUST NOT collide on
+    the completion-sentinel / receipt paths of the base cursor run. The
+    suffix is sanitized the same way the agy/nanocoder branches sanitize it
+    (run-id-safe characters only).
+    """
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("cursor/auto")
+    assert spec.relative_dir == Path("tmp/interactive-cursor-smoke")
+    assert spec.output_file == Path("tmp/interactive-cursor-smoke/todo-list.js")
+    assert spec.run_id == "interactive-cursor-smoke-auto"
+
+    # Bracket-parameterized model ids sanitize the brackets to a single dash.
+    spec_bracket = smoke_plumbing_module.resolve_smoke_harness_spec(
+        "cursor/claude-opus-4-8[context=1m]"
+    )
+    assert spec_bracket.run_id == "interactive-cursor-smoke-claude-opus-4-8-context-1m"
+
+
 def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -361,6 +361,7 @@ def test_opencode_registry_discovery_only_relevant_transport_gets_strategy() -> 
         AgentTransport.GENERIC,
         AgentTransport.AGY,
         AgentTransport.PI,
+        AgentTransport.CURSOR,
     ]
     assert expected_opencode not in other_transports
     assert len(set(other_transports) | {expected_opencode}) == len(AgentTransport)

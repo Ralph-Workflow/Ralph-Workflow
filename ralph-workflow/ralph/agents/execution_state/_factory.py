@@ -71,6 +71,35 @@ def _make_agy_strategy(
     )
 
 
+def _make_cursor_strategy(
+    *,
+    label_scope: str | None = None,
+    registry: ChildLivenessRegistry | None = None,
+    subagent_pid_source: SubagentPidSource | None = None,
+    **_kwargs: object,
+) -> BaseExecutionStrategy:
+    """Factory for Cursor strategy: CompletionEnforcingStrategy wrapping GenericExecutionStrategy.
+
+    Mirrors the AGY factory: uses inheritance (not composition) because
+    :class:`CompletionEnforcingStrategy` is a mixin that requires being
+    inherited to properly initialize via MRO.  The Cursor transport
+    surfaces ``tool_call`` events as ``type='tool_use'`` and
+    ``tool_result`` events with ``is_error=true`` as ``type='error'``
+    via :class:`CursorParser`, so the strategy is a stock
+    :class:`GenericExecutionStrategy` subclass that inherits the
+    completion-enforcement contract from the AGY / Pi factories.
+    """
+
+    class CursorExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
+        pass
+
+    return CursorExecutionStrategy(
+        label_scope=label_scope,
+        registry=registry,
+        subagent_pid_source=subagent_pid_source,
+    )
+
+
 def _make_pi_strategy(
     *,
     label_scope: str | None = None,

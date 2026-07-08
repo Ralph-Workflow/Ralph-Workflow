@@ -269,7 +269,7 @@ def _load_upstreams_for_agent(
         workspace_path if workspace_path is not None else current_config.get("workspace_path")
     )
     existing_mcp_servers = current_config.get("mcpServers")
-    if agent_name in ("claude", "agy", "nanocoder"):
+    if agent_name in ("claude", "agy", "nanocoder", "cursor"):
         servers: dict[str, object] = {}
         if isinstance(existing_mcp_servers, dict) and len(existing_mcp_servers) > 1:
             servers = cast("dict[str, object]", existing_mcp_servers)
@@ -283,6 +283,17 @@ def _load_upstreams_for_agent(
             normalizer = cast(
                 "Callable[[str, object], tuple[str, object] | None]",
                 mod._normalize_agy_server_entry,
+            )
+            servers = cast(
+                "dict[str, object]",
+                mod._load_mcpservers_from_paths(paths, normalizer),
+            )
+        elif agent_name == "cursor":
+            mod = importlib.import_module("ralph.mcp.transport.cursor")
+            paths = cast("tuple[Path, ...]", mod._cursor_paths_to_consider(_workspace_path))
+            normalizer = cast(
+                "Callable[[str, object], tuple[str, object] | None]",
+                mod._normalize_cursor_server_entry,
             )
             servers = cast(
                 "dict[str, object]",

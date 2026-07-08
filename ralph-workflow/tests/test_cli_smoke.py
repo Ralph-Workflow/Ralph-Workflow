@@ -1043,3 +1043,4 @@ def test_apply_agy_binary_override_to_config_accepts_non_mock_executable(
     assert str(stub_path) in agy_cmd
     # The non-AGY agent is preserved.
     assert result.agents["claude/haiku"].cmd == "claude"
+

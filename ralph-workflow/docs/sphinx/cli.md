@@ -8,11 +8,11 @@ Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` wit
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--list-agents` | | `False` | List configured agents and their status |
+| `--list-agents` | | `False` | List configured agents and their status (includes the 8 built-ins: `claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, `cursor`) |
 | `--list-providers` | | `False` | List available AI providers (OpenCode API) |
 | `--diagnose` | `-d` | `False` | Run pre-flight diagnostics and print a status table |
 | `--check-config` | `-C` | `False` | Load and validate configuration, then exit |
-| `--check-mcp` | | `False` | Validate custom MCP server definitions and AGY transport compatibility, then exit. Set `RALPH_AGY_BINARY` to point at a non-PATH `agy` binary. |
+| `--check-mcp` | | `False` | Validate custom MCP server definitions and AGY + Cursor transport compatibility, then exit. Set `RALPH_AGY_BINARY` to point at a non-PATH `agy` binary; set `RALPH_CURSOR_BINARY` to point at a non-PATH `agent` binary. |
 | `--check-policy` | | `False` | Validate the active pipeline policy and print a summary |
 | `--explain-policy` | | `False` | Print a human-readable explanation of the active policy and exit |
 | `--inspect-checkpoint` | | `False` | Print the current checkpoint contents |
@@ -228,6 +228,30 @@ automation path, because that path has a hidden long-run action limit. The
 smoke must also catch the opposite failure mode: a run that only prints the
 welcome banner and leaves the task as pasted input is a Ralph Workflow
 integration failure, not successful agent startup.
+
+### `ralph smoke-interactive-cursor`
+
+Run the manual end-to-end smoke test for the Cursor Agent CLI. This drives
+the live `agent` binary through the documented headless `--print
+--output-format stream-json` contract, asks it to create
+`tmp/interactive-cursor-smoke/todo-list.js`, and reports a parity table
+with file creation, session capture, parser events, tool activity, and
+artifact submission. The default alias is `cursor/auto`; override it
+with `--agent cursor/<model>`.
+
+```bash
+python -m ralph smoke-interactive-cursor                                  # default alias
+python -m ralph smoke-interactive-cursor --agent 'cursor/gpt-5.3-codex-high'   # explicit override
+```
+
+This command is **not** part of `make verify` (per the cursor non-goal of
+no live-token-consuming smoke tests in verify). The harness only runs
+when an operator explicitly invokes it.
+
+Set `RALPH_CURSOR_BINARY` to use a custom `agent` executable (a real
+wrapper, alternate live binary, or an operator-wired test stub). There
+is no bundled mock for Cursor (unlike AGY); non-executable paths are
+ignored with a WARNING.
 
 The eight canonical `agy/<display-name>` aliases accepted by `--agent` (the override flag, default `agy/Gemini 3.5 Flash (Medium)`):
 

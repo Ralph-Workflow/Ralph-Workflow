@@ -28,6 +28,7 @@ See the [Getting Started](getting-started.md) walkthrough — it takes you from 
 - **Nanocoder**: see <https://docs.nanocollective.org/nanocoder/docs>
 - **Google Anti Gravity (agy)**: see <https://github.com/google-antigravity/antigravity-cli>
 - **Pi.dev (pi)**: see <https://pi.dev/docs/latest/usage>
+- **Cursor Agent (agent)**: see <https://docs.cursor.com/agent>
 
 Verify after installation:
 
@@ -36,6 +37,25 @@ ralph --diagnose
 ```
 
 The PATH column in the Agents table should show `on PATH` in green.
+
+## Cursor agent not detected
+
+**Symptom:** `ralph --diagnose` reports the Cursor agent (`agent` binary) is
+`missing` even though `which agent` returns a path, or `ralph
+smoke-interactive-cursor` fails with a `cursor binary not found` diagnostic.
+
+**Fix:** Verify the `agent` binary is on `PATH` from the same shell you
+launch `ralph` from:
+
+```bash
+agent --version
+```
+
+The headless smoke path requires `agent login` (or the
+`CURSOR_API_KEY` env var) for the live binary.  Set `RALPH_CURSOR_BINARY`
+to a custom wrapper, alternate live binary, or operator-wired test
+stub if the binary is not on `PATH`; non-executable paths are
+ignored with a WARNING.
 
 ## AGY transport unavailable on Windows
 

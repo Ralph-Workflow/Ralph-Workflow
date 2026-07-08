@@ -1480,6 +1480,13 @@ ralph.agents.parsers.codex
    :members:
    :show-inheritance:
 
+ralph.agents.parsers.cursor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.cursor
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers.gemini
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2054,6 +2061,13 @@ ralph.mcp.transport.common
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.transport.common
+   :members:
+   :show-inheritance:
+
+ralph.mcp.transport.cursor
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.transport.cursor
    :members:
    :show-inheritance:
 

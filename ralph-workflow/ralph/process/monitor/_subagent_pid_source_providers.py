@@ -142,11 +142,26 @@ def make_nanocoder_subagent_pid_source(registry: SubagentPidRegistry) -> Subagen
     return _RegistryBackedSubagentPidSource(registry, "nanocoder")
 
 
+def make_cursor_subagent_pid_source(registry: SubagentPidRegistry) -> SubagentPidSource:
+    """Build a registry-backed ``SubagentPidSource`` for the Cursor transport.
+
+    Binds the canonical ``"cursor"`` source label so any PID registered
+    by :class:`CursorParser` is isolated from PIDs registered by other
+    transports' parsers in the shared :class:`SubagentPidRegistry`
+    (the R1 isolation invariant).  Cursor's documented ``stream-json``
+    envelope does not currently include a ``pid`` field; the
+    registry-backed source is forward-compat for events that carry
+    one.
+    """
+    return _RegistryBackedSubagentPidSource(registry, "cursor")
+
+
 __all__ = [
     "make_agy_subagent_pid_source",
     "make_claude_interactive_subagent_pid_source",
     "make_claude_subagent_pid_source",
     "make_codex_subagent_pid_source",
+    "make_cursor_subagent_pid_source",
     "make_generic_subagent_pid_source",
     "make_nanocoder_subagent_pid_source",
     "make_opencode_subagent_pid_source",
