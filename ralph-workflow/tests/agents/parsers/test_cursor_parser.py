@@ -286,6 +286,39 @@ class TestCursorParserWireFormat:
             "streamContent": "cursor parser probe",
         }
 
+    def test_live_mcp_tool_call_started_extracts_inner_mcp_tool(self) -> None:
+        """Cursor's MCP wrapper should display the actual nested Ralph tool."""
+        parser = CursorParser()
+        results = list(
+            parser.parse(
+                _lines(
+                    _line(
+                        {
+                            "type": "tool_call",
+                            "subtype": "started",
+                            "call_id": "tool-1",
+                            "tool_call": {
+                                "mcpToolCall": {
+                                    "args": {
+                                        "name": "ralph-mcp__ralph__create_directory",
+                                        "toolName": "mcp__ralph__create_directory",
+                                        "args": {"path": "tmp/interactive-cursor-smoke"},
+                                    }
+                                },
+                                "toolCallId": "tool-1",
+                            },
+                        }
+                    )
+                )
+            )
+        )
+
+        assert len(results) == 1
+        assert results[0].type == "tool_use"
+        assert results[0].content == "mcp__ralph__create_directory"
+        assert results[0].metadata["tool"] == "mcp__ralph__create_directory"
+        assert results[0].metadata["args"] == {"path": "tmp/interactive-cursor-smoke"}
+
     def test_live_tool_call_completed_yields_tool_result_with_nested_tool_name(self) -> None:
         """Live Cursor uses ``tool_call`` + ``subtype=completed`` for tool results."""
         parser = CursorParser()
@@ -324,6 +357,54 @@ class TestCursorParserWireFormat:
         assert results[0].type == "tool_result"
         assert results[0].content == "Wrote contents to /tmp/probe/tool_probe.txt"
         assert results[0].metadata["tool"] == "editToolCall"
+
+    def test_live_mcp_tool_call_completed_extracts_inner_result_text(self) -> None:
+        """Cursor MCP result summaries should use the inner text payload."""
+        parser = CursorParser()
+        results = list(
+            parser.parse(
+                _lines(
+                    _line(
+                        {
+                            "type": "tool_call",
+                            "subtype": "completed",
+                            "call_id": "tool-1",
+                            "tool_call": {
+                                "mcpToolCall": {
+                                    "args": {
+                                        "name": "ralph-mcp__ralph__create_directory",
+                                        "toolName": "mcp__ralph__create_directory",
+                                        "args": {"path": "tmp/interactive-cursor-smoke"},
+                                    },
+                                    "result": {
+                                        "success": {
+                                            "content": [
+                                                {
+                                                    "text": {
+                                                        "text": (
+                                                            '{"path": '
+                                                            '"tmp/interactive-cursor-smoke", '
+                                                            '"created": true}'
+                                                        )
+                                                    }
+                                                }
+                                            ],
+                                            "isError": False,
+                                        }
+                                    },
+                                },
+                                "toolCallId": "tool-1",
+                            },
+                        }
+                    )
+                )
+            )
+        )
+
+        assert len(results) == 1
+        assert results[0].type == "tool_result"
+        assert results[0].content == '{"path": "tmp/interactive-cursor-smoke", "created": true}'
+        assert results[0].metadata["tool"] == "mcp__ralph__create_directory"
 
     def test_live_stream_json_transcript_parses_all_semantic_output(self) -> None:
         """A live Cursor stream-json transcript surfaces every semantic event."""

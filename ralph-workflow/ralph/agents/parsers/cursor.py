@@ -69,6 +69,9 @@ _CURSOR_TOOL_CALL_METADATA_KEYS = frozenset(
         "hookAdditionalContexts",
     }
 )
+_CURSOR_MCP_WRAPPER_TOOL_NAME = "mcpToolCall"
+_CURSOR_RALPH_MCP_NAME_PREFIX = "ralph-mcp__ralph__"
+_RALPH_MCP_NAME_PREFIX = "mcp__ralph__"
 
 # Sentinel flag for ``_handle_user`` (and any future ``_handle_*``
 # method that produces no events).  Set to ``False`` at runtime so the
@@ -104,6 +107,8 @@ def _cursor_tool_name_and_args(obj: dict[str, object]) -> tuple[str, dict[str, o
         args = payload.get("args", payload.get("input", {}))
         if not isinstance(args, dict):
             args = {}
+        if tool_name == _CURSOR_MCP_WRAPPER_TOOL_NAME:
+            return _cursor_mcp_tool_name_and_args(cast("dict[str, object]", args))
         return tool_name, cast("dict[str, object]", args)
 
     tool_name = str(obj.get("toolName", obj.get("name", "unknown")))
@@ -111,6 +116,23 @@ def _cursor_tool_name_and_args(obj: dict[str, object]) -> tuple[str, dict[str, o
     if not isinstance(args, dict):
         args = {}
     return tool_name, cast("dict[str, object]", args)
+
+
+def _cursor_mcp_tool_name_and_args(args: dict[str, object]) -> tuple[str, dict[str, object]]:
+    """Return the inner MCP tool and args from Cursor's ``mcpToolCall`` wrapper."""
+    raw_name = args.get("toolName")
+    if not isinstance(raw_name, str) or not raw_name:
+        raw_name = args.get("name")
+    tool_name = (
+        raw_name if isinstance(raw_name, str) and raw_name else _CURSOR_MCP_WRAPPER_TOOL_NAME
+    )
+    if tool_name.startswith(_CURSOR_RALPH_MCP_NAME_PREFIX):
+        tool_name = _RALPH_MCP_NAME_PREFIX + tool_name[len(_CURSOR_RALPH_MCP_NAME_PREFIX) :]
+
+    inner_args = args.get("args", args.get("input", {}))
+    if not isinstance(inner_args, dict):
+        inner_args = {}
+    return tool_name, cast("dict[str, object]", inner_args)
 
 
 def _cursor_tool_result_payload(obj: dict[str, object]) -> object:
@@ -138,7 +160,9 @@ def _cursor_tool_result_text(result: object) -> str:
     if isinstance(success, dict):
         success_dict = cast("dict[str, object]", success)
         return (
-            _string_field(success_dict, "message")
+            _cursor_content_text(success_dict.get("content"))
+            or _string_field(success_dict, "text")
+            or _string_field(success_dict, "message")
             or _string_field(success_dict, "path")
             or str(result)
         )
@@ -149,6 +173,37 @@ def _cursor_tool_result_text(result: object) -> str:
     if isinstance(error, str):
         return error
     return _string_field(result_dict, "message") or str(result)
+
+
+def _cursor_content_text(content: object) -> str | None:
+    """Extract text from Cursor MCP result ``content`` arrays."""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return None
+    for item in content:
+        item_text = _cursor_content_item_text(item)
+        if item_text:
+            return item_text
+    return None
+
+
+def _cursor_content_item_text(item: object) -> str | None:
+    """Extract text from one Cursor MCP result content item."""
+    if isinstance(item, str):
+        return item or None
+    if not isinstance(item, dict):
+        return None
+    item_dict = cast("dict[str, object]", item)
+    text = item_dict.get("text")
+    if isinstance(text, str) and text:
+        return text
+    if isinstance(text, dict):
+        nested_text = cast("dict[str, object]", text).get("text")
+        if isinstance(nested_text, str) and nested_text:
+            return nested_text
+    content_value = item_dict.get("content")
+    return content_value if isinstance(content_value, str) and content_value else None
 
 
 def _cursor_tool_result_is_error(obj: dict[str, object]) -> bool:

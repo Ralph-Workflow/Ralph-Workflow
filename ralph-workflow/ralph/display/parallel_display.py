@@ -1317,7 +1317,7 @@ class ParallelDisplay:
         if kind is ActivityEventKind.TOOL_USE:
             original_name = text
             text = friendly_tool_name(text)
-            input_obj = metadata.get("input")
+            input_obj = metadata.get("input", metadata.get("args"))
             args_str = format_tool_input(input_obj)
             if args_str:
                 text = f"{text} {args_str}"

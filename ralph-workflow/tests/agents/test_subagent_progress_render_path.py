@@ -137,6 +137,21 @@ _PROVIDER_TOOL_USE_LINES: dict[ActivityProvider, str] = {
             "arguments": {"cmd": "pwd"},
         }
     ),
+    ActivityProvider.CURSOR: json.dumps(
+        {
+            "type": "tool_call",
+            "subtype": "started",
+            "tool_call": {
+                "mcpToolCall": {
+                    "args": {
+                        "toolName": "mcp__ralph__create_directory",
+                        "args": {"path": "tmp/interactive-cursor-smoke"},
+                    }
+                },
+                "toolCallId": "tool-1",
+            },
+        }
+    ),
     ActivityProvider.OPENCODE: json.dumps(
         {
             "type": "tool_use",
