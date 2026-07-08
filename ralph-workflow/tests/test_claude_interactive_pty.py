@@ -209,5 +209,5 @@ def test_invoke_agent_passes_nanocoder_prompt_to_run_command_without_tui_injecti
     )
 
     assert captured_cmds == [
-        ["nanocoder", "--mode", "yolo", "run", "Implement the Nanocoder task."]
+        ["nanocoder", "--mode", "yolo", "--no-plain", "run", "Implement the Nanocoder task."]
     ]

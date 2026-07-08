@@ -460,9 +460,12 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
     def fake_teardown_subtree(pid: int) -> None:
         teardown_calls.append(pid)
 
+    def fake_get_process_manager() -> _FakeProcessManager:
+        return _FakeProcessManager()
+
     monkeypatch.setattr(
         "ralph.agents.invoke._pty_runner.get_process_manager",
-        lambda: _FakeProcessManager(),
+        fake_get_process_manager,
     )
     monkeypatch.setattr("ralph.agents.invoke._pty_runner.PtyLineReader", _FakePtyLineReader)
     monkeypatch.setattr("ralph.agents.invoke._pty_runner.teardown_subtree", fake_teardown_subtree)

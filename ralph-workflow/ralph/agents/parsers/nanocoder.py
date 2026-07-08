@@ -21,7 +21,10 @@ _TURN_BOUNDARY_MARKER = "[claude turn boundary]"
 _CTX_PERCENT_RE = re.compile(r"\bctx:\s*\d+%")
 _WHITESPACE_RE = re.compile(r"\s+")
 _SPINNER_STATUS_RE = re.compile(r"^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+")
-_EXECUTED_TOOL_RE = re.compile(r"^⚒\s+Executed\s+(?P<tool>\S+)(?:\s+×\s+\d+)?$")
+_MULTIPLICATION_SIGN = chr(215)
+_EXECUTED_TOOL_RE = re.compile(
+    rf"^⚒\s+Executed\s+(?P<tool>\S+)(?:\s+{_MULTIPLICATION_SIGN}\s+\d+)?$"
+)
 
 
 def _status_signature(text: str) -> str:
@@ -74,40 +77,36 @@ class NanocoderParser(GenericParser):
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
         normalized = normalize_vt_text(stripped).strip()
         yield from self._flush_accumulator()
-        if not normalized:
-            return
-        if normalized == _TURN_BOUNDARY_MARKER:
+        if not normalized or normalized == _TURN_BOUNDARY_MARKER:
             return
         if normalized.startswith("[plain] tool:"):
             yield from super()._classify_non_json_line(stripped)
             return
-        if tool_match := _EXECUTED_TOOL_RE.search(normalized):
+
+        signature = _status_signature(normalized)
+        tool_match = _EXECUTED_TOOL_RE.search(normalized)
+        is_status = self._is_status_line(normalized)
+
+        if tool_match is not None:
             yield AgentOutputLine(
                 type="tool_use",
                 content=tool_match.group("tool"),
                 raw=stripped,
                 metadata={"event": "nanocoder_tool_execution"},
             )
-            return
-        signature = _status_signature(normalized)
-        if not self._is_status_line(normalized):
-            if self._text_seen(signature):
-                return
+        elif not is_status and not self._text_seen(signature):
             yield AgentOutputLine(
                 type="text",
                 content=normalized,
                 raw=stripped,
                 metadata={"event": "nanocoder_text"},
             )
-            return
-        if signature in self._status_signatures:
-            return
-        if len(self._status_signatures) >= _MAX_STATUS_EVENTS:
-            return
-        self._status_signatures = (*self._status_signatures, signature)
-        yield AgentOutputLine(
-            type="status",
-            content=normalized,
-            raw=stripped,
-            metadata={"event": "interactive_tui"},
-        )
+        elif is_status and signature not in self._status_signatures:
+            if len(self._status_signatures) < _MAX_STATUS_EVENTS:
+                self._status_signatures = (*self._status_signatures, signature)
+                yield AgentOutputLine(
+                    type="status",
+                    content=normalized,
+                    raw=stripped,
+                    metadata={"event": "interactive_tui"},
+                )

@@ -88,6 +88,7 @@ def test_nanocoder_parser_surfaces_distinct_visible_tui_snapshots() -> None:
 
 def test_nanocoder_parser_surfaces_model_text_after_spinner_noise() -> None:
     parser = NanocoderParser()
+    expected_text = "Syntax is valid. Now I'll submit the artifact with the exact content schema"
 
     results = list(
         parser.parse(
@@ -103,16 +104,15 @@ def test_nanocoder_parser_surfaces_model_text_after_spinner_noise() -> None:
         )
     )
 
-    assert ("text", "Syntax is valid. Now I'll submit the artifact with the exact content schema") in [
-        (line.type, line.content) for line in results
-    ]
+    assert ("text", expected_text) in [(line.type, line.content) for line in results]
     assert ("text", "specified:") in [(line.type, line.content) for line in results]
 
 
 def test_nanocoder_parser_classifies_executed_mcp_tool_line() -> None:
     parser = NanocoderParser()
+    tool_line = f"⚒ Executed mcp__ralph__ralph_submit_artifact {chr(215)} 1"
 
-    results = list(parser.parse(iter(["⚒ Executed mcp__ralph__ralph_submit_artifact × 1"])))
+    results = list(parser.parse(iter([tool_line])))
 
     assert [(line.type, line.content) for line in results] == [
         ("tool_use", "mcp__ralph__ralph_submit_artifact")

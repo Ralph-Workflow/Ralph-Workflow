@@ -103,7 +103,7 @@ def test_nanocoder_command_builder_parity(tmp_path: Path) -> None:
         workspace_path=tmp_path,
     )
 
-    # Nanocoder uses its non-interactive run command; Ralph must not drive the TUI editor.
+    # Nanocoder uses the PTY-backed Ink runtime; Ralph must not drive the TUI editor.
     # cmd = [cmd_name]
     # yolo -> "--mode", "yolo"
     # model -> "--provider", "openai", "--model", "gpt-4"
@@ -116,6 +116,7 @@ def test_nanocoder_command_builder_parity(tmp_path: Path) -> None:
         "openai",
         "--model",
         "gpt-4",
+        "--no-plain",
         "run",
         "hello world",
     ]

@@ -65,8 +65,11 @@ register_my_agent(
 
 Before choosing an interactive transport, check whether the upstream CLI has a
 documented non-interactive `run`, `--print`, or JSON mode. For unattended Ralph
-phases, prefer that contract over pasting prompts into a TUI editor; parser and
-smoke tests must still prove that model text and tool activity are visible.
+phases, prefer that contract over pasting prompts into a TUI editor unless the
+transport has a documented exception. Nanocoder is the current exception:
+its JSON/plain automation path can fail after long action sequences, so Ralph
+keeps Nanocoder on the PTY-backed Ink runtime. Parser and smoke tests must
+still prove that model text and tool activity are visible.
 
 ## Expected outcome
 

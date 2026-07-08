@@ -45,12 +45,15 @@ hold a session open after useful work has happened.
 Headless support existing upstream does **not** mean Ralph should use it by
 default. Choose the mode that preserves the agent's real contract: prompt
 delivery, tool access, MCP behavior, session continuation, completion evidence,
-and operator-visible progress. Claude is intentionally represented by both
-`claude-headless` (`claude -p`, stream JSON) and `claude` (interactive PTY)
-because those modes have different runtime semantics. Nanocoder is the other
-important example: even if a headless-style invocation is available, Ralph's
-maintained integration uses the PTY/TUI path when that is where trust prompts,
-MCP behavior, and visible progress actually surface.
+and operator-visible progress. Some agents are represented by more than one
+built-in transport when Ralph maintains more than one invocation contract for
+that binary. Keep both built-in Claude contracts: `claude` and
+`claude-headless` must not be deprecated, merged, or redirected into each other
+as part of agent-maintenance work unless a human maintainer explicitly asks for
+that exact change. Nanocoder is the important gotcha: its JSON/plain automation
+path has a hidden long-run action limit, observed around 100 actions, so
+Ralph's maintained integration must use Nanocoder's PTY-backed Ink runtime when
+trust prompts, MCP behavior, and visible progress actually surface there.
 
 ### Headless contract
 
@@ -165,8 +168,20 @@ agent, or a green process exit with no useful work.
     automation API. Do not paste prompts into a TUI editor as the primary
     invocation path; welcome banners and editor buffers are not proof that a
     model turn started.
+    Nanocoder is the known exception: do not use its JSON/plain path as the
+    durable backend because it can fail after long action sequences. Keep
+    Nanocoder on the PTY-backed Ink runtime; Ralph's Nanocoder builder passes
+    `--no-plain` before `run` for that reason. Prove prompt submission,
+    parser-visible model text/tool activity, artifact completion, and process
+    cleanup with the Nanocoder smoke test.
 11. Add or update a manual smoke command only for live, token-consuming checks;
     do not add live smoke commands to `make verify`.
+
+Claude built-ins are a separate invariant: preserve both `claude` and
+`claude-headless` as maintained invocation contracts. Do not remove, deprecate,
+merge, alias, or silently redirect one to the other as part of unrelated agent
+work. A task about adding, fixing, or documenting another agent is never a
+reason to change either Claude contract.
 
 The guard test
 `tests/agents/invoke/test_dispatch_table_covers_every_transport.py` must pass
@@ -209,8 +224,10 @@ Use the smallest checklist that matches the change.
 - Decide explicitly whether the maintained path is headless or PTY. Do not pick
   headless only because the upstream CLI exposes it.
 - Prefer a documented non-interactive `run` / `--print` / JSON mode over
-  automating an interactive editor. If a PTY is still required, prove that the
-  prompt is submitted as a turn, not merely rendered in the editor buffer.
+  automating an interactive editor unless the transport has a documented
+  exception such as Nanocoder's JSON/plain long-run action-limit bug. If a PTY
+  is still required, prove that the prompt is submitted as a turn, not merely
+  rendered in the editor buffer.
 - Record the mode decision in this guide or the transport docs when future
   maintainers might reasonably choose the wrong path.
 

@@ -437,7 +437,7 @@ class NanocoderCommandBuilder(ConfigurableCommandBuilder):
         model_flag_template=None,
         positional_prompt=True,
         print_flag=None,
-        extra_flags_before_prompt=("run",),
+        extra_flags_before_prompt=("--no-plain", "run"),
     )
 
     def __init__(self) -> None:

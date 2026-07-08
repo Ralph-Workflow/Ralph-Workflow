@@ -223,10 +223,11 @@ python -m ralph smoke-interactive-nanocoder --agent 'nanocoder/MiniMax Coding/Mi
 Provider/model startup errors printed by Nanocoder are terminal invocation failures. The smoke report should show the exact provider/model error instead of waiting for an idle timeout.
 
 The smoke also exercises Nanocoder's prompt-submission contract: Ralph Workflow
-must invoke Nanocoder through its non-interactive `run` command, not by pasting
-text into the TUI editor. A run that only prints the welcome banner and leaves
-the task as pasted input is a Ralph Workflow integration failure, not
-successful agent startup.
+must keep Nanocoder on the PTY-backed Ink runtime, not Nanocoder's JSON/plain
+automation path, because that path has a hidden long-run action limit. The
+smoke must also catch the opposite failure mode: a run that only prints the
+welcome banner and leaves the task as pasted input is a Ralph Workflow
+integration failure, not successful agent startup.
 
 The eight canonical `agy/<display-name>` aliases accepted by `--agent` (the override flag, default `agy/Gemini 3.5 Flash (Medium)`):
 

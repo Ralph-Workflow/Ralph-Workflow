@@ -172,11 +172,12 @@ If the smoke report shows the same provider/model error, fix the agent's provide
 shows the task text as pasted input or sits at `What would you like me to help
 with?` without tool or model progress.
 
-**Cause:** Nanocoder's interactive editor is not a stable automation surface.
-Ralph Workflow must use Nanocoder's non-interactive `run` command for
-unattended work. If Ralph Workflow ever drives the TUI editor by pasted PTY
-input, startup output can leave the task text in Nanocoder's editor instead of
-submitting a turn.
+**Cause:** Nanocoder has two bad integration traps. Its JSON/plain automation
+path has a hidden long-run action limit, observed around 100 actions, so Ralph
+Workflow must keep Nanocoder on the PTY-backed Ink runtime. At the same time,
+Nanocoder's interactive editor buffer is not a stable prompt-submission API. If
+Ralph Workflow drives the editor by pasted PTY input, startup output can leave
+the task text in the editor instead of submitting a model turn.
 
 **Fix:** Run the Nanocoder smoke test with the same alias used by the pipeline:
 
@@ -192,13 +193,21 @@ after upgrading Ralph Workflow.
 
 **Symptom:** A Nanocoder run fails partway through a complex task with the message `Conversation exceeded 50 turns` in the run log.
 
-**Cause:** Ralph Workflow invokes Nanocoder using its headless `plain` runtime (the lightweight, Ink-free path that auto-enables in non-TTY subprocess environments). That runtime contains a hardcoded `MAX_TURNS = 50` cap in `plain/conversation.js`. There is no CLI flag, environment variable, or config option to raise this limit. The Ink (TUI) runtime has no such cap, but it requires a real TTY and cannot be used via subprocess pipe.
+**Cause:** Nanocoder's JSON/plain automation path has a hidden long-run action
+limit. The visible failure may appear as `Conversation exceeded 50 turns`, and
+longer JSON/plain runs have also been observed to bug out around 100 actions.
+Ralph Workflow's maintained Nanocoder path must stay on the PTY-backed Ink
+runtime instead of relying on JSON/plain mode as the durable backend.
 
 **Fix options:**
 
 - **Use a different agent for complex tasks.** Claude Code, OpenCode, and Google Anti Gravity do not have an equivalent per-run turn cap when invoked headlessly. If your task regularly exceeds 50 tool exchanges, route that phase to one of those agents.
-- **Break the task into smaller phases.** If Nanocoder is your only option, split the `PROMPT.md` task into steps that each complete within 50 turns. Ralph Workflow's checkpoint and phase system is designed to compose smaller phase outputs.
-- **Track the upstream issue.** The 50-turn cap is undocumented and a known Nanocoder limitation. If the Nanocoder project raises or removes this cap in a future release, Ralph Workflow will pick it up automatically — no code change needed on Ralph Workflow's side.
+- **Keep Nanocoder on the maintained interactive path.** Do not switch Ralph
+  Workflow's Nanocoder backend to JSON/plain mode to avoid TUI complexity; that
+  reintroduces the hidden action-limit bug.
+- **Break the task into smaller phases.** If Nanocoder is your only option,
+  split the `PROMPT.md` task into smaller steps. Ralph Workflow's checkpoint
+  and phase system is designed to compose smaller phase outputs.
 
 ## `make verify` fails after editing config
 

@@ -35,7 +35,7 @@ phases to:
 | Built-in name     | CLI          | Transport            | Headless? | Use case                                              |
 | ----------------- | ------------ | -------------------- | --------- | ----------------------------------------------------- |
 | `claude`          | `claude`     | Interactive (PTY)    | Yes (with `--print`) | Anthropic's Claude Code; canonical reference agent |
-| `claude-headless` | `claude`     | Headless subprocess  | Yes       | Same binary, no PTY — cheaper, less visibility        |
+| `claude-headless` | `claude`     | Headless subprocess  | Yes       | Same binary, no PTY                                   |
 | `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
 | `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
@@ -135,10 +135,15 @@ declares, plus the session/resume and MCP config injection. With
 Ralph Workflow MCP tools into the agent's tool surface; see
 [Advanced MCP Configuration](advanced-mcp-configuration.md).
 
+`claude` and `claude-headless` are both maintained invocation contracts. Do not
+remove, deprecate, merge, alias, or silently redirect either one into the other
+as part of unrelated agent work. A task about another agent is never a reason to
+change either Claude contract.
+
 ### Claude Code (headless, no PTY)
 
-Same binary, no PTY. Cheaper to spawn, less visibility. Use when you trust
-the prompt-side artifact fallback and don't need live transcript display.
+Same binary, no PTY. Use when the documented non-interactive Claude path fits
+the phase and you do not need live PTY transcript display.
 
 ### Codex
 
@@ -153,9 +158,13 @@ provider-specific flags forwarded through `--provider`.
 ### Nanocoder
 
 Local-only TUI. The builder launches Nanocoder without autonomy flags —
-Nanocoder has no remote auth surface. Ralph Workflow invokes Nanocoder with
-its non-interactive `run` command and passes the prompt content as argv, rather
-than driving Nanocoder's interactive editor through pasted PTY input.
+Nanocoder has no remote auth surface. Ralph Workflow keeps Nanocoder on its
+PTY-backed Ink runtime because Nanocoder's JSON/plain automation path has a
+hidden long-run action limit, observed around 100 actions. Do not switch
+Nanocoder to JSON/plain mode as the durable backend. The command builder passes
+`--no-plain` before `run` to force the Ink runtime. The maintained path must
+prove prompt submission, parser-visible model text and tool activity, artifact
+completion, and process cleanup through the Nanocoder smoke test.
 
 ### AGY (PTY)
 
