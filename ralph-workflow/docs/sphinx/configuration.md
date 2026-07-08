@@ -349,3 +349,31 @@ Every routing decision the pipeline makes traces back to a single declared field
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
 - [Developer Reference](developer-internals.md) — implementation-oriented detail
 - [End-User Stories](agent-compatibility.md) — common user goals and the shortest docs path for each one
+## Type checking and tooling
+
+The maintained Python package enforces strict mypy on every supported
+configuration. The strict-typing contract lives in
+`ralph-workflow/mypy.ini`, with the no-plugin Pydantic contract (no
+upstream Pydantic typing plugin; solve Pydantic `Any` leaks with
+first-party typed helpers and adapters instead) and the strict flags
+`disallow_any_explicit`, `disallow_any_decorated`,
+`disallow_any_unimported`, `disallow_any_expr`, `strict_equality`,
+`warn_return_any`, `warn_unused_ignores`, `warn_unused_configs`, and
+`enable_error_code = ignore-without-code`.
+
+### Suppression policy
+
+- Test files must contain **zero** `# type: ignore` or `# pyright:`
+  comment suppressions.
+- Runtime code may carry a suppression only with the exact policy
+  reason suffix from `docs/agents/type-ignore-policy.md`.
+- Prefer a typed helper, guard, adapter, or `cast(...)` first.
+
+### Verification
+
+Run `cd ralph-workflow && make verify` for the canonical gate. The gate
+runs the docs build, ruff, mypy --strict, the 60-second-capped
+pytest suite, and the audit scripts. See
+[docs/agents/verification.md](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/agents/verification.md)
+for the full ordered step list, the combined test budget, and the
+non-circumvention rules.

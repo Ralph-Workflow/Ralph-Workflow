@@ -417,6 +417,8 @@ and open a fresh `[Unreleased]`.
 
 ### Documentation
 
+- **docs(consolidation): close wt-026 by collapsing overlapping guides and removing process cruft.** The doc surface is reduced to one canonical home per topic; legacy duplicates are deleted (root `CODE_STYLE.md`, `docs/architecture/overview.md`, `docs/plans/README.md`, `docs/tooling/{README.md,python-tooling.md}`, `ralph-workflow/docs/mcp/{README.md,mcp-servers.md,web-search.md,web-visit.md}`, the `X9/` stray directory, the badge-farming `assets/built-with-ralph-loop.svg`, the developer-only `run_ralph.sh` / `run_verify_proof.py` scripts, and the root `checkpoint.json` ephemeral state); the root `CONTRIBUTING.md`, `START_HERE.md`, `README.md`, `PROMPT.md`, the `docs/` map, the `ralph-workflow/docs/README.md` router, the package `README.md`, the Sphinx `index.rst` (rewritten as a curated 19-entry toctree), and the `ralph-workflow/CONTRIBUTING.md` are all reduced to their canonical role. Behavior change: every cross-reference in surviving docs resolves; `make verify` continues to pass; the fabrication guard at Level 1 stays clean on every touched file. Locks the canonical-home mapping in `tests/test_documentation_command_sync.py`, `tests/test_repo_root_docs_sync.py`, `tests/test_package_markdown_docs_sync_package_mcp_docs.py`, `tests/test_repo_root_operational_docs_sync.py`, and the surviving per-page Sphinx structure assertions.
+
 - **docs(pi): close documentation gaps by enumerating `pi` in configuration, concepts, parallel-mode, and advanced-mcp docs.** Locks behavior in `tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py` and `tests/agents/parsers/test_pi_dev_wire_format_spec.py`.
 
 ### Migration Notes

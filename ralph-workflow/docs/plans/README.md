@@ -1,9 +1,7 @@
 # Implementation Plans (package)
 
 This directory holds **package-scoped implementation plans** for the
-maintained Python package at `ralph-workflow/`. It does not hold
-repo-root cross-cutting plans; those live under
-[`../../../docs/plans/`](../../../docs/plans/README.md).
+maintained Python package at `ralph-workflow/`.
 
 ## Who this is for
 
@@ -24,15 +22,5 @@ package.
 
 ## Next click
 
-For the current architecture overview, see:
-
 - [Architecture overview](../architecture/README.md)
 - [Maintained operator manual](../../docs/sphinx/index.rst)
-- [Repo-root plans index](../../../docs/plans/README.md)
-
-## Primary repo
-
-- Codeberg (primary):
-  <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub (read-only mirror):
-  <https://github.com/Ralph-Workflow/Ralph-Workflow>

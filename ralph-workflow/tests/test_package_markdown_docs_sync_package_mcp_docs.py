@@ -2,7 +2,12 @@
 
 Ensures that maintained package Markdown docs outside Sphinx
 (ralph-workflow/README.md, ralph-workflow/CONTRIBUTING.md,
-ralph-workflow/docs/mcp/*.md) remain aligned with current Python behavior.
+ralph-workflow/docs/sphinx/<mcp-*> pages) remain aligned with current
+Python behavior.
+
+wt-026 consolidation removed ralph-workflow/docs/mcp/*.md; the canonical
+home for that material is ralph-workflow/docs/sphinx/advanced-mcp-configuration.md
+plus the existing ralph-workflow/docs/sphinx/mcp-*.md pages.
 """
 
 from __future__ import annotations
@@ -11,21 +16,21 @@ import pytest
 
 from tests.doc_roots import PACKAGE_ROOT
 
-# Package Markdown docs that should be maintained
+# Package Markdown docs that should be maintained (post wt-026)
 _PACKAGE_MD_DOCS = [
     "README.md",
     "CONTRIBUTING.md",
-    "docs/mcp/mcp-servers.md",
-    "docs/mcp/web-visit.md",
-    "docs/mcp/web-search.md",
     "docs/sphinx/mcp-tool-restriction.md",
+    "docs/sphinx/advanced-mcp-configuration.md",
+    "docs/sphinx/mcp-architecture.md",
+    "docs/sphinx/mcp-tools.md",
 ]
 
 
 class TestPackageMcpDocs:
     """Package MCP docs must be current and consistent."""
 
-    @pytest.mark.parametrize("doc", _PACKAGE_MD_DOCS[2:])  # Skip README and CONTRIBUTING
+    @pytest.mark.parametrize("doc", _PACKAGE_MD_DOCS[2:])
     def test_mcp_doc_exists(self, doc: str) -> None:
         """Each MCP doc must exist."""
         path = PACKAGE_ROOT / doc

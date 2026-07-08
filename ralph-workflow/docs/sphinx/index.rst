@@ -1,40 +1,29 @@
+:orphan:
+
 .. title:: Ralph Workflow manual
 
-Ralph Workflow
-==============
+Ralph Workflow manual
+=====================
 
 Ralph Workflow is a free and open-source AI agent orchestrator for
 coding work. The product positioning is stated once in the
-`root README.md <https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md>`_.
-
-Install and run
----------------
-
-The first-run sequence (install → init → diagnose → write spec →
-run → review) is the single source of truth in the root
-``README.md`` and ``START_HERE.md``. Run every step from a
-human-operated shell outside any Ralph-managed agent session. The
-``pipx install ralph-workflow`` line is the only install command
-you need; the rest of the walkthrough is on the repo-root
-``START_HERE.md``.
-
-``ralph --diagnose`` is the **pre-flight check** — it shows which
-baseline helpers are healthy, missing, unreachable, degraded, or
-need repair before you spend a real run on them. See
-:doc:`diagnostics` for what each check proves.
+`root README.md
+<https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md>`_.
 
 Where to go next
 ----------------
 
-This page is the maintained operator manual home.
-
-If you are brand new, start with :doc:`getting-started`.
-If you need configuration or operator detail, start with :doc:`configuration`.
-If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
+- Tutorial: :doc:`getting-started`
+- Configure: :doc:`configuration`, :doc:`cli`
+- Understand: :doc:`concepts`, :doc:`mcp-architecture`, :doc:`artifacts`
+- Operate: :doc:`diagnostics`, :doc:`troubleshooting`,
+  :doc:`agent-compatibility`, :doc:`mcp-tools`, :doc:`mcp-tool-restriction`
+- Develop: :doc:`developer-internals`, :doc:`agents`
 
 .. note::
 
-   New here? Start with :doc:`getting-started` before you dive into the rest of the manual.
+   New here? Start with :doc:`getting-started` before you dive into the
+   rest of the manual.
 
 .. toctree::
    :hidden:
@@ -61,6 +50,7 @@ If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
 
    concepts
    mcp-architecture
+   artifacts
    recovery
 
 .. toctree::
@@ -68,9 +58,11 @@ If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
    :caption: Operate
    :maxdepth: 1
 
+   diagnostics
    troubleshooting
    agent-compatibility
-   diagnostics
+   mcp-tools
+   mcp-tool-restriction
    versioning
    pro-support
 
