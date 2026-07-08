@@ -62,6 +62,8 @@ _AGY_SMOKE_OUTPUT_FILE = _AGY_SMOKE_RELATIVE_DIR / "todo-list.js"
 _NANOCODER_SMOKE_RELATIVE_DIR = Path("tmp/interactive-nanocoder-smoke")
 _NANOCODER_SMOKE_OUTPUT_FILE = _NANOCODER_SMOKE_RELATIVE_DIR / "todo-list.js"
 _NANOCODER_SMOKE_RUN_ID = "interactive-nanocoder-smoke"
+_CURSOR_SMOKE_RELATIVE_DIR = Path("tmp/interactive-cursor-smoke")
+_CURSOR_SMOKE_OUTPUT_FILE = _CURSOR_SMOKE_RELATIVE_DIR / "todo-list.js"
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,24 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             relative_dir=_NANOCODER_SMOKE_RELATIVE_DIR,
             output_file=_NANOCODER_SMOKE_OUTPUT_FILE,
             run_id=f"{_NANOCODER_SMOKE_RUN_ID}-{sanitized}",
+        )
+    if agent_name == "cursor" or agent_name.startswith("cursor/"):
+        # Bare ``cursor`` uses the base cursor harness layout so on-disk
+        # artifacts stay co-located with the shared output; ``cursor/<model>``
+        # branches off a sanitized run_id so two smoke runs with different
+        # model aliases do not collide on completion-sentinel / receipt paths.
+        suffix = agent_name.removeprefix("cursor")
+        suffix = suffix.lstrip("/")
+        if not suffix:
+            run_id = "interactive-cursor-smoke"
+        else:
+            sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+            run_id = f"interactive-cursor-smoke-{sanitized}"
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_CURSOR_SMOKE_RELATIVE_DIR,
+            output_file=_CURSOR_SMOKE_OUTPUT_FILE,
+            run_id=run_id,
         )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
 
