@@ -6,25 +6,25 @@ question, after [`README.md`](../README.md) and
 
 ## Choose one route
 
-### I want the fastest first successful run
+### Fastest first successful run
 
-- [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md)
-- [Run diagnostics before a workflow](../ralph-workflow/docs/sphinx/diagnostics.md)
+- [Getting started](../ralph-workflow/docs/sphinx/getting-started.md)
+- [Run diagnostics](../ralph-workflow/docs/sphinx/diagnostics.md)
 
-### I want the maintained operator manual
+### Maintained operator manual
 
 - [Manual home](../ralph-workflow/docs/sphinx/index.rst)
 - [Configuration](../ralph-workflow/docs/sphinx/configuration.md)
 - [CLI reference](../ralph-workflow/docs/sphinx/cli.md)
 
-### I want to contribute or change Ralph Workflow itself
+### Contribute or change Ralph Workflow
 
-- [`CONTRIBUTING.md`](../CONTRIBUTING.md) — contribution intent and source-of-truth ordering
-- [`ralph-workflow/CONTRIBUTING.md`](../ralph-workflow/CONTRIBUTING.md) — Python-specific contributor guidance
-- [`docs/agents/`](agents/README.md) — contributor-policy directory
-- [`docs/code-style/`](../code-style/index.md) — documentation rubric and style guide
+- [`CONTRIBUTING.md`](../CONTRIBUTING.md)
+- [`docs/agents/`](agents/README.md)
+- [`docs/code-style/`](../code-style/index.md)
 
-## Legacy reference (archived)
+### Retired Rust implementation (archived)
 
-[`docs/legacy-rust/`](legacy-rust/README.md) describes the retired Rust
-implementation; do not act on it for current behavior.
+[`docs/legacy-rust/`](legacy-rust/README.md) covers the retired Rust
+implementation. Do not act on it for current behavior; performance notes
+from that era are quarantined with the Rust archive.

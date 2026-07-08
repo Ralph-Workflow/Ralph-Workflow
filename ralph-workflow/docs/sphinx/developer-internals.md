@@ -14,13 +14,6 @@ If you only need to run Ralph Workflow, start with [Configuration](configuration
 - [Streaming Blocks and Long-Content Display](#streaming-blocks-and-long-content-display) — output event structure and rendering behavior
 - [Supervising API](#supervising-api) — trackable instance model for orchestration use cases
 
-```{toctree}
-:maxdepth: 1
-:hidden:
-
-mcp-architecture
-```
-
 ## Configuration-loading internals
 
 This page documents how Ralph Workflow loads and merges its
