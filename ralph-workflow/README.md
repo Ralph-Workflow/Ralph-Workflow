@@ -22,12 +22,14 @@ Eight built-in agents ship with Ralph Workflow:
 
 | Agent | Notes |
 |---|---|
-| **Claude Code** | Anthropic's CLI for Claude (interactive + headless). |
+| **Claude Code** | Anthropic's CLI for Claude (interactive, PTY transport). |
+| **Claude Code (Headless)** | Same `claude` binary in headless subprocess mode (`claude-headless`). |
 | **Codex** | OpenAI's Codex CLI. |
 | **OpenCode** | Open-source terminal coding agent. |
 | **Nanocoder** | Local-only TUI coding agent. |
 | **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`, v1.0.9+). |
 | **Pi** | Minimal coding agent. Headless mode is `pi --mode json <prompt>`. |
+| **Cursor** | Cursor Agent CLI (`agent`), headless `--print` mode. |
 
 Pick one, authenticate it on your machine once, and Ralph Workflow uses
 it. The selection and trust-boundary story is in the maintained

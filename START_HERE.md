@@ -14,8 +14,8 @@ The selection and trust-boundary story is in
 The canonical six-step sequence (install → init → diagnose → spec →
 run → review) lives in the
 [`README.md`](README.md#first-run) first-run block. The pre-flight
-check is `ralph --diagnose`; the long-form walkthrough is in
-[`Getting started`](ralph-workflow/docs/sphinx/getting-started.md).
+check is run by the same six-step sequence; the long-form walkthrough
+is in [`Getting started`](ralph-workflow/docs/sphinx/getting-started.md).
 
 ## Success looks like
 

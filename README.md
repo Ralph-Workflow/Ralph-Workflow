@@ -32,10 +32,9 @@ prose-intent of each step, and what success looks like — lives in
 
 Ralph Workflow ships with built-in support for 8 agents: Claude Code
 (interactive + headless), Codex, OpenCode, Nanocoder, AGY (Google Anti
-Gravity), Pi, Claude Code OpenCode, and Claude Code Pi. Pick one,
-authenticate it once on your machine, and Ralph Workflow uses it. The
-selection and trust-boundary story is in
-[`agents`](ralph-workflow/docs/sphinx/agents.md) and
+Gravity), Pi, and Cursor. Pick one, authenticate it once on your
+machine, and Ralph Workflow uses it. The selection and trust-boundary
+story is in [`agents`](ralph-workflow/docs/sphinx/agents.md) and
 [`agent-compatibility`](ralph-workflow/docs/sphinx/agent-compatibility.md).
 
 ## Documentation route
