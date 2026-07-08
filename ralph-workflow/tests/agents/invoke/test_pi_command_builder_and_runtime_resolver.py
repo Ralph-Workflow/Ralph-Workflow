@@ -27,7 +27,11 @@ from ralph.agents.invoke._runtime_resolvers import (
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
-from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, pi_mcp_extension_path
+from ralph.mcp.transport.pi import (
+    PI_MCP_EXTENSION_ENV,
+    pi_mcp_extension_path,
+    write_pi_mcp_extension,
+)
 from ralph.phases.required_artifacts import RequiredArtifact
 from tests.fake_handle import _FakeHandle
 
@@ -397,6 +401,33 @@ class TestPiRuntimeResolver:
         assert runtime.server_env is None
         assert runtime.mcp_endpoint == endpoint
         assert extension_path.exists()
+
+    def test_generated_extension_resolves_sse_tool_response_without_waiting_for_eof(
+        self, tmp_path: Path
+    ) -> None:
+        """Pi bridge must parse MCP SSE frames, not wait for stream EOF.
+
+        Ralph's exec tool responds as ``text/event-stream`` and may keep the
+        HTTP connection open. A generated extension that awaits
+        ``response.text()`` waits for EOF instead of the final JSON-RPC frame,
+        which surfaces to the agent as a 300s watchdog ``terminated`` loop.
+        """
+        extension_path, cleanup = write_pi_mcp_extension(
+            "http://localhost:9999/mcp",
+            workspace_path=tmp_path,
+        )
+        assert cleanup is None
+
+        extension_text = extension_path.read_text(encoding="utf-8")
+
+        assert "response.body" in extension_text
+        assert "getReader()" in extension_text
+        assert "await response.text()" not in extension_text
+        assert "text/event-stream" in extension_text
+        assert 'block.split("\\n")' in extension_text
+        assert 'buffer.indexOf("\\n\\n")' in extension_text
+        assert "responseMatchesRequest(payload, requestId)" in extension_text
+        assert "await reader.cancel()" in extension_text
 
 
 class TestPiCompletionEnforcement:

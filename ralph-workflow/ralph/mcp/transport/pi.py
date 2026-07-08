@@ -73,18 +73,69 @@ function textFromContent(content: unknown): string {{
     .join("\\n");
 }}
 
-function parseJsonRpcPayload(text: string): JsonObject | null {{
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  if (!trimmed.startsWith("event:") && !trimmed.startsWith("data:")) {{
-    return JSON.parse(trimmed) as JsonObject;
-  }}
-  for (const line of trimmed.split(/\\r?\\n/)) {{
+function responseMatchesRequest(payload: JsonObject, requestId: number | undefined): boolean {{
+  if (requestId === undefined) return true;
+  return payload.id === requestId;
+}}
+
+function parseSseEvent(block: string): JsonObject | null {{
+  const dataLines: string[] = [];
+  for (const line of block.split("\\n")) {{
     if (!line.startsWith("data:")) continue;
-    const data = line.slice("data:".length).trim();
-    if (data && data !== "[DONE]") return JSON.parse(data) as JsonObject;
+    dataLines.push(line.slice("data:".length).trimStart());
   }}
-  return null;
+  const data = dataLines.join("\\n").trim();
+  if (!data || data === "[DONE]") return null;
+  const decoded = JSON.parse(data) as unknown;
+  return isObject(decoded) ? decoded : null;
+}}
+
+async function readSseJsonRpcPayload(
+  response: Response,
+  requestId: number | undefined,
+): Promise<JsonObject | null> {{
+  if (!response.body) {{
+    throw new Error("MCP SSE response did not include a readable body");
+  }}
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {{
+    const {{ value, done }} = await reader.read();
+    buffer += decoder.decode(value, {{ stream: !done }});
+    buffer = buffer.replace(/\\r\\n/g, "\\n");
+
+    let boundary = buffer.indexOf("\\n\\n");
+    while (boundary >= 0) {{
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const payload = parseSseEvent(block);
+      if (payload && responseMatchesRequest(payload, requestId)) {{
+        await reader.cancel().catch(() => undefined);
+        return payload;
+      }}
+      boundary = buffer.indexOf("\\n\\n");
+    }}
+
+    if (done) break;
+  }}
+
+  const trailing = parseSseEvent(buffer.trim());
+  return trailing && responseMatchesRequest(trailing, requestId) ? trailing : null;
+}}
+
+async function readJsonRpcPayload(
+  response: Response,
+  requestId: number | undefined,
+): Promise<JsonObject | null> {{
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {{
+    return readSseJsonRpcPayload(response, requestId);
+  }}
+  const decoded = await response.json() as unknown;
+  return isObject(decoded) ? decoded : null;
 }}
 
 async function mcpRequest(
@@ -100,7 +151,8 @@ async function mcpRequest(
   if (sessionId) headers["mcp-session-id"] = sessionId;
 
   const payload: JsonObject = {{ jsonrpc: "2.0", method, params }};
-  if (includeId) payload.id = nextId++;
+  const requestId = includeId ? nextId++ : undefined;
+  if (requestId !== undefined) payload.id = requestId;
 
   const response = await fetch(ENDPOINT, {{
     method: "POST",
@@ -112,8 +164,7 @@ async function mcpRequest(
   if (nextSessionId) sessionId = nextSessionId;
   if (response.status === 202 || response.status === 204) return undefined;
 
-  const text = await response.text();
-  const decoded = parseJsonRpcPayload(text);
+  const decoded = await readJsonRpcPayload(response, requestId);
   if (!decoded) return undefined;
   const error = decoded.error;
   if (isObject(error)) {{

@@ -377,3 +377,5 @@ ralph-workflow/.claude/
 ralph-workflow/.codex/
 ralph-workflow/.gemini/
 ralph-workflow/.opencode/
+
+.pi-subagents/*

@@ -348,8 +348,12 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache, no-transform")
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Connection", "close")
         self.end_headers()
+        # Exec streaming POST is a finite RPC response, not the long-lived GET
+        # event stream. Close after the terminal JSON-RPC frame so EOF-oriented
+        # clients do not wait on HTTP/1.1 keep-alive until their request timeout.
+        self.close_connection = True
 
         def _write_frame(frame: bytes) -> None:
             # suppress(Exception), not just OSError: a concurrent write to the

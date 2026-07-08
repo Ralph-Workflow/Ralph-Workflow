@@ -82,7 +82,7 @@ class _Server(_FallbackHttpServer):
         """No-op: the in-memory harness never activates a real listener."""
 
 
-def _run_exec_post(server: _Server) -> str:
+def _run_exec_post(server: _Server) -> tuple[str, list[tuple[str, str]], bool]:
     payload = json.dumps(
         {
             "jsonrpc": "2.0",
@@ -95,6 +95,7 @@ def _run_exec_post(server: _Server) -> str:
     headers = Message()
     headers["Content-Length"] = str(len(payload))
     wfile = io.BytesIO()
+    sent_headers: list[tuple[str, str]] = []
 
     handler = object.__new__(_FallbackHttpHandler)
     handler.path = DEFAULT_MOUNT_PATH
@@ -102,17 +103,21 @@ def _run_exec_post(server: _Server) -> str:
     handler.rfile = io.BytesIO(payload)
     handler.wfile = wfile
     handler.send_response = lambda code: None
-    handler.send_header = lambda name, value: None
+    handler.send_header = lambda name, value: sent_headers.append((name, value))
     handler.end_headers = lambda: None
     handler.server = server
 
     handler.do_POST()  # must not raise, must not leave an empty body
 
-    return wfile.getvalue().decode("utf-8")
+    return (
+        wfile.getvalue().decode("utf-8"),
+        sent_headers,
+        bool(getattr(handler, "close_connection", False)),
+    )
 
 
 def test_exec_streaming_post_with_streamless_session_still_writes_final_frame() -> None:
-    raw = _run_exec_post(_Server())
+    raw, _headers, _closed = _run_exec_post(_Server())
 
     assert raw, "exec streaming POST closed with an empty body (client would hang)"
     assert "exec-req-1" in raw
@@ -122,8 +127,16 @@ def test_exec_streaming_post_with_streamless_session_still_writes_final_frame() 
 
 
 def test_exec_streaming_post_with_raising_dispatch_writes_error_frame() -> None:
-    raw = _run_exec_post(_Server(_RaisingMcp()))
+    raw, _headers, _closed = _run_exec_post(_Server(_RaisingMcp()))
 
     assert "exec-req-1" in raw
     assert "-32603" in raw
     assert "dispatch exploded" in raw
+
+
+def test_exec_streaming_post_closes_response_after_final_frame() -> None:
+    raw, headers, closed = _run_exec_post(_Server())
+
+    assert raw, "precondition: final SSE frame was written"
+    assert ("Connection", "close") in headers
+    assert closed is True
