@@ -11,30 +11,11 @@ architectural decision before they read the code that implements it.
 
 ## Read this first
 
-- **[adr-0001-interrupt-architecture.md](adr-0001-interrupt-architecture.md)** —
-  the maintained ADR for the package's interrupt architecture.
-
-## Next click
-
-For end-to-end Python-runtime architecture (Ralph loop, policy
-interpretation, phase routing, agent invocation, artifact submission,
-completion detection, verification, recovery, watchdogs, configuration,
-and extension points), see the repo-root architecture overview:
-
-- [Repo-root architecture overview](../../../docs/architecture/README.md)
-- [Pipeline lifecycle](../../../docs/architecture/pipeline-lifecycle.md)
-- [Event loop and reducers](../../../docs/architecture/event-loop-and-reducers.md)
-- Parallel fan-out — see [Parallel Mode (agent-driven)](../sphinx/advanced-pipeline-configuration.md#parallel-execution-agent-driven)
-
-For the Sphinx operator manual, see:
-
-- [Maintained operator manual](../../docs/sphinx/index.rst)
-- [Developer reference](../../docs/sphinx/developer-reference.md)
-- [Developer internals](../../docs/sphinx/developer-internals.md)
+- **ADR:** [adr-0001-interrupt-architecture.md](adr-0001-interrupt-architecture.md) — the maintained ADR for the package's interrupt architecture.
+- **Runtime overview:** [Repo-root architecture overview](../../../docs/architecture/README.md), then [Pipeline lifecycle](../../docs/sphinx/developer-internals.md#pipeline-lifecycle-high-level), [Event loop and reducers](../../docs/sphinx/developer-internals.md#event-loop-and-reducers), and [Parallel Mode (agent-driven)](../sphinx/advanced-pipeline-configuration.md#parallel-execution-agent-driven).
+- **Sphinx operator manual:** [index.rst](../../docs/sphinx/index.rst), [Developer internals](../../docs/sphinx/developer-internals.md).
 
 ## Primary repo
 
-- Codeberg (primary):
-  <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub (read-only mirror):
-  <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- Codeberg (primary): <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- GitHub (read-only mirror): <https://github.com/Ralph-Workflow/Ralph-Workflow>

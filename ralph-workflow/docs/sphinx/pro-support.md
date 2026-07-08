@@ -216,9 +216,6 @@ A regression in any of these fails the pipeline immediately.
 
 > **Audience:** Ralph Workflow contributors maintaining the engine
 > side of the Ralph-Workflow-Pro integration.
-> **Last cross-checked:** 2026-06-14 against
-> `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`
-> (the authoritative source of truth, outside this repo).
 
 This document summarises the **engine's** half of the Pro
 integration contract. The full contract lives in the Pro
@@ -286,21 +283,21 @@ a passing test is incomplete.
 
 ## Forward-looking engine capabilities pending contract amendment
 
-The engine has three new surfaces that the upstream contract
-has not yet been amended to formalise. Until the Pro repository
-accepts the engine-side handoff patch
-(`ralph-workflow/tmp/pro_contract_patch.md`), these
-capabilities are engine-internal and NOT contractually binding
-on the Pro product: `ProMarkerWatcher` (late marker adoption
-daemon thread, see `ralph/pro_support/watcher.py` and
-`tests/test_pro_support_watcher.py`), `ProPipelineHooks`
-(custom pipeline DI seam, 5 factory kwargs + 1
-policy_bundle_override + 1 snapshot_registry + 6 collaborator
-overrides = 13 fields total, see `ralph/pro_support/hooks.py`
-and `tests/test_pro_support_hooks.py`), and
-`PipelineStateSnapshot` (read-only state observability, see
-`ralph/pro_support/state_query.py` and
-`tests/test_pro_support_state_query.py`).
+The engine has three new surfaces that the upstream contract has not yet
+been amended to formalise. Until the Pro repository accepts the
+engine-side handoff, these capabilities are engine-internal and NOT
+contractually binding on the Pro product:
+
+- `ProMarkerWatcher` — late marker adoption daemon thread (see
+  `ralph/pro_support/watcher.py` and
+  `tests/test_pro_support_watcher.py`).
+- `ProPipelineHooks` — custom pipeline DI seam, 13 fields total (5
+  factory kwargs + 1 policy_bundle_override + 1 snapshot_registry +
+  6 collaborator overrides, see `ralph/pro_support/hooks.py` and
+  `tests/test_pro_support_hooks.py`).
+- `PipelineStateSnapshot` — read-only state observability (see
+  `ralph/pro_support/state_query.py` and
+  `tests/test_pro_support_state_query.py`).
 
 ## Cross-references
 

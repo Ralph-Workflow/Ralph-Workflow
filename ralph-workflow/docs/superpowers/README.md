@@ -22,7 +22,7 @@ when a skill bundle changes.
 For the maintained operator manual and the contributor reference, see:
 
 - [Maintained operator manual](../../docs/sphinx/index.rst)
-- [Developer reference](../../docs/sphinx/developer-reference.md)
+- [Developer internals](../../docs/sphinx/developer-internals.md)
 - [Agent subsystem](../../docs/agents/README.md)
 
 ## Primary repo

@@ -4,9 +4,7 @@ Ralph Workflow
 ==============
 
 Ralph Workflow is a free and open-source AI agent orchestrator for
-coding work. Hand it a well-specified task, let the agents plan, build,
-verify, and fix, and come back to reviewable, tested work. The canonical
-product positioning lives in the
+coding work. The product positioning is stated once in the
 `root README.md <https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md>`_.
 
 Install and run

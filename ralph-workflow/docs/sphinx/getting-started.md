@@ -3,7 +3,7 @@
 This page walks you from install to one honest unattended run in a
 repository you already care about. It is the canonical first-run page
 in the operator manual and the single source of truth for everything
-between `pipx install ralph-workflow` and the morning-after review.
+between a fresh install and the morning-after review.
 
 ## Goal
 
@@ -16,35 +16,17 @@ actually merge.
 Have these ready before you start:
 
 - Python 3.12+
-- One supported agent CLI already installed **and authenticated**
-  (see [Agent CLI lifecycle](agents.md) for the selection and
-  trust-boundary story)
+- One supported agent CLI already installed **and authenticated** (see [Agent CLI lifecycle](agents.md))
 - One real git repo you care about
-- One backlog task with a clear finish line (see
-  [Pick the right first task](#pick-the-right-first-task))
+- One backlog task with a clear finish line (see [Pick the right first task](#pick-the-right-first-task))
 
 ## Exact steps
 
 The canonical six-step install → init → diagnose → spec → run → review
-sequence is in the repository root
+sequence lives in the repository root
 [`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md#start-your-first-run).
 Run those commands from a human-operated shell outside any Ralph-managed
-agent session. The Sphinx manual defers to that source for the canonical
-walkthrough so the install commands stay in one place.
-
-Briefly:
-
-1. **Install** with `pipx install ralph-workflow`.
-2. **Initialize** the repo with `ralph --init`.
-3. **Pre-flight** with `ralph --diagnose` to verify agents, MCP servers,
-   and capability bundles are healthy (see [Diagnostics](diagnostics.md)).
-4. **Write** the run spec at `PROMPT.md` — see
-   [First-task prompt templates](#first-task-prompt-templates) below.
-5. **Run** with `ralph`.
-6. **Review** the morning-after handoff — see
-   [Proof: what a run leaves you](#proof-what-a-run-leaves-you).
-
-If a deeper operator configuration is required, open
+agent session. For deeper operator configuration, open
 [Configuration Reference](configuration.md). For docs grouped by use
 case instead of by document type, open
 [End-User Stories](agent-compatibility.md).
@@ -71,7 +53,7 @@ existing tests, test-coverage pass for an untested module, focused
 docs/onboarding improvement, small feature slice with a visible
 endpoint. Bad candidates: vague "improve performance" tasks,
 exploratory "rewrite the entire frontend" assignments, anything that
-requires access to SaaS dashboards the agent cannot reach.
+needs credentials the agent cannot reach.
 
 ## Write the spec in five minutes
 
@@ -112,21 +94,13 @@ protected things stayed intact.
 `PROMPT.md` at the workspace root is the run specification you author.
 The engine materializes its own consumption copy at
 `.agent/CURRENT_PROMPT.md`; you never edit the materialised file.
-Operators who want a non-default location override the path through
-`PROMPT_PATH`. The agent-side Jinja2 template machinery (which the
-older `prompts.md` page documented) lives in
-`ralph/prompts/`; you do not author those templates — they are the
-maintainer-contributed details that translate your run spec into
-agent input. See [Configuration Reference](configuration.md) for
-`RALPH_INLINE_SKILLS_DIR` and prompt-engine tuning.
+Override the spec location through `PROMPT_PATH`. See
+[Configuration Reference](configuration.md) for prompt-engine tuning.
 
 ### Picking the right depth preset
 
-```bash
-ralph -Q     # quick: small fixes, single iteration
-ralph        # standard: most features and tasks
-ralph -T     # thorough: complex refactors, ten iterations
-```
+Depth presets (`-Q` quick, default standard, `-T` thorough) live in
+[CLI Reference](cli.md). Most first-run tasks fit the default.
 
 ## First-task prompt templates
 
@@ -210,21 +184,17 @@ seeds `.gitignore` coverage. For explicit project-local overrides of
 the main `ralph-workflow.toml`, run `ralph --init-local-config` and
 edit `.agent/ralph-workflow.toml` in the repo. That local file
 belongs to the opt-in override flow, not the default `ralph --init`
-path. The broader file layout is in
-[Configuration Reference](configuration.md).
+path. The broader file layout is in [Configuration Reference](configuration.md).
 
 ## Policy-driven migration note (historical)
 
-If you are upgrading from an earlier Ralph Workflow release, the
-pipeline is fully policy-driven: routing, retry rules, analysis
+The pipeline is fully policy-driven: routing, retry rules, analysis
 loops, commit semantics, verification gates, recovery routing, and
 terminal behavior all come from `pipeline.toml`. Older assumptions
-about implicit phase names, implicit loop counters, and pseudo-phase
-recovery aliases (`"phase_failed"`, `"failed"`) are no longer valid.
-To migrate an existing `.agent/pipeline.toml`, run
-`ralph --regenerate-config` and diff against your existing file. Full
-migration details — including the rejected legacy fields, removed
-hidden behaviors, and verification commands — are folded into
+about implicit phase names, loop counters, and pseudo-phase recovery
+aliases are no longer valid. To migrate an existing
+`.agent/pipeline.toml`, run the config-regenerate flag and diff
+against your existing file. Full migration details are in
 [Configuration Reference](configuration.md) under "Policy migration
 reference".
 
@@ -265,7 +235,7 @@ checks ran, and what to inspect — without reconstructing the run.
 
 A successful first run produces two concrete signals:
 
-1. `ralph --diagnose` should report every line green before you
+1. The pre-flight diagnostic should report every line green before you
    start. If any line is red, fix that line before you spend a real
    run on it. See [Diagnostics](diagnostics.md) for the failure-mode
    table.
@@ -274,25 +244,16 @@ A successful first run produces two concrete signals:
    can read in under a minute.
 
 Then validate the result in reality — do not accept the run only
-because the transcript looks confident:
-
-1. Run the program, tests, or checks yourself against real data or
-   fixtures.
-2. Exercise the changed feature with representative inputs.
-3. Inspect the important files and artifacts the run produced.
-4. Use code review as supporting evidence, not the only acceptance
-   mechanism.
-5. Decide the next action: push the branch, ask for changes, revert,
-   rerun, or discard the result.
+because the transcript looks confident: run the program, tests, or
+checks yourself against real data or fixtures; exercise the changed
+feature with representative inputs; inspect the important files and
+artifacts the run produced; use code review as supporting evidence,
+not the only acceptance mechanism; decide the next action: push the
+branch, ask for changes, revert, rerun, or discard the result.
 
 ## Next step
 
-- Need configuration answers? Open
-  [Configuration Reference](configuration.md).
-- Need docs grouped by use case? Open
-  [End-User Stories](agent-compatibility.md).
-- Need the morning-after merge check shape? The "five-minute merge
-  check" pattern is folded into this page under
-  [Proof: what a run leaves you](#proof-what-a-run-leaves-you).
-- If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
-- If you need the underlying concepts first, open [Concepts](concepts.md).
+- Configuration answers → [Configuration Reference](configuration.md).
+- Docs grouped by use case → [End-User Stories](agent-compatibility.md).
+- Underlying concepts → [Concepts](concepts.md).
+- First run goes sideways → [Troubleshooting](troubleshooting.md).

@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "Autopilot for coding agents — run Claude Code, Codex, OpenCode, Nanocoder, AGY & Pi unattended with verification, recovery, orchestration."
+description = "An autonomous coding-agent orchestrator: hand off a well-specified task and return to reviewable, tested work."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 license-files = ["LICENSE"]
 authors = [{ name = "Mistlight" }]
 maintainers = [{ name = "Mistlight" }]
-keywords = ["ai", "agent", "orchestration", "loop", "autonomous-coding", "unattended", "coding-agent"]
+keywords = ["ai", "agent", "orchestration", "coding"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",

@@ -188,7 +188,7 @@ A run ends in one of four terminal outcomes: `done` (every phase produced its ar
 
 ## Artifact lifecycle
 
-An **artifact** is the durable evidence a phase produces. Ralph Workflow's artifact lifecycle is what turns a phase's agent invocation into a reviewable handoff.
+An **artifact** is the durable evidence a phase produces. Ralph Workflow's artifact lifecycle is what turns a phase's agent invocation into a handoff the user can inspect the next morning.
 
 ### Why artifacts, not transcripts
 
