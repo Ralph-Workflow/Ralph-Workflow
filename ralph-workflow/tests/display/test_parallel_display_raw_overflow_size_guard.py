@@ -78,9 +78,7 @@ def test_raw_overflow_write_emits_one_shot_warning_when_cap_exceeded(
     display._raw_overflow_write(unit_id, "overflow")  # would exceed
 
     overflow = display._overflow_logs[unit_id]
-    assert overflow.is_disabled, (
-        "overflow log must be disabled after the byte cap is reached"
-    )
+    assert overflow.is_disabled, "overflow log must be disabled after the byte cap is reached"
     assert unit_id in display._overflow_warned, (
         "unit_id must be in _overflow_warned so the one-shot debouncing fires"
     )
@@ -113,9 +111,7 @@ def test_raw_overflow_write_warning_idempotent(
 
     output = buf.getvalue()
     count = output.count("overflow log full")
-    assert count == 1, (
-        f"warning must be one-shot; got {count} emissions in output: {output!r}"
-    )
+    assert count == 1, f"warning must be one-shot; got {count} emissions in output: {output!r}"
     assert unit_id in display._overflow_warned
 
 
@@ -191,8 +187,7 @@ def test_check_overflow_size_emits_for_already_disabled_log(
 
     output = buf.getvalue()
     assert "overflow log full" in output, (
-        "auto-disabled log must still surface the warning; "
-        f"got output: {output!r}"
+        f"auto-disabled log must still surface the warning; got output: {output!r}"
     )
     assert unit_id in display._overflow_warned
 
@@ -237,9 +232,7 @@ def test_emit_activity_event_warns_when_append_disables_overflow(
     )
 
     overflow = display._overflow_logs.get(unit_id)
-    assert overflow is not None, (
-        "the condensed branch must have created a per-unit overflow log"
-    )
+    assert overflow is not None, "the condensed branch must have created a per-unit overflow log"
     assert overflow.is_disabled, (
         "append() must auto-disable when the single-line byte budget is exceeded"
     )
@@ -249,6 +242,5 @@ def test_emit_activity_event_warns_when_append_disables_overflow(
 
     output = buf.getvalue()
     assert "overflow log full" in output, (
-        "operator-facing warning missing from rendered output: "
-        f"{output!r}"
+        f"operator-facing warning missing from rendered output: {output!r}"
     )

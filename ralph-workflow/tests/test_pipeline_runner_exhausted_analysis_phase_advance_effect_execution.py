@@ -76,7 +76,10 @@ def _install_runner_display_context(
     width: int = 120,
 ) -> Console:
     console = Console(record=True, force_terminal=False, width=width, color_system=None)
-    ctx = make_display_context(console=console, force_width=width, )
+    ctx = make_display_context(
+        console=console,
+        force_width=width,
+    )
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
     return console
 

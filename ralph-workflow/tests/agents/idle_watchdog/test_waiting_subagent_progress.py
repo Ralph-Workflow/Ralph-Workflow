@@ -114,9 +114,7 @@ def test_subagent_progress_event_kind_exists() -> None:
         " waiting-status stream cannot surface per-subagent progress"
         " without this enum value"
     )
-    assert (
-        WaitingStatusKind.SUBAGENT_PROGRESS.value == "subagent_progress"
-    )
+    assert WaitingStatusKind.SUBAGENT_PROGRESS.value == "subagent_progress"
 
 
 def test_subagent_progress_emits_once_when_monitor_has_live_subagents() -> None:
@@ -148,9 +146,7 @@ def test_subagent_progress_emits_once_when_monitor_has_live_subagents() -> None:
     # the event must NOT emit.
     clock.advance(5.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    subagent_emits = [
-        e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
-    ]
+    subagent_emits = [e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS]
     assert subagent_emits == [], (
         f"SUBAGENT_PROGRESS emitted before the throttle window"
         f" elapsed; got {len(subagent_emits)} events"
@@ -161,9 +157,7 @@ def test_subagent_progress_emits_once_when_monitor_has_live_subagents() -> None:
     # SUBAGENT_PROGRESS event.
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    subagent_emits = [
-        e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
-    ]
+    subagent_emits = [e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS]
     assert len(subagent_emits) == 1, (
         f"expected exactly 1 SUBAGENT_PROGRESS event after the throttle"
         f" window elapsed; got {len(subagent_emits)}"
@@ -194,9 +188,7 @@ def test_subagent_progress_emits_with_recorded_description() -> None:
     # Advance past the throttle window and re-evaluate.
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    subagent_emits = [
-        e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
-    ]
+    subagent_emits = [e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS]
     assert len(subagent_emits) == 1, (
         f"expected 1 SUBAGENT_PROGRESS event; got {len(subagent_emits)}"
     )
@@ -226,12 +218,9 @@ def test_subagent_progress_does_not_emit_without_evidence() -> None:
     # no monitor count -> no SUBAGENT_PROGRESS event.
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    subagent_emits = [
-        e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
-    ]
+    subagent_emits = [e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS]
     assert subagent_emits == [], (
-        f"SUBAGENT_PROGRESS MUST NOT emit without evidence; got"
-        f" {len(subagent_emits)} events"
+        f"SUBAGENT_PROGRESS MUST NOT emit without evidence; got {len(subagent_emits)} events"
     )
 
 
@@ -253,32 +242,24 @@ def test_subagent_progress_rate_limit_respected() -> None:
     # First throttle-elapsed tick -> emit #1.
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    subagent_emits = [
-        e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
-    ]
+    subagent_emits = [e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS]
     assert len(subagent_emits) == 1, (
-        f"expected 1 SUBAGENT_PROGRESS emit after first throttle window;"
-        f" got {len(subagent_emits)}"
+        f"expected 1 SUBAGENT_PROGRESS emit after first throttle window; got {len(subagent_emits)}"
     )
 
     # A tick at +5s (well within the 30s window) -> no new emit.
     clock.advance(5.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    subagent_emits = [
-        e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
-    ]
+    subagent_emits = [e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS]
     assert len(subagent_emits) == 1, (
-        f"second tick within throttle window MUST NOT re-emit; got"
-        f" {len(subagent_emits)}"
+        f"second tick within throttle window MUST NOT re-emit; got {len(subagent_emits)}"
     )
 
     # A tick at +31s past the first emit (well past the 30s window)
     # -> emit #2.
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    subagent_emits = [
-        e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
-    ]
+    subagent_emits = [e for e in captured if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS]
     assert len(subagent_emits) == 2, (
         f"expected 2 SUBAGENT_PROGRESS emits after second throttle"
         f" window; got {len(subagent_emits)}"
@@ -300,9 +281,9 @@ def test_subagent_progress_resets_on_record_invocation_start() -> None:
     # Drive a tick that emits SUBAGENT_PROGRESS at +31s.
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    assert any(
-        e.kind == WaitingStatusKind.SUBAGENT_PROGRESS for e in captured
-    ), "first invocation SUBAGENT_PROGRESS missing"
+    assert any(e.kind == WaitingStatusKind.SUBAGENT_PROGRESS for e in captured), (
+        "first invocation SUBAGENT_PROGRESS missing"
+    )
 
     # Reset to a new invocation. The throttle map MUST be cleared
     # so the first eligible tick after the reset can emit again.
@@ -311,9 +292,7 @@ def test_subagent_progress_resets_on_record_invocation_start() -> None:
     clock.advance(6.0)
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_waiting)
-    assert any(
-        e.kind == WaitingStatusKind.SUBAGENT_PROGRESS for e in captured
-    ), (
+    assert any(e.kind == WaitingStatusKind.SUBAGENT_PROGRESS for e in captured), (
         "second invocation's first SUBAGENT_PROGRESS emit was"
         " suppressed by stale throttle state from the prior invocation"
     )

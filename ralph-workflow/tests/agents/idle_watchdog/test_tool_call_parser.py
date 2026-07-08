@@ -96,9 +96,7 @@ def test_known_tool_call_verbs_set_is_twelve_members() -> None:
         ("websearch:ralph workflow watchdog", "websearch"),
     ],
 )
-def test_parse_returns_canonical_verb_for_known_prefix(
-    description: str, expected: str
-) -> None:
+def test_parse_returns_canonical_verb_for_known_prefix(description: str, expected: str) -> None:
     """Each canonical verb ``verb:<rest>`` MUST surface as ``verb``.
 
     The parser splits on the FIRST ``:`` (not ``": "``) because the
@@ -109,9 +107,7 @@ def test_parse_returns_canonical_verb_for_known_prefix(
     canonical verb set, otherwise ``None``.
     """
     result = _parse_tool_call_from_description(description)
-    assert result == expected, (
-        f"description={description!r}: expected {expected!r}, got {result!r}"
-    )
+    assert result == expected, f"description={description!r}: expected {expected!r}, got {result!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -167,14 +163,10 @@ def test_parse_returns_canonical_verb_for_known_prefix(
         ('"subagent_activity": "tool_use:Read"', None),
     ],
 )
-def test_parse_returns_none_for_edge_cases(
-    description: str | None, expected: str | None
-) -> None:
+def test_parse_returns_none_for_edge_cases(description: str | None, expected: str | None) -> None:
     """Edge cases MUST return ``None`` (not raise, not leak partial data)."""
     result = _parse_tool_call_from_description(description)
-    assert result == expected, (
-        f"description={description!r}: expected {expected!r}, got {result!r}"
-    )
+    assert result == expected, f"description={description!r}: expected {expected!r}, got {result!r}"
 
 
 def test_parse_does_not_mutate_known_verb_set() -> None:
@@ -197,6 +189,5 @@ def test_parse_does_not_mutate_known_verb_set() -> None:
         f"{snapshot_before}, after={snapshot_after}"
     )
     assert len(snapshot_after) == 12, (
-        f"_KNOWN_TOOL_CALL_VERBS size changed across calls; got"
-        f" {len(snapshot_after)} members"
+        f"_KNOWN_TOOL_CALL_VERBS size changed across calls; got {len(snapshot_after)} members"
     )

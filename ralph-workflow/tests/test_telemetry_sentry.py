@@ -1280,6 +1280,7 @@ def test_record_command_invocation_fail_soft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An exception from sentry_sdk.set_tag MUST NOT propagate to the caller."""
+
     def boom(k: object, v: object) -> None:
         raise RuntimeError("simulated set_tag boom")
 
@@ -1314,9 +1315,7 @@ def test_set_session_wallclock_start_records_utc_buckets(
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
 
-    _sentry.set_session_wallclock_start(
-        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
-    )
+    _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
     _sentry.finalize_session(now=160.0, flush_timeout=2.0)
 
     session_context = next(c for c in context_calls if c[0] == "session")
@@ -1345,9 +1344,7 @@ def test_wallclock_no_full_timestamp_no_timezone(
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
 
-    _sentry.set_session_wallclock_start(
-        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
-    )
+    _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
     _sentry.finalize_session(now=160.0, flush_timeout=2.0)
 
     session = captured.get("session")
@@ -1368,9 +1365,7 @@ def test_set_session_wallclock_start_noop_when_disabled(
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
-    _sentry.set_session_wallclock_start(
-        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
-    )
+    _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
 
     assert _sentry._SESSION_WALLCLOCK_BUCKETS is None
 
@@ -1390,9 +1385,7 @@ def test_set_session_wallclock_start_fail_soft(
     monkeypatch.setattr(_sentry, "_compute_wallclock_buckets", boom)
 
     # Must not raise.
-    _sentry.set_session_wallclock_start(
-        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
-    )
+    _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
 
 
 # ---------------------------------------------------------------------------
@@ -1478,9 +1471,7 @@ def test_record_phase_execution_drops_unknown_role(
     monkeypatch.setattr(_sentry, "_INITIALIZED", True)
     monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
 
-    _sentry.record_phase_execution(
-        role="secret-startup-phase", duration_s=1, outcome="success"
-    )
+    _sentry.record_phase_execution(role="secret-startup-phase", duration_s=1, outcome="success")
 
     assert _sentry._PHASE_STATS == {}
 
@@ -1693,9 +1684,7 @@ def _assert_no_forbidden_substrings(
 
 def _assert_metrics_are_metadata_only(
     metric_count_calls: list[tuple[str, float, dict[str, object] | None]],
-    metric_distribution_calls: list[
-        tuple[str, float, str | None, dict[str, object] | None]
-    ],
+    metric_distribution_calls: list[tuple[str, float, str | None, dict[str, object] | None]],
     *,
     forbidden_substrings: tuple[str, ...],
 ) -> None:
@@ -1759,15 +1748,12 @@ def test_closed_vocabulary_privacy_regression(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
 
-
     tag_calls: list[tuple[str, object]] = []
     context_calls: list[tuple[str, dict[str, object]]] = []
     message_calls: list[tuple[str, object]] = []
     breadcrumb_calls: list[dict[str, object]] = []
     metric_count_calls: list[tuple[str, float, dict[str, object] | None]] = []
-    metric_distribution_calls: list[
-        tuple[str, float, str | None, dict[str, object] | None]
-    ] = []
+    metric_distribution_calls: list[tuple[str, float, str | None, dict[str, object] | None]] = []
     transaction_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
@@ -1877,14 +1863,10 @@ def test_closed_vocabulary_privacy_regression(
     # Exercise every new function with adversarial strings.
     _sentry.record_session_start(now=100.0)
     _sentry.record_command_invocation("pipeline")  # closed-vocabulary command
-    _sentry.set_session_wallclock_start(
-        now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC)
-    )
+    _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
 
     # Unknown phase role MUST be dropped (privacy invariant).
-    _sentry.record_phase_execution(
-        role="secret-startup-phase", duration_s=1, outcome="success"
-    )
+    _sentry.record_phase_execution(role="secret-startup-phase", duration_s=1, outcome="success")
     assert _sentry._PHASE_STATS == {}
 
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")

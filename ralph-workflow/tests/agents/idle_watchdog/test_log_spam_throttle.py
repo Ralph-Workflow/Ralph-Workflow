@@ -134,11 +134,7 @@ def test_gate_fire_throttles_identical_deferred_emission(
         )
         assert verdict == WatchdogVerdict.CONTINUE
 
-    matching = [
-        r
-        for r in records
-        if "silent subagent" in r and "CHILDREN_PERSIST_TOO_LONG" in r
-    ]
+    matching = [r for r in records if "silent subagent" in r and "CHILDREN_PERSIST_TOO_LONG" in r]
     assert len(matching) <= 2, (
         f"DEBUG log spam regression: got {len(matching)} records"
         f" for 1000 calls in the same second; expected <= 2"
@@ -175,15 +171,9 @@ def test_gate_fire_throttle_uses_configured_window(
             idle_elapsed=300.0,
             corroboration=CorroborationSnapshot(),
         )
-    matching = [
-        r
-        for r in records
-        if "silent subagent" in r and "CHILDREN_PERSIST_TOO_LONG" in r
-    ]
+    matching = [r for r in records if "silent subagent" in r and "CHILDREN_PERSIST_TOO_LONG" in r]
     # Expect at most: 1 first transition + 1 refresh = 2
-    assert len(matching) <= 3, (
-        f"throttle window 0.01s produced too many emissions: {len(matching)}"
-    )
+    assert len(matching) <= 3, f"throttle window 0.01s produced too many emissions: {len(matching)}"
 
 
 def test_gate_fire_throttle_is_per_key() -> None:
@@ -252,13 +242,11 @@ def test_gate_fire_throttle_is_per_key() -> None:
     # operators can still see WHICH kind was deferred; the throttle
     # is on the LOG emission, not on the kind tracking).
     assert hasattr(watchdog, "_last_any_deferred_log_at"), (
-        "IdleWatchdog MUST expose _last_any_deferred_log_at for the"
-        " coarse single-key throttle"
+        "IdleWatchdog MUST expose _last_any_deferred_log_at for the coarse single-key throttle"
     )
     coarse_map = watchdog._last_any_deferred_log_at
     assert fire_reason.value in coarse_map, (
-        f"fire_reason key missing from coarse throttle map;"
-        f" keys={list(coarse_map)}"
+        f"fire_reason key missing from coarse throttle map; keys={list(coarse_map)}"
     )
     # The CURRENT kind label is preserved on the watchdog's
     # ``_last_deferred_kind`` field -- the operator can still see
@@ -315,10 +303,7 @@ def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
     matching = [
         r
         for r in records
-        if (
-            ("silent subagent" in r or "deferred fire" in r)
-            and "CHILDREN_PERSIST_TOO_LONG" in r
-        )
+        if (("silent subagent" in r or "deferred fire" in r) and "CHILDREN_PERSIST_TOO_LONG" in r)
     ]
     assert len(matching) <= 2, (
         f"coarse single-key throttle MUST cap emissions across"
@@ -386,12 +371,9 @@ def test_scoped_child_active_appears_in_hard_stop_diag() -> None:
     # _handle_waiting_branch path) MUST have emitted with a diag
     # dict that contains ``scoped_child_active`` (NOT the
     # ``?`` fallback).
-    hard_stop_events = [
-        e for e in emitted if e.kind == WaitingStatusKind.HARD_STOP
-    ]
+    hard_stop_events = [e for e in emitted if e.kind == WaitingStatusKind.HARD_STOP]
     assert hard_stop_events, (
-        f"expected at least one HARD_STOP emission; got kinds="
-        f"{[e.kind for e in emitted]}"
+        f"expected at least one HARD_STOP emission; got kinds={[e.kind for e in emitted]}"
     )
     for event in hard_stop_events:
         diag = event.diagnostic or {}

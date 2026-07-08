@@ -52,15 +52,18 @@ def test_audit_subject_literal_is_deterministic_chore_skills_sync_baseline_bundl
 def test_audit_skill_root_prefixes_count_is_five() -> None:
     """The FIVE canonical project-scope skill-root prefix strings are pinned."""
     assert len(audit_module._SKILL_ROOT_PREFIXES) == 5
-    assert frozenset(
-        {
-            ".opencode/skills/",
-            ".agents/skills/",
-            ".claude/skills/",
-            ".codex/skills/",
-            ".gemini/antigravity-cli/skills/",
-        }
-    ) == audit_module._SKILL_ROOT_PREFIXES
+    assert (
+        frozenset(
+            {
+                ".opencode/skills/",
+                ".agents/skills/",
+                ".claude/skills/",
+                ".codex/skills/",
+                ".gemini/antigravity-cli/skills/",
+            }
+        )
+        == audit_module._SKILL_ROOT_PREFIXES
+    )
 
 
 def test_audit_invariants_cover_helper_module() -> None:
@@ -79,9 +82,7 @@ def test_audit_blocks_regression_when_helper_subject_missing(
     def _read_with_subject_removed(rel_path: str) -> str:
         content = real_read(rel_path)
         if rel_path == helper_path:
-            return content.replace(
-                "chore(skills): sync baseline bundle", "renamed: subject"
-            )
+            return content.replace("chore(skills): sync baseline bundle", "renamed: subject")
         return content
 
     monkeypatch.setattr(audit_module, "_read", _read_with_subject_removed)
@@ -110,8 +111,7 @@ def test_audit_blocks_regression_when_skill_root_prefix_missing(
     rc = audit_main([])
     captured = capsys.readouterr()
     assert rc == 1, (
-        f"Audit must exit 1 when a skill-root prefix is removed from the constant; "
-        f"got rc={rc}"
+        f"Audit must exit 1 when a skill-root prefix is removed from the constant; got rc={rc}"
     )
     assert agent_paths in captured.out
 
@@ -128,14 +128,10 @@ def test_audit_blocks_regression_when_helper_module_deleted(
             return False
         return real_exists(self)
 
-    monkeypatch.setattr(
-        "pathlib.Path.exists", _exists_with_helper_deleted
-    )
+    monkeypatch.setattr("pathlib.Path.exists", _exists_with_helper_deleted)
     rc = audit_main([])
     captured = capsys.readouterr()
-    assert rc == 1, (
-        f"Audit must exit 1 when _auto_commit.py is missing; got rc={rc}"
-    )
+    assert rc == 1, f"Audit must exit 1 when _auto_commit.py is missing; got rc={rc}"
     assert "_auto_commit.py" in captured.out
 
 
@@ -155,9 +151,7 @@ def test_audit_blocks_regression_when_commit_cleanup_skip_removed(
     monkeypatch.setattr(audit_module, "_read", _read_with_skip_removed)
     rc = audit_main([])
     captured = capsys.readouterr()
-    assert rc == 1, (
-        f"Audit must exit 1 when the early-skip literal is removed; got rc={rc}"
-    )
+    assert rc == 1, f"Audit must exit 1 when the early-skip literal is removed; got rc={rc}"
     assert cleanup_path in captured.out
 
 
@@ -188,8 +182,7 @@ def test_audit_blocks_regression_when_failure_path_log_removed(
     rc = audit_main([])
     captured = capsys.readouterr()
     assert rc == 1, (
-        f"Audit must exit 1 when the failure-path debug log is removed from run.py; "
-        f"got rc={rc}"
+        f"Audit must exit 1 when the failure-path debug log is removed from run.py; got rc={rc}"
     )
     assert run_path in captured.out
     assert "missing required literal" in captured.out

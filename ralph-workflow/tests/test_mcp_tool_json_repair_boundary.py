@@ -130,8 +130,7 @@ def test_tool_bridge_repairs_container_fields_declared_with_refs_and_combinators
             "type_array": '["a", "b"]',
             "ref_payload": '{"depends_on": "[1, 2]"}',
             "all_of_payload": (
-                '[{"expected_evidence": '
-                '"[{\\"kind\\": \\"file\\", \\"ref\\": \\"src/foo.py\\"}]"}]'
+                '[{"expected_evidence": "[{\\"kind\\": \\"file\\", \\"ref\\": \\"src/foo.py\\"}]"}]'
             ),
         },
     )

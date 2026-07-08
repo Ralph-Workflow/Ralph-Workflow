@@ -115,12 +115,8 @@ def test_auto_commit_body_lists_changed_skills(
     assert "Changed skills:" in message, (
         f"Body must contain the 'Changed skills:' section; got: {message!r}"
     )
-    assert "- brainstorming" in message, (
-        f"Body must list 'brainstorming'; got: {message!r}"
-    )
-    assert "- coding-standards" in message, (
-        f"Body must list 'coding-standards'; got: {message!r}"
-    )
+    assert "- brainstorming" in message, f"Body must list 'brainstorming'; got: {message!r}"
+    assert "- coding-standards" in message, f"Body must list 'coding-standards'; got: {message!r}"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -153,9 +149,7 @@ def test_auto_commit_no_commit_on_non_git_workspace(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_auto_commit_stages_only_skill_roots(
-    tmp_path: Path, fake_create_commit: MagicMock
-) -> None:
+def test_auto_commit_stages_only_skill_roots(tmp_path: Path, fake_create_commit: MagicMock) -> None:
     """AC-04: stage_fn is called with paths ONLY under the FIVE skill roots.
 
     Pre-stages one dirty file under ``.opencode/skills/`` (allowed) and
@@ -221,9 +215,7 @@ def test_auto_commit_subject_is_deterministic_across_two_runs(
         f"got: {first_subject!r} vs {second_subject!r}"
     )
     assert first_subject == SKILL_AUTO_COMMIT_SUBJECT
-    assert first_message != second_message, (
-        "Bodies must differ when changed skill names differ"
-    )
+    assert first_message != second_message, "Bodies must differ when changed skill names differ"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -306,9 +298,7 @@ def test_auto_commit_fails_closed_on_oserror(
     Repo.init(tmp_path)
     _track_initial_commit(tmp_path)
 
-    def _raising_create_commit(
-        _repo_root: Path, _message: str
-    ) -> str:
+    def _raising_create_commit(_repo_root: Path, _message: str) -> str:
         raise OSError("simulated filesystem failure")
 
     # No dirty skill-tree mutations; the helper returns None BEFORE
@@ -419,9 +409,7 @@ def test_auto_commit_body_is_deterministic_across_shuffled_input_orderings(
             prefix = name_to_dir[skill_name]
             skill_dir = tmp_path / prefix / skill_name
             skill_dir.mkdir(parents=True, exist_ok=True)
-            skill_dir.joinpath("SKILL.md").write_text(
-                f"# {skill_name}\n", encoding="utf-8"
-            )
+            skill_dir.joinpath("SKILL.md").write_text(f"# {skill_name}\n", encoding="utf-8")
 
         stage_spy = MagicMock()
         commit_skill_updates(tmp_path, fake_create_commit, stage_fn=stage_spy)
@@ -476,15 +464,13 @@ def test_auto_commit_body_is_deterministic_across_shuffled_input_orderings(
     # forgets the sort, this assertion catches it.
     for idx, staged in enumerate(captured_staged):
         assert staged == sorted(staged), (
-            f"Run {idx}: stage_fn MUST receive a sorted path list; "
-            f"got: {staged!r}"
+            f"Run {idx}: stage_fn MUST receive a sorted path list; got: {staged!r}"
         )
 
     # (e) Across all three runs, the messages are byte-identical -- the
     # strongest possible deterministic-shape pin.
     assert len(set(captured_messages)) == 1, (
-        f"All three runs MUST produce byte-identical messages; "
-        f"got distinct: {captured_messages!r}"
+        f"All three runs MUST produce byte-identical messages; got distinct: {captured_messages!r}"
     )
 
 
@@ -562,13 +548,11 @@ def test_auto_commit_excludes_pre_staged_non_skill_paths(
     try:
         head_subject = repo.head.commit.message.splitlines()[0]
         assert head_subject == SKILL_AUTO_COMMIT_SUBJECT, (
-            "PA-fix-1: chore commit subject MUST be deterministic; "
-            f"got: {head_subject!r}"
+            f"PA-fix-1: chore commit subject MUST be deterministic; got: {head_subject!r}"
         )
 
         committed_paths = {
-            diff.a_path
-            for diff in repo.head.commit.diff(repo.head.commit.parents[0])
+            diff.a_path for diff in repo.head.commit.diff(repo.head.commit.parents[0])
         }
         assert "src/main.py" not in committed_paths, (
             "PA-fix-1: chore(skills) commit MUST NOT capture pre-staged "
@@ -684,16 +668,14 @@ def test_auto_commit_preserves_partial_staging_of_non_skill_file(
     # Sanity: the setup invariant -- the cached diff MUST be exactly
     # the ``+print(2)`` hunk (no ``+print(3)``).
     assert "+print(2)" in before_cached_diff, (
-        "Setup invariant: cached diff MUST contain '+print(2)'; "
-        f"got: {before_cached_diff!r}"
+        f"Setup invariant: cached diff MUST contain '+print(2)'; got: {before_cached_diff!r}"
     )
     assert "+print(3)" not in before_cached_diff, (
         "Setup invariant: cached diff MUST NOT contain '+print(3)' (that hunk "
         f"is unstaged); got: {before_cached_diff!r}"
     )
     assert before_cached_names == ["src/main.py"], (
-        "Setup invariant: src/main.py MUST be the only staged path; "
-        f"got: {before_cached_names!r}"
+        f"Setup invariant: src/main.py MUST be the only staged path; got: {before_cached_names!r}"
     )
 
     # 4. Make a skill dirty -- the trigger for the chore commit.
@@ -704,9 +686,7 @@ def test_auto_commit_preserves_partial_staging_of_non_skill_file(
     # 5. Run the REAL production path: ``stage_files`` + ``create_commit``
     #    from ``ralph.git.operations`` (NOT a MagicMock).
     sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
-    assert sha is not None, (
-        "PA-fix-2: auto-commit MUST return a SHA when the skill tree is dirty"
-    )
+    assert sha is not None, "PA-fix-2: auto-commit MUST return a SHA when the skill tree is dirty"
 
     # 6. PA-fix-2 invariant: the cached diff for src/main.py MUST be
     #    byte-identical before and after -- partial staging MUST survive
@@ -718,8 +698,7 @@ def test_auto_commit_preserves_partial_staging_of_non_skill_file(
         after_cached_names = sorted(repo.git.diff("--cached", "--name-only").splitlines())
         head_subject = repo.head.commit.message.splitlines()[0]
         committed_paths = {
-            diff.a_path
-            for diff in repo.head.commit.diff(repo.head.commit.parents[0])
+            diff.a_path for diff in repo.head.commit.diff(repo.head.commit.parents[0])
         }
     finally:
         repo.close()
@@ -745,8 +724,7 @@ def test_auto_commit_preserves_partial_staging_of_non_skill_file(
         f"got: {after_cached_names!r}"
     )
     assert head_subject == SKILL_AUTO_COMMIT_SUBJECT, (
-        "PA-fix-2: chore commit subject MUST be deterministic; "
-        f"got: {head_subject!r}"
+        f"PA-fix-2: chore commit subject MUST be deterministic; got: {head_subject!r}"
     )
     assert "src/main.py" not in committed_paths, (
         "PA-fix-2: chore(skills) commit MUST NOT capture src/main.py; "
@@ -786,9 +764,7 @@ def test_auto_commit_noop_after_relative_symlink_install(tmp_path: Path) -> None
         install_project_baseline_skills(tmp_path)
 
     first_sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
-    assert first_sha is not None, (
-        "First run MUST commit the initial relative-symlink install"
-    )
+    assert first_sha is not None, "First run MUST commit the initial relative-symlink install"
 
     second_result = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
     assert second_result is None, (

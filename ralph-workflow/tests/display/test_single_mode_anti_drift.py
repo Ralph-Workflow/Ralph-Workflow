@@ -46,9 +46,7 @@ from ralph.display.mode import DEFAULT_MODE
 
 _DISPLAY_DIR = Path(__file__).parent.parent.parent / "ralph" / "display"
 _CLI_MAIN = Path(__file__).resolve().parent.parent.parent / "ralph" / "cli" / "main.py"
-_CLI_COMMANDS_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "ralph" / "cli" / "commands"
-)
+_CLI_COMMANDS_DIR = Path(__file__).resolve().parent.parent.parent / "ralph" / "cli" / "commands"
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DRIFT_SCRIPT = _PROJECT_ROOT / "scripts" / "wt028-drift-check.sh"
 _ALLOWLIST = frozenset({"mode.py", "__init__.py"})
@@ -146,8 +144,7 @@ def test_no_compact_medium_wide_branches_in_display_production() -> None:
     assert not violations, (
         "Mode-conditional branches found in ralph/display/ production code "
         "(anti-drift guard tripped; Ralph Workflow has a SINGLE display mode "
-        "called 'default' — re-introduce no other mode):\n"
-        + "\n".join(violations)
+        "called 'default' — re-introduce no other mode):\n" + "\n".join(violations)
     )
 
 
@@ -192,8 +189,7 @@ def _run_drift_check() -> subprocess.CompletedProcess[str]:
     Bounded 3s timeout per invocation.
     """
     assert _DRIFT_SCRIPT.is_file(), (
-        f"wt028 drift-check script not found at {_DRIFT_SCRIPT!r}; "
-        f"PROJECT_ROOT resolution is wrong"
+        f"wt028 drift-check script not found at {_DRIFT_SCRIPT!r}; PROJECT_ROOT resolution is wrong"
     )
     return subprocess.run(
         ["bash", str(_DRIFT_SCRIPT)],
@@ -341,8 +337,7 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token(
         f"stderr={result_after.stderr!r}"
     )
     assert "PASS" in result_after.stdout, (
-        f"drift-check PASS output must include the PASS marker; "
-        f"got stdout={result_after.stdout!r}"
+        f"drift-check PASS output must include the PASS marker; got stdout={result_after.stdout!r}"
     )
 
 
@@ -475,10 +470,13 @@ def _scan_cli_file_for_forbidden_flags(
                 if (
                     "display-mode" in flag_name.lower()
                     or "display_mode" in flag_name.lower()
-                    or (help_text is not None and (
-                        "display-mode" in help_text.lower()
-                        or "display_mode" in help_text.lower()
-                    ))
+                    or (
+                        help_text is not None
+                        and (
+                            "display-mode" in help_text.lower()
+                            or "display_mode" in help_text.lower()
+                        )
+                    )
                 )
                 else "bare"
             )
@@ -514,18 +512,14 @@ def _write_synthetic_probe(form: str, target_dir: Path) -> Path:
     probe_path = target_dir / probe_name
     target_dir.mkdir(parents=True, exist_ok=True)
     probe_path.write_text(
-        "import typer\n"
-        "\n"
-        f"_FLAG = typer.Option({flag!r}, help='synthetic probe ({form})')\n",
+        f"import typer\n\n_FLAG = typer.Option({flag!r}, help='synthetic probe ({form})')\n",
         encoding="utf-8",
     )
     return probe_path
 
 
 @pytest.mark.parametrize("form", ["joined", "bare"])
-def test_no_cli_flag_introduces_display_mode_or_bare_display(
-    form: str, tmp_path: Path
-) -> None:
+def test_no_cli_flag_introduces_display_mode_or_bare_display(form: str, tmp_path: Path) -> None:
     """CLI-flag anti-drift guard: catches joined --display-mode AND bare --display.
 
     Asserts three properties:
@@ -573,8 +567,7 @@ def test_no_cli_flag_introduces_display_mode_or_bare_display(
         )
         # Confirm the probe hit actually names the forbidden form.
         assert any(form in hit for hit in synthetic_hits), (
-            f"Synthetic {form!r} probe hit must self-identify its form; "
-            f"got hits {synthetic_hits!r}"
+            f"Synthetic {form!r} probe hit must self-identify its form; got hits {synthetic_hits!r}"
         )
     finally:
         if probe_path.exists():

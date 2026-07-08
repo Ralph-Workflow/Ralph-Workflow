@@ -563,8 +563,7 @@ def test_submit_plan_sections_append_risks_stages_invalid_item_with_warning(
     payload = json.loads(_read_response_text(result))
     warnings = cast("list[str]", payload["validation_warnings"])
     assert any(
-        "section 'risks_mitigations' items must be JSON objects" in warning
-        for warning in warnings
+        "section 'risks_mitigations' items must be JSON objects" in warning for warning in warnings
     )
 
     draft = _read_draft(tmp_path)
@@ -602,9 +601,7 @@ def test_submit_plan_sections_rejects_single_step_object_for_replace(tmp_path: P
     payload = json.loads(_read_response_text(result))
     assert payload.get("submitted") == []
     assert payload.get("failed_at") == 0
-    assert "section 'steps' with mode='replace' must be a JSON array" in payload.get(
-        "error", ""
-    )
+    assert "section 'steps' with mode='replace' must be a JSON array" in payload.get("error", "")
 
 
 def test_submit_plan_sections_missing_entries_raises(tmp_path: Path) -> None:

@@ -7,8 +7,6 @@
 > [Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md](
 > https://codeberg.org/RalphWorkflow/Ralph-Workflow-Pro/src/branch/main/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md)
 > (lives in the Pro repository).
-> **Engine-side handoff:**
-> [pro-contract.md](agents/pro-contract.md).
 
 Ralph-Workflow-Pro is an **optional GUI layer** that runs the engine
 as a subprocess. The engine exposes a small, read-only, bounded
@@ -19,8 +17,7 @@ one heartbeat endpoint, one state snapshot, and one DI seam.
 
 This page is the engine's public documentation for that surface.
 If you change a module under `ralph.pro_support`, update the
-corresponding section here and the engine-side
-[pro-contract.md](agents/pro-contract.md).
+corresponding section here.
 
 ## Environment variables
 
@@ -213,16 +210,103 @@ away from the Pro contract:
 - **Bounded `httpx`:** `ralph.testing.audit_mcp_timeout` scans
   `ralph/pro_support/` for unbounded `httpx` calls.
 
-A regression in any of these fails the pipeline immediately. See
-[agents/pro-contract.md](agents/pro-contract.md) for the engine's
-contract-clause-to-test traceability table.
+A regression in any of these fails the pipeline immediately.
+
+## Engine internals (Pro contract)
+
+> **Audience:** Ralph Workflow contributors maintaining the engine
+> side of the Ralph-Workflow-Pro integration.
+> **Last cross-checked:** 2026-06-14 against
+> `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`
+> (the authoritative source of truth, outside this repo).
+
+This document summarises the **engine's** half of the Pro
+integration contract. The full contract lives in the Pro
+repository at
+`Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`;
+any change to the engine behaviour described here MUST be
+coordinated with a contract update there. The full contract is
+intentionally not duplicated here.
+
+### Engine invariants
+
+The engine commits to four invariants under Pro mode. Each
+invariant is enforced by code, by a test, and (where relevant)
+by a CI drift guard.
+
+1. **The engine reads exactly three env vars**: `RALPH_WORKFLOW_PRO`,
+   `RALPH_WORKSPACE`, `PROMPT_PATH`. No others.
+2. **The engine treats `<workspace>/.ralph/run.json` as
+   read-only.** It never creates, modifies, or deletes it.
+3. **The engine POSTs `/api/heartbeat` with the contract-shaped
+   payload**, and treats `401` / `404` as hard stops.
+4. **The engine exits 0 on a clean run and preserves any non-zero
+   exit code on failure.** All stdout/stderr output is UTF-8 and
+   newline-terminated; no bare structured-JSON log lines are
+   emitted.
+
+### Contract clause → engine module → test traceability
+
+The contract clauses are pinned by tests under
+`tests/test_pro_support_*.py` and `tests/test_pro_support_contract.py`.
+The full clause-to-module-to-test table lives in
+`tests/test_pro_support_*.py` (the engine-internal traceability
+reference for now; this page is the public surface and only the
+high-level clause summary is repeated here to keep the docs
+non-redundant).
+
+### Test inventory
+
+The full set of files that prove the engine's Pro contract: `tests/test_pro_support_env.py`, `tests/test_pro_support_workspace.py`, `tests/test_pro_support_prompt.py`, `tests/test_pro_support_marker.py`, `tests/test_pro_support_heartbeat.py`, `tests/test_pro_support_config.py`, `tests/test_orchestrator_pro_prompt_resolution.py`, `tests/test_run_loop_pro_integration.py`, `tests/test_audit_mcp_timeout.py`, `tests/test_pro_support_contract.py`, `tests/test_pro_support_watcher.py`, `tests/test_pro_support_hooks.py`, `tests/test_pro_support_state_query.py`, `tests/test_pro_support_cross_repo_marker.py`, and `tests/test_pro_support_end_to_end.py`.
+
+### Drift detection (CI-level)
+
+`make verify-drift` runs three guards before the test suite:
+
+1. **No hardcoded `PROMPT.md` literal outside the resolver.** The
+   resolver is the only engine path that may construct a
+   source-prompt path; every other call site must go through it.
+2. **No `.ralph/run.json` reference outside the marker module.**
+   A regression that lets a new engine module touch the marker
+   fails the pipeline.
+3. **Bounded-subprocess audit (`audit_mcp_timeout`)** covers
+   `ralph/pro_support/`, catching any unbounded `httpx` call in
+   the heartbeat client.
+
+A regression of any of these fails the pipeline immediately.
+
+### Coordination rule
+
+When a task touches the Pro↔Ralph Workflow shared boundary, the contract
+is the single source of truth. Update the contract first, then
+update the engine code, then update this document, then update
+the contract test in `tests/test_pro_support_contract.py` so the
+new behaviour is pinned. A contract change that is not pinned by
+a passing test is incomplete.
+
+## Forward-looking engine capabilities pending contract amendment
+
+The engine has three new surfaces that the upstream contract
+has not yet been amended to formalise. Until the Pro repository
+accepts the engine-side handoff patch
+(`ralph-workflow/tmp/pro_contract_patch.md`), these
+capabilities are engine-internal and NOT contractually binding
+on the Pro product: `ProMarkerWatcher` (late marker adoption
+daemon thread, see `ralph/pro_support/watcher.py` and
+`tests/test_pro_support_watcher.py`), `ProPipelineHooks`
+(custom pipeline DI seam, 5 factory kwargs + 1
+policy_bundle_override + 1 snapshot_registry + 6 collaborator
+overrides = 13 fields total, see `ralph/pro_support/hooks.py`
+and `tests/test_pro_support_hooks.py`), and
+`PipelineStateSnapshot` (read-only state observability, see
+`ralph/pro_support/state_query.py` and
+`tests/test_pro_support_state_query.py`).
 
 ## Cross-references
 
 - Upstream contract (authoritative):
   [Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md](
   https://codeberg.org/RalphWorkflow/Ralph-Workflow-Pro/src/branch/main/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md).
-- Engine-side handoff: [pro-contract.md](agents/pro-contract.md).
 - Engine implementation: `ralph-workflow/ralph/pro_support/`.
 - Tests: `ralph-workflow/tests/test_pro_support_*.py`,
   `tests/test_run_loop_pro_integration.py`,

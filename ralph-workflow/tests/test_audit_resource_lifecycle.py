@@ -95,8 +95,7 @@ def test_thread_pool_executor_is_not_flagged(tmp_path: Path) -> None:
     """ThreadPoolExecutor has its own .shutdown() lifecycle; not the daemon-Thread rule."""
     assert not _audit(
         tmp_path,
-        "from concurrent.futures import ThreadPoolExecutor\n"
-        "ThreadPoolExecutor(max_workers=4)\n",
+        "from concurrent.futures import ThreadPoolExecutor\nThreadPoolExecutor(max_workers=4)\n",
     )
 
 
@@ -121,11 +120,7 @@ def test_httpx_client_bare_assignment_is_flagged(tmp_path: Path) -> None:
 
 
 def test_httpx_client_in_with_is_not_flagged(tmp_path: Path) -> None:
-    src = (
-        "import httpx\n"
-        "with httpx.Client() as client:\n"
-        "    pass\n"
-    )
+    src = "import httpx\nwith httpx.Client() as client:\n    pass\n"
     assert not _audit(tmp_path, src)
 
 
@@ -320,11 +315,7 @@ def test_real_production_tree_has_zero_violations() -> None:
 
 def test_unbounded_instance_accumulator_flagged(tmp_path: Path) -> None:
     """``self._x = {}`` in __init__ MUST be flagged (instance attr accumulator)."""
-    src = (
-        "class C:\n"
-        "    def __init__(self) -> None:\n"
-        "        self._x = {}\n"
-    )
+    src = "class C:\n    def __init__(self) -> None:\n        self._x = {}\n"
     v = _audit(tmp_path, src)
     assert v, "self._x = {} in __init__ MUST be flagged as unbounded_accumulator"
     assert any(_category(vh) == "unbounded_accumulator" for vh in v)
@@ -350,6 +341,8 @@ def test_unbounded_deque_without_maxlen_flagged(tmp_path: Path) -> None:
     v = _audit(tmp_path, src)
     assert v, "self._q = deque() without maxlen MUST be flagged as unbounded_accumulator"
     assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
 def test_deque_with_maxlen_none_is_flagged(tmp_path: Path) -> None:
     """``deque(maxlen=None)`` MUST be flagged -- maxlen=None is effectively unbounded.
 
@@ -440,8 +433,6 @@ def test_deque_with_negative_maxlen_is_flagged(tmp_path: Path) -> None:
     assert any(_category(vh) == "unbounded_accumulator" for vh in v)
 
 
-
-
 def test_deque_with_maxlen_is_not_flagged(tmp_path: Path) -> None:
     """``self._q = deque(maxlen=8)`` is bounded by construction — NOT flagged."""
     src = (
@@ -513,10 +504,7 @@ def test_single_element_list_sentinel_not_flagged(tmp_path: Path) -> None:
 def test_static_dispatch_table_with_string_keys_not_flagged(tmp_path: Path) -> None:
     """Dict literal with all-string keys is a static — skipped."""
     src = (
-        "HANDLERS = {\n"
-        "    'session': handle_session,\n"
-        "    'message_end': handle_message_end,\n"
-        "}\n"
+        "HANDLERS = {\n    'session': handle_session,\n    'message_end': handle_message_end,\n}\n"
     )
     assert not _audit(tmp_path, src)
 
@@ -535,11 +523,7 @@ def test_empty_list_in_non_init_function_not_flagged(tmp_path: Path) -> None:
     (higher false-positive rate; the BudgetState.failures leak class
     was closed by dropping the field + the tracemalloc test, not by this AST contract).
     """
-    src = (
-        "def helper():\n"
-        "    x = []\n"
-        "    x.append(1)\n"
-    )
+    src = "def helper():\n    x = []\n    x.append(1)\n"
     assert not _audit(tmp_path, src)
 
 
@@ -602,10 +586,7 @@ def test_collections_ordered_dict_instance_accumulator_flagged(tmp_path: Path) -
 
 def test_ordered_dict_module_level_accumulator_flagged(tmp_path: Path) -> None:
     """Module-level ``_CACHE: OrderedDict = OrderedDict()`` MUST be flagged."""
-    src = (
-        "from collections import OrderedDict\n"
-        "_CACHE: OrderedDict[str, dict] = OrderedDict()\n"
-    )
+    src = "from collections import OrderedDict\n_CACHE: OrderedDict[str, dict] = OrderedDict()\n"
     v = _audit(tmp_path, src)
     assert v, "module-level OrderedDict() MUST be flagged as unbounded_accumulator"
     assert any(_category(vh) == "unbounded_accumulator" for vh in v)
@@ -749,7 +730,7 @@ def test_daemon_string_is_flagged(tmp_path: Path) -> None:
     """
     v = _audit(
         tmp_path,
-        "import threading\nthreading.Thread(target=lambda: None, daemon=\"yes\")\n",
+        'import threading\nthreading.Thread(target=lambda: None, daemon="yes")\n',
     )
     assert v, "threading.Thread(target=..., daemon='yes') MUST be flagged"
     assert any(_category(vh) == "non_daemon_thread" for vh in v)
@@ -809,8 +790,7 @@ def test_main_audits_every_explicit_root(tmp_path: Path) -> None:
     clean_dir = tmp_path / "clean"
     clean_dir.mkdir()
     (clean_dir / "c.py").write_text(
-        "import threading\n"
-        "threading.Thread(target=lambda: None, daemon=True)\n",
+        "import threading\nthreading.Thread(target=lambda: None, daemon=True)\n",
         encoding="utf-8",
     )
     bad_dir = tmp_path / "bad"

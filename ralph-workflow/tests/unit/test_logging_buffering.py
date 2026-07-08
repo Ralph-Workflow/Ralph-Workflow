@@ -84,22 +84,27 @@ def test_text_log_unbuffered_structured_block_buffered(
 
     monkeypatch.setattr(logger, "add", capturing_add)
     try:
-        configure_logging(verbosity=2, log_directory=tmp_path, run_id="run-x",
-                          structured=True, rotation=None)
+        configure_logging(
+            verbosity=2, log_directory=tmp_path, run_id="run-x", structured=True, rotation=None
+        )
         logger.info("smoke line")
     finally:
         with contextlib.suppress(ValueError):
             logger.remove()
 
     text_log_calls = [
-        c for c in captured
-        if isinstance(c["args"], list) and len(c["args"]) > 0
+        c
+        for c in captured
+        if isinstance(c["args"], list)
+        and len(c["args"]) > 0
         and isinstance(c["args"][0], (str, Path))
         and str(c["args"][0]).endswith("ralph.log")
     ]
     structured_calls = [
-        c for c in captured
-        if isinstance(c["args"], list) and len(c["args"]) > 0
+        c
+        for c in captured
+        if isinstance(c["args"], list)
+        and len(c["args"]) > 0
         and isinstance(c["args"][0], (str, Path))
         and str(c["args"][0]).endswith("ralph.jsonl")
     ]

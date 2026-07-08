@@ -14,26 +14,17 @@ For archived Rust-era design material, see
 
 ## Maintained: Current Python Behavior
 
-These pages are kept current with the Python implementation in
-`ralph-workflow/ralph/`:
-
 - **[overview.md](overview.md)** — End-to-end Python-runtime architecture:
   Ralph loop, policy interpretation, phase routing, agent invocation,
   artifact submission, completion detection, verification, recovery,
   watchdogs, configuration, and extension points.
-- **[pipeline-lifecycle.md](pipeline-lifecycle.md)** — End-to-end pipeline
-  lifecycle: planning, development, commit, review, and fix loops.
-  Policy-driven orchestration via `ralph/pipeline/`.
-- **[event-loop-and-reducers.md](event-loop-and-reducers.md)** — Event loop,
-  reducer architecture, and policy-based routing. Covers
-  `ralph/pipeline/orchestrator.py` and `ralph/pipeline/reducer.py`.
-- **[Parallel mode](../../ralph-workflow/docs/sphinx/parallel-mode.md)** — same-workspace v1 parallel
-  fan-out. Key constraints: `allowed_directories` path isolation,
-  `.agent/workers/<unit_id>/` namespaces, artifact-based worker completion.
-  No per-worker git branches or post-development merge step. The bundled
-  default ships with `dispatch_mode = "agent_subagents"`; see
-  `ralph-workflow/docs/sphinx/parallel-mode.md` for the full opt-in
-  contract.
+
+The detailed pipeline-lifecycle and event-loop-and-reducers material
+previously kept under `docs/architecture/` was folded into
+[`ralph-workflow/docs/sphinx/developer-internals.md`](../../ralph-workflow/docs/sphinx/developer-internals.md)
+so the maintained Python contributor doc has one home per topic. Use
+`overview.md` for the high-level subsystem map; the developer-internals
+page for the runtime internals.
 
 ## Quarantined: Rust-era material
 
@@ -44,14 +35,6 @@ on those pages for current behavior.
 
 ## Related
 
-- [`../../ralph-workflow/docs/sphinx/`](../../ralph-workflow/docs/sphinx/index.rst) — the maintained Sphinx manual, including
-  the concept pages ([`ralph-loop`](../../ralph-workflow/docs/sphinx/ralph-loop.md),
-  [`policy-driven-pipeline`](../../ralph-workflow/docs/sphinx/policy-driven-pipeline.md),
-  [`phase-routing`](../../ralph-workflow/docs/sphinx/phase-routing.md),
-  [`artifact-lifecycle`](../../ralph-workflow/docs/sphinx/artifact-lifecycle.md),
-  [`watchdogs-and-timeouts`](../../ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md),
-  [`verification-model`](../../ralph-workflow/docs/sphinx/verification-model.md))
-- [`../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md) —
-  MADR-format ADR for the InterruptController/InterruptDispatcher split
-- [`../../ralph-workflow/CHANGELOG.md`](../../ralph-workflow/CHANGELOG.md) — what changed in the runtime between
-  releases
+- [`../../ralph-workflow/docs/sphinx/`](../../ralph-workflow/docs/sphinx/index.rst) — the maintained Sphinx manual
+- [`../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md) — MADR-format ADR for the InterruptController/InterruptDispatcher split
+- [`../../ralph-workflow/CHANGELOG.md`](../../ralph-workflow/CHANGELOG.md) — what changed in the runtime between releases

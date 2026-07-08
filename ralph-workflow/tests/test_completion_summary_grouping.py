@@ -167,9 +167,7 @@ def test_group_no_decisions_shows_none_recorded() -> None:
 
 
 def test_group_error_section_shown_on_failure() -> None:
-    out = _render_group(
-        _make_snapshot(phase="failed", last_error="boom", is_terminal_failure=True)
-    )
+    out = _render_group(_make_snapshot(phase="failed", last_error="boom", is_terminal_failure=True))
     assert "Error" in out
     assert "boom" in out
 
@@ -417,9 +415,6 @@ def test_default_mode_budget_progress_absent_when_no_tracked_counters() -> None:
     assert "Budget Progress" not in out
 
 
-
-
-
 # --- Exit trigger tests ---
 
 
@@ -448,6 +443,3 @@ def test_group_exit_trigger_appears_before_metrics_in_default_mode() -> None:
     assert "exit=completed" in out
     assert "Metrics" in out
     assert out.index("exit=completed") < out.index("Metrics")
-
-
-

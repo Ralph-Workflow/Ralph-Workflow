@@ -109,9 +109,7 @@ def _make_policy(
         no_output_at_start_seconds=no_output_at_start,
         no_progress_quiet_seconds=no_progress_quiet_seconds,
         no_progress_quiet_minimum_invocation_seconds=(no_progress_quiet_minimum_invocation_seconds),
-        no_progress_quiet_heartbeat_ceiling_seconds=(
-            no_progress_quiet_heartbeat_ceiling_seconds
-        ),
+        no_progress_quiet_heartbeat_ceiling_seconds=(no_progress_quiet_heartbeat_ceiling_seconds),
         post_tool_result_progression_seconds=None,
         repeated_error_window_count=5,
         repeated_error_window_seconds=60.0,

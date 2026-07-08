@@ -97,9 +97,7 @@ def _make_watchdog(
         idle_timeout_seconds=60.0,
         no_output_at_start_seconds=None,
         no_progress_quiet_seconds=no_progress_quiet_seconds,
-        no_progress_quiet_minimum_invocation_seconds=(
-            no_progress_quiet_minimum_invocation_seconds
-        ),
+        no_progress_quiet_minimum_invocation_seconds=(no_progress_quiet_minimum_invocation_seconds),
         no_progress_quiet_heartbeat_ceiling_seconds=heartbeat_ceiling_seconds,
         activity_evidence_ttl_seconds=180.0,
         max_waiting_on_child_seconds=1800.0,
@@ -150,8 +148,7 @@ def test_heartbeat_only_trip() -> None:
         f" got {verdict}"
     )
     assert wd.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET, (
-        f"expected WatchdogFireReason.NO_PROGRESS_QUIET;"
-        f" got {wd.last_fire_reason}"
+        f"expected WatchdogFireReason.NO_PROGRESS_QUIET; got {wd.last_fire_reason}"
     )
 
 
@@ -244,8 +241,7 @@ def test_heartbeat_ceiling_disabled_when_none() -> None:
     # watchdog falls back to the cumulative CHILDREN_PERSIST_TOO_LONG
     # ceiling at 1800s (well above 100s).
     assert verdict != WatchdogVerdict.FIRE, (
-        f"Heartbeat-only ceiling MUST be disabled when the field is None;"
-        f" got {verdict}"
+        f"Heartbeat-only ceiling MUST be disabled when the field is None; got {verdict}"
     )
 
 
@@ -284,8 +280,7 @@ def test_heartbeat_only_ceiling_fires_before_dumb_kill_ceiling() -> None:
         f" alive_by=FRESH_HEARTBEAT_ONLY; got {verdict}"
     )
     assert wd.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET, (
-        f"expected WatchdogFireReason.NO_PROGRESS_QUIET;"
-        f" got {wd.last_fire_reason}"
+        f"expected WatchdogFireReason.NO_PROGRESS_QUIET; got {wd.last_fire_reason}"
     )
 
 
@@ -314,8 +309,7 @@ def test_heartbeat_only_ceiling_respects_dumb_kill_floor() -> None:
     clock.advance(11.0)
     verdict = wd.evaluate(classify_quiet=_waiting)
     assert verdict != WatchdogVerdict.FIRE, (
-        f"Heartbeat-only ceiling MUST NOT fire before the dumb-kill"
-        f" floor elapses; got {verdict}"
+        f"Heartbeat-only ceiling MUST NOT fire before the dumb-kill floor elapses; got {verdict}"
     )
 
 
@@ -362,7 +356,5 @@ def test_heartbeat_only_trip_when_no_progress_quiet_seconds_disabled() -> None:
         f" got {verdict}"
     )
     assert wd.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET, (
-        f"expected WatchdogFireReason.NO_PROGRESS_QUIET;"
-        f" got {wd.last_fire_reason}"
+        f"expected WatchdogFireReason.NO_PROGRESS_QUIET; got {wd.last_fire_reason}"
     )
-

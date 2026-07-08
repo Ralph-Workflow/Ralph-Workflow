@@ -166,9 +166,7 @@ def test_pipeline_atomic_rollback_on_phase_failure(
         msg = "Simulated DB write failure on receipt"
         raise OSError(msg)
 
-    monkeypatch.setattr(
-        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
-    )
+    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
     workspace = MockWorkspace(tmp_path)
 
     session = _PipelineSession()

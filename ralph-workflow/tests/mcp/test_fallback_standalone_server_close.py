@@ -59,12 +59,8 @@ class _FakeMcpServer:
     _session: object = _StubSession()
 
 
-def _patch_http_server_class(
-    monkeypatch: pytest.MonkeyPatch, stub: _CloseCapturingServer
-) -> None:
-    monkeypatch.setattr(
-        srv_mod, "_FallbackHttpServer", lambda *a, **kw: stub
-    )
+def _patch_http_server_class(monkeypatch: pytest.MonkeyPatch, stub: _CloseCapturingServer) -> None:
+    monkeypatch.setattr(srv_mod, "_FallbackHttpServer", lambda *a, **kw: stub)
 
 
 @pytest.mark.timeout_seconds(3)
@@ -78,9 +74,7 @@ def test_run_closes_server_on_normal_exit(monkeypatch: pytest.MonkeyPatch) -> No
     server_stub.shutdown_event = Event()
     _patch_http_server_class(monkeypatch, server_stub)
 
-    fallback = _FallbackStandaloneServer(
-        "127.0.0.1", 0, cast("object", _FakeMcpServer())
-    )
+    fallback = _FallbackStandaloneServer("127.0.0.1", 0, cast("object", _FakeMcpServer()))
 
     def _trigger_shutdown() -> None:
         threading.Event().wait(timeout=0.05)
@@ -99,9 +93,7 @@ def test_run_closes_server_on_exception(monkeypatch: pytest.MonkeyPatch) -> None
     server_stub = _CloseCapturingServer(raise_on_serve=True)
     _patch_http_server_class(monkeypatch, server_stub)
 
-    fallback = _FallbackStandaloneServer(
-        "127.0.0.1", 0, cast("object", _FakeMcpServer())
-    )
+    fallback = _FallbackStandaloneServer("127.0.0.1", 0, cast("object", _FakeMcpServer()))
 
     with pytest.raises(RuntimeError, match="serve_forever exploded"):
         fallback.run(ready_event=Event())

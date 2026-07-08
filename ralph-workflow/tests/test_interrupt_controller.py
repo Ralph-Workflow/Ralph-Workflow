@@ -200,4 +200,3 @@ def test_install_force_kill_handler_default_signum_is_sigint() -> None:
     assert calls[0] == ("get", signal.SIGINT)
     assert calls[1] == ("set", (signal.SIGINT, calls[1][1][1]))
     assert calls[2] == ("set", (signal.SIGINT, previous))
-

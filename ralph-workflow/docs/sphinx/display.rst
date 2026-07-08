@@ -3,7 +3,7 @@ Display Architecture
 
 This maintainer-facing page explains the internal display architecture built around :class:`~ralph.display.context.DisplayContext`.
 
-If you only need to understand what appears in the terminal during a run, start with :doc:`transcript` instead.
+If you only need to understand what appears in the terminal during a run, start with the [Streaming Blocks and Long-Content Display](developer-internals.md#streaming-blocks-and-long-content-display) section in `developer-internals.md` instead.
 
 .. contents:: On this page
    :local:

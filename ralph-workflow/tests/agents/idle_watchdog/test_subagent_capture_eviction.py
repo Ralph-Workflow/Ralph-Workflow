@@ -235,9 +235,7 @@ def test_subagent_capture_cache_is_hard_bounded_by_cap() -> None:
     # (w-0..w-4) disappear from discovery. The cache MUST retain
     # the surviving cap workers; the tombstone MUST release the
     # now-dead workers.
-    surviving = {
-        f"w-{i}": _StaticCaptureEmpty() for i in range(_OVERFLOW_DELTA, first_count)
-    }
+    surviving = {f"w-{i}": _StaticCaptureEmpty() for i in range(_OVERFLOW_DELTA, first_count)}
     monitor.replace_captures(surviving)
     clock.advance(0.01)
     watchdog.poll_subagent_output(now=clock.monotonic())
@@ -331,8 +329,7 @@ def test_subagent_capture_cache_polls_all_workers_then_enforces_cap() -> None:
     assert watchdog._subagent_output_count == first_count
     # The cache is HARD-bounded at ``cap`` after the polling pass.
     assert len(watchdog._subagent_output_captures) == cap, (
-        f"hard cap MUST enforce cache at cap={cap}, "
-        f"got {len(watchdog._subagent_output_captures)}"
+        f"hard cap MUST enforce cache at cap={cap}, got {len(watchdog._subagent_output_captures)}"
     )
     # The _OVERFLOW_DELTA oldest-inserted workers were evicted into
     # the tombstone.
@@ -458,16 +455,12 @@ def test_subagent_capture_tombstone_cycles_out_when_worker_dies() -> None:
 
     # Second poll: the _OVERFLOW_DELTA tombstoned workers are gone
     # from discovery. Their tombstone entries MUST be released.
-    surviving = {
-        f"w-{i}": _StaticCaptureEmpty()
-        for i in range(_OVERFLOW_DELTA, first_count)
-    }
+    surviving = {f"w-{i}": _StaticCaptureEmpty() for i in range(_OVERFLOW_DELTA, first_count)}
     monitor.replace_captures(surviving)
     clock.advance(0.01)
     watchdog.poll_subagent_output(now=clock.monotonic())
     assert len(watchdog._evicted_worker_tombstones) == 0, (
-        "tombstone MUST release entries when the worker actually "
-        "exits (no longer in discovery)"
+        "tombstone MUST release entries when the worker actually exits (no longer in discovery)"
     )
 
 
@@ -513,6 +506,4 @@ def test_subagent_capture_tombstone_is_itself_bounded() -> None:
     # tombstone.
     num_evicted = first_count - cap
     tombstoned = list(watchdog._evicted_worker_tombstones.keys())
-    assert tombstoned == [
-        f"w-{i}" for i in range(num_evicted - tombstone_cap, num_evicted)
-    ]
+    assert tombstoned == [f"w-{i}" for i in range(num_evicted - tombstone_cap, num_evicted)]

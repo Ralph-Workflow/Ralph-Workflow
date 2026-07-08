@@ -77,9 +77,7 @@ def test_audit_function_returns_no_violations_for_real_tree() -> None:
     """
     if not _RALPH_PKG_ROOT.is_dir():
         pytest.skip(f"ralph/ package root not found at {_RALPH_PKG_ROOT}")
-    violations, files_checked = audit_module.audit_public_docstrings_directory(
-        _RALPH_PKG_ROOT
-    )
+    violations, files_checked = audit_module.audit_public_docstrings_directory(_RALPH_PKG_ROOT)
     assert violations == []
     assert files_checked > 0, "audit did not inspect any public modules"
 
@@ -375,8 +373,7 @@ def test_audit_does_not_import_inspected_modules(
     def _fail_import(name: str, *args: object, **kwargs: object) -> object:
         del name, args, kwargs
         raise AssertionError(
-            "audit_public_docstrings imported a module under inspection; "
-            "the audit must be AST-only"
+            "audit_public_docstrings imported a module under inspection; the audit must be AST-only"
         )
 
     monkeypatch.setattr(audit_module.importlib, "import_module", _fail_import)
@@ -392,8 +389,7 @@ def test_audit_does_not_import_inspected_modules(
 
 def test_violation_class_is_not_collected_by_pytest() -> None:
     assert getattr(audit_module.DocstringViolation, "__test__", None) is False, (
-        "Violation class must set __test__ = False so pytest does not "
-        "treat it as a test class."
+        "Violation class must set __test__ = False so pytest does not treat it as a test class."
     )
 
 

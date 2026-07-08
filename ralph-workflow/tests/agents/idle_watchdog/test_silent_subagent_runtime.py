@@ -165,8 +165,7 @@ def test_gate_surfaces_silent_subagent_via_last_deferred_kind() -> None:
         idle_elapsed=clock.monotonic(),
     )
     assert gate_verdict == WatchdogVerdict.CONTINUE, (
-        f"Gate MUST defer SILENT_SUBAGENT (CONTINUE, not FIRE);"
-        f" got {gate_verdict}"
+        f"Gate MUST defer SILENT_SUBAGENT (CONTINUE, not FIRE); got {gate_verdict}"
     )
     assert watchdog.last_deferred_kind == StuckKind.SILENT_SUBAGENT, (
         f"Expected last_deferred_kind=SILENT_SUBAGENT; got {watchdog.last_deferred_kind}"

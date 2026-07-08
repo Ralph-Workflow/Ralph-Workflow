@@ -787,8 +787,7 @@ def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_act
         run_id,
     )
     assert artifact_submitted is True, (
-        "Test setup invariant: the Nanocoder artifact must be promoted to "
-        "the smoke run receipt"
+        "Test setup invariant: the Nanocoder artifact must be promoted to the smoke run receipt"
     )
 
     errors = smoke_plumbing_module._detect_smoke_errors(

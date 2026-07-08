@@ -513,9 +513,7 @@ def test_repo_root_resolution_failure_returns_phase_failure_event(
         workspace,
         {
             "analysis_complete": False,
-            "actions": [
-                {"action": "delete_file", "path": "checkpoint.json"}
-            ],
+            "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
         },
     )
     ctx = PhaseContext.construct(
@@ -575,17 +573,13 @@ def test_repo_root_resolution_failure_does_not_use_path_cwd(
         raise RuntimeError("mock workspace failure")
 
     monkeypatch.setattr(workspace, "absolute_path", _raise_mock_workspace_failure)
-    monkeypatch.setattr(
-        "ralph.phases.commit_cleanup.Path.cwd", lambda: fake_cwd
-    )
+    monkeypatch.setattr("ralph.phases.commit_cleanup.Path.cwd", lambda: fake_cwd)
 
     _write_commit_cleanup_artifact(
         workspace,
         {
             "analysis_complete": False,
-            "actions": [
-                {"action": "delete_file", "path": "checkpoint.json"}
-            ],
+            "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
         },
     )
     ctx = PhaseContext.construct(
@@ -2021,12 +2015,8 @@ def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_git_repo: Pat
     binary = tmp_git_repo / "binary.exe"
     binary.write_bytes(b"\x00MZ")
 
-    whitespace_action = CommitCleanupAction.model_construct(
-        action="delete_file", path="   "
-    )
-    real_action = CommitCleanupAction.model_construct(
-        action="delete_file", path="binary.exe"
-    )
+    whitespace_action = CommitCleanupAction.model_construct(action="delete_file", path="   ")
+    real_action = CommitCleanupAction.model_construct(action="delete_file", path="binary.exe")
     cleanup = CommitCleanup.model_construct(
         analysis_complete=True,
         actions=[whitespace_action, real_action],
@@ -2050,9 +2040,7 @@ def test_empty_pattern_in_gitignore_action_is_skipped(tmp_git_repo: Path) -> Non
     whitespace_action = CommitCleanupAction.model_construct(
         action="add_to_gitignore", pattern="   "
     )
-    real_action = CommitCleanupAction.model_construct(
-        action="add_to_gitignore", pattern="*.real"
-    )
+    real_action = CommitCleanupAction.model_construct(action="add_to_gitignore", pattern="*.real")
     cleanup = CommitCleanup.model_construct(
         analysis_complete=True,
         actions=[whitespace_action, real_action],
@@ -2122,9 +2110,7 @@ def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
     whitespace_action = CommitCleanupAction.model_construct(
         action="add_to_gitignore", pattern="   "
     )
-    unsafe_action = CommitCleanupAction.model_construct(
-        action="delete_file", path="module.py"
-    )
+    unsafe_action = CommitCleanupAction.model_construct(action="delete_file", path="module.py")
     cleanup = CommitCleanup.model_construct(
         analysis_complete=False,
         actions=[unsafe_action, whitespace_action],
@@ -2133,9 +2119,7 @@ def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
     skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
 
-    outcome = _decide_cleanup_outcome(
-        "development_commit_cleanup", cleanup, skipped
-    )
+    outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, skipped)
     assert len(outcome) == 1
     assert isinstance(outcome[0], PhaseFailureEvent)
     assert "module.py" in outcome[0].reason
@@ -2160,9 +2144,7 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
     whitespace_action = CommitCleanupAction.model_construct(
         action="add_to_git_exclude", pattern="   "
     )
-    unsafe_action = CommitCleanupAction.model_construct(
-        action="delete_file", path="module.py"
-    )
+    unsafe_action = CommitCleanupAction.model_construct(action="delete_file", path="module.py")
     cleanup = CommitCleanup.model_construct(
         analysis_complete=False,
         actions=[unsafe_action, whitespace_action],
@@ -2171,9 +2153,7 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
     skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
 
-    outcome = _decide_cleanup_outcome(
-        "development_commit_cleanup", cleanup, skipped
-    )
+    outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, skipped)
     assert len(outcome) == 1
     assert isinstance(outcome[0], PhaseFailureEvent)
     assert "module.py" in outcome[0].reason
@@ -2194,9 +2174,7 @@ def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
     # Use ``model_construct`` to bypass Pydantic validation -- the
     # hardened CommitCleanupAction now rejects whitespace-only values at
     # the schema layer.
-    whitespace_action = CommitCleanupAction.model_construct(
-        action="delete_file", path="   "
-    )
+    whitespace_action = CommitCleanupAction.model_construct(action="delete_file", path="   ")
     real_action = CommitCleanupAction.model_construct(
         action="add_to_gitignore", pattern="*.scratch"
     )
@@ -2209,9 +2187,7 @@ def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
     gitignore_text = (tmp_git_repo / ".gitignore").read_text()
     assert "*.scratch" in gitignore_text
 
-    outcome = _decide_cleanup_outcome(
-        "development_commit_cleanup", cleanup, []
-    )
+    outcome = _decide_cleanup_outcome("development_commit_cleanup", cleanup, [])
     assert outcome == [PipelineEvent.AGENT_SUCCESS] or len(outcome) == 1
 
 
@@ -2264,8 +2240,7 @@ def test_build_cleanup_retry_hint_empty_skipped_paths_returns_sentinel() -> None
     assert isinstance(hint, str)
     assert hint, "build_cleanup_retry_hint must NOT return an empty string"
     assert "no delete actions were rejected" in hint, (
-        f"Sentinel must explicitly state that no delete actions were rejected; "
-        f"got: {hint!r}"
+        f"Sentinel must explicitly state that no delete actions were rejected; got: {hint!r}"
     )
 
 
@@ -2278,15 +2253,12 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_safe_count() -> None:
       2. The safe-applied count appears in the form ``Safe actions applied: N``
          when ``safe_applied_count > 0``.
     """
-    hint = build_cleanup_retry_hint(
-        skipped_paths=["foo.py", "bar.py"], safe_applied_count=2
-    )
+    hint = build_cleanup_retry_hint(skipped_paths=["foo.py", "bar.py"], safe_applied_count=2)
 
     assert "foo.py" in hint, f"Path foo.py must be named in the hint; got: {hint!r}"
     assert "bar.py" in hint, f"Path bar.py must be named in the hint; got: {hint!r}"
     assert "Safe actions applied: 2" in hint, (
-        f"Safe count must appear in the form 'Safe actions applied: 2'; "
-        f"got: {hint!r}"
+        f"Safe count must appear in the form 'Safe actions applied: 2'; got: {hint!r}"
     )
 
 
@@ -2299,9 +2271,7 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_zero_safe_count() -> No
     form. The wording is intentionally distinct so the agent's self-correct
     path can distinguish "nothing was applied" from "exactly zero was applied".
     """
-    hint = build_cleanup_retry_hint(
-        skipped_paths=["baz.py"], safe_applied_count=0
-    )
+    hint = build_cleanup_retry_hint(skipped_paths=["baz.py"], safe_applied_count=0)
 
     assert "baz.py" in hint, f"Path baz.py must be named in the hint; got: {hint!r}"
     assert "No safe actions were applied" in hint, (
@@ -2309,8 +2279,7 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_zero_safe_count() -> No
         f"wording; got: {hint!r}"
     )
     assert "Safe actions applied: 0" not in hint, (
-        f"Zero-safe-count summary must NOT use the 'Safe actions applied: N' "
-        f"form; got: {hint!r}"
+        f"Zero-safe-count summary must NOT use the 'Safe actions applied: N' form; got: {hint!r}"
     )
 
 
@@ -2377,12 +2346,10 @@ def test_apply_time_delete_failure_triggers_phase_failure_event(
         f"apply time, got {type(events[0]).__name__}: {events[0]!r}"
     )
     assert "binary.exe" in events[0].reason, (
-        f"PhaseFailureEvent.reason must name the failed path binary.exe; "
-        f"got: {events[0].reason!r}"
+        f"PhaseFailureEvent.reason must name the failed path binary.exe; got: {events[0].reason!r}"
     )
     assert "Cleanup retry hint" in events[0].reason, (
-        f"PhaseFailureEvent.reason must carry the structured retry hint; "
-        f"got: {events[0].reason!r}"
+        f"PhaseFailureEvent.reason must carry the structured retry hint; got: {events[0].reason!r}"
     )
     assert events[0].recoverable is True
     assert events[0].failure_category == FailureCategory.ARTIFACT_VALIDATION
@@ -2453,9 +2420,7 @@ def test_apply_time_delete_failure_with_safe_gitignore_succeeds(
         f"Gitignore action must still be applied even when the delete "
         f"action failed at apply time; got: {gitignore_text!r}"
     )
-    assert binary.exists(), (
-        "Binary artifact must still exist -- the delete failed at apply time."
-    )
+    assert binary.exists(), "Binary artifact must still exist -- the delete failed at apply time."
 
 
 @pytest.mark.timeout_seconds(5)
@@ -2483,12 +2448,8 @@ def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
     cleanup = CommitCleanup.model_construct(
         analysis_complete=True,
         actions=[
-            CommitCleanupAction.model_construct(
-                action="delete_file", path="binary.exe"
-            ),
-            CommitCleanupAction.model_construct(
-                action="delete_file", path="module.py"
-            ),
+            CommitCleanupAction.model_construct(action="delete_file", path="binary.exe"),
+            CommitCleanupAction.model_construct(action="delete_file", path="module.py"),
         ],
     )
 
@@ -2502,15 +2463,12 @@ def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
 
     skipped, failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
 
-    assert "module.py" in skipped, (
-        f"Unsafe path module.py must be in skipped; got: {skipped!r}"
-    )
+    assert "module.py" in skipped, f"Unsafe path module.py must be in skipped; got: {skipped!r}"
     assert "binary.exe" in failed, (
         f"Safe-but-failed path binary.exe must be in failed; got: {failed!r}"
     )
     assert set(skipped).isdisjoint(set(failed)), (
-        f"skipped and failed lists must be disjoint; "
-        f"skipped={skipped!r}, failed={failed!r}"
+        f"skipped and failed lists must be disjoint; skipped={skipped!r}, failed={failed!r}"
     )
 
 
@@ -2615,8 +2573,7 @@ def test_pre_emptive_untrack_preserves_non_engine_files(tmp_git_repo: Path) -> N
     try:
         cached = set(repo.git.ls_files("--cached").splitlines())
         assert "src/app.py" in cached, (
-            "Non-engine tracked file MUST remain in git ls-files --cached after "
-            "pre-emptive untrack"
+            "Non-engine tracked file MUST remain in git ls-files --cached after pre-emptive untrack"
         )
     finally:
         repo.close()
@@ -2765,9 +2722,7 @@ def _drive_auto_seed(
     ("helper_name", "target_relpath"),
     [
         pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
-        pytest.param(
-            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
-        ),
+        pytest.param("auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"),
     ],
 )
 @pytest.mark.timeout_seconds(5)
@@ -2791,8 +2746,7 @@ def test_auto_seed_atomic_append_preserves_bom_prefixed_existing_content(
     resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing.encode("utf-8"), None)
 
     assert resulting.startswith("\ufeff".encode("utf-8")), (
-        f"BOM prefix MUST be preserved through the round trip; got first bytes: "
-        f"{resulting[:8]!r}"
+        f"BOM prefix MUST be preserved through the round trip; got first bytes: {resulting[:8]!r}"
     )
     assert b"existing-bom-line\n" in resulting, (
         f"Pre-existing BOM-prefixed line MUST be preserved; got: {resulting!r}"
@@ -2809,9 +2763,7 @@ def test_auto_seed_atomic_append_preserves_bom_prefixed_existing_content(
     ("helper_name", "target_relpath"),
     [
         pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
-        pytest.param(
-            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
-        ),
+        pytest.param("auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"),
     ],
 )
 @pytest.mark.timeout_seconds(5)
@@ -2831,13 +2783,11 @@ def test_auto_seed_atomic_append_preserves_crlf_terminated_existing_content(
     resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing, None)
 
     assert b"existing-crlf-line\r\n" in resulting, (
-        f"CRLF-terminated pre-existing line MUST be preserved byte-for-byte; "
-        f"got: {resulting!r}"
+        f"CRLF-terminated pre-existing line MUST be preserved byte-for-byte; got: {resulting!r}"
     )
     # The pre-existing line appears exactly once (no duplicate-append).
     assert resulting.count(b"existing-crlf-line\r\n") == 1, (
-        f"Pre-existing CRLF line MUST appear exactly once (no duplicate-append); "
-        f"got: {resulting!r}"
+        f"Pre-existing CRLF line MUST appear exactly once (no duplicate-append); got: {resulting!r}"
     )
 
 
@@ -2845,9 +2795,7 @@ def test_auto_seed_atomic_append_preserves_crlf_terminated_existing_content(
     ("helper_name", "target_relpath"),
     [
         pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
-        pytest.param(
-            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
-        ),
+        pytest.param("auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"),
     ],
 )
 @pytest.mark.timeout_seconds(5)
@@ -2879,9 +2827,7 @@ def test_auto_seed_atomic_append_preserves_trailing_whitespace(
     ("helper_name", "target_relpath"),
     [
         pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
-        pytest.param(
-            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
-        ),
+        pytest.param("auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"),
     ],
 )
 @pytest.mark.timeout_seconds(5)
@@ -2940,9 +2886,7 @@ def test_handle_commit_cleanup_phase_silent_on_tracked_skill_symlinks(
 
     canonical_skill = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
     canonical_skill.mkdir(parents=True, exist_ok=True)
-    canonical_skill.joinpath("SKILL.md").write_text(
-        "# brainstorming skill\n", encoding="utf-8"
-    )
+    canonical_skill.joinpath("SKILL.md").write_text("# brainstorming skill\n", encoding="utf-8")
     sibling_skill = tmp_git_repo / ".agents" / "skills" / "brainstorming"
     sibling_skill.parent.mkdir(parents=True, exist_ok=True)
     sibling_skill.symlink_to(canonical_skill, target_is_directory=True)
@@ -2951,9 +2895,7 @@ def test_handle_commit_cleanup_phase_silent_on_tracked_skill_symlinks(
     _track_and_commit(tmp_git_repo, ".agents/skills/brainstorming")
 
     captured_warnings: list[str] = []
-    sink_id = loguru_logger.add(
-        captured_warnings.append, level="WARNING", format="{message}"
-    )
+    sink_id = loguru_logger.add(captured_warnings.append, level="WARNING", format="{message}")
     try:
         result = _invoke_cleanup(
             FsWorkspace(tmp_git_repo),

@@ -26,9 +26,7 @@ from ralph.agents.invoke._process_reader import (
     _is_resumable_fire_reason,
 )
 
-_RESUMABLE_REASON_VALUES: frozenset[str] = frozenset(
-    r.value for r in _RESUMABLE_FIRE_REASONS
-)
+_RESUMABLE_REASON_VALUES: frozenset[str] = frozenset(r.value for r in _RESUMABLE_FIRE_REASONS)
 _NON_RESUMABLE_REASON_VALUES: frozenset[str] = frozenset(
     {
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG.value,
@@ -46,9 +44,7 @@ def test_is_resumable_fire_reason_classifies_known_reasons() -> None:
     and False for every known non-resumable reason.
     """
     for reason in _RESUMABLE_FIRE_REASONS:
-        assert _is_resumable_fire_reason(reason) is True, (
-            f"{reason!r} MUST be resumable"
-        )
+        assert _is_resumable_fire_reason(reason) is True, f"{reason!r} MUST be resumable"
 
     for reason in (
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
@@ -57,9 +53,7 @@ def test_is_resumable_fire_reason_classifies_known_reasons() -> None:
         WatchdogFireReason.DESCENDANT_HANG,
         WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER,
     ):
-        assert _is_resumable_fire_reason(reason) is False, (
-            f"{reason!r} MUST NOT be resumable"
-        )
+        assert _is_resumable_fire_reason(reason) is False, f"{reason!r} MUST NOT be resumable"
 
 
 @pytest.mark.parametrize("reason_value", sorted(_EXPECTED_FIRE_REASONS))
@@ -73,8 +67,7 @@ def test_expected_fire_reasons_partitioned_into_resumable_or_excluded(
     the resume contract, this test fails.
     """
     assert (
-        reason_value in _RESUMABLE_REASON_VALUES
-        or reason_value in _NON_RESUMABLE_REASON_VALUES
+        reason_value in _RESUMABLE_REASON_VALUES or reason_value in _NON_RESUMABLE_REASON_VALUES
     ), (
         f"{reason_value!r} is neither resumable nor in the documented"
         f" non-resumable exclusion set; update the resume contract"

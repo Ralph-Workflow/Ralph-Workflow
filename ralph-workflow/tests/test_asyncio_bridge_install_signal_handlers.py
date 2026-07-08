@@ -977,4 +977,3 @@ def test_install_signal_handlers_initial_state_has_two_handlers() -> None:
     # Exactly 2 handlers: SIGINT first + SIGTERM first. The
     # force-exit handlers are installed only on first-interrupt.
     assert len(loop._handlers) == 2
-

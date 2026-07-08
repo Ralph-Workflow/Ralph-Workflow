@@ -105,8 +105,7 @@ def test_unsubscribe_callable_removes_listener() -> None:
 
     unsubscribe()
     assert len(pm._listeners) == initial, (
-        f"unsubscribe must remove the listener; got {len(pm._listeners)} vs "
-        f"initial {initial}"
+        f"unsubscribe must remove the listener; got {len(pm._listeners)} vs initial {initial}"
     )
 
 

@@ -15,7 +15,7 @@ question, after [`README.md`](../README.md) and
 
 - [Manual home](../ralph-workflow/docs/sphinx/index.rst)
 - [Configuration](../ralph-workflow/docs/sphinx/configuration.md)
-- [Reference](../ralph-workflow/docs/sphinx/reference.md)
+- [CLI reference](../ralph-workflow/docs/sphinx/cli.md)
 
 ### I want to contribute or change Ralph Workflow itself
 
@@ -24,11 +24,7 @@ question, after [`README.md`](../README.md) and
 - [`docs/agents/`](agents/README.md) — contributor-policy directory
 - [`docs/code-style/`](../code-style/index.md) — documentation rubric and style guide
 
-### Legacy Rust-era reference (archived)
+## Legacy reference (archived)
 
-[`docs/legacy-rust/`](legacy-rust/README.md) — describes the retired
-Rust implementation; do not act on it for current behavior.
-
-## Primary repo
-
-Codeberg is primary: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+[`docs/legacy-rust/`](legacy-rust/README.md) describes the retired Rust
+implementation; do not act on it for current behavior.

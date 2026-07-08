@@ -776,7 +776,7 @@ def _handle_review_issues_found(
             state,
             f"Phase '{state.phase}' has role='review' but issues_outcome is not declared. "
             "Add issues_outcome to the phase in pipeline.toml. "
-            "See docs/migration/policy-v2.md.",
+            "See docs/sphinx/concepts.md.",
             policy,
         )
     new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found")

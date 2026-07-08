@@ -891,9 +891,7 @@ class TestOpenCodeStrategyDoesNotDoubleInvokeSink:
         ``tests/agents/execution_state/test_opencode_sink_registry_parity.py``.
         """
         strategy = OpenCodeExecutionStrategy()
-        strategy.observe_line(
-            '{"type":"child_progress","child_id":"child-A","msg":"thinking"}'
-        )
+        strategy.observe_line('{"type":"child_progress","child_id":"child-A","msg":"thinking"}')
 
         assert len(subagent_sink_spy) == 1, (
             f"expected exactly one sink invocation for OpenCode strategy on"

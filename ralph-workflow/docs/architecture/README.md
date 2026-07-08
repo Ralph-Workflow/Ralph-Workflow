@@ -24,7 +24,7 @@ and extension points), see the repo-root architecture overview:
 - [Repo-root architecture overview](../../../docs/architecture/README.md)
 - [Pipeline lifecycle](../../../docs/architecture/pipeline-lifecycle.md)
 - [Event loop and reducers](../../../docs/architecture/event-loop-and-reducers.md)
-- Parallel fan-out — see [Parallel Mode](../sphinx/parallel-mode.md)
+- Parallel fan-out — see [Parallel Mode (agent-driven)](../sphinx/advanced-pipeline-configuration.md#parallel-execution-agent-driven)
 
 For the Sphinx operator manual, see:
 

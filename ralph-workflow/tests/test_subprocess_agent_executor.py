@@ -404,4 +404,3 @@ async def test_drop_unit_does_not_affect_other_units(tmp_path: object) -> None:
     assert units[0].unit_id in executor._raw_logs
     assert units[1].unit_id not in executor._raw_logs
     assert units[2].unit_id in executor._raw_logs
-

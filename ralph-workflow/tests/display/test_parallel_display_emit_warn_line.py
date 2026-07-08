@@ -43,12 +43,8 @@ def test_emit_warn_line_emits_warn_level_meta_category() -> None:
     output = buf.getvalue()
     assert "WARN" in output, f"warn line missing WARN level: {output!r}"
     assert "META" in output, f"warn line missing META category: {output!r}"
-    assert "[warn][unit-1]" in output, (
-        f"warn line missing [warn][unit-1] tag: {output!r}"
-    )
-    assert "tail-latency rose to 800ms" in output, (
-        f"warn line missing message: {output!r}"
-    )
+    assert "[warn][unit-1]" in output, f"warn line missing [warn][unit-1] tag: {output!r}"
+    assert "tail-latency rose to 800ms" in output, f"warn line missing message: {output!r}"
 
 
 def test_emit_warn_line_uses_meta_category_for_unknown_tag() -> None:
@@ -58,12 +54,8 @@ def test_emit_warn_line_uses_meta_category_for_unknown_tag() -> None:
     pd.stop()
     output = buf.getvalue()
     assert "WARN" in output, f"WARN level missing: {output!r}"
-    assert "META" in output, (
-        f"unknown tag must default to META category: {output!r}"
-    )
-    assert "CONT" not in output, (
-        f"unknown tag must NOT pick CONT category: {output!r}"
-    )
+    assert "META" in output, f"unknown tag must default to META category: {output!r}"
+    assert "CONT" not in output, f"unknown tag must NOT pick CONT category: {output!r}"
 
 
 def test_emit_warn_line_uses_cont_category_for_error_tag() -> None:
@@ -81,15 +73,10 @@ def test_emit_warn_line_uses_cont_category_for_error_tag() -> None:
     output = buf.getvalue()
     assert "WARN" in output, f"WARN level missing: {output!r}"
     assert "CONT" in output, (
-        f"mapped 'error' tag must use CONT category per TAG_CATEGORY; "
-        f"got: {output!r}"
+        f"mapped 'error' tag must use CONT category per TAG_CATEGORY; got: {output!r}"
     )
-    assert "[error][u1]" in output, (
-        f"[error][u1] tag missing: {output!r}"
-    )
-    assert "boom" in output, (
-        f"message body missing: {output!r}"
-    )
+    assert "[error][u1]" in output, f"[error][u1] tag missing: {output!r}"
+    assert "boom" in output, f"message body missing: {output!r}"
 
 
 def test_emit_warn_line_uses_cont_category_for_content_tag() -> None:
@@ -105,8 +92,7 @@ def test_emit_warn_line_uses_cont_category_for_content_tag() -> None:
     output = buf.getvalue()
     assert "WARN" in output, f"WARN level missing: {output!r}"
     assert "CONT" in output, (
-        f"mapped 'content' tag must use CONT category per TAG_CATEGORY; "
-        f"got: {output!r}"
+        f"mapped 'content' tag must use CONT category per TAG_CATEGORY; got: {output!r}"
     )
 
 
@@ -116,9 +102,7 @@ def test_emit_warn_line_preserves_unit_id_verbatim() -> None:
     pd.emit_warn_line("reviewer-agent/3", "failure", "amend needed")
     pd.stop()
     output = buf.getvalue()
-    assert "reviewer-agent/3" in output, (
-        f"unit_id 'reviewer-agent/3' must be preserved: {output!r}"
-    )
+    assert "reviewer-agent/3" in output, f"unit_id 'reviewer-agent/3' must be preserved: {output!r}"
     assert "[failure][reviewer-agent/3]" in output, (
         f"[failure][reviewer-agent/3] tag missing: {output!r}"
     )
@@ -130,9 +114,7 @@ def test_emit_warn_line_renders_message_verbatim() -> None:
     pd.emit_warn_line("unit-1", "warn", "the system is on fire")
     pd.stop()
     output = buf.getvalue()
-    assert "the system is on fire" in output, (
-        f"warn line missing message body: {output!r}"
-    )
+    assert "the system is on fire" in output, f"warn line missing message body: {output!r}"
 
 
 def test_emit_warn_line_strips_newlines_from_unit_id() -> None:
@@ -171,8 +153,7 @@ def test_emit_warn_line_strips_newlines_from_message() -> None:
         f"message newlines must not split the rendered line; got {content_lines!r}"
     )
     assert "msg LINE2 INJECT" in content_lines[0], (
-        f"embedded newlines in message must be replaced with spaces: "
-        f"{content_lines!r}"
+        f"embedded newlines in message must be replaced with spaces: {content_lines!r}"
     )
 
 
@@ -189,12 +170,8 @@ def test_emit_warn_line_strips_ansi_escapes_from_message_and_unit_id() -> None:
     pd.emit_warn_line("u\x1b[31m1", "warn", "boom\x1b[0m ok")
     pd.stop()
     output = buf.getvalue()
-    assert "\x1b" not in output, (
-        f"raw ANSI escape must not appear in captured output: {output!r}"
-    )
-    assert "u1" in output, (
-        f"sanitized unit_id 'u1' (ANSI stripped) must remain: {output!r}"
-    )
+    assert "\x1b" not in output, f"raw ANSI escape must not appear in captured output: {output!r}"
+    assert "u1" in output, f"sanitized unit_id 'u1' (ANSI stripped) must remain: {output!r}"
     assert "boom ok" in output, (
         f"sanitized message 'boom ok' (ANSI stripped) must remain: {output!r}"
     )

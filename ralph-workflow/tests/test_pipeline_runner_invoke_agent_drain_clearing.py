@@ -102,9 +102,7 @@ def _run_pipeline_step(
         "reducer_reduce",
         lambda current_state, _event, _policy, recovery=None: (current_state, []),
     )
-    monkeypatch.setattr(
-        runner_module.ckpt, "save", lambda *_args, **_kwargs: None
-    )
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda *_args, **_kwargs: None)
 
     display_context = make_display_context()
     display = runner_module.ParallelDisplay(display_context)

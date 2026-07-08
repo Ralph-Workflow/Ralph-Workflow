@@ -134,6 +134,7 @@ def _bind_subagent_sink_to_watchdog(
     Returns the (sink_token, subagent_token) so the caller can reset them
     after the test.
     """
+
     def _mcp_sink(_tool_name: str) -> None:
         watchdog.record_mcp_tool_call()
 
@@ -403,9 +404,7 @@ def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
         # timestamp is the wall-clock origin).
         last_activity = snapshot["last_subagent_progress_at"]
         assert (
-            last_activity is not None
-            and isinstance(last_activity, float)
-            and last_activity >= 0.0
+            last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
         ), (
             f"transport={transport!r}: diagnostic_snapshot"
             f" MUST report last_subagent_progress_at as a non-None"
@@ -469,9 +468,7 @@ def test_transport_strategy_surfaces_real_heartbeat_extraction(
         # when the parsed value is ``None``.
         last_activity = snapshot["last_subagent_progress_at"]
         assert (
-            last_activity is not None
-            and isinstance(last_activity, float)
-            and last_activity >= 0.0
+            last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
         ), (
             f"transport={transport!r}: diagnostic_snapshot"
             f" MUST report last_subagent_progress_at as a non-None"
@@ -526,9 +523,7 @@ def test_transport_strategy_surfaces_real_json_extraction(
         # ``{"type"`` is not a known verb).
         last_activity = snapshot["last_subagent_progress_at"]
         assert (
-            last_activity is not None
-            and isinstance(last_activity, float)
-            and last_activity >= 0.0
+            last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
         ), (
             f"transport={transport!r}: diagnostic_snapshot"
             f" MUST report last_subagent_progress_at as a non-None"
@@ -588,8 +583,10 @@ def test_transport_strategy_surfaces_real_extraction_to_listener(
         # waiting branch on the first poll.
         clock = watchdog._clock
         clock.advance(61.0)
+
         def _waiting() -> AgentExecutionState:
             return AgentExecutionState.WAITING_ON_CHILD
+
         watchdog.evaluate(classify_quiet=_waiting)
         assert captured, (
             f"transport={transport!r}: watchdog MUST emit a waiting"
@@ -661,8 +658,10 @@ def test_cross_transport_subagent_activity_sink_is_wired(
     # Drive the watchdog into the WAITING_ON_CHILD branch so the
     # ENTERED event is emitted through the public evaluate() path.
     watchdog._clock.advance(61.0)
+
     def _waiting() -> AgentExecutionState:
         return AgentExecutionState.WAITING_ON_CHILD
+
     watchdog.evaluate(classify_quiet=_waiting)
     # The watchdog may emit multiple status events (ENTERED +
     # SUBAGENT_PROGRESS) on the same evaluate() call; the
@@ -672,10 +671,7 @@ def test_cross_transport_subagent_activity_sink_is_wired(
         "watchdog.evaluate MUST emit at least one waiting-status event"
         " carrying the recorded subagent description; got no events"
     )
-    assert all(
-        description == "first"
-        for _kind, description in captured
-    ), (
+    assert all(description == "first" for _kind, description in captured), (
         "Every waiting-status event forwarded to the listener MUST"
         " carry the recorded subagent description; got: {captured}"
     )
@@ -696,9 +692,7 @@ def test_cross_transport_subagent_activity_sink_is_wired(
         and isinstance(last_activity_post, float)
         and last_activity_post >= 0.0
     )
-    assert post_record_snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
-        "first"
-    )
+    assert post_record_snapshot["current_subagent_tool_call"] == _parse_tool_call_expected("first")
 
     watchdog.record_invocation_start()
     assert watchdog.last_subagent_progress_description is None

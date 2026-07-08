@@ -12,7 +12,7 @@ The top-level package exposes version metadata, the CLI entrypoint
 (`ralph.main`), platform detection helpers, and the runtime verification
 primitives used by ``make verify``. The package docstring lists the major
 subpackages a contributor will touch most often. See
-:doc:`developer-reference` for the contributor map and
+:doc:`developer-internals` for the contributor map and
 :doc:`configuration` for how layered config and policy defaults are wired
 together.
 
@@ -472,8 +472,8 @@ pipeline: it loads, validates, explains, and renders the TOML policy
 tables (``pipeline.toml``, ``agents.toml``, ``artifacts.toml``,
 ``mcp.toml``). The runtime is a generic policy interpreter; behavior
 changes land in ``ralph/policy/defaults/`` rather than in code. See
-:doc:`policy-driven-pipeline` for the model and
-:doc:`policy-explanation` for the explain surface used by ``ralph
+:doc:`concepts` for the model and
+:doc:`configuration` for the explain surface used by ``ralph
 explain``.
 
 ralph.policy
@@ -611,7 +611,7 @@ effect router, phase agent handlers, and the run loop. Effects are
 declared in TOML and routed through ``ralph/pipeline/effect_router.py``
 to handlers under ``ralph/pipeline/parallel/``, ``ralph/pipeline/effects/``,
 and ``ralph/pipeline/recovery/`` (covered by their own groups). See
-:doc:`ralph-loop` for the loop model and :doc:`phase-routing` for how
+:doc:`concepts` for the loop model and :doc:`concepts` for how
 phases route between planning, development, commit, and analysis.
 
 ralph.pipeline
@@ -1102,7 +1102,7 @@ This group holds the per-phase logic: analysis (``ralph/phases/analysis.py``),
 artifact-required checks (``required_artifacts``), commit / commit-cleanup
 / commit-logging, execution, integrity, review, verification, and timing.
 Each phase maps to a TOML block under ``[blocks.*]`` in the bundled
-``ralph/policy/defaults/pipeline.toml``. See :doc:`phase-routing` for how
+``ralph/policy/defaults/pipeline.toml``. See :doc:`concepts` for how
 phase transitions are wired and :doc:`advanced-pipeline-configuration`
 for extending the phase graph.
 
@@ -1201,7 +1201,7 @@ executor protocol and subprocess adapter, the parsers for every
 supported agent (Claude, Codex, OpenCode, Nanocoder, AGY, Pi), the
 execution strategies, and the activity-aware idle watchdog with its
 post-exit sibling. See :doc:`agents` for the selection and trust story,
-:doc:`watchdogs-and-timeouts` for the timeout model, and
+:doc:`concepts` for the timeout model, and
 :doc:`agent-compatibility` for the supported-agent matrix.
 
 ralph.agents
@@ -3347,3 +3347,4 @@ ralph.pro_support.state_query
 .. automodule:: ralph.pro_support.state_query
    :members:
    :show-inheritance:
+ce:

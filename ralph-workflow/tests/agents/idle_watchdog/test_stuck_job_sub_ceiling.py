@@ -141,8 +141,7 @@ def test_stuck_job_sub_ceiling_fires_at_600s_when_alive_by_is_stale() -> None:
     verdict = watchdog.evaluate(classify_quiet=_waiting_on_child)
 
     assert verdict == WatchdogVerdict.FIRE, (
-        f"stuck_job_sub_ceiling MUST fire at 600s with stale alive_by;"
-        f" got verdict={verdict!r}"
+        f"stuck_job_sub_ceiling MUST fire at 600s with stale alive_by; got verdict={verdict!r}"
     )
     assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG, (
         f"expected CHILDREN_PERSIST_TOO_LONG; got {watchdog.last_fire_reason!r}"
@@ -184,8 +183,7 @@ def test_stuck_job_sub_ceiling_fires_for_every_stale_alive_by(alive_by: AliveBy)
     verdict = watchdog.evaluate(classify_quiet=_waiting_on_child)
 
     assert verdict == WatchdogVerdict.FIRE, (
-        f"stuck_job_sub_ceiling MUST fire for alive_by={alive_by.value!r};"
-        f" got verdict={verdict!r}"
+        f"stuck_job_sub_ceiling MUST fire for alive_by={alive_by.value!r}; got verdict={verdict!r}"
     )
     assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
@@ -260,8 +258,7 @@ def test_stuck_job_sub_ceiling_disabled_when_none() -> None:
     # Cumulative waiting time is 700s, well under the 1800s
     # max_waiting_on_child_no_progress_seconds ceiling.
     assert verdict == WatchdogVerdict.WAITING_ON_CHILD, (
-        f"with sub-ceiling disabled, the gate MUST NOT fire at 700s;"
-        f" got verdict={verdict!r}"
+        f"with sub-ceiling disabled, the gate MUST NOT fire at 700s; got verdict={verdict!r}"
     )
     assert watchdog.last_fire_reason is None
 
@@ -348,7 +345,6 @@ def test_stuck_job_sub_ceiling_fires_when_scoped_child_inactive() -> None:
     # The cumulative time is 600s, well under the 1800s
     # max_waiting_on_child_seconds ceiling.
     assert verdict == WatchdogVerdict.WAITING_ON_CHILD, (
-        f"sub-ceiling MUST NOT fire when scoped_child_active=False;"
-        f" got verdict={verdict!r}"
+        f"sub-ceiling MUST NOT fire when scoped_child_active=False; got verdict={verdict!r}"
     )
     assert watchdog.last_fire_reason is None

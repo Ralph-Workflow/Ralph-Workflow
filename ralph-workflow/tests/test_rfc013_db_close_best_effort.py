@@ -202,9 +202,7 @@ def test_sweep_run_state_db_rows_does_not_raise_when_close_raises(
     (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".agent" / "state.db").touch()
 
-    removed = _sweep_run_state_db_rows(
-        tmp_path, cutoff=0.0, keep_run_id=None
-    )
+    removed = _sweep_run_state_db_rows(tmp_path, cutoff=0.0, keep_run_id=None)
     assert removed == 3
 
 

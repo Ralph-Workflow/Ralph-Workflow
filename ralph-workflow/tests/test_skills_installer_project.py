@@ -349,9 +349,7 @@ def test_install_overwrites_stale_canonical_skill(tmp_path: Path) -> None:
     assert post_md == get_skill_content(name), (
         "Stale canonical SKILL.md was NOT overwritten with bundled content"
     )
-    post_marker = json.loads(
-        (canonical / name / ".ralph-managed.json").read_text(encoding="utf-8")
-    )
+    post_marker = json.loads((canonical / name / ".ralph-managed.json").read_text(encoding="utf-8"))
     bundled_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
     assert post_marker.get("installed_content_sha256") == bundled_sha, (
         f"Managed marker sha must equal bundled sha after install; "
@@ -403,9 +401,7 @@ def test_resolve_within_workspace_rejects_external_symlink(tmp_path: Path) -> No
     try:
         (tmp_path / ".opencode").symlink_to(outside_dir)
         resolved = _resolve_within_workspace(tmp_path / ".opencode" / "skills", tmp_path)
-        assert resolved is None, (
-            f"Expected external symlink to fail containment, got {resolved!r}"
-        )
+        assert resolved is None, f"Expected external symlink to fail containment, got {resolved!r}"
     finally:
         if (tmp_path / ".opencode").is_symlink():
             (tmp_path / ".opencode").unlink()
@@ -564,9 +560,7 @@ def test_project_skills_need_install_true_when_sibling_points_to_wrong_target(
     for skill_name in BASELINE_SKILL_NAMES:
         skill_dir = poison / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)
-        (skill_dir / "SKILL.md").write_text(
-            get_skill_content(skill_name), encoding="utf-8"
-        )
+        (skill_dir / "SKILL.md").write_text(get_skill_content(skill_name), encoding="utf-8")
 
     with patch("pathlib.Path.home", return_value=home):
         # Clean install first.
@@ -582,9 +576,7 @@ def test_project_skills_need_install_true_when_sibling_points_to_wrong_target(
                 sibling_dir = sibling_root / skill_name
                 if sibling_dir.is_symlink() or sibling_dir.exists():
                     sibling_dir.unlink()
-                sibling_dir.symlink_to(
-                    poison / skill_name, target_is_directory=True
-                )
+                sibling_dir.symlink_to(poison / skill_name, target_is_directory=True)
 
         # Predicate must detect the wrong target and return True.
         assert _project_skills_need_install(tmp_path) is True, (
@@ -629,9 +621,7 @@ def test_install_overwrites_user_edited_canonical_skill(tmp_path: Path) -> None:
     canonical.mkdir(parents=True, exist_ok=True)
     skill_dir = canonical / name
     skill_dir.mkdir(parents=True, exist_ok=True)
-    user_edited_content = (
-        f"# user-edited version of {name}\n"  # NOT the bundled content
-    )
+    user_edited_content = f"# user-edited version of {name}\n"  # NOT the bundled content
     skill_dir.joinpath("SKILL.md").write_text(user_edited_content, encoding="utf-8")
     user_edited_sha = hashlib.sha256(user_edited_content.encode("utf-8")).hexdigest()
     skill_dir.joinpath(".ralph-managed.json").write_text(
@@ -654,9 +644,7 @@ def test_install_overwrites_user_edited_canonical_skill(tmp_path: Path) -> None:
         "Project-scope reconcile must overwrite user-edited SKILL.md "
         "with bundled content (per locked conflict-resolution policy)"
     )
-    post_marker = json.loads(
-        (canonical / name / ".ralph-managed.json").read_text(encoding="utf-8")
-    )
+    post_marker = json.loads((canonical / name / ".ralph-managed.json").read_text(encoding="utf-8"))
     bundled_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
     assert post_marker.get("installed_content_sha256") == bundled_sha
 

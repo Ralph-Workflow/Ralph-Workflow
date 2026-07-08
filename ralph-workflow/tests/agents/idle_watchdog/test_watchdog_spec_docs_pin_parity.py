@@ -64,11 +64,7 @@ def test_every_pin_test_path_is_cited_in_watchdog_spec_docs() -> None:
     test_root: Path = Path(__file__).resolve().parent.parent.parent.parent
 
     spec_path: Path = (
-        test_root
-        / "tests"
-        / "agents"
-        / "idle_watchdog"
-        / "test_trustworthy_idle_watchdog_spec.py"
+        test_root / "tests" / "agents" / "idle_watchdog" / "test_trustworthy_idle_watchdog_spec.py"
     )
     spec = importlib.util.spec_from_file_location("_spec_pin_paths", spec_path)
     assert spec is not None, (

@@ -58,9 +58,7 @@ def _make_pm(*, terminal_history_limit: int) -> ProcessManager:
             enable_zombie_reaper=False,
             terminal_history_limit=terminal_history_limit,
         ),
-        sync_process_factory=make_sync_process_factory(
-            itertools.count(1), returncode=None
-        ),
+        sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=None),
         async_process_factory=make_async_process_factory(itertools.count(100)),
         psutil=FakePsutil(),
     )
@@ -218,8 +216,7 @@ def test_termination_outcomes_limit_zero_preserves_in_flight_active_pid() -> Non
     # After PID-B is terminal, its outcome key is gone (cap=0).
     outcomes_after_b = pm.list_termination_outcomes()
     assert handle_b.pid not in outcomes_after_b, (
-        f"after PID-B terminal, PID-B's outcome key should be dropped;"
-        f" got {outcomes_after_b}"
+        f"after PID-B terminal, PID-B's outcome key should be dropped; got {outcomes_after_b}"
     )
 
     # Now drive PID-A's escalation partway: this records outcome
@@ -244,14 +241,10 @@ def test_termination_outcomes_limit_zero_preserves_in_flight_active_pid() -> Non
     assert outcomes[handle_a.pid] == [
         {"stage": "graceful_terminate", "outcome": "sent"},
         {"stage": "force_kill", "outcome": "sent"},
-    ], (
-        f"PID-A's in-flight outcome list must be intact;"
-        f" got {outcomes.get(handle_a.pid)}"
-    )
+    ], f"PID-A's in-flight outcome list must be intact; got {outcomes.get(handle_a.pid)}"
     # PID-C is terminal (cap=0), so its own outcome is dropped.
     assert handle_c.pid not in outcomes, (
-        f"PID-C is terminal under cap=0, its own outcome must be"
-        f" dropped; got {outcomes}"
+        f"PID-C is terminal under cap=0, its own outcome must be dropped; got {outcomes}"
     )
 
 
@@ -274,8 +267,7 @@ def test_termination_outcomes_default_limit_keeps_existing_tests_green() -> None
     outcomes = pm.list_termination_outcomes()
     # 5 terminations, default cap 256 -> all 5 survive.
     assert len(outcomes) == 5, (
-        f"with terminal_history_limit=256, all 5 outcome keys must"
-        f" survive; got {len(outcomes)}"
+        f"with terminal_history_limit=256, all 5 outcome keys must survive; got {len(outcomes)}"
     )
 
 

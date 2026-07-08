@@ -38,7 +38,8 @@ The table below maps the primary public agent subsystem symbols to their declari
   contain (referenced as the authoritative contract by `AGENTS.md`)
 - `memory-lifecycle.md` — bounded-accumulator rules for agent-owned
   collections (complements `ralph/testing/audit_resource_lifecycle.py`)
-- `pro-contract.md` — Pro support layer contract
+- Pro support layer contract lives at
+  [`ralph-workflow/docs/sphinx/pro-support.md#engine-internals-pro-contract`](../sphinx/pro-support.md#engine-internals-pro-contract)
 - `watchdog-spec.md` — watchdog design and invariants
 
 ## Cross-reference

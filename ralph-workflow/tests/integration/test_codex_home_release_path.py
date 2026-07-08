@@ -216,8 +216,7 @@ def test_release_codex_home_rmtrees_after_eviction_from_registry(
         # longer needs to call shutil.rmtree explicitly.
         released = release_codex_home(str(evicted_dir))
         assert released is False, (
-            "release_codex_home returns False for evicted paths "
-            "(registry-only semantic, preserved)"
+            "release_codex_home returns False for evicted paths (registry-only semantic, preserved)"
         )
         assert not evicted_dir.exists(), (
             "release_codex_home MUST rmtree the on-disk directory "
@@ -285,6 +284,7 @@ def test_active_codex_homes_not_evicted_from_disk(tmp_path: Path) -> None:
                 def _cleanup() -> None:
                     release_codex_home(home)
                     shutil.rmtree(home, ignore_errors=True)
+
                 return _cleanup
 
             cleanups.append(_make_cleanup(captured))
@@ -313,9 +313,7 @@ def test_active_codex_homes_not_evicted_from_disk(tmp_path: Path) -> None:
         # cleanup hook is now redundant but harmless.
         cleanups[0]()
 
-        assert not dirs[0].exists(), (
-            "released home must be rmtree'd by its cleanup hook"
-        )
+        assert not dirs[0].exists(), "released home must be rmtree'd by its cleanup hook"
         # All OTHER homes must STILL exist (each cleanup only releases
         # its own home; nobody else's).
         for d in dirs[1:]:

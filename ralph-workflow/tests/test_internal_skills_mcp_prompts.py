@@ -218,9 +218,7 @@ def test_submit_artifact_skill_shape() -> None:
         "body must show artifact_type and content envelope keys"
     )
     assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, (
-        "body must mention the ralph_submit_artifact MCP tool"
-    )
+    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
     assert "native JSON" in body and "object/array" in body
     assert "Passing an object instead of a JSON string" not in body
 
@@ -252,9 +250,7 @@ def test_packaged_artifact_skills_reference_only_real_mcp_tools() -> None:
         _fm, body = _read_skill(path)
         referenced = set(re.findall(r"\b(?:ralph_)?[a-z][a-z0-9_]+(?=\()", body))
         missing = sorted(
-            name
-            for name in referenced
-            if name.startswith("ralph_") and name not in known_tools
+            name for name in referenced if name.startswith("ralph_") and name not in known_tools
         )
         if missing:
             unknown[path.name] = missing
@@ -563,15 +559,11 @@ def test_submit_commit_message_artifact_skill_shape() -> None:
         "body must reference the commit_message format doc"
     )
     assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, (
-        "body must mention the ralph_submit_artifact MCP tool"
-    )
+    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
 
 
 def test_submit_development_result_artifact_skill_shape() -> None:
-    assert DEVELOPMENT_RESULT_SKILL_PATH.exists(), (
-        f"missing skill: {DEVELOPMENT_RESULT_SKILL_PATH}"
-    )
+    assert DEVELOPMENT_RESULT_SKILL_PATH.exists(), f"missing skill: {DEVELOPMENT_RESULT_SKILL_PATH}"
     fm, body = _read_skill(DEVELOPMENT_RESULT_SKILL_PATH)
 
     assert fm.get("name") == "submit-development-result-artifact"
@@ -597,9 +589,7 @@ def test_submit_development_result_artifact_skill_shape() -> None:
     )
     assert "plan_items_proven" in body, "body must surface plan_items_proven field"
     assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, (
-        "body must mention the ralph_submit_artifact MCP tool"
-    )
+    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
 
 
 def test_submit_commit_cleanup_artifact_skill_shape() -> None:
@@ -642,25 +632,17 @@ def test_submit_commit_cleanup_artifact_skill_shape() -> None:
     )
     assert "actions" in body, "body must surface the actions array contract"
     assert "retry" in body.lower(), "body must contain retry guidance"
-    assert "ralph_submit_artifact" in body, (
-        "body must mention the ralph_submit_artifact MCP tool"
-    )
+    assert "ralph_submit_artifact" in body, "body must mention the ralph_submit_artifact MCP tool"
 
 
 def test_submit_commit_message_artifact_skill_documents_breaking_change_marker() -> None:
     """The conventional-commit breaking-change `!` marker must be documented."""
-    assert COMMIT_MESSAGE_SKILL_PATH.exists(), (
-        f"missing skill: {COMMIT_MESSAGE_SKILL_PATH}"
-    )
+    assert COMMIT_MESSAGE_SKILL_PATH.exists(), f"missing skill: {COMMIT_MESSAGE_SKILL_PATH}"
     _, body = _read_skill(COMMIT_MESSAGE_SKILL_PATH)
     assert "!" in body, (
         "submit-commit-message-artifact.md must document the breaking-change `!` marker"
     )
-    needle = (
-        "Breaking"
-        if "Breaking" in body
-        else "breaking"
-    )
+    needle = "Breaking" if "Breaking" in body else "breaking"
     assert needle in body, (
         "submit-commit-message-artifact.md must surface the breaking-change "
         "concept alongside the conventional-commit subject shape"
@@ -736,9 +718,7 @@ def _render_template_source(template_path: Path) -> str:
     Asserts on substring presence, not exact render equality.
     """
     source = template_path.read_text(encoding="utf-8")
-    shared_dir = (
-        REPO_ROOT / "ralph" / "prompts" / "templates" / "shared"
-    )
+    shared_dir = REPO_ROOT / "ralph" / "prompts" / "templates" / "shared"
 
     partials: dict[str, str] = {}
     for path in shared_dir.rglob("*.jinja"):
@@ -749,9 +729,7 @@ def _render_template_source(template_path: Path) -> str:
         partials[key] = path.read_text(encoding="utf-8")
 
     env = Environment(
-        loader=DictLoader(
-            {"__main__.j2": source, **{f"{k}.j2": v for k, v in partials.items()}}
-        ),
+        loader=DictLoader({"__main__.j2": source, **{f"{k}.j2": v for k, v in partials.items()}}),
         autoescape=False,
         keep_trailing_newline=True,
         undefined=ChainableUndefined,
@@ -849,17 +827,13 @@ def test_commit_cleanup_jinja_json_fences_are_parseable() -> None:
             pytest.fail(f"commit_cleanup.jinja JSON block {index} is invalid: {exc}")
 
 
-
-
 # ---------------------------------------------------------------------------
 # AC-11 — submit-plan-step-edits.md skill shape (new skill)
 # ---------------------------------------------------------------------------
 
 
 def test_submit_plan_step_edits_skill_shape() -> None:
-    assert PLAN_STEP_EDITS_SKILL_PATH.exists(), (
-        f"missing skill: {PLAN_STEP_EDITS_SKILL_PATH}"
-    )
+    assert PLAN_STEP_EDITS_SKILL_PATH.exists(), f"missing skill: {PLAN_STEP_EDITS_SKILL_PATH}"
     fm, body = _read_skill(PLAN_STEP_EDITS_SKILL_PATH)
 
     assert fm.get("name") == "submit-plan-step-edits"
@@ -912,9 +886,7 @@ def test_submit_plan_step_edits_skill_shape() -> None:
     for tool_name in tool_names:
         assert tool_name in body, f"body must mention {tool_name!r}"
 
-    assert ".agent/artifact-formats/plan.md" in body, (
-        "body must reference the plan format doc"
-    )
+    assert ".agent/artifact-formats/plan.md" in body, "body must reference the plan format doc"
     assert "reindex" in body, "body must surface the reindex semantics"
     assert "orphan" in body, "body must surface the orphan AC drop semantics"
     assert "## Red Flags - STOP and Start Over" in body, (

@@ -167,9 +167,7 @@ def test_auto_seed_default_git_exclude_works_in_git_worktree(tmp_path: Path) -> 
 
     # The real gitdir is referenced by the gitfile -- resolve it and check.
     gitfile_content = (worktree / ".git").read_text(encoding="utf-8")
-    assert gitfile_content.startswith("gitdir:"), (
-        f"Expected a gitfile, got: {gitfile_content!r}"
-    )
+    assert gitfile_content.startswith("gitdir:"), f"Expected a gitfile, got: {gitfile_content!r}"
     real_gitdir = Path(gitfile_content.split(":", 1)[1].strip())
     if not real_gitdir.is_absolute():
         real_gitdir = (worktree / real_gitdir).resolve()
@@ -215,9 +213,7 @@ def test_auto_seed_default_git_exclude_uses_atomic_helper(
 
     auto_seed_default_git_exclude(repo_root)
 
-    assert captured, (
-        "auto_seed_default_git_exclude must route through _atomic_append_text"
-    )
+    assert captured, "auto_seed_default_git_exclude must route through _atomic_append_text"
     exclude_path = repo_root / ".git" / "info" / "exclude"
     assert any(p == exclude_path for p, _ in captured), (
         f"Atomic helper must be called with the exclude file path; "

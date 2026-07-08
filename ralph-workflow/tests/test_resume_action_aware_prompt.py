@@ -316,13 +316,9 @@ def test_write_agent_retry_prompt_fresh_after_stale_session_includes_stale_sessi
         "fresh stale-session retry must name the rejected session id"
     )
     # (d) Transport named.
-    assert "opencode" in content, (
-        "fresh stale-session retry must name the transport"
-    )
+    assert "opencode" in content, "fresh stale-session retry must name the transport"
     # (e) Model named.
-    assert "zai-coding-plan/glm-5.2" in content, (
-        "fresh stale-session retry must name the model"
-    )
+    assert "zai-coding-plan/glm-5.2" in content, "fresh stale-session retry must name the model"
     # (f) Fresh-session framing present (NOT resume framing).
     assert "starting a FRESH session" in content, (
         "fresh stale-session retry must use fresh-session framing"
@@ -478,12 +474,8 @@ def test_build_agent_recovery_plan_fresh_non_stale_with_prior_id_omits_stale_ses
     """
     prompt = _write_original_prompt(tmp_path)
 
-    exc = AgentInactivityTimeoutError(
-        "opencode", 60.0, parsed_output=["agent stalled"]
-    )
-    effect = InvokeAgentEffect(
-        agent_name="opencode", phase="development", prompt_file=str(prompt)
-    )
+    exc = AgentInactivityTimeoutError("opencode", 60.0, parsed_output=["agent stalled"])
+    effect = InvokeAgentEffect(agent_name="opencode", phase="development", prompt_file=str(prompt))
 
     plan = build_agent_recovery_plan(
         AgentRecoveryInput(
@@ -512,8 +504,7 @@ def test_build_agent_recovery_plan_fresh_non_stale_with_prior_id_omits_stale_ses
     # AgentRecoveryInput had stale_session_id set. This prevents the
     # downstream prompt constructor from emitting the stale-session block.
     assert plan.stale_session_id is None, (
-        f"plan.stale_session_id must be None for non-stale failures; got "
-        f"{plan.stale_session_id!r}"
+        f"plan.stale_session_id must be None for non-stale failures; got {plan.stale_session_id!r}"
     )
     assert plan.transport is None
     assert plan.model is None
@@ -534,8 +525,7 @@ def test_build_agent_recovery_plan_fresh_non_stale_with_prior_id_omits_stale_ses
     # (c) The captured prior session id must NOT appear in the prompt at
     # all (no `STALE SESSION RECOVERY` block, no other use). AC-03.
     assert "nonstale-prior-session" not in content, (
-        "non-stale fresh retry must NOT name the captured prior session id "
-        "anywhere in the prompt"
+        "non-stale fresh retry must NOT name the captured prior session id anywhere in the prompt"
     )
     # (d) Fresh-mode original task body inlining must STILL happen -- the
     # stale-session gating must not break the existing fresh-mode behavior.
@@ -566,9 +556,7 @@ def test_build_agent_recovery_plan_fresh_true_stale_session_failure_still_emits_
         1,
         stderr=f"Error: Session not found: {rejected_session_id}",
     )
-    effect = InvokeAgentEffect(
-        agent_name="opencode", phase="development", prompt_file=str(prompt)
-    )
+    effect = InvokeAgentEffect(agent_name="opencode", phase="development", prompt_file=str(prompt))
 
     plan = build_agent_recovery_plan(
         AgentRecoveryInput(

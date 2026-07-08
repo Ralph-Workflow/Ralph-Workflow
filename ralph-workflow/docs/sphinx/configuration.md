@@ -69,7 +69,7 @@ If you already know you want the deeper docs, use this map instead of scanning t
 | workflow phases, loopbacks, commit routes, fan-out, counters, or recovery | [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) |
 | artifact contracts, decision vocabularies, summary files, or commit-message artifacts | [Advanced Artifact Configuration](advanced-artifact-configuration.md) |
 | MCP servers, web search, crawl, or media/web-visit integrations | [Advanced MCP Configuration](advanced-mcp-configuration.md) |
-| what the active policy means after all config layers resolve | [Policy Explanation](policy-explanation.md) |
+| what the active policy means after all config layers resolve | [Policy Explanation](configuration.md#inspecting-the-active-policy) |
 
 ## Which file should I edit?
 
@@ -153,7 +153,7 @@ The Pro↔Ralph Workflow contract uses exactly three engine-facing variables (se
 | `RALPH_PYTEST_TEST_TIMEOUT_SECONDS` | Per-test timeout passed by the `ralph.verify_timeout` wrapper. |
 | `RALPH_PYTEST_SUITE_TIMEOUT_SECONDS` | Per-suite invocation timeout passed by the `ralph.verify_timeout` wrapper. |
 
-These timeout variables are set by the test harness; they do **not** extend the 60-second combined budget enforced by `make verify`. See [Verification Model](verification-model.md) for the non-circumvention rule.
+These timeout variables are set by the test harness; they do **not** extend the 60-second combined budget enforced by `make verify`. See [Verification Model](concepts.md#verification-model) for the non-circumvention rule.
 
 ## Common settings in `ralph-workflow.toml`
 
@@ -176,7 +176,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `max_cycles` | `3` | Maximum full fallback cycles through a drain |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel (`mcp_tool`, `subagent`, `workspace`) is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Workspace evidence is collected whenever a run has a `workspace_path`, even when the progress UI is disabled. A subagent process that is alive but silent on every channel is **not** treated as activity. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. See the `## Idle watchdog` section in the README for the four-channel model. |
-| `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Each kind (`source`, `log`, `cache`, `artifact`, `other`) is binary: `1.0` lets the change defer `NO_OUTPUT_DEADLINE`, `0.0` drops it. The default only weights `source` (source code and documentation). Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](watchdogs-and-timeouts.md) for the full migration note. |
+| `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Each kind (`source`, `log`, `cache`, `artifact`, `other`) is binary: `1.0` lets the change defer `NO_OUTPUT_DEADLINE`, `0.0` drops it. The default only weights `source` (source code and documentation). Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs) for the full migration note. |
 
 ### Example: change verbosity globally
 
@@ -435,9 +435,52 @@ The override precedence is the same as every other Ralph Workflow setting: **CLI
 subagent_capability = false
 ```
 
-This is the documented escape hatch: Ralph-managed fan-out stays dormant in this build, and the bundled default never falls back to it automatically. See [Parallel Mode](parallel-mode.md) for the full agent-driven parallelism model and [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) for the `[phases.<name>.parallelization].dispatch_mode` override that pins the dispatch policy at the phase level.
+This is the documented escape hatch: Ralph-managed fan-out stays dormant in this build, and the bundled default never falls back to it automatically. See [Parallel Mode](advanced-pipeline-configuration.md#parallel-execution-agent-driven) for the full agent-driven parallelism model and [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) for the `[phases.<name>.parallelization].dispatch_mode` override that pins the dispatch policy at the phase level.
 
 The dormant-fanout audit (`ralph.testing.audit_parallelization_dormant`) pins the literal strings in this section, so a future cleanup cannot silently remove them without breaking `make verify`.
+
+## Per-agent CLI flags
+
+The per-agent CLI flag reference blocks for Claude Code, Codex, AGY, Pi, OpenCode, and Nanocoder. Per-agent compatibility caveats (CCS/GLM, ZhipuAI, Aider, Gemini CLI) stay on the [Agent Compatibility](agent-compatibility.md) page.
+
+### Claude Code (Anthropic)
+
+- `command = "claude"`
+- `args`: `--json`, `--full-auto`, `--prompt <PROMPT>`, plus the autonomy flag the bundled policy declares. With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions`. Claude's MCP config injection routes the Ralph Workflow MCP tools into the agent's tool surface; see [Advanced MCP Configuration](advanced-mcp-configuration.md).
+- `json_parser = "claude"` — the native Claude parser, the most reliable choice.
+- `claude` and `claude-headless` are both maintained invocation contracts. Do not remove, deprecate, merge, alias, or silently redirect either one into the other as part of unrelated agent work.
+
+### Codex (OpenAI)
+
+- `command = "codex"`
+- `args`: `exec`, `--json`, `--full-auto`, `<PROMPT>`, plus `--approve` for unattended approval and any resume/session flags the policy declares.
+- `json_parser = "codex"` — the native Codex parser.
+
+### AGY (Google Anti Gravity)
+
+- `command = "agy"`
+- `print_flag = "--print"` and `yolo_flag = "--dangerously-skip-permissions"`
+- `json_parser = "generic"` — the native AGY parser (plain-text, not NDJSON).
+- With `autonomy_mode = "dangerously-bypass-approvals-and-sandbox"`, the argv includes the corresponding AGY-side flag.
+- The AGY builder runs `agy` inside a PTY with a bounded drain so buffered stdout is captured end-to-end. The eight canonical `agy/<display-name>` aliases accepted by `--agent` are: `Gemini 3.5 Flash (Medium)`, `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Low)`, `Gemini 3.1 Pro (Low)`, `Gemini 3.1 Pro (High)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`.
+
+### OpenCode
+
+- `command = "opencode"`
+- `args`: `--json`, `<PROMPT>`, plus `--approve` for unattended approval and provider-specific flags forwarded through `--provider`.
+- `json_parser = "opencode"` — required (not interchangeable with the generic parser).
+
+### Nanocoder
+
+- `command = "nanocoder"`
+- Local-only TUI; the builder launches Nanocoder without autonomy flags. Ralph Workflow keeps Nanocoder on its PTY-backed Ink runtime by passing `--no-plain` before `run`. Do not switch Nanocoder to JSON/plain mode as the durable backend; the hidden long-run action limit around 100 actions would re-emerge.
+
+### Pi (Pi.dev)
+
+- `command = "pi"`
+- The Pi builder invokes `pi --mode json <prompt>` and parses the resulting NDJSON stream per Pi's documented `AgentSessionEvent` vocabulary.
+- `pi/<model>` shorthand preserves the full suffix (e.g. `pi/anthropic/claude-sonnet-4-20250514` becomes `--model anthropic/claude-sonnet-4-20250514`) using `name.removeprefix('pi/')` so multi-segment `provider/id` patterns round-trip intact.
+- Pi has no native MCP config file or CLI flag, so Ralph Workflow materializes a per-run Pi extension and launches Pi with `--no-builtin-tools --extension <generated file>` when the Ralph Workflow MCP endpoint is available. Pi is session-capable in JSON mode: a clean `rc=0` exit without required artifact or completion evidence is retried against the captured Pi session rather than treated as terminal success.
 
 ## When to read further
 
@@ -445,11 +488,11 @@ Use the more detailed docs when you need them:
 
 - [Concepts](concepts.md) — terms like phase, drain, and artifact
 - [CLI Reference](cli.md) — runtime flags and shortcuts
-- [Policy Explanation](policy-explanation.md) — inspect the active workflow in plain English
+- [Policy Explanation](configuration.md#inspecting-the-active-policy) — inspect the active workflow in plain English
 - [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) — phases, routing, counters, recovery, and fan-out
 - [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
-- [Developer Reference](developer-reference.md) — implementation-oriented detail
+- [Developer Reference](developer-internals.md) — implementation-oriented detail
 - [End-User Stories](agent-compatibility.md) — common user goals and the shortest docs path for each one
 If you want the advanced/operator version of this topic — phases, counters, commit policy, recovery, and parallel fan-out — use [Advanced Pipeline Configuration](advanced-pipeline-configuration.md).
 
@@ -487,3 +530,74 @@ You edit it when you want to:
 - wire in advanced crawling like Crawl4AI
 
 If that is your goal, use [Advanced MCP Configuration](advanced-mcp-configuration.md).
+
+## Inspecting the active policy
+
+`ralph --explain-policy` prints a human-readable summary of the active policy bundle, and `ralph --check-policy` runs a faster pass/fail validation. Use both when you want to know what a pipeline will do without running a real workflow.
+
+### `ralph --explain-policy`
+
+```bash
+ralph --explain-policy
+ralph --explain-policy --explain-policy-dir /path/to/policy/dir
+```
+
+This reads the active `pipeline.toml` (project-local `.agent/pipeline.toml` when present, otherwise the bundled defaults) and prints a structured summary to stdout. To inspect a custom policy directory, pass `--explain-policy-dir`.
+
+### `ralph --check-policy`
+
+```bash
+ralph --check-policy
+ralph --check-policy --explain-policy-dir /path/to/policy/dir
+```
+
+This validates the same policy source as `--explain-policy` and prints a brief summary of both the authored block model and the compiled runtime phases:
+
+```
+Policy OK: /path/to/.agent
+  entry block: developer_iteration
+  blocks: 10
+  lifecycle completion phases: 1
+  phases: 10
+  drains: 11
+  artifact contracts: 6
+  loop counters: 3
+  budget counters: 1
+  workflow fallbacks: 0
+  terminal failure phase: failed_terminal
+```
+
+Exit codes: 0 = valid, 2 = `PolicyValidationError`, 1 = other error. `--check-policy` is useful in CI scripts or pre-flight hooks where you want to catch invalid policy before starting a run.
+
+### What the explanation covers
+
+| Section | What it contains |
+|---------|------------------|
+| **WORKFLOW DIAGRAM** | ASCII diagram showing phases, routing edges, decision branches, loopbacks, and terminal markers |
+| **Entry block** | The authored block where the workflow starts |
+| **Entry phase** | The compiled runtime phase where every run starts |
+| **Terminal phase** | The compiled phase that marks successful completion |
+| **Authored blocks** | The user-authored block names preserved by the policy loader |
+| **Lifecycle completion** | Which compiled phase completes each lifecycle block and advances budget |
+| **Phases** | Each compiled runtime phase with its role, drain, and key routing |
+| **Loop counters** | Iteration counters with their names and caps |
+| **Budget counters** | Outer-progress counters with names and budget-tracking flag |
+| **Terminal outcomes** | All phases declared as terminal with their outcome type |
+| **Parallel execution** | Whether parallel fan-out is configured and its source |
+| **Recovery** | Cycle cap and where terminal failures route |
+
+### Why the diagram matters
+
+Every routing decision the pipeline makes traces back to a single declared field in `pipeline.toml`. The explanation output makes that trace explicit. When a run routes somewhere unexpected, run `ralph --explain-policy` and find the corresponding `Explanation:` sentence. The sentence names the exact policy field that produced the route. If the field is wrong, update `pipeline.toml`; if the field is correct but the runtime ignores it, that is a bug.
+
+The explanation output is deterministic: for the same `pipeline.toml` the output is always the same. Pin it in a review artifact, CI log, or runbook to record the exact workflow a run used.
+
+### Policy migration reference (v2)
+
+The v2 migration moved from implicit per-decision routing to a fully declared policy model. The relevant field changes:
+
+- `recovery.terminal_recovery_route` was renamed to `recovery.failed_route`. A bundled default that still carries the old field is rejected at validation; the error message names the replacement field.
+- Hardcoded built-in drain filter in the agent loader was removed; custom drains now flow through to `AgentsPolicy` automatically.
+- `role='review'` phases must declare both `issues_outcome` and (when `bypass_routes` is non-empty) `clean_outcome`.
+
+To migrate an existing `.agent/pipeline.toml`, run `ralph --regenerate-config` and diff against the existing file. The runtime is the only authority on whether a policy is complete: a green `ralph --check-policy` after the migration proves the runtime will not fail with a policy-shaped error during a real run.

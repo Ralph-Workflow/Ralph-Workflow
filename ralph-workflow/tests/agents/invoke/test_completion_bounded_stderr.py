@@ -50,9 +50,7 @@ def test_bounded_read_caps_at_max_bytes() -> None:
     pipe = _ChunkedPipe(payload)
     captured = _bounded_read(pipe)
     marker = _truncation_marker(_MAX_STDERR_CAPTURE_BYTES)
-    assert captured.endswith(marker), (
-        f"expected marker at tail; got tail {captured[-100:]!r}"
-    )
+    assert captured.endswith(marker), f"expected marker at tail; got tail {captured[-100:]!r}"
     prefix = captured[: -len(marker)]
     assert len(prefix) == _MAX_STDERR_CAPTURE_BYTES, (
         f"expected prefix to be capped at {_MAX_STDERR_CAPTURE_BYTES}; got {len(prefix)}"
@@ -74,9 +72,7 @@ def test_bounded_read_short_payload_unchanged() -> None:
     payload = "small stderr\n"
     pipe = _ChunkedPipe(payload)
     captured = _bounded_read(pipe)
-    assert captured == payload, (
-        f"short payload must be returned verbatim; got {captured!r}"
-    )
+    assert captured == payload, f"short payload must be returned verbatim; got {captured!r}"
 
 
 def test_bounded_read_uses_only_capped_chunk_reads() -> None:
@@ -122,9 +118,7 @@ def test_completion_uses_bounded_read_on_nonzero_exit(
     assert captured, "_bounded_read must have been invoked"
     assert len(captured[0]) <= _MAX_STDERR_CAPTURE_BYTES + len(
         _truncation_marker(_MAX_STDERR_CAPTURE_BYTES)
-    ), (
-        f"captured stderr must be capped+marker, got length {len(captured[0])}"
-    )
+    ), f"captured stderr must be capped+marker, got length {len(captured[0])}"
     assert _truncation_marker(_MAX_STDERR_CAPTURE_BYTES) in captured[0], (
         f"truncation marker missing from captured stderr {captured[0][-200:]!r}"
     )

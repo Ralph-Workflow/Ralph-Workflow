@@ -268,8 +268,7 @@ def _collect_narrow_violations() -> tuple[str, ...]:
                 f"{_rel(path)}:{lineno}: narrow=" for lineno in _iter_narrow_kwargs(call)
             )
         violations.extend(
-            f"{_rel(path)}:{lineno}: narrow:"
-            for lineno in _iter_narrow_annotations(tree)
+            f"{_rel(path)}:{lineno}: narrow:" for lineno in _iter_narrow_annotations(tree)
         )
     return tuple(violations)
 
@@ -328,6 +327,5 @@ def test_no_narrow_kwarg_in_test_display_context_calls() -> None:
         "Test fixtures must not use the dead pre-consolidation 'narrow' "
         "flag in either kwarg (narrow=<value>) or annotation (narrow:<type>) "
         "syntax — the single default mode adapts to width inside the "
-        "renderer. Violations:\n"
-        + "\n".join(_NARROW_VIOLATIONS)
+        "renderer. Violations:\n" + "\n".join(_NARROW_VIOLATIONS)
     )

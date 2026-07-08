@@ -286,14 +286,10 @@ class TestTrustworthyIdleWatchdogSpec:
         registry.register(8001, source="claude", now=0.0)
         registry.register(8002, source="opencode", now=0.0)
         opencode_pids = {
-            identity.pid
-            for identity in registry.snapshot()
-            if identity.source == "opencode"
+            identity.pid for identity in registry.snapshot() if identity.source == "opencode"
         }
         claude_pids = {
-            identity.pid
-            for identity in registry.snapshot()
-            if identity.source == "claude"
+            identity.pid for identity in registry.snapshot() if identity.source == "claude"
         }
         assert opencode_pids == {8002}
         assert claude_pids == {8001}
@@ -445,9 +441,7 @@ class TestTrustworthyIdleWatchdogSpec:
             activity_evidence_ttl_seconds=0.0,
         )
         monitor = _HelpersOnlyMonitor(helper_count=10)
-        watchdog = _make_idle_watchdog(
-            process_monitor=monitor, policy=policy, clock=clock
-        )
+        watchdog = _make_idle_watchdog(process_monitor=monitor, policy=policy, clock=clock)
         watchdog.record_invocation_start()
         clock.advance(305.0)
         verdict = watchdog.evaluate(classify_quiet=_active)
@@ -472,9 +466,7 @@ class TestTrustworthyIdleWatchdogSpec:
             activity_evidence_ttl_seconds=0.0,
         )
         monitor_b = _HelpersOnlyMonitor(helper_count=10)
-        watchdog_b = _make_idle_watchdog(
-            process_monitor=monitor_b, policy=policy_b, clock=clock_b
-        )
+        watchdog_b = _make_idle_watchdog(process_monitor=monitor_b, policy=policy_b, clock=clock_b)
         watchdog_b.record_invocation_start()
         clock_b.advance(3.0)
 
@@ -710,13 +702,8 @@ class TestTrustworthyIdleWatchdogSpec:
 
         # A description with no known verb prefix resets CURRENT
         # TOOL CALL to None while PROGRESS retains the text.
-        watchdog.record_subagent_work(
-            description="[subagent] progress: phase=phase-1"
-        )
-        assert (
-            watchdog.last_subagent_progress_description
-            == "[subagent] progress: phase=phase-1"
-        )
+        watchdog.record_subagent_work(description="[subagent] progress: phase=phase-1")
+        assert watchdog.last_subagent_progress_description == "[subagent] progress: phase=phase-1"
         snapshot3 = watchdog.diagnostic_snapshot(now=0.0)
         assert snapshot3["current_subagent_tool_call"] is None
 
@@ -764,8 +751,7 @@ class TestTrustworthyIdleWatchdogSpec:
             _sink,
             level="DEBUG",
             format="{message}",
-            filter=lambda record: "idle_watchdog"
-            in (record["extra"].get("component") or ""),
+            filter=lambda record: "idle_watchdog" in (record["extra"].get("component") or ""),
         )
         try:
             # Build the throttle-pinned watchdog (idle=60s,
@@ -913,8 +899,7 @@ class TestTrustworthyIdleWatchdogSpec:
             _sink,
             level="INFO",
             format="{message}",
-            filter=lambda record: "idle_watchdog"
-            in (record["extra"].get("component") or ""),
+            filter=lambda record: "idle_watchdog" in (record["extra"].get("component") or ""),
         )
         try:
             # (2) Build a watchdog with a small idle_timeout_seconds
@@ -1011,16 +996,12 @@ class TestTrustworthyIdleWatchdogSpec:
                     f"heartbeat MUST contain '{heartbeat_substring}'"
                     f" (R6 chosen UX); got {message!r}"
                 )
-                assert "subagent" in message, (
-                    f"heartbeat MUST contain 'subagent'; got {message!r}"
-                )
+                assert "subagent" in message, f"heartbeat MUST contain 'subagent'; got {message!r}"
                 assert elapsed_seconds_pattern.search(message) is not None, (
-                    f"heartbeat MUST carry an elapsed-seconds field"
-                    f" matching \\d+s; got {message!r}"
+                    f"heartbeat MUST carry an elapsed-seconds field matching \\d+s; got {message!r}"
                 )
                 assert "ceiling" in message, (
-                    f"heartbeat MUST carry the literal 'ceiling'"
-                    f" label; got {message!r}"
+                    f"heartbeat MUST carry the literal 'ceiling' label; got {message!r}"
                 )
                 ceiling_tail = message.split("ceiling", 1)[1]
                 assert ceiling_seconds_pattern.search(ceiling_tail) is not None, (
@@ -1100,9 +1081,7 @@ class TestTrustworthyIdleWatchdogSpec:
             # the session_id (including None). The diagnostic
             # surface is additive and does NOT affect classification.
             assert exc.last_observed_tool_call == "read_file"
-            assert exc.last_evidence_summary == (
-                "workspace_change: kind=source weight=1.0"
-            )
+            assert exc.last_evidence_summary == ("workspace_change: kind=source weight=1.0")
             assert exc.elapsed_seconds == 420.0
             assert exc.transcript_tail == ("line-1", "line-2")
 
@@ -1140,9 +1119,7 @@ class TestTrustworthyIdleWatchdogSpec:
         test_root = Path(__file__).resolve().parent.parent.parent.parent
         for relative_path in RALPH_PIN_TEST_PATHS:
             absolute_path = test_root / relative_path
-            assert absolute_path.is_file(), (
-                f"Pin test file MUST exist at {absolute_path}"
-            )
+            assert absolute_path.is_file(), f"Pin test file MUST exist at {absolute_path}"
 
         # (b) ProcessMonitor Protocol advertises the filtered seam names.
         assert hasattr(ProcessMonitor, "spawned_subagent_count")

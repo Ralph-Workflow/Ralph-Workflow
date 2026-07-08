@@ -382,9 +382,7 @@ def test_tool_result_without_tool_name_falls_back_to_unknown() -> None:
         AgentOutputLine(type="tool_result", content="secret result", raw="", metadata={}),
         sink,
     )
-    assert captured == ["tool_result:unknown"], (
-        f"expected 'tool_result:unknown', got {captured}"
-    )
+    assert captured == ["tool_result:unknown"], f"expected 'tool_result:unknown', got {captured}"
 
 
 def test_pi_tool_execution_end_uses_documented_tool_name_for_summary() -> None:
@@ -444,25 +442,25 @@ def test_claude_interactive_tool_result_does_not_leak_content() -> None:
     """
     parser = get_parser("claude_interactive")
     captured, sink = _sink()
-    payload = json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [
-                {"type": "tool_use", "name": "Bash"},
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "t1",
-                    "content": [{"type": "text", "text": "secret output"}],
-                },
-            ]
-        },
-    })
+    payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "Bash"},
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "t1",
+                        "content": [{"type": "text", "text": "secret output"}],
+                    },
+                ]
+            },
+        }
+    )
     lines = list(parser.parse(iter([payload])))
     tool_result_line = next(line for line in lines if line.type == "tool_result")
     parser.emit_subagent_activity(tool_result_line, sink)
-    assert captured == ["tool_result:Bash"], (
-        f"expected 'tool_result:Bash', got {captured}"
-    )
+    assert captured == ["tool_result:Bash"], f"expected 'tool_result:Bash', got {captured}"
 
 
 # ---------------------------------------------------------------------------
@@ -547,9 +545,7 @@ _TRANSPORT_SAMPLES: list[tuple[str, str, list[str], str]] = [
             json.dumps(
                 {
                     "type": "assistant",
-                    "message": {
-                        "content": [{"type": "tool_use", "name": "Bash"}]
-                    },
+                    "message": {"content": [{"type": "tool_use", "name": "Bash"}]},
                 }
             )
         ],
@@ -668,9 +664,7 @@ def test_text_line_sanitizes_mixed_case_arguments_object() -> None:
     assert "SECRET-mixed" not in captured[0], (
         f"mixed-case 'Arguments' value must be redacted, got: {captured[0]!r}"
     )
-    assert "token" not in captured[0], (
-        f"nested sibling 'token' must NOT leak, got: {captured[0]!r}"
-    )
+    assert "token" not in captured[0], f"nested sibling 'token' must NOT leak, got: {captured[0]!r}"
     assert "<redacted>" in captured[0]
 
 

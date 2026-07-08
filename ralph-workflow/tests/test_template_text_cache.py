@@ -72,8 +72,7 @@ def test_packaged_template_cache_reads_each_file_once() -> None:
     assert second == "template-body\n"
     assert third == "template-body\n"
     assert state["calls"] == 1, (
-        f"reader must be invoked exactly once across 3 calls,"
-        f" got {state['calls']}"
+        f"reader must be invoked exactly once across 3 calls, got {state['calls']}"
     )
 
 
@@ -88,9 +87,7 @@ def test_packaged_template_cache_clear_resets_state() -> None:
 
     cache.clear()
     cache.get("commit_message.jinja", root=Path("/unused"))
-    assert state["calls"] == 2, (
-        "after clear(), the next get must re-invoke the reader"
-    )
+    assert state["calls"] == 2, "after clear(), the next get must re-invoke the reader"
 
 
 def test_packaged_template_cache_is_key_scoped() -> None:
@@ -106,9 +103,7 @@ def test_packaged_template_cache_is_key_scoped() -> None:
     cache.get("b.jinja", root=Path("/unused"))
     cache.get("b.jinja", root=Path("/unused"))
 
-    assert state["calls"] == 2, (
-        f"reader must run once per distinct key, got {state['calls']}"
-    )
+    assert state["calls"] == 2, f"reader must run once per distinct key, got {state['calls']}"
 
 
 def test_system_prompt_unattended_mode_uses_cache() -> None:
@@ -170,8 +165,7 @@ def test_commit_select_template_uses_cache() -> None:
     assert second == "COMMIT-MESSAGE-BODY"
     assert third == "COMMIT-MESSAGE-BODY"
     assert state["calls"] == 1, (
-        f"_select_template must read packaged commit_message.jinja once,"
-        f" got {state['calls']}"
+        f"_select_template must read packaged commit_message.jinja once, got {state['calls']}"
     )
 
 
@@ -232,8 +226,7 @@ def test_reviewer_load_packaged_template_uses_cache() -> None:
     assert second == "REVIEW-BODY"
     assert third == "REVIEW-BODY"
     assert state["calls"] == 1, (
-        f"_load_packaged_review_template must read review.jinja once,"
-        f" got {state['calls']}"
+        f"_load_packaged_review_template must read review.jinja once, got {state['calls']}"
     )
 
 
@@ -266,20 +259,17 @@ def test_template_registry_backfills_discovered_template(tmp_path: Path) -> None
     first = registry.get_template("review.jinja")
     assert first == text
     assert state["calls"] == 1, (
-        f"first get_template must trigger exactly one read,"
-        f" got {state['calls']}"
+        f"first get_template must trigger exactly one read, got {state['calls']}"
     )
 
     second = registry.get_template("review.jinja")
     assert second == text
     assert state["calls"] == 1, (
-        f"second get_template must NOT re-read,"
-        f" got {state['calls']} total reader invocations"
+        f"second get_template must NOT re-read, got {state['calls']} total reader invocations"
     )
 
     third = registry.get_template("review.jinja")
     assert third == text
     assert state["calls"] == 1, (
-        f"third get_template must NOT re-read,"
-        f" got {state['calls']} total reader invocations"
+        f"third get_template must NOT re-read, got {state['calls']} total reader invocations"
     )

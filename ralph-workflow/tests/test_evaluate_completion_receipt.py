@@ -70,9 +70,7 @@ def test_evaluate_receipt_from_legacy_file(tmp_path: Path) -> None:
     ra = _required(".agent/tmp/nowhere/commit_message.json")
     legacy_receipt = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     legacy_receipt.parent.mkdir(parents=True)
-    legacy_receipt.write_text(
-        json.dumps({"run_id": "run-1", "artifact_type": "commit_message"})
-    )
+    legacy_receipt.write_text(json.dumps({"run_id": "run-1", "artifact_type": "commit_message"}))
 
     signals = evaluate_completion(tmp_path, [], required_artifact=ra, run_id="run-1")
 

@@ -301,13 +301,12 @@ def _make_execution_to_analysis_policy() -> PipelinePolicy:
     )
 
 
-
-
-
 def test_show_phase_transition_at_medium_width_has_one_rule_no_description() -> None:
     """Default mode at medium width major transition uses a single titled Rule (no duplication)."""
     console = Console(record=True, width=80)
-    ctx = make_display_context(console=console, )
+    ctx = make_display_context(
+        console=console,
+    )
     policy = _make_execution_to_analysis_policy()
     pd = ParallelDisplay(ctx)
     pd.emit_phase_transition("planning", "development", pipeline_policy=policy)
@@ -325,7 +324,9 @@ def test_show_phase_transition_at_medium_width_has_one_rule_no_description() -> 
 def test_show_phase_transition_at_wide_width_has_one_rule_no_description() -> None:
     """Default mode at wide width major transition uses a single titled Rule."""
     console = Console(record=True, width=120)
-    ctx = make_display_context(console=console, )
+    ctx = make_display_context(
+        console=console,
+    )
     policy = _make_execution_to_analysis_policy()
     pd = ParallelDisplay(ctx)
     pd.emit_phase_transition("planning", "development", pipeline_policy=policy)

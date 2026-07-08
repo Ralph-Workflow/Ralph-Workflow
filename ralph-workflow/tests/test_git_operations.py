@@ -52,6 +52,7 @@ def _make_index_lock_error(lock_path: Path) -> GitCommandError:
         "Another git process seems to be running in this repository",
     )
 
+
 # Real-git tests fork `git` subprocesses; under full-suite worksteal
 # parallelism the default 1s wall-clock alarm intermittently fires on a
 # loaded machine even though each test normally finishes in ~100ms.
@@ -555,11 +556,10 @@ def test_atomic_append_text_empty_payload_is_noop(tmp_path: Path) -> None:
 
     _atomic_append_text(target, "", encoding="utf-8")
 
-    assert target.read_bytes() == pre_bytes, (
-        "Empty payload must NOT modify the target file"
-    )
+    assert target.read_bytes() == pre_bytes, "Empty payload must NOT modify the target file"
     staging_siblings = [
-        p for p in target.parent.iterdir()
+        p
+        for p in target.parent.iterdir()
         if p.name.startswith(target.name) and ".ralph-staging." in p.name
     ]
     assert not staging_siblings, (
@@ -598,8 +598,7 @@ def test_atomic_append_text_preserves_crlf_in_existing_content(tmp_path: Path) -
         f"Expected: b'line-one\\r\\nline-two\\r\\nline-three\\n', got: {raw_bytes!r}"
     )
     assert raw_bytes.count(b"\r\n") == 2, (
-        f"Both CRLF terminators must be present in the published bytes, "
-        f"got: {raw_bytes!r}"
+        f"Both CRLF terminators must be present in the published bytes, got: {raw_bytes!r}"
     )
     raw_text = target.read_text(encoding="utf-8")
     assert "line-one" in raw_text, "First line text must be preserved"
@@ -627,8 +626,7 @@ def test_atomic_append_text_inserts_separator_when_existing_lacks_trailing_newli
 
     raw = target.read_text(encoding="utf-8")
     assert "existing-without-newline\n*.cache" in raw, (
-        f"Boundary must contain a newline so the two rules are separate lines; "
-        f"got: {raw!r}"
+        f"Boundary must contain a newline so the two rules are separate lines; got: {raw!r}"
     )
 
 
@@ -812,9 +810,8 @@ def test_git_status_porcelain_lines_raises_on_nonzero_return(
     report a clean repo on real failures. The fix surfaces the failure so
     callers can route through their GitPython fallback (or fail loud).
     """
-    def _broken_run_git(
-        args: tuple[str, ...], *, cwd: Path, label: str
-    ) -> GitRunResult:
+
+    def _broken_run_git(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
         return GitRunResult(
             args=("git", *args),
             returncode=128,
@@ -882,4 +879,3 @@ def test_has_staged_changes_returns_false_for_untracked_only_via_subprocess(
     assert has_staged_changes(tmp_git_repo) is False, (
         "Subprocess path: untracked-only worktree must return False"
     )
-

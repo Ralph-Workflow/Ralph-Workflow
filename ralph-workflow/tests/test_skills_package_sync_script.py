@@ -163,11 +163,7 @@ def test_sync_script_copies_package_owned_skill_content(tmp_path: Path) -> None:
     subprocess.run([node_binary, str(script)], check=True, env=env)
 
     expected = (
-        Path(__file__).parent.parent
-        / "ralph"
-        / "skills"
-        / "content"
-        / "submit-artifact.md"
+        Path(__file__).parent.parent / "ralph" / "skills" / "content" / "submit-artifact.md"
     ).read_text(encoding="utf-8")
     assert (output_dir / "submit-artifact.md").read_text(encoding="utf-8") == expected
     metadata = json.loads((output_dir / "metadata.json").read_text(encoding="utf-8"))

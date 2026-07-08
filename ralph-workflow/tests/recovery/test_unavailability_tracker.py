@@ -194,13 +194,9 @@ class TestAgentUnavailabilityTracker:
         # cooldown is 5s, so advancing to t=10 puts claude's entry
         # past its cooldown. opencode is added at t=10 (cooldown 10s,
         # expires at t=20).
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         clock.advance(10)
-        tracker.mark_unavailable(
-            "development", "opencode", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "opencode", UnavailabilityReason.NO_OUTPUT_AT_START)
         # mark_unavailable on opencode triggered an opportunistic
         # prune, so claude was already swept from _entries. Verify
         # that the opportunistic path is correct, then advance
@@ -223,15 +219,9 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "a", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
-        tracker.mark_unavailable(
-            "development", "b", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
-        tracker.mark_unavailable(
-            "development", "c", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "a", UnavailabilityReason.NO_OUTPUT_AT_START)
+        tracker.mark_unavailable("development", "b", UnavailabilityReason.NO_OUTPUT_AT_START)
+        tracker.mark_unavailable("development", "c", UnavailabilityReason.NO_OUTPUT_AT_START)
 
         # Advance far enough that all three cooldowns have elapsed.
         clock.advance(60)
@@ -242,9 +232,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         # Don't advance the clock — the cooldown is still active.
         pruned = tracker.prune_expired()
         assert pruned == 0, (
@@ -264,13 +252,9 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         clock.advance(5)
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         # attempt is now 1.
 
         # Wait long enough for the entry to be expired.
@@ -292,9 +276,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         # Advance tracker clock past the cooldown.
         clock.advance(100)
 
@@ -317,19 +299,14 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "stale", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "stale", UnavailabilityReason.NO_OUTPUT_AT_START)
         # Advance far past the stale cooldown.
         clock.advance(120)
         # A new mark_unavailable on a DIFFERENT key triggers the
         # opportunistic prune.
-        tracker.mark_unavailable(
-            "development", "fresh", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "fresh", UnavailabilityReason.NO_OUTPUT_AT_START)
 
         snap = tracker.snapshot()
         # 'stale' was swept by the opportunistic prune.
         assert "development:stale" not in snap["unavailable_timeouts"]
         assert "development:fresh" in snap["unavailable_timeouts"]
-

@@ -16,7 +16,9 @@ adding or modifying the agent subsystem inside the Python package.
 - `testing-guide.md` — black-box testing expectations and the 60-second
   combined test budget
 - `type-ignore-policy.md` — when (and when not) `# type: ignore` is allowed
-- `parallel-mode.md` — parallelization expectations and audit contracts (canonical home: ralph-workflow/docs/sphinx/parallel-mode.md)
+- `parallel-mode.md` — parallelization expectations and audit contracts
+  (canonical home:
+  [`ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md#parallel-execution-agent-driven`](../../ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md#parallel-execution-agent-driven))
 - `workspace-trait.md` — workspace abstraction contract
 - `agent-support-architecture.md` — how this repo supports Ralph Workflow
   agents
@@ -33,7 +35,8 @@ Topics that belong in the agent-authoring tree under
 - The agent subsystem architecture (`architecture.md`)
 - The artifact submission contract (`artifact-submission-contract.md`)
 - The memory lifecycle for agent-owned resources (`memory-lifecycle.md`)
-- The pro contract (`pro-contract.md`)
+- The pro contract (now part of
+  [`ralph-workflow/docs/sphinx/pro-support.md#engine-internals-pro-contract`](../../ralph-workflow/docs/sphinx/pro-support.md#engine-internals-pro-contract))
 - Watchdog spec (`watchdog-spec.md`)
 
 If you are unsure which tree a new doc belongs in, default to this tree for
@@ -52,14 +55,6 @@ belongs in exactly one of them.
 ## Public behavior changes
 
 Any change to public CLI behavior, configuration fields, artifact shapes, or
-exit codes MUST be reflected in the same PR in:
-
-1. the Sphinx manual (`ralph-workflow/docs/sphinx/`) so operators see the
-   current contract;
-2. the relevant tests, with a failing or updated black-box check that would
-   catch the regression; and
-3. `ralph-workflow/docs/sphinx/modules.rst` if the change affects the public
-   Python API.
-
-Do not treat docs, tests, or API reference as follow-up work. They are part of
-the public-behavior change.
+exit codes MUST be reflected in the same PR in the Sphinx manual
+(`ralph-workflow/docs/sphinx/`) and the relevant tests. Do not treat docs or
+tests as follow-up work.

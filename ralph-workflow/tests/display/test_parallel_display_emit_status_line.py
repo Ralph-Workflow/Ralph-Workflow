@@ -68,9 +68,7 @@ def test_emit_status_line_uses_build_line_badge_contract() -> None:
     pd.emit_status_line("unit-9", "idle")
     pd.stop()
     output = buf.getvalue()
-    assert "[status][unit-9]" in output, (
-        f"badge-contract tag missing: {output!r}"
-    )
+    assert "[status][unit-9]" in output, f"badge-contract tag missing: {output!r}"
     assert "INFO" in output, f"INFO badge missing: {output!r}"
     assert "META" in output, f"META category missing: {output!r}"
 
@@ -81,9 +79,7 @@ def test_emit_status_line_preserves_unit_id_verbatim() -> None:
     pd.emit_status_line("reviewer-agent/2", "running")
     pd.stop()
     output = buf.getvalue()
-    assert "reviewer-agent/2" in output, (
-        f"unit_id 'reviewer-agent/2' must be preserved: {output!r}"
-    )
+    assert "reviewer-agent/2" in output, f"unit_id 'reviewer-agent/2' must be preserved: {output!r}"
     assert "[status][reviewer-agent/2]" in output, (
         f"[status][reviewer-agent/2] tag missing: {output!r}"
     )
@@ -125,12 +121,6 @@ def test_emit_status_line_quiet_mode_suppresses_status_text_and_tag() -> None:
     pd.emit_status_line("unit-9", "idle")
     pd.stop()
     output = buf.getvalue()
-    assert "[status]" not in output, (
-        f"quiet mode must suppress the [status] tag; got: {output!r}"
-    )
-    assert "idle" not in output, (
-        f"quiet mode must suppress the status text body; got: {output!r}"
-    )
-    assert "INFO" not in output, (
-        f"quiet mode must suppress the INFO badge; got: {output!r}"
-    )
+    assert "[status]" not in output, f"quiet mode must suppress the [status] tag; got: {output!r}"
+    assert "idle" not in output, f"quiet mode must suppress the status text body; got: {output!r}"
+    assert "INFO" not in output, f"quiet mode must suppress the INFO badge; got: {output!r}"

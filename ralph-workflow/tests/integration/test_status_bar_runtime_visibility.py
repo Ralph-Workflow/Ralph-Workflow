@@ -183,8 +183,7 @@ def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
         f"Live region must surface the outer-dev iteration 'Dev 1/3'; got {out!r}"
     )
     assert "Analysis 2/5" in out, (
-        f"Live region must surface the inner-analysis iteration "
-        f"'Analysis 2/5'; got {out!r}"
+        f"Live region must surface the inner-analysis iteration 'Analysis 2/5'; got {out!r}"
     )
 
 
@@ -215,9 +214,7 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
         captured_inside_active = cast("StatusBar", pd.status_bar).is_active
     out = buf.getvalue()
     assert captured_inside_active is True
-    assert "Commit" in out, (
-        f"Live region must surface the phase label 'Commit'; got {out!r}"
-    )
+    assert "Commit" in out, f"Live region must surface the phase label 'Commit'; got {out!r}"
     assert "Dev " not in out, (
         f"Live region must omit the outer-dev iteration label when the "
         f"iteration is None; got {out!r}"
@@ -227,8 +224,7 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
         f"the iteration is None; got {out!r}"
     )
     assert "--" not in out, (
-        f"Live region must not render a '--' placeholder for omitted "
-        f"iteration fields; got {out!r}"
+        f"Live region must not render a '--' placeholder for omitted iteration fields; got {out!r}"
     )
 
 
@@ -296,12 +292,10 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
         f"'/tmp/ac01-workspace'; got {full_out!r}"
     )
     assert "development" in full_out, (
-        f"AC-01: Live region must surface the phase label 'development'; "
-        f"got {full_out!r}"
+        f"AC-01: Live region must surface the phase label 'development'; got {full_out!r}"
     )
     assert "Dev 1/3" in full_out, (
-        f"AC-03: Live region must surface the outer-dev iteration "
-        f"'Dev 1/3'; got {full_out!r}"
+        f"AC-03: Live region must surface the outer-dev iteration 'Dev 1/3'; got {full_out!r}"
     )
     assert "Analysis 2/5" in full_out, (
         f"AC-04: Live region must surface the inner-analysis iteration "
@@ -336,8 +330,7 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
         f"when the inner-analysis iteration is None; got {none_out!r}"
     )
     assert "--/--" not in none_out, (
-        f"AC-02: Live region must NOT render any '--/--' iteration "
-        f"placeholder; got {none_out!r}"
+        f"AC-02: Live region must NOT render any '--/--' iteration placeholder; got {none_out!r}"
     )
     assert "--" not in none_out, (
         f"AC-02: Live region must NOT render any '--' placeholder for "
@@ -375,9 +368,7 @@ def test_quiet_mode_suppresses_status_bar_in_runtime_entry_point() -> None:
         captured_quiet_active = sb.is_active
     out = buf.getvalue()
     assert captured_quiet_active is False
-    assert out == "", (
-        f"No bytes may be written in quiet mode; got {out!r}"
-    )
+    assert out == "", f"No bytes may be written in quiet mode; got {out!r}"
 
 
 def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
@@ -393,9 +384,7 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
     on CI / redirected output / pipe output).
     """
     pd, buf = _make_parallel_display(tty_like=False)
-    assert pd._ctx.console.is_terminal is True, (
-        "force_terminal implies Rich's is_terminal=True"
-    )
+    assert pd._ctx.console.is_terminal is True, "force_terminal implies Rich's is_terminal=True"
     assert pd._ctx.console.file.isatty() is False, (
         "Plain StringIO is not a TTY (the isatty() conjunct gate check)."
     )
@@ -413,6 +402,4 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
         captured_nontty_active = sb.is_active
     out = buf.getvalue()
     assert captured_nontty_active is False
-    assert out == "", (
-        f"No bytes may be written on a force_terminal+StringIO console; got {out!r}"
-    )
+    assert out == "", f"No bytes may be written on a force_terminal+StringIO console; got {out!r}"

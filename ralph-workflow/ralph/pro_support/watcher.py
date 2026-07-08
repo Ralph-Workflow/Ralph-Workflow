@@ -47,7 +47,8 @@ logger = logging.getLogger(__name__)
 
 # TODO(contract-amendment): once the upstream contract is amended with a
 # late-marker adoption clause, drop this note. See tmp/pro_contract_patch.md
-# and docs/agents/pro-contract.md for the engine-side handoff.
+# and ralph-workflow/docs/sphinx/pro-support.md#engine-internals-pro-contract
+# for the engine-side handoff.
 
 
 _HEARTBEAT_PORT_DEFAULT = 7432

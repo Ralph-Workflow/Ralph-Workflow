@@ -130,9 +130,7 @@ def test_upstream_no_workspace_keeps_raw_bytes() -> None:
     entry = _resolve_entry(session, block)
     if entry is None:  # pragma: no cover
         pytest.skip("could not resolve artifact_id from URI")
-    assert entry._raw_bytes == payload, (
-        "without a workspace, legacy contract must retain raw_bytes"
-    )
+    assert entry._raw_bytes == payload, "without a workspace, legacy contract must retain raw_bytes"
     assert entry.cache_path == ""
     assert entry._byte_loader is None
 

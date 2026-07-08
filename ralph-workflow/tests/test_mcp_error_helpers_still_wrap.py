@@ -199,9 +199,7 @@ def _locate_plan_md() -> Path:
         candidate = parent / ".agent" / "artifact-formats" / "plan.md"
         if candidate.exists():
             return candidate
-    raise AssertionError(
-        "could not locate workspace-root .agent/artifact-formats/plan.md on disk"
-    )
+    raise AssertionError("could not locate workspace-root .agent/artifact-formats/plan.md on disk")
 
 
 @pytest.mark.timeout_seconds(5)

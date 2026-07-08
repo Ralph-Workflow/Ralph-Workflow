@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from ralph.process.manager._process_manager_types import (
         _AsyncProcessLike,
         _PsutilModuleLike,
-)
+    )
 from ralph.process.manager._process_status import (
     _TERMINAL_STATUSES,
     ProcessStatus,
@@ -238,8 +238,7 @@ async def test_aexit_closes_stdin_stdout_stderr_transports() -> None:
         pass
 
     assert sorted(close_calls) == ["stderr", "stdin", "stdout"], (
-        f"expected stdin/stdout/stderr transports to be closed on __aexit__; "
-        f"got {close_calls!r}"
+        f"expected stdin/stdout/stderr transports to be closed on __aexit__; got {close_calls!r}"
     )
 
 

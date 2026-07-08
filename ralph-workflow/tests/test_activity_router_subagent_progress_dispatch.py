@@ -108,9 +108,7 @@ def test_router_emits_subagent_progress_for_tool_use_line() -> None:
         )
         router.push_raw_line("u", tool_line, provider=ActivityProvider.CLAUDE)
 
-        progress_events = [
-            e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
-        ]
+        progress_events = [e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS]
         assert len(progress_events) >= 1, (
             "ActivityRouter.push_raw_line MUST emit a SUBAGENT_PROGRESS"
             f" event for a tool_use line; events={events}"
@@ -166,16 +164,12 @@ def test_router_emits_subagent_progress_for_text_line() -> None:
         provider=ActivityProvider.CLAUDE,
     )
 
-    progress_events = [
-        e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
-    ]
+    progress_events = [e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS]
     assert progress_events, (
         "ActivityRouter.push_raw_line MUST emit a SUBAGENT_PROGRESS"
         f" event for text content_block_delta lines; events={events}"
     )
-    assert any(
-        (content or "").startswith("text:") for _, _, content, _ in progress_events
-    ), (
+    assert any((content or "").startswith("text:") for _, _, content, _ in progress_events), (
         "SUBAGENT_PROGRESS summary for text lines MUST carry the"
         f" 'text:' prefix; progress_events={progress_events}"
     )
@@ -215,9 +209,7 @@ def test_router_subagent_progress_is_silent_when_parser_has_no_hook() -> None:
             on_event=_on_event,
         )
         router.push_raw_line("u", "anything", provider=ActivityProvider.GENERIC)
-        progress_events = [
-            e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
-        ]
+        progress_events = [e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS]
         assert not progress_events, (
             "Parsers without emit_subagent_activity MUST NOT emit"
             f" SUBAGENT_PROGRESS; events={events}"
@@ -262,19 +254,14 @@ def test_router_swallows_buggy_parser_hook_exception() -> None:
     # Must not raise.
     router.push_raw_line("u", "anything", provider=ActivityProvider.GENERIC)
 
-    tool_use_events = [
-        e for e in events if e[1] is ActivityEventKind.TOOL_USE
-    ]
+    tool_use_events = [e for e in events if e[1] is ActivityEventKind.TOOL_USE]
     assert tool_use_events, (
         "Even when emit_subagent_activity raises, the router MUST still"
         f" emit the canonical TOOL_USE event; events={events}"
     )
-    progress_events = [
-        e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
-    ]
+    progress_events = [e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS]
     assert not progress_events, (
-        "A parser hook that raised MUST NOT emit SUBAGENT_PROGRESS;"
-        f" events={events}"
+        f"A parser hook that raised MUST NOT emit SUBAGENT_PROGRESS; events={events}"
     )
 
 
@@ -313,9 +300,7 @@ def test_router_subagent_progress_with_no_sink_registered() -> None:
             }
         )
         router.push_raw_line("u", tool_line, provider=ActivityProvider.CLAUDE)
-        progress_events = [
-            e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
-        ]
+        progress_events = [e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS]
         assert progress_events, (
             "SUBAGENT_PROGRESS event MUST be emitted via on_event even"
             f" when no subagent sink is registered; events={events}"
@@ -371,9 +356,7 @@ def test_router_uses_claude_interactive_parser_for_claude_interactive_provider()
     )
     # The event must be parseable (not an ERROR event from the
     # GenericParser misclassifying the prefix).
-    error_events = [
-        e for e in events if e[1] is ActivityEventKind.ERROR
-    ]
+    error_events = [e for e in events if e[1] is ActivityEventKind.ERROR]
     assert not error_events, (
         "ActivityRouter.push_raw_line with CLAUDE_INTERACTIVE"
         " MUST route through ClaudeInteractiveParser (not GenericParser);"
@@ -405,9 +388,7 @@ def test_router_uses_pi_parser_for_pi_provider() -> None:
     # PiParser is permissive; an empty event list is acceptable as
     # long as the router did NOT raise and did NOT misclassify as
     # a GenericParser ERROR.
-    error_events = [
-        e for e in events if e[1] is ActivityEventKind.ERROR
-    ]
+    error_events = [e for e in events if e[1] is ActivityEventKind.ERROR]
     assert not error_events, (
         "ActivityRouter.push_raw_line with PI MUST route through"
         f" PiParser (not GenericParser); got error events: {error_events}"
@@ -433,12 +414,10 @@ def test_detect_provider_from_command_recognizes_claude_interactive() -> None:
     return ``ActivityProvider.CLAUDE_INTERACTIVE`` (not ``CLAUDE``).
     """
     assert (
-        detect_provider_from_command(["claude-interactive"])
-        is ActivityProvider.CLAUDE_INTERACTIVE
+        detect_provider_from_command(["claude-interactive"]) is ActivityProvider.CLAUDE_INTERACTIVE
     )
     assert (
-        detect_provider_from_command(["claude_interactive"])
-        is ActivityProvider.CLAUDE_INTERACTIVE
+        detect_provider_from_command(["claude_interactive"]) is ActivityProvider.CLAUDE_INTERACTIVE
     )
     # Plain ``claude`` is still routed to CLAUDE (the more specific
     # ``claude-interactive`` substring MUST NOT consume the bare
@@ -451,10 +430,7 @@ def test_provider_for_transport_round_trips_supported_transports() -> None:
     every supported ``AgentTransport`` value.
     """
     assert provider_for_transport("claude") is ActivityProvider.CLAUDE
-    assert (
-        provider_for_transport("claude_interactive")
-        is ActivityProvider.CLAUDE_INTERACTIVE
-    )
+    assert provider_for_transport("claude_interactive") is ActivityProvider.CLAUDE_INTERACTIVE
     assert provider_for_transport("codex") is ActivityProvider.CODEX
     assert provider_for_transport("opencode") is ActivityProvider.OPENCODE
     assert provider_for_transport("gemini") is ActivityProvider.GEMINI
@@ -561,9 +537,7 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
         on_status=lambda _: None,
     )
 
-    progress_events = [
-        e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
-    ]
+    progress_events = [e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS]
     assert progress_events, (
         "SubprocessAgentExecutor -> ActivityRouter.push_raw_line MUST"
         " surface SUBAGENT_PROGRESS on a ClaudeParser tool_use line;"
@@ -573,9 +547,7 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
         "SUBAGENT_PROGRESS event content MUST match the sanitized"
         f" 'tool_use:Bash' summary; progress_events={progress_events}"
     )
-    tool_use_events = [
-        e for e in events if e[1] is ActivityEventKind.TOOL_USE
-    ]
+    tool_use_events = [e for e in events if e[1] is ActivityEventKind.TOOL_USE]
     assert tool_use_events, (
         "SubprocessAgentExecutor -> ActivityRouter MUST also surface"
         f" the canonical TOOL_USE event; events={events}"
@@ -703,18 +675,14 @@ def test_subagent_progress_event_for_every_provider(provider: ActivityProvider) 
     raw_line = _PROVIDER_TOOL_USE_LINES[provider]
     router.push_raw_line("u", raw_line, provider=provider)
 
-    progress_events = [
-        e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
-    ]
+    progress_events = [e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS]
     assert progress_events, (
         f"provider={provider.value!r} MUST emit SUBAGENT_PROGRESS on a"
         f" tool_use line (the parser for this provider must route"
         f" through ParserTemplateBase.emit_subagent_activity)."
         f" events={events}; raw_line={raw_line!r}"
     )
-    tool_use_progress = [
-        e for e in progress_events if (e[2] or "").startswith("tool_use:")
-    ]
+    tool_use_progress = [e for e in progress_events if (e[2] or "").startswith("tool_use:")]
     assert tool_use_progress, (
         f"provider={provider.value!r} SUBAGENT_PROGRESS events MUST"
         f" carry a 'tool_use:' prefix in content (sanitized summary"

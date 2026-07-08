@@ -246,9 +246,7 @@ def test_parallel_display_exposes_exact_41_emit_methods() -> None:
     that were present in the baseline so a future regression that
     renames or removes one of those 6 would be flagged.
     """
-    members = {
-        name for name, _ in inspect.getmembers(ParallelDisplay) if name.startswith("emit_")
-    }
+    members = {name for name, _ in inspect.getmembers(ParallelDisplay) if name.startswith("emit_")}
     # emit_activity_line is the module-level activity helper that ALSO appears
     # as an instance method; the canonical set excludes it because the count
     # of "consolidated instance methods" treats it as a one-shot helper, not

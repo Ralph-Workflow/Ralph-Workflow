@@ -171,8 +171,7 @@ def test_rejects_source_files_inside_engine_internal_dirs() -> None:
     )
     for rel in negative_paths:
         assert is_agent_internal_path(rel) is False, (
-            f"User-authored file inside engine-internal dir {rel!r} "
-            "must NOT be agent-internal"
+            f"User-authored file inside engine-internal dir {rel!r} must NOT be agent-internal"
         )
 
 
@@ -202,9 +201,7 @@ def test_accepts_engine_extensions_inside_engine_internal_dirs() -> None:
         ".agent/workers/unit-a/sub/dir/data.json",
     )
     for rel in positive_paths:
-        assert is_agent_internal_path(rel) is True, (
-            f"Engine-owned file {rel!r} must be accepted"
-        )
+        assert is_agent_internal_path(rel) is True, f"Engine-owned file {rel!r} must be accepted"
 
 
 def test_rejects_paths_outside_agent_dir() -> None:

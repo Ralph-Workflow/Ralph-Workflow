@@ -3,15 +3,10 @@
 Ralph Workflow
 ==============
 
-Ralph Workflow is **the operating system for autonomous coding** — a
-free and open-source **AI agent orchestrator** built on a **simple
-Ralph-loop core** that becomes **powerful in composition**. It ships
-with a **strong default workflow for writing software** that you can
-adopt **as-is first** and extend later.
-
-Hand it a well-specified coding task, let the agents plan, build,
-verify, and fix, and come back to reviewable, tested work. See the
-canonical product positioning in the
+Ralph Workflow is a free and open-source AI agent orchestrator for
+coding work. Hand it a well-specified task, let the agents plan, build,
+verify, and fix, and come back to reviewable, tested work. The canonical
+product positioning lives in the
 `root README.md <https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md>`_.
 
 Install and run
@@ -45,36 +40,46 @@ If you need docs grouped by real user goal, see :doc:`agent-compatibility`.
 
 .. toctree::
    :hidden:
-   :caption: First run
+   :caption: Get started
    :maxdepth: 1
 
    getting-started
 
 .. toctree::
    :hidden:
-   :caption: Configure & operate
+   :caption: Configure
    :maxdepth: 1
 
    configuration
    cli
-   troubleshooting
+   advanced-pipeline-configuration
+   advanced-mcp-configuration
+   advanced-artifact-configuration
 
 .. toctree::
    :hidden:
-   :caption: Concepts
+   :caption: Understand
    :maxdepth: 1
 
    concepts
-   ralph-loop
-   verification-model
+   mcp-architecture
+   recovery
 
 .. toctree::
    :hidden:
-   :caption: Reference
+   :caption: Operate
    :maxdepth: 1
 
-   artifacts
-   mcp-tools
-   recovery
-   modules
-   developer-reference
+   troubleshooting
+   agent-compatibility
+   diagnostics
+   versioning
+   pro-support
+
+.. toctree::
+   :hidden:
+   :caption: Develop
+   :maxdepth: 1
+
+   developer-internals
+   agents

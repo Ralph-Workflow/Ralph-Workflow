@@ -123,9 +123,7 @@ def test_generate_commit_end_to_end_uses_canonical_submit(
 
     # RFC-013 P3: completion sentinel is DB-backed. Verify via the
     # completion-signal check which honors both DB and legacy file.
-    assert (
-        _check_completion_sentinel(tmp_path, plumbing_module._COMMIT_RUN_ID) is True
-    )
+    assert _check_completion_sentinel(tmp_path, plumbing_module._COMMIT_RUN_ID) is True
 
     artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.json"
     assert backend.exists(artifact_path)

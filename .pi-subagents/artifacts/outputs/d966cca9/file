@@ -1,0 +1,644 @@
+# Test File Audit Against Proposed Documentation Consolidation Plan
+
+Target deletion set (per task brief): `parallel-mode.md`, `policy-explanation.md`,
+`quick-reference.md`, `reference.md`, `developer-reference.md`, `changelog.md`,
+`ralph-loop.md`, `policy-driven-pipeline.md`, `phase-routing.md`,
+`artifact-lifecycle.md`, `verification-model.md`, `watchdogs-and-timeouts.md`,
+`transcript.md`, `supervising-api.md`, `local-web-access.md`,
+`docs/agents/pro-contract.md`, `docs/migration/policy-v2.md`,
+`docs/migration/parallel-mode.md`, `docs/VERIFICATION_GATE.md`.
+
+Note on path conventions: tests use `Path(__file__).parent.parent /
+"docs" / "sphinx"` for the Python-package Sphinx tree (under
+`ralph-workflow/docs/sphinx/...`), and `Path(__file__).parent.parent.parent`
+or `parents[2]` for the workspace root.
+
+---
+
+## 1. `tests/test_pro_support_cross_repo_marker.py`
+
+- **Imports**: `from __future__ import annotations`, `pathlib.Path`.
+- **Hardcoded path** (line 8):
+  ```python
+  PRO_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "docs" / "agents" / "pro-contract.md"
+  ```
+- **Required header text** (line 10):
+  `FORWARD_LOOKING_HEADER = "Forward-looking engine capabilities pending contract amendment"`
+- **Required symbols** (line 11):
+  `REQUIRED_SYMBOLS = ("ProMarkerWatcher", "ProPipelineHooks", "PipelineStateSnapshot")`
+- **Single test** (lines 14-28): asserts the file exists, the header text
+  is present, and each of the three symbols is present in the section
+  starting at the header.
+- **Deletion impact**: deleting `ralph-workflow/docs/agents/pro-contract.md`
+  **BREAKS the test** at `assert PRO_CONTRACT_PATH.exists(), ...`.
+- **No skipIf-missing guards**.
+
+---
+
+## 2. `tests/test_parallel_mode_docs_namespaced_payload_docs.py`
+
+- **Imports**: `from __future__ import annotations`, `pathlib.Path`, `pytest`.
+- **Hardcoded paths**:
+  - `_DOC_PATH = Path(__file__).parent.parent / "docs" / "sphinx" / "parallel-mode.md"` (line 8)
+  - `_CONCEPTS_DOC_PATH = Path(__file__).parent.parent / "docs" / "sphinx" / "concepts.md"` (line 9)
+  - `_ARCH_DOC_PATH = ... / "docs" / "sphinx" / "parallel-mode.md"` (line 73 — duplicate of `_DOC_PATH`)
+- **Existence assertions** (no `skipIf`):
+  - `test_parallel_mode_doc_exists()` — asserts `_DOC_PATH.is_file()` (lines 23-24)
+  - `test_concepts_doc_exists()` — asserts `_CONCEPTS_DOC_PATH.is_file()` (lines 27-28)
+  - `test_arch_doc_exists()` — asserts `_ARCH_DOC_PATH.is_file()` (lines 84-85)
+- **Required content in parallel-mode.md**:
+  - `same-workspace` or `same_workspace` (line 31)
+  - absence of `git worktree` and `own git worktree` (lines 38-42)
+  - absence of `merge back` and `merge_integrat` (lines 47-51)
+  - presence of `allowed_directories` (line 56)
+  - presence of `artifact` (lowercase) (line 61)
+  - presence of `.agent/workers` (line 66)
+  - absence of `git status` (line 71-72)
+  - parametrized banned phrases (`worktree-based`, `per-worker worktree`,
+    `merge-back`, `merge integration`, `parallel worktree`) (line 76)
+  - `class TestNamespacedPayloadDocs`: requires
+    `.agent/workers/<unit_id>/tmp/prompt_payloads/` substring and forbids
+    future-tense worktree phrasing (lines ~178-198).
+- **Deletion impact**:
+  - Deleting `ralph-workflow/docs/sphinx/parallel-mode.md` **BREAKS**
+    `test_parallel_mode_doc_exists()`, `test_arch_doc_exists()`, ALL
+    parametrized worktree/merge tests (the `parallel_mode_doc` and
+    `arch_doc` fixtures call `read_text()` with no skip guard), and
+    `TestNamespacedPayloadDocs` (also reads the file directly).
+  - Deleting `concepts.md` would **BREAK** `test_concepts_doc_exists()`
+    and the parametrized concepts-doc phrase tests.
+  - **No skipIf-missing guards** anywhere in this file.
+
+---
+
+## 3. `tests/test_parallel_mode_docs_banned_phrases_across_all_docs.py`
+
+- **Imports**: `pathlib.Path`, `pytest`.
+- **Hardcoded paths** (identical to file #2):
+  - `_DOC_PATH = ... / "docs" / "sphinx" / "parallel-mode.md"` (line 8)
+  - `_CONCEPTS_DOC_PATH = ... / "docs" / "sphinx" / "concepts.md"` (line 9)
+  - `_ARCH_DOC_PATH = ... / "docs" / "sphinx" / "parallel-mode.md"` (line 73)
+- **Existence assertions (no skip)**:
+  - `test_parallel_mode_doc_exists()` (lines 23-24) — asserts `_DOC_PATH.is_file()`
+  - `test_concepts_doc_exists()` (lines 27-28) — asserts `_CONCEPTS_DOC_PATH.is_file()`
+  - `test_arch_doc_exists()` (lines 84-85) — asserts `_ARCH_DOC_PATH.is_file()`
+- **Content assertions** mirror file #2 (same banned-phrase, allowed-directories,
+  worker-namespace, git-status, etc. checks).
+- **Parametrized `_EXTENDED_BANNED_PHRASES`** (line 144) used in
+  `class TestBannedPhrasesAcrossAllDocs.test_no_banned_phrase_in_doc`
+  parametrize. The `_collect_checked_md_files()` helper globs:
+  - `ralph-workflow/docs/sphinx/**/*.md`
+  - `docs/architecture/**/*.md`
+  - `docs/agents/**/*.md`
+  - root `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`
+  - `ralph-workflow/{README.md, CONTRIBUTING.md, CHANGELOG.md}`
+- **Deletion impact**:
+  - Deleting `ralph-workflow/docs/sphinx/parallel-mode.md` **BREAKS**
+    `test_parallel_mode_doc_exists()`, all `_BANNED_PHRASES` parametrized
+    tests (fixture reads without guard), and `test_arch_doc_exists()`.
+  - Deleting `concepts.md` **BREAKS** `test_concepts_doc_exists()` and
+    its parametrized phrase tests.
+  - `_collect_checked_md_files` filters via `.exists()` before adding
+    each root file to the list, so already-missing root files don't
+    parametrize. But every existing `.md` it returns then gets
+    `doc_path.read_text()` called on it — pre-existing deletions of any
+    other targeted file would not break this test as long as the file
+    is missing before parametrization occurs.
+  - **No skipIf-missing guards**.
+
+---
+
+## 4. `tests/test_parallel_docs_no_worktree_language.py`
+
+- **Imports**: `pathlib.Path`, `pytest`.
+- **Hardcoded `_DOC_FILES` list** (lines 47-54):
+  ```python
+  _DOC_FILES = [
+      "docs/agents/parallelization.md",
+      "docs/migration/parallel-mode.md",
+      "docs/architecture/parallel-fan-out.md",
+      "ralph-workflow/README.md",
+      "ralph-workflow/CONTRIBUTING.md",
+      "README.md",
+  ]
+  ```
+- **Skip-if-missing guard** (lines 63-64):
+  ```python
+  full_path = _REPO_ROOT / doc_path
+  if not full_path.exists():
+      pytest.skip(f"Doc file not found (skipping): {doc_path}")
+  ```
+- **Forbidden phrases** checked: `git worktree`, `per-worker branch`,
+  `per-worker checkout`, `merge-back`, `merge integrator`, `separate git
+  checkout`, `worktree isolation`, `per-worker repo`. There is also a
+  `_SAFETY_PHRASES` allowlist that exempts negated lines.
+- **Deletion impact**:
+  - Deleting `docs/migration/parallel-mode.md` → test **STILL PASSES**
+    (skipped).
+  - Deleting `docs/agents/parallelization.md` → test **STILL PASSES**
+    (skipped).
+  - Deleting `docs/architecture/parallel-fan-out.md` → test **STILL
+    PASSES** (skipped).
+  - All siblings (`README.md`, `CONTRIBUTING.md`, etc.) — already not in
+    the plan deletion list.
+
+---
+
+## 5. `tests/test_sphinx_documentation_setup.py`
+
+- **Imports**: `importlib`, `runpy`, `tomllib`, `pathlib.Path`,
+  `from ralph import version`.
+- **Hardcoded paths REQUIRING existence** (lines 10-19):
+  - `REPO_ROOT = Path(__file__).resolve().parents[1]`
+  - `CONF_PATH = REPO_ROOT / "docs" / "sphinx" / "conf.py"`
+  - `PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"`
+  - `GITIGNORE_PATH = REPO_ROOT.parent / ".gitignore"`
+  - `INDEX_RST_PATH = REPO_ROOT / "docs" / "sphinx" / "index.rst"`
+  - `GETTING_STARTED_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"`
+  - `SPHINX_DIR = REPO_ROOT / "docs" / "sphinx"`
+  - `DEVELOPER_INTERNALS_PATH = SPHINX_DIR / "developer-internals.md"`
+  - `REFERENCE_MD_PATH = SPHINX_DIR / "reference.md"`
+  - `README_PATH = REPO_ROOT / "README.md"`
+- **Sphinx pages that must exist** (line 32):
+  ```python
+  _PAGES_WITH_GETTING_STARTED_LINKS = [
+      "cli.md", "concepts.md", "configuration.md", "recovery.md",
+      "parallel-mode.md", "troubleshooting.md",
+  ]
+  ```
+  → `test_sphinx_pages_link_to_getting_started` asserts each
+  `sphinx_dir / page` exists (lines 117-119).
+- **Other existence-required reads**:
+  - `test_getting_started_file_exists_and_has_required_content` — asserts
+    `GETTING_STARTED_PATH.exists()` and reads it (lines 89-114).
+  - `test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages` —
+    reads `DEVELOPER_INTERNALS_PATH` and checks that every toctree entry
+    resolves to either `<docname>.md` or `<docname>.rst` under
+    `SPHINX_DIR`. **NO skip guard**.
+  - `test_supervising_api_page_in_developer_section` — reads
+    `DEVELOPER_INTERNALS_PATH` AND `REFERENCE_MD_PATH`, checks toctree
+    entries. **NO skip guard**. The test enforces that
+    `developer-internals.md` toctree includes `supervising-api` AND that
+    `reference.md` toctree does NOT include `supervising-api`. Toctree
+    resolver checks that `supervising-api.md` must exist under
+    `SPHINX_DIR`.
+  - `test_index_toctree_entries_resolve_to_real_sphinx_pages` — reads
+    `INDEX_RST_PATH` and asserts every toctree docname resolves to a
+    file under `SPHINX_DIR`. **NO skip guard**.
+  - `test_agents_page_exists` — asserts `SPHINX_DIR / "agents.md"` exists.
+  - `test_agents_page_not_in_developer_internals_toctree` — reads
+    `DEVELOPER_INTERNALS_PATH`.
+  - `test_readme_has_developer_reference_and_modules_rst_pointers` —
+    asserts README contains `docs/sphinx/index.rst`.
+- **Deletion impact** (against plan targets):
+  - **Deleting `docs/sphinx/parallel-mode.md` → BREAKS**
+    `test_sphinx_pages_link_to_getting_started` (existence assertion on
+    the parametrized loop).
+  - **Deleting `docs/sphinx/reference.md` → BREAKS**
+    `test_supervising_api_page_in_developer_section` (direct
+    `REFERENCE_MD_PATH.read_text()` without guard).
+  - **Deleting `docs/sphinx/developer-internals.md` → BREAKS** multiple
+    tests (the file is read by name in `test_developer_internals_…`,
+    `test_supervising_api_page_in_developer_section`,
+    `test_agents_page_not_in_developer_internals_toctree`).
+  - **Deleting `docs/sphinx/supervising-api.md` (a target) → BREAKS**
+    `test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages`
+    (the resolver requires the `.md`/`.rst` file backing the
+    `supervising-api` toctree entry to exist). The toctree resolver
+    treats an unresolvable entry as a missing-file assertion failure.
+  - **Deleting `docs/sphinx/index.rst` (NOT in plan)** would break
+    multiple tests.
+- **No skipIf-missing guards** on the path/existence assertions.
+
+---
+
+## 6. `tests/test_readme_long_content_summary_doc.py`
+
+- **Imports**: `from __future__ import annotations`, `re`, `pathlib.Path`,
+  `pytest`, `from ralph.display.long_content_summary import SUMMARY_THRESHOLD, should_summarize`.
+- **Hardcoded path** (line 14):
+  ```python
+  _DOC_PATH = Path(__file__).resolve().parents[1] / "docs" / "sphinx" / "transcript.md"
+  ```
+- **Existence assertion (no skip)**:
+  - `long_content_section` fixture (lines 20-26) — reads
+    `_DOC_PATH`, asserts the section heading `"## Streaming Blocks and
+    Long-Content Display"` is present (`assert start != -1`).
+- **Required content / format assertions**:
+  - All four disabled-value strings: `"0"`, `"false"`, `"no"`, `"off"`
+  - `default[^\n]*(on|enabled)` regex in the section
+  - absence of `set[^\n]*RALPH_LONG_CONTENT_SUMMARY=1`
+  - presence of `"200"` and `"120"` (the inline summary cap and
+    streaming summary cap)
+  - `str(SUMMARY_THRESHOLD)` literal
+  - `len(long_content_section) > 200` (non-empty section)
+  - `"deterministic headline"`, `"ai-summary"`, `"(no headline available)"`,
+    `"RALPH_LONG_CONTENT_AI_SUMMARY"`
+- **In-memory behaviour tests** (no file dep):
+  - `test_summary_threshold_is_positive`, `test_should_summarize_above_threshold`.
+- **Deletion impact**:
+  - Deleting `ralph-workflow/docs/sphinx/transcript.md` **BREAKS** the
+    `long_content_section` fixture at `text = _DOC_PATH.read_text(...)`
+    (raises `FileNotFoundError` before reaching any docstring assert).
+  - **No skipIf-missing guards**.
+
+---
+
+## 7. `tests/test_repo_root_operational_docs_sync.py`
+
+- **Imports**: `from pathlib import Path`, `pytest`,
+  `from tests.doc_roots import REPO_ROOT_DOCS_DIR, REPOSITORY_ROOT`.
+- **Hardcoded `_OPERATIONAL_GUIDES`** (lines 15-20):
+  ```python
+  _OPERATIONAL_GUIDES = [
+      "agent-compatibility.md",
+      "quick-reference.md",
+      # template-guide.md and git-workflow.md were retired during the docs
+      # dedup ...
+  ]
+  ```
+- **Hardcoded canonical location** (line 24):
+  ```python
+  _SPINX_DIR = Path(__file__).resolve().parent.parent / "docs" / "sphinx"
+  ```
+- **Behavior of `test_operational_guides_exist`** (lines 33-39):
+  ```python
+  for guide in _OPERATIONAL_GUIDES:
+      path = _guide_path(guide)
+      assert path.exists() or (REPO_ROOT_DOCS_DIR / guide).exists(), ...
+  ```
+  Acceptance condition: file exists at `ralph-workflow/docs/sphinx/{guide}`
+  **OR** at `{repo_root}/docs/{guide}`.
+- **Other tests in this file all use `pytest.skip` on missing files**
+  (e.g., `test_python_tooling_guide_is_current` — `if not path.exists():
+  pytest.skip(...)`).
+- **Deletion impact**:
+  - **Deleting `quick-reference.md` from BOTH locations** (i.e., removing
+    `ralph-workflow/docs/sphinx/quick-reference.md` AND
+    `{repo_root}/docs/quick-reference.md`) → **BREAKS**
+    `test_operational_guides_exist`.
+  - **Deleting `quick-reference.md` from only one location** → test
+    still passes (the OR fallback covers it).
+  - **Deleting `agent-compatibility.md` from both locations** →
+    **BREAKS** `test_operational_guides_exist`.
+  - **Deleting `agent-compatibility.md` from only one** → passes.
+  - The remaining tests (`test_python_tooling_guide_is_current`,
+    `test_quick_reference_has_current_commands`,
+    `test_agent_compatibility_has_current_provider_info`,
+    `test_agy_mcp_setup_reflects_pty_injection`,
+    `test_template_guide_is_python_focused`,
+    `test_git_workflow_is_current`) — these `pytest.skip` on missing
+    files and so deletions do not break them.
+  - The plan does NOT list `agent-compatibility.md` as a deletion
+    target, but it does list `quick-reference.md`.
+
+---
+
+## 8. `tests/test_docs_context_completeness_repo_root_completeness.py`
+
+- **Imports**: `from __future__ import annotations`,
+  `from tests.doc_roots import REPO_ROOT_README`.
+- **Hardcoded reference**: only `REPO_ROOT_README` (the repo-root
+  `README.md`).
+- **Tests**:
+  - `TestRepoRootCompleteness.test_readme_has_install_instructions` —
+    asserts README contains installation-related phrasing.
+  - `TestRepoRootCompleteness.test_readme_has_verify_reference` — asserts
+    README contains "verify" or "test".
+- **Deletion impact**: this file does **NOT** assert existence of any
+  file in the plan's deletion list. The repo-root `README.md` is
+  **NOT** in the plan's deletion list. → **No breakage**.
+
+---
+
+## 9. `tests/test_docs_context_completeness_sphinx_page_completeness.py`
+
+- **Imports**: `from __future__ import annotations`, `pytest`,
+  `from tests.doc_roots import PACKAGE_DOCS_SPHINX_DIR`.
+- **Hardcoded `_SPHINX_PAGES`** (lines 9-14):
+  ```python
+  _SPHINX_PAGES = [
+      "getting-started.md",
+      "concepts.md",
+      "reference.md",
+      "developer-reference.md",
+  ]
+  ```
+- **`class TestSphinxPageCompleteness`** (parametrized over `_SPHINX_PAGES`):
+  - `test_page_exists` — asserts `PACKAGE_DOCS_SPHINX_DIR / page` exists.
+  - `test_page_has_substantive_content` — asserts
+    `len(path.read_text()) > 200`.
+- **Deletion impact**:
+  - **Deleting `ralph-workflow/docs/sphinx/reference.md` → BREAKS**
+    `test_page_exists[reference.md]` AND
+    `test_page_has_substantive_content[reference.md]`.
+  - **Deleting `ralph-workflow/docs/sphinx/developer-reference.md` → BREAKS**
+    `test_page_exists[developer-reference.md]` AND
+    `test_page_has_substantive_content[developer-reference.md]`.
+  - **No skipIf-missing guards**.
+  - Deleting `concepts.md` or `getting-started.md` would also break,
+    but neither is in the plan's deletion list.
+
+---
+
+## 10. `tests/test_docs_readme_scope.py`
+
+- **Imports**: `from tests.doc_roots import PACKAGE_DOCS_DIR, PACKAGE_ROOT, REPO_ROOT_DOCS_DIR`.
+- **Hardcoded paths** (top-of-file scope):
+  - `REPO_ROOT_DOCS_DIR / "README.md"` (i.e., `{repo_root}/docs/README.md`)
+  - `_PACKAGE_TIMEOUT_POLICY = PACKAGE_DOCS_DIR / "agents" / "timeout-policy.md"`
+    (`ralph-workflow/docs/agents/timeout-policy.md`)
+  - `_PACKAGE_SPHINX_WATCHDOGS = PACKAGE_DOCS_DIR / "sphinx" / "watchdogs-and-timeouts.md"`
+  - `_PACKAGE_CHANGELOG = PACKAGE_ROOT / "CHANGELOG.md"` —
+    `ralph-workflow/CHANGELOG.md`
+- **Tests requiring existence**:
+  - `test_docs_readme_exists` — asserts
+    `docs/README.md` exists.
+  - `test_docs_readme_maps_agents_family` / `…_distinguishes_current_vs_archival` /
+    `…_covers_code_style_family` / `…_covers_tooling_family` /
+    `…_covers_performance_family` — content checks against `docs/README.md`.
+  - `test_package_sphinx_watchdogs_and_timeouts_doc_lists_all_five_kinds` —
+    reads `watchdogs-and-timeouts.md` and asserts the
+    `WorkspaceChangeKind` values `source`, `log`, `cache`, `artifact`,
+    `other` each appear (no skip guard).
+  - `test_package_sphinx_watchdogs_and_timeouts_doc_mentions_new_config_key` —
+    reads `watchdogs-and-timeouts.md`, asserts the substring
+    `agent_workspace_change_weights` (no skip guard).
+  - `test_package_changelog_unreleased_section_calls_out_behavior_change` —
+    reads `ralph-workflow/CHANGELOG.md`, asserts `"Behavior change:"` is
+    in `[Unreleased]` (no skip guard).
+  - `test_package_timeout_policy_doc_mentions_canonical_home` —
+    internally calls `sphinx_watchdogs_doc_mentions_canonical_home()`,
+    which **also reads `watchdogs-and-timeouts.md`** with no skip.
+  - `test_package_timeout_policy_doc_exists` — asserts
+    `_PACKAGE_TIMEOUT_POLICY` does **NOT** exist (the file is already
+    deleted; this is a regression guard).
+  - `test_package_timeout_policy_doc_is_redirect_stub` — same
+    "must-not-exist" assertion.
+- **Helper function** `sphinx_watchdogs_doc_mentions_canonical_home()`
+  also requires `watchdogs-and-timeouts.md` to exist.
+- **Deletion impact**:
+  - **Deleting `ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md`
+    (a plan target) → BREAKS** the four tests above (file-read without
+    skip).
+  - **Deleting `ralph-workflow/CHANGELOG.md` (a plan target) → BREAKS**
+    `test_package_changelog_unreleased_section_calls_out_behavior_change`.
+  - **Deleting `docs/VERIFICATION_GATE.md` is not asserted here** (no
+    test reads it).
+  - The `must-NOT-exist` tests pass as long as the file remains absent;
+    the plan does not list `timeout-policy.md` for re-introduction.
+  - **No skipIf-missing guards** on the watched-file reads.
+
+---
+
+## 11. `tests/test_documentation_command_sync.py`
+
+- **Imports**: `from __future__ import annotations`, `re`, `pathlib.Path`
+  (no `pytest.skip` use is observed in the file content reviewed; the
+  file is pytest-driven via the assert pattern).
+- **Hardcoded paths read by the file**:
+  - `REPO_ROOT = Path(__file__).resolve().parents[1]`
+    (`ralph-workflow/`)
+  - `README_PATH = REPO_ROOT / "README.md"`
+  - `CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"`
+  - `WORKSPACE_ROOT = REPO_ROOT.parent`
+  - `CODE_STYLE_PATH = WORKSPACE_ROOT / "CODE_STYLE.md"`
+  - `CODE_STYLE_INDEX_PATH = WORKSPACE_ROOT / "docs" / "code-style" / "index.md"`
+  - `PYTHON_TOOLING_PATH = WORKSPACE_ROOT / "docs" / "tooling" / "python-tooling.md"`
+  - `QUICKSTART_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"`
+    (re-binds near line 117)
+  - `_MCP_SERVERS_DOC = REPO_ROOT / "docs" / "mcp" / "mcp-servers.md"`
+  - `_ARCHITECTURE_PATH = REPO_ROOT / "ralph" / "mcp" / "ARCHITECTURE.md"`
+  - `_SPHINX_MCP_TOOLS_PATH = REPO_ROOT / "docs" / "sphinx" / "mcp-tools.md"`
+  - `_SPHINX_MCP_ARCH_PATH = REPO_ROOT / "docs" / "sphinx" / "mcp-architecture.md"`
+  - `_SPHINX_AGENTS_PATH = REPO_ROOT / "docs" / "sphinx" / "agents.md"`
+  - `_CHANGELOG_PATH = REPO_ROOT / "CHANGELOG.md"`
+- **Existence-required reads (no skip)** — these tests call
+  `path.read_text()` on the listed paths; pytest will fail the test on
+  `FileNotFoundError`:
+  - `test_readme_does_not_hard_code_stale_cov_report_flags` (README.md)
+  - `test_contributing_does_not_hard_code_stale_cov_report_flags`
+  - `test_readme_verification_section_references_make_verify`
+  - `test_contributing_required_verification_references_make_verify`
+  - `test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin` —
+    `CODE_STYLE.md`, `CODE_STYLE_INDEX_PATH`, `PYTHON_TOOLING_PATH`.
+  - `test_quickstart_documents_init_local_config_as_explicit_opt_in` —
+    `docs/sphinx/getting-started.md` (the file the test reads is mapped
+    to the path formerly `docs/sphinx/quickstart.md` per the rebinding
+    comment at the top of the file).
+  - `test_mcp_servers_doc_describes_broad_multimodal_surface` and
+    related `docs/mcp/mcp-servers.md` tests.
+  - `test_readme_stays_onboarding_focused_and_points_to_deeper_docs`
+  - `test_contributing_describes_read_media_as_primary_multimodal_tool`
+  - `test_contributing_does_not_claim_upstream_mcp_untracked`
+  - `test_contributing_uses_operator_facing_activity_evidence_ttl_key`
+  - `test_readme_does_not_claim_none_disables_activity_evidence_ttl`
+  - `test_contributing_does_not_claim_none_disables_activity_evidence_ttl`
+  - `test_contributing_does_not_reference_obsolete_watchdog_module_paths`
+  - `test_architecture_md_describes_read_media_as_primary_tool` —
+    `ralph/mcp/ARCHITECTURE.md`.
+  - `test_sphinx_mcp_tools_describes_read_media_as_primary_tool` —
+    `docs/sphinx/mcp-tools.md`.
+  - `test_sphinx_mcp_architecture_describes_read_media` —
+    `docs/sphinx/mcp-architecture.md`.
+  - `test_sphinx_agents_describes_bounded_summaries_not_first_class_artifacts` —
+    `docs/sphinx/agents.md`.
+  - `test_mcp_servers_doc_provider_matrix_typed_blocks`,
+    `test_mcp_servers_doc_provider_matrix_table`,
+    `test_architecture_md_upstream_normalization_not_rejection`,
+    `test_mcp_servers_doc_describes_screenshot_and_browser_visual_workflows`,
+    `test_mcp_servers_doc_describes_replayable_resource_handles_via_resources_read`,
+    `test_mcp_servers_doc_describes_mixed_modality_workflows`,
+    `test_mcp_servers_doc_text_only_safety_is_explicit`,
+    `test_agents_doc_describes_resolved_capability_profile`,
+    `test_mcp_servers_doc_describes_resolved_capability_profile`,
+    `test_agents_doc_explains_interactive_completion_evaluation`,
+    `test_agents_doc_describes_resumable_session_on_incomplete_exit`,
+    `test_agents_doc_explains_interactive_vs_headless_tradeoff`,
+    `test_agents_doc_explains_unattended_orchestration_contract` —
+    `docs/sphinx/agents.md`, `docs/mcp/mcp-servers.md`.
+  - `test_code_style_md_mentions_strict_mypy_config`,
+    `test_code_style_md_mentions_type_ignore_policy`,
+    `test_code_style_md_mentions_zero_test_suppressions`,
+    `test_code_style_md_mentions_make_verify` — `CODE_STYLE.md`.
+  - `test_code_style_index_mentions_*` — `docs/code-style/index.md`.
+  - `test_tooling_guide_mentions_*`,
+    `test_tooling_guide_does_not_reference_nonexistent_ruff_toml`,
+    `test_tooling_guide_does_not_claim_stale_python_version`,
+    `test_tooling_guide_does_not_claim_pydantic_mypy_plugin`,
+    `test_tooling_guide_uses_ini_style_overrides_not_toml` —
+    `docs/tooling/python-tooling.md`.
+  - `test_changelog_does_not_claim_none_disables_activity_evidence_ttl`,
+    `test_changelog_does_not_claim_upstream_proxy_invokes_active_sink`,
+    `test_changelog_does_not_reference_missing_architecture_doc` —
+    `ralph-workflow/CHANGELOG.md`.
+- **Deletion impact (per plan targets)**:
+  - **Deleting `ralph-workflow/CHANGELOG.md` (a plan target) → BREAKS**
+    all three changelog-content tests (`test_changelog_*`). The first
+    test that fails will be `test_changelog_does_not_claim_none_disables_activity_evidence_ttl`
+    on `FileNotFoundError` from `_CHANGELOG_PATH.read_text()`.
+  - No other tests in this file directly read any file in the plan
+    deletion list. (`CODE_STYLE.md`, `docs/code-style/index.md`,
+    `docs/tooling/python-tooling.md` are NOT in the plan deletion set.)
+  - **No skipIf-missing guards** on the file reads.
+
+---
+
+## 12. `tests/test_pro_support_hooks.py` (lines 470-510 only)
+
+- **What lines 470-510 contain**: One test function
+  `test_pro_pipeline_hooks_to_runner_kwargs_shape`. Its docstring (lines
+  470-505ish) is purely a contract description referencing
+  ``docs/agents/pro-contract.md`` and the public docstring of
+  :class:`ralph.pro_support.hooks.ProPipelineHooks`. The test body
+  (lines 506-510) constructs sentinels (`sentinel_bundle`,
+  `sentinel_policy`, etc.) and calls no file-reading utility.
+- **Imports observed in the visible excerpt**: `cast` from `typing`,
+  `MagicMock` from `unittest.mock`. (Top-of-file imports not visible in
+  the excerpt; the function under test was already imported above the
+  truncated range.)
+- **File I/O in the visible excerpt**: none.
+- **Deletion impact**:
+  - The test does not read `docs/agents/pro-contract.md`, so deleting
+    that file does **NOT** break `test_pro_pipeline_hooks_to_runner_kwargs_shape`
+    on this read.
+  - However, deleting the doc removes the documented contract source
+    the test pins. If other tests in the same file (above line 470) or
+    elsewhere in `test_pro_support_hooks.py` read `pro-contract.md`,
+    those calls are out of scope of this scout (the file beyond line
+    510 has 63 more lines per the tool's notice).
+  - **No skipIf-missing guard in the excerpt**.
+
+---
+
+# Summary: Per-Deletion-Target Risk Map
+
+| Plan target                                                | Required by                                                         | Breakage if deleted (single shot)                                                                                                                                |
+|------------------------------------------------------------|---------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `docs/sphinx/parallel-mode.md`                             | Tests #2, #3 (existence + content), #5 (`_PAGES_WITH_GETTING_STARTED_LINKS` membership) | **BREAKS** — three test files, multiple parametrized cases.                                                                                                     |
+| `quick-reference.md`                                       | Test #7 (`_OPERATIONAL_GUIDES`)                                      | **BREAKS** only if removed from BOTH `ralph-workflow/docs/sphinx/quick-reference.md` and `{repo_root}/docs/quick-reference.md`. Removing the Sphinx copy alone → passes (OR fallback). |
+| `docs/sphinx/reference.md`                                 | Tests #5 (supervising-api toctree body), #9 (`_SPHINX_PAGES`)        | **BREAKS** test_supervising_api_page_in_developer_section AND both tests in `TestSphinxPageCompleteness[reference.md]`.                                          |
+| `docs/sphinx/developer-reference.md`                       | Test #9 (`_SPHINX_PAGES`)                                            | **BREAKS** `TestSphinxPageCompleteness[developer-reference.md]` (both existence and content).                                                                   |
+| `changelog.md` (`ralph-workflow/CHANGELOG.md`)             | Tests #10 (`test_package_changelog_unreleased_section_calls_out_behavior_change`), #11 (three `test_changelog_*`) | **BREAKS** — four tests across two files.                                                                                                                        |
+| `docs/sphinx/watchdogs-and-timeouts.md`                    | Test #10 (`_PACKAGE_SPHINX_WATCHDOGS`)                               | **BREAKS** four tests in test_docs_readme_scope.py (fixture-less `.read_text()` calls).                                                                            |
+| `docs/sphinx/transcript.md`                                | Test #6 (fixture + content)                                          | **BREAKS** the entire `long_content_section` fixture and ~10 content tests.                                                                                       |
+| `docs/agents/pro-contract.md`                              | Test #1 (existence + content)                                        | **BREAKS** `test_pro_contract_md_lists_forward_looking_engine_capabilities`.                                                                                     |
+| `docs/sphinx/supervising-api.md`                           | Test #5 (toctree resolver in `test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages`) | **BREAKS** — the toctree entry `supervising-api` in `developer-internals.md` resolves via `<docname>.md`/`.rst` lookup; deleting the file fails the resolver. |
+| `docs/migration/parallel-mode.md`                          | Test #4 (`_DOC_FILES`, `pytest.skip` guard)                         | **NO BREAK** — file missing → pytest.skip → PASS.                                                                                                                |
+| `policy-explanation.md`                                    | None of the audited tests                                            | **NO BREAK** — no test references the path.                                                                                                                       |
+| `ralph-loop.md`                                            | None of the audited tests                                            | **NO BREAK**.                                                                                                                                                    |
+| `policy-driven-pipeline.md`                                | None                                                                | **NO BREAK**.                                                                                                                                                    |
+| `phase-routing.md`                                         | None                                                                | **NO BREAK**.                                                                                                                                                    |
+| `artifact-lifecycle.md`                                    | None                                                                | **NO BREAK**.                                                                                                                                                    |
+| `verification-model.md`                                    | None                                                                | **NO BREAK**.                                                                                                                                                    |
+| `local-web-access.md`                                      | None                                                                | **NO BREAK**.                                                                                                                                                    |
+| `docs/migration/policy-v2.md`                              | None                                                                | **NO BREAK**.                                                                                                                                                    |
+| `docs/VERIFICATION_GATE.md`                                | None                                                                | **NO BREAK**.                                                                                                                                                    |
+
+Tests that would still pass on deletion (file missing is fine): only
+`tests/test_parallel_docs_no_worktree_language.py` (uses
+`pytest.skip`). All other audited tests that read a targeted file use
+unconditional `.read_text()`, `.is_file()`, `.exists()`, or
+`path.exists()` asserts; deleting the file raises
+`FileNotFoundError`/`AssertionError` and fails pytest.
+
+Files in the plan set that are NOT directly read by any of these 12
+tests (and so are not asserted-on by this scout set): `policy-explanation.md`,
+`ralph-loop.md`, `policy-driven-pipeline.md`, `phase-routing.md`,
+`artifact-lifecycle.md`, `verification-model.md`, `local-web-access.md`,
+`docs/migration/policy-v2.md`, `docs/VERIFICATION_GATE.md`. Deletion of
+those is invisible to these tests — but their deletion may of course
+break other parts of the repo's verification surface that this scout
+did not read.
+
+---
+
+# Architecture / Connection Notes
+
+- Test files #2 and #3 contain heavily overlapping parallel-mode.md
+  assertions. File #2 is `…namespaced_payload_docs.py` (focuses on the
+  namespaced-payload contract and future-tense language), file #3 is
+  `…banned_phrases_across_all_docs.py` (focuses on broader banned
+  phrases sweeping all .md files). Both share `_DOC_PATH`,
+  `_CONCEPTS_DOC_PATH`, and `_ARCH_DOC_PATH` bindings literally.
+- The Python-package Sphinx source of truth is
+  `ralph-workflow/docs/sphinx/`. Many tests use
+  `Path(__file__).parent.parent` to anchor there. The
+  workspace-repo-root surface is `docs/` under the repo root
+  (one level above `ralph-workflow/`).
+- Tests #10 and #11 are the largest "command-sync / scope" batteries;
+  test #10 is the canonical scope file and pins watchdog/timeout
+  content to `watchdogs-and-timeouts.md` exclusively
+  (`timeout-policy.md` is asserted not to exist).
+- Test #7 documents a deliberate dual-location allowance: a page can
+  live at `ralph-workflow/docs/sphinx/<name>.md` OR at
+  `{repo_root}/docs/<name>.md` and `test_operational_guides_exist`
+  still passes. The plan can move `quick-reference.md` from one side to
+  the other without breaking #7.
+
+---
+
+# Start-Here Recommendation
+
+Open `ralph-workflow/tests/test_docs_readme_scope.py` first when
+cross-referencing the plan. It is the most explicit about which
+deletions are intentional (timeout-policy.md deletion is asserted as
+a regression guard) and which files MUST keep existing
+(watchdogs-and-timeouts.md and CHANGELOG.md are referenced with no
+skip guard). Then pair with `tests/test_sphinx_documentation_setup.py`
+to confirm Sphinx-tree structure invariants, and
+`tests/test_parallel_mode_docs_namespaced_payload_docs.py` +
+`tests/test_parallel_mode_docs_banned_phrases_across_all_docs.py`
+together to confirm that `parallel-mode.md` must remain as the
+canonical same-workspace v1 doc.
+
+---
+
+# Acceptance Report
+
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "Read-only audit produced; no source files modified, only a findings file was written to .pi-subagents/artifacts/outputs/d966cca9/file."
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "Per-file evidence: exact path bindings (with line ranges), exact content assertions (with line ranges), per-test skip-vs-hard-fail classification, and a per-plan-target risk map are all included in the artifact."
+    }
+  ],
+  "changedFiles": [
+    ".pi-subagents/artifacts/outputs/d966cca9/file"
+  ],
+  "testsAddedOrUpdated": [],
+  "commandsRun": [
+    {
+      "command": "read_file (12 files inspected)",
+      "result": "passed",
+      "summary": "All 12 scoped test files were fully read (file #12 was limited to lines 470-510 per the brief)."
+    },
+    {
+      "command": "mkdir -p .pi-subagents/artifacts/outputs/d966cca9 && write findings",
+      "result": "passed",
+      "summary": "Wrote the consolidated audit findings to the authoritative output path."
+    }
+  ],
+  "validationOutput": [
+    "Deletion risk map: parallel-mode.md (BREAKS), quick-reference.md (BREAKS only if BOTH copies removed), reference.md (BREAKS), developer-reference.md (BREAKS), changelog.md (BREAKS), watchdogs-and-timeouts.md (BREAKS), transcript.md (BREAKS), docs/agents/pro-contract.md (BREAKS), supervising-api.md (BREAKS via toctree resolver), docs/migration/parallel-mode.md (passes via pytest.skip), policy-explanation.md / ralph-loop.md / policy-driven-pipeline.md / phase-routing.md / artifact-lifecycle.md / verification-model.md / local-web-access.md / docs/migration/policy-v2.md / docs/VERIFICATION_GATE.md (no test asserts existence — outside scope of this scout)."
+  ],
+  "residualRisks": [
+    "tests/test_pro_support_hooks.py beyond line 510 not reviewed in this scout; deleting docs/agents/pro-contract.md may also break unspecified tests in that file beyond line 470.",
+    "Many tests cross-link Sphinx toctree entries (e.g. supervising-api) so removing a toctree-only doc can cascade-break siblings even when the doc itself isn't directly asserted.",
+    "This scout set is 12 files; there may be additional tests outside the scope (e.g., test_repo_root_operational_docs_sync.py sibling imports from tests/doc_roots.py) that could still touch the deletion targets."
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "No source edits. Audit-only output written to .pi-subagents/artifacts/outputs/d966cca9/file.",
+  "reviewFindings": [
+    "no blockers — report-only task; reviewer should weigh the BREAKS list against the deletion plan before approving any consolidation PR."
+  ],
+  "manualNotes": "Plan to delete parallel-mode.md, reference.md, developer-reference.md, changelog.md, watchdogs-and-timeouts.md, transcript.md, docs/agents/pro-contract.md, or supervising-api.md will fail `make verify` unless those tests are also updated as part of the consolidation. Plan to delete docs/migration/parallel-mode.md is safe with respect to the audited tests (skipIf-missing path)."
+}
+```

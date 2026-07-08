@@ -412,7 +412,7 @@ class GeneralConfig(RalphBaseModel):
             " ``agent_workspace_change_weights = { source = 1.0,"
             " log = 1.0 }`` in the [general] section of"
             " ralph-workflow.toml. See"
-            " docs/sphinx/watchdogs-and-timeouts.md for the workspace"
+            " docs/sphinx/concepts.md#watchdogs for the workspace"
             " change kinds and example migration."
         ),
     )

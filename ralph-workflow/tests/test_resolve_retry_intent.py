@@ -91,8 +91,7 @@ def test_resume_action_for_agent_inactivity_timeout_with_session_resume_safe() -
         f" session must resolve to action='resume'; got action={intent.action!r}"
     )
     assert intent.session_id == "sess-123", (
-        f"Resume intent must preserve the original session id; got"
-        f" session_id={intent.session_id!r}"
+        f"Resume intent must preserve the original session id; got session_id={intent.session_id!r}"
     )
     assert intent.failure_reason == "AgentInactivityTimeoutError"
 
@@ -121,8 +120,7 @@ def test_resume_action_for_open_code_resumable_exit_error() -> None:
         f" action='resume'; got action={intent.action!r}"
     )
     assert intent.session_id == "sess-456", (
-        f"Resume intent must preserve the captured session id; got"
-        f" session_id={intent.session_id!r}"
+        f"Resume intent must preserve the captured session id; got session_id={intent.session_id!r}"
     )
     assert intent.failure_reason == "OpenCodeResumableExitError"
 

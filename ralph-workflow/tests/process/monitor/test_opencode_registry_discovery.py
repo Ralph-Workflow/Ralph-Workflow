@@ -121,18 +121,14 @@ def test_opencode_registry_discovery_capture_emits_terminal_lines_on_ack() -> No
     registry = _make_registry()
     registry.register_child("child-A", "agent:test-scope:", pid=111)
 
-    capture = RegistryBackedSubagentOutputCapture(
-        registry, "child-A", "agent:test-scope:"
-    )
+    capture = RegistryBackedSubagentOutputCapture(registry, "child-A", "agent:test-scope:")
     # Drain the initial progress/heartbeat lines emitted by register_child.
     capture.read_lines(worker_id="child-A")
     registry.record_terminal_ack("child-A", terminal_state="complete")
 
     lines = capture.read_lines(worker_id="child-A")
 
-    assert any(
-        "terminal" in line.lower() and "complete" in line.lower() for line in lines
-    ), lines
+    assert any("terminal" in line.lower() and "complete" in line.lower() for line in lines), lines
 
 
 def test_opencode_registry_discovery_capture_only_emits_new_lines() -> None:
@@ -204,9 +200,7 @@ def test_opencode_registry_discovery_capture_returns_empty_when_child_disappears
     registry.register_child("child-A", "agent:test-scope:", pid=111)
     registry.record_progress("child-A", phase="phase-1")
 
-    capture = RegistryBackedSubagentOutputCapture(
-        registry, "child-A", "agent:test-scope:"
-    )
+    capture = RegistryBackedSubagentOutputCapture(registry, "child-A", "agent:test-scope:")
     # Drain the initial progress line emitted by record_progress.
     capture.read_lines(worker_id="child-A")
     # TTLs are 0.0, so the record is immediately stale; ``snapshot`` calls
@@ -310,7 +304,6 @@ def test_opencode_registry_discovery_filters_stale_records() -> None:
     assert set(captures) == {"fresh-child"}
 
 
-
 def test_opencode_registry_discovery_spawn_only_emits_no_progress_line() -> None:
     """Spawn-only registration (no progress yet) MUST NOT emit a progress line.
 
@@ -332,9 +325,7 @@ def test_opencode_registry_discovery_spawn_only_emits_no_progress_line() -> None
     registry = _make_registry()
     registry.register_child("child-A", "agent:test-scope:", pid=111)
 
-    capture = RegistryBackedSubagentOutputCapture(
-        registry, "child-A", "agent:test-scope:"
-    )
+    capture = RegistryBackedSubagentOutputCapture(registry, "child-A", "agent:test-scope:")
     lines = capture.read_lines(worker_id="child-A")
     assert lines == [], (
         "Spawn-only registration MUST NOT emit a progress line;"

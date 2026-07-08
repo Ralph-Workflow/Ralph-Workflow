@@ -96,18 +96,11 @@ def test_json_child_progress_with_child_id_refreshes_sink_and_registry() -> None
     registry = _make_registry()
     strategy, sink_calls, _registry = _make_strategy_with_sink(registry=registry)
     # Register the child first so the registry has a record to update.
-    strategy.observe_line(
-        '{"type":"child_started","child_id":"child-A","pid":1234}'
-    )
+    strategy.observe_line('{"type":"child_started","child_id":"child-A","pid":1234}')
     sink_calls.clear()  # ignore the spawn sink call (it's not a progress signal)
-    strategy.observe_line(
-        '{"type":"child_progress","child_id":"child-A","phase":"phase-1"}'
-    )
-    assert sink_calls == [
-        '{"type":"child_progress","child_id":"child-A","phase":"phase-1"}'
-    ], (
-        f"sink MUST be invoked for child_progress with child_id;"
-        f" got {sink_calls!r}"
+    strategy.observe_line('{"type":"child_progress","child_id":"child-A","phase":"phase-1"}')
+    assert sink_calls == ['{"type":"child_progress","child_id":"child-A","phase":"phase-1"}'], (
+        f"sink MUST be invoked for child_progress with child_id; got {sink_calls!r}"
     )
     # The registry MUST also have the progress recorded for child-A.
     snap = registry.snapshot("agent:test:")
@@ -138,13 +131,11 @@ def test_json_child_progress_without_child_id_does_not_refresh_sink() -> None:
     # (parity bug). Post-fix: NEITHER surface is updated.
     strategy.observe_line('{"type":"child_progress","phase":"phase-1"}')
     assert sink_calls == [], (
-        f"sink MUST NOT be invoked for child_progress without child_id;"
-        f" got {sink_calls!r}"
+        f"sink MUST NOT be invoked for child_progress without child_id; got {sink_calls!r}"
     )
     snap = registry.snapshot("agent:test:")
     assert snap.active_count == 0, (
-        f"registry MUST also be empty (parity OK); got"
-        f" active_count={snap.active_count}"
+        f"registry MUST also be empty (parity OK); got active_count={snap.active_count}"
     )
 
 
@@ -159,8 +150,7 @@ def test_plain_text_subagent_marker_refreshes_sink_only() -> None:
     strategy, sink_calls, _registry = _make_strategy_with_sink(registry=registry)
     strategy.observe_line("[subagent] progress reading source.py")
     assert sink_calls == ["[subagent] progress reading source.py"], (
-        f"plain-text marker MUST refresh the sink;"
-        f" got {sink_calls!r}"
+        f"plain-text marker MUST refresh the sink; got {sink_calls!r}"
     )
     snap = registry.snapshot("agent:test:")
     assert snap.active_count == 0, (
@@ -179,17 +169,14 @@ def test_child_complete_does_not_refresh_sink_but_updates_registry() -> None:
     registry = _make_registry()
     strategy, sink_calls, _registry = _make_strategy_with_sink(registry=registry)
     # Register the child first.
-    strategy.observe_line(
-        '{"type":"child_started","child_id":"child-A","pid":1234}'
-    )
+    strategy.observe_line('{"type":"child_started","child_id":"child-A","pid":1234}')
     sink_calls.clear()
     # Send a terminal event.
     strategy.observe_line(
         '{"type":"child_complete","child_id":"child-A","terminal_state":"complete"}'
     )
     assert sink_calls == [], (
-        f"sink MUST NOT be invoked for child_complete (terminal signal);"
-        f" got {sink_calls!r}"
+        f"sink MUST NOT be invoked for child_complete (terminal signal); got {sink_calls!r}"
     )
     # The registry MUST record the terminal-ack.
     snap = registry.snapshot("agent:test:")
@@ -224,9 +211,7 @@ def test_parse_opencode_child_id_returns_parsed_id() -> None:
     )
     for line, expected in cases:
         result = parse_opencode_child_id(line)
-        assert result == expected, (
-            f"line {line!r}: expected {expected!r}, got {result!r}"
-        )
+        assert result == expected, f"line {line!r}: expected {expected!r}, got {result!r}"
 
 
 def test_parity_sink_count_matches_registry_records_for_valid_lines() -> None:

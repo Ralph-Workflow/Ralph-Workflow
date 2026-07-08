@@ -67,9 +67,7 @@ class TestRunnerMissingPlanHandoffRecovery:
         )
 
         root = tmp_path
-        workspace_scope = WorkspaceScope(
-            root=root, allowed_roots=frozenset([root])
-        )
+        workspace_scope = WorkspaceScope(root=root, allowed_roots=frozenset([root]))
 
         # No plan handoff exists at .agent/PLAN.md inside MemoryWorkspace.
         effect = PreparePromptEffect(
@@ -141,9 +139,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             terminal_failure_phase=None,
             preserve_session_on_categories=("agent",),
         )
-        pipeline_policy = pipeline_policy.model_copy(
-            update={"recovery": override_recovery}
-        )
+        pipeline_policy = pipeline_policy.model_copy(update={"recovery": override_recovery})
 
         # Sanity: the default policy's recovery.cycle_cap is 200; prove we
         # overrode it so the test exercises the bound, not the default.
@@ -306,8 +302,7 @@ class TestRunnerMissingPlanHandoffRecovery:
         )
         assert first_recovery.phase == pipeline_policy.entry_phase
         assert first_recovery.recovery_epoch == 1, (
-            f"First recovery must end at recovery_epoch=1, "
-            f"got {first_recovery.recovery_epoch}"
+            f"First recovery must end at recovery_epoch=1, got {first_recovery.recovery_epoch}"
         )
 
         # Forward progress between the two recovery loops: planning ->
@@ -347,9 +342,7 @@ class TestRunnerMissingPlanHandoffRecovery:
         )
 
     @pytest.mark.timeout_seconds(15)
-    def test_recover_helper_resets_entry_phase_chain_on_success_path(
-        self, tmp_path: Path
-    ) -> None:
+    def test_recover_helper_resets_entry_phase_chain_on_success_path(self, tmp_path: Path) -> None:
         """Success-path recovery resets the entry phase's ``AgentChainState``.
 
         Regression for the analysis-feedback correctness bug: prior to
@@ -390,13 +383,9 @@ class TestRunnerMissingPlanHandoffRecovery:
         # PolicyBundle (not the PipelinePolicy itself). Resolve the
         # chain by the entry_phase key so the regression test mirrors
         # the production plumbing.
-        bundle_defaults_dir = (
-            Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-        )
+        bundle_defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
         full_bundle = load_policy(bundle_defaults_dir)
-        planning_agents = full_bundle.agents.agent_chains[
-            pipeline_policy.entry_phase
-        ].agents
+        planning_agents = full_bundle.agents.agent_chains[pipeline_policy.entry_phase].agents
 
         primed_state = PipelineState(
             phase="development",
@@ -411,9 +400,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             },
         )
 
-        primed_chain = primed_state.chain_for_phase(
-            pipeline_policy.entry_phase
-        )
+        primed_chain = primed_state.chain_for_phase(pipeline_policy.entry_phase)
         assert primed_chain is not None, (
             "primed_chain must exist for the entry_phase before recovery"
         )
@@ -422,8 +409,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             f"got {primed_chain.current_index}"
         )
         assert primed_chain.retries == 2, (
-            f"primed_chain.retries must be 2 (regression seed); "
-            f"got {primed_chain.retries}"
+            f"primed_chain.retries must be 2 (regression seed); got {primed_chain.retries}"
         )
 
         recovered = _runner_state_helpers.recover_missing_plan_handoff(
@@ -439,9 +425,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             f"({pipeline_policy.entry_phase!r}); got {recovered.phase!r}"
         )
 
-        recovered_chain = recovered.chain_for_phase(
-            pipeline_policy.entry_phase
-        )
+        recovered_chain = recovered.chain_for_phase(pipeline_policy.entry_phase)
         assert recovered_chain is not None, (
             "recovered planning chain must exist on the recovered state"
         )
@@ -485,21 +469,15 @@ class TestRunnerMissingPlanHandoffRecovery:
             terminal_failure_phase=None,
             preserve_session_on_categories=("agent",),
         )
-        pipeline_policy = pipeline_policy.model_copy(
-            update={"recovery": override_recovery}
-        )
+        pipeline_policy = pipeline_policy.model_copy(update={"recovery": override_recovery})
 
         # The planning agent chain is sourced from the AgentsPolicy on the
         # PolicyBundle (not the PipelinePolicy itself). Resolve the
         # chain by the entry_phase key so the regression test mirrors
         # the production plumbing.
-        bundle_defaults_dir = (
-            Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-        )
+        bundle_defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
         full_bundle = load_policy(bundle_defaults_dir)
-        planning_agents = full_bundle.agents.agent_chains[
-            pipeline_policy.entry_phase
-        ].agents
+        planning_agents = full_bundle.agents.agent_chains[pipeline_policy.entry_phase].agents
 
         primed_state = PipelineState(
             phase="development",
@@ -528,9 +506,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             f"('failed_terminal'); got {recovered.phase!r}"
         )
 
-        bound_chain = recovered.chain_for_phase(
-            pipeline_policy.entry_phase
-        )
+        bound_chain = recovered.chain_for_phase(pipeline_policy.entry_phase)
         assert bound_chain is not None, (
             "Bound-exceeded recovery MUST NOT clear the planning chain; "
             "the chain is irrelevant on the failed_route branch but the "
@@ -546,4 +522,3 @@ class TestRunnerMissingPlanHandoffRecovery:
             "without the path-gate, the chain would be wrongly reset to "
             f"retries=0. got {bound_chain.retries}"
         )
-

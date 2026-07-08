@@ -270,8 +270,7 @@ def test_configured_pi_override_propagates_to_catalog() -> None:
     direct = registry.get("pi")
     assert direct is not None, "registry.get('pi') must resolve the override"
     assert direct.cmd == "pi-custom", (
-        f"registry.get('pi').cmd must be the override ('pi-custom'), "
-        f"got {direct.cmd!r}"
+        f"registry.get('pi').cmd must be the override ('pi-custom'), got {direct.cmd!r}"
     )
 
     # catalog.get must ALSO reflect the override so the public catalog
@@ -282,14 +281,12 @@ def test_configured_pi_override_propagates_to_catalog() -> None:
         "without this fix the catalog still reports the built-in"
     )
     assert catalog_pi.config.cmd == "pi-custom", (
-        f"registry.catalog.get('pi').config.cmd must be 'pi-custom', "
-        f"got {catalog_pi.config.cmd!r}"
+        f"registry.catalog.get('pi').config.cmd must be 'pi-custom', got {catalog_pi.config.cmd!r}"
     )
     # The override must preserve the built-in's parser factory and strategy
     # factory (they are structural to the pi transport, not user-preference).
     assert catalog_pi.parser_factory is PiParser, (
-        f"pi override must keep the built-in's PiParser factory, "
-        f"got {catalog_pi.parser_factory!r}"
+        f"pi override must keep the built-in's PiParser factory, got {catalog_pi.parser_factory!r}"
     )
 
 
@@ -323,8 +320,7 @@ def test_configured_pi_override_propagates_to_dynamic_alias() -> None:
         "through the override base config"
     )
     assert alias.cmd == "pi-custom", (
-        f"pi/<model> synthesized config must carry the override cmd, "
-        f"got {alias.cmd!r}"
+        f"pi/<model> synthesized config must carry the override cmd, got {alias.cmd!r}"
     )
     assert alias.model_flag == "--model anthropic/claude-sonnet-4-20250514"
 
@@ -338,10 +334,7 @@ def test_configured_pi_override_propagates_to_dynamic_alias() -> None:
         f"pi/<model> catalog support config.cmd must be the override, "
         f"got {catalog_alias.config.cmd!r}"
     )
-    assert (
-        catalog_alias.config.model_flag
-        == "--model anthropic/claude-sonnet-4-20250514"
-    )
+    assert catalog_alias.config.model_flag == "--model anthropic/claude-sonnet-4-20250514"
 
 
 def test_ccs_dynamic_alias_resolves_on_both_registry_and_catalog() -> None:
@@ -378,8 +371,7 @@ def test_ccs_dynamic_alias_resolves_on_both_registry_and_catalog() -> None:
         f"synthesized command, got {direct.cmd!r}"
     )
     assert direct.transport == AgentTransport.CLAUDE, (
-        f"ccs/<alias> aliases must resolve to claude transport, "
-        f"got {direct.transport!r}"
+        f"ccs/<alias> aliases must resolve to claude transport, got {direct.transport!r}"
     )
 
     catalog_support = registry.catalog.get("ccs/mm")

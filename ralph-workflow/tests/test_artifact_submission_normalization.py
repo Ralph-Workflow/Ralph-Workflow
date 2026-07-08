@@ -466,10 +466,7 @@ def test_plan_section_submit_repairs_missing_commas_between_array_items(
         workspace,
         {
             "section": "risks_mitigations",
-            "content": (
-                '[{"risk": "A", "mitigation": "B"} '
-                '{"risk": "C", "mitigation": "D"}]'
-            ),
+            "content": ('[{"risk": "A", "mitigation": "B"} {"risk": "C", "mitigation": "D"}]'),
         },
     )
 

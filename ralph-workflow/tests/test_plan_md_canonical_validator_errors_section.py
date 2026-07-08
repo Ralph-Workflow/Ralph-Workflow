@@ -54,9 +54,7 @@ def test_canonical_validator_errors_section_present() -> None:
 
 
 @pytest.mark.timeout_seconds(5)
-def test_canonical_validator_errors_section_ordered_between_dumb_proof_and_module_family() -> (
-    None
-):
+def test_canonical_validator_errors_section_ordered_between_dumb_proof_and_module_family() -> None:
     """The new H2 must sit between ``## Dumb-proof checklist`` and ``## Module family``."""
     body = _load_plan_md()
     dumb_proof_idx = body.index("## Dumb-proof checklist")
@@ -96,4 +94,3 @@ def test_canonical_validator_errors_section_lists_required_error_strings() -> No
             f"## Canonical validator errors to fix must contain literal "
             f"validator error substring {required!r}"
         )
-

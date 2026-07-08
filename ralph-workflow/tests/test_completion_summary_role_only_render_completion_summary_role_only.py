@@ -117,7 +117,9 @@ class TestRenderCompletionSummaryRoleOnly:
         policy = _make_custom_policy()
         snapshot = _minimal_snapshot()
         console = _console()
-        ctx = make_display_context(console=console, )
+        ctx = make_display_context(
+            console=console,
+        )
         group = render_completion_summary_group(
             snapshot,
             display_context=ctx,

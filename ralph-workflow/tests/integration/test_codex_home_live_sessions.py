@@ -124,12 +124,8 @@ def test_live_codex_runtimes_active_homes_survive_registry_eviction(
         assert len(codex_module._allocated_codex_homes) == small_cap
         # The first two runtimes' CODEX_HOME paths must have been
         # evicted from the registry (they are the oldest).
-        assert str(runtimes[0].agent_env["CODEX_HOME"]) not in (
-            codex_module._allocated_codex_homes
-        )
-        assert str(runtimes[1].agent_env["CODEX_HOME"]) not in (
-            codex_module._allocated_codex_homes
-        )
+        assert str(runtimes[0].agent_env["CODEX_HOME"]) not in (codex_module._allocated_codex_homes)
+        assert str(runtimes[1].agent_env["CODEX_HOME"]) not in (codex_module._allocated_codex_homes)
 
         # CRITICAL INVARIANT: every previously-allocated CODEX_HOME
         # directory MUST still exist on disk, including the two that
@@ -200,8 +196,7 @@ def test_live_codex_runtimes_cleanup_hook_releases_each_own_home(
         first_cleanup()
 
         assert not first_home.exists(), (
-            "first runtime's CODEX_HOME must be rmtree'd by its "
-            "cleanup hook"
+            "first runtime's CODEX_HOME must be rmtree'd by its cleanup hook"
         )
 
         # Every OTHER runtime's CODEX_HOME must STILL exist (their
