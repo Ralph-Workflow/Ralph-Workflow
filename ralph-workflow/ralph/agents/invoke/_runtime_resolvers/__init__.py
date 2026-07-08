@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
@@ -15,11 +16,11 @@ from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationR
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.transport.codex import release_codex_home
+from ralph.mcp.transport.cursor import cursor_workspace_mcp_endpoint
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, write_pi_mcp_extension
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
     from ralph.config.models import AgentConfig
 
@@ -403,6 +404,83 @@ class PiRuntimeResolver:
         )
 
 
+class CursorRuntimeResolver:
+    """RuntimeResolver for AgentTransport.CURSOR.
+
+    Cursor reads its MCP server configuration from the documented
+    ``.cursor/mcp.json`` (workspace-local) and ``~/.cursor/mcp.json``
+    (user-global) JSON files.  This resolver writes a run-scoped Ralph
+    entry to BOTH paths (Cursor may prefer one over the other
+    depending on cwd) and restores the original bytes on exit so
+    operator-managed MCP servers are preserved across Ralph runs.
+
+    The MCP_ENDPOINT_ENV is consumed (and dropped) from the
+    ``runtime_env`` so it does not leak into the spawned agent's
+    environment as a literal variable (the endpoint itself is only
+    written into the JSON config files, not exported).
+    """
+
+    def resolve(
+        self,
+        config: AgentConfig,
+        extra_env: dict[str, str] | None,
+        workspace_path: Path | None,
+        *,
+        base_env: Mapping[str, str] | None = None,
+        system_prompt_file: str | None = None,
+        unsafe_mode: bool = False,
+    ) -> ResolvedInvocationRuntime:
+        from ralph.agents.invoke import (  # noqa: PLC0415
+            _apply_upstream_env,
+        )
+
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        runtime_env = dict(extra_env or {})
+        server_env: dict[str, str] = {}
+        endpoint = _get_endpoint(runtime_env, _env)
+
+        if not endpoint:
+            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
+
+        from ralph.agents.invoke import (  # noqa: PLC0415
+            load_existing_cursor_upstream_servers,
+        )
+
+        # Write the merged Ralph entry to BOTH the workspace-local
+        # ``.cursor/mcp.json`` and the user-global ``~/.cursor/mcp.json``
+        # so the agent picks up the MCP endpoint regardless of the cwd
+        # it was launched from.  The runtime context manager snapshots
+        # the original bytes INSIDE the critical section so a parallel
+        # sibling cannot interleave its own write/restore between our
+        # read and our restore.
+        resolved_workspace = workspace_path or Path.cwd()
+        write_ctx = cursor_workspace_mcp_endpoint(
+            resolved_workspace, endpoint, unsafe_mode=unsafe_mode
+        )
+        write_ctx.__enter__()
+        try:
+            _apply_upstream_env(
+                load_existing_cursor_upstream_servers(resolved_workspace),
+                resolved_workspace,
+                runtime_env,
+                server_env,
+            )
+        finally:
+            # Defer the restore until the invoke_agent ``finally`` block
+            # so a long-running Cursor run keeps the merged config
+            # available for the lifetime of the agent subprocess.  Wrap
+            # the contextmanager in a closure that exits it.
+            def _release() -> None:
+                write_ctx.__exit__(None, None, None)
+
+        return ResolvedInvocationRuntime(
+            agent_env=runtime_env or None,
+            server_env=server_env or None,
+            mcp_endpoint=endpoint,
+            cleanup=_release,
+        )
+
+
 RUNTIME_RESOLVERS: dict[AgentTransport, type[RuntimeResolver]] = {
     AgentTransport.OPENCODE: OpencodeRuntimeResolver,
     AgentTransport.NANOCODER: NanocoderRuntimeResolver,
@@ -411,6 +489,7 @@ RUNTIME_RESOLVERS: dict[AgentTransport, type[RuntimeResolver]] = {
     AgentTransport.CLAUDE_INTERACTIVE: ClaudeRuntimeResolver,
     AgentTransport.AGY: AgyRuntimeResolver,
     AgentTransport.PI: PiRuntimeResolver,
+    AgentTransport.CURSOR: CursorRuntimeResolver,
     AgentTransport.GENERIC: DefaultRuntimeResolver,
 }
 
@@ -419,6 +498,7 @@ __all__ = [
     "AgyRuntimeResolver",
     "ClaudeRuntimeResolver",
     "CodexRuntimeResolver",
+    "CursorRuntimeResolver",
     "DefaultRuntimeResolver",
     "NanocoderRuntimeResolver",
     "OpencodeRuntimeResolver",

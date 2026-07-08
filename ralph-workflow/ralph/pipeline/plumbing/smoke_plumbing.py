@@ -556,6 +556,20 @@ def _agy_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
     return getter("RALPH_AGY_BINARY")
 
 
+def _cursor_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
+    """Return the raw ``RALPH_CURSOR_BINARY`` env value, if set.
+
+    Callers may inject ``env_getter`` for tests and composed runtimes; the
+    production default is centralized here so smoke plumbing callers do not
+    read ambient environment directly.  There is no bundled mock for
+    cursor (the AGY mock fixture does not apply), so a non-empty
+    override points at a real wrapper, alternate live binary, or a
+    test-only stub that the operator wires themselves.
+    """
+    getter = env_getter if env_getter is not None else os.environ.get
+    return getter("RALPH_CURSOR_BINARY")
+
+
 def is_mock_agy_override() -> bool:
     """Return True when ``RALPH_AGY_BINARY`` points at the known mock binary.
 

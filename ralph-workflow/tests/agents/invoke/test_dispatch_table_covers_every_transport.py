@@ -32,7 +32,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 def _canonical_command_for_transport(transport: AgentTransport) -> str:
     """Return the canonical command string for the given transport.
 
-    Mirrors the ``cmd`` value used by the 7 built-in agents in
+    Mirrors the ``cmd`` value used by the 8 built-in agents in
     ``ralph/agents/builtin.py`` so the parser-key resolution can reach
     the per-transport built-in parser without seeding the catalog.
     """
@@ -44,6 +44,7 @@ def _canonical_command_for_transport(transport: AgentTransport) -> str:
         AgentTransport.NANOCODER: "nanocoder",
         AgentTransport.AGY: "agy",
         AgentTransport.PI: "pi",
+        AgentTransport.CURSOR: "agent",
         AgentTransport.GENERIC: "generic",
     }
     return canonical_commands[transport]

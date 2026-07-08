@@ -87,6 +87,7 @@ from ralph.process.monitor import (
     make_claude_interactive_subagent_pid_source,
     make_claude_subagent_pid_source,
     make_codex_subagent_pid_source,
+    make_cursor_subagent_pid_source,
     make_generic_subagent_pid_source,
     make_nanocoder_subagent_pid_source,
     make_opencode_subagent_pid_source,
@@ -283,6 +284,7 @@ class AgentRegistry:
             # ``AgentTransport`` enum, so it gets its own canonical
             # factory that binds the ``"nanocoder"`` source label.
             "nanocoder": make_nanocoder_subagent_pid_source,
+            "cursor": make_cursor_subagent_pid_source,
         }
         factory = factory_map.get(transport_name)
         if factory is None:
@@ -304,10 +306,7 @@ class AgentRegistry:
         logger.debug("Registered agent: {}", name)
         support: object = getattr(config, "_support", None)
         if isinstance(support, AgentSupport):
-            if (
-                self._catalog is not None
-                and self._catalog.get(support.name) is None
-            ):
+            if self._catalog is not None and self._catalog.get(support.name) is None:
                 self._catalog.add(support)
             return
 
@@ -547,6 +546,35 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
             "can_commit": True,
         }
         resolved = base_config.model_copy(update=pi_overrides)
+    elif name.startswith("cursor/"):
+        # Cursor's documented model ids may include bracket parameterization
+        # (``claude-opus-4-8[context=1m,effort=high,fast=false]``), nested
+        # slashes, and thinking-variant suffixes.  The full suffix after
+        # ``cursor/`` MUST be preserved verbatim, so we use
+        # ``name.removeprefix('cursor/')`` (NOT ``segments[1]``) which
+        # would drop everything after the first ``/`` inside the model id.
+        # ``cursor/auto`` is the explicit Auto alias; ``cursor`` alone is
+        # resolved to the built-in's default --yolo + Auto routing.
+        if not _is_valid_cursor_model_id(name.removeprefix("cursor/")):
+            return None
+        model_id = name.removeprefix("cursor/")
+        if model_id == "":
+            return None
+
+        base_config = _base("cursor")
+        if base_config is None:
+            return None
+        # ``--model <value>`` is a single argv pair.  ``shlex.quote``
+        # keeps the bracket-parameterized id in one argv token, and the
+        # template.format() + split() path in
+        # :class:`CursorCommandBuilder._build_model_flag` tokenizes
+        # the resulting ``--model 'claude-opus-4-8[...]'`` as exactly
+        # two argv tokens (--model, <value>).
+        cursor_overrides: dict[str, object] = {
+            "model_flag": f"--model {shlex.quote(model_id)}",
+            "can_commit": True,
+        }
+        resolved = base_config.model_copy(update=cursor_overrides)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
         if name.startswith("ccs/"):
             resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
@@ -624,3 +652,43 @@ def _is_valid_pi_model_id(model_id: str) -> bool:
     if has_thinking and ":" in thinking:
         return False
     return all(segment for segment in base.split("/"))
+
+
+def _is_valid_cursor_model_id(model_id: str) -> bool:
+    """Validate a ``cursor/<model>`` model id for argv-safe preservation.
+
+    Cursor's documented model catalog spans multiple upstream providers
+    (OpenAI Codex variants, Claude variants, Composer, Auto, etc.).
+    The full id after ``cursor/`` MUST be preserved verbatim in the
+    ``--model <value>`` argv pair, including:
+
+      * bracket parameterization, e.g.
+        ``cursor/claude-opus-4-8[context=1m,effort=high,fast=false]``
+      * nested slash paths, e.g.
+        ``cursor/anthropic/claude-sonnet-4-20250514``
+      * thinking-variant suffixes, e.g.
+        ``cursor/sonnet-4-thinking``,
+        ``cursor/gpt-5.3-codex-xhigh``
+
+    The resolver rejects shapes that would create empty or ambiguous
+    argv values (and would silently route a wrong model):
+
+      * empty model id (e.g. ``cursor/``, ``cursor//``)
+      * whitespace, newline, or carriage return anywhere in the id
+        (the ``CursorCommandBuilder`` tokenization in
+        :mod:`ralph.agents.invoke._command_builders` relies on this
+        invariant to emit a clean ``--model <value>`` argv pair
+        instead of a shlex-rejoined garbage token like
+        ``['--model', "'foo", "bar'"]``)
+      * empty provider/model path segments when ``/`` is present
+        (e.g. ``cursor//x``, ``cursor/provider/``,
+        ``cursor/provider//model``)
+
+    A bare single-segment name with no ``/`` is accepted as a plain
+    model id (e.g. ``cursor/auto``, ``cursor/gpt-5.3-codex-high``).
+    ``cursor/auto`` is the explicit Auto alias; ``cursor`` alone
+    defaults to the built-in's Auto routing.
+    """
+    if not model_id or any(ch.isspace() for ch in model_id):
+        return False
+    return all(segment for segment in model_id.split("/"))

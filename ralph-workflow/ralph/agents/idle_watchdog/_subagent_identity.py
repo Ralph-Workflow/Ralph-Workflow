@@ -62,6 +62,7 @@ _SUBAGENT_SOURCES: frozenset[str] = frozenset(
         "codex",
         "nanocoder",
         "gemini",
+        "cursor",
     }
 )
 
@@ -115,6 +116,7 @@ class SubagentIdentity:
         "codex",
         "nanocoder",
         "gemini",
+        "cursor",
     ]
     registered_at_monotonic: float
     label_prefix: str | None = None
@@ -191,6 +193,7 @@ class SubagentPidRegistry:
             "codex",
             "nanocoder",
             "gemini",
+            "cursor",
         ],
         label_prefix: str | None = None,
         *,

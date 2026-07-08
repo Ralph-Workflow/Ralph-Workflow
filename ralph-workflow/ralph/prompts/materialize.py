@@ -587,11 +587,16 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
 
 # Transports that expose every MCP tool as ``mcp__<server>__<tool>``: Claude Code
 # and Codex CLI (its core qualifies tool names with the ``__`` delimiter
-# unconditionally, even for a single server). Both must be prompted with that prefix.
+# unconditionally, even for a single server).  Cursor's ``agent`` binary
+# follows the documented MCP server-naming convention and exposes remote
+# MCP tools with the same ``mcp__<server>__<tool>`` prefix Claude and
+# Codex use, so Cursor prompts must also use that prefix or the model
+# calls a non-existent tool name.
 _CLAUDE_STYLE_TRANSPORTS = (
     AgentTransport.CLAUDE,
     AgentTransport.CLAUDE_INTERACTIVE,
     AgentTransport.CODEX,
+    AgentTransport.CURSOR,
 )
 
 

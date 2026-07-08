@@ -67,6 +67,11 @@ sub-agents, permission popups, plan mode, to-dos, or background bash"), so
 `work_units` and `parallel_plan` run sequentially in `unit_id` order for the
 `pi` transport.
 
+Cursor task tooling is also wired as a transport; operators can
+opt-in to the per-agent sub-agent capability for `cursor` via
+`[agents.cursor] subagent_capability = true` in
+`ralph-workflow.toml`.
+
 The planning prompt (`planning.jinja`) carries the new
 `## Agent-Driven Parallel Execution` block that tells the planner to write
 agent-facing intent (work units, dependencies, scope) and forbids routing

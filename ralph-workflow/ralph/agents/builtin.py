@@ -1,4 +1,4 @@
-"""Declarative registry of the seven built-in agent CLIs.
+"""Declarative registry of the eight built-in agent CLIs.
 
 This module is the single source of truth for the agents that Ralph Workflow
 ships with out of the box. Each entry is a :class:`~ralph.agents.builtin_spec.BuiltinAgentSpec`
@@ -7,7 +7,7 @@ the JSON parsing mode, the executable, the flags used for unattended
 ("yolo") invocation, resume/session support, and whether the agent is allowed
 to author commits.
 
-The seven built-in agents are:
+The eight built-in agents are:
 
 - ``claude`` (Claude Code interactive / PTY transport)
 - ``claude-headless`` (Claude Code headless JSON-stream transport)
@@ -16,6 +16,7 @@ The seven built-in agents are:
 - ``nanocoder`` (Nanocoder CLI)
 - ``agy`` (AGY CLI; binary overridable via ``RALPH_AGY_BINARY``)
 - ``pi`` (Pi.dev CLI)
+- ``cursor`` (Cursor Agent CLI; binary overridable via ``RALPH_CURSOR_BINARY``)
 
 Adding a new built-in agent requires editing this module only; the catalog
 picks the entries up via :func:`builtin_supports`. Custom agents configured
@@ -32,7 +33,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.builtin_spec import BuiltinAgentSpec
-from ralph.agents.execution_state._factory import _make_agy_strategy, _make_pi_strategy
+from ralph.agents.execution_state._factory import (
+    _make_agy_strategy,
+    _make_cursor_strategy,
+    _make_pi_strategy,
+)
 from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
 from ralph.agents.execution_state.claude_interactive_execution_strategy import (
     ClaudeInteractiveExecutionStrategy,
@@ -43,6 +48,7 @@ from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
+from ralph.agents.parsers.cursor import CursorParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
@@ -133,6 +139,20 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         can_commit=True,
         display_name="Pi",
     ).to_support("pi"),
+    BuiltinAgentSpec(
+        transport=AgentTransport.CURSOR,
+        parser_factory=CursorParser,
+        strategy_factory=_make_cursor_strategy,
+        json_parser=JsonParserType.GENERIC,
+        cmd="agent",
+        output_flag="--output-format stream-json",
+        yolo_flag="--yolo",
+        print_flag="--print",
+        streaming_flag="--stream-partial-output",
+        session_flag="--resume {}",
+        can_commit=True,
+        display_name="Cursor",
+    ).to_support("cursor"),
 )
 
 

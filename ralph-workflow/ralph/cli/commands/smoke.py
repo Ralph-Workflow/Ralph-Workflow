@@ -35,6 +35,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunResult,
     _agy_binary_override_env,
     _build_smoke_prompt,
+    _cursor_binary_override_env,
     _execute_smoke_turns,
     is_mock_agy_override,
     resolve_smoke_harness_spec,
@@ -55,6 +56,11 @@ from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 def get_agy_binary_override() -> str:
     """Return the AGY binary path, honoring ``RALPH_AGY_BINARY``."""
     return _agy_binary_override_env() or "agy"
+
+
+def get_cursor_binary_override() -> str:
+    """Return the Cursor binary path, honoring ``RALPH_CURSOR_BINARY``."""
+    return _cursor_binary_override_env() or "agent"
 
 
 def _resolve_agy_binary_override() -> str | None:
@@ -95,6 +101,47 @@ def _resolve_agy_binary_override() -> str | None:
     return str(resolved)
 
 
+def _resolve_cursor_binary_override() -> str | None:
+    """Return the validated absolute ``RALPH_CURSOR_BINARY`` override or ``None``.
+
+    Mirrors :func:`_resolve_agy_binary_override` for the Cursor
+    transport.  A relative override is resolved against the current
+    working directory so downstream :class:`subprocess.Popen` always
+    sees an absolute path.  The path must resolve to a regular file
+    with executable bits set, or to a name ``shutil.which`` can locate
+    on ``PATH``.  When validation fails a WARNING is logged and
+    ``None`` is returned so the caller falls back to the real
+    ``agent`` binary on ``PATH``.
+
+    Unlike AGY there is no bundled mock binary for Cursor, so any
+    non-empty override points at a real wrapper, alternate live
+    binary, or an operator-wired test stub.  The override is
+    applied to the ``cmd`` field verbatim (no shlex-quoting
+    shenanigans) so a wrapper script that takes its own flags
+    preserves those flags.
+    """
+    override = _cursor_binary_override_env()
+    if not override:
+        return None
+    resolved = Path(override).expanduser()
+    if not resolved.is_absolute():
+        resolved = resolved.resolve()
+        logger.info(
+            "Resolved relative RALPH_CURSOR_BINARY '{}' to absolute path '{}'",
+            override,
+            resolved,
+        )
+    if shutil.which(str(resolved)) is None and not (
+        resolved.is_file() and os.access(resolved, os.X_OK)
+    ):
+        logger.warning(
+            "RALPH_CURSOR_BINARY points to '{}', which is not executable; ignoring override",
+            override,
+        )
+        return None
+    return str(resolved)
+
+
 def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
     """Return a copy of ``agent_config`` that uses ``RALPH_AGY_BINARY`` when set.
 
@@ -121,6 +168,29 @@ def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
     return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
 
 
+def _maybe_apply_cursor_binary_override(agent_config: AgentConfig) -> AgentConfig:
+    """Return a copy of ``agent_config`` that uses ``RALPH_CURSOR_BINARY`` when set.
+
+    Validates the override path (resolving relative paths to absolute)
+    and leaves ``agent_config`` unchanged when the path is not
+    executable or not a regular file, logging a WARNING in that case.
+
+    Unlike the AGY override, the cursor override is shlex.quote()d
+    when applied to the cmd field so the wrapper path is preserved
+    as a single argv token by downstream shlex.split.  Operators
+    that need extra flags on the wrapper can set
+    ``[agents.cursor].cmd`` in their config (the CursorCommandBuilder
+    honors that override via shlex.split on the config.cmd).
+    """
+    if agent_config.transport is not AgentTransport.CURSOR:
+        return agent_config
+    resolved = _resolve_cursor_binary_override()
+    if resolved is None:
+        return agent_config
+    logger.info("Using RALPH_CURSOR_BINARY override: {}", resolved)
+    return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
+
+
 def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
     """Return a config copy with AGY agents using ``RALPH_AGY_BINARY`` when set."""
     resolved = _resolve_agy_binary_override()
@@ -132,6 +202,21 @@ def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig
     new_agents: dict[str, AgentConfig] = {}
     for name, agent_config in config.agents.items():
         if agent_config.transport is AgentTransport.AGY:
+            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
+        else:
+            new_agents[name] = agent_config
+    return config.model_copy(update={"agents": new_agents})
+
+
+def _apply_cursor_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
+    """Return a config copy with Cursor agents using ``RALPH_CURSOR_BINARY`` when set."""
+    resolved = _resolve_cursor_binary_override()
+    if resolved is None:
+        return config
+    quoted = shlex.quote(resolved)
+    new_agents: dict[str, AgentConfig] = {}
+    for name, agent_config in config.agents.items():
+        if agent_config.transport is AgentTransport.CURSOR:
             new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
         else:
             new_agents[name] = agent_config
@@ -156,6 +241,7 @@ __all__ = [
     "render_smoke_report",
     "smoke_interactive_agy_command",
     "smoke_interactive_claude_command",
+    "smoke_interactive_cursor_command",
     "smoke_interactive_nanocoder_command",
 ]
 
@@ -298,8 +384,16 @@ def smoke_harness_agent_command(
                 "Using RALPH_AGY_BINARY override for AGY transport: '{}'",
                 agy_override,
             )
+    cursor_override = _cursor_binary_override_env()
+    if cursor_override and agent_config.transport is AgentTransport.CURSOR:
+        logger.info(
+            "Using RALPH_CURSOR_BINARY override for Cursor transport: '{}'",
+            cursor_override,
+        )
     agent_config = _maybe_apply_agy_binary_override(agent_config)
+    agent_config = _maybe_apply_cursor_binary_override(agent_config)
     config = _apply_agy_binary_override_to_config(config)
+    config = _apply_cursor_binary_override_to_config(config)
     # Dynamic agy/<model> aliases are resolved from builtins, not from
     # config.agents, so inject the overridden config under the exact
     # agent name to ensure RALPH_AGY_BINARY is honored.
@@ -443,6 +537,63 @@ def smoke_interactive_nanocoder_command(
     if agent_config.transport is None or agent_config.transport != AgentTransport.NANOCODER:
         logger.error(
             "Agent '{}' resolves to transport '{}', not NANOCODER.",
+            agent_name,
+            agent_config.transport.value if agent_config.transport else "None",
+        )
+        return 2
+
+    return smoke_harness_agent_command(
+        agent_name,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+    )
+
+
+def smoke_interactive_cursor_command(
+    agent_name: str = "cursor/auto",
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> int:
+    """Run the manual end-to-end smoke harness via the Cursor headless contract.
+
+    This drives the live ``agent`` binary (or the ``RALPH_CURSOR_BINARY``
+    override when set).  The default alias is ``cursor/auto`` because
+    that exercises the dynamic-alias path and the documented Auto
+    default-routing model.  The command is OUTSIDE ``make verify`` per
+    the cursor non-goal of no live-token-consuming smoke tests in
+    verify (the harness only runs when an operator explicitly invokes
+    it).
+    """
+    cursor_binary = get_cursor_binary_override()
+    if shutil.which(cursor_binary) is None and not (
+        Path(cursor_binary).is_file() and os.access(cursor_binary, os.X_OK)
+    ):
+        logger.error(
+            "cursor binary not found at '{}'. Install Cursor Agent and "
+            "ensure `agent` is on PATH, or set RALPH_CURSOR_BINARY to a "
+            "valid wrapper for testing.",
+            cursor_binary,
+        )
+        return 2
+
+    workspace_scope = resolve_workspace_scope()
+    config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    registry = AgentRegistry.from_config(config)
+    agent_config = registry.get(agent_name)
+    if agent_config is None:
+        logger.error(
+            "Agent '{}' is not available. Use --agent with a cursor/<model> alias, "
+            "e.g. --agent 'cursor/auto'.",
+            agent_name,
+        )
+        return 2
+    if agent_config.transport is None or agent_config.transport != AgentTransport.CURSOR:
+        logger.error(
+            "Agent '{}' resolves to transport '{}', not CURSOR. "
+            "Use --agent with a cursor/<model> alias.",
             agent_name,
             agent_config.transport.value if agent_config.transport else "None",
         )

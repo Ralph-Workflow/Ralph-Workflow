@@ -47,6 +47,7 @@ from .base import AgentParser
 from .claude import ClaudeParser
 from .claude_interactive import ClaudeInteractiveParser
 from .codex import CodexParser
+from .cursor import CursorParser
 from .gemini import GeminiParser
 from .generic import GenericParser
 from .nanocoder import NanocoderParser
@@ -68,6 +69,7 @@ __all__ = [
     "ClaudeInteractiveParser",
     "ClaudeParser",
     "CodexParser",
+    "CursorParser",
     "GeminiParser",
     "GenericParser",
     "NanocoderParser",

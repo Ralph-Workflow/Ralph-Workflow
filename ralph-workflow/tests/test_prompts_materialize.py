@@ -99,6 +99,35 @@ def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_agy() -> 
     assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_ARTIFACT_TOOL
 
 
+class TestCursorToolNameMatchesClaudeStyle:
+    """Pin AC-21: Cursor's MCP tool names use the ``mcp__ralph__`` prefix.
+
+    Cursor's ``agent`` binary follows the documented MCP server-naming
+    convention and exposes remote MCP tools as ``mcp__<server>__<tool>``,
+    identical to Claude and Codex.  A Cursor prompt that uses a
+    different prefix (e.g. ``ralph_``) would cause the model to call a
+    non-existent tool name.  The two tests below pin the prefix
+    contract:
+
+      * :func:`tool_name_prefix_for_transport` returns
+        ``"mcp__ralph__"`` for ``AgentTransport.CURSOR`` (the prefix
+        every prompt template uses to construct tool names).
+      * :func:`submit_artifact_tool_name_for_transport` returns
+        ``claude_tool_name(SUBMIT_ARTIFACT_TOOL)`` (== ``mcp__ralph__submit_artifact``)
+        for ``AgentTransport.CURSOR`` (the canonical submit-artifact
+        tool name materialized into Cursor prompts).
+    """
+
+    def test_tool_name_prefix_for_cursor_is_claude_style(self) -> None:
+        assert (
+            tool_name_prefix_for_transport(AgentTransport.CURSOR) == "mcp__ralph__"
+        )
+
+    def test_submit_artifact_tool_name_for_cursor_is_claude_namespaced(self) -> None:
+        assert submit_artifact_tool_name_for_transport(
+            AgentTransport.CURSOR
+        ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_none() -> None:
     assert submit_artifact_tool_name_for_transport(None) == SUBMIT_ARTIFACT_TOOL
 

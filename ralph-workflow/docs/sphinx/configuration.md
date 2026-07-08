@@ -143,6 +143,7 @@ The Pro↔Ralph Workflow contract uses exactly three engine-facing variables (se
 | Variable | Purpose |
 |----------|---------|
 | `RALPH_AGY_BINARY` | Path to a custom `agy` executable, or to the deterministic mock at `tests/_support/mock_agy.sh` for CI. See [CLI Reference](cli.md) and [Agent Compatibility](agent-compatibility.md). |
+| `RALPH_CURSOR_BINARY` | Path to a custom `agent` executable (Cursor Agent CLI). The override points at a real wrapper, alternate live binary, or an operator-wired test stub. There is no bundled mock for Cursor (unlike AGY). See [CLI Reference](cli.md) and [Agent Compatibility](agent-compatibility.md). |
 | `RALPH_INLINE_SKILLS_DIR` | Directory whose skill files are inlined into prompts through `SKILLS_INLINE_CONTENT` instead of relying on the shipped skill bundle. See [Getting Started](getting-started.md). |
 | `XDG_CONFIG_HOME` | When set, Ralph Workflow places the user-global config at `$XDG_CONFIG_HOME/ralph-workflow.toml` instead of `~/.config/ralph-workflow.toml`. |
 
@@ -284,7 +285,14 @@ development_analysis = "analysis"
 development_commit = "commit"
 ```
 
-`agy` (Google Anti Gravity), `nanocoder`, and `pi` (pi.dev) are also valid agent names in any chain alongside `claude`, `codex`, and `opencode`.
+`agy` (Google Anti Gravity), `nanocoder`, `pi` (pi.dev), and `cursor`
+(Cursor Agent CLI) are also valid agent names in any chain alongside
+`claude`, `codex`, and `opencode`.  Cursor supports the same
+`<agent>/<model>` dynamic-alias syntax as the other model-addressable
+agents (e.g. `cursor/auto`, `cursor/gpt-5.3-codex-high`,
+`cursor/claude-sonnet-5-thinking`); the full id after `cursor/` is
+preserved verbatim in the `--model` flag, including bracket
+parameterization like `claude-opus-4-8[context=1m,effort=high,fast=false]`.
 
 In practice:
 
@@ -300,7 +308,7 @@ Multiple drains can point at the same chain. That lets you change agent policy w
 development = ["agy", "codex", "claude/sonnet"]
 ```
 
-Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, `agy`, and `pi`.
+Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, and `cursor`.
 
 Nanocoder also supports provider/model routing through the same direct-agent syntax used for OpenCode. For example, `nanocoder/ollama/llama3.1` resolves to a built-in Nanocoder invocation with `--provider ollama --model llama3.1`.
 

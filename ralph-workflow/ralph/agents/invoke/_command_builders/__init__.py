@@ -324,6 +324,12 @@ class ConfigurableCommandBuilder:
             return config.cmd.split()
         if "agy" in cmd[0]:
             return shlex.split(config.cmd)
+        if "agent" in cmd[0]:
+            # Cursor (binary ``agent``) honors a multi-token cmd override so
+            # operators may point at a wrapper that adds e.g. telemetry flags.
+            # shlex.split preserves the wrapper path AND its trailing flags as
+            # separate argv tokens, matching the AGY override contract.
+            return shlex.split(config.cmd)
         return [_agent_command_name(config), *cmd[1:]]
 
     def _build_yolo_session_flags(
@@ -508,6 +514,48 @@ class AgyCommandBuilder(ConfigurableCommandBuilder):
         super().__init__(self.SPEC)
 
 
+class CursorCommandBuilder(ConfigurableCommandBuilder):
+    """CommandBuilder for AgentTransport.CURSOR.
+
+    The headless invocation is ``agent --print --output-format stream-json
+    --trust --yolo --approve-mcps --model <id> <prompt>`` per the
+    documented Cursor Agent CLI automation contract.  ``--trust`` and
+    ``--approve-mcps`` are the documented unattended-runner overrides that
+    skip the interactive workspace-trust and MCP-approval prompts. ``--yolo``
+    is the documented autonomy flag for the headless transport.  The
+    prompt is a positional argument, loaded via :func:`_load_prompt_text`
+    so a multi-modal sidecar (when present) is appended to the rendered
+    prompt text.
+
+    ``--stream-partial-output`` is omitted from the default spec because it
+    only improves live visibility when the operator passes
+    ``--output-format stream-json``; that flag is already in the spec, so
+    the streaming partial-output path is opt-in via
+    ``[agents.cursor].streaming_flag`` rather than a hardcoded default.
+
+    The ``--print`` headless flag is emitted via :attr:`print_flag` so an
+    operator-supplied ``[agents.cursor].cmd`` override (e.g.
+    ``/opt/wrapper/agent --telemetry-flag``) does not have to repeat the
+    ``--print`` token.  The builder concatenates the user-supplied cmd
+    (split via :func:`shlex.split`) and the documented headless flag set
+    so the wrapper preserves its own flags verbatim.
+    """
+
+    SPEC = CommandBuilderSpec(
+        base_argv=("agent",),
+        format_flag=None,
+        output_flag="--output-format stream-json",
+        yolo_flag="--yolo",
+        model_flag_template="--model {}",
+        positional_prompt=True,
+        print_flag="--print",
+        extra_flags_before_prompt=("--trust", "--approve-mcps"),
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.SPEC)
+
+
 class PiCommandBuilder(ConfigurableCommandBuilder):
     """CommandBuilder for AgentTransport.PI.
 
@@ -615,6 +663,7 @@ COMMAND_BUILDERS: dict[AgentTransport, type[CommandBuilder]] = {
     AgentTransport.CLAUDE_INTERACTIVE: ClaudeInteractiveCommandBuilder,
     AgentTransport.AGY: AgyCommandBuilder,
     AgentTransport.PI: PiCommandBuilder,
+    AgentTransport.CURSOR: CursorCommandBuilder,
     AgentTransport.CLAUDE: DefaultCommandBuilder,
     AgentTransport.GENERIC: DefaultCommandBuilder,
 }
@@ -625,6 +674,7 @@ __all__ = [
     "ClaudeInteractiveCommandBuilder",
     "CodexCommandBuilder",
     "CommandBuilder",
+    "CursorCommandBuilder",
     "DefaultCommandBuilder",
     "NanocoderCommandBuilder",
     "OpencodeCommandBuilder",

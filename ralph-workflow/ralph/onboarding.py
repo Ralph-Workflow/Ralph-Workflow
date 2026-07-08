@@ -85,7 +85,7 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
         "missing (project scope: .opencode/skills/ canonical + symlinks to .claude/skills/, "
         ".codex/skills/, .gemini/antigravity-cli/skills/). Run `ralph --force-init-skills` to "
         "repair or overwrite a conflict.",
-        "Install AI agents if missing (e.g., `claude`, `opencode`, `nanocoder`, `agy`)",
+        "Install AI agents if missing (e.g., `claude`, `opencode`, `nanocoder`, `agy`, `cursor`)",
         f"Skills were installed to ~/.claude/skills/ and symlinked to {siblings}",
         f"Project-local skills were seeded to {PROJECT_CANONICAL_SKILLS_PATH}and symlinked to "
         f"{project_siblings} so every supported agent finds the same baseline. "

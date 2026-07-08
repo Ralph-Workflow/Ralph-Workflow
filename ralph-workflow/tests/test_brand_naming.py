@@ -109,6 +109,12 @@ _ALLOWLIST: list[tuple[str, str]] = [
     # Third-party product name (optional GUI layer) — Ralph-Workflow-Pro is a different
     # product name from Ralph Workflow, not a project name usage of bare 'Ralph'.
     ("Ralph-Workflow-Pro", "third-party product name"),
+    # The literal MCP server entry name (``"ralph"`` key in
+    # ``mcpServers`` JSON config).  The bare 'Ralph' in 'the Ralph entry'
+    # refers to the JSON key, not the project name.  Used in docs that
+    # describe the cursor / agy / claude MCP wiring.
+    ("the Ralph entry", "MCP server entry name (JSON key)"),
+    ("Ralph entry plus", "MCP server entry name (JSON key)"),
 ]
 
 # Pattern: a capital-R 'Ralph' word that is NOT followed by ' Workflow'

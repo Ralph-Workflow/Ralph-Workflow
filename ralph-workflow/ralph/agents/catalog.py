@@ -24,7 +24,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar
 
 from ralph.agents._contracts import StrategyFactory
-from ralph.agents.execution_state._factory import _make_agy_strategy, _make_pi_strategy
+from ralph.agents.execution_state._factory import (
+    _make_agy_strategy,
+    _make_cursor_strategy,
+    _make_pi_strategy,
+)
 from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
 from ralph.agents.execution_state.claude_interactive_execution_strategy import (
     ClaudeInteractiveExecutionStrategy,
@@ -35,6 +39,7 @@ from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
+from ralph.agents.parsers.cursor import CursorParser
 from ralph.agents.parsers.gemini import GeminiParser
 from ralph.agents.parsers.generic import GenericParser
 from ralph.agents.parsers.nanocoder import NanocoderParser
@@ -189,6 +194,7 @@ _DEFAULT_BUILTIN_PARSER_TYPES: dict[
         ClaudeInteractiveExecutionStrategy,
     ),
     "codex": (CodexParser, AgentTransport.CODEX, GenericExecutionStrategy),
+    "cursor": (CursorParser, AgentTransport.CURSOR, GenericExecutionStrategy),
     "gemini": (GeminiParser, AgentTransport.GENERIC, GenericExecutionStrategy),
     "nanocoder": (NanocoderParser, AgentTransport.NANOCODER, GenericExecutionStrategy),
     "opencode": (OpenCodeParser, AgentTransport.OPENCODE, GenericExecutionStrategy),
@@ -230,6 +236,7 @@ def _default_strategy_factories() -> dict[AgentTransport, StrategyFactory]:
         AgentTransport.CODEX: GenericExecutionStrategy,
         AgentTransport.NANOCODER: GenericExecutionStrategy,
         AgentTransport.PI: _make_pi_strategy,
+        AgentTransport.CURSOR: _make_cursor_strategy,
         AgentTransport.GENERIC: GenericExecutionStrategy,
     }
 
@@ -389,9 +396,7 @@ class AgentCatalog:
                 registration through this path).
         """
         if not support.is_builtin:
-            msg = (
-                f"Replacement support must have is_builtin=True: {name!r}"
-            )
+            msg = f"Replacement support must have is_builtin=True: {name!r}"
             raise ValueError(msg)
 
         name_lower = name.lower()
@@ -400,10 +405,7 @@ class AgentCatalog:
             msg = f"Cannot replace non-existent catalog entry: {name!r}"
             raise ValueError(msg)
         if not existing.is_builtin:
-            msg = (
-                f"Cannot replace non-built-in catalog entry through "
-                f"replace_builtin: {name!r}"
-            )
+            msg = f"Cannot replace non-built-in catalog entry through replace_builtin: {name!r}"
             raise ValueError(msg)
 
         old_cmd_lower = existing.cmd.lower()
@@ -554,9 +556,7 @@ def _reset_default_catalog(catalog: AgentCatalog) -> None:
     _catalog_holder.append(catalog)
 
 
-def _resolve_dynamic_support(
-    catalog: AgentCatalog, name_or_command: str
-) -> "AgentSupport | None":
+def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "AgentSupport | None":
     """Resolve a documented dynamic alias to a synthesized :class:`AgentSupport`.
 
     Delegates to ``ralph.agents.registry._resolve_dynamic_agent`` (lazy import to
