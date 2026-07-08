@@ -281,24 +281,6 @@ the contract test in `tests/test_pro_support_contract.py` so the
 new behaviour is pinned. A contract change that is not pinned by
 a passing test is incomplete.
 
-## Forward-looking engine capabilities pending contract amendment
-
-The engine has three new surfaces that the upstream contract has not yet
-been amended to formalise. Until the Pro repository accepts the
-engine-side handoff, these capabilities are engine-internal and NOT
-contractually binding on the Pro product:
-
-- `ProMarkerWatcher` — late marker adoption daemon thread (see
-  `ralph/pro_support/watcher.py` and
-  `tests/test_pro_support_watcher.py`).
-- `ProPipelineHooks` — custom pipeline DI seam, 13 fields total (5
-  factory kwargs + 1 policy_bundle_override + 1 snapshot_registry +
-  6 collaborator overrides, see `ralph/pro_support/hooks.py` and
-  `tests/test_pro_support_hooks.py`).
-- `PipelineStateSnapshot` — read-only state observability (see
-  `ralph/pro_support/state_query.py` and
-  `tests/test_pro_support_state_query.py`).
-
 ## Cross-references
 
 - Upstream contract (authoritative):
