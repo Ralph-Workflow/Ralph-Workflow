@@ -396,6 +396,37 @@ class TestPiDevBlackboxIndividualEvents:
         assert any(r.type == "tool_result" for r in results)
         assert not any(r.type == "error" for r in results)
 
+    def test_toolcall_end_yields_tool_use_with_tool_and_args_metadata(self) -> None:
+        """Pi message-update tool calls expose the same normalized
+        metadata shape as top-level tool_execution_start.
+        """
+        parser = PiParser()
+        line = json.dumps(
+            {
+                "type": "message_update",
+                "assistantMessageEvent": {
+                    "type": "toolcall_end",
+                    "contentIndex": 0,
+                    "toolCall": {
+                        "id": "call_1",
+                        "name": "mcp__ralph__exec",
+                        "input": {"command": "pwd", "timeout_ms": 300000},
+                    },
+                },
+            }
+        )
+
+        results = list(parser.parse(_lines(line)))
+
+        tool_uses = [line for line in results if line.type == "tool_use"]
+        assert len(tool_uses) == 1
+        assert tool_uses[0].content == "mcp__ralph__exec"
+        assert tool_uses[0].metadata["tool"] == "mcp__ralph__exec"
+        assert tool_uses[0].metadata["args"] == {
+            "command": "pwd",
+            "timeout_ms": 300000,
+        }
+
 
 class TestPiDevBlackboxConfigOverride:
     """End-to-end coverage of configured ``[agents.pi]`` overrides.

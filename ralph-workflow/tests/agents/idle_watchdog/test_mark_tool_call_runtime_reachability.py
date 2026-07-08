@@ -39,6 +39,7 @@ import pytest
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.execution_state._factory import _make_pi_strategy
 from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
@@ -117,6 +118,51 @@ def test_extract_tool_call_from_arguments_field() -> None:
     assert tool_args == {"content": "hello"}
 
 
+def test_extract_tool_call_from_pi_tool_execution_start_envelope() -> None:
+    """Pi's documented ``tool_execution_start`` event must fingerprint
+    like other transports so repeated MCP calls are breakable.
+    """
+    line = json.dumps(
+        {
+            "type": "tool_execution_start",
+            "toolCallId": "call_1",
+            "toolName": "mcp__ralph__exec",
+            "args": {"command": "pwd", "timeout_ms": 300000},
+        }
+    )
+    result = _extract_tool_call_from_activity_signal(line)
+    assert result is not None
+    tool_name, tool_args = result
+    assert tool_name == "mcp__ralph__exec"
+    assert tool_args == {"command": "pwd", "timeout_ms": 300000}
+
+
+def test_extract_tool_call_from_pi_toolcall_end_envelope() -> None:
+    """Pi ``message_update`` toolcall_end events carry the tool call
+    inside ``assistantMessageEvent.toolCall``; the breaker must see
+    the inner name and input arguments.
+    """
+    line = json.dumps(
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {
+                "type": "toolcall_end",
+                "contentIndex": 0,
+                "toolCall": {
+                    "id": "call_1",
+                    "name": "mcp__ralph__exec",
+                    "input": {"command": "pwd", "timeout_ms": 300000},
+                },
+            },
+        }
+    )
+    result = _extract_tool_call_from_activity_signal(line)
+    assert result is not None
+    tool_name, tool_args = result
+    assert tool_name == "mcp__ralph__exec"
+    assert tool_args == {"command": "pwd", "timeout_ms": 300000}
+
+
 def test_extract_tool_call_returns_none_for_non_tool_use_envelope() -> None:
     """A non-tool-use envelope (e.g. ``{"type": "text", ...}``) MUST
     return ``None`` so the breaker is NOT fed for irrelevant lines.
@@ -178,6 +224,94 @@ def test_extract_tool_call_from_plain_tool_prefix() -> None:
 def test_extract_tool_call_returns_none_for_plain_text_without_tool_marker() -> None:
     """A non-tool plain-text line MUST NOT produce a fingerprint."""
     assert _extract_tool_call_from_activity_signal("random log line") is None
+
+
+def test_pi_strategy_classifies_tool_execution_start_as_tool_use() -> None:
+    """Pi's strategy must classify pi.dev tool events as TOOL_USE.
+
+    Without this, pi MCP calls are ordinary output to the watchdog,
+    so the repeated-identical-tool-call breaker never receives the
+    extraction helper's stable fingerprint.
+    """
+    strategy = _make_pi_strategy()
+    line = json.dumps(
+        {
+            "type": "tool_execution_start",
+            "toolName": "mcp__ralph__exec",
+            "args": {"command": "pwd"},
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.raw == line
+
+
+def test_pi_strategy_classifies_toolcall_end_as_tool_use() -> None:
+    """Pi message-update toolcall events must feed the same TOOL_USE
+    path as OpenCode tool calls.
+    """
+    strategy = _make_pi_strategy()
+    line = json.dumps(
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {
+                "type": "toolcall_end",
+                "toolCall": {"name": "mcp__ralph__exec", "input": {"command": "pwd"}},
+            },
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.raw == line
+
+
+def test_pi_strategy_classifies_message_update_error_as_error_line() -> None:
+    """Pi ``assistantMessageEvent.type=error`` frames such as
+    ``terminated`` must feed the repeated-error breaker, not reset
+    the idle timer as ordinary output.
+    """
+    strategy = _make_pi_strategy()
+    line = json.dumps(
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {"type": "error", "reason": "terminated"},
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.ERROR_LINE
+    assert signal.raw == "terminated"
+
+
+def test_pi_strategy_classifies_tool_execution_error_as_error_line() -> None:
+    """Pi tool execution failures must not become ordinary progress.
+
+    This keeps failed MCP results, including client-collapsed timeout
+    text, on the repeated-error circuit-breaker path.
+    """
+    strategy = _make_pi_strategy()
+    line = json.dumps(
+        {
+            "type": "tool_execution_end",
+            "toolName": "mcp__ralph__exec",
+            "isError": True,
+            "result": {"content": [{"type": "text", "text": "terminated"}]},
+        }
+    )
+
+    signal = strategy.classify_activity_line(line)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.ERROR_LINE
+    assert signal.raw == "terminated"
 
 
 # ---------------------------------------------------------------------------

@@ -464,13 +464,16 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         tool_call = sub.get("toolCall")
         tool_name = "unknown"
+        args: object = {}
         if isinstance(tool_call, dict):
-            tool_name = str(cast("dict[str, object]", tool_call).get("name", "unknown"))
+            tool_call_dict = cast("dict[str, object]", tool_call)
+            tool_name = str(tool_call_dict.get("name", "unknown"))
+            args = tool_call_dict.get("input", {})
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
             raw=stripped,
-            metadata=sub,
+            metadata={"tool": tool_name, "args": args, **sub},
         )
 
     def _handle_done(

@@ -245,6 +245,18 @@ Parser rules:
   enough.
 - Emit `tool_use` for real tool activity; do not infer tool activity from an
   agent-authored self-report artifact.
+- Make MCP tool activity visible to the watchdog through the execution strategy
+  as well as the parser. A transport-specific parser that emits `tool_use` is
+  not enough if `classify_activity_line()` still treats the raw provider frame
+  as ordinary output. Different AI coding clients can wrap the same model and
+  MCP result differently: one may expose a rich `is_error` tool result while
+  another collapses the same failure into generic text such as `terminated` or
+  an unknown tool-use frame. The strategy must classify provider tool-call
+  frames as `AgentActivityKind.TOOL_USE`, provider tool-result/error frames as
+  `AgentActivityKind.ERROR_LINE` when they failed, and the tool-call extraction
+  helper must understand the provider's raw envelope. This prevents
+  client-adapter drift from turning repeated MCP failures into apparent progress
+  and retrying the same call forever.
 - Preserve provider-specific tool-name metadata for both `tool_use` and
   `tool_result`. If the provider uses a non-canonical field such as
   `toolName`, normalize or preserve it so the subagent progress channel emits
@@ -347,6 +359,8 @@ Use these tests as a checklist:
 - parser behavior:
   `tests/test_<agent>_parser.py` or
   `tests/agents/parsers/test_<agent>_parser.py`
+- MCP/tool watchdog parity:
+  `tests/agents/idle_watchdog/test_mark_tool_call_runtime_reachability.py`
 - PTY/prompt/session behavior:
   `tests/test_claude_interactive_pty.py`,
   `tests/agents/invoke/test_pty_*`

@@ -17,6 +17,11 @@ Recognised envelope shapes:
   (Claude content_block_start wrapped in stream_event)
 * ``{"event": "tool_use", "tool_name": "...", "arguments": {...}}``
 * ``{"tool": "<name>", "input": {...}}`` (raw provider shorthand)
+* ``{"type": "tool_execution_start", "toolName": "...", "args": {...}}``
+  (pi.dev top-level tool event)
+* ``{"type": "message_update", "assistantMessageEvent":
+  {"type": "toolcall_end", "toolCall": {"name": "...", "input": {...}}}}``
+  (pi.dev assistant-message tool event)
 * ``claude tool: <name>`` (plain-text marker from Claude execution strategy)
 * ``[plain] tool: <name>`` (plain-text marker from GenericParser convention)
 """
@@ -96,6 +101,9 @@ def _parse_tool_use_envelope(raw: str) -> dict[str, object] | None:
             if isinstance(content_block, dict):
                 inner_obj = cast("dict[str, object]", content_block)
             return inner_obj
+    assistant_event = obj.get("assistantMessageEvent")
+    if isinstance(assistant_event, dict):
+        return cast("dict[str, object]", assistant_event)
     return obj
 
 
@@ -116,16 +124,51 @@ def _is_tool_use_dict(obj: dict[str, object]) -> bool:
     type_field = obj.get("type")
     event_field = obj.get("event")
     return (
-        type_field in {"tool_use", "assistant_tool_use", "mcp_tool_call"}
+        type_field
+        in {
+            "tool_use",
+            "assistant_tool_use",
+            "mcp_tool_call",
+            "tool_execution_start",
+            "toolcall_end",
+        }
         or event_field in {"tool_use", "mcp_tool_call"}
         or "tool_name" in obj
+        or "toolName" in obj
+        or "toolCall" in obj
     )
 
 
 def _resolve_tool_name_and_args(
     obj: dict[str, object],
 ) -> tuple[str, dict[str, object]] | None:
-    tool_name_raw = obj.get("name") or obj.get("tool_name") or obj.get("tool")
+    tool_call = obj.get("toolCall")
+    if isinstance(tool_call, dict):
+        tool_call_dict = cast("dict[str, object]", tool_call)
+        tool_name_raw = (
+            tool_call_dict.get("name")
+            or tool_call_dict.get("tool_name")
+            or tool_call_dict.get("tool")
+            or tool_call_dict.get("toolName")
+        )
+        args_field = tool_call_dict.get("input")
+        if not isinstance(args_field, dict):
+            args_field = tool_call_dict.get("arguments")
+        if not isinstance(args_field, dict):
+            args_field = tool_call_dict.get("args")
+        if not isinstance(args_field, dict):
+            args_field = {}
+        if tool_name_raw is None:
+            tool_name = "unknown"
+        elif not isinstance(tool_name_raw, str):
+            return None
+        else:
+            tool_name = tool_name_raw.strip() or "unknown"
+        return tool_name, cast("dict[str, object]", args_field)
+
+    tool_name_raw = (
+        obj.get("name") or obj.get("tool_name") or obj.get("tool") or obj.get("toolName")
+    )
     if tool_name_raw is None:
         tool_name = "unknown"
     elif not isinstance(tool_name_raw, str):
