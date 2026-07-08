@@ -39,6 +39,13 @@ question, after [`README.md`](../README.md) and
 - [Developer internals](../ralph-workflow/docs/sphinx/developer-internals.md)
 - [Adding a new agent](../ralph-workflow/docs/agents/adding-a-new-agent.md)
 
+## Example apps
+
+- [Example Flask API starter](../example-api/README.md) -- the canonical
+  Flask `/health` starter used as the reference for a small first task;
+  see the [proof page](examples/example-api.md) for the rubric-style
+  interpretation.
+
 ## Contribute
 
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md)
