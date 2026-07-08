@@ -1,19 +1,14 @@
 # ralph-workflow
 
-> **Codeberg is primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> GitHub is a read-only mirror:
-> <https://github.com/Ralph-Workflow/Ralph-Workflow> (verify: repo-exists)
-
-> **Autopilot for coding agents** — run Claude Code, Codex, OpenCode,
-> Nanocoder, AGY & Pi unattended with verification, recovery,
-> orchestration.
+> **Primary:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow> (verify: repo-exists)
 
 This README is the PyPI-facing surface. The canonical product
-positioning, who-it-is-for list, install steps, first-run path, trust
-and safety boundaries, and finish-receipt example all live in the
-[repository root `README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md).
-That page is the single source of truth; PyPI readers should follow
-the link above for the install → init → diagnose → spec → run → review
+positioning, install steps, first-run path, and trust boundaries live
+in the repository root
+[`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md).
+That page is the single source of truth — PyPI readers should follow
+that link for the install → init → diagnose → spec → run → review
 walkthrough.
 
 ## At a glance
@@ -21,7 +16,8 @@ walkthrough.
 - **Python:** `>=3.12`
 - **License:** AGPL-3.0-or-later
 - **Runtime:** local-first; no required cloud account
-- **Auth:** your agent CLIs authenticate as they always do — Ralph Workflow does not store, read, or proxy credentials
+- **Auth:** your agent CLIs authenticate as they always do — Ralph Workflow
+  does not store, read, or proxy credentials
 
 ## Install and prove the install
 
@@ -35,7 +31,7 @@ ralph --diagnose     # optional pre-flight check
 
 | Agent | Notes |
 |---|---|
-| **Claude Code** | Anthropic's CLI for Claude (interactive + headless). Canonical reference agent. |
+| **Claude Code** | Anthropic's CLI for Claude (interactive + headless). |
 | **Codex** | OpenAI's Codex CLI. |
 | **OpenCode** | Open-source terminal coding agent. |
 | **Nanocoder** | Local-only TUI coding agent. |
@@ -44,14 +40,5 @@ ralph --diagnose     # optional pre-flight check
 
 ## Where to go next
 
-- [Repository root `README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md) —
-  canonical product positioning and first-run path
-- [`START_HERE.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md) —
-  guided first run on one real backlog task
-- [Operator manual (`docs/sphinx/index.rst`)](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/index.rst) —
-  maintained reference, configuration, troubleshooting, API reference
-- [`CONTRIBUTING.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/CONTRIBUTING.md) —
-  contribution intent and source-of-truth ordering
-- [Package-side `CONTRIBUTING.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/CONTRIBUTING.md) —
-  Python-specific dev build, policy-driven pipeline, guardrails
-- [Issue tracker](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new)
+- [Repository root `README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md)
+- [Operator manual](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/index.rst)

@@ -148,10 +148,7 @@ def test_status_bar_only_instantiated_inside_parallel_display() -> None:
     for path in _scan_targets():
         tree = _parse(path)
         for lineno in _status_bar_constructor_sites(tree):
-            if (
-                path.name == _CONSTRUCTOR_FILE
-                and lineno == _CTOR_LINE_NUMBER
-            ):
+            if path.name == _CONSTRUCTOR_FILE and lineno == _CTOR_LINE_NUMBER:
                 continue
             violations.append(f"{_rel(path)}:{lineno}: StatusBar(...)")
     assert not violations, (
@@ -179,10 +176,7 @@ def test_parallel_display_is_only_class_that_starts_status_bar() -> None:
             attr="start",
             receiver_names=receiver_names,
         ):
-            if (
-                path.name == _CONSTRUCTOR_FILE
-                and lineno == _START_LINE_NUMBER
-            ):
+            if path.name == _CONSTRUCTOR_FILE and lineno == _START_LINE_NUMBER:
                 continue
             violations.append(f"{_rel(path)}:{lineno}: *.start()")
     assert not violations, (
@@ -210,10 +204,7 @@ def test_status_bar_stop_only_inside_parallel_display_stop() -> None:
             attr="stop",
             receiver_names=receiver_names,
         ):
-            if (
-                path.name == _CONSTRUCTOR_FILE
-                and lineno == _STOP_LINE_NUMBER
-            ):
+            if path.name == _CONSTRUCTOR_FILE and lineno == _STOP_LINE_NUMBER:
                 continue
             violations.append(f"{_rel(path)}:{lineno}: *.stop()")
     assert not violations, (

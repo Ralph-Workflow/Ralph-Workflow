@@ -91,9 +91,7 @@ def _reset_default_catalog() -> object:
 
 
 _PROMPT_TEXT = "hello world"
-_FIXTURE_PATH = (
-    Path(__file__).parent / "parsers" / "fixtures" / "pi_dev_documented_events.json"
-)
+_FIXTURE_PATH = Path(__file__).parent / "parsers" / "fixtures" / "pi_dev_documented_events.json"
 
 
 def _make_prompt(tmp_path: Path) -> str:
@@ -120,22 +118,18 @@ class TestPiDevBlackboxPublicSurface:
         registry = AgentRegistry.from_config(UnifiedConfig())
 
         support = registry.catalog.get("pi")
-        assert support is not None, (
-            "AgentRegistry.from_config must seed the 'pi' BuiltinAgentSpec"
-        )
+        assert support is not None, "AgentRegistry.from_config must seed the 'pi' BuiltinAgentSpec"
         assert support.transport is AgentTransport.PI, (
             f"pi transport must be AgentTransport.PI, got {support.transport!r}"
         )
         assert support.config.json_parser == JsonParserType.PI, (
-            f"pi config.json_parser must be JsonParserType.PI, got "
-            f"{support.config.json_parser!r}"
+            f"pi config.json_parser must be JsonParserType.PI, got {support.config.json_parser!r}"
         )
         assert support.parser_factory is PiParser, (
             f"pi parser_factory must be PiParser, got {support.parser_factory!r}"
         )
         assert support.strategy_factory is _make_pi_strategy, (
-            f"pi strategy_factory must be _make_pi_strategy, "
-            f"got {support.strategy_factory!r}"
+            f"pi strategy_factory must be _make_pi_strategy, got {support.strategy_factory!r}"
         )
 
     def test_pi_builtin_spec_row_matches_documented_cli(self) -> None:
@@ -155,9 +149,7 @@ class TestPiDevBlackboxPublicSurface:
         assert config.session_flag == "--session {}", (
             f"pi session_flag must be '--session {{}}', got {config.session_flag!r}"
         )
-        assert config.can_commit is True, (
-            f"pi can_commit must be True, got {config.can_commit!r}"
-        )
+        assert config.can_commit is True, f"pi can_commit must be True, got {config.can_commit!r}"
         assert config.display_name == "Pi", (
             f"pi config.display_name must be 'Pi', got {config.display_name!r}"
         )
@@ -168,8 +160,7 @@ class TestPiDevBlackboxPublicSurface:
 
         parser = registry.catalog.get_parser("pi")
         assert isinstance(parser, PiParser), (
-            f"catalog.get_parser('pi') must return a PiParser, "
-            f"got {type(parser).__name__}"
+            f"catalog.get_parser('pi') must return a PiParser, got {type(parser).__name__}"
         )
 
     def test_catalog_get_strategy_returns_base_execution_strategy(self) -> None:
@@ -178,9 +169,7 @@ class TestPiDevBlackboxPublicSurface:
         """
         registry = AgentRegistry.from_config(UnifiedConfig())
 
-        strategy = registry.catalog.get_strategy(
-            AgentTransport.PI, command="pi"
-        )
+        strategy = registry.catalog.get_strategy(AgentTransport.PI, command="pi")
         assert isinstance(strategy, BaseExecutionStrategy), (
             f"catalog.get_strategy(PI, 'pi') must return a BaseExecutionStrategy, "
             f"got {type(strategy).__name__}"
@@ -232,9 +221,7 @@ class TestPiDevBlackboxPublicSurface:
         assert support is not None
 
         prompt_file = _make_prompt(tmp_path)
-        options = BuildCommandOptions(
-            session_id="sess-1", workspace_path=tmp_path
-        )
+        options = BuildCommandOptions(session_id="sess-1", workspace_path=tmp_path)
 
         argv = build_command(support.config, prompt_file, options=options)
 
@@ -249,9 +236,7 @@ class TestPiDevBlackboxPublicSurface:
             _PROMPT_TEXT,
         ], f"Unexpected argv layout: {argv!r}"
 
-    def test_pi_model_shorthand_resolves_with_documented_model_flag(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pi_model_shorthand_resolves_with_documented_model_flag(self, tmp_path: Path) -> None:
         """``pi/anthropic/claude-sonnet-4-20250514`` must resolve through
         ``catalog.get`` to a support with
         ``--model anthropic/claude-sonnet-4-20250514`` set, per the
@@ -272,8 +257,7 @@ class TestPiDevBlackboxPublicSurface:
         # The synthesized support must keep the pi built-in's parser and
         # strategy factories (PiParser + _make_pi_strategy).
         assert support.parser_factory is PiParser, (
-            f"pi/<model> support parser_factory must be PiParser, "
-            f"got {support.parser_factory!r}"
+            f"pi/<model> support parser_factory must be PiParser, got {support.parser_factory!r}"
         )
         assert support.strategy_factory is _make_pi_strategy, (
             f"pi/<model> support strategy_factory must be "
@@ -502,18 +486,12 @@ class TestPiDevBlackboxConfigOverride:
         assert alias.model_flag == "--model anthropic/claude-sonnet-4-20250514"
 
         # catalog.get path
-        catalog_alias = registry.catalog.get(
-            "pi/anthropic/claude-sonnet-4-20250514"
-        )
+        catalog_alias = registry.catalog.get("pi/anthropic/claude-sonnet-4-20250514")
         assert catalog_alias is not None, (
-            "registry.catalog.get('pi/<model>') must resolve through the "
-            "override base config"
+            "registry.catalog.get('pi/<model>') must resolve through the override base config"
         )
         assert catalog_alias.config.cmd == "pi-custom"
-        assert (
-            catalog_alias.config.model_flag
-            == "--model anthropic/claude-sonnet-4-20250514"
-        )
+        assert catalog_alias.config.model_flag == "--model anthropic/claude-sonnet-4-20250514"
         # The synthesized dynamic-alias support must keep the built-in's
         # parser factory and strategy factory.
         assert catalog_alias.parser_factory is PiParser

@@ -88,17 +88,13 @@ def _extract_section_templates(body: str) -> dict[str, object]:
     payloads: dict[str, object] = {}
     cursor = 0
     for section in expected_sections:
-        heading_match = re.search(
-            rf"### {re.escape(section)}\s*\n", templates_body[cursor:]
-        )
+        heading_match = re.search(rf"### {re.escape(section)}\s*\n", templates_body[cursor:])
         assert heading_match is not None, (
             f"submit-plan-artifact skill is missing the '### {section}' "
             f"heading inside the per-section templates section"
         )
         section_start = cursor + heading_match.end()
-        block_match = re.search(
-            r"```json\s*\n([\s\S]*?)\n```", templates_body[section_start:]
-        )
+        block_match = re.search(r"```json\s*\n([\s\S]*?)\n```", templates_body[section_start:])
         assert block_match is not None, (
             f"submit-plan-artifact skill is missing the fenced JSON block "
             f"for section {section!r} inside the per-section templates section"

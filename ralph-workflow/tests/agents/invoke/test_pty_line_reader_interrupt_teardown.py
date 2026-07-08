@@ -75,13 +75,10 @@ def test_on_interrupt_calls_close_terminate_and_teardown_subtree(
     reader._on_interrupt()
 
     assert handle.close.called, "_on_interrupt must still close the handle"
-    assert handle.terminate.called, (
-        "_on_interrupt must call handle.terminate() to kill the child"
-    )
+    assert handle.terminate.called, "_on_interrupt must call handle.terminate() to kill the child"
     terminate_kwargs = handle.terminate.call_args.kwargs
     assert terminate_kwargs.get("grace_period_s") == 0.5, (
-        f"terminate must use grace_period_s=0.5 like the watchdog path; "
-        f"got {terminate_kwargs!r}"
+        f"terminate must use grace_period_s=0.5 like the watchdog path; got {terminate_kwargs!r}"
     )
     assert teardown_calls == [4242], (
         f"teardown_subtree must be called with the handle pid; got {teardown_calls!r}"

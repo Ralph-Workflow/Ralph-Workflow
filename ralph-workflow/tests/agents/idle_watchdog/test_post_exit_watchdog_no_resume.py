@@ -54,9 +54,7 @@ def test_post_exit_watchdog_fire_reasons_do_not_resume_with_prior_session(
     be safely continued via the prior session id; the next attempt
     MUST restart from a fresh session.
     """
-    action = recovery_action_for_failure_reason(
-        failure_reason, has_prior_session=True
-    )
+    action = recovery_action_for_failure_reason(failure_reason, has_prior_session=True)
     assert action == "fresh", (
         f"failure_reason={failure_reason!r} with has_prior_session=True"
         f" MUST return 'fresh' (the half-dead process tree cannot"
@@ -66,9 +64,7 @@ def test_post_exit_watchdog_fire_reasons_do_not_resume_with_prior_session(
 
 def test_process_exit_hang_without_prior_session_returns_fresh() -> None:
     """PROCESS_EXIT_HANG without a prior session MUST also return 'fresh'."""
-    action = recovery_action_for_failure_reason(
-        "PROCESS_EXIT_HANG", has_prior_session=False
-    )
+    action = recovery_action_for_failure_reason("PROCESS_EXIT_HANG", has_prior_session=False)
     assert action == "fresh"
 
 
@@ -79,9 +75,7 @@ def test_process_exit_hang_is_not_in_resumable_set() -> None:
     ``tests/agents/idle_watchdog/test_resume_after_kill_contract.py``
     and enforced by ``_process_reader._RESUMABLE_FIRE_REASONS``.
     """
-    action = recovery_action_for_failure_reason(
-        "PROCESS_EXIT_HANG", has_prior_session=True
-    )
+    action = recovery_action_for_failure_reason("PROCESS_EXIT_HANG", has_prior_session=True)
     assert action != "resume", (
         f"PROCESS_EXIT_HANG MUST NOT resume (the post-exit hang is"
         f" a half-dead process tree); got {action!r}"
@@ -110,9 +104,7 @@ def test_resumable_reasons_still_resume_for_prior_session() -> None:
         "OpenCodeResumableExitError",
     )
     for reason in resumable:
-        action = recovery_action_for_failure_reason(
-            reason, has_prior_session=True
-        )
+        action = recovery_action_for_failure_reason(reason, has_prior_session=True)
         assert action == "resume", (
             f"failure_reason={reason!r} with has_prior_session=True"
             f" MUST return 'resume' (sanity check of the resumable"

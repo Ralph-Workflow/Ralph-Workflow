@@ -84,9 +84,7 @@ def _load_skill_body() -> str:
 
 def _loads_json_object(text: str) -> dict[str, object]:
     decoded = cast("object", json.loads(text))
-    assert isinstance(decoded, dict), (
-        f"expected JSON object but decoded {type(decoded).__name__}"
-    )
+    assert isinstance(decoded, dict), f"expected JSON object but decoded {type(decoded).__name__}"
     return cast("dict[str, object]", decoded)
 
 
@@ -108,14 +106,11 @@ def _extract_retry_envelopes(body: str) -> dict[str, dict[str, object]]:
         body,
     )
     assert section_match is not None, (
-        "submit-plan-step-edits skill is missing the '### Per-tool retry "
-        "envelopes' subsection"
+        "submit-plan-step-edits skill is missing the '### Per-tool retry envelopes' subsection"
     )
     section_body = section_match.group(1)
     envelopes: dict[str, dict[str, object]] = {}
-    pattern = re.compile(
-        r"\*\*`(?P<tool>[a-z_]+)`\*\*[\s\S]*?```json\s*\n(?P<block>[\s\S]*?)\n```"
-    )
+    pattern = re.compile(r"\*\*`(?P<tool>[a-z_]+)`\*\*[\s\S]*?```json\s*\n(?P<block>[\s\S]*?)\n```")
     for match in pattern.finditer(section_body):
         tool = match.group("tool")
         block_text = match.group("block")
@@ -156,13 +151,9 @@ def _extract_core_flow_retry_payloads(body: str) -> dict[str, dict[str, object]]
         "ralph_move_plan_step",
     )
     assert len(blocks) == len(tools), (
-        "Core Flow must document one executable JSON block for each "
-        "step-mutation tool"
+        "Core Flow must document one executable JSON block for each step-mutation tool"
     )
-    return {
-        tool: _loads_json_object(block)
-        for tool, block in zip(tools, blocks, strict=True)
-    }
+    return {tool: _loads_json_object(block) for tool, block in zip(tools, blocks, strict=True)}
 
 
 def _stage_documented_call_1(
@@ -206,9 +197,7 @@ def test_skill_documents_every_step_mutation_tool() -> None:
     """
     body = _load_skill_body()
     missing = [tool for tool in STEP_MUTATION_TOOLS if tool not in body]
-    assert not missing, (
-        f"submit-plan-step-edits skill is missing these tool names: {missing}"
-    )
+    assert not missing, f"submit-plan-step-edits skill is missing these tool names: {missing}"
 
 
 @pytest.mark.timeout_seconds(10)
@@ -285,12 +274,9 @@ def test_skill_retry_envelopes_match_handler_output() -> None:
         "ralph_validate_draft": set(),
         "ralph_discard_plan_draft": set(),
     }
-    missing_tools = [
-        tool for tool in expected_envelope_keys if tool not in envelopes
-    ]
+    missing_tools = [tool for tool in expected_envelope_keys if tool not in envelopes]
     assert not missing_tools, (
-        f"submit-plan-step-edits skill is missing retry envelopes for: "
-        f"{missing_tools}"
+        f"submit-plan-step-edits skill is missing retry envelopes for: {missing_tools}"
     )
     for tool, expected_keys in expected_envelope_keys.items():
         actual_keys = set(envelopes[tool].keys())

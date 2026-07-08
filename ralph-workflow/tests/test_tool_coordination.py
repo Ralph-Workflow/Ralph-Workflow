@@ -94,9 +94,7 @@ def test_declare_complete_threads_broker_secret_to_sentinel(
         captured["run_id"] = run_id
         captured["sentinel_hmac"] = sentinel_hmac
 
-    monkeypatch.setattr(
-        coordination_module, "_write_completion_sentinel", capture_write
-    )
+    monkeypatch.setattr(coordination_module, "_write_completion_sentinel", capture_write)
 
     session = MockSession()
     session.broker_secret = "live-broker-secret-12345"
@@ -122,9 +120,7 @@ def test_declare_complete_without_broker_secret_omits_hmac(
     ) -> None:
         captured["sentinel_hmac"] = sentinel_hmac
 
-    monkeypatch.setattr(
-        coordination_module, "_write_completion_sentinel", capture_write
-    )
+    monkeypatch.setattr(coordination_module, "_write_completion_sentinel", capture_write)
 
     handle_declare_complete(MockSession(), MockWorkspace(), {"summary": "done"})
 
@@ -140,6 +136,7 @@ def test_declare_complete_fails_closed_when_sentinel_cannot_be_persisted(
     success. A successful return without a durable sentinel would
     let the agent falsely claim completion against a sentinel the
     completion gate cannot see."""
+
     def returning_false_write_completion_sentinel(*args: object, **kwargs: object) -> bool:
         del args, kwargs
         return False
@@ -202,9 +199,7 @@ def test_write_completion_sentinel_durable_fallback_when_db_unavailable(
     # Must not raise; the durable fallback is the legacy file.
     coordination_module._write_completion_sentinel(workspace, "run-fallback-1")
 
-    legacy_path = (
-        tmp_path / ".agent" / "completion_seen_run-fallback-1.json"
-    )
+    legacy_path = tmp_path / ".agent" / "completion_seen_run-fallback-1.json"
     assert legacy_path.exists()
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
     assert payload["run_id"] == "run-fallback-1"
@@ -234,14 +229,14 @@ def test_write_completion_sentinel_durable_fallback_with_hmac(
         workspace, "run-fallback-hmac", sentinel_hmac="broker-real"
     )
 
-    legacy_path = (
-        tmp_path / ".agent" / "completion_seen_run-fallback-hmac.json"
-    )
+    legacy_path = tmp_path / ".agent" / "completion_seen_run-fallback-hmac.json"
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
     assert payload["run_id"] == "run-fallback-hmac"
-    expected_hmac = __import__("hmac").new(
-        b"broker-real", b"run-fallback-hmac", __import__("hashlib").sha256
-    ).hexdigest()
+    expected_hmac = (
+        __import__("hmac")
+        .new(b"broker-real", b"run-fallback-hmac", __import__("hashlib").sha256)
+        .hexdigest()
+    )
     assert payload["hmac"] == expected_hmac
 
 
@@ -302,11 +297,8 @@ def test_read_env_value_redacts_broker_secret_when_present() -> None:
     """``read_env_value`` is the seam the handler uses; pin the
     broker-secret redaction there so a future refactor cannot
     accidentally bypass it."""
-    assert (
-        "topsecret"
-        not in coordination_module.read_env_value(
-            {"RALPH_BROKER_SECRET": "topsecret-broker-key"}, "RALPH_BROKER_SECRET"
-        )
+    assert "topsecret" not in coordination_module.read_env_value(
+        {"RALPH_BROKER_SECRET": "topsecret-broker-key"}, "RALPH_BROKER_SECRET"
     )
     assert (
         coordination_module.read_env_value(
@@ -331,13 +323,8 @@ def test_read_env_value_discloses_non_broker_secrets() -> None:
     scoped: non-broker env vars are still disclosed normally so the
     agent's diagnostic / orchestrator can keep using ``env.read``
     for unrelated lookups."""
-    assert (
-        "hello"
-        in coordination_module.read_env_value({"MY_VAR": "hello"}, "MY_VAR")
-    )
-    assert (
-        coordination_module.read_env_value({}, "MY_VAR") == "[not found]"
-    )
+    assert "hello" in coordination_module.read_env_value({"MY_VAR": "hello"}, "MY_VAR")
+    assert coordination_module.read_env_value({}, "MY_VAR") == "[not found]"
 
 
 def test_write_completion_sentinel_returns_true_when_workspace_uses_test_seam() -> None:
@@ -404,9 +391,7 @@ def test_write_completion_sentinel_returns_false_when_db_and_legacy_both_fail(
     monkeypatch.setattr(Path, "write_text", _raise_oserror_write)
 
     try:
-        result = coordination_module._write_completion_sentinel(
-            workspace, "run-fail-closed"
-        )
+        result = coordination_module._write_completion_sentinel(workspace, "run-fail-closed")
     finally:
         monkeypatch.setattr(Path, "mkdir", original_mkdir)
         monkeypatch.setattr(Path, "write_text", original_write_text)

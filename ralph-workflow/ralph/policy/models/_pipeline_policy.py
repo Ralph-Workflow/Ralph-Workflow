@@ -78,8 +78,10 @@ class PipelinePolicy(_FrozenPolicyModel):
                 "Move max_parallel_workers, max_work_units, require_allowed_directories, "
                 "and post_fanout_verification under [phases.<phase>.parallelization] "
                 "(typically [phases.development.parallelization]). "
-                "Run `ralph --regenerate-config` to refresh the bundled template if this "
-                "file came from an older bootstrap. See docs/migration/parallel-mode.md."
+                "Run `ralph --regenerate-config` to refresh the bundled template if "
+                "this file came from an older bootstrap. See "
+                "docs/sphinx/advanced-pipeline-configuration.md"
+                "#parallel-execution-agent-driven."
             )
         return values
 

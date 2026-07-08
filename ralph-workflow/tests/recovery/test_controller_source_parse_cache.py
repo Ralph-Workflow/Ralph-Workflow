@@ -155,9 +155,7 @@ def test_controller_source_tree_propagates_syntax_error() -> None:
             f"RuntimeError message must mention parse failure, got: {exc}"
         )
     else:
-        raise AssertionError(
-            "expected RuntimeError when parse_fn raises SyntaxError"
-        )
+        raise AssertionError("expected RuntimeError when parse_fn raises SyntaxError")
 
 
 def test_module_level_invariant_calls_still_use_shared_helper(

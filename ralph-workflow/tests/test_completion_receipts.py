@@ -138,11 +138,10 @@ def test_dual_target_delete_removes_legacy_file(tmp_path: Path) -> None:
 # ----------------------------------------------------------------------------
 
 
-def test_write_receipt_silent_when_db_unavailable(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_write_receipt_silent_when_db_unavailable(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """``write_artifact_receipt`` swallows ``sqlite3.Error`` from the
     DB open path; no exception propagates to the caller."""
+
     def _raise_sqlite_error(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("database is locked")
 
@@ -200,6 +199,7 @@ def test_write_receipt_falls_back_to_legacy_when_db_write_fails(
     silent no-op under DB failure would report success while leaving no
     authoritative completion marker.
     """
+
     class _FakeFailingDB:
         def upsert_receipt(self, *args: object, **kwargs: object) -> None:
             raise sqlite3.OperationalError("database is locked")
@@ -216,9 +216,7 @@ def test_write_receipt_falls_back_to_legacy_when_db_write_fails(
     write_artifact_receipt(tmp_path, "run-1", "commit_message")
 
     # Legacy file now holds the authoritative receipt.
-    legacy_path = (
-        tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
-    )
+    legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     assert legacy_path.exists()
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
     assert payload["run_id"] == "run-1"
@@ -233,9 +231,7 @@ def test_write_receipt_dual_persistence_db_and_legacy(
     delete-one-side test."""
     write_artifact_receipt(tmp_path, "run-1", "commit_message")
     # Success path: legacy file is NOT created (production writes go to DB only).
-    legacy_path = (
-        tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
-    )
+    legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     assert not legacy_path.exists()
     # Read returns True: DB row is present.
     assert artifact_receipt_present(tmp_path, "run-1", "commit_message") is True
@@ -252,27 +248,19 @@ def test_write_receipt_legacy_file_with_hmac_round_trips(
 
     monkeypatch.setattr(receipts_module, "_open_db", _open_failing_db)
 
-    write_artifact_receipt(
-        tmp_path, "run-1", "commit_message", receipt_secret="s3cret"
-    )
+    write_artifact_receipt(tmp_path, "run-1", "commit_message", receipt_secret="s3cret")
 
-    legacy_path = (
-        tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
-    )
+    legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
     assert payload["hmac"] == _receipt_hmac("s3cret", "run-1", "commit_message")
     # HMAC must verify under the same secret:
     assert (
-        artifact_receipt_present(
-            tmp_path, "run-1", "commit_message", receipt_secret="s3cret"
-        )
+        artifact_receipt_present(tmp_path, "run-1", "commit_message", receipt_secret="s3cret")
         is True
     )
     # ... and reject under a mismatching secret:
     assert (
-        artifact_receipt_present(
-            tmp_path, "run-1", "commit_message", receipt_secret="wrong"
-        )
+        artifact_receipt_present(tmp_path, "run-1", "commit_message", receipt_secret="wrong")
         is False
     )
 
@@ -330,6 +318,7 @@ def test_write_artifact_receipt_raises_when_db_open_and_legacy_fallback_both_fai
     """Fail-closed contract: when ``_open_db`` raises AND the legacy
     backend also cannot write, ``write_artifact_receipt`` MUST raise
     ``ReceiptPersistenceError`` so the artifact submit fails closed."""
+
     def _raise_sqlite(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("database is locked")
 
@@ -411,9 +400,7 @@ def test_clear_run_receipts_does_not_raise_when_db_clear_fails(
 
     legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
     legacy.parent.mkdir(parents=True)
-    legacy.write_text(
-        json.dumps({"run_id": "run-1", "artifact_type": "commit_message"})
-    )
+    legacy.write_text(json.dumps({"run_id": "run-1", "artifact_type": "commit_message"}))
 
     class _FakeFailingClearDB:
         def clear_run_receipts(self, run_id: str) -> None:
@@ -423,9 +410,7 @@ def test_clear_run_receipts_does_not_raise_when_db_clear_fails(
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(
-        receipts_module, "_open_db", lambda _: _FakeFailingClearDB()
-    )
+    monkeypatch.setattr(receipts_module, "_open_db", lambda _: _FakeFailingClearDB())
 
     # Must NOT raise; the legacy glob below must still get to run.
     clear_run_receipts(tmp_path, "run-1")

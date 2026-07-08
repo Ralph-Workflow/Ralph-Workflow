@@ -106,9 +106,7 @@ def test_zero_activity_past_no_progress_quiet_fires() -> None:
 
     clock.advance(60.0 - clock.monotonic())
     verdict = watchdog.evaluate(classify_quiet=_waiting_on_child)
-    assert verdict == WatchdogVerdict.FIRE, (
-        f"expected FIRE at t=60; got {verdict}"
-    )
+    assert verdict == WatchdogVerdict.FIRE, f"expected FIRE at t=60; got {verdict}"
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET, (
         f"expected NO_PROGRESS_QUIET; got {watchdog.last_fire_reason}"
     )

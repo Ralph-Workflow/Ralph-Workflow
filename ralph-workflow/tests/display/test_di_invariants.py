@@ -629,17 +629,13 @@ def test_every_emit_method_with_test_file_match_exists() -> None:
     # module-level activity helper and ``emit_completion_summary`` is
     # the method on the unrelated CompletionSummary class
     # (``ralph.display.completion_summary.emit_completion_summary``).
-    non_parallel_emit_allowlist = frozenset(
-        {"emit_activity_line", "emit_completion_summary"}
-    )
+    non_parallel_emit_allowlist = frozenset({"emit_activity_line", "emit_completion_summary"})
     for path in _test_parallel_display_files():
         if not path.name.startswith("test_parallel_display_emit_"):
             continue
         body = path.read_text(encoding="utf-8")
         try:
-            token_iter = list(
-                tokenize.generate_tokens(io.StringIO(body).readline)
-            )
+            token_iter = list(tokenize.generate_tokens(io.StringIO(body).readline))
         except (tokenize.TokenError, IndentationError, SyntaxError):
             token_iter = []
         for tok in token_iter:
@@ -658,10 +654,7 @@ def test_every_emit_method_with_test_file_match_exists() -> None:
         "canonical 41-name set (add the name to "
         "tests/display/test_parallel_display_drift_prevention."
         "_PARALLEL_DISPLAY_ALL_NAMES or remove the stray reference): "
-        + "\n".join(
-            f"{name}:{line.strip()}: {full}"
-            for name, line, full in stray_refs
-        )
+        + "\n".join(f"{name}:{line.strip()}: {full}" for name, line, full in stray_refs)
     )
 
 

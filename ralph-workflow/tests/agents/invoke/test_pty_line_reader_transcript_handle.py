@@ -190,9 +190,7 @@ def test_transcript_thread_closes_handle_on_exception(
         "_transcript_thread did not reach the open branch"
     )
     thread.join(timeout=2.0)
-    assert not thread.is_alive(), (
-        "_transcript_thread must terminate after the raised exception"
-    )
+    assert not thread.is_alive(), "_transcript_thread must terminate after the raised exception"
 
     # Bug regression: with the un-fixed code, close_called stays 0
     # because the post-loop close is skipped on the exception path.
@@ -226,8 +224,7 @@ def test_transcript_thread_does_not_swallow_exception(
         "the fix's finally block closes+nulls but must NOT consume the exception"
     )
     assert isinstance(captured["exc"], ValueError), (
-        f"re-raised exception must be the original ValueError; "
-        f"got {type(captured['exc']).__name__}"
+        f"re-raised exception must be the original ValueError; got {type(captured['exc']).__name__}"
     )
     assert fake_file.close_called >= 1, (
         "transcript handle MUST still be closed on the re-raise path"

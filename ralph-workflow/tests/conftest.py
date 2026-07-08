@@ -114,14 +114,10 @@ def _isolate_pipeline_thread_locals() -> None:
     The fixture is intentionally cheap: two attribute writes, no I/O.
     """
     set_last_captured_session_id(None)
-    effect_executor._set_last_captured_retry_intent(
-        effect_executor.cleared_agent_retry_intent()
-    )
+    effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
     yield
     set_last_captured_session_id(None)
-    effect_executor._set_last_captured_retry_intent(
-        effect_executor.cleared_agent_retry_intent()
-    )
+    effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
 
 
 @pytest.fixture(scope="session", autouse=True)

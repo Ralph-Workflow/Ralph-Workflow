@@ -227,7 +227,7 @@ ralph --check-mcp
 
 Run this from the human operator shell outside any Ralph-managed agent session.
 
-See [Local Web Access](local-web-access.md) for a worked example using Crawl4AI.
+See [Local Web Access](advanced-mcp-configuration.md#web-access-search-visit-crawl) for a worked example using Crawl4AI.
 
 ## Capability Flags
 
@@ -255,7 +255,7 @@ callable. The capability strings are:
 | `web.visit` | `visit_url` (default-enabled; non-commit drains) |
 | `media.read` | `read_media` (primary, default-on; opt-out via `mcp.toml`), `read_image` (compatibility alias) |
 
-Ralph-managed same-workspace parallel workers are dormant in the bundled default (see [Parallel Mode](parallel-mode.md)). The note below describes the opt-in contract for the `ralph_fan_out` dispatch mode.
+Ralph-managed same-workspace parallel workers are dormant in the bundled default (see [Parallel Mode](advanced-pipeline-configuration.md#parallel-execution-agent-driven)). The note below describes the opt-in contract for the `ralph_fan_out` dispatch mode.
 
 **Same-workspace parallel workers** — Parallel workers in same-workspace mode inherit the parent phase's `SessionMcpPlan` contract, which includes the resolved capability profile, model identity, and drain. This means workers expose the same multimodal capability surface as serial execution: delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are provider-specific and consistent with the serial path, and worker-produced media artifacts are written under the worker's namespace with the phase-scoped handoff path.
 
@@ -265,4 +265,4 @@ See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapp
 ## Related pages
 
 - [Concepts](concepts.md) — MCP, drains, capabilities, and artifact types
-- [Local Web Access](local-web-access.md) — `visit_url` SSRF posture and upstream crawlers
+- [Local Web Access](advanced-mcp-configuration.md#web-access-search-visit-crawl) — `visit_url` SSRF posture and upstream crawlers

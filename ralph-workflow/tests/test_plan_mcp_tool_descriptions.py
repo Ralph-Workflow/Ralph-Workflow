@@ -49,8 +49,7 @@ def _descs() -> dict[str, str]:
 
 def _schemas() -> dict[str, dict[str, object]]:
     return {
-        s.metadata.definition.name: s.metadata.definition.input_schema
-        for s in artifact_specs()
+        s.metadata.definition.name: s.metadata.definition.input_schema for s in artifact_specs()
     }
 
 
@@ -295,9 +294,7 @@ def test_step_tools_schema_exposes_repaired_container_argument_shapes() -> None:
         assert properties["depends_on"] == {
             "anyOf": [{"type": "array"}, {"type": "integer"}, {"type": "string"}]
         }
-        assert properties["satisfies"] == {
-            "anyOf": [{"type": "array"}, {"type": "string"}]
-        }
+        assert properties["satisfies"] == {"anyOf": [{"type": "array"}, {"type": "string"}]}
         assert properties["expected_evidence"] == {
             "anyOf": [{"type": "array"}, {"type": "object"}, {"type": "string"}]
         }
@@ -333,9 +330,7 @@ def test_step_index_schemas_accept_numeric_strings_and_edge_indexes() -> None:
     insert_index = schemas["ralph_insert_plan_step"]["properties"]["index"]
     assert insert_index == {"anyOf": [{"type": "integer"}, {"type": "string"}]}
     move_properties = schemas["ralph_move_plan_step"]["properties"]
-    assert move_properties["to_index"] == {
-        "anyOf": [{"type": "integer"}, {"type": "string"}]
-    }
+    assert move_properties["to_index"] == {"anyOf": [{"type": "integer"}, {"type": "string"}]}
     assert "minimum" not in cast("dict[str, object]", move_properties["to_index"])
 
 

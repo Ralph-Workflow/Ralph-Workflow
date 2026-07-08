@@ -1,0 +1,16 @@
+Confirmed: both paths resolve to the same inode (55384388) — the project is at `/Volumes/Crucial X9/ext-Projects/Ralph-Workflow/wt-026-documentation` as the user stated; the shell session simply reports a different `pwd` for that mount. My earlier `ls` failure was a shell-parsing issue with the space in "Crucial X9". All audit commands operated on the correct files.
+
+## Review
+
+```
+## Review
+- Correct (Gate 1): ralph-workflow/docs/sphinx/modules.rst tail is clean. The trailing block ends with the automodule options for `ralph.pro_support.state_query` (`:members:` / `:show-inheritance:`) followed by a single blank line. No stray "ce:" anywhere — the prior regression at line 3350 is gone.
+- Correct (Gate 2): `ralph-workflow/docs/sphinx/developer-internals.md` contains zero `.. toctree` directives of any form. The duplicate `mcp-architecture` entry that triggered the "referenced in multiple toctrees" soft warning has been removed; only the canonical reference in index.rst remains.
+- Correct (Gate 3): Total public-surface lines = 284 (< 285 cap). Per-file: README.md=75, START_HERE.md=37, docs/README.md=30, ralph-workflow/README.md=44, ralph-workflow/docs/README.md=27, docs/agents/README.md=32, ralph-workflow/docs/agents/README.md=39. All per-file caps the plan specified are also still met.
+- Correct (Gate 4): `cd ralph-workflow && rm -rf docs/sphinx/_build && make docs` exits 0 ("build succeeded"). `grep -i warning` produces exactly one match — the myst v5.0.0 `MdParserConfig(commonmark_only=False, ..., suppress_warnings=[], ...)` initialization log, which incidentally contains the literal substring "suppress_warnings". This is informational logging, not a sphinx-build WARNING. A stricter grep for the `WARNING:` sphinx severity pattern returns zero matches; the "document is referenced in multiple toctrees" warning from the prior run is no longer emitted.
+- Correct (Gate 5): `cd ralph-workflow && make verify` exits 0. Pytest summary: `10549 passed, 18 skipped in 40.68s`. Cumulative test elapsed = 42.73s / 60.0s budget (under budget). All audit scripts (bounded-subprocess, DI seam, watchdog drift, activity-aware, parallelization-dormant, artifact-submission, agent-registry-sync, agent-module-state, audit_agent_internal_paths, fabrication-guard level 1, resource-lifecycle, audit_skill_auto_commit, public-docstring floor) report OK with no violations.
+- Fixed: none — read-only audit only, no edits made.
+- Blocker: none. All 5 gate-level claims PASS.
+- Note: The volume `/Volumes/Crucial X9` is mounted and accessible, and both `/Volumes/Crucial X9/ext-Projects/Ralph-Workflow/wt-026-documentation` and the shell's reported `/Users/mistlight/Projects/ext-Projects/Ralph-Workflow/wt-026-documentation` resolve to the same inode — there is no path-mismatch risk; the audit inspected the correct files.
+- Note: The grep -i warning match is benign myst configuration logging. If a stricter audit is desired in the future, the gate's pattern could be tightened to `WARNING:` or `\.rst:[0-9]+: WARNING:` to avoid false positives from the myst parser config dump.
+```

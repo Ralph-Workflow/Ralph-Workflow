@@ -133,9 +133,7 @@ def _make_pty_reader() -> PtyLineReader:
         raise
     ctx = SimpleNamespace(
         config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
-        policy=TimeoutPolicy(
-            idle_timeout_seconds=300.0, cpu_idle_seconds=10.0
-        ),
+        policy=TimeoutPolicy(idle_timeout_seconds=300.0, cpu_idle_seconds=10.0),
         monitor=None,
         execution_strategy=None,
         liveness_probe=None,
@@ -166,9 +164,7 @@ def _make_process_reader() -> _ProcessLineReader:
     handle = _Handle()
     ctx = _ProcessReaderCtx(
         config=AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC),
-        policy=TimeoutPolicy(
-            idle_timeout_seconds=300.0, cpu_idle_seconds=10.0
-        ),
+        policy=TimeoutPolicy(idle_timeout_seconds=300.0, cpu_idle_seconds=10.0),
         execution_strategy=None,
         liveness_probe=None,
         waiting_listener=None,

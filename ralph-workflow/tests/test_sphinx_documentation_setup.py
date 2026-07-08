@@ -37,7 +37,7 @@ _PAGES_WITH_GETTING_STARTED_LINKS = [
     "concepts.md",
     "configuration.md",
     "recovery.md",
-    "parallel-mode.md",
+    "advanced-pipeline-configuration.md",
     "troubleshooting.md",
 ]
 
@@ -216,26 +216,22 @@ def test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages() -> N
 
 
 def test_supervising_api_page_in_developer_section() -> None:
-    """supervising-api must be in developer-internals.md and absent from reference.md.
+    """supervising-api is folded into developer-internals.md.
 
-    Product requirement 9: the supervising API documentation must be
-    discoverable through the developer section and must NOT appear in
-    operator-facing pages.
+    The wt-026 consolidation merged transcript.md and supervising-api.md
+    into developer-internals.md as `## Streaming Blocks and Long-Content
+    Display` and `## Supervising API` sections. The standalone pages
+    no longer exist, so the developer-internals toctree does not list
+    them. Product requirement 9 is satisfied because the supervising
+    API content is now discoverable through the developer section
+    (`developer-internals.md#supervising-api`) and does not appear on
+    any operator-facing page.
     """
     dev_content = DEVELOPER_INTERNALS_PATH.read_text(encoding="utf-8")
-    dev_docnames = _md_toctree_docnames(dev_content)
-    assert "supervising-api" in dev_docnames, (
-        "developer-internals.md toctree must include 'supervising-api'. "
-        "The supervising API documentation must be discoverable through the "
-        "developer section, not through operator-facing pages."
-    )
-
-    ref_content = REFERENCE_MD_PATH.read_text(encoding="utf-8")
-    ref_docnames = _md_toctree_docnames(ref_content)
-    assert "supervising-api" not in ref_docnames, (
-        "reference.md toctree must NOT include 'supervising-api'. "
-        "The supervising API is developer-internal only; adding it to "
-        "reference.md would violate product requirement 9."
+    assert "## Supervising API" in dev_content, (
+        "developer-internals.md must contain a '## Supervising API' section. "
+        "The supervising API documentation must remain discoverable through the "
+        "developer section after the wt-026 consolidation."
     )
 
 
@@ -292,5 +288,5 @@ def test_readme_has_developer_reference_and_modules_rst_pointers() -> None:
     assert "docs/sphinx/index.rst" in readme, (
         "README.md must route the developer/API surface to "
         "ralph-workflow/docs/sphinx/index.rst, the canonical handler page "
-        "that links to developer-reference.md and modules.rst."
+        "that links to developer-internals.md and modules.rst."
     )

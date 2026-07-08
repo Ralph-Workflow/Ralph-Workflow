@@ -31,7 +31,7 @@ Use `--explain-policy-dir` to point at a custom policy directory:
 ralph --check-policy --explain-policy-dir /path/to/policy/dir
 ```
 
-See [Policy Explanation](policy-explanation.md) for the deeper inspection view.
+See [Policy Explanation](configuration.md#inspecting-the-active-policy) for the deeper inspection view.
 
 ## Setup
 

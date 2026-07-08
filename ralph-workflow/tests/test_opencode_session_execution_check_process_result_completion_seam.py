@@ -192,9 +192,7 @@ class TestCheckProcessResultCompletionSeam:
                 ),
             )
 
-    def test_pi_length_stop_without_artifact_raises_context_exhausted(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pi_length_stop_without_artifact_raises_context_exhausted(self, tmp_path: Path) -> None:
         """Pi stopReason=length is a context-exhaustion signal, not an artifact retry."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)

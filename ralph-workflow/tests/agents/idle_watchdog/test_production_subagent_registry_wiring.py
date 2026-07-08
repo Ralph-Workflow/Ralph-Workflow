@@ -591,9 +591,7 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
         return BaseExecutionStrategy(
             label_scope=cast("str | None", kwargs.get("label_scope")),
             registry=cast("ChildLivenessRegistry | None", kwargs.get("registry")),
-            subagent_pid_source=cast(
-                "SubagentPidSource | None", kwargs.get("subagent_pid_source")
-            ),
+            subagent_pid_source=cast("SubagentPidSource | None", kwargs.get("subagent_pid_source")),
         )
 
     def _empty_generator(*_args: object, **_kwargs: object) -> Iterator[str]:
@@ -621,9 +619,7 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
     # import run_pty_and_read_lines`` etc.) so the canonical patch
     # target is the ``invoke`` module's own reference, mirroring the
     # ``strategy_for_command`` patch above.
-    monkeypatch.setattr(
-        ralph_invoke, "run_subprocess_and_read_lines", _empty_generator
-    )
+    monkeypatch.setattr(ralph_invoke, "run_subprocess_and_read_lines", _empty_generator)
     monkeypatch.setattr(ralph_invoke, "run_pty_and_read_lines", _empty_generator)
 
     # Build a minimal AgentConfig and InvokeOptions so the
@@ -706,8 +702,7 @@ def test_gemini_parser_registers_pid_from_child_progress() -> None:
     )
     identity = next(iter(registry.snapshot()))
     assert identity.source == "gemini", (
-        f"identity.source must be 'gemini' (the parser-bound label), "
-        f"got {identity.source!r}"
+        f"identity.source must be 'gemini' (the parser-bound label), got {identity.source!r}"
     )
 
 
@@ -808,6 +803,7 @@ def test_gemini_parser_swallows_value_error_registration_failures() -> None:
     ``ValueError`` and asserts ``parse`` returns the typed event
     WITHOUT re-raising.
     """
+
     class _ValueErrorRegistry:
         def register(
             self,

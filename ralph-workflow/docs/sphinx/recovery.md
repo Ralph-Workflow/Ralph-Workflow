@@ -186,8 +186,8 @@ error message by substring.
 
 - [Concepts](concepts.md) — phase, drain, checkpoint, and recovery terminology
 - [Troubleshooting](troubleshooting.md) — common recovery-related issues and fixes
-- [Parallel Mode](parallel-mode.md) — recovery behavior in same-workspace parallel runs
-- [Developer Reference](developer-reference.md) — deeper implementation detail
+- [Parallel Mode](advanced-pipeline-configuration.md#parallel-execution-agent-driven) — recovery behavior in same-workspace parallel runs
+- [Developer Reference](developer-internals.md) — deeper implementation detail
 - [MCP Architecture](mcp-architecture.md) — MCP server, tool registry, and dual-alias exposure
 
 ## Deterministic rc=0 classification

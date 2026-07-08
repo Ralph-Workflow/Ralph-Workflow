@@ -92,8 +92,7 @@ def test_mode_is_default_after_width_refresh() -> None:
     refreshed = ctx.refreshed()
     refreshed_mode = vars(refreshed)["mode"]
     assert refreshed_mode == "default", (
-        f"DisplayContext.refreshed() must preserve mode='default'; "
-        f"got {refreshed_mode!r}"
+        f"DisplayContext.refreshed() must preserve mode='default'; got {refreshed_mode!r}"
     )
 
 

@@ -146,21 +146,14 @@ def _patched_update_recorder(
 
     real_update_status_bar = ParallelDisplay.update_status_bar
 
-    def recording_update_status_bar(
-        self: ParallelDisplay, model: StatusBarModel
-    ) -> None:
+    def recording_update_status_bar(self: ParallelDisplay, model: StatusBarModel) -> None:
         if not isinstance(model, StatusBarModel):
-            msg = (
-                f"update_status_bar requires a StatusBarModel, "
-                f"got {type(model).__name__}"
-            )
+            msg = f"update_status_bar requires a StatusBarModel, got {type(model).__name__}"
             raise TypeError(msg)
         captured.append(model)
         real_update_status_bar(self, model)
 
-    monkeypatch.setattr(
-        ParallelDisplay, "update_status_bar", recording_update_status_bar
-    )
+    monkeypatch.setattr(ParallelDisplay, "update_status_bar", recording_update_status_bar)
     return captured
 
 
@@ -273,8 +266,7 @@ def _patch_materialize_to_raise_for_development_only(
     states_observed: list[PipelineState] = []
 
     dev_msg = (
-        "Template 'developer_iteration.jinja' requires an existing "
-        "plan handoff at .agent/PLAN.md"
+        "Template 'developer_iteration.jinja' requires an existing plan handoff at .agent/PLAN.md"
     )
 
     def raising_materialize_prepared(
@@ -308,9 +300,7 @@ def _patch_materialize_to_raise_for_development_only(
                 raise MissingPlanHandoffError(dev_msg)
         real_materialize_agent(*args, **kwargs)
 
-    monkeypatch.setattr(
-        runner_module, "materialize_prepared_prompt", raising_materialize_prepared
-    )
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", raising_materialize_prepared)
     monkeypatch.setattr(
         runner_module, "materialize_agent_prompt_if_needed", raising_materialize_agent
     )
@@ -492,8 +482,7 @@ def test_development_phase_missing_plan_handoff_recovers_and_status_bar_remains_
     # recovery_epoch bounded at 1, last_error carries the
     # underlying MissingPlanHandoffError message).
     assert final_state.phase == "planning", (
-        f"AC-11: final state.phase must be 'planning' (entry_phase); "
-        f"got {final_state.phase!r}"
+        f"AC-11: final state.phase must be 'planning' (entry_phase); got {final_state.phase!r}"
     )
     assert final_state.recovery_epoch == 1, (
         f"AC-11: final state.recovery_epoch must be 1 after one "

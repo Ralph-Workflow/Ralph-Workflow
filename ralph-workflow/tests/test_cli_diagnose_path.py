@@ -53,6 +53,7 @@ class BootstrapResultStub:
         self.path = path if path is not None else Path("/dev/null")
         self.backup = backup
 
+
 KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
 
 
@@ -105,9 +106,7 @@ def _stub_init_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
         "ensure_local_support_configs",
         lambda *_args, **_kw: [skipped],
     )
-    monkeypatch.setattr(
-        bootstrap_module, "ensure_local_main_config", lambda *_args, **_kw: skipped
-    )
+    monkeypatch.setattr(bootstrap_module, "ensure_local_main_config", lambda *_args, **_kw: skipped)
     monkeypatch.setattr(
         bootstrap_module,
         "_ensure_default_gitignore",

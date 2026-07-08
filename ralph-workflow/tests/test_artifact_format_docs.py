@@ -752,7 +752,7 @@ def test_format_doc_does_not_advertise_minimal_plan_or_atomic_path() -> None:
         "cheap-model",
         "Atomic path",
         "short plan",
-        "artifact_type=\"plan\"",
+        'artifact_type="plan"',
     )
     for text in forbidden:
         assert text not in doc
@@ -955,8 +955,9 @@ def test_plan_format_doc_quickstart_example_is_not_sparse_config_bait() -> None:
     assert "Run pytest tests/test_foo.py -q and confirm the focused regression passes" in doc
 
 
-def test_plan_format_doc_high_quality_example_does_not_use_verify_steps_for_ac_satisfaction(
-) -> None:
+def test_plan_format_doc_high_quality_example_does_not_use_verify_steps_for_ac_satisfaction() -> (
+    None
+):
     """The high-quality example must not contradict the AC satisfied_by_steps validator."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None

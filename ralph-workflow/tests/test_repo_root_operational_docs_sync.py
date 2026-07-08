@@ -15,10 +15,11 @@ from tests.doc_roots import REPO_ROOT_DOCS_DIR, REPOSITORY_ROOT
 # Repo-root copies were intentionally removed during the docs/dedup work.
 _OPERATIONAL_GUIDES = [
     "agent-compatibility.md",
-    "quick-reference.md",
     # template-guide.md and git-workflow.md were retired during the docs
     # dedup (they were either stale or covered by other pages) and are
     # intentionally not in the active route.
+    # quick-reference.md was merged into cli.md during the wt-026
+    # consolidation; cli.md is the canonical CLI reference.
 ]
 
 _SPINX_DIR = Path(__file__).resolve().parent.parent / "docs" / "sphinx"
@@ -83,15 +84,21 @@ def test_python_tooling_guide_is_current() -> None:
 
 
 def test_quick_reference_has_current_commands() -> None:
-    """quick-reference.md should contain current Ralph commands."""
-    path = REPO_ROOT_DOCS_DIR / "quick-reference.md"
-    if not path.exists():
-        pytest.skip("quick-reference.md may not exist")
-    content = path.read_text()
-    # Should reference current CLI commands
-    if "ralph" in content.lower():
-        # If it mentions ralph CLI, should reference current commands
-        assert "run" in content.lower() or "verify" in content.lower()
+    """quick-reference.md was merged into cli.md during the wt-026 consolidation.
+
+    cli.md is the canonical CLI reference; the canonical
+    `ralph --version`, `ralph --diagnose`, `ralph --check-policy`,
+    `ralph --explain-policy`, and `ralph --list-agents` commands
+    live there. This test is preserved as a regression guard: a future
+    re-introduction of quick-reference.md would be redundant and must
+    be redirected to cli.md.
+    """
+    # The stub was deleted in wt-026; the CLI reference lives in cli.md.
+    quick_ref_path = REPO_ROOT_DOCS_DIR / "quick-reference.md"
+    assert not quick_ref_path.exists(), (
+        f"{quick_ref_path} was deleted in wt-026; the canonical CLI "
+        f"reference lives in ralph-workflow/docs/sphinx/cli.md"
+    )
 
 
 def test_agent_compatibility_has_current_provider_info() -> None:

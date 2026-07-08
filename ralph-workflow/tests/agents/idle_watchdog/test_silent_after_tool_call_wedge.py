@@ -139,9 +139,7 @@ def test_subagent_silence_with_stale_corroborator_defers_via_silent_subagent() -
 
     clock.advance(240.0)
     verdict = watchdog.evaluate(classify_quiet=_active)
-    assert verdict == WatchdogVerdict.CONTINUE, (
-        f"expected CONTINUE at t=240; got {verdict}"
-    )
+    assert verdict == WatchdogVerdict.CONTINUE, f"expected CONTINUE at t=240; got {verdict}"
     assert watchdog.last_deferred_kind == StuckKind.SILENT_SUBAGENT, (
         f"expected SILENT_SUBAGENT deferral; got {watchdog.last_deferred_kind}"
     )

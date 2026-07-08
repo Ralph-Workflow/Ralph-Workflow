@@ -68,9 +68,7 @@ def test_cache_tool_catalog_evicts_oldest_workspace_when_cap_exceeded(
     # The most recent cap workspaces MUST still be cached.
     for index, path in enumerate(newest_paths):
         catalog = tool_catalog_cache.get_tool_catalog(path)
-        assert f"new-{index}" in catalog, (
-            f"newest workspace new-{index} must still be cached"
-        )
+        assert f"new-{index}" in catalog, f"newest workspace new-{index} must still be cached"
 
     # Total entries in the cache MUST be exactly the cap.
     assert len(tool_catalog_cache._CACHE) == cap, (

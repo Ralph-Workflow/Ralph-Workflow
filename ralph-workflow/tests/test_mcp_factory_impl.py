@@ -162,9 +162,7 @@ def test_handle_shutdown_releases_allocated_endpoint(tmp_path: Path) -> None:
 
     first = factory.build(session)
     second = factory.build(session)
-    assert len(factory._allocated_endpoints) == 2, (
-        "two live handles must reserve two endpoints"
-    )
+    assert len(factory._allocated_endpoints) == 2, "two live handles must reserve two endpoints"
 
     first.shutdown()
     assert first.endpoint not in factory._allocated_endpoints, (
@@ -279,8 +277,7 @@ def test_build_releases_endpoint_when_start_server_raises(tmp_path: Path) -> Non
         factory.build(session)
 
     assert not factory._allocated_endpoints, (
-        "startup failure MUST release the reserved endpoint so the next "
-        "build can reuse the port"
+        "startup failure MUST release the reserved endpoint so the next build can reuse the port"
     )
     assert raised["count"] == 1
 

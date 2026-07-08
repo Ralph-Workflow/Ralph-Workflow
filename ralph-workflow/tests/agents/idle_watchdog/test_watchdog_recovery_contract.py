@@ -494,17 +494,17 @@ def _extract_fire_reasons(node: ast.AST) -> set[str]:
     target_name: str | None = None
     if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
         target_name = node.target.id
-    elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(
-        node.targets[0], ast.Name
+    elif (
+        isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
     ):
         target_name = node.targets[0].id
     if target_name != "_EXPECTED_FIRE_REASONS":
         return set()
     if not isinstance(node.value, ast.Call):
         return set()
-    if not (
-        isinstance(node.value.func, ast.Name) and node.value.func.id == "frozenset"
-    ):
+    if not (isinstance(node.value.func, ast.Name) and node.value.func.id == "frozenset"):
         return set()
     found: set[str] = set()
     for arg in node.value.args:
@@ -551,9 +551,7 @@ def _find_drift_guard(tree: ast.Module) -> ast.If | None:
             continue
         if len(test.comparators) != 1:
             continue
-        if not (
-            isinstance(test.left, ast.Name) and test.left.id == "_actual"
-        ) or not (
+        if not (isinstance(test.left, ast.Name) and test.left.id == "_actual") or not (
             isinstance(test.comparators[0], ast.Name)
             and test.comparators[0].id == "_EXPECTED_FIRE_REASONS"
         ):

@@ -64,9 +64,7 @@ def test_extract_tool_call_from_plain_tool_use_envelope() -> None:
     """A canonical ``{"type": "tool_use", "name": ..., "input": ...}``
     envelope yields the expected ``(tool_name, tool_args)`` pair.
     """
-    line = json.dumps(
-        {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}
-    )
+    line = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls"}})
     result = _extract_tool_call_from_activity_signal(line)
     assert result is not None
     tool_name, tool_args = result
@@ -435,17 +433,14 @@ def test_pty_line_reader_routes_tool_use_to_record_tool_call_activity() -> None:
     ``watchdog.record_tool_call_activity`` with the canonical
     ``(tool_name, tool_args)`` pair extracted from the envelope.
     """
-    raw = json.dumps(
-        {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}
-    )
+    raw = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls"}})
     reader = _build_pty_reader_with_strategy(_ToolUseStrategy(raw))
     watchdog = _RecordingWatchdog()
 
     list(reader._handle_queued_line(raw + "\n", watchdog))
 
     assert len(watchdog.tool_call_observations) == 1, (
-        f"Expected exactly one tool-call observation; got"
-        f" {watchdog.tool_call_observations}"
+        f"Expected exactly one tool-call observation; got {watchdog.tool_call_observations}"
     )
     tool_name, tool_args = watchdog.tool_call_observations[0]
     assert tool_name == "Bash"
@@ -463,9 +458,7 @@ def test_pty_line_reader_routes_repeated_tool_use_to_trip_breaker() -> None:
     times.  Without this path the production breaker dimension is
     unreachable in real runs.
     """
-    raw = json.dumps(
-        {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}}
-    )
+    raw = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}})
     reader = _build_pty_reader_with_strategy(_ToolUseStrategy(raw))
     watchdog = _RecordingWatchdog()
 
@@ -473,24 +466,19 @@ def test_pty_line_reader_routes_repeated_tool_use_to_trip_breaker() -> None:
         list(reader._handle_queued_line(raw + "\n", watchdog))
 
     assert len(watchdog.tool_call_observations) == 3, (
-        f"Expected 3 tool-call observations; got"
-        f" {watchdog.tool_call_observations}"
+        f"Expected 3 tool-call observations; got {watchdog.tool_call_observations}"
     )
     fingerprints = {
-        (name, json.dumps(args, sort_keys=True))
-        for name, args in watchdog.tool_call_observations
+        (name, json.dumps(args, sort_keys=True)) for name, args in watchdog.tool_call_observations
     }
     assert len(fingerprints) == 1, (
-        f"Expected identical fingerprints for repeated identical tool calls;"
-        f" got {fingerprints}"
+        f"Expected identical fingerprints for repeated identical tool calls; got {fingerprints}"
     )
 
 
 def test_pty_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
     """PTY tool-use activity must not clear the identical-tool-call breaker."""
-    raw = json.dumps(
-        {"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}}
-    )
+    raw = json.dumps({"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}})
     reader = _build_pty_reader_with_strategy(_ToolUseStrategy(raw))
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(
@@ -512,9 +500,7 @@ def test_pty_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
         list(reader._handle_queued_line(raw + "\n", watchdog))
 
     assert exc_info.value.reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
-    assert "exec tool call args={\"cmd\": \"long silent command\"}" in str(
-        exc_info.value
-    )
+    assert 'exec tool call args={"cmd": "long silent command"}' in str(exc_info.value)
     assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
 
 
@@ -555,9 +541,7 @@ def test_process_line_reader_routes_tool_use_to_record_tool_call_activity() -> N
     minimal reader-like object so the only production code in the
     call path is the activity classification and routing.
     """
-    raw = json.dumps(
-        {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}
-    )
+    raw = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls"}})
     strategy = _ToolUseStrategy(raw)
     reader_like = SimpleNamespace(
         _strategy=strategy,
@@ -588,9 +572,7 @@ def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
     observed multiple times must be recorded so the production
     ``RepetitionTracker.tripped()`` can fire.
     """
-    raw = json.dumps(
-        {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}}
-    )
+    raw = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}})
     strategy = _ToolUseStrategy(raw)
     reader_like = SimpleNamespace(
         _strategy=strategy,
@@ -608,20 +590,16 @@ def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
         f" got {watchdog.tool_call_observations}"
     )
     fingerprints = {
-        (name, json.dumps(args, sort_keys=True))
-        for name, args in watchdog.tool_call_observations
+        (name, json.dumps(args, sort_keys=True)) for name, args in watchdog.tool_call_observations
     }
     assert len(fingerprints) == 1, (
-        f"Expected identical fingerprints for repeated identical tool calls;"
-        f" got {fingerprints}"
+        f"Expected identical fingerprints for repeated identical tool calls; got {fingerprints}"
     )
 
 
 def test_process_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
     """Production reader activity must not clear the identical-tool-call breaker."""
-    raw = json.dumps(
-        {"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}}
-    )
+    raw = json.dumps({"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}})
     strategy = _ToolUseStrategy(raw)
     reader_like = SimpleNamespace(
         _strategy=strategy,
@@ -653,9 +631,7 @@ def test_process_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
 
 def test_repeated_tool_call_timeout_diagnostic_identifies_command() -> None:
     """Repeated-tool timeout messages name the repeated tool and command preview."""
-    raw = json.dumps(
-        {"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}}
-    )
+    raw = json.dumps({"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}})
     strategy = _ToolUseStrategy(raw)
     reader_like = SimpleNamespace(
         _strategy=strategy,
@@ -707,10 +683,8 @@ def test_repeated_tool_call_timeout_messages_identify_command() -> None:
         ),
     )
 
-    assert "exec tool call args={\"cmd\": \"long silent command\"}" in str(stream_error)
-    assert "exec tool call args={\"cmd\": \"long silent command\"}" in str(
-        invocation_error
-    )
+    assert 'exec tool call args={"cmd": "long silent command"}' in str(stream_error)
+    assert 'exec tool call args={"cmd": "long silent command"}' in str(invocation_error)
 
 
 def test_process_line_reader_routes_plain_text_tool_use_to_breaker() -> None:
@@ -735,8 +709,7 @@ def test_process_line_reader_routes_plain_text_tool_use_to_breaker() -> None:
         bound_method(watchdog, "claude tool: Bash")
 
     assert len(watchdog.tool_call_observations) == 3, (
-        f"Expected 3 plain-text tool-call observations; got"
-        f" {watchdog.tool_call_observations}"
+        f"Expected 3 plain-text tool-call observations; got {watchdog.tool_call_observations}"
     )
     assert all(name == "Bash" and args == {} for name, args in watchdog.tool_call_observations), (
         f"Expected (Bash, {{}}) fingerprints; got {watchdog.tool_call_observations}"

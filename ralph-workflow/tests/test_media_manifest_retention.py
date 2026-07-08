@@ -273,8 +273,7 @@ def test_media_manifest_re_add_preserves_insertion_order() -> None:
 
     baseline_titles = [entry.title for entry in manifest.list_entries()]
     assert baseline_titles == ["oldest", "middle", "newest"], (
-        f"baseline insertion order should be oldest->middle->newest;"
-        f" got {baseline_titles}"
+        f"baseline insertion order should be oldest->middle->newest; got {baseline_titles}"
     )
 
     # Re-add "oldest" several times — its position MUST stay at the front.
@@ -282,24 +281,21 @@ def test_media_manifest_re_add_preserves_insertion_order() -> None:
         _add_entry(manifest, title="oldest", label="old2", identity_key="k:oldest")
         ordered_titles = [entry.title for entry in manifest.list_entries()]
         assert ordered_titles == ["oldest", "middle", "newest"], (
-            f"re-adding 'oldest' MUST preserve its original position;"
-            f" got {ordered_titles}"
+            f"re-adding 'oldest' MUST preserve its original position; got {ordered_titles}"
         )
 
     # Re-add "middle" — its position MUST stay in the middle.
     _add_entry(manifest, title="middle", label="mid2", identity_key="k:middle")
     ordered_titles = [entry.title for entry in manifest.list_entries()]
     assert ordered_titles == ["oldest", "middle", "newest"], (
-        f"re-adding 'middle' MUST preserve its original position;"
-        f" got {ordered_titles}"
+        f"re-adding 'middle' MUST preserve its original position; got {ordered_titles}"
     )
 
     # Re-add "newest" — its position MUST stay at the back.
     _add_entry(manifest, title="newest", label="new2", identity_key="k:newest")
     ordered_titles = [entry.title for entry in manifest.list_entries()]
     assert ordered_titles == ["oldest", "middle", "newest"], (
-        f"re-adding 'newest' MUST preserve its original position;"
-        f" got {ordered_titles}"
+        f"re-adding 'newest' MUST preserve its original position; got {ordered_titles}"
     )
 
 
@@ -325,8 +321,7 @@ def test_media_manifest_re_add_does_not_protect_from_eviction() -> None:
 
     final_titles = [entry.title for entry in manifest.list_entries()]
     assert "oldest" not in final_titles, (
-        f"oldest (in insertion order) should have been evicted;"
-        f" got {final_titles}"
+        f"oldest (in insertion order) should have been evicted; got {final_titles}"
     )
     assert "middle" in final_titles
     assert "newest" in final_titles
@@ -342,15 +337,11 @@ def test_media_manifest_position_refresh_keeps_identity_index_consistent() -> No
     """
     manifest = MediaManifest(max_entries=3)
 
-    first = _add_entry(
-        manifest, title="stable", label="v1", identity_key="k:stable"
-    )
+    first = _add_entry(manifest, title="stable", label="v1", identity_key="k:stable")
 
     # Re-add several times; the artifact_id MUST stay stable.
     for _ in range(3):
-        again = _add_entry(
-            manifest, title="stable", label="vN", identity_key="k:stable"
-        )
+        again = _add_entry(manifest, title="stable", label="vN", identity_key="k:stable")
         assert again.artifact_id == first.artifact_id, (
             f"re-adding the same identity MUST keep the artifact_id stable;"
             f" first={first.artifact_id}, repeat={again.artifact_id}"
@@ -503,4 +494,3 @@ class TestMediaManifestRawBytesRelease:
             "re-add of a loader-backed identity MUST keep _raw_bytes None"
         )
         assert re_added.load_bytes() == payload
-

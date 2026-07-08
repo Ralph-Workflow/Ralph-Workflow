@@ -113,9 +113,7 @@ def test_emit_completion_summary_panel_section_rule_at_any_width() -> None:
     pd.stop()
     output = buf.getvalue()
     # Section rule is emitted unconditionally in the single default-mode layout.
-    assert "[run-completion]" in output, (
-        f"default mode must emit the section rule; got: {output!r}"
-    )
+    assert "[run-completion]" in output, f"default mode must emit the section rule; got: {output!r}"
     # Body must still be present (Pipeline title and decisions survive).
     assert "Pipeline" in output, f"default-mode body must still be present: {output!r}"
 
@@ -221,9 +219,7 @@ def test_emit_completion_panel_does_not_duplicate_commit_subject(tmp_path: Path)
     )
     pd.stop()
     output = buf.getvalue()
-    assert (
-        output.count("feat(display): surface polished completion output") == 1
-    ), (
+    assert output.count("feat(display): surface polished completion output") == 1, (
         f"commit subject must appear exactly once in completion panel; got "
         f"{output.count('feat(display): surface polished completion output')} copies: {output!r}"
     )

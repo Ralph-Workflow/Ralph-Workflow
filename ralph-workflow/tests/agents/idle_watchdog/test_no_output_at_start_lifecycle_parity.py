@@ -95,6 +95,7 @@ def test_no_output_at_start_defers_when_alive_by_is_fresh(alive_by: AliveBy) -> 
     fresh-evidence subset, so a productive live child is never
     killed by the short fire.
     """
+
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=alive_by,
@@ -136,6 +137,7 @@ def test_no_output_at_start_fires_when_alive_by_is_stale(alive_by: AliveBy) -> N
     contract); the assertion here verifies the deferral does NOT
     happen via ``alive_by``-is-not-None.
     """
+
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=alive_by,
@@ -169,6 +171,7 @@ def test_no_output_at_start_full_lifecycle_parity() -> None:
     directions of the gate are honoured in the same watchdog
     instance (the reset path between invocations does not regress).
     """
+
     # Fresh state first: defer.
     def _fresh_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
@@ -181,9 +184,7 @@ def test_no_output_at_start_full_lifecycle_parity() -> None:
     watchdog.record_invocation_start()
     clock.advance(31.0)
     verdict = watchdog.evaluate(classify_quiet=_active)
-    assert verdict == WatchdogVerdict.CONTINUE, (
-        f"FRESH_PROGRESS MUST defer; got {verdict!r}"
-    )
+    assert verdict == WatchdogVerdict.CONTINUE, f"FRESH_PROGRESS MUST defer; got {verdict!r}"
 
     # Reset invocation to simulate a new run on a SEPARATE watchdog
     # instance -- the fresh-state deferral must NOT carry over to the
@@ -192,6 +193,7 @@ def test_no_output_at_start_full_lifecycle_parity() -> None:
     # (the corroborator is a constructor parameter, not an attribute
     # to be swapped after construction).
     del watchdog
+
     def _stale_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
@@ -199,15 +201,11 @@ def test_no_output_at_start_full_lifecycle_parity() -> None:
             oldest_child_seconds=5.0,
         )
 
-    stale_watchdog, stale_clock = _make_watchdog_with_corroborator(
-        _stale_corroborator
-    )
+    stale_watchdog, stale_clock = _make_watchdog_with_corroborator(_stale_corroborator)
     stale_watchdog.record_invocation_start()
     stale_clock.advance(31.0)
     verdict = stale_watchdog.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE, (
         f"OS_DESCENDANT_ONLY_STALE_PROGRESS MUST fire; got {verdict!r}"
     )
-    assert (
-        stale_watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
-    )
+    assert stale_watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START

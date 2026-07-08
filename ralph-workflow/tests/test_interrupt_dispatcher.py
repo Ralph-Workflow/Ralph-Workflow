@@ -481,20 +481,20 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
 
 def test_early_escalation_poll_exits_when_process_dies(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the matched process is no longer alive at the OS level
-    from the first poll, the function must return without blocking
+        from the first poll, the function must return without blocking
 
 
-pytestmark = pytest.mark.subprocess_e2e
-    for the full budget. Pins the early-return path on liveness check
-    failure (no SIGKILL sent).
+    pytestmark = pytest.mark.subprocess_e2e
+        for the full budget. Pins the early-return path on liveness check
+        failure (no SIGKILL sent).
 
-    NOTE: ``run_early_escalation_poll`` is a public utility kept for
-    backward compatibility but is NOT used by the production seam.
-    The production seam in ``run_shutdown_block`` uses
-    ``begin_interrupt(block=True)`` which routes through the
-    dispatcher's liveness-based ``_wait_for_list_active_empty``.
-    This test pins the public-method contract so a future regression
-    in the method body is caught.
+        NOTE: ``run_early_escalation_poll`` is a public utility kept for
+        backward compatibility but is NOT used by the production seam.
+        The production seam in ``run_shutdown_block`` uses
+        ``begin_interrupt(block=True)`` which routes through the
+        dispatcher's liveness-based ``_wait_for_list_active_empty``.
+        This test pins the public-method contract so a future regression
+        in the method body is caught.
     """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:claude")

@@ -55,9 +55,9 @@ def test_codex_home_tempdirs_cleaned_up(tmp_path: Path) -> None:
     assert not d1.exists(), f"tempdir {d1} should have been removed"
     assert not d2.exists(), f"tempdir {d2} should have been removed"
     assert list(_allocated_codex_homes) == [], "registration list should be empty after cleanup"
-    assert (
-        _all_allocated_codex_homes == set()
-    ), "lifetime tracking set should be empty after cleanup"
+    assert _all_allocated_codex_homes == set(), (
+        "lifetime tracking set should be empty after cleanup"
+    )
 
 
 def test_cleanup_codex_homes_is_idempotent(tmp_path: Path) -> None:
@@ -146,8 +146,7 @@ def test_cleanup_codex_homes_reaps_fifo_evicted_orphans(tmp_path: Path) -> None:
 
         for d in dirs:
             assert not d.exists(), (
-                f"cleanup_codex_homes must rmtree FIFO-evicted home {d} "
-                f"(round 3 regression)"
+                f"cleanup_codex_homes must rmtree FIFO-evicted home {d} (round 3 regression)"
             )
         assert list(codex_module._allocated_codex_homes) == []
         assert codex_module._all_allocated_codex_homes == set()

@@ -636,9 +636,7 @@ def test_no_silent_subagent_when_subagent_liveness_alive_by_is_not_none() -> Non
         **inputs,
         silent_subagent_seconds=180.0,
     )
-    assert kind == StuckKind.STUCK, (
-        f"non-None alive_by must prevent SILENT_SUBAGENT; got {kind}"
-    )
+    assert kind == StuckKind.STUCK, f"non-None alive_by must prevent SILENT_SUBAGENT; got {kind}"
 
 
 def test_no_silent_subagent_when_only_liveness_alive_by_not_none() -> None:

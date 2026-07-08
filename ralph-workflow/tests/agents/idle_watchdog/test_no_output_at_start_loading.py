@@ -179,7 +179,6 @@ def test_no_output_at_start_fires_for_truly_silent_run() -> None:
 
     verdict = wd.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE, (
-        f"NO_OUTPUT_AT_START MUST fire at the threshold for a truly"
-        f" silent run; got {verdict}"
+        f"NO_OUTPUT_AT_START MUST fire at the threshold for a truly silent run; got {verdict}"
     )
     assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START

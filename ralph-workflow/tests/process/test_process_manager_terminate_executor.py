@@ -79,9 +79,7 @@ class _RecordingExecutor:
         self.submit_calls = 0
         self._delegate = ThreadPoolExecutor(max_workers=max_workers)
 
-    def submit(
-        self, fn: Callable[..., object], *args: object, **kwargs: object
-    ) -> object:
+    def submit(self, fn: Callable[..., object], *args: object, **kwargs: object) -> object:
         self.submit_calls += 1
         return self._delegate.submit(fn, *args, **kwargs)
 
@@ -116,9 +114,7 @@ async def test_async_termination_uses_bounded_executor(
     loop = asyncio.get_running_loop()
     original_run_in_executor = loop.run_in_executor
 
-    def _spy_run_in_executor(
-        executor: object, *args: object, **kwargs: object
-    ) -> object:
+    def _spy_run_in_executor(executor: object, *args: object, **kwargs: object) -> object:
         captured["executor"] = executor
         captured["call_count"] = cast("int", captured["call_count"]) + 1
         # Forward to the original bound method using positional args
@@ -145,9 +141,7 @@ async def test_async_termination_uses_bounded_executor(
     # fixed code uses a ThreadPoolExecutor (or compatible) with a
     # small positive cap, NOT the unbounded default executor.
     executor = captured["executor"]
-    max_workers = getattr(executor, "_max_workers", None) or getattr(
-        executor, "max_workers", None
-    )
+    max_workers = getattr(executor, "_max_workers", None) or getattr(executor, "max_workers", None)
     assert max_workers is not None, (
         "the dedicated executor MUST expose its max_workers cap "
         "(ThreadPoolExecutor exposes it as _max_workers)"
@@ -263,10 +257,14 @@ def test_shutdown_all_does_not_allocate_terminate_executor_on_unused_manager(
         # Forward to the real seam so the rest of the contract still
         # works if the field IS already populated (it should not be
         # in this test, but keep behaviour observable).
-        return pm._terminate_executor if pm._terminate_executor is not None else (
-            ThreadPoolExecutor(
-                max_workers=ProcessManager._TERMINATE_EXECUTOR_MAX_WORKERS,
-                thread_name_prefix="ralph-terminate",
+        return (
+            pm._terminate_executor
+            if pm._terminate_executor is not None
+            else (
+                ThreadPoolExecutor(
+                    max_workers=ProcessManager._TERMINATE_EXECUTOR_MAX_WORKERS,
+                    thread_name_prefix="ralph-terminate",
+                )
             )
         )
 

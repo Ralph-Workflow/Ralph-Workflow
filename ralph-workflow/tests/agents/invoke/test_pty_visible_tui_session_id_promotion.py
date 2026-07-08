@@ -70,12 +70,9 @@ def test_helper_returns_plain_text_session_id() -> None:
         helper_result = extract_transport_session_id_with_visible_tui(line)
         primary_result = extract_transport_session_id_from_line(line)
         assert helper_result == primary_result, (
-            f"plain-text line {line!r}: helper={helper_result!r}"
-            f" primary={primary_result!r}"
+            f"plain-text line {line!r}: helper={helper_result!r} primary={primary_result!r}"
         )
-        assert helper_result is not None, (
-            f"plain-text line {line!r} MUST yield a session id"
-        )
+        assert helper_result is not None, f"plain-text line {line!r} MUST yield a session id"
 
 
 def test_helper_handles_ansi_wrapped_session_id() -> None:
@@ -94,13 +91,11 @@ def test_helper_handles_ansi_wrapped_session_id() -> None:
     helper_result = extract_transport_session_id_with_visible_tui(line)
     # The pre-fix bug: primary result was None for ANSI-wrapped lines.
     assert primary_result is None, (
-        f"sanity check: pre-fix path SHOULD miss this line;"
-        f" primary={primary_result!r}"
+        f"sanity check: pre-fix path SHOULD miss this line; primary={primary_result!r}"
     )
     # The new helper MUST strip ANSI codes and capture the id.
     assert helper_result == "abc123", (
-        f"helper MUST strip ANSI codes and capture the id;"
-        f" got {helper_result!r}"
+        f"helper MUST strip ANSI codes and capture the id; got {helper_result!r}"
     )
 
 
@@ -113,9 +108,7 @@ def test_helper_handles_complex_ansi_with_carriage_returns() -> None:
     # banner which the helper MUST recognise through ANSI codes.
     line = "\x1b[1;32mResume this session with --resume ghi789\x1b[0m"
     helper_result = extract_transport_session_id_with_visible_tui(line)
-    assert helper_result == "ghi789", (
-        f"helper MUST handle complex ANSI; got {helper_result!r}"
-    )
+    assert helper_result == "ghi789", f"helper MUST handle complex ANSI; got {helper_result!r}"
 
 
 def test_helper_returns_none_for_unrelated_lines() -> None:
@@ -129,9 +122,7 @@ def test_helper_returns_none_for_unrelated_lines() -> None:
     )
     for line in cases:
         result = extract_transport_session_id_with_visible_tui(line)
-        assert result is None, (
-            f"line {line!r} MUST return None from helper; got {result!r}"
-        )
+        assert result is None, f"line {line!r} MUST return None from helper; got {result!r}"
 
 
 def test_iter_with_direct_mcp_recovery_captures_ansi_session_id() -> None:
@@ -205,8 +196,7 @@ def test_iter_with_direct_mcp_recovery_captures_plain_text_session_id() -> None:
         )
     )
     assert captured_session_ids == ["plain-456"], (
-        f"plain-text path MUST still capture the id;"
-        f" got {captured_session_ids!r}"
+        f"plain-text path MUST still capture the id; got {captured_session_ids!r}"
     )
 
 
@@ -238,6 +228,5 @@ def test_iter_with_direct_mcp_recovery_ignores_unrelated_lines() -> None:
         )
     )
     assert captured_session_ids == [], (
-        f"unrelated lines MUST NOT trigger on_session_observed;"
-        f" got {captured_session_ids!r}"
+        f"unrelated lines MUST NOT trigger on_session_observed; got {captured_session_ids!r}"
     )

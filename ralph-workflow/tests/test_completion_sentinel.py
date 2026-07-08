@@ -16,10 +16,7 @@ def _eval(
     *,
     sentinel_secret: str | None = None,
 ) -> CompletionSignals:
-    return evaluate_completion(
-        workspace, [], run_id=run_id, sentinel_secret=sentinel_secret
-    )
-
+    return evaluate_completion(workspace, [], run_id=run_id, sentinel_secret=sentinel_secret)
 
 
 def test_check_completion_sentinel_returns_false_when_run_id_is_none(tmp_path: Path) -> None:
@@ -39,10 +36,7 @@ def test_check_completion_sentinel_returns_true_when_db_or_file_present(tmp_path
     db = RunStateDB(tmp_path)
     db.upsert_completion_sentinel("db-only", "sig")
     db.close()
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "db-only")
-        is True
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "db-only") is True
 
     # Case 2: legacy file only
     legacy_dir = tmp_path / ".agent"
@@ -50,16 +44,10 @@ def test_check_completion_sentinel_returns_true_when_db_or_file_present(tmp_path
     (legacy_dir / "completion_seen_file-only.json").write_text(
         '{"run_id": "file-only"}', encoding="utf-8"
     )
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "file-only")
-        is True
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "file-only") is True
 
     # Case 3: neither present
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "absent-run")
-        is False
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "absent-run") is False
 
 
 def test_check_completion_sentinel_returns_false_when_file_not_found(tmp_path: Path) -> None:
@@ -114,10 +102,7 @@ def test_check_completion_sentinel_accepts_db_row(tmp_path: Path) -> None:
     db = RunStateDB(tmp_path)
     db.upsert_completion_sentinel("run-1", "sig-hex")
     db.close()
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "run-1")
-        is True
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "run-1") is True
 
 
 def test_check_completion_sentinel_falls_back_to_file(tmp_path: Path) -> None:
@@ -126,10 +111,7 @@ def test_check_completion_sentinel_falls_back_to_file(tmp_path: Path) -> None:
     legacy = tmp_path / ".agent" / "completion_seen_run-2.json"
     legacy.parent.mkdir(parents=True, exist_ok=True)
     legacy.write_text('{"run_id": "run-2"}', encoding="utf-8")
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "run-2")
-        is True
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "run-2") is True
 
 
 def test_check_completion_sentinel_db_with_secret_rejects_forged(tmp_path: Path) -> None:
@@ -174,10 +156,7 @@ def test_forged_db_sentinel_rejected_when_secret_configured(tmp_path: Path) -> N
     db.upsert_completion_sentinel("run-1", "totally-wrong-hmac")
     db.close()
 
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "run-1")
-        is True
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "run-1") is True
     # With a real secret configured, the forged HMAC is rejected.
     assert (
         completion_signals_module._check_completion_sentinel(
@@ -199,10 +178,7 @@ def test_forged_legacy_file_sentinel_rejected_when_secret_configured(
         encoding="utf-8",
     )
 
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "run-2")
-        is True
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "run-2") is True
     assert (
         completion_signals_module._check_completion_sentinel(
             tmp_path, "run-2", sentinel_secret="broker-real-secret"
@@ -259,10 +235,7 @@ def test_check_completion_sentinel_db_tombstone_overrides_legacy_file(
 
     # With no secret: tombstone still wins; the legacy file MUST NOT
     # resurrect the "completed" verdict.
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "run-1")
-        is False
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "run-1") is False
 
 
 def test_check_completion_sentinel_db_tombstone_overrides_legacy_file_with_secret(
@@ -298,10 +271,7 @@ def test_check_completion_sentinel_db_tombstone_alone_returns_false(
     db = RunStateDB(tmp_path)
     db.upsert_completion_sentinel("run-1", CLEARED_SENTINEL_HMAC)
     db.close()
-    assert (
-        completion_signals_module._check_completion_sentinel(tmp_path, "run-1")
-        is False
-    )
+    assert completion_signals_module._check_completion_sentinel(tmp_path, "run-1") is False
 
 
 def test_evaluate_completion_db_tombstone_does_not_resurrect_via_legacy_file(

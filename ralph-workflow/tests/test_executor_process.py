@@ -388,9 +388,7 @@ def test_run_process_records_default_label() -> None:
     combined test budget.
     """
     pm = _make_timeout_pm(partial_stdout=b"hello")
-    result = run_process(
-        "fake-cmd", options=ProcessRunOptions(), _pm=pm
-    )
+    result = run_process("fake-cmd", options=ProcessRunOptions(), _pm=pm)
     assert result.stdout == "hello"
     records = pm.list_records(
         include_active=True, include_terminal=True, label_prefix="executor:run-process"
@@ -457,9 +455,7 @@ def test_run_process_custom_label_overrides_default() -> None:
         options=ProcessRunOptions(label=custom_label),
         _pm=pm,
     )
-    records = pm.list_records(
-        include_active=True, include_terminal=True, label_prefix=custom_label
-    )
+    records = pm.list_records(include_active=True, include_terminal=True, label_prefix=custom_label)
     assert len(records) == 1
     assert records[0].label == custom_label
     # The default-prefix scan must NOT see this record.

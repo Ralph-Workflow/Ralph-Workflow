@@ -250,20 +250,13 @@ def test_emit_info_log_fires_at_most_once_per_status_interval_when_no_subagent_l
     # ``main_listener is None and subagent_listener is None`` early
     # return is incorrectly extended to the
     # ``subagent_listener is None`` arm.
-    entered_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.ENTERED
-    ]
-    progress_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS
-    ]
+    entered_events = [e for e in captured_events if e.kind == WaitingStatusKind.ENTERED]
+    progress_events = [e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS]
     subagent_progress_events = [
-        e
-        for e in captured_events
-        if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
+        e for e in captured_events if e.kind == WaitingStatusKind.SUBAGENT_PROGRESS
     ]
     assert len(entered_events) == 1, (
-        f"main listener MUST receive the ENTERED event; got"
-        f" {len(entered_events)} ENTERED events"
+        f"main listener MUST receive the ENTERED event; got {len(entered_events)} ENTERED events"
     )
     assert len(progress_events) == 2, (
         f"main listener MUST receive the 2 PROGRESS events (one per"
@@ -380,8 +373,7 @@ def test_emit_no_info_log_when_subagent_activity_is_none(
 
     # Sanity: the main listener received all 3 status events.
     assert len(captured_events) == 3, (
-        f"main listener MUST receive ENTERED + 2 PROGRESS events;"
-        f" got {len(captured_events)}"
+        f"main listener MUST receive ENTERED + 2 PROGRESS events; got {len(captured_events)}"
     )
 
     # The contract: NO INFO log line carries the

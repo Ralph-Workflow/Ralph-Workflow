@@ -33,9 +33,7 @@ REPO_ROOT_DOCS_TOOLING_DIR = REPO_ROOT_DOCS_DIR / "tooling"
 # during the wt-026 documentation consolidation; the regression tests now read
 # from the archive location while still asserting the historical / Rust-era
 # labeling contract that was the original purpose of these tests.
-REPO_ROOT_DOCS_PERFORMANCE_DIR = (
-    REPOSITORY_ROOT / "tmp" / "legacy-rust-archive" / "performance"
-)
+REPO_ROOT_DOCS_PERFORMANCE_DIR = REPOSITORY_ROOT / "tmp" / "legacy-rust-archive" / "performance"
 
 # Package docs
 PACKAGE_DOCS_DIR = PACKAGE_ROOT / "docs"

@@ -219,9 +219,7 @@ def test_append_keeps_handle_open_and_buffers(tmp_path: Path) -> None:
 
 def test_time_based_flush(tmp_path: Path) -> None:
     fake_time = [0.0]
-    log = RawOverflowLog(
-        tmp_path, "unit-1", flush_interval_seconds=5.0, now=lambda: fake_time[0]
-    )
+    log = RawOverflowLog(tmp_path, "unit-1", flush_interval_seconds=5.0, now=lambda: fake_time[0])
     log.append("first")
     fake_time[0] = 6.0
     log.append("second")  # crosses the interval -> flush
@@ -261,6 +259,6 @@ def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
     log.append("pending line")
     executor.drop_unit("unit-x")
     # close() during drop must have flushed the buffered tail
-    assert "pending line\n" in (
-        tmp_path / ".agent" / "raw" / "unit-x.log"
-    ).read_text(encoding="utf-8")
+    assert "pending line\n" in (tmp_path / ".agent" / "raw" / "unit-x.log").read_text(
+        encoding="utf-8"
+    )

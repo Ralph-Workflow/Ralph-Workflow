@@ -1430,6 +1430,7 @@ def test_reset_process_manager_swallows_exceptions_during_shutdown() -> None:
     This guarantees test-teardown never breaks the suite, even if a
     dangling process refuses to die.
     """
+
     class _RaisingPm:
         def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
             raise RuntimeError("boom")
@@ -1439,7 +1440,6 @@ def test_reset_process_manager_swallows_exceptions_during_shutdown() -> None:
     # Must not raise
     reset_process_manager()
     assert _pm_state.instance is None
-
 
 
 def test_shutdown_all_stops_zombie_reaper_even_when_loop_raises() -> None:

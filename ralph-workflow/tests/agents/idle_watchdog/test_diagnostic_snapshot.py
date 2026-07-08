@@ -52,9 +52,7 @@ class _FakeProcessMonitor:
         return {}
 
 
-def _make_watchdog(
-    *, monitor_count: int = 0
-) -> tuple[IdleWatchdog, FakeClock]:
+def _make_watchdog(*, monitor_count: int = 0) -> tuple[IdleWatchdog, FakeClock]:
     clock = FakeClock(start=0.0)
     policy = TimeoutPolicy(
         idle_timeout_seconds=60.0,
@@ -128,13 +126,11 @@ def test_diagnostic_snapshot_reflects_record_subagent_work() -> None:
         f" 'reading source.py'; got {snapshot['last_subagent_progress_description']!r}"
     )
     assert snapshot["subagent_progress_count"] == 1, (
-        f"snapshot.subagent_progress_count MUST be 1; got"
-        f" {snapshot['subagent_progress_count']}"
+        f"snapshot.subagent_progress_count MUST be 1; got {snapshot['subagent_progress_count']}"
     )
     # idle_elapsed_seconds == 5.0
     assert snapshot["idle_elapsed_seconds"] == 5.0, (
-        f"snapshot.idle_elapsed_seconds MUST be 5.0; got"
-        f" {snapshot['idle_elapsed_seconds']}"
+        f"snapshot.idle_elapsed_seconds MUST be 5.0; got {snapshot['idle_elapsed_seconds']}"
     )
 
 
@@ -161,9 +157,7 @@ def test_diagnostic_snapshot_evidence_summary_has_channels() -> None:
         f"snapshot.evidence_summary MUST be a list; got {type(summary)}"
     )
     # 5 channels: stdout, mcp_tool, subagent_output, subagent_liveness, workspace.
-    assert len(summary) == 5, (
-        f"snapshot.evidence_summary MUST have 5 entries; got {len(summary)}"
-    )
+    assert len(summary) == 5, f"snapshot.evidence_summary MUST have 5 entries; got {len(summary)}"
 
 
 def test_diagnostic_snapshot_after_record_invocation_start_resets() -> None:
@@ -255,8 +249,10 @@ def test_diagnostic_snapshot_records_fire_reason() -> None:
     # activity; ACTIVE classify_quiet returns the verdict path
     # straight to NO_OUTPUT_AT_START.
     clock.advance(11.0)
+
     def _active() -> AgentExecutionState:
         return AgentExecutionState.ACTIVE
+
     verdict = watchdog.evaluate(classify_quiet=_active)
     assert verdict.name == "FIRE", (
         f"watchdog.evaluate MUST fire NO_OUTPUT_AT_START after the"

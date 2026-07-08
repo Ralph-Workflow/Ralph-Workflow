@@ -45,9 +45,6 @@ _SAFETY_PHRASES = [
 ]
 
 _DOC_FILES = [
-    "docs/agents/parallelization.md",
-    "docs/migration/parallel-mode.md",
-    "docs/architecture/parallel-fan-out.md",
     "ralph-workflow/README.md",
     "ralph-workflow/CONTRIBUTING.md",
     "README.md",

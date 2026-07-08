@@ -17,8 +17,8 @@ from tests.doc_roots import REPO_ROOT_README
 _SPHINX_PAGES = [
     "getting-started.md",
     "concepts.md",
-    "reference.md",
-    "developer-reference.md",
+    "configuration.md",
+    "developer-internals.md",
 ]
 
 # Minimum content thresholds

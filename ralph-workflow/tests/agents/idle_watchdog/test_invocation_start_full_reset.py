@@ -153,8 +153,7 @@ def test_record_invocation_start_resets_all_per_invocation_fields() -> None:
     for field_name, baseline in _per_invocation_fields().items():
         actual = getattr(watchdog, field_name)
         assert actual == baseline, (
-            f"record_invocation_start MUST reset {field_name} to {baseline!r};"
-            f" got {actual!r}"
+            f"record_invocation_start MUST reset {field_name} to {baseline!r}; got {actual!r}"
         )
 
 
@@ -176,8 +175,7 @@ def test_record_invocation_start_resets_alive_by_signal() -> None:
     assert watchdog.last_alive_by == AliveBy.CPU_IDLE_WHILE_ALIVE
     watchdog.record_invocation_start()
     assert watchdog.last_alive_by is None, (
-        f"record_invocation_start MUST clear _last_alive_by;"
-        f" got {watchdog.last_alive_by!r}"
+        f"record_invocation_start MUST clear _last_alive_by; got {watchdog.last_alive_by!r}"
     )
 
 

@@ -244,7 +244,9 @@ def test_runner_phase_scope_does_not_kill_other_labels(
         ),
     ]
     pipeline_deps = _apply_runner_stubs(
-        monkeypatch, tmp_path, effects,
+        monkeypatch,
+        tmp_path,
+        effects,
         fake_invoke_agent=fake_invoke_agent,
         process_teardown=lambda: None,
     )

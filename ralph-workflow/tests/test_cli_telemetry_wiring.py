@@ -44,7 +44,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 
-
 def _stub_display_context() -> DisplayContext:
     """Build the smallest DisplayContext the tests need."""
     return cast(

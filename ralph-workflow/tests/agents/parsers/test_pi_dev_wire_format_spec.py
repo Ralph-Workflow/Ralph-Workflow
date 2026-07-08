@@ -67,9 +67,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-_FIXTURE_PATH = (
-    Path(__file__).parent / "fixtures" / "pi_dev_documented_events.json"
-)
+_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "pi_dev_documented_events.json"
 
 
 def _load_fixture_lines() -> list[str]:
@@ -397,9 +395,7 @@ class TestPiDevWireFormatSpec:
                 continue
             assistant_event = obj.get("assistantMessageEvent")
             if isinstance(assistant_event, dict):
-                actual_sub_events.add(
-                    str(assistant_event.get("type", ""))
-                )
+                actual_sub_events.add(str(assistant_event.get("type", "")))
 
         missing = documented_sub_events - actual_sub_events
         assert not missing, (

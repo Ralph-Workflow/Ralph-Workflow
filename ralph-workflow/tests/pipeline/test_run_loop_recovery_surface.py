@@ -179,15 +179,11 @@ def test_fallover_emits_recovering_line(monkeypatch: pytest.MonkeyPatch) -> None
         unsubscribe()
 
     recovering_lines = [line for line in captured if "RECOVERING" in line]
-    assert len(recovering_lines) >= 1, (
-        f"expected at least one RECOVERING line, got {captured!r}"
-    )
+    assert len(recovering_lines) >= 1, f"expected at least one RECOVERING line, got {captured!r}"
     line = recovering_lines[0]
     assert "claude" in line, f"expected from_agent='claude' in line, got {line!r}"
     assert "opencode" in line, f"expected to_agent='opencode' in line, got {line!r}"
-    assert "out_of_credits" in line, (
-        f"expected reason 'out_of_credits' in line, got {line!r}"
-    )
+    assert "out_of_credits" in line, f"expected reason 'out_of_credits' in line, got {line!r}"
 
 
 def test_watchdog_kill_emits_stall_line(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -221,9 +217,7 @@ def test_watchdog_kill_emits_stall_line(monkeypatch: pytest.MonkeyPatch) -> None
         unsubscribe()
 
     stall_lines = [
-        line
-        for line in captured
-        if "RECOVERING" in line and "no_output_at_start" in line
+        line for line in captured if "RECOVERING" in line and "no_output_at_start" in line
     ]
     assert len(stall_lines) >= 1, (
         f"expected at least one RECOVERING line that surfaces the "
@@ -266,9 +260,7 @@ def test_terminal_failure_surfaces_root_cause(monkeypatch: pytest.MonkeyPatch) -
         unsubscribe()
 
     stopping_lines = [
-        line
-        for line in captured
-        if "STOPPING" in line and "cycle_cap_exceeded" in line
+        line for line in captured if "STOPPING" in line and "cycle_cap_exceeded" in line
     ]
     assert len(stopping_lines) >= 1, (
         f"expected at least one STOPPING line carrying the root cause "
@@ -304,8 +296,7 @@ def test_recovery_messages_are_cadenced(monkeypatch: pytest.MonkeyPatch) -> None
         for _ in range(5):
             controller.event_bus.publish(event)
         assert len([line for line in captured if "RECOVERING" in line]) == 1, (
-            f"expected exactly one RECOVERING line within the cadence "
-            f"window, got {captured!r}"
+            f"expected exactly one RECOVERING line within the cadence window, got {captured!r}"
         )
         clock.advance(interval_seconds + 0.001)
         controller.event_bus.publish(event)
@@ -333,9 +324,7 @@ def test_cadence_is_per_event_kind_tag(monkeypatch: pytest.MonkeyPatch) -> None:
         now=clock.monotonic,
     )
     try:
-        controller.event_bus.publish(
-            _make_fallover_event(from_agent="claude", to_agent="opencode")
-        )
+        controller.event_bus.publish(_make_fallover_event(from_agent="claude", to_agent="opencode"))
         controller.event_bus.publish(
             _make_failure_event(
                 watchdog_reason="no_output_at_start",
@@ -347,16 +336,12 @@ def test_cadence_is_per_event_kind_tag(monkeypatch: pytest.MonkeyPatch) -> None:
 
     fallover_lines = [line for line in captured if "RECOVERING" in line and "opencode" in line]
     failure_lines = [
-        line
-        for line in captured
-        if "RECOVERING" in line and "no_output_at_start" in line
+        line for line in captured if "RECOVERING" in line and "no_output_at_start" in line
     ]
     assert len(fallover_lines) == 1, (
         f"expected exactly one fallover RECOVERING line, got {captured!r}"
     )
-    assert len(failure_lines) == 1, (
-        f"expected exactly one watchdog-failure line, got {captured!r}"
-    )
+    assert len(failure_lines) == 1, f"expected exactly one watchdog-failure line, got {captured!r}"
 
 
 def test_display_exception_does_not_break_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -368,9 +353,7 @@ def test_display_exception_does_not_break_recovery(monkeypatch: pytest.MonkeyPat
 
     raising_display = MagicMock()
 
-    def _raising_emit(
-        display: object, unit_id: str | None, line: str
-    ) -> None:
+    def _raising_emit(display: object, unit_id: str | None, line: str) -> None:
         del display, unit_id, line
         raise RuntimeError("display boom")
 

@@ -912,10 +912,8 @@ def test_register_descendant_multiple_descendants_all_terminated() -> None:
             f" terminate_calls={descendant.terminate_calls}"
         )
         assert descendant.kill_calls >= 1, (
-            f"descendant PID {descendant.pid} should be killed;"
-            f" kill_calls={descendant.kill_calls}"
+            f"descendant PID {descendant.pid} should be killed; kill_calls={descendant.kill_calls}"
         )
-
 
 
 def test_list_termination_outcomes_returns_dict() -> None:

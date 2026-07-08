@@ -66,15 +66,12 @@ def test_probe_journal_size_thresholds_warning(tmp_path: Path) -> None:
     ):
         human_mb = health.fsevents_journal_bytes / (1024 * 1024)
         health.warnings.append(
-            f"fseventsd journal on {tmp_path} is {human_mb:.1f} MB "
-            "(threshold 50 MB)."
+            f"fseventsd journal on {tmp_path} is {human_mb:.1f} MB (threshold 50 MB)."
         )
     assert len(health.warnings) == 2
 
 
-def test_warns_on_spotlight_and_fat_journal(
-    tmp_path: Path, monkeypatch: object
-) -> None:
+def test_warns_on_spotlight_and_fat_journal(tmp_path: Path, monkeypatch: object) -> None:
     """End-to-end: FsHealth.gather() emits both warnings when both probes trigger.
 
     Stubs ``_volume_root`` so the journal probe targets the tmp_path
@@ -108,6 +105,8 @@ def test_warns_on_spotlight_and_fat_journal(
     assert any("Spotlight indexing is enabled" in w for w in health.warnings)
     assert any("fseventsd journal" in w for w in health.warnings)
     assert any("50" in w for w in health.warnings)
+
+
 # ---------------------------------------------------------------------------
 # Non-darwin host contract (RFC-013 P4 wiring)
 # ---------------------------------------------------------------------------
@@ -157,13 +156,9 @@ def test_gather_on_non_darwin_only_sets_volume_root(tmp_path: Path) -> None:
 
     assert health.volume_root != ""
     assert health.spotlight_indexing_enabled is None, (
-        f"non-darwin host must leave spotlight at None, got "
-        f"{health.spotlight_indexing_enabled!r}"
+        f"non-darwin host must leave spotlight at None, got {health.spotlight_indexing_enabled!r}"
     )
     assert health.fsevents_journal_bytes is None, (
-        f"non-darwin host must leave journal bytes at None, got "
-        f"{health.fsevents_journal_bytes!r}"
+        f"non-darwin host must leave journal bytes at None, got {health.fsevents_journal_bytes!r}"
     )
-    assert health.warnings == [], (
-        f"non-darwin host must emit no warnings, got {health.warnings!r}"
-    )
+    assert health.warnings == [], f"non-darwin host must emit no warnings, got {health.warnings!r}"

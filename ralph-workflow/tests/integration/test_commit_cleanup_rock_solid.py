@@ -100,13 +100,9 @@ def _pre_stage_tracked_paths(tmp_git_repo: Path) -> None:
     (tmp_git_repo / ".agent" / "raw" / "opencode.log").write_text("log content\n")
     (tmp_git_repo / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     (tmp_git_repo / ".agent" / "tmp" / "mcp-server.log").write_text("mcp log\n")
-    (tmp_git_repo / ".agent" / "checkpoint.json").write_text(
-        '{"phase": "agent checkpoint"}'
-    )
+    (tmp_git_repo / ".agent" / "checkpoint.json").write_text('{"phase": "agent checkpoint"}')
     (tmp_git_repo / ".agent" / "workers" / "unit-a").mkdir(parents=True, exist_ok=True)
-    (tmp_git_repo / ".agent" / "workers" / "unit-a" / "output.log").write_text(
-        "worker output\n"
-    )
+    (tmp_git_repo / ".agent" / "workers" / "unit-a" / "output.log").write_text("worker output\n")
 
     for rel_path in ORIGINALLY_FAILING_TRACKED_PATHS:
         _track_and_commit(tmp_git_repo, rel_path)
@@ -169,15 +165,9 @@ def test_handle_commit_cleanup_phase_rock_solid(
         CommitCleanupAction(action="delete_file", path=path)
         for path in ORIGINALLY_FAILING_TRACKED_PATHS
     ]
-    cleanup_actions.append(
-        CommitCleanupAction(action="add_to_gitignore", pattern="*.cache")
-    )
-    cleanup_actions.append(
-        CommitCleanupAction(action="add_to_git_exclude", pattern=".env.local")
-    )
-    cleanup = CommitCleanup.model_construct(
-        analysis_complete=True, actions=cleanup_actions
-    )
+    cleanup_actions.append(CommitCleanupAction(action="add_to_gitignore", pattern="*.cache"))
+    cleanup_actions.append(CommitCleanupAction(action="add_to_git_exclude", pattern=".env.local"))
+    cleanup = CommitCleanup.model_construct(analysis_complete=True, actions=cleanup_actions)
 
     workspace = FsWorkspace(tmp_git_repo)
     _write_artifact(tmp_git_repo, cleanup)
@@ -203,8 +193,7 @@ def test_handle_commit_cleanup_phase_rock_solid(
 
     for rel_path in ORIGINALLY_FAILING_TRACKED_PATHS:
         assert not (tmp_git_repo / rel_path).exists(), (
-            f"{rel_path!r} should have been deleted by the cleanup phase, "
-            "but it still exists"
+            f"{rel_path!r} should have been deleted by the cleanup phase, but it still exists"
         )
 
     innocent_link = tmp_git_repo / INNOCENT_SYMLINK
@@ -251,6 +240,4 @@ def test_handle_commit_cleanup_phase_rock_solid(
             if not dangling.is_file():
                 continue
             name = dangling.name
-            assert ".ralph-staging." not in name, (
-                f"Staging file dangling in .git/info: {dangling}"
-            )
+            assert ".ralph-staging." not in name, f"Staging file dangling in .git/info: {dangling}"

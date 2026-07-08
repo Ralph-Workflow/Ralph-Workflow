@@ -320,9 +320,7 @@ def test_commit_cleanup_reason_is_currently_unvalidated() -> None:
     one) so the behavior change is explicit.
     """
     for raw in ("\x00nul-injection", "中文说明", "multi\nline\nreason", "\r\nwindows-newline"):
-        artifact = CommitCleanup(
-            analysis_complete=True, actions=[], reason=raw
-        )
+        artifact = CommitCleanup(analysis_complete=True, actions=[], reason=raw)
         assert artifact.reason == raw, (
             f"reason={raw!r} must be accepted unchanged (no field_validator), "
             f"got: {artifact.reason!r}"
@@ -361,4 +359,3 @@ def test_commit_cleanup_action_rejects_empty_string_path() -> None:
         CommitCleanupAction(action="delete_file", path="")
     with pytest.raises(ValidationError):
         CommitCleanupAction(action="add_to_gitignore", pattern="")
-

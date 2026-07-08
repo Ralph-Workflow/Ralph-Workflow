@@ -78,8 +78,7 @@ def test_pty_build_subagent_pid_source_returns_registry_source() -> None:
         f" ChildLivenessSubagentPidSource; got {type(pid_source).__name__}"
     )
     assert pid_source._registry is registry, (
-        "PTY _build_subagent_pid_source MUST use the strategy's"
-        " ChildLivenessRegistry"
+        "PTY _build_subagent_pid_source MUST use the strategy's ChildLivenessRegistry"
     )
     assert pid_source._scope_prefix == "agent:scope:", (
         f"PTY _build_subagent_pid_source MUST use the active label"

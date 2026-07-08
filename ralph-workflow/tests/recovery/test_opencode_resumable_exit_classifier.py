@@ -89,8 +89,7 @@ def test_opencode_resumable_exit_classified_as_agent() -> None:
     failure = classifier.classify(exc, phase="development", agent="opencode")
 
     assert failure.category == FailureCategory.AGENT, (
-        f"OpenCodeResumableExitError MUST classify as AGENT; got"
-        f" {failure.category!r}"
+        f"OpenCodeResumableExitError MUST classify as AGENT; got {failure.category!r}"
     )
     assert failure.counts_against_budget is True
     assert failure.reset_session is False
@@ -160,9 +159,7 @@ def test_opencode_resumable_exit_does_not_trigger_ambiguous_warning() -> None:
     assert failure.category == FailureCategory.AGENT, (
         f"expected AGENT for OpenCodeResumableExitError; got {failure.category!r}"
     )
-    ambiguous_warnings = [
-        r for r in captured.records if "Ambiguous failure classification" in r
-    ]
+    ambiguous_warnings = [r for r in captured.records if "Ambiguous failure classification" in r]
     assert ambiguous_warnings == [], (
         f"classifier MUST NOT emit 'Ambiguous failure classification' for"
         f" OpenCodeResumableExitError; got: {ambiguous_warnings!r}"
@@ -242,12 +239,10 @@ def test_diagnostic_context_carried() -> None:
     # logged traceback is actionable.
     message = str(exc)
     assert "read_file" in message, (
-        f"exception message MUST carry the last_tool_call diagnostic;"
-        f" got {message!r}"
+        f"exception message MUST carry the last_tool_call diagnostic; got {message!r}"
     )
     assert "420.0s" in message, (
-        f"exception message MUST carry the elapsed diagnostic;"
-        f" got {message!r}"
+        f"exception message MUST carry the elapsed diagnostic; got {message!r}"
     )
 
 

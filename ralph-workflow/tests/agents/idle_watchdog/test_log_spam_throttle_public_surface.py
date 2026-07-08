@@ -157,8 +157,7 @@ def captured_log_records() -> tuple[io.StringIO, list[str]]:
         _sink,
         level="DEBUG",
         format="{message}",
-        filter=lambda record: "idle_watchdog"
-        in (record["extra"].get("component") or ""),
+        filter=lambda record: "idle_watchdog" in (record["extra"].get("component") or ""),
     )
     try:
         yield buf, records
@@ -339,12 +338,9 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # block does NOT fire yet. The branch emits the
     # ``WAITING_ON_CHILD deferral`` INFO log + ENTERED event.
     clock.advance(3.0)
-    first_verdict = watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-    )
+    first_verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
     assert first_verdict == WatchdogVerdict.WAITING_ON_CHILD, (
-        f"first evaluate() MUST enter WAITING_ON_CHILD deferral;"
-        f" got {first_verdict!r}"
+        f"first evaluate() MUST enter WAITING_ON_CHILD deferral; got {first_verdict!r}"
     )
 
     # Advance so ``current_run_elapsed >= stuck_job_sub_ceiling_seconds``.
@@ -376,16 +372,11 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # ``CONTINUE``. Either verdict proves the watchdog stayed in
     # deferral (no FIRE was emitted).
     for i in range(1000):
-        verdict = watchdog.evaluate(
-            classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-        )
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
         assert verdict in (
             WatchdogVerdict.WAITING_ON_CHILD,
             WatchdogVerdict.CONTINUE,
-        ), (
-            f"evaluate() #{i} MUST stay in deferral (CONTINUE or"
-            f" WAITING_ON_CHILD); got {verdict!r}"
-        )
+        ), f"evaluate() #{i} MUST stay in deferral (CONTINUE or WAITING_ON_CHILD); got {verdict!r}"
 
     # ASSERTION 1 (the headline R6 invariant): DEBUG records
     # matching the deferred-fire spam pattern are <= 2 per
@@ -396,9 +387,7 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # from the PUBLIC loguru sink filtered on
     # ``component='idle_watchdog'``.
     deferred_fire_records = [
-        r
-        for r in log_records
-        if "silent subagent" in r and "children_persist_too_long" in r
+        r for r in log_records if "silent subagent" in r and "children_persist_too_long" in r
     ]
     assert len(deferred_fire_records) <= 2, (
         f"R6 deferred-fire spam regression: got"
@@ -439,9 +428,7 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # 1000-call cycle). This is the secondary R6 witness -- the
     # cadence gate and the deferred-fire throttle are two
     # distinct spam-suppression mechanisms and both must hold.
-    progress_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS
-    ]
+    progress_events = [e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS]
     assert len(progress_events) <= 2, (
         f"R6 PROGRESS-event cadence MUST cap emissions to <= 2"
         f" per cadence window; got {len(progress_events)} PROGRESS"
@@ -453,9 +440,7 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # WAITING branch was actually entered -- a missing ENTERED
     # would imply the watchdog never deferred, which would make
     # the throttle invariant trivially true (a zero-sink bypass).
-    entered_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.ENTERED
-    ]
+    entered_events = [e for e in captured_events if e.kind == WaitingStatusKind.ENTERED]
     assert len(entered_events) == 1, (
         f"R6 ENTERED event MUST fire exactly once on first WAITING"
         f" entry; got {len(entered_events)} ENTERED events."
@@ -467,9 +452,7 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # in deferral). HARD_STOP only fires when ``_gate_fire``
     # returns FIRE (the cumulative ceiling path or the
     # post-deferral fire path).
-    hard_stop_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP
-    ]
+    hard_stop_events = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
     assert not hard_stop_events, (
         f"R6 deferred-fire branch MUST NOT emit HARD_STOP events"
         f" while _gate_fire returns CONTINUE (defer); got"
@@ -523,9 +506,7 @@ def test_log_spam_throttle_public_surface_deferred_fire_throttle_window(
     # (now=5.1s, no advance). Emits ONE initial deferred-fire
     # DEBUG record; the next 99 are throttled.
     for _ in range(100):
-        watchdog.evaluate(
-            classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-        )
+        watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
     # Advance past the 0.05s throttle window to open the
     # refresh boundary.
@@ -537,14 +518,10 @@ def test_log_spam_throttle_public_surface_deferred_fire_throttle_window(
     # <= 3 records (2 emissions + 1 potential per-tuple
     # refresh edge case).
     for _ in range(100):
-        watchdog.evaluate(
-            classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-        )
+        watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
     deferred_fire_records = [
-        r
-        for r in log_records
-        if "silent subagent" in r and "children_persist_too_long" in r
+        r for r in log_records if "silent subagent" in r and "children_persist_too_long" in r
     ]
     assert len(deferred_fire_records) <= 3, (
         f"R6 throttle window 0.05s produced too many deferred-fire"
@@ -662,16 +639,11 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
         # odd i -> is_waiting_state=True (classifier branch 1
         # DUPLICATE_KILL).
         watchdog.set_is_waiting_state(i % 2 == 1)
-        verdict = watchdog.evaluate(
-            classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-        )
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
         assert verdict in (
             WatchdogVerdict.WAITING_ON_CHILD,
             WatchdogVerdict.CONTINUE,
-        ), (
-            f"evaluate() #{i} MUST stay in deferral (CONTINUE or"
-            f" WAITING_ON_CHILD); got {verdict!r}"
-        )
+        ), f"evaluate() #{i} MUST stay in deferral (CONTINUE or WAITING_ON_CHILD); got {verdict!r}"
 
     # ASSERTION 1 (the headline R6 invariant across kind-cycles):
     # the coarse single-key throttle MUST cap DEBUG emissions to
@@ -685,10 +657,7 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
     deferred_fire_records = [
         r
         for r in log_records
-        if (
-            ("silent subagent" in r or "deferred fire" in r)
-            and "children_persist_too_long" in r
-        )
+        if (("silent subagent" in r or "deferred fire" in r) and "children_persist_too_long" in r)
     ]
     assert len(deferred_fire_records) <= 2, (
         f"R6 coarse single-key throttle MUST cap emissions across"
@@ -735,9 +704,7 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
     # The throttle on deferred-fire DEBUG logs and the cadence on
     # WaitingStatusEvent emissions are two distinct spam-suppression
     # mechanisms; both must hold for R6.
-    progress_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS
-    ]
+    progress_events = [e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS]
     assert len(progress_events) <= 2, (
         f"R6 PROGRESS-event cadence MUST cap emissions to <= 2"
         f" per cadence window; got {len(progress_events)} PROGRESS"
@@ -749,9 +716,7 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
     # WAITING branch was actually entered -- a missing ENTERED
     # would imply the watchdog never deferred, which would make
     # the throttle invariant trivially true (a zero-sink bypass).
-    entered_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.ENTERED
-    ]
+    entered_events = [e for e in captured_events if e.kind == WaitingStatusKind.ENTERED]
     assert len(entered_events) == 1, (
         f"R6 ENTERED event MUST fire exactly once on first WAITING"
         f" entry; got {len(entered_events)} ENTERED events."
@@ -763,9 +728,7 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
     # HARD_STOP only fires when ``_gate_fire`` returns FIRE (the
     # cumulative ceiling path or the post-deferral fire path),
     # which never happens in this configuration.
-    hard_stop_events = [
-        e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP
-    ]
+    hard_stop_events = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
     assert not hard_stop_events, (
         f"R6 deferred-fire branch MUST NOT emit HARD_STOP events"
         f" while _gate_fire returns CONTINUE (defer); got"

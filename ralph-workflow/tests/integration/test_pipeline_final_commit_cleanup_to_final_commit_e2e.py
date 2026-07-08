@@ -177,7 +177,10 @@ def _config() -> UnifiedConfig:
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
     console = Console(record=True, force_terminal=False, width=120, color_system=None)
-    ctx = make_display_context(console=console, force_width=120, )
+    ctx = make_display_context(
+        console=console,
+        force_width=120,
+    )
     monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
 
 
@@ -337,8 +340,7 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
 
     for rel_path in ORIGINALLY_FAILING_PATHS:
         assert not (repo_root / rel_path).exists(), (
-            f"{rel_path!r} should have been deleted by the cleanup phase "
-            "during the pipeline run"
+            f"{rel_path!r} should have been deleted by the cleanup phase during the pipeline run"
         )
 
     gitignore_text = (repo_root / ".gitignore").read_text()

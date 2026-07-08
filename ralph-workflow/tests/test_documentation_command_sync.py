@@ -154,6 +154,9 @@ def test_readme_stays_onboarding_focused_and_points_to_deeper_docs() -> None:
     canonical handler is `ralph-workflow/docs/sphinx/index.rst` because
     PyPI cannot resolve repo-root paths like `docs/README.md`. The test
     accepts either pointer (or both) so both surfaces stay onboarding-focused.
+    The surviving developer/API surface is `concepts.md` (or
+    `developer-internals.md`) plus `modules.rst`; the route is
+    README.md -> ralph-workflow/docs/sphinx/index.rst.
     """
     content = _README_PATH.read_text(encoding="utf-8")
     # The maintained operator manual is the canonical handler for the PyPI surface.

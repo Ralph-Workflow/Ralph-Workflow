@@ -518,9 +518,7 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
     state = PipelineState(
         phase="development_analysis",
         phase_chains={
-            "development_analysis": AgentChainState(
-                agents=["claude"], current_index=0, retries=0
-            ),
+            "development_analysis": AgentChainState(agents=["claude"], current_index=0, retries=0),
         },
         outer_progress={"iteration": 0},
         budget_caps={"iteration": 5},
@@ -549,8 +547,7 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
             f"(phase, outer, inner) tuple; got {new_sig!r}"
         )
     assert captured_inside_active is True, (
-        f"StatusBar must be active inside the production context manager "
-        f"at width={width}"
+        f"StatusBar must be active inside the production context manager at width={width}"
     )
 
     # The captured push reached the production entry point: the

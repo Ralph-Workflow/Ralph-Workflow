@@ -200,9 +200,7 @@ def test_submit_artifact_canonical_rolls_back_on_failure(
     def _raise(*args: object, **kwargs: object) -> None:
         raise RuntimeError("receipt write failed")
 
-    monkeypatch.setattr(
-        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
-    )
+    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
 
     deps = ArtifactHandlerDeps(backend=backend)
 
@@ -215,9 +213,7 @@ def test_submit_artifact_canonical_rolls_back_on_failure(
             run_id="run-1",
         )
 
-    assert not artifact_receipt_present(
-        tmp_path, "run-1", "commit_message", backend=backend
-    )
+    assert not artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
     # Sentinel must also be absent (no DB row was inserted because the
     # earlier receipt op failure triggered the rollback).
     db = RunStateDB(tmp_path)
@@ -234,9 +230,7 @@ def test_submit_artifact_canonical_rolls_back_named_artifact_on_failure(
     def _raise(*args: object, **kwargs: object) -> None:
         raise RuntimeError("receipt write failed")
 
-    monkeypatch.setattr(
-        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
-    )
+    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
 
     failing_backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=failing_backend)
@@ -521,9 +515,7 @@ def test_atomic_rollback_when_receipt_write_fails(
     def _raise(*args: object, **kwargs: object) -> None:
         raise RuntimeError("receipt write failed")
 
-    monkeypatch.setattr(
-        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
-    )
+    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
 
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
@@ -606,9 +598,7 @@ def test_atomic_rollback_preserves_artifact_dir_state(
     def _raise(*args: object, **kwargs: object) -> None:
         raise RuntimeError("receipt write failed")
 
-    monkeypatch.setattr(
-        state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True
-    )
+    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
 
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
@@ -731,9 +721,7 @@ def test_submit_artifact_canonical_rolls_back_when_no_durable_receipt(
     ``submit_artifact_canonical`` MUST raise ``ReceiptPersistenceError``
     and roll back every previous op (artifact file, handoff)."""
 
-    def _raise_persistence(
-        *_args: object, **_kwargs: object
-    ) -> None:
+    def _raise_persistence(*_args: object, **_kwargs: object) -> None:
         raise ReceiptPersistenceError(
             "Both DB and legacy paths failed to persist receipt for "
             "run_id='run-1' artifact_type='commit_message'"
@@ -757,9 +745,7 @@ def test_submit_artifact_canonical_rolls_back_when_no_durable_receipt(
         )
 
     # Atomic rollback: artifact file is gone.
-    assert not backend.exists(
-        tmp_path / ".agent" / "artifacts" / "commit_message.json"
-    )
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "commit_message.json")
     # No receipt row leaked into the DB.
     db = RunStateDB(tmp_path)
     try:
@@ -781,9 +767,7 @@ def test_submit_artifact_canonical_succeeds_when_db_upsert_fails_but_legacy_writ
     def _raise_sqlite(*_args: object, **_kwargs: object) -> None:
         raise sqlite3.OperationalError("database is locked")
 
-    monkeypatch.setattr(
-        state_db_module.RunStateDB, "upsert_receipt", _raise_sqlite, raising=True
-    )
+    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise_sqlite, raising=True)
 
     backend = MemoryBackend()
     deps = ArtifactHandlerDeps(backend=backend)
@@ -859,9 +843,7 @@ def test_run_write_implicit_completion_sentinel_succeeds_via_legacy_when_db_fail
 
     monkeypatch.setattr(artifact_module, "RunStateDB", _raise_sqlite_open)
 
-    artifact_module._run_write_implicit_completion_sentinel(
-        workspace_root=tmp_path, run_id="run-y"
-    )
+    artifact_module._run_write_implicit_completion_sentinel(workspace_root=tmp_path, run_id="run-y")
 
     # The legacy ``.agent/completion_seen_run-y.json`` file was written
     # using the real (default) backend, so it lives at the literal

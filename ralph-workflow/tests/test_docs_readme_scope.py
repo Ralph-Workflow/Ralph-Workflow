@@ -110,7 +110,7 @@ def test_docs_readme_covers_performance_family() -> None:
 # ---------------------------------------------------------------------------
 
 _PACKAGE_TIMEOUT_POLICY = PACKAGE_DOCS_DIR / "agents" / "timeout-policy.md"
-_PACKAGE_SPHINX_WATCHDOGS = PACKAGE_DOCS_DIR / "sphinx" / "watchdogs-and-timeouts.md"
+_PACKAGE_SPHINX_WATCHDOGS = PACKAGE_DOCS_DIR / "sphinx" / "concepts.md"
 _PACKAGE_CHANGELOG = PACKAGE_ROOT / "CHANGELOG.md"
 
 
@@ -133,19 +133,20 @@ def test_package_timeout_policy_doc_exists() -> None:
 
 
 def test_package_sphinx_watchdogs_and_timeouts_doc_lists_all_five_kinds() -> None:
-    """The canonical watchdogs-and-timeouts page must mention every WorkspaceChangeKind value."""
+    """The canonical watchdogs section in concepts.md must mention every
+    WorkspaceChangeKind value."""
     content = _PACKAGE_SPHINX_WATCHDOGS.read_text()
     for kind in ("source", "log", "cache", "artifact", "other"):
         assert f"`{kind}`" in content or f"| {kind} |" in content, (
-            f"watchdogs-and-timeouts.md must mention the `{kind}` WorkspaceChangeKind"
+            f"concepts.md#watchdogs must mention the `{kind}` WorkspaceChangeKind"
         )
 
 
 def test_package_sphinx_watchdogs_and_timeouts_doc_mentions_new_config_key() -> None:
-    """The canonical watchdogs-and-timeouts page must mention the new config key name."""
+    """The canonical watchdogs section in concepts.md must mention the new config key name."""
     content = _PACKAGE_SPHINX_WATCHDOGS.read_text()
     assert "agent_workspace_change_weights" in content, (
-        "watchdogs-and-timeouts.md must mention the agent_workspace_change_weights key"
+        "concepts.md#watchdogs must mention the agent_workspace_change_weights key"
     )
 
 
@@ -158,12 +159,13 @@ def test_package_changelog_unreleased_section_calls_out_behavior_change() -> Non
 
 
 def test_package_timeout_policy_doc_mentions_canonical_home() -> None:
-    """The canonical watchdog/timeout page must list all five WorkspaceChangeKind values.
+    """The canonical watchdog/timeout section in concepts.md must list all five
+    WorkspaceChangeKind values.
 
     The wt-026 consolidation deleted the timeout-policy.md stub; the canonical
-    watchdog contract now lives only in watchdogs-and-timeouts.md. This test
-    pins the WorkspaceChangeKind list to the canonical home so future
-    regressions cannot drift the values back to a deleted surface.
+    watchdog contract now lives only in the `## Watchdogs` section of
+    concepts.md. This test pins the WorkspaceChangeKind list to the canonical
+    home so future regressions cannot drift the values back to a deleted surface.
     """
     # Use _PACKAGE_SPHINX_WATCHDOGS directly — timeout-policy.md is deleted.
     sphinx_watchdogs_doc_mentions_canonical_home()
@@ -184,12 +186,12 @@ def test_package_timeout_policy_doc_is_redirect_stub() -> None:
 
 
 def sphinx_watchdogs_doc_mentions_canonical_home() -> None:
-    """Helper: assert watchdogs-and-timeouts.md is the canonical watchdog home."""
+    """Helper: assert concepts.md#watchdogs is the canonical watchdog home."""
     content = _PACKAGE_SPHINX_WATCHDOGS.read_text()
     for kind in ("source", "log", "cache", "artifact", "other"):
         assert f"`{kind}`" in content or f"| {kind} |" in content, (
-            f"watchdogs-and-timeouts.md must mention the `{kind}` WorkspaceChangeKind"
+            f"concepts.md#watchdogs must mention the `{kind}` WorkspaceChangeKind"
         )
     assert "agent_workspace_change_weights" in content, (
-        "watchdogs-and-timeouts.md must mention the agent_workspace_change_weights key"
+        "concepts.md#watchdogs must mention the agent_workspace_change_weights key"
     )

@@ -202,9 +202,7 @@ def test_producer_path_prefers_captured_session_id_over_extractor() -> None:
     """
     strategy = _ProducerStubStrategy()
     handle = _ProducerStubHandle()
-    opts = _make_producer_options(
-        strategy, captured_session_id="sess-captured-wins"
-    )
+    opts = _make_producer_options(strategy, captured_session_id="sess-captured-wins")
 
     with pytest.raises(OpenCodeResumableExitError) as excinfo:
         _check_process_result(

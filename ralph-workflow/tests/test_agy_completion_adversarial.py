@@ -274,9 +274,7 @@ def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
     continue writing legacy files; the read-path honors legacy files
     written by the pre-upgrade release during the dual-read window.
     """
-    digest = hmac.new(
-        SENTINEL_SECRET.encode(), RUN_ID.encode(), hashlib.sha256
-    ).hexdigest()
+    digest = hmac.new(SENTINEL_SECRET.encode(), RUN_ID.encode(), hashlib.sha256).hexdigest()
 
     # Case 1: DB row + matching legacy file — DB wins, accepted.
     db = RunStateDB(workspace)
@@ -285,10 +283,7 @@ def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
     sentinel = workspace / _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=RUN_ID)
     sentinel.parent.mkdir(parents=True, exist_ok=True)
     sentinel.write_text(json.dumps({"run_id": RUN_ID}), encoding="utf-8")
-    assert (
-        _check_completion_sentinel(workspace, RUN_ID, sentinel_secret=SENTINEL_SECRET)
-        is True
-    )
+    assert _check_completion_sentinel(workspace, RUN_ID, sentinel_secret=SENTINEL_SECRET) is True
 
     # Case 2: legacy file only (no DB row) — fallback still honors it.
     sentinel.unlink()
@@ -397,15 +392,5 @@ def test_promote_fallback_without_secret_keeps_legacy_no_hmac_contract(
         encoding="utf-8",
     )
 
-    assert (
-        is_artifact_submitted(
-            workspace, no_secret_run_id, "smoke_test_result"
-        )
-        is True
-    )
-    assert (
-        artifact_receipt_present(
-            workspace, no_secret_run_id, "smoke_test_result"
-        )
-        is True
-    )
+    assert is_artifact_submitted(workspace, no_secret_run_id, "smoke_test_result") is True
+    assert artifact_receipt_present(workspace, no_secret_run_id, "smoke_test_result") is True

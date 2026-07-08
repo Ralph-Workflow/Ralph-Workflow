@@ -149,9 +149,6 @@ def test_emit_run_end_exit_trigger_shown_in_default_mode_output() -> None:
     assert "exit=completed" in out
 
 
-
-
-
 def test_emit_run_end_exit_trigger_none_omits_exit_field() -> None:
     """When exit_trigger is None, no exit= field is emitted."""
     pd, buf = _make_display()

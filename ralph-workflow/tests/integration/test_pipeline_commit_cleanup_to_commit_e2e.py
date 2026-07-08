@@ -211,7 +211,10 @@ def _config() -> UnifiedConfig:
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
     console = Console(record=True, force_terminal=False, width=120, color_system=None)
-    ctx = make_display_context(console=console, force_width=120, )
+    ctx = make_display_context(
+        console=console,
+        force_width=120,
+    )
     monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
 
 
@@ -366,8 +369,7 @@ def test_pipeline_cleanup_to_commit_end_to_end(
 
     for rel_path in ORIGINALLY_FAILING_PATHS:
         assert not (repo_root / rel_path).exists(), (
-            f"{rel_path!r} should have been deleted by the cleanup phase "
-            "during the pipeline run"
+            f"{rel_path!r} should have been deleted by the cleanup phase during the pipeline run"
         )
 
     innocent_link = repo_root / INNOCENT_SYMLINK
@@ -451,8 +453,7 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
             f"Pre-condition failed: {rel_path!r} must exist before cleanup runs"
         )
     assert (repo_root / INNOCENT_SYMLINK).is_symlink(), (
-        f"Pre-condition failed: {INNOCENT_SYMLINK!r} must be a symlink "
-        "before cleanup runs"
+        f"Pre-condition failed: {INNOCENT_SYMLINK!r} must be a symlink before cleanup runs"
     )
 
     _write_commit_cleanup_artifact(
@@ -560,8 +561,7 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
 
     for rel_path in ORIGINALLY_FAILING_PATHS:
         assert not (repo_root / rel_path).exists(), (
-            f"{rel_path!r} should have been deleted by the cleanup phase "
-            "during the pipeline run"
+            f"{rel_path!r} should have been deleted by the cleanup phase during the pipeline run"
         )
 
     innocent_link = repo_root / INNOCENT_SYMLINK

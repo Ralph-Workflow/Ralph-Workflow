@@ -61,9 +61,7 @@ def _make_snapshot(
     )
 
 
-def _make_display(
-    *, is_quiet: bool = False, width: int = 120
-) -> tuple[ParallelDisplay, StringIO]:
+def _make_display(*, is_quiet: bool = False, width: int = 120) -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
@@ -81,9 +79,7 @@ def _make_display_with_workspace(
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
     ctx = make_display_context(console=console, env={})
-    return ParallelDisplay(
-        ctx, is_quiet=is_quiet, workspace_root=tmp_path
-    ), buf
+    return ParallelDisplay(ctx, is_quiet=is_quiet, workspace_root=tmp_path), buf
 
 
 def test_emit_snapshot_renders_phase_line() -> None:
@@ -92,12 +88,8 @@ def test_emit_snapshot_renders_phase_line() -> None:
     pd.emit_snapshot(_make_snapshot(phase="development"))
     pd.stop()
     output = buf.getvalue()
-    assert "[phase]" in output, (
-        f"snapshot missing [phase] line: {output!r}"
-    )
-    assert "development" in output, (
-        f"snapshot missing 'development' phase name: {output!r}"
-    )
+    assert "[phase]" in output, f"snapshot missing [phase] line: {output!r}"
+    assert "development" in output, f"snapshot missing 'development' phase name: {output!r}"
 
 
 def test_emit_snapshot_emits_info_meta_badge() -> None:
@@ -106,12 +98,8 @@ def test_emit_snapshot_emits_info_meta_badge() -> None:
     pd.emit_snapshot(_make_snapshot())
     pd.stop()
     output = buf.getvalue()
-    assert "INFO" in output, (
-        f"snapshot missing INFO badge: {output!r}"
-    )
-    assert "META" in output, (
-        f"snapshot missing META badge: {output!r}"
-    )
+    assert "INFO" in output, f"snapshot missing INFO badge: {output!r}"
+    assert "META" in output, f"snapshot missing META badge: {output!r}"
 
 
 def test_emit_snapshot_renders_plan_summary_when_present() -> None:
@@ -137,12 +125,8 @@ def test_emit_snapshot_quiet_mode_still_renders() -> None:
     pd.emit_snapshot(_make_snapshot())
     pd.stop()
     output = buf.getvalue()
-    assert "[phase]" in output, (
-        f"quiet mode must still render snapshot phase line: {output!r}"
-    )
-    assert "development" in output, (
-        f"quiet mode must still render phase name: {output!r}"
-    )
+    assert "[phase]" in output, f"quiet mode must still render snapshot phase line: {output!r}"
+    assert "development" in output, f"quiet mode must still render phase name: {output!r}"
 
 
 def test_emit_snapshot_subscriber_wired_in_constructor(tmp_path: Path) -> None:
@@ -170,8 +154,7 @@ def test_emit_snapshot_subscriber_wired_in_constructor(tmp_path: Path) -> None:
         f"the [phase] line; got: {output!r}"
     )
     assert "development" in output, (
-        "subscriber callback must surface the phase name from the "
-        f"PipelineState; got: {output!r}"
+        f"subscriber callback must surface the phase name from the PipelineState; got: {output!r}"
     )
 
 
@@ -194,8 +177,7 @@ def test_emit_snapshot_subscriber_wired_routes_each_unique_phase(tmp_path: Path)
     output = buf.getvalue()
     for phase in ("planning", "development", "review"):
         assert phase in output, (
-            f"subscriber->emit_snapshot path must surface phase {phase!r}; "
-            f"got: {output!r}"
+            f"subscriber->emit_snapshot path must surface phase {phase!r}; got: {output!r}"
         )
         assert "[phase]" in output, (
             f"subscriber->emit_snapshot path must emit the [phase] tag for "

@@ -179,9 +179,7 @@ def test_pty_check_fire_threads_resumable_session_id_to_typed_exception() -> Non
     verdict = watchdog.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE
     fire_result = reader._check_fire(watchdog, verdict)
-    assert fire_result is not None, (
-        "_check_fire MUST return a fire result when verdict is FIRE"
-    )
+    assert fire_result is not None, "_check_fire MUST return a fire result when verdict is FIRE"
     _pending_lines, wrapper = fire_result
     assert isinstance(wrapper, _IdleStreamTimeoutError)
     typed_exc = wrapper.__cause__
@@ -303,9 +301,7 @@ def test_pty_check_fire_resume_safe_for_non_resumable_reason() -> None:
     # but the simplest path is to set the watchdog's ``last_fire_reason``
     # and drive ``_check_fire`` through its natural logic.
     fire_result = reader._check_fire(watchdog, verdict)
-    assert fire_result is not None, (
-        "_check_fire MUST return a fire result for the test scenario"
-    )
+    assert fire_result is not None, "_check_fire MUST return a fire result for the test scenario"
     _pending_lines, wrapper = fire_result
     diag = wrapper.diagnostic
     assert isinstance(diag, dict)

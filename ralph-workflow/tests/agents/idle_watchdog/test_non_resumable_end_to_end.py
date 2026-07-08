@@ -86,9 +86,7 @@ class _FakeCheckFireSelf:
     _clock: FakeClock
     _lines_lock: threading.Lock = field(default_factory=threading.Lock)
     _lines_queue: list[str] = field(default_factory=list)
-    _last_hard_stop: list[WaitingStatusEvent | None] = field(
-        default_factory=lambda: [None]
-    )
+    _last_hard_stop: list[WaitingStatusEvent | None] = field(default_factory=lambda: [None])
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
     # Mirrors ``_ProcessLineReader._captured_session_id`` so the kill
@@ -212,9 +210,7 @@ def _fire_descendant_hang() -> _IdleStreamTimeoutError:
         descendant_wait_poll_seconds=0.1,
     )
     post_exit = PostExitWatchdog(policy, clock)
-    verdict = post_exit.wait_descendant_quiesce(
-        lambda: AgentExecutionState.WAITING_ON_CHILD
-    )
+    verdict = post_exit.wait_descendant_quiesce(lambda: AgentExecutionState.WAITING_ON_CHILD)
     assert verdict == PostExitVerdict.FIRE_DESCENDANT_HANG
     return _IdleStreamTimeoutError(
         policy.descendant_wait_timeout_seconds,
@@ -247,8 +243,7 @@ def _resolve_recovery_session_id_for_test(exc: AgentInactivityTimeoutError) -> s
 def _assert_non_resumable_recovery_chain(exc: AgentInactivityTimeoutError) -> None:
     """Assert the full recovery chain refuses to resume for ``exc``."""
     assert exc.session_resume_safe is False, (
-        f"reason={exc.reason!r}: session_resume_safe must be False;"
-        f" got {exc.session_resume_safe}"
+        f"reason={exc.reason!r}: session_resume_safe must be False; got {exc.session_resume_safe}"
     )
     session_id = _resolve_recovery_session_id_for_test(exc)
     assert session_id is None, (
@@ -274,8 +269,7 @@ def _assert_non_resumable_recovery_chain(exc: AgentInactivityTimeoutError) -> No
         reset_tool_registry=False,
     )
     assert intent.action == "fresh", (
-        f"non-resumable reason={exc.reason!r} must yield fresh intent;"
-        f" got {intent.action!r}"
+        f"non-resumable reason={exc.reason!r} must yield fresh intent; got {intent.action!r}"
     )
     assert intent.session_id is None, (
         f"non-resumable reason={exc.reason!r} must yield intent.session_id=None;"
@@ -301,9 +295,7 @@ def test_descendant_hang_does_not_resume() -> None:
 
 def test_session_ceiling_exceeded_does_not_resume() -> None:
     """SESSION_CEILING_EXCEEDED refuses to resume the prior session."""
-    pending_lines, wrapper = _fire_in_stream_reason(
-        WatchdogFireReason.SESSION_CEILING_EXCEEDED
-    )
+    pending_lines, wrapper = _fire_in_stream_reason(WatchdogFireReason.SESSION_CEILING_EXCEEDED)
     timeout_exc = _convert_reason_to_agent_error(wrapper, pending_lines)
     assert timeout_exc.reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
     _assert_non_resumable_recovery_chain(timeout_exc)
@@ -311,9 +303,7 @@ def test_session_ceiling_exceeded_does_not_resume() -> None:
 
 def test_children_persist_too_long_does_not_resume() -> None:
     """CHILDREN_PERSIST_TOO_LONG refuses to resume the prior session."""
-    pending_lines, wrapper = _fire_in_stream_reason(
-        WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
-    )
+    pending_lines, wrapper = _fire_in_stream_reason(WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG)
     timeout_exc = _convert_reason_to_agent_error(wrapper, pending_lines)
     assert timeout_exc.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
     _assert_non_resumable_recovery_chain(timeout_exc)

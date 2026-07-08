@@ -21,9 +21,7 @@ def test_default_mode_emit_strips_rich_markup() -> None:
     """In the single default mode, emit strips rich markup from lines."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(
-        make_display_context(console=console, env={"CI": "1"})
-    )
+    pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
     pd.emit("unit-1", "[green]hello[/green]")
     text = buf.getvalue()
     assert "hello" in text
@@ -39,9 +37,7 @@ def test_emit_analysis_result_in_default_mode_records_to_decision_log() -> None:
     """
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(
-        make_display_context(console=console, env={"CI": "1"})
-    )
+    pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
     pd.emit_analysis_result("development_analysis", "proceed", "all tests pass")
     text = buf.getvalue()
     # emit_analysis_result should NOT emit to console - the titled block is

@@ -111,9 +111,7 @@ def test_evidence_deferral_throttles_identical_channel_emission() -> None:
             verdict = watchdog.evaluate(classify_quiet=_active)
             assert verdict == WatchdogVerdict.CONTINUE
         matching = [
-            r
-            for r in captured
-            if "deferred via activity evidence" in r and "channel=mcp_tool" in r
+            r for r in captured if "deferred via activity evidence" in r and "channel=mcp_tool" in r
         ]
         assert len(matching) <= _MAX_DEFER_EMISSIONS, (
             f"DEBUG log spam regression: got {len(matching)} records"
@@ -143,9 +141,7 @@ def test_evidence_deferral_throttle_uses_configured_window() -> None:
         for _ in range(100):
             watchdog.evaluate(classify_quiet=_active)
         matching = [
-            r
-            for r in captured
-            if "deferred via activity evidence" in r and "channel=mcp_tool" in r
+            r for r in captured if "deferred via activity evidence" in r and "channel=mcp_tool" in r
         ]
         assert len(matching) <= 3, (
             f"throttle window 0.01s produced too many emissions: {len(matching)}"
@@ -197,8 +193,7 @@ def test_evidence_deferral_throttle_is_per_channel() -> None:
         (
             entry
             for entry in snap_first["evidence_summary"]
-            if isinstance(entry, dict)
-            and entry.get("channel") == "mcp_tool"
+            if isinstance(entry, dict) and entry.get("channel") == "mcp_tool"
         ),
         None,
     )
@@ -228,8 +223,7 @@ def test_evidence_deferral_throttle_is_per_channel() -> None:
         (
             entry
             for entry in snap_second["evidence_summary"]
-            if isinstance(entry, dict)
-            and "subagent" in str(entry.get("channel", ""))
+            if isinstance(entry, dict) and "subagent" in str(entry.get("channel", ""))
         ),
         None,
     )
@@ -299,11 +293,7 @@ def test_evidence_deferral_uses_correlation_snapshot_when_no_channel() -> None:
         clock.advance(61.0)
         for _ in range(1000):
             watchdog.evaluate(classify_quiet=_active)
-        matching = [
-            r
-            for r in captured
-            if "deferred via activity evidence" in r
-        ]
+        matching = [r for r in captured if "deferred via activity evidence" in r]
         assert len(matching) <= _MAX_DEFER_EMISSIONS, (
             f"throttle regression on 'none' channel: got {len(matching)}"
             f" records for 1000 calls; expected <= {_MAX_DEFER_EMISSIONS}"

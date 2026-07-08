@@ -41,7 +41,7 @@ class RecoveryPolicy(_FrozenPolicyModel):
         if "terminal_recovery_route" in d:
             raise ValueError(
                 "recovery.terminal_recovery_route is deprecated; rename it to "
-                "recovery.failed_route. See docs/migration/policy-v2.md."
+                "recovery.failed_route. See docs/sphinx/concepts.md."
             )
         failed_route = d.get("failed_route")
         if failed_route in ("phase_failed", "exit_failure"):

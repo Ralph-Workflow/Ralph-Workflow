@@ -1621,9 +1621,7 @@ def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block
     )
 
     # (g) Model named.
-    assert model_name in retry_content, (
-        f"retry prompt must name the model {model_name!r}"
-    )
+    assert model_name in retry_content, f"retry prompt must name the model {model_name!r}"
 
 
 def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
@@ -1748,8 +1746,7 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
     )
     # (e) Rejected session id named.
     assert stale_session_id in retry_content, (
-        f"explicit-session retry (no state) must name the rejected session id "
-        f"{stale_session_id!r}"
+        f"explicit-session retry (no state) must name the rejected session id {stale_session_id!r}"
     )
     # (f) Transport named.
     assert transport_name in retry_content, (
@@ -1880,9 +1877,7 @@ def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note
         "transport rejected the prior session id; got:\n" + retry_content
     )
     # (iii) Sentence 2 pinned phrase.
-    assert (
-        "do NOT interpret this as the prior agent having failed to do work" in retry_content
-    ), (
+    assert "do NOT interpret this as the prior agent having failed to do work" in retry_content, (
         "empty-prior-output stale-session retry must include the 'do NOT "
         "interpret this as the prior agent having failed to do work' note; "
         "got:\n" + retry_content
@@ -1926,8 +1921,7 @@ def test_stale_session_recovery_block_declares_original_task_as_source_of_truth(
 
     # (i) Sentence 2 pinned substring.
     assert "the prior output is INFORMATIONAL ONLY" in rendered, (
-        "recovery block must warn that prior output is INFORMATIONAL ONLY; "
-        "got:\n" + rendered
+        "recovery block must warn that prior output is INFORMATIONAL ONLY; got:\n" + rendered
     )
     # (ii) Sentence 3 pinned substring.
     assert "the ORIGINAL TASK PROMPT below is your ONLY source of truth" in rendered, (
@@ -1936,13 +1930,11 @@ def test_stale_session_recovery_block_declares_original_task_as_source_of_truth(
     )
     # (iii) Sentence 4 first pinned substring.
     assert "do not treat the prior attempt output as ground truth" in rendered, (
-        "recovery block must warn against treating prior output as ground "
-        "truth; got:\n" + rendered
+        "recovery block must warn against treating prior output as ground truth; got:\n" + rendered
     )
     # (iv) Sentence 4 second pinned substring.
     assert "FRESH attempt" in rendered, (
-        "recovery block must tell the retry agent to execute as a FRESH "
-        "attempt; got:\n" + rendered
+        "recovery block must tell the retry agent to execute as a FRESH attempt; got:\n" + rendered
     )
 
     # Existing helper invariants preserved.

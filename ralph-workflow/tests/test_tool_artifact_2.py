@@ -416,9 +416,7 @@ def test_submit_plan_section_verification_strategy_error_explains_expected_shape
         )
 
     message = str(exc_info.value)
-    assert (
-        "section 'verification_strategy' with mode='replace' must be a JSON array" in message
-    )
+    assert "section 'verification_strategy' with mode='replace' must be a JSON array" in message
 
 
 def test_submit_plan_section_invalid_json_explains_fix_and_doc(tmp_path: Path) -> None:

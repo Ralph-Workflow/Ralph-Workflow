@@ -472,8 +472,7 @@ def _run_resource_lifecycle_patched_import(
         )
         if patched == original:
             raise AssertionError(
-                "patch could not find the resource-lifecycle step label; "
-                "verify.py may have changed"
+                "patch could not find the resource-lifecycle step label; verify.py may have changed"
             )
     else:
         patched = original

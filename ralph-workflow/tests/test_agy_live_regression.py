@@ -525,11 +525,14 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     # the public artifact_receipt_present read API. The legacy
     # .agent/receipts/<run_id>/<type>.json path is read-only fallback;
     # production writes go to the per-workspace .agent/state.db only.
-    assert artifact_receipt_present(
-        live_smoke_session.workspace,
-        expected_run_id,
-        "smoke_test_result",
-    ) is True, (
+    assert (
+        artifact_receipt_present(
+            live_smoke_session.workspace,
+            expected_run_id,
+            "smoke_test_result",
+        )
+        is True
+    ), (
         f"Expected a canonical receipt for run_id={expected_run_id!r} "
         f"artifact_type='smoke_test_result'. Artifact present: "
         f"{artifact_path.is_file()}. cli.log tail: {cli_log_tail[-200:]!r}\n"
@@ -575,11 +578,14 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
     # read API verifies the end-to-end promotion contract without
     # coupling to which physical store the receipt landed in (the legacy
     # .agent/receipts/<run_id>/<type>.json path is read-only fallback).
-    assert artifact_receipt_present(
-        live_smoke_session.workspace,
-        expected_run_id,
-        "smoke_test_result",
-    ) is True, (
+    assert (
+        artifact_receipt_present(
+            live_smoke_session.workspace,
+            expected_run_id,
+            "smoke_test_result",
+        )
+        is True
+    ), (
         f"Expected canonical receipt for run_id={expected_run_id!r} "
         f"artifact_type='smoke_test_result'. Artifact present: "
         f"{artifact_path.is_file()}. cli.log tail: {cli_log_tail[-200:]!r}\n"

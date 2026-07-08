@@ -60,6 +60,7 @@ from ralph.pipeline.agent_retry_intent import (
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
 
+
 def _active() -> AgentExecutionState:
     return AgentExecutionState.ACTIVE
 
@@ -126,9 +127,7 @@ class _FakeCheckFireSelf:
     _clock: FakeClock
     _lines_lock: threading.Lock = field(default_factory=threading.Lock)
     _lines_queue: list[str] = field(default_factory=list)
-    _last_hard_stop: list[WaitingStatusEvent | None] = field(
-        default_factory=lambda: [None]
-    )
+    _last_hard_stop: list[WaitingStatusEvent | None] = field(default_factory=lambda: [None])
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
     # Mirrors ``_ProcessLineReader._captured_session_id`` so the kill
@@ -182,19 +181,14 @@ def test_fire_no_output_at_start_yields_inactivity_error() -> None:
     clock.advance(125.0)
     verdict = watchdog.evaluate(classify_quiet=_classify_quiet)
     assert verdict == WatchdogVerdict.FIRE, (
-        f"expected FIRE after no_output_at_start past the dumb-kill"
-        f" floor (125s); got {verdict}"
+        f"expected FIRE after no_output_at_start past the dumb-kill floor (125s); got {verdict}"
     )
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
     # Drive the real line-reader fire path with a fake reader self.
     fake_self = _FakeCheckFireSelf(_policy=policy, _clock=clock)
-    result = _ProcessLineReader._check_fire(
-        fake_self, watchdog, WatchdogVerdict.FIRE
-    )
-    assert result is not None, (
-        "_check_fire must return a wrapper when the verdict is FIRE"
-    )
+    result = _ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
+    assert result is not None, "_check_fire must return a wrapper when the verdict is FIRE"
     pending_lines, wrapper = result
     assert isinstance(wrapper, _IdleStreamTimeoutError)
     assert wrapper.reason == WatchdogFireReason.NO_OUTPUT_AT_START
@@ -216,9 +210,7 @@ def test_fire_no_output_at_start_yields_inactivity_error() -> None:
     )
     assert isinstance(timeout_exc, AgentInactivityTimeoutError)
     assert timeout_exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START
-    assert timeout_exc.session_resume_safe is True, (
-        "NO_OUTPUT_AT_START must be resume-safe"
-    )
+    assert timeout_exc.session_resume_safe is True, "NO_OUTPUT_AT_START must be resume-safe"
     assert timeout_exc.resumable_session_id == expected_session_id, (
         "the conversion seam MUST thread the expected session id"
     )

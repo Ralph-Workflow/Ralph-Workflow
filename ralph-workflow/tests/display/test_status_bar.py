@@ -223,8 +223,7 @@ def test_render_status_bar_shows_all_applicable_fields_at_ac03_widths(width: int
     # disambiguating invariant.
     outer_forms = ("Dev 1/3", "D1/3", "1/3")
     assert any(form in plain for form in outer_forms), (
-        f"outer_dev must render in canonical/compact/minimal form at "
-        f"width={width}; got {plain!r}"
+        f"outer_dev must render in canonical/compact/minimal form at width={width}; got {plain!r}"
     )
     # inner_analysis iteration: must always render in SOME form at
     # AC-03 widths.
@@ -266,12 +265,10 @@ def test_render_status_bar_canonical_iteration_labels_at_ac03_widths(width: int)
     plain = _plain_text(text)
     # Canonical form is required at every width >= 40.
     assert "Dev 1/3" in plain, (
-        f"AC-03: 'Dev 1/3' must render in canonical form at width={width}; "
-        f"got {plain!r}"
+        f"AC-03: 'Dev 1/3' must render in canonical form at width={width}; got {plain!r}"
     )
     assert "Analysis 2/5" in plain, (
-        f"AC-03: 'Analysis 2/5' must render in canonical form at width={width}; "
-        f"got {plain!r}"
+        f"AC-03: 'Analysis 2/5' must render in canonical form at width={width}; got {plain!r}"
     )
     # No shortened label forms at AC-03 widths.
     assert "D1/3" not in plain, (
@@ -319,9 +316,7 @@ def test_render_status_bar_fits_width_at_narrow_terminal_with_long_inputs(width:
     test locks the AC-07 narrow-terminal workspace+phase contract at
     widths 14/15/20/24/30.
     """
-    long_path = (
-        "/Users/alice/code/my-very-long-project-directory-name/subdir"
-    )
+    long_path = "/Users/alice/code/my-very-long-project-directory-name/subdir"
     long_phase = "Development Analysis"
     model = StatusBarModel(
         workspace_root=long_path,
@@ -364,9 +359,7 @@ def test_render_status_bar_workspace_phase_visible_at_narrow_widths(width: int) 
     and runs in well under 1s per parametrized variant so it fits
     inside the 60s combined test budget.
     """
-    long_path = (
-        "/Users/alice/code/my-very-long-project-directory-name/subdir"
-    )
+    long_path = "/Users/alice/code/my-very-long-project-directory-name/subdir"
     long_phase = "Development Analysis"
     model = StatusBarModel(
         workspace_root=long_path,
@@ -455,9 +448,7 @@ def test_render_status_bar_fits_terminal_width_below_14(width: int) -> None:
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     # Single-line invariant: never wraps into the working area.
-    assert "\n" not in plain, (
-        f"Status Bar must not wrap at width={width}; got {plain!r}"
-    )
+    assert "\n" not in plain, f"Status Bar must not wrap at width={width}; got {plain!r}"
     # Width-fit invariant: the core contract for any width.
     assert len(plain) <= width, (
         f"Status Bar exceeds terminal width at width={width}: "
@@ -747,12 +738,8 @@ def test_render_status_bar_ascii_glyph_fallback_when_glyphs_disabled() -> None:
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     # ASCII fallback glyph for 'milestone' is '*' and 'outer_dev' is '[OD]'.
-    assert "*" in plain, (
-        f"ASCII milestone '*' must appear in plain output; got {plain!r}"
-    )
-    assert "[OD]" in plain, (
-        f"ASCII outer_dev '[OD]' must appear in plain output; got {plain!r}"
-    )
+    assert "*" in plain, f"ASCII milestone '*' must appear in plain output; got {plain!r}"
+    assert "[OD]" in plain, f"ASCII outer_dev '[OD]' must appear in plain output; got {plain!r}"
     # Phase_marker is omitted when glyphs are disabled (single default-mode invariant).
     # No Unicode glyphs at all should appear.
     assert "■" not in plain
@@ -842,20 +829,16 @@ def test_render_status_bar_strips_hostile_phase_label_chars(
         f"Status Bar must not wrap from hostile phase_label={hostile_value!r}: {plain!r}"
     )
     assert "\r" not in plain, (
-        f"Status Bar must not contain CR from hostile phase_label={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain CR from hostile phase_label={hostile_value!r}: {plain!r}"
     )
     assert "\x1b" not in plain, (
-        f"Status Bar must not contain ESC from hostile phase_label={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain ESC from hostile phase_label={hostile_value!r}: {plain!r}"
     )
     assert "\x00" not in plain, (
-        f"Status Bar must not contain NUL from hostile phase_label={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain NUL from hostile phase_label={hostile_value!r}: {plain!r}"
     )
     assert "\x07" not in plain, (
-        f"Status Bar must not contain BEL from hostile phase_label={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain BEL from hostile phase_label={hostile_value!r}: {plain!r}"
     )
 
 
@@ -895,20 +878,16 @@ def test_render_status_bar_strips_hostile_workspace_root_chars(
         f"Status Bar must not wrap from hostile workspace_root={hostile_value!r}: {plain!r}"
     )
     assert "\r" not in plain, (
-        f"Status Bar must not contain CR from hostile workspace_root={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain CR from hostile workspace_root={hostile_value!r}: {plain!r}"
     )
     assert "\x1b" not in plain, (
-        f"Status Bar must not contain ESC from hostile workspace_root={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain ESC from hostile workspace_root={hostile_value!r}: {plain!r}"
     )
     assert "\x00" not in plain, (
-        f"Status Bar must not contain NUL from hostile workspace_root={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain NUL from hostile workspace_root={hostile_value!r}: {plain!r}"
     )
     assert "\x07" not in plain, (
-        f"Status Bar must not contain BEL from hostile workspace_root={hostile_value!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain BEL from hostile workspace_root={hostile_value!r}: {plain!r}"
     )
 
 
@@ -979,16 +958,13 @@ def test_render_status_bar_collapses_tab_chars_to_spaces(tab_label: str) -> None
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     assert "\t" not in plain, (
-        f"Status Bar must not contain a tab from phase_label={tab_label!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain a tab from phase_label={tab_label!r}: {plain!r}"
     )
     assert "\n" not in plain, (
-        f"Status Bar must not wrap from tab in phase_label={tab_label!r}: "
-        f"{plain!r}"
+        f"Status Bar must not wrap from tab in phase_label={tab_label!r}: {plain!r}"
     )
     assert "\r" not in plain, (
-        f"Status Bar must not contain CR from tab in phase_label={tab_label!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain CR from tab in phase_label={tab_label!r}: {plain!r}"
     )
     assert len(plain) <= ctx.width, (
         f"Status Bar must fit ctx.width={ctx.width} after tab "
@@ -1020,12 +996,10 @@ def test_render_status_bar_collapses_tab_in_workspace_root_keeps_width_budget() 
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     assert "\t" not in plain, (
-        f"Status Bar must not contain a tab from workspace_root={tab_path!r}: "
-        f"{plain!r}"
+        f"Status Bar must not contain a tab from workspace_root={tab_path!r}: {plain!r}"
     )
     assert "\n" not in plain, (
-        f"Status Bar must not wrap from tab in workspace_root={tab_path!r}: "
-        f"{plain!r}"
+        f"Status Bar must not wrap from tab in workspace_root={tab_path!r}: {plain!r}"
     )
     assert len(plain) <= ctx.width, (
         f"Status Bar must fit ctx.width={ctx.width} after tab "
@@ -1062,10 +1036,8 @@ def test_render_status_bar_collapses_tab_counted_in_len_after_normalization() ->
         f"or run of whitespace trimmed); got plain={plain!r}"
     )
     assert "\t" not in plain, (
-        f"tab characters MUST be normalized away so the width budget "
-        f"is honest; got plain={plain!r}"
+        f"tab characters MUST be normalized away so the width budget is honest; got plain={plain!r}"
     )
-
 
 
 def test_render_status_bar_preserves_meaningful_path_chars() -> None:
@@ -1111,9 +1083,7 @@ def test_render_status_bar_phase_label_is_styled() -> None:
             has_styled_phase = True
             break
     if not has_styled_phase:
-        spans_detail = [
-            (text[span.start : span.end], span.style) for span in text.spans
-        ]
+        spans_detail = [(text[span.start : span.end], span.style) for span in text.spans]
         assert has_styled_phase, (
             f"Phase label 'Development' must be styled with theme.phase.development; "
             f"spans={spans_detail!r}"
@@ -1162,9 +1132,7 @@ def test_status_bar_noop_on_non_terminal_console() -> None:
         buf = ctx.console.file
         if isinstance(buf, io.StringIO):
             buf_value = buf.getvalue()
-            assert buf_value == "", (
-                f"Non-terminal must not write anything; got {buf_value!r}"
-            )
+            assert buf_value == "", f"Non-terminal must not write anything; got {buf_value!r}"
     finally:
         sb.stop()
 
@@ -1404,9 +1372,7 @@ def test_status_bar_live_region_renders_updated_model_on_tty_like_stream() -> No
     assert "Development" in out, (
         f"Live region must surface the phase label 'Development'; got {out!r}"
     )
-    assert "Dev 1/3" in out, (
-        f"Live region must surface the iteration label 'Dev 1/3'; got {out!r}"
-    )
+    assert "Dev 1/3" in out, f"Live region must surface the iteration label 'Dev 1/3'; got {out!r}"
 
 
 def test_status_bar_live_region_renders_phase_only_when_no_iteration() -> None:
@@ -1434,9 +1400,7 @@ def test_status_bar_live_region_renders_phase_only_when_no_iteration() -> None:
     finally:
         sb.stop()
     out = buf.getvalue()
-    assert "Commit" in out, (
-        f"Live region must surface the phase label 'Commit'; got {out!r}"
-    )
+    assert "Commit" in out, f"Live region must surface the phase label 'Commit'; got {out!r}"
     # No placeholder for the omitted iteration fields.
     assert "--" not in out, (
         f"Live region must not render a '--' placeholder for omitted iteration; got {out!r}"
@@ -1568,7 +1532,7 @@ def test_status_bar_module_constructs_no_console_and_reads_no_env() -> None:
     """
     src = inspect.getsource(_status_bar_module)
     # Drop docstrings line-by-line so the assertion scans CODE only.
-    src_no_docstrings = re.sub(r'\"\"\"[\s\S]*?\"\"\"', '', src)
+    src_no_docstrings = re.sub(r"\"\"\"[\s\S]*?\"\"\"", "", src)
     assert "Console(" not in src_no_docstrings, (
         "status_bar.py must not construct a Console; found 'Console(' in source."
     )
@@ -1627,9 +1591,7 @@ def test_render_status_bar_uses_milestone_glyph_between_fields() -> None:
     # ASCII glyph for 'milestone' is '*' from ASCII_GLYPHS.
     # ASCII glyph for 'phase_marker' is '[]'.
     has_separator = "|" in plain or "*" in plain or "[]" in plain or "·" in plain
-    assert has_separator, (
-        f"render_status_bar must include a separator glyph; got plain={plain!r}"
-    )
+    assert has_separator, f"render_status_bar must include a separator glyph; got plain={plain!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -1938,6 +1900,7 @@ def test_status_bar_start_rolls_back_live_on_startup_failure(
     object is honored even when callers import it via ``from``).
     The patch is cleaned up automatically by ``monkeypatch``.
     """
+
     class _BoomError(RuntimeError):
         """Marker exception raised by the patched Live.start() to simulate a startup failure."""
 

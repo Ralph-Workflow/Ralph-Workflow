@@ -82,13 +82,13 @@ def _validate_review_phase(
         errors.append(
             f"phases.{phase_name}: role='review' requires issues_outcome "
             f"(the review_outcome label set when issues are found, e.g. 'has_issues'). "
-            f"See docs/migration/policy-v2.md."
+            f"See docs/sphinx/concepts.md."
         )
     if phase_def.bypass_routes and phase_def.clean_outcome is None:
         errors.append(
             f"phases.{phase_name}: role='review' with bypass_routes requires clean_outcome "
             f"(the bypass_routes key that signals a clean review, e.g. 'clean'). "
-            f"See docs/migration/policy-v2.md."
+            f"See docs/sphinx/concepts.md."
         )
 
 
@@ -167,7 +167,7 @@ def _validate_verification_phase(
         errors.append(
             f"phases.{phase_name}: role='verification' requires a verification block "
             f"(kind, gate_for, on_failure_route). Add [phases.{phase_name}.verification] "
-            f"to pipeline.toml. See docs/sphinx/policy-explanation.md."
+            f"to pipeline.toml. See docs/sphinx/configuration.md#inspecting-the-active-policy."
         )
         return
 

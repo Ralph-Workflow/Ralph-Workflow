@@ -215,8 +215,7 @@ def test_apply_chain_retry_emits_resume_intent_with_captured_id() -> None:
         f" last_agent_session_id is populated; got {intent.action!r}"
     )
     assert intent.session_id == captured_session_id, (
-        f"agent_retry_intent.session_id MUST thread the captured id;"
-        f" got {intent.session_id!r}"
+        f"agent_retry_intent.session_id MUST thread the captured id; got {intent.session_id!r}"
     )
 
 

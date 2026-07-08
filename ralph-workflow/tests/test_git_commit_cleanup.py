@@ -243,8 +243,7 @@ def test_atomic_append_text_separator_normalization(
 
     raw = target.read_text(encoding="utf-8")
     assert "existing-without-newline\n*.cache" in raw, (
-        f"Boundary must contain a newline so the two rules are separate lines; "
-        f"got: {raw!r}"
+        f"Boundary must contain a newline so the two rules are separate lines; got: {raw!r}"
     )
 
 
@@ -279,9 +278,7 @@ def test_atomic_append_text_cleans_sibling_on_exception(
     with pytest.raises(OSError, match="simulated mid-write failure"):
         ops._atomic_append_text(target, "extra\n", encoding="utf-8")
 
-    assert staging_seen, (
-        "Helper must call staging.unlink() after a failed write_bytes"
-    )
+    assert staging_seen, "Helper must call staging.unlink() after a failed write_bytes"
     assert target.read_text(encoding="utf-8") == "initial\n", (
         "Target file must NOT be modified when the publish step fails"
     )
@@ -316,8 +313,7 @@ def test_add_to_git_exclude_routes_through_atomic_helper(
     )
     exclude_file = tmp_git_repo / ".git" / "info" / "exclude"
     assert written_path == exclude_file, (
-        f"Atomic helper must be called with the exclude file path, "
-        f"got: {written_path}"
+        f"Atomic helper must be called with the exclude file path, got: {written_path}"
     )
 
 
@@ -342,8 +338,7 @@ def test_append_to_gitignore_routes_through_atomic_helper(
         f"Payload must include the new pattern, got: {written_payload!r}"
     )
     assert written_path == tmp_git_repo / ".gitignore", (
-        f"Atomic helper must be called with the .gitignore path, "
-        f"got: {written_path}"
+        f"Atomic helper must be called with the .gitignore path, got: {written_path}"
     )
 
 
@@ -487,9 +482,7 @@ def test_delete_file_from_repo_handles_untracked_existing_file(tmp_git_repo: Pat
 
     delete_file_from_repo(tmp_git_repo, "untracked.exe")
 
-    assert not binary.exists(), (
-        "Untracked existing file MUST be removed by delete_file_from_repo"
-    )
+    assert not binary.exists(), "Untracked existing file MUST be removed by delete_file_from_repo"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -514,9 +507,7 @@ def test_delete_file_from_repo_handles_dot_slash_prefixed_path(tmp_git_repo: Pat
 
     delete_file_from_repo(tmp_git_repo, "./binary.exe")
 
-    assert not binary.exists(), (
-        "File MUST be removed when the path uses a ``./`` prefix"
-    )
+    assert not binary.exists(), "File MUST be removed when the path uses a ``./`` prefix"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -549,9 +540,7 @@ def test_delete_file_from_repo_rejects_symlinked_parent_dir(
     with pytest.raises(ValueError):
         delete_file_from_repo(tmp_git_repo, "safe_alias/foo.txt")
 
-    assert (outside / "foo.txt").exists(), (
-        "The outside file must NOT be deleted as a side effect"
-    )
+    assert (outside / "foo.txt").exists(), "The outside file must NOT be deleted as a side effect"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -628,9 +617,7 @@ def test_delete_file_from_repo_accepts_str_path_argument(tmp_git_repo: Path) -> 
 
     delete_file_from_repo(str_repo_root, "binary.exe")
 
-    assert not binary.exists(), (
-        "File MUST be removed when repo_root is passed as str"
-    )
+    assert not binary.exists(), "File MUST be removed when repo_root is passed as str"
 
 
 # --- Phase 8 edge-case tests for ensure_git_initialized ---
@@ -758,9 +745,7 @@ def test_ensure_git_initialized_raises_on_corrupt_git_dir(tmp_path: Path) -> Non
     )
     assert (corrupt / ".git").read_text(encoding="utf-8") == (
         "not a git directory, not a gitfile\n"
-    ), (
-        "Corrupt .git file content must NOT have been modified by a silent re-init"
-    )
+    ), "Corrupt .git file content must NOT have been modified by a silent re-init"
 
 
 # ---------------------------------------------------------------------------
@@ -898,8 +883,7 @@ def test_untrack_engine_internal_files_preserves_non_engine_files(
     untracked = untrack_engine_internal_files(tmp_git_repo, lambda _p: False)
 
     assert untracked == [], (
-        f"Helper must not untrack anything when predicate rejects every path, "
-        f"got: {untracked!r}"
+        f"Helper must not untrack anything when predicate rejects every path, got: {untracked!r}"
     )
 
     repo = Repo(tmp_git_repo)
@@ -947,9 +931,7 @@ def test_untrack_engine_internal_files_rejects_symlinks(
 
     untracked = untrack_engine_internal_files(tmp_git_repo, _engine_path)
 
-    assert untracked == [], (
-        f"Symlink must be skipped by the helper, got: {untracked!r}"
-    )
+    assert untracked == [], f"Symlink must be skipped by the helper, got: {untracked!r}"
 
     repo = Repo(tmp_git_repo)
     try:
@@ -981,9 +963,7 @@ def test_untrack_engine_internal_files_handles_empty_index(
 
     untracked = untrack_engine_internal_files(tmp_git_repo, lambda _p: True)
 
-    assert untracked == [], (
-        f"Helper must return [] for an empty index, got: {untracked!r}"
-    )
+    assert untracked == [], f"Helper must return [] for an empty index, got: {untracked!r}"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -1003,9 +983,7 @@ def test_untrack_engine_internal_files_handles_non_git_directory(tmp_path: Path)
 
     untracked = untrack_engine_internal_files(non_repo, lambda _p: True)
 
-    assert untracked == [], (
-        f"Helper must return [] for a non-git directory, got: {untracked!r}"
-    )
+    assert untracked == [], f"Helper must return [] for a non-git directory, got: {untracked!r}"
 
 
 @pytest.mark.timeout_seconds(5)
@@ -1027,9 +1005,7 @@ def test_untrack_engine_internal_files_skills_silent(
     """
     canonical_skill = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
     canonical_skill.mkdir(parents=True, exist_ok=True)
-    canonical_skill.joinpath("SKILL.md").write_text(
-        "# brainstorming skill\n", encoding="utf-8"
-    )
+    canonical_skill.joinpath("SKILL.md").write_text("# brainstorming skill\n", encoding="utf-8")
     sibling_skill = tmp_git_repo / ".agents" / "skills" / "brainstorming"
     sibling_skill.parent.mkdir(parents=True, exist_ok=True)
     sibling_skill.symlink_to(canonical_skill, target_is_directory=True)
@@ -1038,9 +1014,7 @@ def test_untrack_engine_internal_files_skills_silent(
     _track_and_commit(tmp_git_repo, ".agents/skills/brainstorming")
 
     captured_warnings: list[str] = []
-    sink_id = logger.add(
-        captured_warnings.append, level="WARNING", format="{message}"
-    )
+    sink_id = logger.add(captured_warnings.append, level="WARNING", format="{message}")
     try:
         # Predicate accepts ONLY the .agents/skills/* path (which is the
         # one that would historically fire the symlink-WARNING). The test
@@ -1053,20 +1027,16 @@ def test_untrack_engine_internal_files_skills_silent(
     finally:
         logger.remove(sink_id)
 
-    assert untracked == [], (
-        f"Skill symlinks must NOT be untracked; got: {untracked!r}"
-    )
+    assert untracked == [], f"Skill symlinks must NOT be untracked; got: {untracked!r}"
     assert captured_warnings == [], (
-        f"No WARNING should be emitted for tracked skill-root paths; "
-        f"got: {captured_warnings!r}"
+        f"No WARNING should be emitted for tracked skill-root paths; got: {captured_warnings!r}"
     )
 
     repo = Repo(tmp_git_repo)
     try:
         cached = set(repo.git.ls_files("--cached").splitlines())
         assert ".agents/skills/brainstorming" in cached, (
-            "Tracked skill-root symlink MUST remain in git ls-files --cached "
-            "after the early-skip"
+            "Tracked skill-root symlink MUST remain in git ls-files --cached after the early-skip"
         )
     finally:
         repo.close()
@@ -1111,18 +1081,14 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
     # Stage TWO tracked project-scope skill symlinks under TWO different FIVE roots.
     canonical_a = tmp_git_repo / ".opencode" / "skills" / "coding-standards"
     canonical_a.mkdir(parents=True, exist_ok=True)
-    canonical_a.joinpath("SKILL.md").write_text(
-        "# coding-standards skill\n", encoding="utf-8"
-    )
+    canonical_a.joinpath("SKILL.md").write_text("# coding-standards skill\n", encoding="utf-8")
     sibling_a = tmp_git_repo / ".agents" / "skills" / "coding-standards"
     sibling_a.parent.mkdir(parents=True, exist_ok=True)
     sibling_a.symlink_to(canonical_a, target_is_directory=True)
 
     canonical_b = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
     canonical_b.mkdir(parents=True, exist_ok=True)
-    canonical_b.joinpath("SKILL.md").write_text(
-        "# brainstorming skill\n", encoding="utf-8"
-    )
+    canonical_b.joinpath("SKILL.md").write_text("# brainstorming skill\n", encoding="utf-8")
     # The second FIVE-root sibling is the canonical itself (not a sibling symlink),
     # which exercises the ``_SKILL_ROOT_PREFIXES`` early-skip on a non-symlink entry too.
     # This is the broader case the audit pins: ANY path under a FIVE root gets skipped.
@@ -1147,6 +1113,7 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
     captured: list[str] = []
     sink_id = logger.add(captured.append, level="DEBUG", format="{message}")
     try:
+
         def _engine_path(p: str) -> bool:
             return p == ".agent/PROMPT.md"
 
@@ -1161,16 +1128,13 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
         if "Refusing to git rm --cached symlink under tracked engine-internal path" in msg
     ]
     assert offending == [], (
-        f"Helper must NOT emit the WARNING line for tracked skill symlinks; "
-        f"got: {offending!r}"
+        f"Helper must NOT emit the WARNING line for tracked skill symlinks; got: {offending!r}"
     )
 
     # Assertion (2): AT LEAST ONE captured DEBUG message contains the early-skip
     # substring -- proves the early-skip block fired. Without a DEBUG sink,
     # this assertion would be vacuous (the WARNING sink would discard DEBUGs).
-    early_skip_messages = [
-        msg for msg in captured if "Skipping tracked skill-root path" in msg
-    ]
+    early_skip_messages = [msg for msg in captured if "Skipping tracked skill-root path" in msg]
     assert early_skip_messages, (
         f"Early-skip block MUST emit at least one DEBUG message containing "
         f"'Skipping tracked skill-root path'; captured: {captured!r}"
@@ -1190,8 +1154,7 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
     try:
         cached_paths = set(repo.git.ls_files("--cached").splitlines())
         assert ".agents/skills/coding-standards" in cached_paths, (
-            "Tracked FIVE-root symlink MUST remain in git ls-files --cached; "
-            f"got: {cached_paths!r}"
+            f"Tracked FIVE-root symlink MUST remain in git ls-files --cached; got: {cached_paths!r}"
         )
         assert ".opencode/skills/coding-standards/SKILL.md" in cached_paths, (
             "Tracked FIVE-root canonical file MUST remain in git ls-files --cached; "
@@ -1206,4 +1169,3 @@ def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
         )
     finally:
         repo.close()
-

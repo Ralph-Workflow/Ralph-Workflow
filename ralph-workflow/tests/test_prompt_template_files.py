@@ -702,9 +702,7 @@ def test_planning_analysis_inline_examples_preserve_pa_ids() -> None:
         example for example in examples if example.get("status") in {"request_changes", "failed"}
     ]
     assert non_completed, "planning_analysis.jinja must include non-completed examples"
-    pa_re = re.compile(
-        r"^PA-\d{3} \| Dimension: .+ \| Defect: .+ \| Evidence: .+ \| Missing: .+"
-    )
+    pa_re = re.compile(r"^PA-\d{3} \| Dimension: .+ \| Defect: .+ \| Evidence: .+ \| Missing: .+")
     for example in non_completed:
         findings = example.get("what_came_up_short")
         fixes = example.get("how_to_fix")

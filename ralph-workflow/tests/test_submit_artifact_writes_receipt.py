@@ -199,9 +199,7 @@ def test_submit_artifact_silent_when_runstate_db_raises_sqlite_error(
     ) -> None:
         raise sqlite3.OperationalError("database is locked")
 
-    monkeypatch.setattr(
-        "ralph.mcp.artifacts.state_db.RunStateDB.__init__", _exploding_init
-    )
+    monkeypatch.setattr("ralph.mcp.artifacts.state_db.RunStateDB.__init__", _exploding_init)
 
     result = handle_submit_artifact(_Session(), workspace, _commit_params(), deps=deps)
 

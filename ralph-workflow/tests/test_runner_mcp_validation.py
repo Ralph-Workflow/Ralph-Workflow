@@ -406,9 +406,7 @@ def test_strict_mode_agent_upstream_catalog_failure_returns_zero_and_warns(
         ping = UpstreamTool(name="ping", description="P", input_schema={})
         return {s.name: [ping] for s in servers_arg}
 
-    monkeypatch.setattr(
-        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog", boom_catalog
-    )
+    monkeypatch.setattr("ralph.pipeline._runner_mcp_validation.collect_tool_catalog", boom_catalog)
 
     error_stream = StringIO()
     error_sink = logger.add(error_stream, level="ERROR")
@@ -441,9 +439,7 @@ def test_strict_mode_custom_catalog_failure_returns_one(
     def boom_catalog(_servers: tuple[UpstreamMcpServer, ...]) -> dict[str, list[UpstreamTool]]:
         raise RuntimeError("tool listing failed")
 
-    monkeypatch.setattr(
-        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog", boom_catalog
-    )
+    monkeypatch.setattr("ralph.pipeline._runner_mcp_validation.collect_tool_catalog", boom_catalog)
 
     rc = runner_module.validate_custom_mcp_servers(tmp_path)
 

@@ -110,9 +110,7 @@ def test_db_sweep_preserves_current_run_rows(tmp_path: Path) -> None:
     db2 = RunStateDB(tmp_path)
     # current-run rows are preserved despite their age
     assert db2.get_receipt_hmac("current", "plan") == "sig-current-plan"
-    assert db2.get_receipt_hmac("current", "commit_message") == (
-        "sig-current-commit"
-    )
+    assert db2.get_receipt_hmac("current", "commit_message") == ("sig-current-commit")
     assert db2.get_completion_sentinel_hmac("current") == "sig-current-sentinel"
     # other-run rows are still pruned
     assert db2.get_receipt_hmac("old-run", "plan") is MISSING

@@ -1081,9 +1081,7 @@ class TestNoRetryDecisionReimplementation:
             _has_candidate = False
             for _fname in _DEF_NAME_RE.findall(source):
                 _lname = _fname.lower()
-                if "retry" in _lname and any(
-                    verb in _lname for verb in decision_verbs
-                ):
+                if "retry" in _lname and any(verb in _lname for verb in decision_verbs):
                     _has_candidate = True
                     break
             if not _has_candidate:
@@ -1194,10 +1192,7 @@ class TestUserFacingStatusEmissionRoutesThroughParallelDisplay:
                 source = _read(path)
             except (OSError, UnicodeDecodeError):
                 continue
-            if (
-                "def emit_activity_line(" not in source
-                and "def status_text(" not in source
-            ):
+            if "def emit_activity_line(" not in source and "def status_text(" not in source:
                 continue
             tree = _parse(path)
             for node in ast.walk(tree):

@@ -480,8 +480,8 @@ def test_pro_pipeline_hooks_to_runner_kwargs_shape() -> None:
     """Pin the shape of :meth:`ProPipelineHooks.to_runner_kwargs` and the dataclass guards.
 
     Contract pinned by this test (from the engine-side handoff
-    in ``docs/agents/pro-contract.md`` and the public docstring
-    of :class:`ralph.pro_support.hooks.ProPipelineHooks`):
+    in ``ralph-workflow/docs/sphinx/pro-support.md#engine-internals-pro-contract``
+    and the public docstring of :class:`ralph.pro_support.hooks.ProPipelineHooks`):
 
     1. ``to_runner_kwargs()`` returns a dict with EXACTLY six
        entries — one per factory or passthrough, but never the

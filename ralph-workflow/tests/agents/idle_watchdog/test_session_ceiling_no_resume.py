@@ -38,9 +38,7 @@ def test_session_ceiling_exceeded_with_prior_session_returns_fresh() -> None:
     recovery controller MUST restart from a fresh session so the
     next attempt has a fresh wall-clock budget.
     """
-    action = recovery_action_for_failure_reason(
-        "SESSION_CEILING_EXCEEDED", has_prior_session=True
-    )
+    action = recovery_action_for_failure_reason("SESSION_CEILING_EXCEEDED", has_prior_session=True)
     assert action == "fresh", (
         f"SESSION_CEILING_EXCEEDED with has_prior_session=True MUST"
         f" return 'fresh' (operator-set hard cap cannot be"
@@ -50,9 +48,7 @@ def test_session_ceiling_exceeded_with_prior_session_returns_fresh() -> None:
 
 def test_session_ceiling_exceeded_without_prior_session_returns_fresh() -> None:
     """``SESSION_CEILING_EXCEEDED`` without a prior session MUST return ``'fresh'``."""
-    action = recovery_action_for_failure_reason(
-        "SESSION_CEILING_EXCEEDED", has_prior_session=False
-    )
+    action = recovery_action_for_failure_reason("SESSION_CEILING_EXCEEDED", has_prior_session=False)
     assert action == "fresh"
 
 
@@ -86,9 +82,5 @@ def test_session_ceiling_is_in_non_resumable_set() -> None:
     # (also non-resumable, also stuck-job detector).
     hard_caps = ("SESSION_CEILING_EXCEEDED", "CHILDREN_PERSIST_TOO_LONG")
     for cap in hard_caps:
-        action = recovery_action_for_failure_reason(
-            cap, has_prior_session=True
-        )
-        assert action == "fresh", (
-            f"hard-cap reason={cap!r} MUST NOT resume; got {action!r}"
-        )
+        action = recovery_action_for_failure_reason(cap, has_prior_session=True)
+        assert action == "fresh", f"hard-cap reason={cap!r} MUST NOT resume; got {action!r}"
