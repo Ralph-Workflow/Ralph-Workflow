@@ -90,6 +90,51 @@ def file_read_specs() -> list[ToolSpec]:
                             ),
                             "default": 5_000_000,
                         },
+                        "evidence_id": {
+                            "type": "string",
+                            "description": (
+                                "Indexed evidence handle returned by a prior "
+                                "grep/search/read call. Resolves the exact span "
+                                "plus ``context_lines``. Fails closed on stale "
+                                "expected_content_hash."
+                            ),
+                        },
+                        "span_id": {
+                            "type": "string",
+                            "description": (
+                                "Indexed symbol-span selector. Phase 1 returns "
+                                "structured ``disabled:phase2``; Phase 2 will "
+                                "resolve the symbol span."
+                            ),
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description": (
+                                "Indexed symbol selector. Phase 1 returns "
+                                "structured ``disabled:phase2``."
+                            ),
+                        },
+                        "expected_content_hash": {
+                            "type": "string",
+                            "description": (
+                                "Precondition: fail closed when the file's current "
+                                "SHA-256 does not match this value."
+                            ),
+                        },
+                        "context_lines": {
+                            "type": "integer",
+                            "description": (
+                                "Number of context lines around an indexed span."
+                            ),
+                            "default": 0,
+                        },
+                        "return_metadata": {
+                            "type": "boolean",
+                            "description": (
+                                "Include content hash, generation, and freshness in the response."
+                            ),
+                            "default": False,
+                        },
                     },
                     "required": ["path"],
                     "allOf": [
@@ -167,6 +212,43 @@ def file_read_specs() -> list[ToolSpec]:
                             "type": "array",
                             "items": {"type": "string"},
                             "description": "List of file paths to read.",
+                        },
+                        "items": {
+                            "type": "array",
+                            "description": (
+                                "Mixed read selectors. Each item is one of "
+                                '{"path": "..."}, {"path": "...", '
+                                '"line_start": N, "line_end": N}, '
+                                '{"evidence_id": "..."}, {"span_id": "..."} '
+                                '(Phase 2), or {"symbol": "..."} (Phase 2).'
+                            ),
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": True,
+                            },
+                        },
+                        "per_item_max_bytes": {
+                            "type": "integer",
+                            "description": (
+                                "Cap each returned item to this many bytes (0 = no cap)."
+                            ),
+                            "default": 0,
+                        },
+                        "return_metadata": {
+                            "type": "boolean",
+                            "description": (
+                                "Include content hash, generation, and freshness per item."
+                            ),
+                            "default": False,
+                        },
+                        "fail_fast": {
+                            "type": "boolean",
+                            "description": (
+                                "When true, a stale indexed item fails the entire "
+                                "call. When false, partial results are returned "
+                                "with per-item error metadata."
+                            ),
+                            "default": True,
                         },
                     },
                     "required": ["paths"],

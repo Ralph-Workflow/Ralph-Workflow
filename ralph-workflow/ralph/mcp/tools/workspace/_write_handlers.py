@@ -5,6 +5,11 @@ from __future__ import annotations
 import difflib
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.explore.dirty_paths import (
+    mark_path,
+    mark_paths,
+    resolve_explore_index,
+)
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
@@ -30,6 +35,48 @@ if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
 
+def _freshness_payload(
+    session: CoordinationSessionLike,
+    *,
+    paths: list[str],
+) -> dict[str, object]:
+    """Return the freshness metadata block for a successful mutation.
+
+    Returns an empty dict when the explore index is disabled so the
+    existing tool output is unchanged.
+    """
+    handle = resolve_explore_index(session)
+    if handle is None:
+        return {}
+    # The handle is the SQL-backed live index; ask it for current
+    # generation + dirty count. We deliberately keep the contract
+    # narrow so a NoOp handle returns no metadata.
+    store = getattr(handle, "store", None)
+    if store is None:
+        return {}
+    generation_raw = store.get_setting("current_generation") or "0"
+    dirty = store.peek_dirty_paths()
+    return {
+        "index_used": True,
+        "index_generation": int(generation_raw),
+        "is_stale": False,
+        "dirty_paths_count": len(dirty),
+        "marked_paths": [normalize_relative_path(p) for p in paths],
+    }
+
+
+def _with_freshness(
+    payload: dict[str, object],
+    freshness: dict[str, object],
+) -> dict[str, object]:
+    """Merge freshness metadata into an existing JSON payload dict."""
+    if not freshness:
+        return payload
+    payload = dict(payload)
+    payload.update(freshness)
+    return payload
+
+
 def handle_write_file(
     session: CoordinationSessionLike,
     workspace: Workspace,
@@ -46,6 +93,30 @@ def handle_write_file(
     require_capability(session, capability, "Workspace write")
     content = required_string_param(params, "content")
     _write_file_to_workspace(workspace, normalized, content)
+    handle = resolve_explore_index(session)
+    mark_path(handle, path=normalized, source_tool="write_file")
+    freshness = _freshness_payload(session, paths=[normalized])
+    if freshness:
+        # Indexed path returns a JSON envelope so the freshness block
+        # has somewhere to live; the disabled path keeps the prior
+        # plain-text success confirmation.
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        _with_freshness(
+                            {
+                                "path": path,
+                                "bytes_written": len(content),
+                                "status": "ok",
+                            },
+                            freshness,
+                        )
+                    )
+                )
+            ],
+            is_error=False,
+        )
     return ToolResult(
         content=[ToolContent.text_content(f"Successfully wrote {len(content)} bytes to {path}")],
         is_error=False,
@@ -136,19 +207,19 @@ def handle_edit_file(
         workspace.write(normalized, current_content)
     except Exception as exc:
         raise ToolError(f"Failed to write file '{path}': {exc}") from exc
-
+    handle = resolve_explore_index(session)
+    mark_path(handle, path=normalized, source_tool="edit_file")
+    freshness = _freshness_payload(session, paths=[normalized])
+    payload = _with_freshness(
+        {
+            "status": "applied",
+            "diff": "".join(diff),
+            "bytes_written": len(current_content),
+        },
+        freshness,
+    )
     return ToolResult(
-        content=[
-            ToolContent.text_content(
-                _tool_json(
-                    {
-                        "status": "applied",
-                        "diff": "".join(diff),
-                        "bytes_written": len(current_content),
-                    }
-                )
-            )
-        ],
+        content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
 
@@ -169,18 +240,15 @@ def handle_append_file(
         workspace.append(normalized, content)
     except Exception as exc:
         raise ToolError(f"Failed to append to file '{path}': {exc}") from exc
-
+    handle = resolve_explore_index(session)
+    mark_path(handle, path=normalized, source_tool="append_file")
+    freshness = _freshness_payload(session, paths=[normalized])
+    payload = _with_freshness(
+        {"path": path, "bytes_appended": len(content)},
+        freshness,
+    )
     return ToolResult(
-        content=[
-            ToolContent.text_content(
-                _tool_json(
-                    {
-                        "path": path,
-                        "bytes_appended": len(content),
-                    }
-                )
-            )
-        ],
+        content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
 
@@ -200,18 +268,12 @@ def handle_create_directory(
         workspace.mkdirs(normalized)
     except Exception as exc:
         raise ToolError(f"Failed to create directory '{path}': {exc}") from exc
-
+    handle = resolve_explore_index(session)
+    mark_path(handle, path=normalized, source_tool="create_directory")
+    freshness = _freshness_payload(session, paths=[normalized])
+    payload = _with_freshness({"path": path, "created": True}, freshness)
     return ToolResult(
-        content=[
-            ToolContent.text_content(
-                _tool_json(
-                    {
-                        "path": path,
-                        "created": True,
-                    }
-                )
-            )
-        ],
+        content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
 
@@ -237,18 +299,12 @@ def handle_move_file(
         raise ToolError(f"Destination '{dest}' already exists") from None
     except Exception as exc:
         raise ToolError(f"Failed to move '{src}' to '{dest}': {exc}") from exc
-
+    handle = resolve_explore_index(session)
+    mark_paths(handle, paths=[src_norm, dest_norm], source_tool="move_file")
+    freshness = _freshness_payload(session, paths=[src_norm, dest_norm])
+    payload = _with_freshness({"src": src, "dest": dest}, freshness)
     return ToolResult(
-        content=[
-            ToolContent.text_content(
-                _tool_json(
-                    {
-                        "src": src,
-                        "dest": dest,
-                    }
-                )
-            )
-        ],
+        content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
 
@@ -273,18 +329,12 @@ def handle_copy_file(
         raise ToolError(f"Destination '{dest}' already exists") from None
     except Exception as exc:
         raise ToolError(f"Failed to copy '{src}' to '{dest}': {exc}") from exc
-
+    handle = resolve_explore_index(session)
+    mark_path(handle, path=dest_norm, source_tool="copy_file")
+    freshness = _freshness_payload(session, paths=[dest_norm])
+    payload = _with_freshness({"src": src, "dest": dest}, freshness)
     return ToolResult(
-        content=[
-            ToolContent.text_content(
-                _tool_json(
-                    {
-                        "src": src,
-                        "dest": dest,
-                    }
-                )
-            )
-        ],
+        content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
 
@@ -316,18 +366,14 @@ def handle_delete_path(
         raise ToolError(f"Path '{path}' not found") from None
     except Exception as exc:
         raise ToolError(f"Failed to delete '{path}': {exc}") from exc
-
+    handle = resolve_explore_index(session)
+    mark_path(handle, path=normalized, source_tool="delete_path")
+    freshness = _freshness_payload(session, paths=[normalized])
+    payload = _with_freshness(
+        {"path": path, "deleted": True, "recursive": recursive},
+        freshness,
+    )
     return ToolResult(
-        content=[
-            ToolContent.text_content(
-                _tool_json(
-                    {
-                        "path": path,
-                        "deleted": True,
-                        "recursive": recursive,
-                    }
-                )
-            )
-        ],
+        content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )

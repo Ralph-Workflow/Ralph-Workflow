@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import fnmatch
+import json
 from typing import TYPE_CHECKING
 
+from ralph.mcp.explore.dirty_paths import resolve_explore_index
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
@@ -35,6 +37,75 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
+
+
+# --- Phase 1 indexed read helpers -----------------------------------------
+
+
+def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | None:
+    """Return the indexed evidence row for ``evidence_id`` if available.
+
+    Returns ``None`` when the explore index is disabled. Raises
+    ``ToolError`` when the evidence_id is unknown (the caller should
+    treat that as a stale_evidence or unknown_evidence signal).
+    """
+    handle = resolve_explore_index(session)
+    if handle is None:
+        return None
+    store = getattr(handle, "store", None)
+    if store is None:
+        return None
+    row = store.get_evidence(evidence_id)
+    if row is None:
+        # Try the tombstone for retention_expired vs stale_evidence.
+        tombstone = store.get_tombstone(evidence_id)
+        if tombstone is None:
+            raise ToolError(
+                f"unknown_evidence: {evidence_id!r} (no live row or tombstone)"
+            )
+        return {
+            "stale_evidence": True,
+            "stale_reason": tombstone["stale_reason"],
+            "replacement_evidence_id": tombstone["replacement_evidence_id"],
+            "path": tombstone["path"],
+        }
+    return {
+        "evidence_id": row.evidence_id,
+        "path": row.path,
+        "start_line": row.start_line,
+        "end_line": row.end_line,
+        "content_hash": row.content_hash,
+        "generation": row.generation,
+    }
+
+
+def _freshness_for_read(session: object) -> dict[str, object]:
+    handle = resolve_explore_index(session)
+    if handle is None:
+        return {}
+    store = getattr(handle, "store", None)
+    if store is None:
+        return {}
+    generation_raw = store.get_setting("current_generation") or "0"
+    dirty = store.peek_dirty_paths()
+    return {
+        "index_used": True,
+        "index_generation": int(generation_raw),
+        "is_stale": bool(dirty),
+        "dirty_paths_count": len(dirty),
+        "stale_paths_count": 0,
+    }
+
+
+def _hash_file(workspace: Workspace, path: str) -> str | None:
+    """Return the SHA-256 of the workspace file's bytes, or None."""
+    import hashlib
+
+    try:
+        content = workspace.read(path)
+    except Exception:
+        return None
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def _dispatch_partial_read(
@@ -95,14 +166,109 @@ def handle_read_file(
     are mutually exclusive; combining any two raises InvalidParams.
 
     Optional param max_bytes overrides the default ceiling for full-file reads.
+
+    Phase 1 indexed args:
+
+    * ``evidence_id`` — resolve the indexed evidence handle and read the
+      exact span + ``context_lines`` of context.
+    * ``span_id`` — placeholder; Phase 2 will resolve a symbol span.
+      Phase 1 returns structured ``disabled:phase2``.
+    * ``symbol`` — placeholder; Phase 2 will resolve a symbol span.
+      Phase 1 returns structured ``disabled:phase2``.
+    * ``expected_content_hash`` — fail closed if the current file's
+      content hash does not match.
+    * ``context_lines`` — bounded context around the resolved span.
+    * ``return_metadata`` — include content hash, generation, and freshness.
     """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Workspace read")
+
+    # --- Phase 1 indexed selectors -------------------------------------
+    evidence_id = params.get("evidence_id")
+    span_id = params.get("span_id")
+    symbol_selector = params.get("symbol")
+    expected_hash = params.get("expected_content_hash")
+    context_lines = _int_param(params, "context_lines", 0)
+    return_metadata = bool(params.get("return_metadata", False))
+
+    if evidence_id is not None:
+        return _read_via_evidence(
+            session,
+            workspace,
+            evidence_id=str(evidence_id),
+            context_lines=context_lines,
+            expected_hash=str(expected_hash) if expected_hash is not None else None,
+            return_metadata=return_metadata,
+        )
+    if span_id is not None:
+        return _read_disabled(
+            session,
+            "span_id",
+            span_id=str(span_id),
+            return_metadata=return_metadata,
+        )
+    if symbol_selector is not None:
+        return _read_disabled(
+            session,
+            "symbol",
+            symbol=str(symbol_selector),
+            return_metadata=return_metadata,
+        )
+
     path = required_string_param(params, "path")
     normalized = normalize_relative_path(path)
 
+    # Expected-content-hash precondition (no evidence/span selector).
+    if expected_hash is not None:
+        actual_hash = _hash_file(workspace, normalized)
+        if actual_hash is None:
+            return ToolResult(
+                content=[
+                    ToolContent.text_content(
+                        _tool_json(
+                            {
+                                "status": "stale_evidence",
+                                "path": path,
+                                "expected_content_hash": expected_hash,
+                                "reason": "file_missing",
+                            }
+                        )
+                    )
+                ],
+                is_error=True,
+            )
+        if actual_hash != expected_hash:
+            return ToolResult(
+                content=[
+                    ToolContent.text_content(
+                        _tool_json(
+                            {
+                                "status": "stale_evidence",
+                                "path": path,
+                                "expected_content_hash": expected_hash,
+                                "current_content_hash": actual_hash,
+                                "reason": "content_changed",
+                            }
+                        )
+                    )
+                ],
+                is_error=True,
+            )
+
     sel = _ReadSelector.from_params(params)
     if sel.is_active():
-        return _dispatch_partial_read(workspace, normalized, path, sel)
+        result = _dispatch_partial_read(workspace, normalized, path, sel)
+        if return_metadata:
+            # Re-decode the JSON envelope and append freshness.
+            try:
+                payload = json.loads(result.content[0].text)
+                payload.update(_freshness_for_read(session))
+                return ToolResult(
+                    content=[ToolContent.text_content(_tool_json(payload))],
+                    is_error=result.is_error,
+                )
+            except (ValueError, TypeError):
+                return result
+        return result
 
     max_bytes = _int_param(params, "max_bytes", FULL_READ_DEFAULT_MAX_BYTES)
     try:
@@ -124,6 +290,9 @@ def handle_read_file(
             "max_bytes": max_bytes,
             "reason": "oversize",
         }
+        if return_metadata:
+            payload.update(_freshness_for_read(session))
+            payload["content_hash"] = _hash_file(workspace, normalized)
         return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=False)
 
     try:
@@ -140,7 +309,131 @@ def handle_read_file(
         raise ToolError(f"Failed to read file '{path}': {exc}") from exc
     except Exception as exc:
         raise ToolError(f"Failed to read file '{path}': {exc}") from exc
+    if return_metadata:
+        payload = {
+            "path": path,
+            "content": content,
+            "content_hash": _hash_file(workspace, normalized),
+        }
+        payload.update(_freshness_for_read(session))
+        return ToolResult(
+            content=[ToolContent.text_content(_tool_json(payload))],
+            is_error=False,
+        )
     return ToolResult(content=[ToolContent.text_content(content)], is_error=False)
+
+
+def _read_via_evidence(
+    session: object,
+    workspace: "Workspace",
+    *,
+    evidence_id: str,
+    context_lines: int,
+    expected_hash: str | None,
+    return_metadata: bool,
+) -> ToolResult:
+    info = _resolve_evidence(session, evidence_id)
+    if info is None:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "indexed_selector_unavailable",
+                            "evidence_id": evidence_id,
+                            "reason": "no_explore_index_handle",
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    if info.get("stale_evidence"):
+        return ToolResult(
+            content=[ToolContent.text_content(_tool_json(info))],
+            is_error=True,
+        )
+    path = info["path"]
+    start_line = int(info.get("start_line") or 0)
+    end_line = int(info.get("end_line") or 0)
+    expected_content_hash = expected_hash or info.get("content_hash")
+    normalized = normalize_relative_path(str(path))
+    actual_hash = _hash_file(workspace, normalized)
+    if actual_hash is None:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "stale_evidence",
+                            "evidence_id": evidence_id,
+                            "reason": "file_missing",
+                            "path": path,
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    if expected_content_hash and actual_hash != expected_content_hash:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "stale_evidence",
+                            "evidence_id": evidence_id,
+                            "path": path,
+                            "expected_content_hash": expected_content_hash,
+                            "current_content_hash": actual_hash,
+                            "reason": "content_changed",
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    content, _meta = workspace.read_lines(
+        normalized,
+        start=max(1, start_line - context_lines),
+        end=end_line + context_lines,
+    )
+    payload = {
+        "path": path,
+        "evidence_id": evidence_id,
+        "start_line": start_line,
+        "end_line": end_line,
+        "context_lines": context_lines,
+        "content": content,
+    }
+    if return_metadata:
+        payload["content_hash"] = actual_hash
+        payload.update(_freshness_for_read(session))
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload))],
+        is_error=False,
+    )
+
+
+def _read_disabled(
+    session: object,
+    selector_name: str,
+    *,
+    return_metadata: bool,
+    **fields: object,
+) -> ToolResult:
+    payload: dict[str, object] = {
+        "status": "indexed_selector_unavailable",
+        "reason": f"disabled:phase2 (selector={selector_name})",
+        "selector": selector_name,
+    }
+    payload.update(fields)
+    if return_metadata:
+        payload.update(_freshness_for_read(session))
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload))],
+        is_error=True,
+    )
 
 
 def handle_read_multiple_files(
@@ -148,24 +441,147 @@ def handle_read_multiple_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Read multiple workspace files in one call and return per-file results."""
+    """Read multiple workspace files in one call and return per-file results.
+
+    Phase 1 indexed args:
+
+    * ``items`` (list of dicts): each item may be one of
+      ``{"path": "...", "line_start": N, "line_end": N}``,
+      ``{"evidence_id": "..."}``,
+      ``{"span_id": "..."}``, or ``{"symbol": "..."}``.
+    * ``per_item_max_bytes``: cap each returned item.
+    * ``return_metadata``: include freshness per item.
+    * ``fail_fast``: a stale indexed item fails only that item unless
+      ``fail_fast=true`` (Phase 1 keeps the default ``fail_fast=true``
+      so callers can opt into partial results explicitly).
+    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Read multiple files")
-    paths_param = params.get("paths")
-    if not isinstance(paths_param, list):
-        raise InvalidParamsError("Missing 'paths' parameter as list of strings")
-    paths = [str(p) for p in paths_param]
+
+    items_param = params.get("items")
+    legacy_paths_mode = items_param is None
+    if items_param is None:
+        # Legacy ``paths`` path.
+        paths_param = params.get("paths")
+        if not isinstance(paths_param, list):
+            raise InvalidParamsError("Missing 'paths' parameter as list of strings")
+        items_param = [{"path": str(p)} for p in paths_param]
+
+    if not isinstance(items_param, list):
+        raise InvalidParamsError("'items' must be a list")
+
+    per_item_max_bytes = _int_param(params, "per_item_max_bytes", 0)
+    return_metadata = bool(params.get("return_metadata", False))
+    fail_fast = bool(params.get("fail_fast", True))
 
     results: list[dict[str, object]] = []
-    for p in paths:
-        normalized = normalize_relative_path(p)
-        try:
-            content = workspace.read(normalized)
-            results.append({"path": p, "content": content})
-        except Exception as exc:
-            results.append({"path": p, "error": str(exc)})
+    has_fatal_error = False
+    for item in items_param:
+        if not isinstance(item, dict):
+            results.append({"error": "item_not_a_dict"})
+            has_fatal_error = True
+            if fail_fast:
+                break
+            continue
+        result = _read_multiple_item(
+            session,
+            workspace,
+            item,
+            per_item_max_bytes=per_item_max_bytes,
+            return_metadata=return_metadata,
+        )
+        results.append(result)
+        if result.get("is_error") and fail_fast:
+            has_fatal_error = True
+            break
 
-    payload = _tool_json({"files": results})
-    return ToolResult(content=[ToolContent.text_content(payload)], is_error=False)
+    payload = {
+        "files": results,
+        "truncated": False,
+    }
+    if return_metadata:
+        payload.update(_freshness_for_read(session))
+    # Legacy ``paths`` mode preserves the prior behavior: a per-file
+    # error does not flip ``is_error`` on the top-level result.
+    is_error = False if legacy_paths_mode else has_fatal_error
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload))],
+        is_error=is_error,
+    )
+
+
+def _read_multiple_item(
+    session: object,
+    workspace: "Workspace",
+    item: dict[str, object],
+    *,
+    per_item_max_bytes: int,
+    return_metadata: bool,
+) -> dict[str, object]:
+    """Resolve a single ``items`` entry to a result dict."""
+    if "evidence_id" in item:
+        # Reuse the single-read evidence logic via a synthetic call.
+        single_result = _read_via_evidence(
+            session,
+            workspace,
+            evidence_id=str(item["evidence_id"]),
+            context_lines=_int_opt_param(item, "context_lines") or 0,
+            expected_hash=(
+                str(item["expected_content_hash"])
+                if item.get("expected_content_hash") is not None
+                else None
+            ),
+            return_metadata=return_metadata,
+        )
+        try:
+            payload = json.loads(single_result.content[0].text)
+        except (ValueError, TypeError):
+            payload = {"raw": single_result.content[0].text}
+        payload["is_error"] = single_result.is_error
+        if per_item_max_bytes and isinstance(payload.get("content"), str):
+            payload["content"] = payload["content"][:per_item_max_bytes]
+            payload["truncated"] = True
+        return payload
+    if "span_id" in item:
+        return {
+            "selector": "span_id",
+            "span_id": str(item["span_id"]),
+            "status": "indexed_selector_unavailable",
+            "reason": "disabled:phase2 (selector=span_id)",
+            "is_error": True,
+        }
+    if "symbol" in item:
+        return {
+            "selector": "symbol",
+            "symbol": str(item["symbol"]),
+            "status": "indexed_selector_unavailable",
+            "reason": "disabled:phase2 (selector=symbol)",
+            "is_error": True,
+        }
+    path = item.get("path")
+    if not isinstance(path, str):
+        return {"error": "missing_path", "is_error": True}
+    normalized = normalize_relative_path(path)
+    line_start = _int_opt_param(item, "line_start")
+    line_end = _int_opt_param(item, "line_end")
+    try:
+        if line_start is not None or line_end is not None:
+            content, _meta = workspace.read_lines(
+                normalized, start=line_start, end=line_end
+            )
+        else:
+            content = workspace.read(normalized)
+    except Exception as exc:
+        return {"path": path, "error": str(exc), "is_error": True}
+    if per_item_max_bytes:
+        content = content[:per_item_max_bytes]
+        truncated = True
+    else:
+        truncated = False
+    payload: dict[str, object] = {"path": path, "content": content, "truncated": truncated}
+    if return_metadata:
+        payload["content_hash"] = _hash_file(workspace, normalized)
+        payload.update(_freshness_for_read(session))
+    return payload
 
 
 def handle_stat(
@@ -302,7 +718,17 @@ def handle_search_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Search for files matching a glob pattern within a workspace directory."""
+    """Search for files matching a glob pattern within a workspace directory.
+
+    Phase 1 indexed args:
+
+    * ``ranked``: rank paths by deterministic index signals.
+    * ``role`` in {source, test, docs, config, generated, any}.
+    * ``contains_symbol`` (Phase 2; Phase 1 returns structured
+      ``disabled:phase2`` but still returns live glob results).
+    * ``changed_only``: filter to git-changed paths.
+    * ``return_evidence_ids``: attach handles to matched indexed records.
+    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "File search")
     pattern = required_string_param(params, "pattern")
     path = required_string_param(params, "path")
@@ -315,16 +741,104 @@ def handle_search_files(
         else None
     )
     limit = _int_param(params, "limit", _GREP_DEFAULT_LIMIT)
+    ranked = bool(params.get("ranked", False))
+    role = str(params.get("role", "any"))
+    if role not in {"source", "test", "docs", "config", "generated", "any"}:
+        raise InvalidParamsError(
+            f"Invalid role: {role!r}; expected 'source', 'test', "
+            "'docs', 'config', 'generated', or 'any'."
+        )
+    contains_symbol = params.get("contains_symbol")
+    changed_only = bool(params.get("changed_only", False))
+    return_evidence_ids = bool(params.get("return_evidence_ids", False))
 
     matches = _collect_matching_files(workspace, normalized, pattern, exclude=exclude)
     truncated = len(matches) > limit
     if truncated:
         matches = matches[:limit]
 
+    # Live role filter (Phase 1 keeps role filter in-handler).
+    if role != "any":
+        from ralph.mcp.explore.ranking import is_source_role, is_test_role
+
+        role_filter = {
+            "source": is_source_role,
+            "test": is_test_role,
+        }.get(role)
+        if role_filter is not None:
+            matches = [m for m in matches if role_filter(m)]
+
+    # Apply changed_only (Phase 1 has no git signal — we return
+    # an empty list and report it in the response so callers see
+    # an explicit fallback).
+    if changed_only:
+        matches = []
+
+    # Ranking.
+    score_reasons: list = []
+    if ranked:
+        from ralph.mcp.explore.ranking import score_search_file, sort_ranked
+
+        basename = pattern.split("/")[-1]
+        is_git_changed = False  # Phase 1 has no git signal here.
+        items = [
+            score_search_file(
+                candidate_path=m,
+                basename=basename,
+                role_requested=role if role != "any" else None,
+                is_git_changed=is_git_changed,
+            )
+            for m in matches
+        ]
+        items = sort_ranked(items)
+        matches = [item.path for item in items]
+        score_reasons = [item.to_dict() for item in items]
+
+    # contains_symbol is Phase 2.
+    contains_symbol_note: str | None = None
+    if contains_symbol is not None:
+        contains_symbol_note = "disabled:phase2"
+
     output = {
         "pattern": pattern,
         "base": path,
         "matches": matches,
         "truncated": truncated,
+        "ranked": ranked,
+        "role": role,
+        "contains_symbol": contains_symbol,
+        "contains_symbol_note": contains_symbol_note,
+        "changed_only": changed_only,
     }
-    return ToolResult(content=[ToolContent.text_content(_tool_json(output))], is_error=False)
+    if score_reasons:
+        output["score_reasons"] = score_reasons
+    if return_evidence_ids:
+        # Phase 1 evidence for path-only searches is the file's own
+        # chunk_id for line 1..1; Phase 2 will provide per-symbol ids.
+        from ralph.mcp.explore.store import (
+            ExploreStore,
+            derive_evidence_id,
+        )
+
+        # Best-effort: emit evidence handles only when an index handle
+        # is attached. Otherwise the caller is in legacy mode.
+        from ralph.mcp.explore.dirty_paths import resolve_explore_index
+
+        handle = resolve_explore_index(session)
+        if handle is not None:
+            store = getattr(handle, "store", None)
+            if store is not None:
+                output["evidence_ids"] = [
+                    derive_evidence_id(
+                        path=m,
+                        content_hash="",
+                        start_line=0,
+                        end_line=0,
+                        kind="path",
+                        extractor_version="phase1-lexical-v1",
+                    )
+                    for m in matches
+                ]
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(output))], is_error=False
+    )

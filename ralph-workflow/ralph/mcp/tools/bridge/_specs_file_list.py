@@ -95,6 +95,48 @@ def file_list_specs() -> list[ToolSpec]:
                             "description": "Maximum number of results to return (default 1000).",
                             "default": 1000,
                         },
+                        "ranked": {
+                            "type": "boolean",
+                            "description": (
+                                "Rank matched paths by deterministic Phase-1 "
+                                "score components (path, role, generated-penalty; "
+                                "symbol/graph disabled)."
+                            ),
+                            "default": False,
+                        },
+                        "role": {
+                            "type": "string",
+                            "enum": ["source", "test", "docs", "config", "generated", "any"],
+                            "description": (
+                                "Restrict matches by path role heuristic. "
+                                "'source' keeps .py/.md/.json/.yaml/.toml; "
+                                "'test' keeps tests/. The 'any' value disables "
+                                "the filter."
+                            ),
+                            "default": "any",
+                        },
+                        "contains_symbol": {
+                            "type": "string",
+                            "description": (
+                                "Phase 2 selector. Phase 1 returns structured "
+                                "'disabled:phase2' but still returns live glob results."
+                            ),
+                        },
+                        "changed_only": {
+                            "type": "boolean",
+                            "description": (
+                                "Restrict matches to git-changed paths. Phase 1 "
+                                "returns an empty list (no git signal)."
+                            ),
+                            "default": False,
+                        },
+                        "return_evidence_ids": {
+                            "type": "boolean",
+                            "description": (
+                                "Attach evidence_id handles to matched paths."
+                            ),
+                            "default": False,
+                        },
                     },
                     "required": ["pattern", "path"],
                 },
@@ -171,6 +213,63 @@ def file_list_specs() -> list[ToolSpec]:
                             "type": "integer",
                             "description": "Skip files larger than this (default 5_000_000).",
                             "default": 5000000,
+                        },
+                        "use_index": {
+                            "type": "string",
+                            "enum": ["auto", "always", "never"],
+                            "description": (
+                                "Indexed search selector. 'auto' uses FTS5 for "
+                                "eligible patterns and falls back to live grep; "
+                                "'always' fails closed for non-eligible patterns; "
+                                "'never' is the legacy live grep behavior."
+                            ),
+                            "default": "auto",
+                        },
+                        "rank_by": {
+                            "type": "string",
+                            "enum": ["match", "symbol", "graph", "changed", "hybrid"],
+                            "description": (
+                                "Ranking strategy. Phase 1 only differentiates "
+                                "'match' from the others via the git-changed "
+                                "signal; symbol/graph components are stubbed "
+                                "with a 'disabled:phase2' reason."
+                            ),
+                            "default": "match",
+                        },
+                        "return_evidence_ids": {
+                            "type": "boolean",
+                            "description": (
+                                "Attach evidence_id handles to each match so the "
+                                "caller can resolve the exact span with "
+                                "read_file(evidence_id=...)."
+                            ),
+                            "default": False,
+                        },
+                        "max_snippet_lines": {
+                            "type": "integer",
+                            "description": (
+                                "Cap the snippet length per indexed match. "
+                                "Default 8 lines; set 0 to disable."
+                            ),
+                            "default": 8,
+                        },
+                        "dedupe_by_symbol": {
+                            "type": "boolean",
+                            "description": (
+                                "Collapse repeated hits inside the same chunk/"
+                                "evidence span (no-op in Phase 1 because "
+                                "symbol spans arrive in Phase 2)."
+                            ),
+                            "default": False,
+                        },
+                        "include_graph_context": {
+                            "type": "boolean",
+                            "description": (
+                                "Include caller/importer/test hints in the "
+                                "response. Phase 1 returns 'disabled:phase2' "
+                                "because the structural graph is not built yet."
+                            ),
+                            "default": False,
                         },
                     },
                     "required": ["pattern", "path"],

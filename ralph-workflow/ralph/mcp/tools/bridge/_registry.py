@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
+from ralph.mcp.tools.bridge._specs_explore import explore_specs
 from ralph.mcp.tools.bridge._specs_file_list import file_list_specs
 from ralph.mcp.tools.bridge._specs_file_read import file_read_specs
 from ralph.mcp.tools.bridge._specs_file_write import file_write_specs
@@ -33,6 +34,7 @@ def tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
     specs.extend(git_exec_specs())
     specs.extend(artifact_specs())
     specs.extend(web_media_specs(mcp_config))
+    specs.extend(explore_specs())
     return tuple(specs)
 
 

@@ -209,3 +209,49 @@ asserts observable behavior on the shipped path.
 - {doc}`mcp-tools` — full tool reference
 - {doc}`artifacts` — the artifact submission tools
 - {py:mod}`ralph.mcp` — full API reference
+
+## Indexed exploration substrate
+
+Ralph maintains a deterministic, disposable SQLite+FTS5 indexed exploration
+substrate under `.agent/ralph-explore/` for the current workspace. The substrate
+is owned by `ralph.mcp.explore` and exposes two new MCP tools:
+
+* `ralph_index_status` — reports generation, freshness, dirty paths, job history, storage bytes, and gitignore coverage.
+* `ralph_reindex` — runs a bounded `changed`/`full` refresh (timeout-based, fail-closed for the job, fail-open for the agent).
+
+Existing read/search tools gain optional indexed arguments (`use_index`,
+`evidence_id`, `rank_by`, `return_evidence_ids`, `ranked`, `role`, etc.) so
+agents can choose indexed or live behavior per call. Indexed responses carry
+`index_used`, `index_generation`, `is_stale`, `stale_paths_count`,
+`dirty_paths_count`, and `fallback_reason` so callers can detect fall-back
+without inspecting tool internals.
+
+The substrate is:
+
+* **deterministic** — no LLM, no embedding, no network call. The index can be deleted and rebuilt without affecting source files or workflow artifacts.
+* **git-ignored** — the existing `.agent/` rule in `ralph/config/bootstrap.py:_DEFAULT_GITIGNORE_PATTERNS` covers it (no new ignore entry required).
+* **bounded** — job history caps at 100/14 days; evidence tombstones cap at 10k/30 days; SQLite WAL mode + busy-timeout guarantee concurrent readers.
+* **fail-open for the agent** — bounded reindex runs before and after every development/fix agent invocation; timeout never blocks the agent.
+* **idempotent** — running reindex twice against the same tree produces the same logical rows (generation metadata aside); unchanged files are detected by content hash and skipped.
+
+### Module layout
+
+The substrate is split into focused submodules under `ralph.mcp.explore`:
+
+* `store` — SQLite + FTS5 DDL, manifest, evidence, tombstones, dirty_paths, jobs, settings.
+* `pipeline` — manifest/hash/generation lifecycle, idempotent reindex, single-writer coalescing.
+* `dirty_paths` — persisted queue + `mark_dirty` seam for write handlers.
+* `ranking` — deterministic score components (Phase 1 lexical; symbol/graph stubbed to `+0` with `disabled:phase2`).
+* `handlers` — `ralph_index_status` and `ralph_reindex` MCP handlers.
+* `bench` — scripted-flow benchmark harness (no LLM, deterministic Clock seam).
+* `audit_register` — Phase 0 per-tool outcome register (keep / add_argument / rework_internals / defer).
+* `deferred_phases` — tracked deferral register for Phases 2-5.
+* `lifecycle` — before/after dev-fix session refresh hooks used by the pipeline runner.
+
+### Phase 1 scope
+
+Phase 1 keeps the contract lexical: FTS5 chunking + content-hash + evidence
+handles. Phases 2-5 (Python/Markdown AST extraction, `ralph_graph`, impact-aware
+editing, non-index MCP remediation, optional NetworkX/Kuzu/Tree-sitter adapters)
+are deferred and tracked in `ralph.mcp.explore.deferred_phases` with rationale
+and baseline counters.

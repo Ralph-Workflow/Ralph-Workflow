@@ -141,6 +141,7 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
         "read_multiple_files",
         "list_allowed_roots",
         "grep_files",
+        "ralph_reindex",
         *GIT_STATUS_READ_TOOLS,
         *GIT_DIFF_READ_TOOLS,
         *TRACKED_WRITE_TOOLS,
@@ -226,6 +227,7 @@ def test_capability_template_variables_leave_disabled_tool_names_empty() -> None
         "read_multiple_files",
         "list_allowed_roots",
         "grep_files",
+        "ralph_reindex",
     }
     assert variables["WRITE_FILE_TOOL_NAME"] == ""
     assert variables["EXEC_TOOL_NAME"] == ""

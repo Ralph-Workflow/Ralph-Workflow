@@ -98,6 +98,14 @@ REGISTRY: dict[str, SideEffectContract] = {
     "ralph_validate_draft": _contract("ralph_validate_draft", "read"),
     "read_image": _contract("read_image", "read"),
     "read_media": _contract("read_media", "read"),
+    # Indexed exploration tools (Phase 1).
+    "ralph_index_status": _contract("ralph_index_status", "read"),
+    # A reindex may write to the SQLite index inside the workspace,
+    # but the operation is bounded, idempotent, and recoverable; we
+    # classify it as ``read`` here because it does not mutate
+    # source-of-truth files (the .agent/ralph-explore/ subtree is a
+    # derived disposable cache).
+    "ralph_reindex": _contract("ralph_reindex", "read"),
 }
 
 

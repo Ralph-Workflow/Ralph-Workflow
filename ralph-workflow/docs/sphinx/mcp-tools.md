@@ -56,6 +56,8 @@ The table below uses a few drain groupings:
 | `ralph_finalize_plan` | `artifact.plan_write` | planning | Finalize and validate the plan draft |
 | `ralph_get_plan_draft` | `artifact.plan_read` | planning | Retrieve the current plan draft |
 | `ralph_discard_plan_draft` | `artifact.plan_write` | planning | Discard the current plan draft |
+| `ralph_index_status` | `workspace.metadata_read` | all | Report the indexed exploration index health and freshness (Phase 1 lexical only) |
+| `ralph_reindex` | `workspace.read` | all | Run a bounded changed/full reindex of the indexed exploration index |
 | `report_progress` | `run.report_progress` | write drains, commit drains | Report progress to the pipeline |
 | `declare_complete` | `artifact.submit` | all | Declare that the agent has finished |
 | `coordinate` | `artifact.submit` | all | Parallel worker coordination |
@@ -261,6 +263,75 @@ Ralph-managed same-workspace parallel workers are dormant in the bundled default
 
 See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapping and
 `ralph-workflow/ralph/mcp/ARCHITECTURE.md` for the capability system design.
+
+## Indexed exploration
+
+Ralph maintains a deterministic SQLite+FTS5 indexed exploration substrate under
+`.agent/ralph-explore/` for the current workspace. The substrate is:
+
+* disposable — deleting `.agent/ralph-explore/` forces a cold rebuild and never affects source files or workflow artifacts;
+* git-ignored — the existing `.agent/` rule in `ralph/config/bootstrap.py:_DEFAULT_GITIGNORE_PATTERNS` covers it (no new entry required);
+* fail-open — agents never block indefinitely on a refresh; tools return stale metadata instead of hanging.
+
+### Lifecycle
+
+Ralph refreshes the index deterministically:
+
+* before every development/fix agent invocation (bounded changed-file refresh);
+* after the agent invocation returns (bounded changed-file refresh);
+* on every successful workspace mutation (`write_file`, `edit_file`, `append_file`, `move_file`, `copy_file`, `delete_path`), which marks the affected paths dirty;
+* on demand via `ralph_reindex`.
+
+Agents do not need to call `ralph_reindex`; the lifecycle hooks keep the index fresh enough.
+
+### `ralph_index_status`
+
+Reports the live index health:
+
+```
+{
+  "enabled": true,
+  "index_exists": true,
+  "generation": 1,
+  "indexed_at": 1717000000.0,
+  "files_indexed": 12,
+  "files_stale": 0,
+  "last_job": {...},
+  "capabilities": ["evidence_lookup", "fts_search"],
+  "graph_backend": "sqlite",
+  "dirty_paths_count": 0,
+  "cold_index_required": false,
+  "last_refresh_kind": "changed",
+  "is_stale": false,
+  "stale_paths_count": 0,
+  "index_storage_bytes": 4096,
+  "gitignore_coverage": {"present": true, "rule": ".agent/"}
+}
+```
+
+### `ralph_reindex`
+
+Required param: `mode` in `changed | full`. Optional: `timeout_ms` (default 5000), `path_scope` (list of relative paths). Returns `job_status`, `generation`, `changed_files`, `failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`, `error_summary`.
+
+### Indexed arguments on existing tools
+
+Phase 1 adds optional indexed arguments to existing read/search tools; the legacy behavior is preserved when the argument is absent or set to `use_index="never"`:
+
+* `grep_files(use_index, rank_by, return_evidence_ids, max_snippet_lines, dedupe_by_symbol, include_graph_context)`. Eligibility: literal, whole-word literal, simple token, phrase. Non-eligible (regex, multiline, lookaround, backreferences, byte-oriented) falls back to live grep in `auto` and fails closed in `always`.
+* `search_files(ranked, role, contains_symbol, changed_only, return_evidence_ids)`. `contains_symbol` is Phase 2.
+* `read_file(evidence_id, span_id, symbol, context_lines, expected_content_hash, return_metadata)`. `span_id` and `symbol` are Phase 2.
+* `read_multiple_files(items, per_item_max_bytes, return_metadata, fail_fast)`. Items may mix `{"path": ...}`, `{"path": ..., "line_start": ..., "line_end": ...}`, `{"evidence_id": ...}`, `{"span_id": ...}` (Phase 2), or `{"symbol": ...}` (Phase 2).
+
+### Indexed responses
+
+Every indexed response includes `index_used`, `index_generation`, `is_stale`, `stale_paths_count`, `dirty_paths_count`, `fallback_reason`. When `index_used=false`, the response came from live behavior; the caller can decide whether to retry.
+
+### Phase 1 scope
+
+* Lexical only: FTS5 chunking + content hash + evidence handles. No AST/symbol extraction, no structural graph, no impact preview. Symbol and graph ranking components are stubbed to `+0` with a `disabled:phase2` reason.
+* Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/` (git-ignored).
+
+Phases 2-5 (Python/Markdown AST extraction, `ralph_graph`, impact-aware editing, non-index MCP remediation, optional adapters) are deferred and tracked in `ralph.mcp.explore.deferred_phases`.
 
 ## Related pages
 

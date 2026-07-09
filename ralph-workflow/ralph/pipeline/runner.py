@@ -410,18 +410,55 @@ def _invoke_execute_effect_with_optional_display(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     pipeline_deps: PipelineDeps | None = None,
+    pre_workspace: object | None = None,
+    pre_phase_role: str | None = None,
 ) -> Event:
-    return execute_effect_with_optional_display(
-        effect,
-        config,
-        workspace_scope,
-        display=display,
-        display_context=display_context,
-        verbosity=verbosity,
-        state=state,
-        policy_bundle=policy_bundle,
-        pipeline_deps=pipeline_deps,
+    # Phase 1 lifecycle hooks: bounded changed-file refresh before
+    # and after an InvokeAgentEffect. Hooks skip cleanly when the
+    # explore index is disabled or missing; they never block the
+    # agent indefinitely (fail-open for the agent, fail-closed for
+    # the reindex job).
+    from ralph.mcp.explore.lifecycle import (
+        after_agent_refresh,
+        before_agent_refresh,
+        is_execution_phase_for_refresh,
     )
+
+    is_agent = isinstance(effect, InvokeAgentEffect)
+    should_refresh = is_agent and is_execution_phase_for_refresh(
+        phase_role=pre_phase_role
+    )
+
+    if should_refresh:
+        try:
+            before_agent_refresh(
+                workspace_root=workspace_scope.root,
+                explore_index=getattr(pre_workspace, "explore_index", None),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("before_agent_refresh skipped: {err}", err=exc)
+
+    try:
+        return execute_effect_with_optional_display(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
+            pipeline_deps=pipeline_deps,
+        )
+    finally:
+        if should_refresh:
+            try:
+                after_agent_refresh(
+                    workspace_root=workspace_scope.root,
+                    explore_index=getattr(pre_workspace, "explore_index", None),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("after_agent_refresh skipped: {err}", err=exc)
 
 
 def _reduce_runtime_recovery(
@@ -628,6 +665,8 @@ def _run_pipeline_step(
                 state=state,
                 policy_bundle=policy_bundle,
                 pipeline_deps=pipeline_deps,
+                pre_workspace=workspace,
+                pre_phase_role=_phase_role,
             )
             if isinstance(effect, InvokeAgentEffect):
                 state = _apply_session_capture(state)
