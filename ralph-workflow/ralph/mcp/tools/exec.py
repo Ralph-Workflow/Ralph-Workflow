@@ -52,6 +52,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -75,7 +76,7 @@ from ralph.process.manager._managed_process_output_limit_exceeded_error import (
 from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     from ralph.process.manager import ProcessManager
 
@@ -698,14 +699,8 @@ def handle_exec_command(
     # AC-11: ``format=summary`` requests the bounded JSON envelope with
     # replayable resource handles; the default preserves the legacy
     # text/head-tail shape.
-    from collections.abc import Mapping as _Mapping  # noqa: PLC0415
-
-    format_value = params.get("format", "raw") if isinstance(params, _Mapping) else "raw"
+    format_value = params.get("format", "raw") if isinstance(params, Mapping) else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
-        from ralph.mcp.tools.coordination import (  # noqa: PLC0415
-            InvalidParamsError,
-        )
-
         raise InvalidParamsError(
             f"Invalid format: {format_value!r}; expected 'raw' or 'summary'"
         )

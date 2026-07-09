@@ -17,7 +17,7 @@ dirty marking.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, cast
 
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path
 
@@ -59,6 +59,9 @@ class ExploreStoreLike(Protocol):
         ...
 
     def iter_files(self) -> object:  # Iterator[FileRow]
+        ...
+
+    def iter_symbols(self, path: str | None = None) -> object:
         ...
 
     def insert_evidence(self, row: object) -> None:
@@ -141,8 +144,6 @@ def mark_paths(
 
 def build_sqlite_index_handle(
     store: ExploreStore,
-    *,
-    generation_provider: object | None = None,
 ) -> ExploreIndexLike:
     """Construct a handle that writes to a SQLite-backed ``store``.
 
@@ -162,8 +163,8 @@ def build_sqlite_index_handle(
                 )
 
         @property
-        def store(self) -> ExploreStore:
-            return store
+        def store(self) -> ExploreStoreLike | None:
+            return cast("ExploreStoreLike | None", store)
 
         @property
         def reindex_in_progress(self) -> bool:

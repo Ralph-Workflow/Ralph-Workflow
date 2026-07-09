@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import time
 from typing import TYPE_CHECKING
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
@@ -153,21 +154,29 @@ def _ensure_grep_evidence_row(store: ExploreStore, chunk_id: str) -> str:
     """
     if not chunk_id:
         return ""
+    chunk_row: sqlite3.Row | None = None
     try:
-        chunk_row = store._conn.execute(
+        fetched: object = store._conn.execute(
             "SELECT path, start_line, end_line, text_hash, generation "
             "FROM chunks WHERE chunk_id = ?",
             (chunk_id,),
         ).fetchone()
+        if fetched is not None and type(fetched) is not type(None):
+            chunk_row = cast("sqlite3.Row", fetched)
     except sqlite3.OperationalError:
         chunk_row = None
     if chunk_row is None:
         return chunk_id
-    path = str(chunk_row["path"])
-    start_line = int(chunk_row["start_line"])
-    end_line = int(chunk_row["end_line"])
-    text_hash = str(chunk_row["text_hash"])
-    generation = int(chunk_row["generation"])
+    path_obj: object = chunk_row["path"]
+    start_line_obj: object = chunk_row["start_line"]
+    end_line_obj: object = chunk_row["end_line"]
+    text_hash_obj: object = chunk_row["text_hash"]
+    generation_obj: object = chunk_row["generation"]
+    path = str(path_obj)
+    start_line = int(start_line_obj) if isinstance(start_line_obj, int) else 0
+    end_line = int(end_line_obj) if isinstance(end_line_obj, int) else 0
+    text_hash = str(text_hash_obj)
+    generation = int(generation_obj) if isinstance(generation_obj, int) else 0
     # The content_hash for an indexed chunk is the text_hash until
     # the row-level file content_hash replaces it. The explore
     # store's file row already carries the SHA-256 of the file.
@@ -262,7 +271,7 @@ class _EvidenceRowBuilder:
             generation=self.generation,
             source_tool=self.source_tool,
             evidence_kind=self.evidence_kind,
-            created_at=__import__("time").time(),
+            created_at=time.time(),
             is_stale=False,
         )
 

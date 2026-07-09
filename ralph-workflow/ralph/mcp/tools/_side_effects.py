@@ -106,6 +106,9 @@ REGISTRY: dict[str, SideEffectContract] = {
     # source-of-truth files (the .agent/ralph-explore/ subtree is a
     # derived disposable cache).
     "ralph_reindex": _contract("ralph_reindex", "read"),
+    # Phase 2: bounded graph traversal over the indexed substrate;
+    # pure read, no source-of-truth mutation.
+    "ralph_graph": _contract("ralph_graph", "read"),
 }
 
 

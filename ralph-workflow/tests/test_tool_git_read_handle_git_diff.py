@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -37,7 +38,16 @@ class TestHandleGitDiff:
         session = MockSession({GIT_DIFF_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 
-        with patch("ralph.mcp.tools.git_read.run_git_command_lenient") as mock_git:
-            mock_git.return_value = "diff --staged content"
+        completed = subprocess.CompletedProcess(
+            args=["git", "diff", "--staged"],
+            returncode=0,
+            stdout=b"diff --staged content",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ) as mock_git:
             result = handle_git_diff(session, workspace, {"args": ["--staged"]})
             assert result.is_error is False
+            assert mock_git.called

@@ -601,8 +601,7 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
         # rather than spawning ``claude -p`` and waiting for the
         # login-required exit. ``if False`` keeps this a generator
         # function under mypy and ruff.
-        if False:
-            yield ""
+        return iter([])
 
     # ``strategy_for_command`` is imported into ``invoke`` at module
     # load via ``from ralph.agents.execution_state import strategy_for_command``,

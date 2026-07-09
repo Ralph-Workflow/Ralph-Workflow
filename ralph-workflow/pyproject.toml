@@ -241,6 +241,10 @@ ignore_names = [
     "indent",
     "ensure_ascii",
     "update",
+    # Pytest fixture parameters used implicitly by name (the fixture is
+    # auto-injected by pytest, not by explicit passing).
+    "broker_secret_in_parent",
+    "patched_waiting_strategy",
 ]
 
 

@@ -111,8 +111,6 @@ def _read_lock_pid(lock_path: Path) -> int | None:
 def _recover_stale_git_lock(
     operation: str,
     error: Exception,
-    *,
-    stale_lock_age_seconds: float = _STALE_GIT_LOCK_AGE_SECONDS,
 ) -> bool:
     """Recover from a transient Git lock-file error.
 

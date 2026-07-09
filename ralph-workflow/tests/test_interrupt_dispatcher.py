@@ -1098,7 +1098,7 @@ class _HandlerCapturingLoop(asyncio.AbstractEventLoop):
         return None
 
     def create_task(  # pragma: no cover
-        self, coro: object, *, name: str | None = None
+        self, _coro: object, *, name: str | None = None
     ) -> object:
         raise NotImplementedError
 

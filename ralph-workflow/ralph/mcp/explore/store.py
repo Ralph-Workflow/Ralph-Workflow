@@ -628,7 +628,7 @@ class ExploreStore:
             cur.execute("DELETE FROM spans WHERE path = ?", (path,))
             cur.execute("DELETE FROM symbols WHERE path = ?", (path,))
             cur.execute("DELETE FROM edges WHERE path = ?", (path,))
-            for row in spans:
+            for span_row in spans:
                 cur.execute(
                     """
                     INSERT INTO spans (
@@ -647,19 +647,19 @@ class ExploreStore:
                         generation=excluded.generation
                     """,
                     (
-                        row.span_id,
-                        row.path,
-                        row.start_line,
-                        row.start_col,
-                        row.end_line,
-                        row.end_col,
-                        row.kind,
-                        row.symbol_id,
-                        row.content_hash,
-                        row.generation,
+                        span_row.span_id,
+                        span_row.path,
+                        span_row.start_line,
+                        span_row.start_col,
+                        span_row.end_line,
+                        span_row.end_col,
+                        span_row.kind,
+                        span_row.symbol_id,
+                        span_row.content_hash,
+                        span_row.generation,
                     ),
                 )
-            for row in symbols:
+            for symbol_row in symbols:
                 cur.execute(
                     """
                     INSERT INTO symbols (
@@ -679,19 +679,19 @@ class ExploreStore:
                         generation=excluded.generation
                     """,
                     (
-                        row.symbol_id,
-                        row.name,
-                        row.qualified_name,
-                        row.kind,
-                        row.path,
-                        row.span_id,
-                        row.language,
-                        row.extracted_from,
-                        row.confidence,
-                        row.generation,
+                        symbol_row.symbol_id,
+                        symbol_row.name,
+                        symbol_row.qualified_name,
+                        symbol_row.kind,
+                        symbol_row.path,
+                        symbol_row.span_id,
+                        symbol_row.language,
+                        symbol_row.extracted_from,
+                        symbol_row.confidence,
+                        symbol_row.generation,
                     ),
                 )
-            for row in edges:
+            for edge_row in edges:
                 cur.execute(
                     """
                     INSERT INTO edges (
@@ -711,16 +711,16 @@ class ExploreStore:
                         generation=excluded.generation
                     """,
                     (
-                        row.edge_id,
-                        row.source_id,
-                        row.target_id,
-                        row.relation,
-                        row.path,
-                        row.span_id,
-                        row.provenance,
-                        row.confidence,
-                        row.reason,
-                        row.generation,
+                        edge_row.edge_id,
+                        edge_row.source_id,
+                        edge_row.target_id,
+                        edge_row.relation,
+                        edge_row.path,
+                        edge_row.span_id,
+                        edge_row.provenance,
+                        edge_row.confidence,
+                        edge_row.reason,
+                        edge_row.generation,
                     ),
                 )
 
@@ -736,21 +736,8 @@ class ExploreStore:
                 (path,),
             )
         rows = cast("list[sqlite3.Row]", cur.fetchall())
-        for row in rows:
-            yield SpanRow(
-                span_id=str(row["span_id"]),
-                path=str(row["path"]),
-                start_line=int(row["start_line"]),
-                start_col=int(row["start_col"]),
-                end_line=int(row["end_line"]),
-                end_col=int(row["end_col"]),
-                kind=str(row["kind"]),
-                symbol_id=(
-                    str(row["symbol_id"]) if row["symbol_id"] is not None else None
-                ),
-                content_hash=str(row["content_hash"]),
-                generation=int(row["generation"]),
-            )
+        for span_row in rows:
+            yield _row_to_span(span_row)
 
     def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
         if path is None:
@@ -764,21 +751,8 @@ class ExploreStore:
                 (path,),
             )
         rows = cast("list[sqlite3.Row]", cur.fetchall())
-        for row in rows:
-            yield SymbolRow(
-                symbol_id=str(row["symbol_id"]),
-                name=str(row["name"]),
-                qualified_name=str(row["qualified_name"]),
-                kind=str(row["kind"]),
-                path=str(row["path"]),
-                span_id=str(row["span_id"]),
-                language=(
-                    str(row["language"]) if row["language"] is not None else None
-                ),
-                extracted_from=str(row["extracted_from"]),
-                confidence=float(row["confidence"]),
-                generation=int(row["generation"]),
-            )
+        for sym_row in rows:
+            yield _row_to_symbol(sym_row)
 
     def iter_edges(
         self,
@@ -800,28 +774,15 @@ class ExploreStore:
         sql += " ORDER BY path, relation, source_id, target_id"
         cur = self._conn.execute(sql, params)
         rows = cast("list[sqlite3.Row]", cur.fetchall())
-        for row in rows:
-            yield EdgeRow(
-                edge_id=str(row["edge_id"]),
-                source_id=str(row["source_id"]),
-                target_id=str(row["target_id"]),
-                relation=str(row["relation"]),
-                path=str(row["path"]),
-                span_id=(
-                    str(row["span_id"]) if row["span_id"] is not None else None
-                ),
-                provenance=str(row["provenance"]),
-                confidence=float(row["confidence"]),
-                reason=str(row["reason"]) if row["reason"] is not None else None,
-                generation=int(row["generation"]),
-            )
+        for edge_row in rows:
+            yield _row_to_edge(edge_row)
 
     def count_structure_rows(self) -> dict[str, int]:
         counts: dict[str, int] = {}
         for table in ("spans", "symbols", "edges"):
             cur = self._conn.execute(f"SELECT COUNT(*) FROM {table}")
-            row = cur.fetchone()
-            counts[table] = int(row[0]) if row is not None else 0
+            row: sqlite3.Row | None = cur.fetchone()
+            counts[table] = _row_int_opt(row, 0) if row is not None else 0
         return counts
 
     # --- Dirty paths --------------------------------------------------
@@ -1081,6 +1042,18 @@ def _row_optional_str(row: sqlite3.Row, key: str) -> str | None:
     return str(value)
 
 
+def _row_int_opt(row: sqlite3.Row | None, idx: int) -> int:
+    """Read an integer column from a positional ``row`` index (Any-safe)."""
+    if row is None:
+        return 0
+    value: object = row[idx]
+    if isinstance(value, bool):
+        return int(bool(value))
+    if isinstance(value, int):
+        return value
+    return int(cast("int | str | float", value))
+
+
 def _row_to_file(row: sqlite3.Row) -> FileRow:
     """Convert a ``files`` row to a typed ``FileRow`` dataclass."""
     return FileRow(
@@ -1108,6 +1081,54 @@ def _row_to_evidence(row: sqlite3.Row) -> EvidenceRow:
         evidence_kind=_row_str(row, "evidence_kind"),
         created_at=_row_float(row, "created_at"),
         is_stale=bool(_row_int(row, "is_stale")),
+    )
+
+
+def _row_to_span(row: sqlite3.Row) -> SpanRow:
+    """Convert a ``spans`` row to a typed ``SpanRow``."""
+    return SpanRow(
+        span_id=_row_str(row, "span_id"),
+        path=_row_str(row, "path"),
+        start_line=_row_int(row, "start_line"),
+        start_col=_row_int(row, "start_col"),
+        end_line=_row_int(row, "end_line"),
+        end_col=_row_int(row, "end_col"),
+        kind=_row_str(row, "kind"),
+        symbol_id=_row_optional_str(row, "symbol_id"),
+        content_hash=_row_str(row, "content_hash"),
+        generation=_row_int(row, "generation"),
+    )
+
+
+def _row_to_symbol(row: sqlite3.Row) -> SymbolRow:
+    """Convert a ``symbols`` row to a typed ``SymbolRow``."""
+    return SymbolRow(
+        symbol_id=_row_str(row, "symbol_id"),
+        name=_row_str(row, "name"),
+        qualified_name=_row_str(row, "qualified_name"),
+        kind=_row_str(row, "kind"),
+        path=_row_str(row, "path"),
+        span_id=_row_str(row, "span_id"),
+        language=_row_optional_str(row, "language"),
+        extracted_from=_row_str(row, "extracted_from"),
+        confidence=_row_float(row, "confidence"),
+        generation=_row_int(row, "generation"),
+    )
+
+
+def _row_to_edge(row: sqlite3.Row) -> EdgeRow:
+    """Convert an ``edges`` row to a typed ``EdgeRow``."""
+    return EdgeRow(
+        edge_id=_row_str(row, "edge_id"),
+        source_id=_row_str(row, "source_id"),
+        target_id=_row_str(row, "target_id"),
+        relation=_row_str(row, "relation"),
+        path=_row_str(row, "path"),
+        span_id=_row_optional_str(row, "span_id"),
+        provenance=_row_str(row, "provenance"),
+        confidence=_row_float(row, "confidence"),
+        reason=_row_optional_str(row, "reason"),
+        generation=_row_int(row, "generation"),
     )
 
 

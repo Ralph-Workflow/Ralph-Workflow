@@ -5,9 +5,13 @@ from __future__ import annotations
 import fnmatch
 import json
 import sqlite3
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.explore.dirty_paths import resolve_explore_index
+from ralph.mcp.explore.dirty_paths import (
+    ExploreIndexLike,
+    resolve_explore_index,
+)
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
@@ -37,7 +41,6 @@ from ralph.mcp.tools.workspace._utils import (
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.dirty_paths import ExploreStoreLike
     from ralph.mcp.explore.store import EvidenceRow, ExploreStore
     from ralph.workspace import Workspace
 
@@ -715,8 +718,22 @@ def handle_list_directory(
         )
 
     # Indexed listing path.
-    handle = resolve_explore_index(session)
-    if handle is None or getattr(handle, "store", None) is None:
+    handle_obj: object = resolve_explore_index(session)
+    handle_obj2: object | None = (
+        handle_obj
+        if handle_obj is not None and hasattr(handle_obj, "store")
+        else None
+    )
+    handle: ExploreIndexLike | None = cast(
+        "ExploreIndexLike | None", handle_obj2
+    )
+    raw_handle_store: object | None
+    if handle is None:
+        raw_handle_store = None
+    else:
+        store_attr: object = getattr(handle, "store", None)
+        raw_handle_store = store_attr
+    if handle is None or raw_handle_store is None:
         if use_index == "always":
             return ToolResult(
                 content=[
@@ -760,52 +777,96 @@ def handle_list_directory(
 
     entries = list_dir_flat(workspace, path)
     try:
-        entries_list = json.loads(entries)
+        entries_parsed: object = json.loads(entries)
     except (ValueError, TypeError):
-        entries_list = []
+        entries_parsed = []
+    entries_list: list[dict[str, object]] = (
+        [e for e in entries_parsed if isinstance(e, dict)]
+        if isinstance(entries_parsed, list)
+        else []
+    )
+    raw_store: object | None = handle.store
     # Filter / prioritize changed paths when requested.
-    if changed_only:
-        dirty = set(handle.store.peek_dirty_paths())
-        entries_list = [
-            entry
-            for entry in entries_list
-            if isinstance(entry, dict)
-            and isinstance(entry.get("path"), str)
-            and entry["path"] in dirty
-        ]
+    if changed_only and raw_store is not None:
+        dirty_obj: object = getattr(raw_store, "peek_dirty_paths", lambda: [])()
+        dirty_iterable: Iterable[object] = (
+            dirty_obj if isinstance(dirty_obj, list) else []
+        )
+        dirty: set[str] = {str(p) for p in dirty_iterable if isinstance(p, str)}
+        filtered: list[dict[str, object]] = []
+        for entry in entries_list:
+            entry_path_obj: object = entry.get("path")
+            if isinstance(entry_path_obj, str) and entry_path_obj in dirty:
+                filtered.append(entry)
+        entries_list = filtered
     # Symbol counts and headings.
-    if include_counts or include_symbols or view in {"compact", "ranked", "outline"}:
+    if (
+        raw_store is not None
+        and (
+            include_counts
+            or include_symbols
+            or view in {"compact", "ranked", "outline"}
+        )
+    ):
         counts_by_path: dict[str, dict[str, int]] = {}
         symbols_by_path: dict[str, list[dict[str, str]]] = {}
-        if handle.store is not None:
-            for sym in handle.store.iter_symbols():
-                counts_by_path.setdefault(sym.path, {"symbols": 0})
-                counts_by_path[sym.path]["symbols"] += 1
-                if include_symbols or view == "outline":
-                    symbols_by_path.setdefault(sym.path, []).append(
-                        {"name": sym.name, "kind": sym.kind}
-                    )
+        sym_iter_obj: object = getattr(raw_store, "iter_symbols", lambda: [])()
+        sym_iterable: Iterable[object] = (
+            sym_iter_obj if hasattr(sym_iter_obj, "__iter__") else []
+        )
+        for sym in sym_iterable:
+            sym_path_obj: object = getattr(sym, "path", "")
+            sym_name_obj: object = getattr(sym, "name", "")
+            sym_kind_obj: object = getattr(sym, "kind", "")
+            sym_path = sym_path_obj if isinstance(sym_path_obj, str) else str(sym_path_obj)
+            sym_name = sym_name_obj if isinstance(sym_name_obj, str) else str(sym_name_obj)
+            sym_kind = sym_kind_obj if isinstance(sym_kind_obj, str) else str(sym_kind_obj)
+            counts_by_path.setdefault(sym_path, {"symbols": 0})
+            counts_by_path[sym_path]["symbols"] += 1
+            if include_symbols or view == "outline":
+                symbols_by_path.setdefault(sym_path, []).append(
+                    {"name": sym_name, "kind": sym_kind}
+                )
         for entry in entries_list:
-            if not isinstance(entry, dict):
-                continue
-            entry_path = entry.get("path")
-            if not isinstance(entry_path, str):
+            entry_path_obj2: object = entry.get("path")
+            entry_path: str = (
+                entry_path_obj2
+                if isinstance(entry_path_obj2, str)
+                else (str(entry_path_obj2) if entry_path_obj2 is not None else "")
+            )
+            if not entry_path:
                 continue
             if include_counts or view in {"compact", "ranked"}:
                 entry["counts"] = counts_by_path.get(entry_path, {"symbols": 0})
             if include_symbols or view == "outline":
                 entry["symbols"] = symbols_by_path.get(entry_path, [])
     if view == "ranked":
-        entries_list = sorted(
-            entries_list,
-            key=lambda e: (
-                -(e.get("counts", {}).get("symbols", 0) if isinstance(e, dict) else 0),
-                e.get("name", "") if isinstance(e, dict) else "",
-            ),
-        )
+        def _rank_key(e: object) -> tuple[int, str]:
+            if not isinstance(e, dict):
+                return (0, "")
+            counts_obj: object = e.get("counts", {})
+            symbols_count = 0
+            if isinstance(counts_obj, dict):
+                count_val: object = counts_obj.get("symbols", 0)
+                if isinstance(count_val, int):
+                    symbols_count = count_val
+            name_obj: object = e.get("name", "")
+            name = name_obj if isinstance(name_obj, str) else str(name_obj)
+            return (-symbols_count, name)
+
+        entries_list = sorted(entries_list, key=_rank_key)
     if limit_children > 0:
         entries_list = entries_list[:limit_children]
-    payload = {
+    is_stale: bool = False
+    if raw_store is not None:
+        dirty_again_obj: object = getattr(raw_store, "peek_dirty_paths", lambda: [])()
+        if isinstance(dirty_again_obj, list):
+            is_stale = bool(dirty_again_obj)
+        elif isinstance(dirty_again_obj, bool):
+            is_stale = dirty_again_obj
+        else:
+            is_stale = bool(dirty_again_obj)
+    payload: dict[str, object] = {
         "entries": entries_list,
         "view": view,
         "changed_only": changed_only,
@@ -813,7 +874,7 @@ def handle_list_directory(
         "include_symbols": include_symbols,
         "limit_children": limit_children,
         "index_used": True,
-        "is_stale": bool(handle.store.peek_dirty_paths()),
+        "is_stale": is_stale,
     }
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(payload))], is_error=False
@@ -913,19 +974,34 @@ def handle_directory_tree(
 
     if view == "raw" and use_index == "never":
         try:
-            tree = _build_directory_tree(
+            tree_obj: object = _build_directory_tree(
                 workspace, path, 0, max_depth, exclude_patterns
             )
         except Exception as exc:
             raise ToolError(
                 f"Failed to build directory tree for '{path}': {exc}"
             ) from exc
+        tree_dict: dict[str, object] = (
+            tree_obj if isinstance(tree_obj, dict) else {}
+        )
         return ToolResult(
-            content=[ToolContent.text_content(_tool_json(tree))], is_error=False
+            content=[ToolContent.text_content(_tool_json(tree_dict))],
+            is_error=False,
         )
 
-    handle = resolve_explore_index(session)
-    if handle is None or getattr(handle, "store", None) is None:
+    handle_obj_check: object = resolve_explore_index(session)
+    handle2: ExploreIndexLike | None
+    if handle_obj_check is not None and hasattr(handle_obj_check, "store"):
+        handle2 = cast("ExploreIndexLike | None", handle_obj_check)
+    else:
+        handle2 = None
+    handle = handle2
+    handle_check_store: object | None = (
+        None
+        if handle is None
+        else cast("object", getattr(handle, "store", None))
+    )
+    if handle is None or handle_check_store is None:
         if use_index == "always":
             return ToolResult(
                 content=[
@@ -941,44 +1017,73 @@ def handle_directory_tree(
                 is_error=True,
             )
         try:
-            tree = _build_directory_tree(
+            tree_obj2: object = _build_directory_tree(
                 workspace, path, 0, max_depth, exclude_patterns
             )
         except Exception as exc:
             raise ToolError(
                 f"Failed to build directory tree for '{path}': {exc}"
             ) from exc
+        tree_dict2: dict[str, object] = (
+            tree_obj2 if isinstance(tree_obj2, dict) else {}
+        )
         # Legacy shape when no index is attached and the caller did
         # not explicitly request an indexed view.
         if view == "raw":
             return ToolResult(
-                content=[ToolContent.text_content(_tool_json(tree))],
+                content=[ToolContent.text_content(_tool_json(tree_dict2))],
                 is_error=False,
             )
-        payload = {"tree": tree, "view": "raw", "fallback_reason": "no_index_handle"}
+        payload_fallback: dict[str, object] = {
+            "tree": tree_dict2,
+            "view": "raw",
+            "fallback_reason": "no_index_handle",
+        }
         return ToolResult(
-            content=[ToolContent.text_content(_tool_json(payload))], is_error=False
+            content=[ToolContent.text_content(_tool_json(payload_fallback))],
+            is_error=False,
         )
 
     try:
-        tree = _build_directory_tree(
+        tree_raw: object = _build_directory_tree(
             workspace, path, 0, max_depth, exclude_patterns
         )
     except Exception as exc:
         raise ToolError(
             f"Failed to build directory tree for '{path}': {exc}"
         ) from exc
+    tree: dict[str, object] = tree_raw if isinstance(tree_raw, dict) else {}
 
     # Attach counts/symbols metadata from the explore index.
     counts_by_path: dict[str, dict[str, int]] = {}
     symbols_by_path: dict[str, list[dict[str, str]]] = {}
-    for sym in handle.store.iter_symbols():
-        counts_by_path.setdefault(sym.path, {"symbols": 0})
-        counts_by_path[sym.path]["symbols"] += 1
-        if include_symbols or view == "outline":
-            symbols_by_path.setdefault(sym.path, []).append(
-                {"name": sym.name, "kind": sym.kind}
+    raw_tree_store: object | None = handle.store
+    if raw_tree_store is not None:
+        tree_sym_iter_obj: object = getattr(
+            raw_tree_store, "iter_symbols", lambda: []
+        )()
+        tree_sym_iterable: Iterable[object] = (
+            tree_sym_iter_obj if hasattr(tree_sym_iter_obj, "__iter__") else []
+        )
+        for sym in tree_sym_iterable:
+            sym_path_obj: object = getattr(sym, "path", "")
+            sym_name_obj: object = getattr(sym, "name", "")
+            sym_kind_obj: object = getattr(sym, "kind", "")
+            sym_path = (
+                sym_path_obj if isinstance(sym_path_obj, str) else str(sym_path_obj)
             )
+            sym_name = (
+                sym_name_obj if isinstance(sym_name_obj, str) else str(sym_name_obj)
+            )
+            sym_kind = (
+                sym_kind_obj if isinstance(sym_kind_obj, str) else str(sym_kind_obj)
+            )
+            counts_by_path.setdefault(sym_path, {"symbols": 0})
+            counts_by_path[sym_path]["symbols"] += 1
+            if include_symbols or view == "outline":
+                symbols_by_path.setdefault(sym_path, []).append(
+                    {"name": sym_name, "kind": sym_kind}
+                )
 
     def _decorate(node: dict[str, object]) -> dict[str, object]:
         node_path = node.get("path") if isinstance(node, dict) else None
@@ -987,20 +1092,28 @@ def handle_directory_tree(
                 node["counts"] = counts_by_path.get(node_path, {"symbols": 0})
             if include_symbols or view == "outline":
                 node["symbols"] = symbols_by_path.get(node_path, [])
-            children = node.get("children")
-            if isinstance(children, list):
-                children_list = list(children)
+            children_obj: object = node.get("children")
+            if isinstance(children_obj, list):
+                children_list_obj: list[object] = list(children_obj)
+                children_list: list[dict[str, object]] = [
+                    c for c in children_list_obj if isinstance(c, dict)
+                ]
                 if view == "ranked":
-                    children_list.sort(
-                        key=lambda c: (
-                            -(
-                                c.get("counts", {}).get("symbols", 0)
-                                if isinstance(c, dict)
-                                else 0
-                            ),
-                            c.get("name", "") if isinstance(c, dict) else "",
-                        )
-                    )
+
+                    def _tree_rank_key(c: object) -> tuple[int, str]:
+                        if not isinstance(c, dict):
+                            return (0, "")
+                        counts_obj: object = c.get("counts", {})
+                        symbols_count = 0
+                        if isinstance(counts_obj, dict):
+                            count_val: object = counts_obj.get("symbols", 0)
+                            if isinstance(count_val, int):
+                                symbols_count = count_val
+                        name_obj: object = c.get("name", "")
+                        name = name_obj if isinstance(name_obj, str) else str(name_obj)
+                        return (-symbols_count, name)
+
+                    children_list.sort(key=_tree_rank_key)
                 if limit_children > 0:
                     children_list = children_list[:limit_children]
                 node["children"] = [
@@ -1010,8 +1123,17 @@ def handle_directory_tree(
         return node
 
     decorated = _decorate(tree)
-    store_obj: ExploreStoreLike | None = handle.store
-    is_stale = bool(store_obj.peek_dirty_paths()) if store_obj is not None else False
+    is_stale: bool = False
+    if raw_tree_store is not None:
+        tree_dirty_obj: object = getattr(
+            raw_tree_store, "peek_dirty_paths", lambda: []
+        )()
+        if isinstance(tree_dirty_obj, list):
+            is_stale = bool(tree_dirty_obj)
+        elif isinstance(tree_dirty_obj, bool):
+            is_stale = tree_dirty_obj
+        else:
+            is_stale = bool(tree_dirty_obj)
     payload: dict[str, object] = {
         "tree": decorated,
         "view": view,

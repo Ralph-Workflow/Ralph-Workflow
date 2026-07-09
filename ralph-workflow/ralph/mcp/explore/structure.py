@@ -160,12 +160,28 @@ def detect_language(path: str) -> str | None:
 
 def _line_col(node: ast.AST) -> tuple[int, int, int, int]:
     """Return ``(start_line, start_col, end_line, end_col)`` for an AST node."""
-    return (
-        getattr(node, "lineno", 0) or 0,
-        getattr(node, "col_offset", 0) or 0,
-        getattr(node, "end_lineno", 0) or 0,
-        getattr(node, "end_col_offset", 0) or 0,
-    )
+    start_line = _get_int_attr(node, "lineno", 0)
+    start_col = _get_int_attr(node, "col_offset", 0)
+    end_line = _get_int_attr(node, "end_lineno", 0)
+    end_col = _get_int_attr(node, "end_col_offset", 0)
+    return (start_line, start_col, end_line, end_col)
+
+
+def _get_int_attr(node: ast.AST, attr: str, default: int) -> int:
+    """Read an integer attribute from an AST node, falling back to ``default``."""
+    raw: object = getattr(node, attr, default)
+    if isinstance(raw, bool):
+        return int(raw)
+    if isinstance(raw, int):
+        return raw
+    if raw is None:
+        return default
+    if isinstance(raw, str):
+        try:
+            return int(raw)
+        except ValueError:
+            return default
+    return default
 
 
 def _qualify(parent: str, name: str) -> str:
@@ -205,8 +221,9 @@ def extract_python(
     def _walk(node: ast.AST, parent_qualified: str, container_span_id: str) -> None:
         kind_name = _node_kind(node)
         if kind_name is not None and hasattr(node, "name"):
-            name = getattr(node, "name", "")
-            if isinstance(name, str) and name:
+            name_obj: object = getattr(node, "name", "")
+            name = name_obj if isinstance(name_obj, str) else str(name_obj)
+            if name:
                 start_line, start_col, end_line, end_col = _line_col(node)
                 span_id = derive_span_id(
                     path=path,
@@ -274,7 +291,11 @@ def extract_python(
                     )
                 if kind_name == "class" and isinstance(node, ast.ClassDef):
                     for base in node.bases:
-                        base_id = getattr(base, "id", None) or _attr_name(base)
+                        base_id_obj: object = getattr(base, "id", None)
+                        if isinstance(base_id_obj, str) and base_id_obj:
+                            base_id: str | None = base_id_obj
+                        else:
+                            base_id = _attr_name(base)
                         if base_id:
                             edges.append(
                                 EdgeRow(
@@ -495,8 +516,10 @@ def extract_markdown(
         line = lines[line_no]
         match = _ATX_HEADING_RE.match(line)
         if match:
-            level = len(match.group(1))
-            title = match.group(2).strip()
+            level_obj: object = match.group(1)
+            title_obj: object = match.group(2)
+            level = len(str(level_obj)) if level_obj is not None else 0
+            title = str(title_obj).strip() if title_obj is not None else ""
             start_line = line_no + 1
             start_col = 0
             end_line = start_line

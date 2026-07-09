@@ -56,8 +56,11 @@ class _RaisingPtyLineReader:
         del args, kwargs
 
     def read_lines(self) -> object:
-        if False:
-            yield ""
+        # Stub generator: yields a placeholder, then raises on the next iteration
+        # so the caller observes the watchdog timeout immediately. The placeholder
+        # yield exists only to mark this function as a generator; the raise is
+        # what the caller actually observes.
+        yield ""  # placeholder: never observed as a real line by callers
         raise _IdleStreamTimeoutError(
             300.0,
             WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
@@ -474,8 +477,11 @@ class _NoOutputAtStartRaisingPtyLineReader:
         del args, kwargs
 
     def read_lines(self) -> object:
-        if False:
-            yield ""
+        # Stub generator: yields a placeholder, then raises on the next iteration
+        # so the caller observes the watchdog timeout immediately. The placeholder
+        # yield exists only to mark this function as a generator; the raise is
+        # what the caller actually observes.
+        yield ""  # placeholder: never observed as a real line by callers
         raise _IdleStreamTimeoutError(
             30.0,
             WatchdogFireReason.NO_OUTPUT_AT_START,

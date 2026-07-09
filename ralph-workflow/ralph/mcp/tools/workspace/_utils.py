@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, cast
 
@@ -53,8 +54,14 @@ def required_string_param(params: dict[str, object], name: str) -> str:
     return value
 
 
-def _tool_json(data: dict[str, object]) -> str:
+def _tool_json(data: Mapping[str, object]) -> str:
     """Serialize a result dict to a JSON string for ToolResult content."""
+    payload: dict[str, object] = dict(data)
+    return json.dumps(payload)
+
+
+def _tool_json_object(data: object) -> str:
+    """Serialize any JSON-compatible object to a JSON string."""
     return json.dumps(data)
 
 

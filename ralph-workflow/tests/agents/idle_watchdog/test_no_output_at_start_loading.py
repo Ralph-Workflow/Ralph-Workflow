@@ -109,7 +109,7 @@ def _make_watchdog(
     )
 
 
-def cast(tp: type[object], obj: object) -> object:
+def cast(_tp: type[object], obj: object) -> object:
     """Local cast helper to avoid shadowing typing.cast at module scope."""
     return typing.cast("type[object]", obj)
 

@@ -197,20 +197,13 @@ def git_exec_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=EXEC_TOOL,
                 description=(
-                    "Execute a bounded subprocess in the workspace. Accepts command or "
-                    "argv as a string or string array, plus optional args, timeout_ms, "
-                    "and format ('raw'|'summary', default 'raw'). "
-                    "Shell-style strings are tokenized; the command blacklist is the "
-                    "security boundary. Returns stdout, stderr, "
-                    "and exit_code by default. "
-                    "``format='summary'`` returns a JSON envelope with a replayable "
-                    "``stdout_resource_id`` handle plus the spill path; oversized "
-                    "output is spilled to a workspace-relative file with a head/tail "
-                    "preview so the agent never blocks on a giant dump. "
-                    'Example: {"command": "python -m pytest", "args": ["-q"], '
-                    '"format": "summary"}. '
-                    "Some commands may still be blacklisted; prefer structured tools "
-                    "when available. " + _TIMEOUT_SEMANTICS
+                    "Execute a bounded subprocess in the workspace. Accepts command "
+                    "or argv, plus optional args, timeout_ms, and format ('raw' or "
+                    "'summary', default 'raw'). The command blacklist is the "
+                    "security boundary. format='summary' returns a JSON envelope "
+                    "with a replayable stdout resource id and the spill path. "
+                    "On timeout you get an is_error result, not a retryable "
+                    "protocol error — decide WHY before retrying."
                 ),
                 input_schema={
                     "type": "object",

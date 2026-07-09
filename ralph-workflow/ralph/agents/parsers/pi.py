@@ -446,16 +446,14 @@ class _PiDispatch:
         sub: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        return
-        yield  # pragma: no cover - explicit generator for the type checker
+        return iter([])
 
     def _handle_toolcall_delta(
         self,
         sub: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
-        return
-        yield  # pragma: no cover - explicit generator for the type checker
+        return iter([])
 
     def _handle_toolcall_end(
         self,

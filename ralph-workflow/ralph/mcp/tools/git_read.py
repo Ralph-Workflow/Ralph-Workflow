@@ -161,8 +161,12 @@ def run_git_command_lenient(
     *,
     runner: GitRunner | None = None,
     cwd_provider: CwdProvider = Path.cwd,
-) -> str:
-    """Execute git and return combined stdout/stderr regardless of exit code."""
+) -> subprocess.CompletedProcess[bytes]:
+    """Execute git and return a :class:`CompletedProcess` regardless of exit code.
+
+    Callers that want a single text blob can use ``lenient_stdout`` or
+    join ``result.stdout`` and ``result.stderr`` themselves.
+    """
     git_runner = runner or _run_git_subprocess
     try:
         output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
@@ -178,7 +182,22 @@ def run_git_command_lenient(
     except OSError as exc:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
 
-    return f"{_decode_output(output.stdout)}{_decode_output(output.stderr)}"
+    return output
+
+
+def lenient_stdout(result: subprocess.CompletedProcess[bytes]) -> str:
+    """Return the decoded combined stdout/stderr of a lenient git run."""
+    return f"{_decode_output(result.stdout)}{_decode_output(result.stderr)}"
+
+
+def _parse_numstat_count(value: str) -> int:
+    """Parse a numstat field; ``"-"`` (binary file) maps to 0."""
+    if value == "-":
+        return 0
+    try:
+        return int(value)
+    except ValueError:
+        return 0
 
 
 # MCP read tools must never block the server thread indefinitely: a hung
@@ -303,11 +322,20 @@ def handle_git_diff(
             f"Invalid format: {format_value!r}; expected 'raw' or 'summary'"
         )
     if format_value == "raw":
-        return _git_read_result(lambda: run_git_command_lenient(workspace, ["diff", *parsed.args]))
+        return _git_read_result(lambda: lenient_stdout(
+            run_git_command_lenient(workspace, ["diff", *parsed.args])
+        ))
     max_bytes_raw = params.get("max_bytes", 50_000)
-    try:
-        max_bytes = int(max_bytes_raw) if not isinstance(max_bytes_raw, bool) else 50_000
-    except (TypeError, ValueError):
+    if isinstance(max_bytes_raw, bool):
+        max_bytes = 50_000
+    elif isinstance(max_bytes_raw, int):
+        max_bytes = max_bytes_raw
+    elif isinstance(max_bytes_raw, str):
+        try:
+            max_bytes = int(max_bytes_raw)
+        except ValueError:
+            max_bytes = 50_000
+    else:
         max_bytes = 50_000
     raw_result = run_git_command_lenient(workspace, ["diff", "--numstat", *parsed.args])
     numstat_output = raw_result.stdout.decode("utf-8", errors="replace")
@@ -318,18 +346,14 @@ def handle_git_diff(
         parts = line.split("\t")
         if len(parts) < _NUMSTAT_FIELD_COUNT:
             continue
-        added = parts[0]
-        removed = parts[1]
-        path = parts[2]
-        try:
-            added_count = int(added) if added != "-" else 0
-            removed_count = int(removed) if removed != "-" else 0
-        except ValueError:
-            added_count = 0
-            removed_count = 0
+        added_str = parts[0]
+        removed_str = parts[1]
+        path_str = parts[2]
+        added_count = _parse_numstat_count(added_str)
+        removed_count = _parse_numstat_count(removed_str)
         cards.append(
             {
-                "path": path,
+                "path": path_str,
                 "added": added_count,
                 "removed": removed_count,
             }
@@ -339,11 +363,17 @@ def handle_git_diff(
     truncated = len(full_text) > max_bytes
     if truncated:
         full_text = full_text[:max_bytes]
-    payload = {
+    added_total = sum(
+        c["added"] for c in cards if isinstance(c["added"], int)
+    )
+    removed_total = sum(
+        c["removed"] for c in cards if isinstance(c["removed"], int)
+    )
+    payload: dict[str, object] = {
         "format": "summary",
         "files_changed": len(cards),
-        "added": sum(c["added"] for c in cards if isinstance(c["added"], int)),
-        "removed": sum(c["removed"] for c in cards if isinstance(c["removed"], int)),
+        "added": added_total,
+        "removed": removed_total,
         "files": cards,
         "diff_excerpt": full_text,
         "truncated": truncated,

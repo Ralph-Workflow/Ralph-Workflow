@@ -324,7 +324,7 @@ def handle_edit_file(
                         None,
                     )
                     if span_row is not None:
-                        resolved = (span_row.start_line, span_row.end_col)
+                        resolved = (span_row.start_line, span_row.end_line)
                 elif len(scoped) > 1:
                     target_resolution_error = {
                         "status": "ambiguous_target",

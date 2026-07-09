@@ -30,7 +30,11 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final
 
-from ralph.mcp.explore.store import EdgeRow, ExploreStore
+from ralph.mcp.explore.store import (
+    EdgeRow,
+    ExploreStore,
+    _row_to_symbol,
+)
 
 # Relation priority for ordering (matches the prompt's contract).
 _RELATION_PRIORITY: Final[tuple[str, ...]] = (
@@ -128,20 +132,29 @@ def _resolve_target(store: ExploreStore, target: str) -> tuple[str | None, str |
         "WHERE qualified_name = ? OR symbol_id = ? LIMIT 1",
         (target, target),
     )
-    row = cur.fetchone()
+    row: sqlite3.Row | None = cur.fetchone()
     if row is not None:
-        return str(row[0]), str(row[1])
+        return _extract_symbol_id_name(row)
     if target.endswith(".py") or target.endswith(".md"):
         cur = store._conn.execute(
             "SELECT symbol_id, qualified_name FROM symbols "
             "WHERE path = ? ORDER BY qualified_name LIMIT 1",
             (target,),
         )
-        row = cur.fetchone()
-        if row is not None:
-            return str(row[0]), str(row[1])
+        row2: sqlite3.Row | None = cur.fetchone()
+        if row2 is not None:
+            return _extract_symbol_id_name(row2)
         return f"file:{target}", target
     return None, None
+
+
+def _extract_symbol_id_name(row: sqlite3.Row) -> tuple[str | None, str | None]:
+    """Extract (symbol_id, qualified_name) from a 2-column symbol row."""
+    sym_id: object = row[0]
+    qual: object = row[1]
+    sym_str = sym_id if isinstance(sym_id, str) else (str(sym_id) if sym_id is not None else None)
+    qual_str = qual if isinstance(qual, str) else (str(qual) if qual is not None else None)
+    return sym_str, qual_str
 
 
 def _row_to_edge(row: EdgeRow) -> GraphEdge:
@@ -160,15 +173,15 @@ def _row_to_edge(row: EdgeRow) -> GraphEdge:
 
 def _row_to_node_from_symbol(row: sqlite3.Row) -> GraphNode:
     """Translate a symbols row to a GraphNode."""
-    evidence_ids: tuple[str, ...] = (str(row["span_id"]), str(row["symbol_id"]))
+    typed = _row_to_symbol(row)
     return GraphNode(
-        id=str(row["symbol_id"]),
-        kind=str(row["kind"]),
-        label=str(row["qualified_name"]),
-        path=str(row["path"]),
-        confidence=float(row["confidence"]),
-        provenance=str(row["extracted_from"]),
-        evidence_ids=evidence_ids,
+        id=typed.symbol_id,
+        kind=typed.kind,
+        label=typed.qualified_name,
+        path=typed.path,
+        confidence=typed.confidence,
+        provenance=typed.extracted_from,
+        evidence_ids=(typed.span_id, typed.symbol_id),
     )
 
 
@@ -197,28 +210,12 @@ def _iter_outgoing(
     source_id: str,
     relations: Sequence[str],
 ) -> Iterable[EdgeRow]:
-    placeholders = ",".join("?" for _ in relations) if relations else ""
-    sql = (
-        "SELECT * FROM edges WHERE source_id = ?"
-        + (f" AND relation IN ({placeholders})" if relations else "")
-        + " ORDER BY confidence DESC, relation ASC"
-    )
-    params: tuple[object, ...] = (source_id, *relations) if relations else (source_id,)
-    cur = store._conn.execute(sql, params)
-    rows = list(cur.fetchall())
-    for row in rows:
-        yield EdgeRow(
-            edge_id=str(row["edge_id"]),
-            source_id=str(row["source_id"]),
-            target_id=str(row["target_id"]),
-            relation=str(row["relation"]),
-            path=str(row["path"]),
-            span_id=str(row["span_id"]) if row["span_id"] is not None else None,
-            provenance=str(row["provenance"]),
-            confidence=float(row["confidence"]),
-            reason=str(row["reason"]) if row["reason"] is not None else None,
-            generation=int(row["generation"]),
-        )
+    for edge in store.iter_edges():
+        if edge.source_id != source_id:
+            continue
+        if relations and edge.relation not in relations:
+            continue
+        yield edge
 
 
 def _iter_incoming(
@@ -227,28 +224,12 @@ def _iter_incoming(
     target_id: str,
     relations: Sequence[str],
 ) -> Iterable[EdgeRow]:
-    placeholders = ",".join("?" for _ in relations) if relations else ""
-    sql = (
-        "SELECT * FROM edges WHERE target_id = ?"
-        + (f" AND relation IN ({placeholders})" if relations else "")
-        + " ORDER BY confidence DESC, relation ASC"
-    )
-    params: tuple[object, ...] = (target_id, *relations) if relations else (target_id,)
-    cur = store._conn.execute(sql, params)
-    rows = list(cur.fetchall())
-    for row in rows:
-        yield EdgeRow(
-            edge_id=str(row["edge_id"]),
-            source_id=str(row["source_id"]),
-            target_id=str(row["target_id"]),
-            relation=str(row["relation"]),
-            path=str(row["path"]),
-            span_id=str(row["span_id"]) if row["span_id"] is not None else None,
-            provenance=str(row["provenance"]),
-            confidence=float(row["confidence"]),
-            reason=str(row["reason"]) if row["reason"] is not None else None,
-            generation=int(row["generation"]),
-        )
+    for edge in store.iter_edges():
+        if edge.target_id != target_id:
+            continue
+        if relations and edge.relation not in relations:
+            continue
+        yield edge
 
 
 # --- neighbors ------------------------------------------------------------
@@ -294,7 +275,7 @@ def neighbors(
         cur = store._conn.execute(
             "SELECT * FROM symbols WHERE symbol_id = ?", (symbol_id,)
         )
-        row = cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             if symbol_id.startswith("file:"):
                 return _row_to_node_from_file(symbol_id, symbol_id[5:])
@@ -351,22 +332,18 @@ def neighbors(
         if not frontier or truncated:
             break
 
-    nodes_sorted = sorted(
-        visited_nodes.values(),
-        key=lambda n: (
-            -n.confidence,
-            _relation_priority("defines"),
-            n.path,
-        ),
-    )[:bounded_limit]
-    edges_sorted = sorted(
-        visited_edges,
-        key=lambda e: (
-            -e.confidence,
-            _relation_priority(e.relation),
-            e.path,
-        ),
-    )[:bounded_limit]
+    nodes_list: list[GraphNode] = list(visited_nodes.values())
+
+    def _node_sort_key(n: GraphNode) -> tuple[float, int, str]:
+        return (-n.confidence, _relation_priority("defines"), n.path)
+
+    nodes_sorted = sorted(nodes_list, key=_node_sort_key)[:bounded_limit]
+    edges_list: list[GraphEdge] = list(visited_edges)
+
+    def _edge_sort_key(e: GraphEdge) -> tuple[float, int, str]:
+        return (-e.confidence, _relation_priority(e.relation), e.path)
+
+    edges_sorted = sorted(edges_list, key=_edge_sort_key)[:bounded_limit]
     return GraphResult(
         query_type="neighbors",
         nodes=tuple(nodes_sorted),
@@ -496,7 +473,7 @@ def path_query(
         cur = store._conn.execute(
             "SELECT * FROM symbols WHERE symbol_id = ?", (node_id,)
         )
-        row = cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
         if row is not None:
             nodes_out.append(_row_to_node_from_symbol(row))
             continue
@@ -514,7 +491,11 @@ def path_query(
                 evidence_ids=(),
             )
         )
-    nodes_out.sort(key=lambda n: (n.path, n.id))
+
+    def _node_id_key(n: GraphNode) -> tuple[str, str]:
+        return (n.path, n.id)
+
+    nodes_out.sort(key=_node_id_key)
 
     return GraphResult(
         query_type="path",
@@ -603,29 +584,33 @@ def impact(
 
     nodes_out: list[GraphNode] = []
     seen: set[str] = set()
-    for edge in impacted:
-        if edge.source in seen:
+    for impacted_edge in impacted:
+        if impacted_edge.source in seen:
             continue
-        seen.add(edge.source)
+        seen.add(impacted_edge.source)
         cur = store._conn.execute(
-            "SELECT * FROM symbols WHERE symbol_id = ?", (edge.source,)
+            "SELECT * FROM symbols WHERE symbol_id = ?", (impacted_edge.source,)
         )
-        row = cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
         if row is not None:
             nodes_out.append(_row_to_node_from_symbol(row))
             continue
         nodes_out.append(
             GraphNode(
-                id=edge.source,
+                id=impacted_edge.source,
                 kind="unknown",
-                label=edge.source,
-                path=edge.path,
+                label=impacted_edge.source,
+                path=impacted_edge.path,
                 confidence=0.0,
                 provenance="unknown",
                 evidence_ids=(),
             )
         )
-    nodes_out.sort(key=lambda n: (n.path, n.id))
+
+    def _impact_node_key(n: GraphNode) -> tuple[str, str]:
+        return (n.path, n.id)
+
+    nodes_out.sort(key=_impact_node_key)
 
     return GraphResult(
         query_type="impact",
@@ -668,26 +653,14 @@ def hubs(
     paths. Output is stable: ties sort by path ASC, then id ASC.
     """
     bounded_limit = max(1, min(limit, 100))
-    sql = "SELECT source_id, target_id, relation, path FROM edges"
-    clauses: list[str] = []
-    params: tuple[object, ...] = ()
-    if scope_path is not None:
-        clauses.append("path LIKE ?")
-        params = (*params, scope_path + "%")
-    if relation is not None:
-        clauses.append("relation = ?")
-        params = (*params, relation)
-    if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY path, source_id, target_id"
-    cur = store._conn.execute(sql, params)
-    rows = list(cur.fetchall())
     degree: dict[str, dict[str, int]] = {}
-    for row in rows:
-        source = str(row["source_id"])
-        target = str(row["target_id"])
-        relation_value = str(row["relation"])
-        path_value = str(row["path"])
+    for edge in store.iter_edges(relation=relation):
+        source = edge.source_id
+        target = edge.target_id
+        relation_value = edge.relation
+        path_value = edge.path
+        if scope_path is not None and not path_value.startswith(scope_path):
+            continue
         if role == "source" and not path_value.endswith(
             (".py", ".md", ".json", ".yaml", ".yml", ".toml")
         ):
@@ -706,7 +679,11 @@ def hubs(
     for node_id, entry in degree.items():
         score = entry["weight"] * 2 + entry["in"] + entry["out"]
         scored.append((score, entry["in"] + entry["out"], node_id))
-    scored.sort(key=lambda t: (-t[0], -t[1], t[2]))
+
+    def _hub_sort_key(t: tuple[int, int, str]) -> tuple[int, int, str]:
+        return (-t[0], -t[1], t[2])
+
+    scored.sort(key=_hub_sort_key)
     scored = scored[:bounded_limit]
 
     nodes_out: list[GraphNode] = []
@@ -714,7 +691,7 @@ def hubs(
         cur = store._conn.execute(
             "SELECT * FROM symbols WHERE symbol_id = ?", (node_id,)
         )
-        row = cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
         if row is not None:
             node = _row_to_node_from_symbol(row)
         elif node_id.startswith("file:"):
@@ -802,20 +779,15 @@ def tests_for(
             metadata={"target": target},
         )
     # Path-based candidates (test naming conventions).
-    cur = store._conn.execute(
-        "SELECT DISTINCT path FROM edges WHERE target_id = ?", (resolved_id,)
-    )
     candidate_paths: set[str] = set()
-    for row in cur.fetchall():
-        candidate_paths.add(str(row["path"]))
+    for edge in store.iter_edges():
+        if edge.target_id == resolved_id:
+            candidate_paths.add(edge.path)
     # Plus text references to the target's qualified name.
     if resolved_name is not None:
-        cur = store._conn.execute(
-            "SELECT DISTINCT path FROM edges WHERE target_id = ?",
-            (resolved_name,),
-        )
-        for row in cur.fetchall():
-            candidate_paths.add(str(row["path"]))
+        for edge in store.iter_edges():
+            if edge.target_id == resolved_name:
+                candidate_paths.add(edge.path)
     test_paths: set[str] = set()
     for path in candidate_paths:
         lowered = path.lower()

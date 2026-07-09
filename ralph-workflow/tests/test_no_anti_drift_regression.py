@@ -557,6 +557,7 @@ class TestFailureClassifierOwnership:
         - `ralph/agents/invoke/_completion.py` (post-exit watchdog check)
         - `ralph/pipeline/agent_retry_decision.py` (the shared decision dispatcher)
         """
+        del allowed_path
         allowed_relative = {
             pathlib.Path("ralph/recovery/failure_classifier.py"),
             pathlib.Path("ralph/recovery/classifier.py"),

@@ -2292,6 +2292,20 @@ ralph.mcp.explore.dirty_paths
    :members:
    :show-inheritance:
 
+ralph.mcp.explore.graph
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.graph
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.structure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.structure
+   :members:
+   :show-inheritance:
+
 ralph.mcp.explore.handlers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
