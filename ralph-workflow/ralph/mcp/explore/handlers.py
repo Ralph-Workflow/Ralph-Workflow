@@ -30,6 +30,7 @@ from ralph.mcp.explore.pipeline import (
     reindex,
 )
 from ralph.mcp.explore.store import (
+    DEFAULT_INDEX_DB,
     DEFAULT_INDEX_ROOT,
     ExploreStore,
     normalize_index_path,
@@ -50,6 +51,8 @@ from ralph.mcp.tools.workspace._utils import (
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from ralph.workspace.protocol import Workspace
 
 
 logger = logging.getLogger(__name__)
@@ -108,15 +111,84 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
     Tests call this directly. Production callers should defer
     construction to the MCP server bootstrap so the index is created
     lazily and only when first queried.
+
+    AC-05/AC-06: when the persisted ``schema_version`` or
+    ``extractor_version`` settings disagree with the runtime
+    constants, the on-disk index is wiped and a safe cold rebuild is
+    triggered on the next call. The handle is still returned so the
+    caller can observe the wiped state via ``index_exists=True`` and
+    ``cold_index_required=True``.
     """
     workspace_root = Path(workspace_root).resolve()
     index_root = _resolve_index_dir(workspace_root)
     store = ExploreStore(index_root)
+    from ralph.mcp.explore.pipeline import EXTRACTOR_VERSION
+    from ralph.mcp.explore.store import SCHEMA_VERSION
+    from ralph.mcp.explore.structure import EXTRACTOR_VERSION as STRUCTURE_EXTRACTOR_VERSION
     raw = store.get_setting("current_generation") or "0"
     try:
         generation = int(raw)
     except ValueError:
         generation = 0
+    persisted_schema = store.get_setting("schema_version")
+    persisted_extractor = store.get_setting("extractor_version")
+    persisted_structure = store.get_setting("structure_extractor_version")
+    if persisted_schema is None and store.index_storage_bytes() > 0:
+        # Legacy / hand-written index without a schema version: wipe
+        # it to avoid undefined reads from incompatible rows.
+        try:
+            index_db = index_root / DEFAULT_INDEX_DB
+            for suffix in ("", "-wal", "-shm"):
+                target = Path(str(index_db) + suffix)
+                if target.exists():
+                    target.unlink()
+        except OSError:
+            pass
+        store = ExploreStore(index_root)
+        generation = 0
+    elif (
+        persisted_schema is not None
+        and persisted_schema != SCHEMA_VERSION
+    ):
+        # Incompatible persisted index: safe cold rebuild.
+        try:
+            index_db = index_root / DEFAULT_INDEX_DB
+            for suffix in ("", "-wal", "-shm"):
+                target = Path(str(index_db) + suffix)
+                if target.exists():
+                    target.unlink()
+        except OSError:
+            pass
+        store = ExploreStore(index_root)
+        generation = 0
+    elif (
+        persisted_extractor is not None
+        and persisted_extractor != EXTRACTOR_VERSION
+    ):
+        try:
+            index_db = index_root / DEFAULT_INDEX_DB
+            for suffix in ("", "-wal", "-shm"):
+                target = Path(str(index_db) + suffix)
+                if target.exists():
+                    target.unlink()
+        except OSError:
+            pass
+        store = ExploreStore(index_root)
+        generation = 0
+    elif (
+        persisted_structure is not None
+        and persisted_structure != STRUCTURE_EXTRACTOR_VERSION
+    ):
+        # Structure rows are out of date but the lexical rows are
+        # still safe: drop structure rows and the structure-extractor
+        # key. The next reindex rebuilds the structure rows.
+        try:
+            store._conn.execute("DELETE FROM spans")
+            store._conn.execute("DELETE FROM symbols")
+            store._conn.execute("DELETE FROM edges")
+            store._conn.commit()
+        except Exception:
+            pass
     latest_row: sqlite3.Row | None = store.latest_job()
     raw_status: object = (
         row_str(latest_row, "status") if latest_row is not None else ""
@@ -358,12 +430,39 @@ def handle_ralph_reindex(
     workspace_root = Path(workspace_root_str2) if workspace_root_str2 else Path.cwd()
 
     handle: ExploreIndex | None = _resolve_explore_index(session)
+    cold_built = False
     if handle is None:
         handle = build_explore_index(workspace_root)
         # The first call from a session without an explore index is
         # typically the cold build; tag it so downstream consumers
         # can decide whether to block on it.
         handle.cold_index_required = handle.generation == 0
+        cold_built = True
+        # AC-03: persist the cold-built handle on the session so
+        # subsequent indexed read/search/grep/list/edit operations
+        # observe the same handle (and therefore the same generation
+        # + dirty-path state). Also surface it on the workspace so
+        # helpers that take the workspace object (e.g. the file
+        # mutation handlers) can find it without re-walking the
+        # session.
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            session.explore_index = handle
+        with contextlib.suppress(Exception):
+            # The ``workspace`` parameter is typed as ``object`` to
+            # avoid pulling the full Workspace protocol into this
+            # handler. Production workspaces expose ``explore_index``
+            # via the Workspace protocol; the attribute assignment is
+            # wrapped in suppress so legacy workspaces stay valid.
+            # Cast to the Workspace protocol so direct attribute
+            # assignment is the canonical, non-setattr path; the
+            # assignment still goes through the protocol's optional
+            # surface so legacy workspaces can ignore the attribute
+            # without errors.
+            cast("Workspace", workspace).explore_index = handle
+    _ = cold_built  # reserved for future payload/audit fields
+
 
     started_at = time.time()
     options = ReindexOptions(

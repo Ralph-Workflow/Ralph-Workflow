@@ -720,12 +720,16 @@ def handle_exec_command(
             is_error=True,
         )
     text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
+    stdout_text = output.stdout.decode("utf-8", errors="replace")
+    stderr_text = output.stderr.decode("utf-8", errors="replace")
     return format_or_spill(
         text,
         returncode=output.returncode,
         truncated=output.truncated,
         spill_dir=resolve_spill_dir(workspace, deps),
         summary=summary,
+        stdout_text=stdout_text,
+        stderr_text=stderr_text,
     )
 
 

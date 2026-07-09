@@ -89,6 +89,13 @@ class FileBackedSession:
         # return type and at runtime by
         # tests/test_mcp_server_file_backed_session_agent_session_conformance.py.
         self.tool_output_sink_entry: ToolOutputSinkEntry | None = None
+        # Optional ExploreIndex handle attached by
+        # ``ralph.pipeline.session_bridge.build_session_bridge`` (or any
+        # caller that wants the indexed tool surface to share the same
+        # generation/dirty-path state as a session). ``None`` preserves
+        # the legacy contract: handlers fall back to the live
+        # implementation.
+        self.explore_index: object | None = None
 
     def current_thread_tool_output_sink(self) -> Callable[[dict[str, object]], None] | None:
         """Return the sink only when the calling thread owns it (single atomic read)."""

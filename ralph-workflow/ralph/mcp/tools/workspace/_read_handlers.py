@@ -5,7 +5,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.dirty_paths import (
@@ -41,7 +41,7 @@ from ralph.mcp.tools.workspace._utils import (
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.store import EvidenceRow, ExploreStore
+    from ralph.mcp.explore.store import EvidenceRow, ExploreStore, SpanRow, SymbolRow
     from ralph.workspace import Workspace
 
 
@@ -226,17 +226,21 @@ def handle_read_file(
             return_metadata=return_metadata,
         )
     if span_id is not None:
-        return _read_disabled(
+        return _read_via_span(
             session,
-            "span_id",
+            workspace,
             span_id=str(span_id),
+            context_lines=context_lines,
+            expected_hash=str(expected_hash) if expected_hash is not None else None,
             return_metadata=return_metadata,
         )
     if symbol_selector is not None:
-        return _read_disabled(
+        return _read_via_symbol(
             session,
-            "symbol",
+            workspace,
             symbol=str(symbol_selector),
+            context_lines=context_lines,
+            expected_hash=str(expected_hash) if expected_hash is not None else None,
             return_metadata=return_metadata,
         )
 
@@ -450,6 +454,278 @@ def _read_via_evidence(
     )
 
 
+# Distinct sentinels so the resolvers can report "no index handle"
+# versus "index present but selector unknown" without collapsing
+# the two outcomes into the same None return.
+_SPAN_NOT_FOUND = object()
+_SYMBOL_NOT_FOUND = object()
+_SYMBOL_AMBIGUOUS = object()
+
+
+def _resolve_span(session: object, span_id: str) -> object | None:
+    """Return the indexed ``SpanRow`` for ``span_id`` or a sentinel.
+
+    Return values:
+
+    * ``None`` — the session has no explore index handle.
+    * ``_SPAN_NOT_FOUND`` — the handle is attached but the span is
+      not in the store.
+    * :class:`SpanRow` — the resolved row.
+    """
+    handle = resolve_explore_index(session)
+    if handle is None:
+        return None
+    store: ExploreStore | None = getattr(handle, "store", None)
+    if store is None:
+        return None
+    span_row = store.get_span(span_id)
+    if span_row is None:
+        return _SPAN_NOT_FOUND
+    return span_row
+
+
+def _resolve_symbol(
+    session: object,
+    symbol: str,
+    *,
+    path: str | None = None,
+) -> object | None:
+    """Return the indexed symbol resolution for ``symbol``.
+
+    Return values:
+
+    * ``None`` — the session has no explore index handle.
+    * ``_SYMBOL_NOT_FOUND`` — the handle is attached but the symbol
+      is not in the store.
+    * ``_SYMBOL_AMBIGUOUS`` — multiple candidates matched; the
+      caller should surface a structured ambiguity error.
+    * :class:`SymbolRow` — the resolved unique match.
+    """
+    handle = resolve_explore_index(session)
+    if handle is None:
+        return None
+    store: ExploreStore | None = getattr(handle, "store", None)
+    if store is None:
+        return None
+    if "." in symbol or "::" in symbol:
+        candidates = store.find_symbols(qualified_name=symbol, path=path)
+    else:
+        candidates = store.find_symbols(name=symbol, path=path)
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        return _SYMBOL_NOT_FOUND
+    return _SYMBOL_AMBIGUOUS
+
+
+def _read_via_span(
+    session: object,
+    workspace: Workspace,
+    *,
+    span_id: str,
+    context_lines: int,
+    expected_hash: str | None,
+    return_metadata: bool,
+) -> ToolResult:
+    span_obj = _resolve_span(session, span_id)
+    if span_obj is None:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "indexed_selector_unavailable",
+                            "span_id": span_id,
+                            "reason": "no_explore_index_handle",
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    if span_obj is _SPAN_NOT_FOUND:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "unknown_evidence",
+                            "span_id": span_id,
+                            "reason": "no_matching_span",
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    # ``span_obj`` is a SpanRow at this point — typed access is safe.
+    span_row: SpanRow = cast("SpanRow", span_obj)
+    path = span_row.path
+    start_line = int(span_row.start_line)
+    end_line = int(span_row.end_line)
+    span_content_hash = span_row.content_hash
+    expected_content_hash = expected_hash or span_content_hash
+    normalized = normalize_relative_path(str(path))
+    actual_hash = _hash_file(workspace, normalized)
+    if actual_hash is None:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "stale_evidence",
+                            "span_id": span_id,
+                            "reason": "file_missing",
+                            "path": path,
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    if expected_content_hash and actual_hash != expected_content_hash:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "stale_evidence",
+                            "span_id": span_id,
+                            "path": path,
+                            "expected_content_hash": expected_content_hash,
+                            "current_content_hash": actual_hash,
+                            "reason": "content_changed",
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    content, _meta = workspace.read_lines(
+        normalized,
+        start=max(1, start_line - context_lines),
+        end=end_line + context_lines,
+    )
+    payload: dict[str, object] = {
+        "path": path,
+        "span_id": span_id,
+        "start_line": start_line,
+        "end_line": end_line,
+        "context_lines": context_lines,
+        "content": content,
+    }
+    if return_metadata:
+        payload["content_hash"] = actual_hash
+        payload.update(_freshness_for_read(session))
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload))],
+        is_error=False,
+    )
+
+
+def _read_via_symbol(
+    session: object,
+    workspace: Workspace,
+    *,
+    symbol: str,
+    context_lines: int,
+    expected_hash: str | None,
+    return_metadata: bool,
+) -> ToolResult:
+    sym_obj = _resolve_symbol(session, symbol)
+    if sym_obj is None:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "indexed_selector_unavailable",
+                            "symbol": symbol,
+                            "reason": "no_explore_index_handle",
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    if sym_obj is _SYMBOL_NOT_FOUND:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "unknown_evidence",
+                            "symbol": symbol,
+                            "reason": "no_matching_symbol",
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    if sym_obj is _SYMBOL_AMBIGUOUS:
+        # The store knows the candidates; refetch the list and
+        # surface them so the caller can disambiguate.
+        handle = resolve_explore_index(session)
+        candidates: Sequence[SymbolRow] = []
+        if handle is not None:
+            store: ExploreStore | None = getattr(handle, "store", None)
+            if store is not None:
+                if "." in symbol or "::" in symbol:
+                    candidates = store.find_symbols(qualified_name=symbol)
+                else:
+                    candidates = store.find_symbols(name=symbol)
+        candidate_paths = [
+            {
+                "path": c.path,
+                "qualified_name": c.qualified_name,
+            }
+            for c in candidates
+        ]
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "ambiguous_symbol",
+                            "symbol": symbol,
+                            "candidates": candidate_paths,
+                        }
+                    )
+                )
+            ],
+            is_error=True,
+        )
+    sym_row: SymbolRow = cast("SymbolRow", sym_obj)
+    path = sym_row.path
+    span_id = sym_row.span_id
+    # Defer to the span resolver so hash checks and content slicing
+    # share one code path.
+    if span_id:
+        return _read_via_span(
+            session,
+            workspace,
+            span_id=str(span_id),
+            context_lines=context_lines,
+            expected_hash=expected_hash,
+            return_metadata=return_metadata,
+        )
+    # Fallback: span_id missing — return the symbol's metadata with
+    # a structured "ambiguous" payload so callers can rerun with a
+    # more specific selector.
+    payload_ambiguous: dict[str, object] = {
+        "status": "ambiguous_symbol",
+        "symbol": symbol,
+        "path": path,
+    }
+    if return_metadata:
+        payload_ambiguous.update(_freshness_for_read(session))
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload_ambiguous))],
+        is_error=True,
+    )
+
+
 def _read_disabled(
     session: object,
     selector_name: str,
@@ -469,6 +745,29 @@ def _read_disabled(
         content=[ToolContent.text_content(_tool_json(payload))],
         is_error=True,
     )
+
+
+def _decode_payload(result: ToolResult) -> dict[str, object]:
+    """Decode a ``ToolResult`` JSON envelope into a mutable dict.
+
+    Used by ``read_multiple_files`` to splice indexed span / symbol
+    results into the per-item payload without losing the structured
+    error semantics from the helpers above. Empty dicts are returned
+    on decode failure so callers can still attach selector metadata
+    without crashing.
+    """
+    if not result.content:
+        return {"content": ""}
+    first_content = result.content[0]
+    if not isinstance(first_content, ToolContent):
+        return {"content": ""}
+    try:
+        payload: object = json.loads(first_content.text)
+    except (ValueError, TypeError):
+        return {"raw": first_content.text}
+    if isinstance(payload, dict):
+        return cast("dict[str, object]", payload)
+    return {"raw": first_content.text}
 
 
 def handle_read_multiple_files(
@@ -595,21 +894,41 @@ def _read_multiple_item(
             payload_dict["truncated"] = True
         return payload_dict
     if "span_id" in item:
-        return {
-            "selector": "span_id",
-            "span_id": str(item["span_id"]),
-            "status": "indexed_selector_unavailable",
-            "reason": "disabled:phase2 (selector=span_id)",
-            "is_error": True,
-        }
+        span_result = _read_via_span(
+            session,
+            workspace,
+            span_id=str(item["span_id"]),
+            context_lines=0,
+            expected_hash=None,
+            return_metadata=return_metadata,
+        )
+        span_payload = _decode_payload(span_result)
+        span_payload["selector"] = "span_id"
+        span_payload["is_error"] = span_result.is_error
+        if per_item_max_bytes and isinstance(span_payload.get("content"), str):
+            content_value = span_payload["content"]
+            assert isinstance(content_value, str)
+            span_payload["content"] = content_value[:per_item_max_bytes]
+            span_payload["truncated"] = True
+        return span_payload
     if "symbol" in item:
-        return {
-            "selector": "symbol",
-            "symbol": str(item["symbol"]),
-            "status": "indexed_selector_unavailable",
-            "reason": "disabled:phase2 (selector=symbol)",
-            "is_error": True,
-        }
+        symbol_result = _read_via_symbol(
+            session,
+            workspace,
+            symbol=str(item["symbol"]),
+            context_lines=0,
+            expected_hash=None,
+            return_metadata=return_metadata,
+        )
+        symbol_payload = _decode_payload(symbol_result)
+        symbol_payload["selector"] = "symbol"
+        symbol_payload["is_error"] = symbol_result.is_error
+        if per_item_max_bytes and isinstance(symbol_payload.get("content"), str):
+            content_value = symbol_payload["content"]
+            assert isinstance(content_value, str)
+            symbol_payload["content"] = content_value[:per_item_max_bytes]
+            symbol_payload["truncated"] = True
+        return symbol_payload
     path = item.get("path")
     if not isinstance(path, str):
         return {"error": "missing_path", "is_error": True}
@@ -971,8 +1290,9 @@ def handle_directory_tree(
     include_counts = bool(params.get("include_counts", False))
     include_symbols = bool(params.get("include_symbols", False))
     limit_children = _int_param(params, "limit_children", 100)
+    changed_only = bool(params.get("changed_only", False))
 
-    if view == "raw" and use_index == "never":
+    if view == "raw" and use_index == "never" and not changed_only:
         try:
             tree_obj: object = _build_directory_tree(
                 workspace, path, 0, max_depth, exclude_patterns
@@ -1053,6 +1373,85 @@ def handle_directory_tree(
             f"Failed to build directory tree for '{path}': {exc}"
         ) from exc
     tree: dict[str, object] = tree_raw if isinstance(tree_raw, dict) else {}
+    tree["path"] = path
+
+    # changed_only: filter to subtrees that contain at least one dirty
+    # descendant. Files drop unless their full path is dirty; directories
+    # are kept only when at least one descendant file matches, so the
+    # caller can see the ancestor chain of a changed path. Mirror this
+    # behaviour with the same dirty-path source as ``list_directory``.
+    if changed_only:
+        tree_dirty_source: object | None = handle_check_store
+        co_dirty_obj: list[object] = []
+        if tree_dirty_source is not None:
+            peek_fn: object = getattr(
+                tree_dirty_source, "peek_dirty_paths", None
+            )
+            if callable(peek_fn):
+                peek_result: object = peek_fn()
+                if isinstance(peek_result, list):
+                    co_dirty_obj = peek_result
+        dirty_set: set[str] = {str(p) for p in co_dirty_obj if isinstance(p, str)}
+
+        def _annotate_paths(
+            node: dict[str, object], parent_path: str
+        ) -> dict[str, object]:
+            name_obj: object = node.get("name", "")
+            name = name_obj if isinstance(name_obj, str) else str(name_obj)
+            node_path = (
+                join_path(parent_path, name) if name else parent_path
+            )
+            node["path"] = node_path
+            children_obj: object = node.get("children")
+            if isinstance(children_obj, list):
+                new_children = [
+                    _annotate_paths(child, node_path)
+                    for child in children_obj
+                    if isinstance(child, dict)
+                ]
+                node["children"] = new_children
+            return node
+
+        def _filter_dirty(
+            node: dict[str, object],
+        ) -> dict[str, object] | None:
+            node_type_obj: object = node.get("type")
+            node_type = (
+                node_type_obj
+                if isinstance(node_type_obj, str)
+                else str(node_type_obj)
+            )
+            node_path_obj: object = node.get("path", "")
+            node_path = (
+                node_path_obj
+                if isinstance(node_path_obj, str)
+                else str(node_path_obj)
+            )
+            if node_type == "file":
+                return node if node_path in dirty_set else None
+            children_obj2: object = node.get("children")
+            children_list_obj2: list[object] = (
+                list(children_obj2)
+                if isinstance(children_obj2, list)
+                else []
+            )
+            kept_children: list[dict[str, object]] = []
+            for child in children_list_obj2:
+                if isinstance(child, dict):
+                    filtered_child = _filter_dirty(child)
+                    if filtered_child is not None:
+                        kept_children.append(filtered_child)
+            if not kept_children:
+                return None
+            node["children"] = kept_children
+            return node
+
+        annotated = _annotate_paths(tree, path)
+        filtered_root = _filter_dirty(annotated)
+        if filtered_root is None:
+            tree = {"name": "", "type": "dir", "path": path, "children": []}
+        else:
+            tree = filtered_root
 
     # Attach counts/symbols metadata from the explore index.
     counts_by_path: dict[str, dict[str, int]] = {}
@@ -1140,6 +1539,7 @@ def handle_directory_tree(
         "include_counts": include_counts,
         "include_symbols": include_symbols,
         "limit_children": limit_children,
+        "changed_only": changed_only,
         "index_used": True,
         "is_stale": is_stale,
     }
@@ -1203,11 +1603,87 @@ def handle_search_files(
         if role_filter is not None:
             matches = [m for m in matches if role_filter(m)]
 
-    # Apply changed_only (Phase 1 has no git signal — we return
-    # an empty list and report it in the response so callers see
-    # an explicit fallback).
+    # Pull the explore handle once so every subsequent branch uses
+    # the same store; ``None`` preserves the legacy live contract.
+    from ralph.mcp.explore.dirty_paths import resolve_explore_index
+
+    _search_handle = resolve_explore_index(session)
+    if _search_handle is not None:
+        _search_store: ExploreStore | None = cast(
+            "ExploreStore | None", getattr(_search_handle, "store", None)
+        )
+    else:
+        _search_store = None
+
+    contains_symbol_note: str | None = None
+    if contains_symbol is not None:
+        if _search_store is None:
+            # No index attached — keep the live glob results but
+            # surface the explicit fallback note so callers see why
+            # the filter did not narrow matches.
+            contains_symbol_note = "no_explore_index_handle"
+        else:
+            text = str(contains_symbol)
+            symbol_files: set[str] = set()
+            if "." in text or "::" in text:
+                rows: Sequence[SymbolRow] = _search_store.find_symbols(qualified_name=text)
+            else:
+                rows = _search_store.find_symbols(name=text)
+            for row in rows:
+                if row.path:
+                    symbol_files.add(row.path)
+            if not symbol_files:
+                contains_symbol_note = "no_matching_symbol"
+            else:
+                matches = [m for m in matches if m in symbol_files]
+                contains_symbol_note = None
+
+    # changed_only: filter to paths that are dirty in the index queue
+    # (the production lifecycle hook keeps this fresh). Without an
+    # index handle we fall back to a live git_status call so the
+    # caller still gets a useful answer.
+    changed_only_note: str | None = None
+    is_git_changed: bool = False
     if changed_only:
-        matches = []
+        if _search_store is not None:
+            dirty_paths = list(_search_store.peek_dirty_paths())
+            if dirty_paths:
+                dirty_set = {str(d) for d in dirty_paths}
+                matches = [m for m in matches if m in dirty_set]
+            else:
+                matches = []
+        else:
+            try:
+                from ralph.mcp.tools.git_read import run_git_command_lenient
+
+                git_result = run_git_command_lenient(
+                    workspace, ["status", "--porcelain"]
+                )
+            except Exception:
+                git_result = None
+            stdout = (
+                git_result.stdout.decode("utf-8", errors="replace")
+                if git_result is not None
+                else ""
+            )
+            returncode = git_result.returncode if git_result is not None else 1
+            changed_set: set[str] = set()
+            if returncode == 0 and isinstance(stdout, str):
+                porcelain_prefix = 3
+                for line in stdout.splitlines():
+                    if not line:
+                        continue
+                    raw = line[porcelain_prefix:] if len(line) > porcelain_prefix else ""
+                    if " -> " in raw:
+                        raw = raw.split(" -> ", 1)[1]
+                    raw = raw.strip().strip('"')
+                    if raw:
+                        changed_set.add(raw)
+            matches = (
+                [m for m in matches if m in changed_set] if changed_set else []
+            )
+            changed_only_note = "live_git_status"
+            is_git_changed = bool(changed_set)
 
     # Ranking.
     score_reasons: list[dict[str, object]] = []
@@ -1215,24 +1691,42 @@ def handle_search_files(
         from ralph.mcp.explore.ranking import score_search_file, sort_ranked
 
         basename = pattern.split("/")[-1]
-        is_git_changed = False  # Phase 1 has no git signal here.
-        items = [
-            score_search_file(
-                candidate_path=m,
-                basename=basename,
-                role_requested=role if role != "any" else None,
-                is_git_changed=is_git_changed,
-            )
-            for m in matches
-        ]
+        # Phase 2 wiring: when an index is attached and the candidate
+        # is currently dirty, mark it as git-changed so the ranking
+        # bonuses kick in even without a real git diff.
+        contains_symbol_str = (
+            str(contains_symbol)
+            if (_search_store is not None and contains_symbol is not None)
+            else None
+        )
+        if _search_store is not None and not is_git_changed:
+            dirty_paths_for_ranking = {
+                str(d) for d in _search_store.peek_dirty_paths()
+            }
+            items = [
+                score_search_file(
+                    candidate_path=m,
+                    basename=basename,
+                    role_requested=role if role != "any" else None,
+                    is_git_changed=(m in dirty_paths_for_ranking),
+                    contains_symbol=contains_symbol_str,
+                )
+                for m in matches
+            ]
+        else:
+            items = [
+                score_search_file(
+                    candidate_path=m,
+                    basename=basename,
+                    role_requested=role if role != "any" else None,
+                    is_git_changed=is_git_changed,
+                    contains_symbol=contains_symbol_str,
+                )
+                for m in matches
+            ]
         items = sort_ranked(items)
         matches = [item.path for item in items]
         score_reasons = [item.to_dict() for item in items]
-
-    # contains_symbol is Phase 2.
-    contains_symbol_note: str | None = None
-    if contains_symbol is not None:
-        contains_symbol_note = "disabled:phase2"
 
     output = {
         "pattern": pattern,
@@ -1244,6 +1738,7 @@ def handle_search_files(
         "contains_symbol": contains_symbol,
         "contains_symbol_note": contains_symbol_note,
         "changed_only": changed_only,
+        "changed_only_note": changed_only_note,
     }
     if score_reasons:
         output["score_reasons"] = score_reasons

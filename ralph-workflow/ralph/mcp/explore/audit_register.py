@@ -251,20 +251,21 @@ _SEED: tuple[AuditEntry, ...] = (
     AuditEntry(
         tool=RalphToolName.GIT_STATUS,
         family=AuditFamily.GIT_READ,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Compact status cards and changed-path ranking are Phase 4 "
-            "(non-index MCP remediation). Phase 1 only consumes git_status "
-            "signals for ranking, not the tool itself."
+            "AC-11: ``format=compact`` returns a bounded summary card "
+            "with changed-path ranking and unchanged-path elision. Raw "
+            "behavior preserved for the default format."
         ),
     ),
     AuditEntry(
         tool=RalphToolName.GIT_DIFF,
         family=AuditFamily.GIT_READ,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Diff summary cards and changed-symbol hints require the index; "
-            "Phase 4 ships the rework after Phase 1 measurement."
+            "AC-11: ``format=summary`` returns a bounded card with "
+            "changed files, plus per-file added/removed totals. Raw "
+            "diff behavior preserved for the default format."
         ),
     ),
     AuditEntry(
@@ -288,27 +289,35 @@ _SEED: tuple[AuditEntry, ...] = (
     AuditEntry(
         tool=RalphToolName.EXEC,
         family=AuditFamily.PROCESS,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Output summarization handles and replayable resource ids are "
-            "Phase 4. The bounded-timeout contract is already enforced."
+            "AC-11: ``format=summary`` returns a bounded JSON envelope "
+            "with separate ``stdout_resource_id`` / ``stderr_resource_id`` "
+            "replayable handles, per-stream spill paths, and head/tail "
+            "previews. The bounded-timeout contract is preserved and "
+            "raw behavior remains the default."
         ),
     ),
     AuditEntry(
         tool=RalphToolName.UNSAFE_EXEC,
         family=AuditFamily.PROCESS,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Same as exec; Phase 4 non-index MCP remediation. Unbounded "
-            "exec is the agent's responsibility by design."
+            "Unsafe exec is unbounded by design; AC-11 summary mode is "
+            "only on the bounded exec path. The unsafe variant keeps "
+            "its current shape; the bounded exec summary is the "
+            "production remediation."
         ),
     ),
     AuditEntry(
         tool=RalphToolName.RAW_EXEC,
         family=AuditFamily.PROCESS,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Same as exec; Phase 4 non-index MCP remediation."
+            "Raw exec is the unfiltered escape hatch; the AC-11 summary "
+            "mode is intentionally only on the bounded exec tool. The "
+            "raw variant keeps its current shape so a single audit "
+            "register can preserve the capability surface."
         ),
     ),
     AuditEntry(

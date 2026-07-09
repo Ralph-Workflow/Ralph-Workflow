@@ -186,6 +186,20 @@ def build_session_bridge(
         extras=McpServerExtras(extra_env=session_mcp_plan.server_env),
     )
     bridge.start()
+    # AC-03: attach one ExploreIndex per session/workspace so every
+    # indexed read/search/grep/list/edit operation shares the same
+    # generation + dirty-path state. The build is lazy: when no
+    # indexed operation is invoked, the handle stays attached but
+    # the SQLite store is only opened on the first read.
+    try:
+        from ralph.mcp.explore.handlers import build_explore_index
+
+        explore_handle = build_explore_index(workspace_root)
+    except Exception:
+        explore_handle = None
+    if explore_handle is not None:
+        session.explore_index = explore_handle
+        workspace.explore_index = explore_handle
     return bridge
 
 

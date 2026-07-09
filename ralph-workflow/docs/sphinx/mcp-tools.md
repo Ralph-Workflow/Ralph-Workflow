@@ -306,7 +306,8 @@ Reports the live index health:
   "is_stale": false,
   "stale_paths_count": 0,
   "index_storage_bytes": 4096,
-  "gitignore_coverage": {"present": true, "rule": ".agent/"}
+  "gitignore_coverage": {"present": true, "rule": ".agent/"},
+  "managed_ignore_rule_present": true
 }
 ```
 

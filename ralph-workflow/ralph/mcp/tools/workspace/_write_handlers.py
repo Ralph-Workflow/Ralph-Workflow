@@ -459,20 +459,126 @@ def handle_edit_file(
         if impact_preview:
             handle_for_impact = resolve_explore_index(session)
             if handle_for_impact is None:
+                # AC-10: surface the plan-described
+                # ``impact_preview_unavailable`` field alongside the
+                # existing diff so the caller can distinguish "no
+                # index" from "index present, no symbol target".
+                preview_payload["impact_preview_unavailable"] = True
+                preview_payload["impact_preview_unavailable_reason"] = (
+                    "no_explore_index_handle"
+                )
                 preview_payload["impact_preview"] = {
                     "available": False,
                     "reason": "no_explore_index_handle",
                 }
-            else:
-                # Conservative impact preview: list callers/importers
-                # # if a symbol target was provided; otherwise the
-                # preview is unavailable.
+            elif target_span is None:
+                preview_payload["impact_preview_unavailable"] = True
+                preview_payload["impact_preview_unavailable_reason"] = (
+                    "no_symbol_target_for_impact"
+                )
                 preview_payload["impact_preview"] = {
-                    "available": bool(target_span is not None),
-                    "reason": None
-                    if target_span is not None
-                    else "no_symbol_target_for_impact",
+                    "available": False,
+                    "reason": "no_symbol_target_for_impact",
                 }
+            else:
+                # AC-10: when a symbol target is available AND the
+                # explore index is attached, run the conservative
+                # ``impact`` graph query and surface callers,
+                # importers, and suggested tests. Dynamic / reflection
+                # / unsupported relations are marked as ``unknown``
+                # by the graph module.
+                try:
+                    from ralph.mcp.explore.graph import run_query
+
+                    impact_handle = handle_for_impact
+                    impact_store_obj: ExploreStoreLike | None = (
+                        impact_handle.store
+                        if impact_handle is not None
+                        else None
+                    )
+                    # ``target_span`` here is a (line_start, line_end)
+                    # tuple resolved earlier; the actual symbol id /
+                    # path live on the originating ``target_param`` and
+                    # the indexed symbol/span rows.
+                    target_param_dict: dict[str, object] = (
+                        target_param if isinstance(target_param, dict) else {}
+                    )
+                    target_symbol_name = target_param_dict.get("symbol")
+                    target_path = target_param_dict.get("path")
+                    target_symbol_id: str | None = None
+                    if (
+                        impact_store_obj is not None
+                        and isinstance(target_symbol_name, str)
+                        and target_symbol_name
+                    ):
+                        symbols = list(
+                            cast("ExploreStore", impact_store_obj).iter_symbols()
+                        )
+                        scoped_symbols = [
+                            s
+                            for s in symbols
+                            if target_symbol_name in (s.name, s.qualified_name)
+                        ]
+                        if (
+                            isinstance(target_path, str)
+                            and target_path
+                        ):
+                            scoped_symbols = [
+                                s
+                                for s in scoped_symbols
+                                if s.path == target_path
+                            ]
+                        if len(scoped_symbols) == 1:
+                            target_symbol_id = scoped_symbols[0].symbol_id
+                            if not target_path:
+                                target_path = scoped_symbols[0].path
+                    if (
+                        impact_store_obj is not None
+                        and target_symbol_id is not None
+                    ):
+                        result = run_query(
+                            cast("ExploreStore", impact_store_obj),
+                            query_type="impact",
+                            target=target_symbol_id,
+                            change_kind="behavior",
+                            limit=25,
+                            freshness="prefer_fresh",
+                        )
+                        preview_payload["impact_preview"] = {
+                            "available": True,
+                            "impacted_files": list(result.impacted_files),
+                            "suggested_tests": [
+                                {
+                                    "path": n.path,
+                                    "name": n.label,
+                                    "kind": n.kind,
+                                }
+                                for n in result.suggested_tests
+                            ],
+                            "missing_data": list(result.missing_data),
+                            "is_stale": result.is_stale,
+                            "index_generation": result.index_generation,
+                        }
+                    else:
+                        preview_payload["impact_preview_unavailable"] = True
+                        preview_payload["impact_preview_unavailable_reason"] = (
+                            "no_symbol_id_for_impact"
+                        )
+                        preview_payload["impact_preview"] = {
+                            "available": False,
+                            "reason": "no_symbol_id_for_impact",
+                        }
+                    if target_path is not None:
+                        preview_payload["impact_preview_path"] = str(target_path)
+                except Exception as exc:
+                    preview_payload["impact_preview_unavailable"] = True
+                    preview_payload["impact_preview_unavailable_reason"] = (
+                        f"impact_query_failed:{type(exc).__name__}"
+                    )
+                    preview_payload["impact_preview"] = {
+                        "available": False,
+                        "reason": f"impact_query_failed:{type(exc).__name__}",
+                    }
         return ToolResult(
             content=[ToolContent.text_content(_tool_json(preview_payload))],
             is_error=False,

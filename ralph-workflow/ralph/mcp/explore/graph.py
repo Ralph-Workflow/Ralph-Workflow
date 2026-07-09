@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Final
 
@@ -109,6 +109,15 @@ class GraphResult:
     is_stale: bool = False
     truncated: bool = False
     metadata: Mapping[str, object] = field(default_factory=dict)
+
+    def with_staleness(self, *, is_stale: bool) -> GraphResult:
+        """Return a copy of this result with ``is_stale`` updated.
+
+        AC-07 helper used by the ``run_query`` dispatcher so the
+        freshness policy is applied uniformly across all query types
+        without rewriting the per-query result construction.
+        """
+        return replace(self, is_stale=is_stale)
 
 
 def _relation_priority(relation: str) -> int:
@@ -847,7 +856,39 @@ def run_query(
     scope_path: str | None = None,
     role: str | None = None,
 ) -> GraphResult:
-    """Dispatch a single ``ralph_graph`` query by ``query_type``."""
+    """Dispatch a single ``ralph_graph`` query by ``query_type``.
+
+    AC-07 freshness contract:
+
+    * ``freshness="required"``: the index must be free of dirty
+      paths. When the store has pending dirty paths, the response
+      carries ``missing_data=("freshness_required",)`` and an empty
+      result so the caller can decide whether to refresh first.
+    * ``freshness="prefer_fresh"`` (default): dirty paths cause
+      ``is_stale=True`` to be set on the result so callers can
+      downgrade the evidence weight.
+    * ``freshness="allow_stale"``: dirty paths are ignored; the
+      result reports ``is_stale=False`` regardless.
+    """
+    dirty = list(store.peek_dirty_paths())
+    is_stale = bool(dirty)
+    if freshness == "required" and dirty:
+        return GraphResult(
+            query_type=query_type,
+            nodes=(),
+            edges=(),
+            paths=(),
+            missing_data=("freshness_required",),
+            index_generation=_current_generation(store),
+            is_stale=True,
+            truncated=False,
+            metadata={
+                "target": target,
+                "target_b": target_b,
+                "dirty_paths_count": len(dirty),
+                "freshness": freshness,
+            },
+        )
     if query_type == "neighbors":
         result = neighbors(
             store,
@@ -866,7 +907,7 @@ def run_query(
                 paths=(),
                 missing_data=("target_b_required",),
                 index_generation=_current_generation(store),
-                is_stale=False,
+                is_stale=is_stale,
                 truncated=False,
             )
         result = path_query(
@@ -899,14 +940,13 @@ def run_query(
             edges=(),
             missing_data=("unsupported_query_type",),
             index_generation=_current_generation(store),
-            is_stale=False,
+            is_stale=is_stale,
             truncated=False,
         )
-    # Freshness policy: mark stale when the caller requires a fresh
-    # index and the rows reference an older generation. The
-    # current behavior is permissive: empty results are allowed
-    # when missing_data is set, so no special handling is needed
-    # here.
+    # Apply the freshness is_stale signal so the caller can act on
+    # it uniformly across query types.
+    if freshness != "allow_stale":
+        result = result.with_staleness(is_stale=is_stale)
     return result
 
 

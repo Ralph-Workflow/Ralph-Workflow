@@ -183,7 +183,7 @@ def test_read_file_evidence_id_unknown(tmp_path: Path) -> None:
         store.close()
 
 
-def test_read_file_span_id_returns_disabled_phase2(tmp_path: Path) -> None:
+def test_read_file_span_id_unknown_returns_unknown_evidence(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -192,16 +192,17 @@ def test_read_file_span_id_returns_disabled_phase2(tmp_path: Path) -> None:
         result = handle_read_file(
             session,
             _Workspace(workspace),
-            {"path": "a.py", "span_id": "span-1"},
+            {"span_id": "span-missing-1"},
         )
         payload = _decode(result)
-        assert payload["status"] == "indexed_selector_unavailable"
-        assert "disabled:phase2" in payload["reason"]
+        assert result.is_error is True
+        assert payload["status"] == "unknown_evidence"
+        assert payload["span_id"] == "span-missing-1"
     finally:
         store.close()
 
 
-def test_read_file_symbol_returns_disabled_phase2(tmp_path: Path) -> None:
+def test_read_file_symbol_unknown_returns_unknown_evidence(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
@@ -210,12 +211,42 @@ def test_read_file_symbol_returns_disabled_phase2(tmp_path: Path) -> None:
         result = handle_read_file(
             session,
             _Workspace(workspace),
-            {"path": "a.py", "symbol": "hello"},
+            {"symbol": "no_such_symbol_xyz"},
         )
         payload = _decode(result)
-        assert payload["status"] == "indexed_selector_unavailable"
+        assert result.is_error is True
+        assert payload["status"] == "unknown_evidence"
+        assert payload["symbol"] == "no_such_symbol_xyz"
     finally:
         store.close()
+
+
+def test_read_file_span_id_without_index_returns_unavailable(tmp_path: Path) -> None:
+    workspace = _seed_workspace(tmp_path)
+    session = _FakeSession(explore_index=None)
+    result = handle_read_file(
+        session,
+        _Workspace(workspace),
+        {"span_id": "span-1"},
+    )
+    payload = _decode(result)
+    assert result.is_error is True
+    assert payload["status"] == "indexed_selector_unavailable"
+    assert payload["reason"] == "no_explore_index_handle"
+
+
+def test_read_file_symbol_without_index_returns_unavailable(tmp_path: Path) -> None:
+    workspace = _seed_workspace(tmp_path)
+    session = _FakeSession(explore_index=None)
+    result = handle_read_file(
+        session,
+        _Workspace(workspace),
+        {"symbol": "hello"},
+    )
+    payload = _decode(result)
+    assert result.is_error is True
+    assert payload["status"] == "indexed_selector_unavailable"
+    assert payload["reason"] == "no_explore_index_handle"
 
 
 def test_read_file_returns_legacy_shape_without_index(tmp_path: Path) -> None:
@@ -286,8 +317,8 @@ def test_read_multiple_files_mixed_items(tmp_path: Path) -> None:
                 "items": [
                     {"path": "a.py", "line_start": 1, "line_end": 5},
                     {"evidence_id": evidence_id},
-                    {"span_id": "span-x"},
-                    {"symbol": "hello"},
+                    {"span_id": "span-missing-x"},
+                    {"symbol": "no_such_symbol_zzz"},
                 ],
                 "fail_fast": False,
             },
@@ -299,9 +330,12 @@ def test_read_multiple_files_mixed_items(tmp_path: Path) -> None:
         assert files[0].get("content") is not None
         # Second is evidence-based.
         assert files[1].get("evidence_id") == evidence_id
-        # Third + fourth are disabled.
-        assert "disabled:phase2" in files[2]["reason"]
-        assert "disabled:phase2" in files[3]["reason"]
+        # Third + fourth resolve via the indexed store and return
+        # structured unknown_evidence for the missing span / symbol.
+        assert files[2].get("status") == "unknown_evidence"
+        assert files[2].get("selector") == "span_id"
+        assert files[3].get("status") == "unknown_evidence"
+        assert files[3].get("selector") == "symbol"
     finally:
         store.close()
 
@@ -356,7 +390,7 @@ def test_search_files_changed_only_returns_empty_in_phase1(tmp_path: Path) -> No
     assert payload["matches"] == []
 
 
-def test_search_files_contains_symbol_returns_disabled_phase2(tmp_path: Path) -> None:
+def test_search_files_contains_symbol_without_index_reports_fallback(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     session = _FakeSession(explore_index=None)
     result = handle_search_files(
@@ -365,4 +399,4 @@ def test_search_files_contains_symbol_returns_disabled_phase2(tmp_path: Path) ->
         {"pattern": "**/*.py", "path": ".", "contains_symbol": "hello"},
     )
     payload = _decode(result)
-    assert payload["contains_symbol_note"] == "disabled:phase2"
+    assert payload["contains_symbol_note"] == "no_explore_index_handle"

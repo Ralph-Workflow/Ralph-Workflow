@@ -322,6 +322,17 @@ def _run_reindex(
             )
 
     store.set_setting("current_generation", str(target_generation))
+    # AC-05/AC-06: persist the schema/extractor versions so a future
+    # open can detect a mismatched persisted index and force a safe
+    # cold rebuild. The keys are stable across reindex calls.
+    from ralph.mcp.explore.store import SCHEMA_VERSION as _SCHEMA_VERSION
+    from ralph.mcp.explore.structure import (
+        EXTRACTOR_VERSION as _STRUCTURE_EXTRACTOR_VERSION,
+    )
+
+    store.set_setting("schema_version", _SCHEMA_VERSION)
+    store.set_setting("extractor_version", EXTRACTOR_VERSION)
+    store.set_setting("structure_extractor_version", _STRUCTURE_EXTRACTOR_VERSION)
     # Consume dirty paths so the next refresh starts clean.
     store.consume_dirty_paths()
     if state.parse_count == 0 and not state.failed_paths:

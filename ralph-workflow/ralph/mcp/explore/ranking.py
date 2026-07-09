@@ -119,21 +119,36 @@ def score_search_file(
     basename: str,
     role_requested: str | None,
     is_git_changed: bool,
+    contains_symbol: str | None = None,
 ) -> RankedItem:
     """Compute a search_files score for one candidate path.
 
-    Phase 1 scoring: exact-basename, git-changed, role-requested, and
-    generated-penalty components. Symbol and graph components are
-    stubbed to ``+0`` with a disabled reason until Phase 2 ships.
+    Phase 1 + Phase 2 wiring:
+
+    * ``SEARCH_EXACT_BASENAME`` (+100) for an exact basename match.
+    * ``SEARCH_GIT_CHANGED`` (+40) for paths the lifecycle hook
+      marked dirty or the live ``git status`` reported.
+    * ``SEARCH_ROLE_REQUESTED`` (+30) for role-matched paths when
+      the caller asked for ``source`` / ``test``.
+    * ``SEARCH_GENERATED_PENALTY`` (-50) for vendor/generated paths.
+    * ``SEARCH_SYMBOL_DEFINITION`` (+80) and
+      ``SEARCH_SYMBOL_MENTION`` (+60) are only emitted when the
+      caller passed ``contains_symbol`` AND the candidate already
+      survived the symbol filter (i.e. the index recognized the
+      symbol as defined in or referenced from the path). Otherwise
+      the components stay at 0 with a disabled note.
     """
     score = 0
     reasons: list[str] = []
 
-    if candidate_path.rsplit("/", maxsplit=1)[-1] == basename:
+    basename_match = candidate_path.rsplit("/", maxsplit=1)[-1] == basename
+    if basename_match:
         score += SEARCH_EXACT_BASENAME
         reasons.append(f"+{SEARCH_EXACT_BASENAME} exact_path_basename")
     else:
-        # Symbol definition / mention are stubbed in Phase 1.
+        # Symbol and graph components only contribute when the
+        # caller passed ``contains_symbol``; otherwise the disabled
+        # notes make it clear which components are inactive.
         score += 0
         reasons.append(f"+0 symbol_definition:{PHASE2_DISABLED_NOTE}")
         score += 0
@@ -151,6 +166,15 @@ def score_search_file(
     ):
         score += SEARCH_ROLE_REQUESTED
         reasons.append(f"+{SEARCH_ROLE_REQUESTED} role_requested={role_requested}")
+
+    # When ``contains_symbol`` is set, the candidate has already
+    # passed the symbol filter (in ``handle_search_files``), so it
+    # earns the symbol-mention bonus to make ranking auditable.
+    if contains_symbol is not None:
+        score += SEARCH_SYMBOL_MENTION
+        reasons.append(
+            f"+{SEARCH_SYMBOL_MENTION} symbol_mention (contains_symbol={contains_symbol})"
+        )
 
     if is_generated_path(candidate_path):
         score += SEARCH_GENERATED_PENALTY

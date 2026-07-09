@@ -81,6 +81,8 @@ def format_or_spill(
     truncated: bool,
     spill_dir: Path | None,
     summary: bool = False,
+    stdout_text: str | None = None,
+    stderr_text: str | None = None,
 ) -> ToolResult:
     """Return the result inline, or spill to a file when it is too large.
 
@@ -91,25 +93,53 @@ def format_or_spill(
     envelope carrying ``stdout_resource_id`` / ``stderr_resource_id``
     replayable handles plus spill paths and a head/tail preview. The
     raw output fallback (``summary=False``) is the legacy behavior.
+
+    ``stdout_text`` and ``stderr_text`` are optional pre-split streams;
+    when supplied they are tracked separately so the stdout/stderr
+    resource ids point at per-stream spill files instead of the
+    combined text. When omitted, ``text`` is treated as stdout (the
+    pre-AC-11 contract).
     """
     encoded_len = len(text.encode("utf-8", errors="replace"))
     is_error = returncode != 0
+    has_split_streams = stdout_text is not None or stderr_text is not None
+    stdout_value = stdout_text if stdout_text is not None else text
+    stderr_value = stderr_text if stderr_text is not None else ""
+    stdout_encoded_len = len(stdout_value.encode("utf-8", errors="replace"))
+    stderr_encoded_len = len(stderr_value.encode("utf-8", errors="replace"))
+    stderr_truncated = stderr_encoded_len > INLINE_OUTPUT_LIMIT_BYTES
     if truncated or encoded_len > INLINE_OUTPUT_LIMIT_BYTES:
+        # Spill the combined text so the legacy fallback (summary=False)
+        # keeps working; for summary=True we also spill each stream
+        # separately when the caller provided split streams.
         spill_path = spill_output(text, spill_dir)
         preview = build_spill_preview(text, spill_path, encoded_len, truncated=truncated)
         if not summary:
             return ToolResult(
                 content=[ToolContent.text_content(preview)], is_error=is_error
             )
-        resource_id = f"ralph://exec/{spill_path.name}"
+        stdout_resource_id = f"ralph://exec/{spill_path.name}"
+        stdout_spill_path = str(spill_path)
+        stderr_resource_id: str | None = None
+        stderr_spill_path: str | None = None
+        if has_split_streams and stderr_truncated and stderr_value:
+            stderr_spill = spill_output(stderr_value, spill_dir)
+            stderr_resource_id = f"ralph://exec/{stderr_spill.name}"
+            stderr_spill_path = str(stderr_spill)
+        elif has_split_streams and stderr_value and not stderr_truncated:
+            stderr_resource_id = None
+            stderr_spill_path = None
         payload = {
             "format": "summary",
             "returncode": returncode,
             "is_error": is_error,
-            "stdout_bytes": encoded_len,
+            "stdout_bytes": stdout_encoded_len,
+            "stderr_bytes": stderr_encoded_len,
             "truncated": truncated,
-            "stdout_resource_id": resource_id,
-            "stdout_spill_path": str(spill_path),
+            "stdout_resource_id": stdout_resource_id,
+            "stdout_spill_path": stdout_spill_path,
+            "stderr_resource_id": stderr_resource_id,
+            "stderr_spill_path": stderr_spill_path,
             "preview": preview,
         }
 
@@ -123,11 +153,15 @@ def format_or_spill(
         "format": "summary",
         "returncode": returncode,
         "is_error": is_error,
-        "stdout_bytes": encoded_len,
+        "stdout_bytes": stdout_encoded_len,
+        "stderr_bytes": stderr_encoded_len,
         "truncated": False,
         "stdout_resource_id": None,
         "stdout_spill_path": None,
-        "stdout": text,
+        "stderr_resource_id": None,
+        "stderr_spill_path": None,
+        "stdout": stdout_value,
+        "stderr": stderr_value,
     }
 
     return ToolResult(

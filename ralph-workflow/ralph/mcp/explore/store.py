@@ -51,6 +51,12 @@ DEFAULT_INDEX_DB: Final[str] = "index.sqlite"
 DEFAULT_CHUNK_LINES: Final[int] = 50
 DEFAULT_FTS_TOKENIZE: Final[str] = "unicode61"
 
+# AC-05/AC-06: persisted schema version. Bumping this constant
+# signals a breaking change in the persisted rows; the store compares
+# it on open and triggers a safe cold rebuild when the on-disk
+# version is missing or older. Tests pin this constant.
+SCHEMA_VERSION: Final[str] = "explore-v1"
+
 # Bounded caps for retention. The audit_register/evidence_tombstones
 # caps are documented in the architecture finding.
 JOB_HISTORY_CAP: Final[int] = 100
@@ -738,6 +744,51 @@ class ExploreStore:
         rows = cast("list[sqlite3.Row]", cur.fetchall())
         for span_row in rows:
             yield _row_to_span(span_row)
+
+    def get_span(self, span_id: str) -> SpanRow | None:
+        """Return the unique ``SpanRow`` for ``span_id`` or ``None``."""
+        cur = self._conn.execute(
+            "SELECT * FROM spans WHERE span_id = ?", (span_id,)
+        )
+        row: sqlite3.Row | None = cur.fetchone()
+        if row is None:
+            return None
+        return _row_to_span(row)
+
+    def find_symbols(
+        self,
+        *,
+        name: str | None = None,
+        qualified_name: str | None = None,
+        path: str | None = None,
+    ) -> list[SymbolRow]:
+        """Return symbols filtered by ``name`` / ``qualified_name`` / ``path``.
+
+        The query is conjunctive (every filter must match). Empty
+        filters are ignored so callers can pass just one selector
+        without supplying the others. Multiple symbols may match the
+        same ``qualified_name`` (e.g. nested functions in different
+        scopes), so this returns a list rather than a single row;
+        callers must disambiguate by path or generation when needed.
+        """
+        clauses: list[str] = []
+        params: list[object] = []
+        if name is not None:
+            clauses.append("name = ?")
+            params.append(name)
+        if qualified_name is not None:
+            clauses.append("qualified_name = ?")
+            params.append(qualified_name)
+        if path is not None:
+            clauses.append("path = ?")
+            params.append(path)
+        sql = "SELECT * FROM symbols"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY path, qualified_name, kind"
+        cur = self._conn.execute(sql, tuple(params))
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        return [_row_to_symbol(row) for row in rows]
 
     def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
         if path is None:

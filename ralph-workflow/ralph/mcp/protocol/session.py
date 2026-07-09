@@ -176,6 +176,18 @@ class McpSession(Protocol):
         """Return the tool-output sink only when the calling thread owns it."""
         ...
 
+    @property
+    def explore_index(self) -> object | None:
+        """Optional :class:`ralph.mcp.explore.handlers.ExploreIndex` handle.
+
+        ``None`` keeps the legacy contract: handlers fall back to the
+        live implementation. Production sessions built by
+        :func:`ralph.pipeline.session_bridge.build_session_bridge`
+        attach one handle so all indexed read/search/grep/list/edit
+        operations share the same generation + dirty-path state.
+        """
+        ...
+
 
 @dataclass
 class AgentSession:
@@ -205,6 +217,13 @@ class AgentSession:
     #: overlapping exec streams route output to whichever connection swapped
     #: the sink last. Stored as ONE attribute so readers can never tear it.
     tool_output_sink_entry: ToolOutputSinkEntry | None = field(default=None, repr=False)
+    #: Optional handle to the per-workspace :class:`ralph.mcp.explore.handlers.ExploreIndex`.
+    #: When ``None`` the workspace handlers fall back to the legacy live
+    #: implementation; production bridges attach one in
+    #: :func:`ralph.pipeline.session_bridge.build_session_bridge` so all
+    #: indexed read/search/grep/list/edit operations share the same
+    #: generation and dirty-path state.
+    explore_index: object | None = field(default=None, repr=False)
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile:

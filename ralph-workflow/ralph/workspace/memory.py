@@ -24,6 +24,9 @@ class MemoryWorkspace:
         self._storage: dict[str, str] = {}
         self._dirs: set[str] = {""}  # Root is always present
         self._root = PurePosixPath(root)
+        # Optional ExploreIndex handle attached by the production
+        # session bridge; ``None`` keeps the legacy contract.
+        self.explore_index: object | None = None
 
     def _normalize(self, path: str) -> str:
         """Normalize path to POSIX-style relative path.

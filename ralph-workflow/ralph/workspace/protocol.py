@@ -230,3 +230,10 @@ class Workspace(Protocol):
             File paths relative to workspace root, honoring skip patterns.
         """
         ...
+
+    #: Optional :class:`ralph.mcp.explore.handlers.ExploreIndex`
+    #: handle attached by the production session bridge. The
+    #: protocol stays permissive (``object | None``) so legacy
+    #: workspaces that never opted into indexed exploration remain
+    #: compatible without an explicit cast.
+    explore_index: object | None

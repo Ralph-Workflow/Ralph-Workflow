@@ -47,6 +47,9 @@ class FsWorkspace:
         self._root = Path(root).expanduser().resolve()
         requested_allowed = allowed_roots or (self._root,)
         self._allowed_roots = tuple(Path(path).expanduser().resolve() for path in requested_allowed)
+        # Optional ExploreIndex handle attached by the production
+        # session bridge; ``None`` keeps the legacy contract.
+        self.explore_index: object | None = None
 
     def _resolve_candidate(self, path: str) -> Path:
         candidate_path = Path(path)
