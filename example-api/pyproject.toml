@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "example-api"
+version = "0.1.0"
+description = "Example Flask API with a /health endpoint used as a Ralph starter task."
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,84 +1,25 @@
 # Contributing to Ralph Workflow
 
-> **Primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> GitHub stays in sync as a mirror for GitHub-native readers: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+The maintained contributor guide lives at
+[`ralph-workflow/CONTRIBUTING.md`](ralph-workflow/CONTRIBUTING.md). It
+covers the dev/stable build split, the `make verify` gate, the
+Python-package layout, the policy-driven pipeline model, the typing
+suppression policy, and the guardrails every PR must satisfy.
 
-Ralph Workflow is now a **Python-first** project. The maintained CLI package lives in `ralph-workflow/`.
+The two policies most contributors reach for first:
 
-## Start here
-
-```bash
-git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-cd Ralph-Workflow/ralph-workflow
-make dev          # dev build — installs the package in editable mode with the dev extras
-make verify       # the canonical verification gate
-```
-
-The dev build must NOT be installed as the global `ralph` (it would shadow the
-stable build) — leave the global install under `pipx install ralph-workflow`
-and run `make dev` only inside the working tree. For the dev-build vs
-stable-build distinction, see [`ralph-workflow/CONTRIBUTING.md`](ralph-workflow/CONTRIBUTING.md)
-"Development setup".
-
-Use `make install` instead of `make dev` when you only want the `rdev`
-launcher (a stable binary that does NOT shadow `ralph`) — see the package
-CONTRIBUTING for the exact semantics.
-
-## Source of truth
-
-The canonical source-of-truth list lives in [`AGENTS.md`](AGENTS.md)
-"Source of truth". When changing the Python package, the priority order is:
-
-1. `PROMPT.md` (root — the canonical brief/rubric for the project)
-2. `ralph-workflow/CONTRIBUTING.md`
-3. `docs/agents/verification.md`
-4. `ralph-workflow/docs/agents/artifact-submission-contract.md`
-5. `ralph-workflow/README.md`
-6. Python source and docstrings under `ralph-workflow/ralph/`
-7. `docs/code-style/documentation-rubric.md` (canonical documentation rubric)
+- [`docs/agents/verification.md`](docs/agents/verification.md) — what
+  each step of `make verify` proves, and the non-circumvention rules.
+- [`docs/agents/testing-guide.md`](docs/agents/testing-guide.md) — how
+  to write black-box tests under the project's combined test budget.
 
 ## Required verification
 
-```bash
-cd ralph-workflow
-make verify
-```
+The canonical gate is `make verify` run from the `ralph-workflow/`
+directory. It runs the docs build, ruff, mypy --strict, the
+60-second-capped pytest suite, and the audit scripts; the subprocess
+E2E suite lives in a separate opt-in target (`make test-subprocess-e2e`).
 
-Canonical verification is the `make verify` command run from the `ralph-workflow/` directory. `make verify` runs three prerequisites in order:
-
-1. `verify-drift` — invariant checks that protect the Pro contract and other architectural guarantees.
-2. `docs` — Sphinx HTML build with warnings-as-errors (`sphinx-build -W --keep-going`), so any documentation warning fails the gate before the Python verification step runs.
-3. `ralph.verify` — the **18-step pipeline** documented as the single source of truth in [`docs/agents/verification.md`](docs/agents/verification.md) (ruff, mypy, the pytest run tracked against the 60-second combined test budget, plus 14 audits and the social-proof gate).
-
-Coverage and subprocess E2E remain separate opt-in targets:
-
-- `make test-cov` — coverage gate; not part of `make verify`.
-- `make test-subprocess-e2e` — subprocess E2E suite; not part of `make verify`.
-
-Use focused sub-commands (e.g. `uv run ruff check ralph/`) only when narrowing a specific failure. The authoritative gate is always `make verify`; refer to `docs/agents/verification.md` for the full ordered step list, the 60-second combined test budget, the non-circumvention rules, and the per-step timeout invariants.
-
-## Documentation expectations
-
-- Update Markdown docs when user-facing behavior changes.
-- Keep public module docstrings accurate enough for `pydoc` users to understand the package without external docs.
-- Prefer package and module docstrings for API explanation; prefer Markdown for workflows and tutorials.
-
-## Repository layout
-
-- `ralph-workflow/` — maintained Python package
-- `docs/` — mixed current Python docs and legacy Rust-era design notes
-
-## Legacy docs
-
-Some root-level docs and historical design notes still describe the retired Rust implementation. Treat those as archival background unless the file explicitly says it has been refreshed for Python.
-
-## Pull requests
-
-- Keep changes focused.
-- Explain the why.
-- Include tests when behavior changes.
-- Update docs and docstrings together when you add or reshape public APIs.
-
-## License
-
-By contributing, you agree your contributions are licensed under AGPL-3.0-or-later.
+Pull requests should be small, focused, and include tests for any
+behavior change. By contributing, you agree your contributions are
+licensed under AGPL-3.0-or-later.

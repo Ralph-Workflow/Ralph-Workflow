@@ -203,21 +203,7 @@ If you see `alive_by=stale_label_only` or `alive_by=os_descendant_only_stale_pro
 
 **Symptom:** The pipeline retried the default Claude transport, or the run log shows `RESUMABLE_CONTINUE` after a Claude invocation.
 
-The commands in this section are operator-side shell commands for the human running Ralph Workflow. They are not instructions for an agent inside a Ralph-managed session to spawn another `ralph` process recursively.
-
-**Cause:** Ralph Workflow evaluates completion on the default Claude transport from durable completion evidence. A run-scoped artifact receipt is sufficient completion evidence for required-artifact flows, and single-shot artifact submissions also write the completion sentinel automatically after a successful submit. If the required completion evidence is missing when the subprocess exits, Ralph Workflow classifies the exit as incomplete and resumes the underlying agent session internally. This is expected behavior, not a failure.
-
-**Fix:**
-
-- If the agent completed a single-shot artifact submission, confirm the canonical artifact was written and that the submit path completed successfully.
-- Check the concrete completion evidence for the current run. After RFC-013 P3 the **canonical** store is `.agent/state.db` (a WAL-mode SQLite database, with the auxiliary `.agent/state.db-wal` and `.agent/state.db-shm` files the kernel manages for the WAL). Run `python -m ralph --diagnose-state <workspace>` (or, in a shell on the host, `sqlite3 <workspace>/.agent/state.db "SELECT run_id, artifact_type FROM receipts WHERE run_id = '<run_id>'"` and `"SELECT run_id FROM completion_sentinels WHERE run_id = '<run_id>'"`) to confirm a receipt row exists for `(run_id, artifact_type)` and a completion-sentinel row exists for `run_id`. The legacy file paths `.agent/receipts/<run_id>/<artifact_type>.json` and `.agent/completion_seen_<run_id>.json` are **legacy read-fallback / durable-fallback paths only** — they are not where normal production writes land. Only consult them when the DB row is missing **and** you suspect a DB write failure or an in-flight upgrade window; an empty result there for a normal run is expected and not an indication of completion.
-- If the agent used the fallback file path instead of a successful MCP submit, inspect `.agent/tmp/<artifact_type>.json` first, then `.agent/artifacts/<artifact_type>.json` for direct-write paths such as the AGY fallback. The fallback payload must be promoted into the canonical chain (which writes the receipt into `.agent/state.db`) before completion is considered satisfied.
-- If the agent was in a multi-step flow such as staged plan drafting, confirm it reached the artifact-writing completion step for that flow (for example `ralph_finalize_plan`) and that the run-scoped receipt was written.
-- If the session keeps retrying without completing, check the agent logs for errors and confirm that `.agent/mcp.toml` is configured correctly and that the required completion tool for the active flow is accessible.
-- If the MCP server rejected an artifact payload, follow the repair loop from the referenced doc: read `.agent/artifact-formats/<type>.md` or `.agent/artifact-formats/artifact_formats_index.md`, rebuild the payload or artifact_type, and retry the same MCP tool. For plan rejections, repair the staged draft with the plan staging tools, then rerun `ralph_validate_draft` or `ralph_finalize_plan`.
-- To force a fresh start instead of continuing, the human operator can choose the `--no-resume` startup path from their shell outside the agent session.
-
-See [Recovery](recovery.md) for retry budget and fallover behavior.
+The detailed completion-evidence walkthrough (canonical SQLite store, fallback paths, repair loop, single-shot and staged-flow checks) lives in [Recovery](recovery.md).
 
 ## Default Claude transport unavailable on Windows
 
@@ -241,11 +227,7 @@ See [Recovery](recovery.md) for retry budget and fallover behavior.
 
 ## Successful tool result, then wedge
 
-**Symptom:** The agent produces a successful tool result, the live MCP server logs the result, and then nothing meaningful is emitted before the inactivity timeout fires. The tool calls log shows `claude tool: <name>` followed by silence.
-
-**Cause:** Before the fix, the MCP server's `tools/list` returned each tool under its raw name only (e.g. `read_file`), but Claude Code's strict MCP mode invokes tools by their `mcp__<server>__<tool>` alias (e.g. `mcp__ralph__read_file`). The strict-MCP call came back as `<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>`, the agent emitted nothing meaningful in response, and the watchdog fired `NO_OUTPUT_DEADLINE`.
-
-**Fix:** The MCP server now exposes **both** the raw tool name and the `mcp__<server>__<tool>` alias in `tools/list` for every registered tool. The `tools/call` handler resolves the alias to the canonical (raw) name before dispatch, so strict-MCP clients see a tool they can actually invoke.
+**Symptom:** The agent produces a successful tool result, the live MCP server logs the result, and then nothing meaningful is emitted before the inactivity timeout fires.
 
 See [MCP Architecture](mcp-architecture.md#mcp-tools) for the dual-alias rule and [Recovery](recovery.md#tool-availability-failures) for the bounded recovery path.
 
@@ -253,15 +235,7 @@ See [MCP Architecture](mcp-architecture.md#mcp-tools) for the dual-alias rule an
 
 **Symptom:** The recovery controller reports `reset_tool_registry=True` on a failure that recurs multiple times. The error message in the recovery log contains the substring `tool-registry-reset exhausted` and the run terminates with a hard cap error.
 
-**Cause:** The recovery classifier routes failures containing the substring `"no such tool available"` (case-insensitive) to `FailureCategory.AGENT` with `reset_tool_registry=True`. Each subsequent attempt calls `RestartAwareMcpBridge.reset_tool_registry()`, which increments the bridge's `tool_registry_resets` counter. The counter is capped at `_TOOL_REGISTRY_MAX_RESETS` (default 3). After the cap, the bridge raises `McpServerError` with a message containing `'tool-registry-reset exhausted'`.
-
-**Three additive caps** (each is independent):
-
-1. `tool-registry-reset exhausted` — the new `_TOOL_REGISTRY_MAX_RESETS` cap, raised by `RestartAwareMcpBridge.reset_tool_registry()` after 3 resets.
-2. `restart budget` + `exhausted` — the existing `McpRestartPolicy.max_restarts` cap.
-3. `recovery-attempt exhausted` — the existing `max_recovery_attempts` cap.
-
-**Fix:** If `tool-registry-reset exhausted` fires, the bridge cannot rebuild the visible tool list. Check the agent logs for repeated `No such tool available` errors. The most common cause is a mismatched alias in the live MCP server's `tools/list` response.
+See [Recovery](recovery.md#tool-availability-failures) for the three additive caps and the bounded recovery path.
 
 ## Related pages
 

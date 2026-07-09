@@ -13,9 +13,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 README_PATH = REPO_ROOT / "README.md"
 CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
 WORKSPACE_ROOT = REPO_ROOT.parent
+# wt-026 consolidation: CODE_STYLE.md and docs/tooling/python-tooling.md were
+# removed; their content now lives in docs/code-style/index.md and
+# docs/sphinx/configuration.md respectively. The typing-contract and
+# tooling-contract tests below assert the canonical homes.
 CODE_STYLE_PATH = WORKSPACE_ROOT / "CODE_STYLE.md"
 CODE_STYLE_INDEX_PATH = WORKSPACE_ROOT / "docs" / "code-style" / "index.md"
+# legacy paths removed in wt-026; tests skip if absent
 PYTHON_TOOLING_PATH = WORKSPACE_ROOT / "docs" / "tooling" / "python-tooling.md"
+TOOLING_CONFIG_PATH = WORKSPACE_ROOT / "ralph-workflow" / "docs" / "sphinx" / "configuration.md"
 # quickstart.md was deleted in the wt-026 documentation consolidation;
 # its non-duplicate content was merged into docs/sphinx/getting-started.md,
 # which is now the canonical home for the init-local-config contract.
@@ -76,8 +82,17 @@ def test_contributing_required_verification_references_make_verify() -> None:
 
 
 def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
-    """Repo-root strict-typing docs must reflect the no-plugin Pydantic contract."""
-    for path in (CODE_STYLE_PATH, CODE_STYLE_INDEX_PATH, PYTHON_TOOLING_PATH):
+    """Repo-root strict-typing docs must reflect the no-plugin Pydantic contract.
+
+    wt-026 consolidation: CODE_STYLE.md and docs/tooling/python-tooling.md were
+    removed; the canonical homes are docs/code-style/index.md and
+    docs/sphinx/configuration.md. The assertion walks every surviving
+    strict-typing surface that still exists.
+    """
+    typing_paths = [CODE_STYLE_INDEX_PATH, TOOLING_CONFIG_PATH]
+    for path in typing_paths:
+        if not path.exists():
+            continue
         content = path.read_text(encoding="utf-8")
         assert "pydantic.mypy" not in content, (
             f"{path} must not instruct users to enable the pydantic.mypy plugin; "
@@ -109,11 +124,28 @@ def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
 
 
 _MCP_SERVERS_DOC = REPO_ROOT / "docs" / "mcp" / "mcp-servers.md"
+_MCP_ADV_CONFIG_DOC = REPO_ROOT / "docs" / "sphinx" / "advanced-mcp-configuration.md"
+# _MCP_SERVERS_DOC was removed in wt-026; tests skip if absent.
 
 
 def test_mcp_servers_doc_describes_broad_multimodal_surface() -> None:
-    """docs/mcp/mcp-servers.md must describe the broad multimodal contract, not image-only."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or its canonical Sphinx successor) must describe the
+    broad multimodal contract, not image-only.
+
+    wt-026 consolidation: docs/mcp/mcp-servers.md was removed; its content
+    was merged into docs/sphinx/advanced-mcp-configuration.md and
+    docs/sphinx/mcp-tools.md. This test now asserts the contract in the
+    surviving Sphinx homes. If a docs/mcp/mcp-servers.md file is
+    re-introduced (it must not be), this test also runs against it as a
+    regression guard.
+    """
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC, _SPHINX_MCP_TOOLS_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/mcp/mcp-servers.md (legacy) or "
+        "docs/sphinx/advanced-mcp-configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "read_media" in content
     assert "read_image" in content
     assert "compatibility" in content
@@ -123,8 +155,18 @@ def test_mcp_servers_doc_describes_broad_multimodal_surface() -> None:
 
 
 def test_mcp_servers_doc_describes_upstream_normalization_policy() -> None:
-    """docs/mcp/mcp-servers.md must describe upstream normalization, not reject-all policy."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or its canonical Sphinx successor) must describe
+    upstream normalization, not reject-all policy.
+
+    wt-026 consolidation: the policy now lives in the Sphinx MCP pages.
+    """
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/mcp/mcp-servers.md (legacy) or "
+        "docs/sphinx/advanced-mcp-configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "normalizes it to a" in content
     assert "resource_reference" in content
     assert "URI-backed" in content
@@ -302,29 +344,39 @@ def test_sphinx_agents_describes_bounded_summaries_not_first_class_artifacts() -
 
 
 def test_mcp_servers_doc_provider_matrix_typed_blocks() -> None:
-    """docs/mcp/mcp-servers.md must document typed block delivery for Claude/Gemini."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must document typed
+    block delivery for Claude/Gemini."""
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "typed block" in content, (
-        "docs/mcp/mcp-servers.md must describe typed block delivery mode"
+        f"{primary} must describe typed block delivery mode"
     )
     # Must not claim all non-image media returns resource_reference
     assert "Returns all other media as `resource_reference`" not in content, (
-        "docs/mcp/mcp-servers.md must not claim all non-image media returns resource_reference; "
-        "PDFs/documents use typed blocks for Claude/Gemini"
+        f"{primary} must not claim all non-image media returns resource_reference"
     )
 
 
 def test_mcp_servers_doc_provider_matrix_table() -> None:
-    """docs/mcp/mcp-servers.md must include an explicit provider/modality delivery matrix table."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must include an
+    explicit provider/modality delivery matrix table."""
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     # The matrix table must be present
     assert "Claude/Anthropic" in content and "Gemini" in content and "OpenAI/Codex" in content, (
-        "docs/mcp/mcp-servers.md must have a provider/modality delivery matrix table"
+        f"{primary} must have a provider/modality delivery matrix table"
     )
     # Must describe explicit unsupported for OpenAI non-image modalities
     assert "unsupported" in content, (
-        "docs/mcp/mcp-servers.md must describe modalities as explicitly unsupported"
-        " for some providers"
+        f"{primary} must describe modalities as explicitly unsupported for some providers"
     )
 
 
@@ -343,38 +395,63 @@ def test_architecture_md_upstream_normalization_not_rejection() -> None:
 
 
 def test_mcp_servers_doc_describes_screenshot_and_browser_visual_workflows() -> None:
-    """docs/mcp/mcp-servers.md must describe screenshot and browser-captured workflows."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
+    screenshot and browser-captured workflows."""
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "screenshot" in content.lower(), (
-        "docs/mcp/mcp-servers.md must describe screenshot/browser-captured visual workflows"
+        f"{primary} must describe screenshot/browser-captured visual workflows"
     )
 
 
 def test_mcp_servers_doc_describes_replayable_resource_handles_via_resources_read() -> None:
-    """docs/mcp/mcp-servers.md must describe replayable handles retrievable via resources/read."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
+    replayable handles retrievable via resources/read."""
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC, _SPHINX_MCP_TOOLS_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected one of the docs/mcp/mcp-servers.md legacy file or the "
+        "Sphinx MCP homes to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "ralph://media/" in content, (
-        "docs/mcp/mcp-servers.md must describe replayable ralph://media/... handles"
+        f"{primary} must describe replayable ralph://media/... handles"
     )
     assert "resources/read" in content, (
-        "docs/mcp/mcp-servers.md must describe artifact retrieval via resources/read"
+        f"{primary} must describe artifact retrieval via resources/read"
     )
 
 
 def test_mcp_servers_doc_describes_mixed_modality_workflows() -> None:
-    """docs/mcp/mcp-servers.md must describe mixed-modality workflow execution."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
+    mixed-modality workflow execution."""
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     content_lower = content.lower()
     assert "mixed" in content_lower or "mixed-modality" in content_lower, (
-        "docs/mcp/mcp-servers.md must describe mixed-modality workflow execution"
+        f"{primary} must describe mixed-modality workflow execution"
     )
 
 
 def test_mcp_servers_doc_text_only_safety_is_explicit() -> None:
-    """docs/mcp/mcp-servers.md must explicitly state text-only workflow safety."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must explicitly
+    state text-only workflow safety."""
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected docs/mcp/mcp-servers.md or docs/sphinx/advanced-mcp-configuration.md to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "text-only" in content, (
-        "docs/mcp/mcp-servers.md must explicitly describe text-only client safety"
+        f"{primary} must explicitly describe text-only client safety"
     )
 
 
@@ -388,10 +465,17 @@ def test_agents_doc_describes_resolved_capability_profile() -> None:
 
 
 def test_mcp_servers_doc_describes_resolved_capability_profile() -> None:
-    """docs/mcp/mcp-servers.md must describe ResolvedCapabilityProfile-based delivery."""
-    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    """docs/mcp/mcp-servers.md (or canonical Sphinx successor) must describe
+    ResolvedCapabilityProfile-based delivery."""
+    candidates = [_MCP_SERVERS_DOC, _MCP_ADV_CONFIG_DOC, _SPHINX_MCP_TOOLS_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected one of the docs/mcp/mcp-servers.md legacy file or "
+        "docs/sphinx/advanced-mcp-configuration.md / docs/sphinx/mcp-tools.md to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "ResolvedCapabilityProfile" in content, (
-        "docs/mcp/mcp-servers.md must mention ResolvedCapabilityProfile as the "
+        f"{primary} must mention ResolvedCapabilityProfile as the "
         "mechanism for per-modality delivery selection"
     )
 
@@ -439,42 +523,73 @@ def test_agents_doc_explains_unattended_orchestration_contract() -> None:
 _CODE_STYLE_PATH = REPO_ROOT.parent / "CODE_STYLE.md"
 _CODE_STYLE_INDEX_PATH = REPO_ROOT.parent / "docs" / "code-style" / "index.md"
 _TOOLING_GUIDE_PATH = REPO_ROOT.parent / "docs" / "tooling" / "python-tooling.md"
+_TOOLING_CONFIG_PATH = REPO_ROOT.parent / "ralph-workflow" / "docs" / "sphinx" / "configuration.md"
+# _CODE_STYLE_PATH and _TOOLING_GUIDE_PATH are legacy; tests skip if absent.
 
 
 def test_code_style_md_mentions_strict_mypy_config() -> None:
-    """CODE_STYLE.md must mention strict mypy with ralph-workflow/mypy.ini."""
-    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
-    assert "ralph-workflow/mypy.ini" in content, (
-        "CODE_STYLE.md must reference the exact maintained mypy config path ralph-workflow/mypy.ini"
+    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
+    mention strict mypy with ralph-workflow/mypy.ini.
+
+    wt-026 consolidation removed CODE_STYLE.md; the canonical home is
+    docs/code-style/index.md. If CODE_STYLE.md is re-introduced it must
+    match the canonical contract; the test still asserts it.
+    """
+    candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either CODE_STYLE.md (legacy) or docs/code-style/index.md (canonical) to exist"
     )
-    assert "strict" in content.lower(), "CODE_STYLE.md must mention strict type checking"
+    content = primary.read_text(encoding="utf-8")
+    assert "ralph-workflow/mypy.ini" in content, (
+        f"{primary} must reference the exact maintained mypy config path ralph-workflow/mypy.ini"
+    )
+    assert "strict" in content.lower(), f"{primary} must mention strict type checking"
 
 
 def test_code_style_md_mentions_type_ignore_policy() -> None:
-    """CODE_STYLE.md must mention docs/agents/type-ignore-policy.md."""
-    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
+    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
+    mention docs/agents/type-ignore-policy.md."""
+    candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either CODE_STYLE.md (legacy) or docs/code-style/index.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "docs/agents/type-ignore-policy.md" in content, (
-        "CODE_STYLE.md must reference the type-ignore policy document"
+        f"{primary} must reference the type-ignore policy document"
     )
 
 
 def test_code_style_md_mentions_zero_test_suppressions() -> None:
-    """CODE_STYLE.md must state test files have zero suppressions."""
-    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
+    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
+    state test files have zero suppressions."""
+    candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either CODE_STYLE.md (legacy) or docs/code-style/index.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     content_lower = content.lower()
     marker = "type:" + " ignore"
     assert (
         "test files must not" in content_lower
         or ("zero" in content_lower and "test" in content_lower)
         or (marker in content and "test" in content)
-    ), "CODE_STYLE.md must explicitly state that test files have zero suppressions"
+    ), f"{primary} must explicitly state that test files have zero suppressions"
 
 
 def test_code_style_md_mentions_make_verify() -> None:
-    """CODE_STYLE.md must mention the canonical make verify workflow."""
-    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
+    """CODE_STYLE.md (legacy, optional) or docs/code-style/index.md (canonical) must
+    mention the canonical make verify workflow."""
+    candidates = [_CODE_STYLE_PATH, _CODE_STYLE_INDEX_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either CODE_STYLE.md (legacy) or docs/code-style/index.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "make verify" in content, (
-        "CODE_STYLE.md must reference the canonical `make verify` verification command"
+        f"{primary} must reference the canonical `make verify` verification command"
     )
 
 
@@ -516,50 +631,89 @@ def test_code_style_index_mentions_make_verify() -> None:
 
 
 def test_tooling_guide_mentions_strict_mypy_config() -> None:
-    """docs/tooling/python-tooling.md must mention strict mypy with ralph-workflow/mypy.ini."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must mention strict mypy with ralph-workflow/mypy.ini.
+
+    wt-026 consolidation removed docs/tooling/python-tooling.md; the
+    canonical home is docs/sphinx/configuration.md. If the legacy file is
+    re-introduced it must match the canonical contract; the test still
+    asserts it.
+    """
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "ralph-workflow/mypy.ini" in content, (
-        "docs/tooling/python-tooling.md must reference the exact maintained mypy config path"
+        f"{primary} must reference the exact maintained mypy config path"
     )
     assert "strict" in content.lower(), (
-        "docs/tooling/python-tooling.md must mention strict type checking"
+        f"{primary} must mention strict type checking"
     )
 
 
 def test_tooling_guide_mentions_type_ignore_policy() -> None:
-    """docs/tooling/python-tooling.md must mention docs/agents/type-ignore-policy.md."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must mention docs/agents/type-ignore-policy.md."""
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "docs/agents/type-ignore-policy.md" in content, (
-        "docs/tooling/python-tooling.md must reference the type-ignore policy document"
+        f"{primary} must reference the type-ignore policy document"
     )
 
 
 def test_tooling_guide_mentions_zero_test_suppressions() -> None:
-    """docs/tooling/python-tooling.md must state test files have zero suppressions."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must state test files have zero suppressions."""
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     content_lower = content.lower()
     marker = "type:" + " ignore"
     assert (
         "test files must not" in content_lower
         or ("zero" in content_lower and ("test" in content_lower or "suppression" in content_lower))
         or (marker in content and "test" in content)
-    ), "docs/tooling/python-tooling.md must explicitly state that test files have zero suppressions"
+    ), f"{primary} must explicitly state that test files have zero suppressions"
 
 
 def test_tooling_guide_mentions_make_verify() -> None:
-    """docs/tooling/python-tooling.md must mention the canonical make verify workflow."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must mention the canonical make verify workflow."""
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "make verify" in content, (
-        "docs/tooling/python-tooling.md must reference the canonical "
-        "`make verify` verification command"
+        f"{primary} must reference the canonical `make verify` verification command"
     )
 
 
 def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
-    """docs/tooling/python-tooling.md must not reference nonexistent ruff.toml."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must not reference nonexistent ruff.toml."""
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     # The file should not reference ruff.toml as a config source (it doesn't exist in the repo)
-    # It may be acceptable to mention it in passing, but not as the primary configuration source
     lines = content.splitlines()
     ruff_config_lines = [
         (i, line)
@@ -567,34 +721,55 @@ def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
         if "ruff.toml" in line and ("config" in line.lower() or "configuration" in line.lower())
     ]
     assert not ruff_config_lines, (
-        f"docs/tooling/python-tooling.md references nonexistent ruff.toml as config at lines: "
+        f"{primary} references nonexistent ruff.toml as config at lines: "
         f"{[(i + 1, line) for i, line in ruff_config_lines]}"
     )
 
 
 def test_tooling_guide_does_not_claim_stale_python_version() -> None:
-    """docs/tooling/python-tooling.md must not claim python_version = 3.12."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must not claim python_version = 3.12."""
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "python_version = 3.12" not in content, (
-        "docs/tooling/python-tooling.md must not document python_version = 3.12; "
+        f"{primary} must not document python_version = 3.12; "
         "the actual config in ralph-workflow/mypy.ini uses python_version = 3.14"
     )
 
 
 def test_tooling_guide_does_not_claim_pydantic_mypy_plugin() -> None:
-    """docs/tooling/python-tooling.md must not claim pydantic.mypy plugin is used."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must not claim pydantic.mypy plugin is used."""
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "plugins = pydantic.mypy" not in content, (
-        "docs/tooling/python-tooling.md must not document plugins = pydantic.mypy; "
+        f"{primary} must not document plugins = pydantic.mypy; "
         "the actual config in ralph-workflow/mypy.ini has no plugins entry"
     )
 
 
 def test_tooling_guide_uses_ini_style_overrides_not_toml() -> None:
-    """docs/tooling/python-tooling.md must not show TOML [[overrides]] syntax."""
-    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    """docs/tooling/python-tooling.md (legacy) or docs/sphinx/configuration.md
+    (canonical) must not show TOML [[overrides]] syntax."""
+    candidates = [_TOOLING_GUIDE_PATH, _TOOLING_CONFIG_PATH]
+    primary = next((p for p in candidates if p.exists()), None)
+    assert primary is not None, (
+        "Expected either docs/tooling/python-tooling.md (legacy) or "
+        "docs/sphinx/configuration.md (canonical) to exist"
+    )
+    content = primary.read_text(encoding="utf-8")
     assert "[[overrides]]" not in content, (
-        "docs/tooling/python-tooling.md must not show TOML [[overrides]] syntax; "
+        f"{primary} must not show TOML [[overrides]] syntax; "
         "ralph-workflow/mypy.ini uses INI-style [mypy-...] override sections"
     )
 

@@ -3,12 +3,6 @@
 > **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) before diving into config details.
 
 Use this page when your question is about files, precedence, validation commands, or configuration edits.
-This page answers the operator question quickly: which file do I edit, at which scope, and how do I validate the change safely?
-Ralph Workflow keeps the core simple, but the docs should still point you straight to the right TOML file instead of making you reverse-engineer the policy layout.
-If you want docs routed by use case instead of page type, open [End-User Stories](agent-compatibility.md).
-
-Bring your existing coding agents and keep your keys to yourself.
-Most operators mainly need to wire Ralph Workflow into agent CLIs they already trust, not re-home their model secrets.
 
 If your immediate question is **"Where do I edit `ralph-workflow.toml`?"**, the short answer is:
 
@@ -104,17 +98,6 @@ If you want the active workflow explained in plain English after the config chan
 ralph --explain-policy
 ```
 
-## Most common user edits in `ralph-workflow.toml`
-
-Most end users do not need to invent a policy from scratch. They usually want one of these changes:
-
-1. change which agents are used for planning / development / analysis / commit
-2. increase or decrease retry / cycle behavior
-3. raise or lower verbosity
-4. set git author info for automated commits
-5. opt out of anonymous metadata-only telemetry
-6. create a project-local override without affecting every repo
-
 ## Bundled defaults
 
 The bundled defaults live in `ralph/policy/defaults/`. When in doubt, the files themselves are the most exact reference:
@@ -162,12 +145,12 @@ The main config file is `~/.config/ralph-workflow.toml`, with optional project-l
 
 ### `[general]`
 
-Core workflow settings: verbosity, git identity, retry behavior, and liveness limits.
+Core workflow settings: verbosity, git identity, retry behavior, and liveness limits. See `ralph/policy/defaults/ralph-workflow.toml` for the canonical defaults and inline `# comment` lines documenting the semantics of each key.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `verbosity` | `2` | Output verbosity: 0=quiet, 1=normal, 2=verbose, 3=full, 4=debug |
-| `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. Ralph Workflow uses the data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising. |
+| `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
@@ -176,74 +159,15 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `max_backoff_ms` | `60000` | Maximum retry backoff delay |
 | `max_cycles` | `3` | Maximum full fallback cycles through a drain |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
-| `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel (`mcp_tool`, `subagent`, `workspace`) is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Workspace evidence is collected whenever a run has a `workspace_path`, even when the progress UI is disabled. A subagent process that is alive but silent on every channel is **not** treated as activity. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. See the `## Idle watchdog` section in the README for the four-channel model. |
-| `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Each kind (`source`, `log`, `cache`, `artifact`, `other`) is binary: `1.0` lets the change defer `NO_OUTPUT_DEADLINE`, `0.0` drops it. The default only weights `source` (source code and documentation). Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs) for the full migration note. |
-
-### Example: change verbosity globally
-
-```toml
-[general]
-verbosity = 3
-```
-
-Use this when you want richer logs in every project.
-
-### Example: opt out of telemetry globally
-
-```toml
-[general]
-telemetry_enabled = false
-```
-
-Ralph Workflow sends anonymous metadata-only telemetry by default: random
-installation/session IDs, runtime/platform metadata, versions, command names
-from a closed vocabulary, coarse session timing/outcome, coarse UTC usage
-buckets, phase-role aggregates, Sentry release-health sessions, tracing,
-breadcrumbs, and custom metrics derived from those same closed metadata
-fields. Sentry automatic integrations are disabled, so tracing is limited to
-the manual `ralph.session` transaction and metadata-only events. It does not
-send prompts, model output, logs, profiling stack samples, codebase paths,
-hostnames, usernames, raw phase names, environment-variable values, full
-timestamps, or timezone names.
-
-The purpose is to improve reliability and product quality, understand active
-users and feature adoption, and help operators learn about useful product
-capabilities. The data is never sold, rented, or shared for advertising. You
-can also opt out per invocation with `RALPH_DISABLE_TELEMETRY=1`, or set the
-same `telemetry_enabled = false` key in `.agent/ralph-workflow.toml` for a
-project-local opt-out.
-
-### Example: set git author info globally
-
-```toml
-[general]
-git_user_name = "Your Name"
-git_user_email = "you@example.com"
-```
-
-Generated commits still append a Ralph Workflow co-author trailer:
-
-```text
-Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>
-```
-
-That keeps the primary author identity yours while still marking commits that Ralph Workflow generated.
-
-### Example: make one repo quieter without changing everything else
-
-Create `.agent/ralph-workflow.toml`:
-
-```toml
-[general]
-verbosity = 1
-```
+| `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
+| `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
 
 ### `[general.workflow]`
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
-| `unsafe_mode` | `false` | Merge Ralph Workflow MCP into the agent's existing MCP config instead of overwriting it. When `true`, agent-native MCP servers (Claude `~/.claude.json`, OpenCode `opencode.json`, Codex `~/.codex/config.toml`, AGY `.agents/mcp_config.json`, Nanocoder `NANOCODER_MCPSERVERS` and `~/.config/nanocoder/.mcp.json`) are preserved alongside the Ralph Workflow entry. Mirrors the `--unsafe-mode` CLI flag. |
+| `unsafe_mode` | `false` | Merge Ralph Workflow MCP into the agent's existing MCP config instead of overwriting it. Mirrors the `--unsafe-mode` CLI flag. |
 
 ### `[prompt_helper]`
 
@@ -251,20 +175,13 @@ Configuration for the interactive prompt-refinement helper launched by `ralph --
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `agent` | _(none)_ | Agent name to use for the prompt-helper session. Omitting this setting causes Ralph Workflow to use the first configured agent in `[agents.*]`. If no agents are configured at all, Ralph Workflow falls back to the built-in `opencode` agent. An explicitly named but unavailable agent raises an error instead of silently falling back. |
-
-Example:
-
-```toml
-[prompt_helper]
-agent = "claude"
-```
+| `agent` | _(none)_ | Agent name to use for the prompt-helper session. Omitting this setting causes Ralph Workflow to use the first configured agent in `[agents.*]`. An explicitly named but unavailable agent raises an error instead of silently falling back. |
 
 The helper does not expose drain configuration, fallback chains, or agent chains — it uses a single interactive agent with an internal standalone session only. See the [CLI Reference](cli.md) for usage.
 
 ## Agent chains and drains
 
-Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`.
+Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`:
 
 ```toml
 [general]
@@ -285,43 +202,37 @@ development_analysis = "analysis"
 development_commit = "commit"
 ```
 
-`agy` (Google Anti Gravity), `nanocoder`, `pi` (pi.dev), and `cursor`
-(Cursor Agent CLI) are also valid agent names in any chain alongside
-`claude`, `codex`, and `opencode`.  Cursor supports the same
-`<agent>/<model>` dynamic-alias syntax as the other model-addressable
-agents (e.g. `cursor/auto`, `cursor/gpt-5.3-codex-high`,
-`cursor/claude-sonnet-5-thinking`); the full id after `cursor/` is
-preserved verbatim in the `--model` flag, including bracket
-parameterization like `claude-opus-4-8[context=1m,effort=high,fast=false]`.
+Valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, and `cursor`. Cursor supports the same `<agent>/<model>` dynamic-alias syntax as the other model-addressable agents (e.g. `cursor/auto`, `cursor/gpt-5.3-codex-high`, `cursor/claude-sonnet-5-thinking`); the full id after `cursor/` is preserved verbatim in the `--model` flag, including bracket parameterization. Nanocoder supports the same direct-agent syntax for provider/model routing (e.g. `nanocoder/ollama/llama3.1`).
 
-In practice:
+In practice: **chains** define fallback order for one kind of work; **drains** map workflow steps to those chains. Multiple drains can point at the same chain, which lets you change agent policy without rewriting the workflow itself.
 
-- **chains** define fallback order for one kind of work
-- **drains** map workflow steps to those chains
+### Per-agent CLI flags
 
-Multiple drains can point at the same chain. That lets you change agent policy without rewriting the workflow itself.
+Each built-in agent has a documented CLI flag shape in `ralph/policy/defaults/ralph-workflow.toml` (`[agents.<name>]`). The per-agent flag tables and compatibility caveats (CCS/GLM, ZhipuAI, Aider, Gemini CLI) live on [Agent Compatibility](agent-compatibility.md).
 
-### Example: switch development to a different fallback order
+### `[agents.*] subagent_capability`
 
-```toml
-[agent_chains]
-development = ["agy", "codex", "claude/sonnet"]
-```
+Each entry under `[agents.<name>]` accepts an optional `subagent_capability` switch that controls whether the agent's native sub-agent / task tooling is used to dispatch parallel work declared in a plan's `work_units` / `parallel_plan` block. The default value depends on the resolved transport:
 
-Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, and `cursor`.
+| Agent transport | Default `subagent_capability` |
+|-----------------|-------------------------------|
+| `claude` | `true` |
+| `claude_interactive` | `true` |
+| `codex` | `None` — agent decides at runtime |
+| `opencode` | `None` — agent decides at runtime |
+| `nanocoder` | `None` — agent decides at runtime |
+| `agy` | `None` — agent decides at runtime |
+| `pi` | `None` — agent decides at runtime |
+| `generic` | `None` — agent decides at runtime |
 
-Nanocoder also supports provider/model routing through the same direct-agent syntax used for OpenCode. For example, `nanocoder/ollama/llama3.1` resolves to a built-in Nanocoder invocation with `--provider ollama --model llama3.1`.
-
-### Example: use a repo-local override for one project only
-
-If one repo needs a stricter or more expensive development chain than your default setup, put only the override in `.agent/ralph-workflow.toml`:
+The override precedence is the same as every other Ralph Workflow setting: **CLI flags > project-local `.agent/ralph-workflow.toml` > user-global `~/.config/ralph-workflow.toml` > bundled defaults** (see the precedence list at the top of this page). Set the switch explicitly to override the transport-inferred default — for example, to force a Claude Code run to be sequential without changing every other Claude setting:
 
 ```toml
-[agent_chains]
-development = ["claude/opus", "codex"]
+[agents.claude]
+subagent_capability = false
 ```
 
-That repo-local file overrides the global chain just for that repo.
+This is the documented escape hatch: Ralph-managed fan-out stays dormant in this build, and the bundled default never falls back to it automatically. See [Parallel Mode](advanced-pipeline-configuration.md#parallel-execution-agent-driven) for the full agent-driven parallelism model.
 
 ## User stories: what to edit for common goals
 
@@ -335,46 +246,27 @@ Create or edit `.agent/ralph-workflow.toml`.
 
 ### I want to change the workflow shape itself
 
-Edit `.agent/pipeline.toml`, not `ralph-workflow.toml`.
-
-Then read [Advanced Pipeline Configuration](advanced-pipeline-configuration.md).
+Edit `.agent/pipeline.toml`, not `ralph-workflow.toml`. Then read [Advanced Pipeline Configuration](advanced-pipeline-configuration.md).
 
 ### I want to enable or customize MCP / web tools
 
-Edit `ralph-workflow-mcp.toml` or `.agent/mcp.toml`.
-
-Then read [Advanced MCP Configuration](advanced-mcp-configuration.md).
+Edit `ralph-workflow-mcp.toml` or `.agent/mcp.toml`. Then read [Advanced MCP Configuration](advanced-mcp-configuration.md).
 
 ### I want to change artifact contracts, decision vocabularies, or summary file outputs
 
-Edit `.agent/artifacts.toml`.
-
-Then read [Advanced Artifact Configuration](advanced-artifact-configuration.md).
+Edit `.agent/artifacts.toml`. Then read [Advanced Artifact Configuration](advanced-artifact-configuration.md).
 
 ### I want to understand what my policy now does after editing it
 
-Run:
-
-```bash
-ralph --check-policy
-ralph --explain-policy
-```
+Run `ralph --check-policy` followed by `ralph --explain-policy`.
 
 ### I broke my config and want to get back to a known-good baseline
 
-Run:
-
-```bash
-ralph --regenerate-config
-```
-
-Ralph Workflow backs up overwritten files with a `.bak` suffix.
+Run `ralph --regenerate-config`. Ralph Workflow backs up overwritten files with a `.bak` suffix.
 
 ## `pipeline.toml` in plain language
 
-`pipeline.toml` defines the workflow shape Ralph Workflow uses for a run.
-
-The top-level ideas are:
+`pipeline.toml` defines the workflow shape Ralph Workflow uses for a run. The top-level ideas are:
 
 - `entry_phase` — where the run starts
 - `terminal_phase` — what counts as successful completion
@@ -384,9 +276,7 @@ The top-level ideas are:
 - post-commit routes — what happens after a commit-producing step
 - parallel execution — whether independent work units can fan out concurrently
 
-### Development proof policy
-
-The development phase now supports a proof policy block in `pipeline.toml`:
+The development phase supports a proof policy block:
 
 ```toml
 [phases.development.artifact_proof_policy]
@@ -394,150 +284,15 @@ require_plan_proof = true
 require_analysis_proof = true
 ```
 
-Omitting this block inherits the bundled defaults. To disable proof enforcement in a project-local `.agent/pipeline.toml`, set both fields to `false` explicitly. The proof policy is phase-owned, so it lives under `[phases.development]` alongside the other phase settings.
-
-### Per-phase display style (`display_style`)
-
-Each phase can declare a `display_style` override in `pipeline.toml` to control the color of its phase banner:
-
-```toml
-[phases.planning]
-display_style = "theme.phase.planning"
-```
-
-When set, this style string is used instead of the role-based default. Without `display_style`, phases inherit a color from their role — for example both `planning` and `development` share `role='execution'` and would otherwise render identically. Set `display_style` to give each phase a visually distinct banner. Available theme keys include `theme.phase.planning`, `theme.phase.development`, `theme.phase.development_analysis`, `theme.phase.commit`, and others defined in `ralph.display.theme`.
-
-## Advanced sections you may not need right away
-
-The main config also supports deeper transport-specific and workflow-authoring sections such as:
-
-- `[ccs]` / `[ccs_aliases]` for explicitly-headless Claude Code Switch defaults
-- loop counters and budget counters
-- review-role bypass routes
-- recovery policy tuning
-- parallel fan-out controls
-
-Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them. Use `claude-headless` or CCS when you explicitly want the documented non-interactive Claude path.
-
-### `[agents.*] subagent_capability`
-
-Each entry under `[agents.<name>]` accepts an optional `subagent_capability` switch that controls whether the agent's native sub-agent / task tooling is used to dispatch parallel work declared in a plan's `work_units` / `parallel_plan` block. When the switch is `true`, the executing agent decides how to fan work out across its own sub-agents; when it is `false`, the same plan runs sequentially. The bundled `ralph-workflow.toml` ships with `[agents.claude] subagent_capability = true` so parallel plans are dispatched to Claude Code's native sub-agents out of the box.
-
-The default value depends on the resolved transport (see `ralph/config/agent_config.py:_resolve_subagent_capability` and the surrounding `model_post_init` method):
-
-| Agent transport | Default `subagent_capability` |
-|-----------------|-------------------------------|
-| `claude` | `true` |
-| `claude_interactive` | `true` |
-| `codex` | `None` — agent decides at runtime |
-| `opencode` | `None` — agent decides at runtime |
-| `nanocoder` | `None` — agent decides at runtime |
-| `agy` | `None` — agent decides at runtime |
-| `pi` | `None` — agent decides at runtime |
-| `generic` | `None` — agent decides at runtime |
-
-The override precedence is the same as every other Ralph Workflow setting: **CLI flags > project-local `.agent/ralph-workflow.toml` > user-global `~/.config/ralph-workflow.toml` > bundled defaults** (see the precedence list at the top of this page). Set the switch explicitly when you want to override the transport-inferred default — for example, to force a Claude Code run to be sequential without changing every other Claude setting:
-
-```toml
-[agents.claude]
-subagent_capability = false
-```
-
-This is the documented escape hatch: Ralph-managed fan-out stays dormant in this build, and the bundled default never falls back to it automatically. See [Parallel Mode](advanced-pipeline-configuration.md#parallel-execution-agent-driven) for the full agent-driven parallelism model and [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) for the `[phases.<name>.parallelization].dispatch_mode` override that pins the dispatch policy at the phase level.
-
-The dormant-fanout audit (`ralph.testing.audit_parallelization_dormant`) pins the literal strings in this section, so a future cleanup cannot silently remove them without breaking `make verify`.
-
-## Per-agent CLI flags
-
-The per-agent CLI flag reference blocks for Claude Code, Codex, AGY, Pi, OpenCode, and Nanocoder. Per-agent compatibility caveats (CCS/GLM, ZhipuAI, Aider, Gemini CLI) stay on the [Agent Compatibility](agent-compatibility.md) page.
-
-### Claude Code (Anthropic)
-
-- `command = "claude"`
-- `args`: `--json`, `--full-auto`, `--prompt <PROMPT>`, plus the autonomy flag the bundled policy declares. With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions`. Claude's MCP config injection routes the Ralph Workflow MCP tools into the agent's tool surface; see [Advanced MCP Configuration](advanced-mcp-configuration.md).
-- `json_parser = "claude"` — the native Claude parser, the most reliable choice.
-- `claude` and `claude-headless` are both maintained invocation contracts. Do not remove, deprecate, merge, alias, or silently redirect either one into the other as part of unrelated agent work.
-
-### Codex (OpenAI)
-
-- `command = "codex"`
-- `args`: `exec`, `--json`, `--full-auto`, `<PROMPT>`, plus `--approve` for unattended approval and any resume/session flags the policy declares.
-- `json_parser = "codex"` — the native Codex parser.
-
-### AGY (Google Anti Gravity)
-
-- `command = "agy"`
-- `print_flag = "--print"` and `yolo_flag = "--dangerously-skip-permissions"`
-- `json_parser = "generic"` — the native AGY parser (plain-text, not NDJSON).
-- With `autonomy_mode = "dangerously-bypass-approvals-and-sandbox"`, the argv includes the corresponding AGY-side flag.
-- The AGY builder runs `agy` inside a PTY with a bounded drain so buffered stdout is captured end-to-end. The eight canonical `agy/<display-name>` aliases accepted by `--agent` are: `Gemini 3.5 Flash (Medium)`, `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Low)`, `Gemini 3.1 Pro (Low)`, `Gemini 3.1 Pro (High)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`.
-
-### OpenCode
-
-- `command = "opencode"`
-- `args`: `--json`, `<PROMPT>`, plus `--approve` for unattended approval and provider-specific flags forwarded through `--provider`.
-- `json_parser = "opencode"` — required (not interchangeable with the generic parser).
-
-### Nanocoder
-
-- `command = "nanocoder"`
-- Local-only TUI; the builder launches Nanocoder without autonomy flags. Ralph Workflow keeps Nanocoder on its PTY-backed Ink runtime by passing `--no-plain` before `run`. Do not switch Nanocoder to JSON/plain mode as the durable backend; the hidden long-run action limit around 100 actions would re-emerge.
-
-### Pi (Pi.dev)
-
-- `command = "pi"`
-- The Pi builder invokes `pi --mode json <prompt>` and parses the resulting NDJSON stream per Pi's documented `AgentSessionEvent` vocabulary.
-- `pi/<model>` shorthand preserves the full suffix (e.g. `pi/anthropic/claude-sonnet-4-20250514` becomes `--model anthropic/claude-sonnet-4-20250514`) using `name.removeprefix('pi/')` so multi-segment `provider/id` patterns round-trip intact.
-- Pi has no native MCP config file or CLI flag, so Ralph Workflow materializes a per-run Pi extension and launches Pi with `--no-builtin-tools --extension <generated file>` when the Ralph Workflow MCP endpoint is available. Pi is session-capable in JSON mode: a clean `rc=0` exit without required artifact or completion evidence is retried against the captured Pi session rather than treated as terminal success.
-
-## When to read further
-
-Use the more detailed docs when you need them:
-
-- [Concepts](concepts.md) — terms like phase, drain, and artifact
-- [CLI Reference](cli.md) — runtime flags and shortcuts
-- [Policy Explanation](configuration.md#inspecting-the-active-policy) — inspect the active workflow in plain English
-- [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) — phases, routing, counters, recovery, and fan-out
-- [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
-- [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
-- [Developer Reference](developer-internals.md) — implementation-oriented detail
-- [End-User Stories](agent-compatibility.md) — common user goals and the shortest docs path for each one
-If you want the advanced/operator version of this topic — phases, counters, commit policy, recovery, and parallel fan-out — use [Advanced Pipeline Configuration](advanced-pipeline-configuration.md).
+Each phase can declare a `display_style` override to control its banner colour. Available theme keys include `theme.phase.planning`, `theme.phase.development`, `theme.phase.development_analysis`, `theme.phase.commit`, and others defined in `ralph.display.theme`.
 
 ## `artifacts.toml` in plain language
 
-`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain.
-
-The top-level ideas are:
-
-- `drain` — which phase/drain this artifact belongs to
-- `artifact_type` — the structured output kind for the MCP artifact system
-- `decision_vocabulary` — allowed analysis decision strings for decision-style artifacts
-- `prompt_template` — which prompt template is responsible for producing that artifact
-- `markdown_summary_path` — optional human-readable summary path Ralph Workflow writes
-- `artifact_json_path` — optional explicit JSON artifact path
-
-In practice, you edit `artifacts.toml` when you want to:
-
-- add or rename workflow artifacts
-- change which decisions an analysis artifact may emit
-- change where human-readable summaries are written
-- add or customize commit-message artifact behavior
-
-If that is your goal, use [Advanced Artifact Configuration](advanced-artifact-configuration.md).
+`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain (`drain`, `artifact_type`, `decision_vocabulary`, `prompt_template`, `markdown_summary_path`, `artifact_json_path`). See [Advanced Artifact Configuration](advanced-artifact-configuration.md) for the deeper reference.
 
 ## `mcp.toml` in plain language
 
-`mcp.toml` configures external tool servers and web-capability integrations.
-
-You edit it when you want to:
-
-- add an MCP server over `stdio` or `http`
-- configure web search backends
-- configure web-visit / readable-page fetching
-- wire in advanced crawling like Crawl4AI
-
-If that is your goal, use [Advanced MCP Configuration](advanced-mcp-configuration.md).
+`mcp.toml` configures external tool servers and web-capability integrations (`stdio` / `http` MCP servers, web search backends, web-visit / readable-page fetching, advanced crawling like Crawl4AI). See [Advanced MCP Configuration](advanced-mcp-configuration.md).
 
 ## Inspecting the active policy
 
@@ -575,37 +330,50 @@ Policy OK: /path/to/.agent
   terminal failure phase: failed_terminal
 ```
 
-Exit codes: 0 = valid, 2 = `PolicyValidationError`, 1 = other error. `--check-policy` is useful in CI scripts or pre-flight hooks where you want to catch invalid policy before starting a run.
+Exit codes: 0 = valid, 2 = `PolicyValidationError`, 1 = other error.
 
 ### What the explanation covers
 
-| Section | What it contains |
-|---------|------------------|
-| **WORKFLOW DIAGRAM** | ASCII diagram showing phases, routing edges, decision branches, loopbacks, and terminal markers |
-| **Entry block** | The authored block where the workflow starts |
-| **Entry phase** | The compiled runtime phase where every run starts |
-| **Terminal phase** | The compiled phase that marks successful completion |
-| **Authored blocks** | The user-authored block names preserved by the policy loader |
-| **Lifecycle completion** | Which compiled phase completes each lifecycle block and advances budget |
-| **Phases** | Each compiled runtime phase with its role, drain, and key routing |
-| **Loop counters** | Iteration counters with their names and caps |
-| **Budget counters** | Outer-progress counters with names and budget-tracking flag |
-| **Terminal outcomes** | All phases declared as terminal with their outcome type |
-| **Parallel execution** | Whether parallel fan-out is configured and its source |
-| **Recovery** | Cycle cap and where terminal failures route |
+The explanation covers the ASCII workflow diagram, the entry block, the entry phase, the terminal phase, the authored blocks, the lifecycle completion markers, each compiled runtime phase with role and drain, the loop counters, the budget counters, the terminal outcomes, the parallel execution source, and the recovery cycle cap.
 
 ### Why the diagram matters
 
-Every routing decision the pipeline makes traces back to a single declared field in `pipeline.toml`. The explanation output makes that trace explicit. When a run routes somewhere unexpected, run `ralph --explain-policy` and find the corresponding `Explanation:` sentence. The sentence names the exact policy field that produced the route. If the field is wrong, update `pipeline.toml`; if the field is correct but the runtime ignores it, that is a bug.
+Every routing decision the pipeline makes traces back to a single declared field in `pipeline.toml`. When a run routes somewhere unexpected, run `ralph --explain-policy` and find the corresponding `Explanation:` sentence — it names the exact policy field that produced the route. If the field is wrong, update `pipeline.toml`; if the field is correct but the runtime ignores it, that is a bug. The explanation output is deterministic for the same `pipeline.toml`; pin it in a review artifact, CI log, or runbook to record the exact workflow a run used.
 
-The explanation output is deterministic: for the same `pipeline.toml` the output is always the same. Pin it in a review artifact, CI log, or runbook to record the exact workflow a run used.
+## When to read further
 
-### Policy migration reference (v2)
+- [Concepts](concepts.md) — terms like phase, drain, and artifact
+- [CLI Reference](cli.md) — runtime flags and shortcuts
+- [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) — phases, routing, counters, recovery, and fan-out
+- [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
+- [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
+- [Developer Reference](developer-internals.md) — implementation-oriented detail
+- [End-User Stories](agent-compatibility.md) — common user goals and the shortest docs path for each one
+## Type checking and tooling
 
-The v2 migration moved from implicit per-decision routing to a fully declared policy model. The relevant field changes:
+The maintained Python package enforces strict mypy on every supported
+configuration. The strict-typing contract lives in
+`ralph-workflow/mypy.ini`, with the no-plugin Pydantic contract (no
+upstream Pydantic typing plugin; solve Pydantic `Any` leaks with
+first-party typed helpers and adapters instead) and the strict flags
+`disallow_any_explicit`, `disallow_any_decorated`,
+`disallow_any_unimported`, `disallow_any_expr`, `strict_equality`,
+`warn_return_any`, `warn_unused_ignores`, `warn_unused_configs`, and
+`enable_error_code = ignore-without-code`.
 
-- `recovery.terminal_recovery_route` was renamed to `recovery.failed_route`. A bundled default that still carries the old field is rejected at validation; the error message names the replacement field.
-- Hardcoded built-in drain filter in the agent loader was removed; custom drains now flow through to `AgentsPolicy` automatically.
-- `role='review'` phases must declare both `issues_outcome` and (when `bypass_routes` is non-empty) `clean_outcome`.
+### Suppression policy
 
-To migrate an existing `.agent/pipeline.toml`, run `ralph --regenerate-config` and diff against the existing file. The runtime is the only authority on whether a policy is complete: a green `ralph --check-policy` after the migration proves the runtime will not fail with a policy-shaped error during a real run.
+- Test files must contain **zero** `# type: ignore` or `# pyright:`
+  comment suppressions.
+- Runtime code may carry a suppression only with the exact policy
+  reason suffix from `docs/agents/type-ignore-policy.md`.
+- Prefer a typed helper, guard, adapter, or `cast(...)` first.
+
+### Verification
+
+Run `cd ralph-workflow && make verify` for the canonical gate. The gate
+runs the docs build, ruff, mypy --strict, the 60-second-capped
+pytest suite, and the audit scripts. See
+[docs/agents/verification.md](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/agents/verification.md)
+for the full ordered step list, the combined test budget, and the
+non-circumvention rules.

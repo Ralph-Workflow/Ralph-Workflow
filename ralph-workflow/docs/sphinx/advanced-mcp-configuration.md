@@ -148,6 +148,53 @@ Set `allow_private_networks = true` in `[web_visit]` only when you understand th
 - `ralph_upstream__crawl4ai__crawl` — crawl through an upstream crawler when configured
 - `ralph_upstream__crawl4ai__crawl_many` — batch crawling through that upstream crawler
 
+## Multimodal delivery contract
+
+Ralph Workflow's `read_media` tool (with `read_image` as a compatibility alias) is the primary multimodal entry point. The contract below is enforced by `mcp.toml` and the per-session `ResolvedCapabilityProfile`; it covers inline, typed-block, and resource-reference delivery for every provider Ralph Workflow supports.
+
+### How `read_media` works
+
+When `media.enabled = true` (default), Ralph Workflow registers `read_media` as the primary multimodal tool. It:
+
+- Returns images as inline base64 blocks for providers that support inline images
+- Returns PDFs and documents as typed blocks (e.g., `pdf` or `document` block type) for providers that support them natively (Claude, Gemini)
+- Returns audio and video as typed blocks for providers that support them (Gemini); returns an explicit unsupported error for providers that do not (Claude, OpenAI/Codex)
+- Returns all media as replayable `resource_reference` blocks for unknown providers, stored in the session manifest and retrievable via `ralph://media/...` URIs through `resources/read`
+- Uses the session's `ResolvedCapabilityProfile` — pre-computed at session start from the provider/model identity — to select the delivery mode for each modality (inline, typed-block, resource-reference, or explicit unsupported)
+- Returns an explicit error when the modality is unsupported by the current provider/model
+
+`read_image` is a compatibility alias for `read_media` restricted to image inputs; it follows the same capability-aware delivery contract (inline image when supported, resource reference or explicit error otherwise).
+
+### Provider/modality delivery matrix
+
+| Provider | Image | PDF | Document | Audio | Video |
+|---|---|---|---|---|---|
+| Claude/Anthropic | inline | typed block | typed block | unsupported | unsupported |
+| Gemini | inline | typed block | typed block | typed block | typed block |
+| OpenAI/Codex | inline (vision models) | unsupported | unsupported | unsupported | unsupported |
+| Unknown | resource_reference_replay | resource_reference_replay | resource_reference_replay | resource_reference_replay | resource_reference_replay |
+
+This matrix is the canonical reference for which provider/modality combinations are explicitly unsupported and which fall back to a replayable resource-reference block.
+
+### Common workflows
+
+- **Screenshot and browser-captured visual QA** — a browser automation tool captures a screenshot; Ralph Workflow preserves it as multimodal context and routes it to the model inline (for capable providers) or as a replayable `ralph://media/<id>` artifact retrievable via `resources/read`.
+- **Mixed-modality execution** — workflows combining multiple modalities in a single run (e.g. screenshot + PDF context, audio + text artifacts, image + document metadata) are treated as normal platform use cases.
+- **Replayable resource handles** — when inline delivery is unsupported, Ralph Workflow stores artifact bytes in the session manifest and returns a `ralph://media/<id>` URI retrievable via `resources/read`.
+- **Document understanding** — PDFs and office documents are delivered as typed blocks (Claude, Gemini) or replayable resource references (unknown providers).
+- **Audio and video understanding** — delivered as typed blocks for Gemini; other providers receive an explicit unsupported error.
+
+### What text-only clients see
+
+When a client connects without declaring multimodal support, the `read_media` and `read_image` tools are **automatically suppressed** from `tools/list` even if `media.enabled = true`. This ensures text-only clients continue to work unchanged; multimodal content is not silently stringified or rejected.
+
+### Upstream normalization
+
+When an upstream MCP server returns a multimodal content block (`image`, `audio`, `video`, `pdf`, or `document`), Ralph Workflow **normalizes it to a `resource_reference` block** rather than rejecting or silently stringifying it.
+
+- **URI-backed blocks** (blocks with a `uri` or `source.uri` field): the upstream URI is preserved in the normalized `resource_reference`. The artifact bytes are not fetched or stored by Ralph Workflow.
+- **Embedded-data blocks** (blocks with `data` or `source.data`): the bytes are stored in the active session manifest before a `ralph://media/...` URI is returned. The on-disk replay cache is bounded and prunes older cache files. This requires an active session; calls without a session raise an explicit error.
+
 ## Related
 
 - [Configuration Reference](configuration.md)

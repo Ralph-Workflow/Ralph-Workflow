@@ -1,22 +1,22 @@
 """Regression tests for maintained package Markdown docs synchronization.
 
 Ensures that maintained package Markdown docs outside Sphinx
-(ralph-workflow/README.md, ralph-workflow/CONTRIBUTING.md,
-ralph-workflow/docs/mcp/*.md) remain aligned with current Python behavior.
+(ralph-workflow/README.md, ralph-workflow/CONTRIBUTING.md) remain aligned
+with current Python behavior.
+
+wt-026 consolidation removed ralph-workflow/docs/mcp/*.md; the canonical
+home is ralph-workflow/docs/sphinx/advanced-mcp-configuration.md and the
+other docs/sphinx/mcp-*.md pages.
 """
 
 from __future__ import annotations
 
 from tests.doc_roots import PACKAGE_ROOT
 
-# Package Markdown docs that should be maintained
+# Package Markdown docs that should be maintained (post wt-026)
 _PACKAGE_MD_DOCS = [
     "README.md",
     "CONTRIBUTING.md",
-    "docs/mcp/mcp-servers.md",
-    "docs/mcp/web-visit.md",
-    "docs/mcp/web-search.md",
-    "docs/mcp-tool-restriction.md",
 ]
 
 

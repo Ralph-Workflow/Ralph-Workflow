@@ -13,11 +13,12 @@ Read before writing or modifying any test.
 
 **Every test must finish within 1 second.**
 
-**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 60 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 60.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests — the combined wall-clock time of ALL test suites is subject to the 60-second cap when verification runs. Running `make test` directly is only guarded by per-suite caps. `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 60 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 60.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests. `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
 
 Budget enforcement invariants in `ralph/verify.py` use `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the checks. All import-time invariants survive `-O`.
 
 For cumulative volume bottlenecks (many fast tests where per-item overhead dominates), valid fix strategies include:
+
 - Consolidating parameterized tests with overlapping coverage
 - Optimizing shared fixtures (function-scoped → session-scoped where safe)
 - Reducing redundant test coverage (never remove the sole coverage for a code path)
@@ -54,66 +55,25 @@ If changing the implementation (without changing behavior) would break a test, *
 ### Agent checklist
 
 - [ ] Every test in the affected area finishes in < 1 s individually
-- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 60 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS` via cumulative `time.monotonic()` tracking; see `AGENTS.md` §'═══ ABSOLUTE TEST BUDGET — 60s, IMMUTABLE ═══' for all import-time invariants)
+- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 60 s total
 - [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
 - [ ] Any refactor needed to make code testable within time is done — not deferred
-- [ ] No bypass audit violation detected in lint, typecheck, or test policy (see `docs/agents/verification.md` §'Bypass Audit Policy')
-
-See `docs/agents/verification.md` §'Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE' for the full non-circumvention table.
-See `AGENTS.md` §'═══ ABSOLUTE TEST BUDGET — 60s, IMMUTABLE ═══' for the complete import-time invariant guard table.
+- [ ] No bypass audit violation detected in lint, typecheck, or test policy
 
 ---
 
-## Test Pyramid
+## Test pyramid by page family
 
-```
-        ████ Integration tests (tests/integration/)
-        │    Cross-module flows, runner wiring, end-to-end in-memory scenarios
-        │    Usually MemoryWorkspace / FakeAgentExecutor driven
-        │
-    ████████ Unit and focused behavior tests (tests/ root + tests/unit/)
-             Reducers, models, parsers, display components, CLI helpers
-```
+| Family | Location | Real I/O? | Run |
+|--------|----------|-----------|-----|
+| Unit | `tests/` root, `tests/unit/` | No | `make test-unit` |
+| Integration | `tests/integration/` | No | `make test-integration` |
+| Full suite | all tests | Mixed | `make test` |
+| Verification | lint + typecheck + `make test` (60 s combined budget) | Mixed | `make verify` |
 
-### Tier summary
-
-| Tier | Location | Real I/O? | CI | Run |
-|------|----------|-----------|-----|-----|
-| Unit | `tests/` root, `tests/unit/` | Usually no | yes | `make test-unit` |
-| Integration | `tests/integration/` | Usually no | yes | `make test-integration` |
-| Full suite | all tests | mixed | yes | `make test` |
-| Verification | lint + typecheck + `make test` (via `ralph.test_suites`, 60 s combined budget) | mixed | yes | `make verify` |
-
----
-
-## Parallelism Rules
-
-**All tests are parallel-safe by default.** Use `pytest-xdist` compatible isolation:
-
-| Location | Technique | Reason |
-|----------|-----------|--------|
-| `tests/` unit | Pure functions / `MemoryWorkspace` | No shared state |
-| `tests/integration/` | `MemoryWorkspace` + `FakeAgentExecutor` | No shared state |
-| `tests/` git | `tmp_git_repo` fixture (template dir per test) | Each test gets its own `tmp_path` |
-
-**`monkeypatch.setenv()` is the only acceptable way to mutate env vars in tests.** Never assign to `os.environ` directly.
-
----
-
-## Deterministic Tests
-
-Every test must produce the same result on every run.
-
-| Source | Isolation |
-|--------|-----------|
-| Real time / wall clock | Injectable clock or frozen timestamp |
-| Randomness / RNG | Seed injection or deterministic inputs |
-| Network | Never in unit/integration tests; use `MemoryWorkspace` / `FakeAgentExecutor` |
-| Process-global env vars | `monkeypatch.setenv()` / `monkeypatch.delenv()` |
-| Filesystem | `MemoryWorkspace` (unit/integration), `tmp_path` (git system tests only) |
-| Async scheduling | `asyncio.sleep(0)` for cooperative yields; never `asyncio.sleep(N)` with N > 0 |
+Unit and integration tests must be parallel-safe (`pytest-xdist`). Use `monkeypatch.setenv()` for env mutation — never assign to `os.environ` directly. Use injectable clocks, seed injection, `MemoryWorkspace`, and `asyncio.sleep(0)` for cooperative yields. Never `asyncio.sleep(N)` with N > 0 in tests.
 
 ---
 
@@ -156,20 +116,9 @@ def from_env(cls) -> "ServiceConfig":
 
 ---
 
-## Test Doubles
+## Required doubles and their usage
 
-Use the right double. Never mock domain logic — only mock at architectural boundaries.
-
-| Double | When | Example |
-|--------|------|---------|
-| **Fake** | Working implementation, in-memory | `MemoryWorkspace` |
-| **Fake** | Configurable subprocess simulation | `FakeAgentExecutor` + `FakeRun` |
-| **Stub** | Returns canned pipeline events | `MockAgentInvoker` with phase-specific responses |
-| **Spy** | Records calls for assertion | `MockAgentInvoker.call_history` |
-| **Mock** | Pre-programmed expectations | `unittest.mock.MagicMock` for external adapters |
-| **Dummy** | Placeholder, never used | Empty `MemoryWorkspace()` for pure orchestrator tests |
-
-### Required doubles
+Use the right double. Never mock domain logic — only mock at architectural boundaries. **Fake** = working in-memory implementation. **Stub** = canned pipeline events. **Spy** = records calls. **Mock** = pre-programmed expectations. **Dummy** = placeholder, never used.
 
 | Operation | Use | Never use |
 |-----------|-----|-----------|
@@ -279,7 +228,7 @@ def test_checkpoint_round_trip() -> None:
 
 ---
 
-## Architecture Boundaries
+## Architecture boundaries
 
 | Layer | What lives here | Test with |
 |-------|----------------|-----------|
@@ -287,100 +236,15 @@ def test_checkpoint_round_trip() -> None:
 | Effect handlers (`phases/`, `agents/`) | Workspace reads/writes, subprocess invocation | Integration tests with `MemoryWorkspace` + `FakeAgentExecutor` |
 | Real OS / git | Actual git operations, git system hooks | Git system tests only (`tmp_git_repo`) |
 
-### Testing phase transitions
-
-```python
-from ralph.pipeline.orchestrator import determine_next_effect
-from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
-
-def test_planning_routes_to_development_on_success(
-    default_policy: tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy],
-    initial_state: PipelineState,
-) -> None:
-    agents_policy, pipeline_policy, _ = default_policy
-    effect = determine_next_effect(initial_state, pipeline_policy, agents_policy)
-    assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
-    assert effect.phase == "planning"
-```
+Test phase transitions and effect/event contracts at the public seam — assert on the `Effect` returned by `determine_next_effect(...)`, never on internal call counts or buffer state.
 
 ---
 
-## Contract and Boundary Testing
+## Test structure and naming
 
-### Serialization contracts
+Every test follows Arrange-Act-Assert with one behavior per test. Keep Arrange short; extract a named builder helper or pytest fixture if setup exceeds ~10 lines. Use `async def test_...` directly — pytest-asyncio detects and runs them; never use `asyncio.run()` inside test functions.
 
-Pydantic model JSON format is a persistence contract. Test with round-trip assertions:
-
-```python
-def test_pipeline_state_json_round_trip() -> None:
-    original = PipelineState(phase=PHASE_DEVELOPMENT, iteration=2, total_iterations=5)
-    json_str = original.model_dump_json()
-    restored = PipelineState.model_validate_json(json_str)
-    assert original == restored
-```
-
-### Effect/event contracts
-
-Test that the orchestrator emits the **correct type with the correct payload**:
-
-```python
-# CORRECT — validate the effect that crosses the boundary
-effect = determine_next_effect(state, pipeline_policy, agents_policy)
-assert isinstance(effect, InvokeAgentEffect)
-assert effect.phase == "development"
-
-# WRONG — asserting on an internal call, not the boundary
-mock_fn.assert_called_once_with("_internal_route_development")
-```
-
----
-
-## AAA Structure
-
-Every test: one behavior, Arrange-Act-Assert.
-
-```python
-def test_pipeline_transitions_to_review_after_development() -> None:
-    # Arrange
-    state = PipelineState(
-        phase="development_commit",
-        development_budget_remaining=0,
-    )
-    agents_policy, pipeline_policy, _ = load_default_policy()
-
-    # Act
-    effect = determine_next_effect(state, pipeline_policy, agents_policy)
-
-    # Assert
-    assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
-    assert effect.phase == "development_commit"
-```
-
-Keep Arrange short. If setup exceeds ~10 lines, extract a named builder helper or pytest fixture.
-
----
-
-## Async Tests
-
-Use `async def test_...` directly — pytest-asyncio detects and runs them. Never use `asyncio.run()` inside test functions.
-
-```python
-async def test_save_async_round_trip(tmp_path: Path) -> None:
-    state = PipelineState(phase=PHASE_DEVELOPMENT, iteration=2, total_iterations=5)
-    path = tmp_path / "checkpoint.json"
-    await ckpt.save_async(state, path)
-    loaded = await ckpt.load_async(path)
-    assert loaded is not None
-    assert loaded.phase == PHASE_DEVELOPMENT
-```
-
-Use `asyncio.sleep(0)` for cooperative yields — never `asyncio.sleep(N)` with N > 0 in tests.
-
----
-
-## Test Naming
-
-Name tests by **observable behavior**, not implementation:
+Name tests by observable behavior, not implementation:
 
 | Good | Avoid |
 |------|-------|
@@ -388,26 +252,11 @@ Name tests by **observable behavior**, not implementation:
 | `test_pipeline_transitions_to_failed_when_budget_exhausted` | `test_buffer_management` |
 | `test_checkpoint_preserves_phase_after_round_trip` | `test_cache_size_tracking` |
 
----
-
-## Length Assertions
-
-Length assertions are acceptable **only when combined with content checks**:
-
-```python
-# CORRECT — count + content
-calls = invoker.call_history
-assert len(calls) == 2, "should record two invocations"
-assert calls[0]["phase"] == "planning"
-assert calls[1]["phase"] == "development"
-
-# WRONG — count without content
-assert len(invoker.call_history) == 2
-```
+Length assertions are acceptable **only when combined with content checks**: pair `len(calls) == 2` with `calls[0]["phase"] == "planning"` and `calls[1]["phase"] == "development"`. Serialization contracts are persistence contracts — round-trip the JSON through `model_dump_json` and `model_validate_json`.
 
 ---
 
-## Common Anti-Patterns
+## Common anti-patterns
 
 | Anti-pattern | Fix |
 |--------------|-----|
@@ -424,15 +273,7 @@ assert len(invoker.call_history) == 2
 
 ---
 
-## Observable vs. Internal State
-
-**Observable (test freely):** public Pydantic fields, fields in checkpoint JSON, counters that enforce behavioral bounds, phase transitions.
-
-**Internal (do not test):** private attributes (prefixed `_`), transient state not in checkpoints, internal buffer or cache sizes, implementation helpers.
-
----
-
-## Flaky Test Policy
+## Flaky test policy
 
 A flaky test fails non-deterministically. Flaky tests must not remain in gating paths.
 
@@ -449,12 +290,13 @@ def test_something_timing_sensitive() -> None: ...
 3. **Resolve** the quarantine issue within one sprint.
 
 **Rules:**
+
 - Every `@pytest.mark.skip` attribute must include a `https://` URL.
 - A skip without a URL will fail the `make verify` audit.
 
 ---
 
-## TDD Discipline
+## TDD discipline
 
 **Write the failing test first.** No production code without a red test.
 
@@ -463,7 +305,7 @@ def test_something_timing_sensitive() -> None: ...
 3. **Refactor** — clean up duplication and structure, keeping tests green.
 
 ```python
-# Red: write test first — it will fail
+# Red: write the failing test first — it will fail
 def test_pipeline_rejects_empty_agent_chain() -> None:
     state = PipelineState(phase="planning", dev_chain=AgentChainState(agents=[]))
     agents_policy, pipeline_policy, _ = load_default_policy()
@@ -476,7 +318,7 @@ def test_pipeline_rejects_empty_agent_chain() -> None:
 
 ---
 
-## Definition of Done for Testing
+## Definition of done for testing
 
 - [ ] New behavior is covered by a test that was **red before** the production change.
 - [ ] Existing behavior regressions are prevented by focused, targeted tests.
@@ -489,7 +331,7 @@ def test_pipeline_rejects_empty_agent_chain() -> None:
 
 ---
 
-## Documentation Quality
+## Documentation quality
 
 - **Single source of truth:** all test strategy lives in `docs/agents/testing-guide.md`.
 - **Update docs in the same commit** as the behavior or architecture change.

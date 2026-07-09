@@ -31,13 +31,11 @@ A few practical notes for a first patch:
   conventional-commit style and the canonical-submit / artifact
   contract.
 - **Link the relevant docs page** in the PR description — the
-  architecture orientation is at
-  [`../docs/architecture/overview.md`](../docs/architecture/overview.md)
-  and the developer-reference pages live at
-  [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md)
-  and
-  [`docs/sphinx/developer-internals.md`](docs/sphinx/developer-internals.md).
-  The contract-heavy sections below this one (dev/stable build,
+  architecture orientation lives in
+  [`docs/sphinx/developer-internals.md`](docs/sphinx/developer-internals.md),
+  and the package-level architecture index is at
+  [`docs/architecture/README.md`](docs/architecture/README.md). The
+  contract-heavy sections below this one (dev/stable build,
   policy-driven pipeline, typing suppression policy, the guardrails
   and the agent hardening contract) are required reading once you
   start touching production code, but they are deliberately *not* the

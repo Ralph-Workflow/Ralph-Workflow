@@ -200,22 +200,19 @@ conditions are an individual API quota exhausted error
 (`429 RESOURCE_EXHAUSTED`), whose diagnostic names the reset window,
 or an unrecognized model ID. Lowercased or slashed slugs such as
 `agy/gemini-3.5-flash-low` are not accepted by AGY v1.0.8; use the
-exact display names from `agy models`. The eight canonical names are
-`Gemini 3.5 Flash (Medium)`, `Gemini 3.5 Flash (High)`,
-`Gemini 3.5 Flash (Low)`, `Gemini 3.1 Pro (Low)`,
-`Gemini 3.1 Pro (High)`, `Claude Sonnet 4.6 (Thinking)`,
-`Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`. These are
-upstream AGY conditions, not Ralph Workflow regressions; wait for the
-quota reset or use a recognized model alias. Use
-`--agent agy/<model>` to pin a different model alias.
+exact display names from `agy models` (the eight canonical names include
+`Gemini 3.5 Flash (Medium/High/Low)`, `Gemini 3.1 Pro (Low/High)`,
+`Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and
+`GPT-OSS 120B (Medium)`). These are upstream AGY conditions, not
+Ralph Workflow regressions; wait for the quota reset or pin a recognized
+alias via `--agent agy/<model>`.
 
 #### Distinguishing live-quota failure from mock-quota output
 
 The live `agy` v1.0.8 binary is re-measured periodically; the
 re-measurement notes (upstream source URLs re-fetched, local binary
-probed, full `python -m ralph smoke-interactive-agy` parity table)
-live in `tmp/agy-source-of-truth.txt` and `tmp/smoke-interactive-agy-run.log`
-to keep the troubleshooting index lean.
+probed, full AGY smoke parity table) live in `tmp/agy-source-of-truth.txt`
+and `tmp/agy-smoke-run.log` to keep the troubleshooting index lean.
 
 When running with `RALPH_AGY_BINARY` set (for example to the
 deterministic mock at `tests/_support/mock_agy.sh` for CI), an empty
@@ -224,13 +221,8 @@ reported as an informational break, not as the live upstream quota
 diagnostic. The mock entrypoint is `tests/_support/mock_agy.py` (run
 as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin
 wrapper suitable for `RALPH_AGY_BINARY`. To verify the harness itself,
-run the mock without that variable:
-
-```bash
-RALPH_AGY_BINARY=tests/_support/mock_agy.sh python -m ralph smoke-interactive-agy
-```
-
-This should report file=yes, artifact=yes, and no upstream-quota break.
+re-run the canonical AGY smoke above with `RALPH_AGY_BINARY=tests/_support/mock_agy.sh`
+set. It should report file=yes, artifact=yes, and no upstream-quota break.
 
 ### Pi.dev transport end-to-end smoke
 
@@ -262,11 +254,4 @@ with `positional_prompt=True`. Do NOT assert the literal `'PROMPT.md'`
 — that is the prompt file PATH, not the file CONTENT that the
 positional argv element carries.
 
-For the live `pi` binary end-to-end path, see
-<https://pi.dev/docs/latest/usage> for the documented `--mode json`
-invocation and the documented `--approve` (`-a`) project-trust
-override. Pi has no native CLI MCP config file, so Ralph Workflow
-removes `RALPH_MCP_ENDPOINT` from the Pi subprocess environment,
-writes a generated Pi extension, and passes it with
-`--no-builtin-tools --extension` so Pi receives Ralph Workflow MCP
-tools through its custom-tool API.
+For the live `pi` binary end-to-end path, see <https://pi.dev/docs/latest/usage> for the documented `--mode json` invocation and the documented `--approve` (`-a`) project-trust override. Pi has no native CLI MCP config file, so Ralph Workflow removes `RALPH_MCP_ENDPOINT` from the Pi subprocess environment, writes a generated Pi extension, and passes it with `--no-builtin-tools --extension` so Pi receives Ralph Workflow MCP tools through its custom-tool API.
