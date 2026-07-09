@@ -494,7 +494,7 @@ def _run_inner_loop(
             last_status_sig,
         )
         if ctx.snapshot_registry is not None:
-            from ralph.pro_support.state_query import (  # noqa: PLC0415
+            from ralph.pro_support.state_query import (
                 build_pipeline_state_snapshot,
             )
 
@@ -1255,7 +1255,7 @@ def _start_pro_marker_watcher(
     loop cannot race the heartbeat), then the heartbeat client
     (so its daemon drain completes).
     """
-    from ralph.pro_support.watcher import ProMarkerWatcher  # noqa: PLC0415
+    from ralph.pro_support.watcher import ProMarkerWatcher
 
     def _default_factory(ws_root: Path) -> ProMarkerWatcher:
         return ProMarkerWatcher(workspace_root=ws_root)

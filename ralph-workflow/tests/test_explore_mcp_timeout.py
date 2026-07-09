@@ -25,7 +25,6 @@ from ralph.testing.audit_mcp_timeout import (
     audit_mcp_directory,
 )
 
-
 EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
 
 

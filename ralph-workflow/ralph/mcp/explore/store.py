@@ -26,7 +26,7 @@ git-ignored via the existing ``.agent/`` rule in
 
 Phase 1 deliberately skips the AST symbol/edge tables (``symbols``,
 ``edges``, ``spans``) from the schema sketch in
-CURRENT_PROMPT.md — those belong to Phase 2 and are recorded in
+the full schema sketch — those belong to Phase 2 and are recorded in
 ``deferred_phases.py``. The minimum table set is enough to serve
 indexed ``grep_files``, ``read_file``, ``read_multiple_files``, and
 ``search_files`` for Phase 1.
@@ -38,12 +38,11 @@ import hashlib
 import os
 import sqlite3
 import time
-from collections.abc import Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol
-
+from typing import Final, Protocol, cast
 
 # --- Constants -------------------------------------------------------------
 
@@ -320,10 +319,8 @@ class ExploreStore:
             yield cur
             cur.execute("COMMIT")
         except BaseException:
-            try:
+            with suppress(sqlite3.OperationalError):
                 cur.execute("ROLLBACK")
-            except sqlite3.OperationalError:
-                pass
             raise
         finally:
             cur.close()
@@ -373,33 +370,16 @@ class ExploreStore:
         cur = self._conn.execute(
             "SELECT * FROM files WHERE path = ?", (path,)
         )
-        row = cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
-        return FileRow(
-            path=row["path"],
-            content_hash=row["content_hash"],
-            size_bytes=row["size_bytes"],
-            mtime_ns=row["mtime_ns"],
-            language=row["language"],
-            indexed_generation=row["indexed_generation"],
-            indexed_at=row["indexed_at"],
-            is_deleted=bool(row["is_deleted"]),
-        )
+        return _row_to_file(row)
 
     def iter_files(self) -> Iterator[FileRow]:
         cur = self._conn.execute("SELECT * FROM files WHERE is_deleted = 0")
-        for row in cur:
-            yield FileRow(
-                path=row["path"],
-                content_hash=row["content_hash"],
-                size_bytes=row["size_bytes"],
-                mtime_ns=row["mtime_ns"],
-                language=row["language"],
-                indexed_generation=row["indexed_generation"],
-                indexed_at=row["indexed_at"],
-                is_deleted=bool(row["is_deleted"]),
-            )
+        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
+        for row in all_rows:
+            yield _row_to_file(row)
 
     def delete_file_rows(self, path: str) -> None:
         """Remove file/chunk/evidence rows for ``path`` in current generation."""
@@ -482,7 +462,8 @@ class ExploreStore:
             """,
             (query, limit),
         )
-        return list(cur.fetchall())
+        results = cast("list[sqlite3.Row]", cur.fetchall())
+        return results
 
     # --- Evidence -----------------------------------------------------
 
@@ -523,21 +504,10 @@ class ExploreStore:
         cur = self._conn.execute(
             "SELECT * FROM evidence WHERE evidence_id = ?", (evidence_id,)
         )
-        row = cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
-        return EvidenceRow(
-            evidence_id=row["evidence_id"],
-            path=row["path"],
-            start_line=row["start_line"],
-            end_line=row["end_line"],
-            content_hash=row["content_hash"],
-            generation=row["generation"],
-            source_tool=row["source_tool"],
-            evidence_kind=row["evidence_kind"],
-            created_at=row["created_at"],
-            is_stale=bool(row["is_stale"]),
-        )
+        return _row_to_evidence(row)
 
     # --- Dirty paths --------------------------------------------------
 
@@ -572,13 +542,15 @@ class ExploreStore:
         """Atomically return + clear all currently dirty paths."""
         with self._transaction() as cur:
             cur.execute("SELECT path FROM dirty_paths")
-            paths = [row["path"] for row in cur.fetchall()]
+            rows = cast("list[sqlite3.Row]", cur.fetchall())
+            paths = [_row_str(row, "path") for row in rows]
             cur.execute("DELETE FROM dirty_paths")
             return paths
 
     def peek_dirty_paths(self) -> list[str]:
         cur = self._conn.execute("SELECT path FROM dirty_paths")
-        return [row["path"] for row in cur.fetchall()]
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        return [_row_str(row, "path") for row in rows]
 
     # --- Settings -----------------------------------------------------
 
@@ -586,8 +558,13 @@ class ExploreStore:
         cur = self._conn.execute(
             "SELECT value FROM settings WHERE key = ?", (key,)
         )
-        row = cur.fetchone()
-        return row["value"] if row is not None else None
+        row: sqlite3.Row | None = cur.fetchone()
+        if row is None:
+            return None
+        value: object = row["value"]
+        if value is None:
+            return None
+        return str(value)
 
     def set_setting(self, key: str, value: str) -> None:
         with self._transaction() as cur:
@@ -657,7 +634,8 @@ class ExploreStore:
         cur = self._conn.execute(
             "SELECT * FROM jobs ORDER BY started_at DESC LIMIT 1"
         )
-        return cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
+        return row
 
     # --- Evidence tombstones (bounded) -------------------------------
 
@@ -718,7 +696,8 @@ class ExploreStore:
             """,
             (evidence_id,),
         )
-        return cur.fetchone()
+        row: sqlite3.Row | None = cur.fetchone()
+        return row
 
     # --- Storage size -------------------------------------------------
 
@@ -736,6 +715,85 @@ class ExploreStore:
 
 
 # --- Helpers --------------------------------------------------------------
+
+
+def _row_str(row: sqlite3.Row, key: str) -> str:
+    """Read a string column from ``row`` with a precise return type."""
+    value: object = row[key]
+    if not isinstance(value, str):
+        return str(value)
+    return value
+
+
+row_str = _row_str
+
+
+def _row_int(row: sqlite3.Row, key: str) -> int:
+    """Read an integer column from ``row`` with a precise return type."""
+    value: object = row[key]
+    if isinstance(value, bool):
+        return int(bool(value))
+    if isinstance(value, int):
+        return value
+    return int(cast("int | str | float", value))
+
+
+def _row_float(row: sqlite3.Row, key: str) -> float:
+    """Read a float column from ``row`` with a precise return type."""
+    value: object = row[key]
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return float(cast("int | str | float", value))
+
+
+def _row_bool(row: sqlite3.Row, key: str) -> bool:
+    """Read a boolean column from ``row`` with a precise return type."""
+    value: object = row[key]
+    if isinstance(value, bool):
+        return value
+    return bool(value)
+
+
+def _row_optional_str(row: sqlite3.Row, key: str) -> str | None:
+    """Read an optional string column from ``row``."""
+    value: object = row[key]
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _row_to_file(row: sqlite3.Row) -> FileRow:
+    """Convert a ``files`` row to a typed ``FileRow`` dataclass."""
+    return FileRow(
+        path=_row_str(row, "path"),
+        content_hash=_row_str(row, "content_hash"),
+        size_bytes=_row_int(row, "size_bytes"),
+        mtime_ns=_row_int(row, "mtime_ns"),
+        language=_row_optional_str(row, "language"),
+        indexed_generation=_row_int(row, "indexed_generation"),
+        indexed_at=_row_float(row, "indexed_at"),
+        is_deleted=bool(_row_int(row, "is_deleted")),
+    )
+
+
+def _row_to_evidence(row: sqlite3.Row) -> EvidenceRow:
+    """Convert an ``evidence`` row to a typed ``EvidenceRow`` dataclass."""
+    return EvidenceRow(
+        evidence_id=_row_str(row, "evidence_id"),
+        path=_row_str(row, "path"),
+        start_line=_row_int(row, "start_line"),
+        end_line=_row_int(row, "end_line"),
+        content_hash=_row_str(row, "content_hash"),
+        generation=_row_int(row, "generation"),
+        source_tool=_row_str(row, "source_tool"),
+        evidence_kind=_row_str(row, "evidence_kind"),
+        created_at=_row_float(row, "created_at"),
+        is_stale=bool(_row_int(row, "is_stale")),
+    )
 
 
 def sha256_text(text: str) -> str:
@@ -888,6 +946,7 @@ __all__ = [
     "iter_indexable_files",
     "normalize_index_path",
     "real_clock_seconds",
+    "row_str",
     "sha256_bytes",
     "sha256_text",
 ]

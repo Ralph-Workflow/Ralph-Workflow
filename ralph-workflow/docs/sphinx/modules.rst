@@ -2256,6 +2256,77 @@ ralph.mcp.websearch.secrets
    :members:
    :show-inheritance:
 
+ralph.mcp.explore
+~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore
+   :members:
+   :show-inheritance:
+   :no-index:
+
+ralph.mcp.explore.audit_register
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.audit_register
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.bench
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.bench
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.deferred_phases
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.deferred_phases
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.dirty_paths
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.dirty_paths
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.handlers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.handlers
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.lifecycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.lifecycle
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.pipeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.pipeline
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.ranking
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.ranking
+   :members:
+   :show-inheritance:
+
+ralph.mcp.explore.store
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.store
+   :members:
+   :show-inheritance:
+
 Git
 ---
 

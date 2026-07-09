@@ -17,6 +17,7 @@ import pytest
 from ralph.mcp.explore.audit_register import (
     AUDIT_REGISTER,
     AuditEntry,
+    AuditFamily,
     AuditOutcome,
     audit_register,
 )
@@ -75,7 +76,7 @@ def test_audit_entry_rejects_empty_rationale() -> None:
     with pytest.raises(ValueError, match="rationale must be non-empty"):
         AuditEntry(
             tool=RalphToolName.READ_FILE,
-            family="workspace_read",  # type: ignore[arg-type]
+            family=AuditFamily.WORKSPACE_READ,
             outcome=AuditOutcome.KEEP,
             rationale="",
         )

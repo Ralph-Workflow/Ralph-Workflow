@@ -17,7 +17,6 @@ from ralph.mcp.explore.ranking import (
     sort_ranked,
 )
 
-
 # --- Score components ------------------------------------------------------
 
 
@@ -230,4 +229,4 @@ def test_ranked_item_defaults() -> None:
 def test_ranked_item_is_frozen() -> None:
     item = RankedItem(key="a", score=0)
     with pytest.raises((AttributeError, TypeError)):
-        item.score = 10  # type: ignore[misc]
+        RankedItem.__setattr__(item, "score", 10)

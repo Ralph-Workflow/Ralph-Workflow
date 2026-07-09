@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from typing import TYPE_CHECKING
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
@@ -17,7 +18,6 @@ from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
-    ToolError,
     ToolResult,
     require_capability,
 )
@@ -36,8 +36,11 @@ from ralph.mcp.tools.workspace._utils import (
 )
 
 if TYPE_CHECKING:
+    from ralph.mcp.explore.store import ExploreStore
     from ralph.workspace import Workspace
 
+from collections.abc import Iterable
+from typing import cast
 
 # --- Index metadata helpers -----------------------------------------------
 
@@ -65,7 +68,7 @@ def _freshness_for_grep(
             "stale_paths_count": 0,
             "fallback_reason": fallback_reason,
         }
-    store = getattr(handle, "store", None)
+    store: ExploreStore | None = getattr(handle, "store", None)
     if store is None:
         return {
             "index_used": index_used,
@@ -76,10 +79,14 @@ def _freshness_for_grep(
             "fallback_reason": fallback_reason,
         }
     generation_raw = store.get_setting("current_generation") or "0"
+    try:
+        generation_int = int(generation_raw)
+    except (TypeError, ValueError):
+        generation_int = 0
     dirty = store.peek_dirty_paths()
     return {
         "index_used": index_used,
-        "index_generation": int(generation_raw),
+        "index_generation": generation_int,
         "is_stale": bool(dirty),
         "dirty_paths_count": len(dirty),
         "stale_paths_count": 0,
@@ -88,7 +95,7 @@ def _freshness_for_grep(
 
 
 def _indexed_matches(
-    store,
+    store: ExploreStore,
     pattern: str,
     *,
     whole_word: bool,
@@ -96,21 +103,32 @@ def _indexed_matches(
 ) -> list[dict[str, object]]:
     """Run an FTS5 search and translate rows to the live match shape."""
     fts_query = fts_query_for(pattern, whole_word=whole_word)
-    rows = store.fts_search(fts_query, limit=max(limit, 1))
+    raw_rows = store.fts_search(fts_query, limit=max(limit, 1))
+    rows: list[sqlite3.Row] = list(raw_rows)
     matches: list[dict[str, object]] = []
     for row in rows:
         # chunk_id is the deterministic evidence handle. Path + line
         # are derived from the chunk row when possible; for Phase 1
         # we record chunk_id only and let the agent resolve the
         # exact span via read_file(evidence_id=...).
-        evidence_id = row["chunk_id"]
-        snippet = row["snippet"] if "snippet" in row.keys() else ""
+        raw_path_value: object = row["path"]
+        raw_chunk_id_value: object = row["chunk_id"]
+        try:
+            snippet_value: object = row["snippet"]
+        except IndexError:
+            snippet_value = ""
+        raw_path: object = raw_path_value
+        raw_chunk_id: object = raw_chunk_id_value
+        raw_snippet: object = snippet_value
+        path_str = str(raw_path) if raw_path is not None else ""
+        chunk_id_str = str(raw_chunk_id) if raw_chunk_id is not None else ""
+        snippet_str = str(raw_snippet) if raw_snippet is not None else ""
         matches.append(
             {
-                "path": row["path"],
+                "path": path_str,
                 "line": None,
-                "text": snippet,
-                "evidence_id": evidence_id,
+                "text": snippet_str,
+                "evidence_id": chunk_id_str,
             }
         )
     return matches
@@ -202,8 +220,8 @@ def _live_grep(
     is_regex: bool,
     case_sensitive: bool,
     whole_word: bool,
-    include,
-    exclude,
+    include: object,
+    exclude: object,
     context_before: int,
     context_after: int,
     limit: int,
@@ -220,10 +238,20 @@ def _live_grep(
     matches: list[dict[str, object]] = []
     skipped_files = 0
     truncated = False
+    include_list: list[object] = (
+        list(cast("Iterable[object]", include)) if include else []
+    )
+    exclude_list: list[object] = (
+        list(cast("Iterable[object]", exclude)) if exclude else []
+    )
     for file_path in all_files:
-        if include and not any(match_glob(file_path, p) for p in include):
+        if include_list and not any(
+            match_glob(file_path, str(p)) for p in include_list
+        ):
             continue
-        if exclude and any(match_glob(file_path, p) for p in exclude):
+        if exclude_list and any(
+            match_glob(file_path, str(p)) for p in exclude_list
+        ):
             continue
         file_matches = _search_file_content(
             workspace,
@@ -303,13 +331,19 @@ def handle_grep_files(
     include_graph_context = bool(params.get("include_graph_context", False))
 
     handle = resolve_explore_index(session)
-    store = getattr(handle, "store", None) if handle is not None else None
+    if handle is not None:
+        store_value: ExploreStore | None = getattr(handle, "store", None)
+    else:
+        store_value = None
+    store: ExploreStore | None = store_value
 
     # Determine if FTS is eligible.
     eligible = is_fts_eligible(pattern, is_regex=is_regex, whole_word=whole_word)
     index_used = False
     fallback_reason: str | None = None
-    ranked_items: list = []
+    from ralph.mcp.explore.ranking import RankedItem
+
+    ranked_items: list[RankedItem] = []
     indexed_match_rows: list[dict[str, object]] = []
 
     if use_index != "never" and store is not None and eligible:
@@ -342,9 +376,21 @@ def handle_grep_files(
         # Ranking.
         if rank_by != "match":
             for row in indexed_match_rows:
-                path_v = str(row.get("path", ""))
-                line_v = int(row.get("line") or 0)
-                ev = str(row.get("evidence_id", ""))
+                path_raw: object = row.get("path", "")
+                line_raw: object = row.get("line") or 0
+                ev_raw: object = row.get("evidence_id", "")
+                path_v = str(path_raw) if path_raw is not None else ""
+                line_v: int
+                if isinstance(line_raw, int) and not isinstance(line_raw, bool):
+                    line_v = line_raw
+                elif isinstance(line_raw, str):
+                    try:
+                        line_v = int(line_raw)
+                    except ValueError:
+                        line_v = 0
+                else:
+                    line_v = 0
+                ev = str(ev_raw) if ev_raw is not None else ""
                 # Phase 1 has no per-file git-changed signal; the
                 # caller can pass it via params['git_changed_paths']
                 # if needed. We default to False here.

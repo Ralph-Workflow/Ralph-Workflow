@@ -28,10 +28,27 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.pipeline import ReindexResult
+    from ralph.mcp.explore.store import ExploreStore
+
+from ralph.mcp.explore.pipeline import ReindexOptions, ReindexResult
+
+
+class ReindexRunner(Protocol):
+    """Structural reindex runner (accepts store + workspace + **kwargs)."""
+
+    def __call__(  # pragma: no cover - structural type
+        self,
+        store: ExploreStore,
+        workspace_root: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> ReindexResult: ...
+
+
+ReindexOptionsFactory = Callable[[int], ReindexOptions]
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +65,7 @@ class LifecycleHookResult:
 
     invoked: bool
     timed_out: bool
-    reindex_result: "ReindexResult | None" = None
+    reindex_result: ReindexResult | None = None
     skipped_reason: str | None = None
 
 
@@ -68,7 +85,7 @@ def before_agent_refresh(
     workspace_root: Path,
     explore_index: object | None,
     timeout_ms: int = DEFAULT_HOOK_TIMEOUT_MS,
-    reindex_runner: Callable[..., "ReindexResult"] | None = None,
+    reindex_runner: ReindexRunner | None = None,
 ) -> LifecycleHookResult:
     """Run a bounded changed-file refresh before an agent invocation.
 
@@ -91,7 +108,7 @@ def after_agent_refresh(
     workspace_root: Path,
     explore_index: object | None,
     timeout_ms: int = DEFAULT_HOOK_TIMEOUT_MS,
-    reindex_runner: Callable[..., "ReindexResult"] | None = None,
+    reindex_runner: ReindexRunner | None = None,
 ) -> LifecycleHookResult:
     """Run a bounded changed-file refresh after an agent invocation."""
     return _run_hook(
@@ -108,7 +125,7 @@ def _run_hook(
     workspace_root: Path,
     explore_index: object | None,
     timeout_ms: int,
-    reindex_runner: Callable[..., "ReindexResult"] | None,
+    reindex_runner: ReindexRunner | None,
     kind: str,
 ) -> LifecycleHookResult:
     """Run a refresh; swallow exceptions so the agent is never starved."""
@@ -118,7 +135,7 @@ def _run_hook(
             timed_out=False,
             skipped_reason="explore_index_disabled",
         )
-    store = getattr(explore_index, "store", None)
+    store: ExploreStore | None = getattr(explore_index, "store", None)
     if store is None:
         return LifecycleHookResult(
             invoked=False,
@@ -128,32 +145,41 @@ def _run_hook(
     # The injected runner takes precedence over the handle's
     # optional ``runner()`` method, which lets tests wire a stub
     # runner without going through pipeline.reindex.
-    runner = reindex_runner
-    if runner is None:
-        handle_runner = getattr(explore_index, "runner", None)
-        if callable(handle_runner):
-            runner = handle_runner()
-    if runner is None:
+    runner_value: ReindexRunner | None = reindex_runner
+    if runner_value is None:
+        handle_runner_obj: object = getattr(explore_index, "runner", None)
+        if callable(handle_runner_obj):
+            resolved_runner: object = handle_runner_obj()
+            runner_value = cast("ReindexRunner", resolved_runner)
+    if runner_value is None:
         # Default runner: invoke the pipeline.reindex function with
         # the live ``store`` and a short timeout. The runner is
         # injected in tests so the hook stays decoupled from the
         # concrete reindex implementation.
         from ralph.mcp.explore.pipeline import reindex as _reindex
 
-        runner = _reindex
-    opts_factory = getattr(explore_index, "build_options", None)
-    if callable(opts_factory):
-        options = opts_factory(timeout_ms=timeout_ms)
+        runner_value = cast("ReindexRunner", _reindex)
+    opts_factory_obj: object = getattr(explore_index, "build_options", None)
+    options_value: ReindexOptions
+    if callable(opts_factory_obj):
+        options_value = opts_factory_obj(timeout_ms=timeout_ms)
     else:
         from ralph.mcp.explore.pipeline import ReindexOptions
 
-        options = ReindexOptions(mode="changed", timeout_ms=timeout_ms)
+        options_value = ReindexOptions(mode="changed", timeout_ms=timeout_ms)
     try:
-        if reindex_runner is None and runner is not None and getattr(runner, "__name__", "") == "reindex":
-            result = runner(store, workspace_root, options=options)
+        runner: ReindexRunner = runner_value
+        raw_result: object
+        raw_name: object = getattr(runner, "__name__", "")
+        runner_name: str = (
+            raw_name if isinstance(raw_name, str) else str(raw_name)
+        )
+        if reindex_runner is None and runner is not None and runner_name == "reindex":
+            raw_result = runner(store, workspace_root, options=options_value)
         else:
-            result = runner(store, workspace_root, opts=options)
-    except Exception as exc:  # noqa: BLE001
+            raw_result = runner(store, workspace_root, opts=options_value)
+        result: ReindexResult = raw_result
+    except Exception as exc:
         logger.warning(
             "Lifecycle refresh (%s) failed: %s",
             kind,
@@ -165,7 +191,11 @@ def _run_hook(
             reindex_result=None,
             skipped_reason=f"error:{type(exc).__name__}",
         )
-    timed_out = bool(getattr(result, "status", "") == "timed_out")
+    result_status: object = getattr(result, "status", "")
+    result_status_str: str = (
+        result_status if isinstance(result_status, str) else str(result_status)
+    )
+    timed_out = bool(result_status_str == "timed_out")
     return LifecycleHookResult(
         invoked=True,
         timed_out=timed_out,

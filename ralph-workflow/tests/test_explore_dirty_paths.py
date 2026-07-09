@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -273,14 +274,12 @@ def test_failed_write_does_not_mark_dirty(tmp_path: Path) -> None:
         # No path -> InvalidParamsError before any write happens.
         from ralph.mcp.tools.coordination import InvalidParamsError
 
-        try:
+        with suppress(InvalidParamsError):
             handle_write_file(
                 session,
                 _Workspace(workspace_root),
                 {"content": "x"},
             )
-        except InvalidParamsError:
-            pass
         assert store.peek_dirty_paths() == []
     finally:
         store.close()

@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from ralph.mcp.explore.handlers import (
-    ExploreIndex,
     build_explore_index,
     handle_ralph_index_status,
     handle_ralph_reindex,

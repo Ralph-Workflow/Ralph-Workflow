@@ -266,8 +266,9 @@ See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapp
 
 ## Indexed exploration
 
-Ralph maintains a deterministic SQLite+FTS5 indexed exploration substrate under
-`.agent/ralph-explore/` for the current workspace. The substrate is:
+Ralph Workflow maintains a deterministic SQLite+FTS5 indexed exploration
+substrate under `.agent/ralph-explore/` for the current workspace. The
+substrate is:
 
 * disposable — deleting `.agent/ralph-explore/` forces a cold rebuild and never affects source files or workflow artifacts;
 * git-ignored — the existing `.agent/` rule in `ralph/config/bootstrap.py:_DEFAULT_GITIGNORE_PATTERNS` covers it (no new entry required);
@@ -275,7 +276,7 @@ Ralph maintains a deterministic SQLite+FTS5 indexed exploration substrate under
 
 ### Lifecycle
 
-Ralph refreshes the index deterministically:
+Ralph Workflow refreshes the index deterministically:
 
 * before every development/fix agent invocation (bounded changed-file refresh);
 * after the agent invocation returns (bounded changed-file refresh);

@@ -17,7 +17,7 @@ from typing import Final
 
 # --- Component constants --------------------------------------------------
 
-# Phase 1 search_files components (CURRENT_PROMPT.md contract).
+# Phase 1 search_files components (architecture finding contract).
 SEARCH_EXACT_BASENAME: Final[int] = 100
 SEARCH_SYMBOL_DEFINITION: Final[int] = 80  # disabled in Phase 1
 SEARCH_SYMBOL_MENTION: Final[int] = 60  # disabled in Phase 1
@@ -103,15 +103,11 @@ def is_test_role(path: str) -> bool:
 
 def sort_ranked(items: list[RankedItem]) -> list[RankedItem]:
     """Stable sort: score DESC, then path ASC, then line ASC, then evidence_id ASC."""
-    return sorted(
-        items,
-        key=lambda item: (
-            -item.score,
-            item.path,
-            item.line if item.line is not None else -1,
-            item.evidence_id or "",
-        ),
-    )
+    def _sort_key(item: RankedItem) -> tuple[int, str, int, str]:
+        line_value: int = item.line if item.line is not None else -1
+        return (-item.score, item.path, line_value, item.evidence_id or "")
+
+    return sorted(items, key=_sort_key)
 
 
 # --- search_files scoring -------------------------------------------------
@@ -133,7 +129,7 @@ def score_search_file(
     score = 0
     reasons: list[str] = []
 
-    if candidate_path.split("/")[-1] == basename:
+    if candidate_path.rsplit("/", maxsplit=1)[-1] == basename:
         score += SEARCH_EXACT_BASENAME
         reasons.append(f"+{SEARCH_EXACT_BASENAME} exact_path_basename")
     else:
@@ -265,9 +261,7 @@ def is_fts_eligible(pattern: str, *, is_regex: bool, whole_word: bool) -> bool:
         return False
     # whole_word with literal is supported; reject when combined
     # with multi-word phrase syntax that FTS cannot represent exactly.
-    if whole_word and " " in pattern:
-        return False
-    return True
+    return not (whole_word and " " in pattern)
 
 
 def fts_query_for(pattern: str, *, whole_word: bool) -> str:
@@ -293,7 +287,6 @@ __all__ = [
     "GREP_GRAPH_NEIGHBOR",
     "GREP_SAME_SYMBOL_BODY",
     "PHASE2_DISABLED_NOTE",
-    "RankedItem",
     "SEARCH_EXACT_BASENAME",
     "SEARCH_GENERATED_PENALTY",
     "SEARCH_GIT_CHANGED",
@@ -301,6 +294,7 @@ __all__ = [
     "SEARCH_ROLE_REQUESTED",
     "SEARCH_SYMBOL_DEFINITION",
     "SEARCH_SYMBOL_MENTION",
+    "RankedItem",
     "fts_query_for",
     "is_fts_eligible",
     "is_generated_path",

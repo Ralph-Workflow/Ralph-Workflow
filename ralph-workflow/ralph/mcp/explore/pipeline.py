@@ -33,12 +33,13 @@ agent reads (tools return stale metadata instead of hanging).
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Final
 
 from ralph.mcp.explore.store import (
     DEFAULT_CHUNK_LINES,
@@ -113,7 +114,9 @@ class _ReindexState:
     job_id: str
     started_at: float
     deadline: float
+    deadline_ms: int = 0
     parse_count: int = 0
+    dirty_paths_count: int = 0
     changed_paths: list[str] = field(default_factory=list)
     failed_paths: list[str] = field(default_factory=list)
     error_summary: str | None = None
@@ -125,15 +128,15 @@ def _elapsed(state: _ReindexState, now_fn: Callable[[], float]) -> float:
 
 
 def _ensure_deadline_not_exceeded(state: _ReindexState, now_fn: Callable[[], float]) -> None:
-    if _elapsed(state, now_fn) * 1000 > state.deadline_ms:  # type: ignore[attr-defined]
+    if _elapsed(state, now_fn) * 1000 > state.deadline_ms:
         # Deadline is in ms; we keep the attribute name short to avoid
         # downstream renames.
         state.timed_out = True
-        raise _ReindexTimeout("deadline exceeded")
+        raise _ReindexTimeoutError("deadline exceeded")
 
 
 # Avoid circular import: declare the timeout class only when used.
-class _ReindexTimeout(Exception):
+class _ReindexTimeoutError(Exception):
     pass
 
 
@@ -163,10 +166,8 @@ def reindex(
         job_id=job_id,
         started_at=started_at,
         deadline=deadline,
+        deadline_ms=opts.timeout_ms,
     )
-    # The deadline is stored on state too so _ensure_deadline helpers
-    # do not need to take opts everywhere.
-    state.deadline_ms = opts.timeout_ms  # type: ignore[attr-defined]
 
     try:
         result = _run_reindex(
@@ -176,7 +177,7 @@ def reindex(
             now_fn=now_fn,
             state=state,
         )
-    except _ReindexTimeout:
+    except _ReindexTimeoutError:
         return _finalize(store, state, status="timed_out", now_fn=now_fn)
     except Exception as exc:
         return _finalize(
@@ -222,7 +223,7 @@ def _run_reindex(
 
     seen_paths: set[str] = set()
 
-    for relative_path, (size_bytes, mtime_ns) in sorted(next_manifest.items()):
+    for relative_path, (_size_bytes, _mtime_ns) in sorted(next_manifest.items()):
         _ensure_deadline(state, now_fn)
         seen_paths.add(relative_path)
         try:
@@ -305,9 +306,9 @@ def _run_reindex(
 
 
 def _ensure_deadline(state: _ReindexState, now_fn: Callable[[], float]) -> None:
-    if (now_fn() - state.started_at) * 1000 > state.deadline_ms:  # type: ignore[attr-defined]
+    if (now_fn() - state.started_at) * 1000 > state.deadline_ms:
         state.timed_out = True
-        raise _ReindexTimeout("deadline exceeded")
+        raise _ReindexTimeoutError("deadline exceeded")
 
 
 def _current_generation(store: ExploreStore) -> int:
@@ -319,7 +320,7 @@ def _current_generation(store: ExploreStore) -> int:
 
 def _drop_all_rows(store: ExploreStore) -> None:
     """Drop every row from the index tables. Used by mode='full'."""
-    cur = store._conn.cursor()  # noqa: SLF001 (intentional internal use)
+    cur = store._conn.cursor()
     try:
         for table in (
             "evidence",
@@ -330,7 +331,7 @@ def _drop_all_rows(store: ExploreStore) -> None:
             "manifest",
             "dirty_paths",
         ):
-            cur.execute(f"DELETE FROM {table}")  # noqa: S608 (literal table name)
+            cur.execute(f"DELETE FROM {table}")
     finally:
         cur.close()
 
@@ -345,7 +346,7 @@ def _update_manifest(
     last_seen_generation: int,
 ) -> None:
     """Insert/update a single manifest row inside the same generation."""
-    store._conn.execute(  # noqa: SLF001
+    store._conn.execute(
         """
         INSERT INTO manifest (
             path, content_hash, size_bytes, mtime_ns,
@@ -539,14 +540,16 @@ class ReindexWriter:
     Tests inject a custom ``lock_factory`` to avoid contention.
     """
 
-    _lock_factory: Callable[[], object] = type(lambda: (_ for _ in ()).throw(  # noqa: PYI029
-        RuntimeError("lock_factory not configured")
-    ))
-    _active: dict[str, "ReindexWriter"] = {}  # bounded-accumulator-ok: keyed by db_path; entries are popped in `finally` of claim()
-    _active_lock: object | None = None
+    @staticmethod
+    def _default_lock_factory() -> threading.Lock:
+        raise RuntimeError("lock_factory not configured")
+
+    _lock_factory: Callable[[], threading.Lock] = _default_lock_factory
+    _active: dict[str, ReindexWriter] = {}  # bounded-accumulator-ok: keyed by db_path; entries are popped in `finally` of claim()
+    _active_lock: threading.Lock | None = None
 
     @classmethod
-    def configure(cls, *, lock_factory: Callable[[], object]) -> None:
+    def configure(cls, *, lock_factory: Callable[[], threading.Lock]) -> None:
         cls._lock_factory = lock_factory
         cls._active_lock = lock_factory()
 
@@ -567,7 +570,8 @@ class ReindexWriter:
             # factory in module init; tests bypass via direct calls.
             return reindex(store, workspace_root, options=options)
         key = str(store.db_path)
-        with cls._active_lock:  # type: ignore[misc]
+        assert cls._active_lock is not None
+        with cls._active_lock:
             active = cls._active.get(key)
             if active is not None:
                 # Coalesce: just process any pending dirty paths and
@@ -586,7 +590,7 @@ class ReindexWriter:
         try:
             return reindex(store, workspace_root, options=options)
         finally:
-            with cls._active_lock:  # type: ignore[misc]
+            with cls._active_lock:
                 cls._active.pop(key, None)
 
 

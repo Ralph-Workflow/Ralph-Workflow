@@ -3,8 +3,8 @@ and ``search_files`` behavior."""
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from pathlib import Path
 
 import pytest

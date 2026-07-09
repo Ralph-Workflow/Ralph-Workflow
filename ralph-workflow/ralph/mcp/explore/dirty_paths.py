@@ -17,12 +17,9 @@ dirty marking.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path
-
-if TYPE_CHECKING:
-    pass
 
 
 class ExploreIndexLike(Protocol):
@@ -56,10 +53,10 @@ def resolve_explore_index(session: object) -> ExploreIndexLike | None:
     attribute is missing or ``None`` so handlers fall back to live
     behavior (the current contract).
     """
-    handle = getattr(session, "explore_index", None)
+    handle: ExploreIndexLike | None = getattr(session, "explore_index", None)
     if handle is None:
         return None
-    return handle  # type: ignore[no-any-return]
+    return handle
 
 
 def mark_path(

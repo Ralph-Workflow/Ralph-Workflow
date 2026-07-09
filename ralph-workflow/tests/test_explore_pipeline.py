@@ -20,17 +20,18 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ralph.mcp.explore.pipeline import (
     DEFAULT_TIMEOUT_MS,
     ReindexOptions,
-    ReindexResult,
     ReindexWriter,
     reindex,
 )
 from ralph.mcp.explore.store import ExploreStore
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class FakeClock:
@@ -347,12 +348,12 @@ def test_reindex_writer_coalesces(tmp_path: Path) -> None:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
         # Manually hold the active slot by calling claim from inside a lock-held block.
         lock_key = str(store.db_path)
-        ReindexWriter._active[lock_key] = ReindexWriter(store)  # type: ignore[arg-type]
+        ReindexWriter._active[lock_key] = ReindexWriter(store)
         try:
             result = ReindexWriter.claim(store, workspace_root=workspace)
             assert result.status == "skipped_no_changes"
         finally:
-            ReindexWriter._active.pop(lock_key, None)  # type: ignore[arg-type]
+            ReindexWriter._active.pop(lock_key, None)
     finally:
         store.close()
 

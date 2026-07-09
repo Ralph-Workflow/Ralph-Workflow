@@ -212,9 +212,10 @@ asserts observable behavior on the shipped path.
 
 ## Indexed exploration substrate
 
-Ralph maintains a deterministic, disposable SQLite+FTS5 indexed exploration
-substrate under `.agent/ralph-explore/` for the current workspace. The substrate
-is owned by `ralph.mcp.explore` and exposes two new MCP tools:
+Ralph Workflow maintains a deterministic, disposable SQLite+FTS5 indexed
+exploration substrate under `.agent/ralph-explore/` for the current
+workspace. The substrate is owned by `ralph.mcp.explore` and exposes two
+new MCP tools:
 
 * `ralph_index_status` — reports generation, freshness, dirty paths, job history, storage bytes, and gitignore coverage.
 * `ralph_reindex` — runs a bounded `changed`/`full` refresh (timeout-based, fail-closed for the job, fail-open for the agent).

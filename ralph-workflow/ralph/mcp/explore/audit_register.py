@@ -6,8 +6,8 @@ This module owns a typed, immutable register with one entry per
 rationale, and baseline research-gate counters (transcript tokens,
 returned bytes, tool calls, evidence recall).
 
-Outcomes are seeded from the CURRENT_PROMPT.md architecture finding
-audit section. They can be updated by later phases after measurement
+Outcomes are seeded from the Phase 0 architecture finding audit
+section. They can be updated by later phases after measurement
 proves a deferral is unjustified or a ``keep`` requires rework.
 
 The module is a pure data module with no I/O so it is fully black-box
@@ -91,7 +91,7 @@ class AuditEntry:
             )
 
 
-# Phase 0 outcome seed from CURRENT_PROMPT.md audit section.
+# Phase 0 outcome seed from the architecture finding audit section.
 # Keep entries must include a non-empty rationale. Defer entries
 # MUST include a tracked rationale + a baseline reference (the
 # prompt's "defer requires tracked rationale, risk, and benchmark

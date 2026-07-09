@@ -227,7 +227,7 @@ def __getattr__(name: str) -> object:
     preserving the public re-export contract.
     """
     if name == "run":
-        from ralph.pipeline.run_loop import run as _run_loop_entry  # noqa: PLC0415
+        from ralph.pipeline.run_loop import run as _run_loop_entry
 
         module_globals: dict[str, object] = globals()
         module_globals["run"] = _run_loop_entry
@@ -430,13 +430,15 @@ def _invoke_execute_effect_with_optional_display(
     )
 
     if should_refresh:
+        pre_workspace_obj: object = pre_workspace
+        before_index: object = getattr(pre_workspace_obj, "explore_index", None)
         try:
             before_agent_refresh(
                 workspace_root=workspace_scope.root,
-                explore_index=getattr(pre_workspace, "explore_index", None),
+                explore_index=before_index,
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("before_agent_refresh skipped: {err}", err=exc)
+        except Exception as exc:
+            logger.debug("before_agent_refresh skipped: %s", exc)
 
     try:
         return execute_effect_with_optional_display(
@@ -452,13 +454,14 @@ def _invoke_execute_effect_with_optional_display(
         )
     finally:
         if should_refresh:
+            after_index: object = getattr(pre_workspace_obj, "explore_index", None)
             try:
                 after_agent_refresh(
                     workspace_root=workspace_scope.root,
-                    explore_index=getattr(pre_workspace, "explore_index", None),
+                    explore_index=after_index,
                 )
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("after_agent_refresh skipped: {err}", err=exc)
+            except Exception as exc:
+                logger.debug("after_agent_refresh skipped: %s", exc)
 
 
 def _reduce_runtime_recovery(

@@ -7,13 +7,12 @@ does not flag a wall-clock assertion).
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from ralph.mcp.explore.bench import (
     REQUIRED_FIXTURES,
     BenchmarkCounters,
     BenchmarkResult,
-    Clock,
     ScriptedCall,
     SystemClock,
     _fixed_token_count,

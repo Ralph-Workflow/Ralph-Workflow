@@ -190,7 +190,8 @@ _REQUIRED_LITERAL_TOKENS = re.compile(r"\w+", re.UNICODE)
 
 
 def _tokenize_literal(text: str) -> list[str]:
-    return _REQUIRED_LITERAL_TOKENS.findall(text)
+    raw: list[str] = _REQUIRED_LITERAL_TOKENS.findall(text)
+    return raw
 
 
 def question_register_tool() -> BenchmarkFixture:

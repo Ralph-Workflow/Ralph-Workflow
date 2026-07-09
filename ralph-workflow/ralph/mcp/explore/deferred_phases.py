@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final
 
-from ralph.mcp.explore.audit_register import AUDIT_REGISTER, AuditEntry
+from ralph.mcp.explore.audit_register import AUDIT_REGISTER
 
 
 @dataclass(frozen=True, slots=True)

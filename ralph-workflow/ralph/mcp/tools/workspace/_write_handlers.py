@@ -32,6 +32,7 @@ from ralph.mcp.tools.workspace._utils import (
 )
 
 if TYPE_CHECKING:
+    from ralph.mcp.explore.store import ExploreStore
     from ralph.workspace import Workspace
 
 
@@ -51,14 +52,18 @@ def _freshness_payload(
     # The handle is the SQL-backed live index; ask it for current
     # generation + dirty count. We deliberately keep the contract
     # narrow so a NoOp handle returns no metadata.
-    store = getattr(handle, "store", None)
+    store: ExploreStore | None = getattr(handle, "store", None)
     if store is None:
         return {}
     generation_raw = store.get_setting("current_generation") or "0"
+    try:
+        generation_int = int(generation_raw)
+    except (TypeError, ValueError):
+        generation_int = 0
     dirty = store.peek_dirty_paths()
     return {
         "index_used": True,
-        "index_generation": int(generation_raw),
+        "index_generation": generation_int,
         "is_stale": False,
         "dirty_paths_count": len(dirty),
         "marked_paths": [normalize_relative_path(p) for p in paths],

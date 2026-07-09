@@ -88,9 +88,7 @@ def test_store_creates_chunks_fts_virtual_table(tmp_path: Path) -> None:
     finally:
         store.close()
     # Either 'chunks_fts' or 'chunks_fts_data'/'chunks_fts_idx' shadow names exist.
-    assert any(name.startswith("chunks_fts") for name in vtables) or any(
-        name.startswith("chunks_fts") for name in tables
-    ) if False else True  # Always true; explicit FTS check below.
+    assert any(name.startswith("chunks_fts") for name in vtables)
 
 
 def test_upsert_and_get_file_roundtrip(tmp_path: Path) -> None:

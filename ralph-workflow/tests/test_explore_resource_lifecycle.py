@@ -20,7 +20,6 @@ from pathlib import Path
 
 import pytest
 
-
 EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
 
 
@@ -36,24 +35,7 @@ def _audit_module_via_python_api() -> tuple[list, int]:
 def test_explore_handlers_use_bounded_accumulators() -> None:
     if not EXPLORE_ROOT.is_dir():
         pytest.skip(f"explore module not present: {EXPLORE_ROOT}")
-    try:
-        violations, files_checked = _audit_module_via_python_api()
-    except AttributeError:
-        # audit_resource_lifecycle does not expose a per-directory
-        # Python entrypoint; fall back to the CLI command, which is
-        # the canonical audit path.
-        import subprocess
-
-        result = subprocess.run(
-            ["python", "-m", "ralph.testing.audit_resource_lifecycle", str(EXPLORE_ROOT)],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, (
-            "audit_resource_lifecycle reported violations:\n"
-            f"{result.stdout}\n{result.stderr}"
-        )
-        return
+    violations, files_checked = _audit_module_via_python_api()
     formatted = "\n".join(str(v) for v in violations)
     assert not violations, (
         f"Found {len(violations)} resource-lifecycle violations in "

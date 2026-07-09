@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import fnmatch
 import json
-from typing import TYPE_CHECKING
+import sqlite3
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
 from ralph.mcp.tools.coordination import (
@@ -36,10 +37,27 @@ from ralph.mcp.tools.workspace._utils import (
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
+    from ralph.mcp.explore.store import EvidenceRow, ExploreStore
     from ralph.workspace import Workspace
 
 
 # --- Phase 1 indexed read helpers -----------------------------------------
+
+
+def _tombstone_replacement(tombstone: sqlite3.Row) -> str | None:
+    """Return the tombstone's replacement_evidence_id, typed as ``str | None``."""
+    raw: object = tombstone["replacement_evidence_id"]
+    if raw is None:
+        return None
+    return str(raw)
+
+
+def _tombstone_field(tombstone: sqlite3.Row, key: str) -> str:
+    """Read a string-typed tombstone column with precise return type."""
+    raw: object = tombstone[key]
+    if raw is None:
+        return ""
+    return str(raw)
 
 
 def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | None:
@@ -52,22 +70,22 @@ def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | 
     handle = resolve_explore_index(session)
     if handle is None:
         return None
-    store = getattr(handle, "store", None)
+    store: ExploreStore | None = getattr(handle, "store", None)
     if store is None:
         return None
-    row = store.get_evidence(evidence_id)
+    row: EvidenceRow | None = store.get_evidence(evidence_id)
     if row is None:
         # Try the tombstone for retention_expired vs stale_evidence.
-        tombstone = store.get_tombstone(evidence_id)
+        tombstone: sqlite3.Row | None = store.get_tombstone(evidence_id)
         if tombstone is None:
             raise ToolError(
                 f"unknown_evidence: {evidence_id!r} (no live row or tombstone)"
             )
         return {
             "stale_evidence": True,
-            "stale_reason": tombstone["stale_reason"],
-            "replacement_evidence_id": tombstone["replacement_evidence_id"],
-            "path": tombstone["path"],
+            "stale_reason": _tombstone_field(tombstone, "stale_reason"),
+            "replacement_evidence_id": _tombstone_replacement(tombstone),
+            "path": _tombstone_field(tombstone, "path"),
         }
     return {
         "evidence_id": row.evidence_id,
@@ -83,14 +101,18 @@ def _freshness_for_read(session: object) -> dict[str, object]:
     handle = resolve_explore_index(session)
     if handle is None:
         return {}
-    store = getattr(handle, "store", None)
+    store: ExploreStore | None = getattr(handle, "store", None)
     if store is None:
         return {}
     generation_raw = store.get_setting("current_generation") or "0"
+    try:
+        generation_int = int(generation_raw)
+    except (TypeError, ValueError):
+        generation_int = 0
     dirty = store.peek_dirty_paths()
     return {
         "index_used": True,
-        "index_generation": int(generation_raw),
+        "index_generation": generation_int,
         "is_stale": bool(dirty),
         "dirty_paths_count": len(dirty),
         "stale_paths_count": 0,
@@ -260,10 +282,17 @@ def handle_read_file(
         if return_metadata:
             # Re-decode the JSON envelope and append freshness.
             try:
-                payload = json.loads(result.content[0].text)
-                payload.update(_freshness_for_read(session))
+                first_content = result.content[0]
+                if not isinstance(first_content, ToolContent):
+                    return result
+                raw_payload: object = json.loads(first_content.text)
+                if not isinstance(raw_payload, dict):
+                    return result
+                freshness = _freshness_for_read(session)
+                payload_dict: dict[str, object] = cast("dict[str, object]", raw_payload)
+                payload_dict.update(freshness)
                 return ToolResult(
-                    content=[ToolContent.text_content(_tool_json(payload))],
+                    content=[ToolContent.text_content(_tool_json(payload_dict))],
                     is_error=result.is_error,
                 )
             except (ValueError, TypeError):
@@ -325,7 +354,7 @@ def handle_read_file(
 
 def _read_via_evidence(
     session: object,
-    workspace: "Workspace",
+    workspace: Workspace,
     *,
     evidence_id: str,
     context_lines: int,
@@ -354,8 +383,10 @@ def _read_via_evidence(
             is_error=True,
         )
     path = info["path"]
-    start_line = int(info.get("start_line") or 0)
-    end_line = int(info.get("end_line") or 0)
+    start_line_raw: object = info.get("start_line") or 0
+    end_line_raw: object = info.get("end_line") or 0
+    start_line = int(start_line_raw) if isinstance(start_line_raw, (int, str, float)) else 0
+    end_line = int(end_line_raw) if isinstance(end_line_raw, (int, str, float)) else 0
     expected_content_hash = expected_hash or info.get("content_hash")
     normalized = normalize_relative_path(str(path))
     actual_hash = _hash_file(workspace, normalized)
@@ -511,7 +542,7 @@ def handle_read_multiple_files(
 
 def _read_multiple_item(
     session: object,
-    workspace: "Workspace",
+    workspace: Workspace,
     item: dict[str, object],
     *,
     per_item_max_bytes: int,
@@ -532,15 +563,33 @@ def _read_multiple_item(
             ),
             return_metadata=return_metadata,
         )
+        first_content = single_result.content[0]
+        if not isinstance(first_content, ToolContent):
+            return {
+                "selector": "evidence_id",
+                "evidence_id": str(item["evidence_id"]),
+                "is_error": single_result.is_error,
+                "content": "",
+            }
         try:
-            payload = json.loads(single_result.content[0].text)
+            payload: object = json.loads(first_content.text)
         except (ValueError, TypeError):
-            payload = {"raw": single_result.content[0].text}
-        payload["is_error"] = single_result.is_error
-        if per_item_max_bytes and isinstance(payload.get("content"), str):
-            payload["content"] = payload["content"][:per_item_max_bytes]
-            payload["truncated"] = True
-        return payload
+            payload = {"raw": first_content.text}
+        if not isinstance(payload, dict):
+            return {
+                "selector": "evidence_id",
+                "evidence_id": str(item["evidence_id"]),
+                "is_error": single_result.is_error,
+                "content": "",
+            }
+        payload_dict: dict[str, object] = cast("dict[str, object]", payload)
+        payload_dict["is_error"] = single_result.is_error
+        if per_item_max_bytes and isinstance(payload_dict.get("content"), str):
+            content_value = payload_dict["content"]
+            assert isinstance(content_value, str)
+            payload_dict["content"] = content_value[:per_item_max_bytes]
+            payload_dict["truncated"] = True
+        return payload_dict
     if "span_id" in item:
         return {
             "selector": "span_id",
@@ -577,11 +626,15 @@ def _read_multiple_item(
         truncated = True
     else:
         truncated = False
-    payload: dict[str, object] = {"path": path, "content": content, "truncated": truncated}
+    path_payload: dict[str, object] = {
+        "path": path,
+        "content": content,
+        "truncated": truncated,
+    }
     if return_metadata:
-        payload["content_hash"] = _hash_file(workspace, normalized)
-        payload.update(_freshness_for_read(session))
-    return payload
+        path_payload["content_hash"] = _hash_file(workspace, normalized)
+        path_payload.update(_freshness_for_read(session))
+    return path_payload
 
 
 def handle_stat(
@@ -775,7 +828,7 @@ def handle_search_files(
         matches = []
 
     # Ranking.
-    score_reasons: list = []
+    score_reasons: list[dict[str, object]] = []
     if ranked:
         from ralph.mcp.explore.ranking import score_search_file, sort_ranked
 
@@ -815,20 +868,18 @@ def handle_search_files(
     if return_evidence_ids:
         # Phase 1 evidence for path-only searches is the file's own
         # chunk_id for line 1..1; Phase 2 will provide per-symbol ids.
-        from ralph.mcp.explore.store import (
-            ExploreStore,
-            derive_evidence_id,
-        )
-
         # Best-effort: emit evidence handles only when an index handle
         # is attached. Otherwise the caller is in legacy mode.
         from ralph.mcp.explore.dirty_paths import resolve_explore_index
+        from ralph.mcp.explore.store import (
+            derive_evidence_id,
+        )
 
         handle = resolve_explore_index(session)
         if handle is not None:
-            store = getattr(handle, "store", None)
+            store: ExploreStore | None = getattr(handle, "store", None)
             if store is not None:
-                output["evidence_ids"] = [
+                evidence_ids: list[str] = [
                     derive_evidence_id(
                         path=m,
                         content_hash="",
@@ -839,6 +890,7 @@ def handle_search_files(
                     )
                     for m in matches
                 ]
+                output["evidence_ids"] = evidence_ids
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(output))], is_error=False
     )

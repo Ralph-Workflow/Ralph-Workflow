@@ -15,10 +15,12 @@ and pass it as ``session.explore_index``.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import time
-from dataclasses import dataclass, field
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.pipeline import (
     DEFAULT_TIMEOUT_MS,
@@ -30,6 +32,7 @@ from ralph.mcp.explore.store import (
     DEFAULT_INDEX_ROOT,
     ExploreStore,
     normalize_index_path,
+    row_str,
 )
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
@@ -113,8 +116,17 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
         generation = int(raw)
     except ValueError:
         generation = 0
-    latest = store.latest_job()
-    last_status = latest["status"] if latest is not None else None
+    latest_row: sqlite3.Row | None = store.latest_job()
+    raw_status: object = (
+        row_str(latest_row, "status") if latest_row is not None else ""
+    )
+    last_status: str | None
+    if raw_status == "":
+        last_status = None
+    elif isinstance(raw_status, str):
+        last_status = raw_status
+    else:
+        last_status = str(raw_status)
     return ExploreIndex(
         workspace_root=workspace_root,
         index_root=index_root,
@@ -129,7 +141,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
 
 def _resolve_explore_index(session: object) -> ExploreIndex | None:
     """Return the explore index handle attached to ``session`` if any."""
-    handle = getattr(session, "explore_index", None)
+    handle: ExploreIndex | None = getattr(session, "explore_index", None)
     if handle is None:
         return None
     return handle
@@ -172,11 +184,15 @@ def handle_ralph_index_status(
     require_capability(
         session, WORKSPACE_METADATA_READ_CAPABILITY, "Explore index status"
     )
-    workspace_root = getattr(workspace, "root", None) or params.get(
+    workspace_root_obj: object = getattr(workspace, "root", None)
+    workspace_root_raw: object = workspace_root_obj or params.get(
         "workspace_root", ""
     )
-    workspace_root = Path(str(workspace_root)) if workspace_root else Path.cwd()
-    handle = _resolve_explore_index(session)
+    workspace_root_str: str = (
+        str(workspace_root_raw) if workspace_root_raw else ""
+    )
+    workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()
+    handle: ExploreIndex | None = _resolve_explore_index(session)
     if handle is None:
         handle = build_explore_index(workspace_root)
         cold_index_required = handle.generation == 0
@@ -204,22 +220,39 @@ def _build_status_payload(
     cold_index_required: bool,
 ) -> dict[str, object]:
     store = handle.store
-    latest = store.latest_job()
-    indexed_at_raw = latest["finished_at"] if latest is not None else None
-    indexed_at = float(indexed_at_raw) if indexed_at_raw is not None else None
+    latest_row: sqlite3.Row | None = store.latest_job()
+    finished_value: str = (
+        row_str(latest_row, "finished_at") if latest_row is not None else ""
+    )
+    indexed_at: float | None
+    if finished_value == "":
+        indexed_at = None
+    else:
+        try:
+            indexed_at = float(finished_value)
+        except ValueError:
+            indexed_at = None
     dirty_paths = store.peek_dirty_paths()
     files_indexed = sum(1 for _ in store.iter_files())
     # Ponytail: ``files_stale`` counts deleted files; ``is_stale`` is
     # true when dirty paths exist OR a deleted file still has a row.
     stale_paths = sum(1 for row in store.iter_files() if row.is_deleted)
     is_stale = bool(dirty_paths) or stale_paths > 0
+    last_job_dict: dict[str, object] | None
+    if latest_row is None:
+        last_job_dict = None
+    else:
+        last_job_dict = {
+            str(key): str(cast("object", latest_row[key]))
+            for key in cast("Iterable[str]", latest_row)
+        }
     return {
         "index_exists": handle.generation > 0,
         "generation": handle.generation,
         "indexed_at": indexed_at,
         "files_indexed": files_indexed,
         "files_stale": stale_paths,
-        "last_job": dict(latest) if latest is not None else None,
+        "last_job": last_job_dict,
         "capabilities": ["evidence_lookup", "fts_search"],
         "graph_backend": "sqlite",
         "dirty_paths_count": len(dirty_paths),
@@ -248,25 +281,43 @@ def handle_ralph_reindex(
     current capability.
     """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Explore reindex")
-    mode = str(params.get("mode", "changed"))
+    mode_raw: object = params.get("mode", "changed")
+    mode: str = str(mode_raw) if not isinstance(mode_raw, str) else mode_raw
     if mode not in {"changed", "full"}:
         raise InvalidParamsError(
             f"Invalid reindex mode: {mode!r}; expected 'changed' or 'full'"
         )
-    timeout_ms = int(params.get("timeout_ms", DEFAULT_TIMEOUT_MS))
+    timeout_raw: object = params.get("timeout_ms", DEFAULT_TIMEOUT_MS)
+    if isinstance(timeout_raw, bool) or not isinstance(
+        timeout_raw, (int, float, str)
+    ):
+        timeout_ms = DEFAULT_TIMEOUT_MS
+    else:
+        try:
+            timeout_ms = int(timeout_raw)
+        except (TypeError, ValueError):
+            timeout_ms = DEFAULT_TIMEOUT_MS
     if timeout_ms <= 0:
         raise InvalidParamsError("timeout_ms must be positive")
-    path_scope_raw = params.get("path_scope")
+    path_scope_raw: object = params.get("path_scope")
     path_scope: tuple[str, ...] = ()
     if isinstance(path_scope_raw, list):
-        path_scope = tuple(normalize_index_path(str(p)) for p in path_scope_raw)
+        path_scope = tuple(
+            normalize_index_path(str(p))
+            for p in path_scope_raw
+            if isinstance(p, (str, int, float))
+        )
 
-    workspace_root = getattr(workspace, "root", None) or params.get(
+    workspace_root_obj2: object = getattr(workspace, "root", None)
+    workspace_root_raw2: object = workspace_root_obj2 or params.get(
         "workspace_root", ""
     )
-    workspace_root = Path(str(workspace_root)) if workspace_root else Path.cwd()
+    workspace_root_str2: str = (
+        str(workspace_root_raw2) if workspace_root_raw2 else ""
+    )
+    workspace_root = Path(workspace_root_str2) if workspace_root_str2 else Path.cwd()
 
-    handle = _resolve_explore_index(session)
+    handle: ExploreIndex | None = _resolve_explore_index(session)
     if handle is None:
         handle = build_explore_index(workspace_root)
         # The first call from a session without an explore index is
@@ -282,8 +333,8 @@ def handle_ralph_reindex(
     )
     try:
         result = reindex(handle.store, handle.workspace_root, options=options)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("ralph_reindex crashed: {err}", err=exc)
+    except Exception as exc:
+        logger.exception("ralph_reindex crashed: %s", exc)
         return ToolResult(
             content=[
                 ToolContent.text_content(
@@ -334,9 +385,9 @@ __all__ = [
 
 # Re-export module-level helpers so tests can import them directly.
 __all__ += [
-    "_resolve_explore_index",
-    "_build_status_payload",
     "_build_reindex_payload",
+    "_build_status_payload",
     "_gitignore_coverage",
+    "_resolve_explore_index",
     "_resolve_index_dir",
 ]

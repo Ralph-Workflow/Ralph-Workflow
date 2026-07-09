@@ -31,9 +31,9 @@ from ralph.mcp.explore.deferred_phases import (
 
 __all__ = [
     "AUDIT_REGISTER",
+    "DEFERRED_PHASES",
     "AuditEntry",
     "AuditOutcome",
-    "DEFERRED_PHASES",
     "DeferredPhase",
     "DeferredPhaseRegistry",
     "audit_register",
