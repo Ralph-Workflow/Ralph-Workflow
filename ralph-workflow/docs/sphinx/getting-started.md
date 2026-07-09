@@ -58,7 +58,7 @@ needs credentials the agent cannot reach.
 For a worked reference of a small feature slice with a visible
 endpoint, see the
 [example-api proof page](../../../docs/examples/example-api.md) -- it
-is the canonical Ralph starter task (a Flask `/health` endpoint) and is
+is the canonical Ralph Workflow starter task (a Flask `/health` endpoint) and is
 the smallest possible end-to-end result the loop can produce.
 
 ## Write the spec in five minutes
