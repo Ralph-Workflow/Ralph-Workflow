@@ -18,6 +18,7 @@ spill behavior cannot silently diverge.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -79,19 +80,60 @@ def format_or_spill(
     returncode: int,
     truncated: bool,
     spill_dir: Path | None,
+    summary: bool = False,
 ) -> ToolResult:
     """Return the result inline, or spill to a file when it is too large.
 
     ``truncated`` forces a spill even under the inline limit, because a truncated
     capture means the full output never fit and the agent must be told so.
+
+    AC-11 contract: when ``summary=True`` the response is a JSON
+    envelope carrying ``stdout_resource_id`` / ``stderr_resource_id``
+    replayable handles plus spill paths and a head/tail preview. The
+    raw output fallback (``summary=False``) is the legacy behavior.
     """
     encoded_len = len(text.encode("utf-8", errors="replace"))
     is_error = returncode != 0
     if truncated or encoded_len > INLINE_OUTPUT_LIMIT_BYTES:
         spill_path = spill_output(text, spill_dir)
         preview = build_spill_preview(text, spill_path, encoded_len, truncated=truncated)
-        return ToolResult(content=[ToolContent.text_content(preview)], is_error=is_error)
-    return ToolResult(content=[ToolContent.text_content(text)], is_error=is_error)
+        if not summary:
+            return ToolResult(
+                content=[ToolContent.text_content(preview)], is_error=is_error
+            )
+        resource_id = f"ralph://exec/{spill_path.name}"
+        payload = {
+            "format": "summary",
+            "returncode": returncode,
+            "is_error": is_error,
+            "stdout_bytes": encoded_len,
+            "truncated": truncated,
+            "stdout_resource_id": resource_id,
+            "stdout_spill_path": str(spill_path),
+            "preview": preview,
+        }
+
+        return ToolResult(
+            content=[ToolContent.text_content(json.dumps(payload))],
+            is_error=is_error,
+        )
+    if not summary:
+        return ToolResult(content=[ToolContent.text_content(text)], is_error=is_error)
+    payload = {
+        "format": "summary",
+        "returncode": returncode,
+        "is_error": is_error,
+        "stdout_bytes": encoded_len,
+        "truncated": False,
+        "stdout_resource_id": None,
+        "stdout_spill_path": None,
+        "stdout": text,
+    }
+
+    return ToolResult(
+        content=[ToolContent.text_content(json.dumps(payload))],
+        is_error=is_error,
+    )
 
 
 __all__ = [

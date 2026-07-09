@@ -102,13 +102,16 @@ def test_explore_catalog_token_count_stays_bounded() -> None:
 
 
 def test_deferred_explore_tools_have_no_schemas_yet() -> None:
-    """Deferred phases (ralph_graph, structure module) must NOT be registered
-    as live tool specs. They live in DEFERRED_PHASES with rationale + risk.
+    """Deferred phases (structure module) must NOT be registered as
+    live tool specs. ``ralph_graph`` is now a live spec in this
+    slice (Phase 2/3 delivery); the deferred register still
+    contains phase_2/phase_3 entries for documentation.
     """
     names = {spec.metadata.definition.name for spec in explore_specs()}
-    assert "ralph_graph" not in names, (
-        "ralph_graph is deferred to Phase 2/3 and must not be a live spec yet"
-    )
+    # ``ralph_graph`` is implemented in this slice; structure.py
+    # stays in the deferred register because the public MCP surface
+    # does not expose it as a tool.
+    assert "ralph_graph" in names
     deferred_ids = {entry.phase_id for entry in DEFERRED_PHASES}
     assert "phase_2" in deferred_ids
     assert "phase_3" in deferred_ids

@@ -695,6 +695,21 @@ def handle_exec_command(
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)
     effective_deps = _build_effective_deps(session, deps)
+    # AC-11: ``format=summary`` requests the bounded JSON envelope with
+    # replayable resource handles; the default preserves the legacy
+    # text/head-tail shape.
+    from collections.abc import Mapping as _Mapping  # noqa: PLC0415
+
+    format_value = params.get("format", "raw") if isinstance(params, _Mapping) else "raw"
+    if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
+        from ralph.mcp.tools.coordination import (  # noqa: PLC0415
+            InvalidParamsError,
+        )
+
+        raise InvalidParamsError(
+            f"Invalid format: {format_value!r}; expected 'raw' or 'summary'"
+        )
+    summary = format_value == "summary"
     try:
         output = run_command(
             parsed.command, parsed.args, workspace, parsed.timeout_ms, deps=effective_deps
@@ -715,6 +730,7 @@ def handle_exec_command(
         returncode=output.returncode,
         truncated=output.truncated,
         spill_dir=resolve_spill_dir(workspace, deps),
+        summary=summary,
     )
 
 

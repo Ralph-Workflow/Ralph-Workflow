@@ -41,6 +41,7 @@ likely cause (vendor/ submodule or held lock) and tells the agent
 
 from __future__ import annotations
 
+import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -65,6 +66,8 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 GIT_STATUS_READ_CAPABILITY = "GitStatusRead"
 GIT_DIFF_READ_CAPABILITY = "GitDiffRead"
 DEFAULT_LOG_COUNT = 10
+#: Number of tab-separated fields in a ``git diff --numstat`` line.
+_NUMSTAT_FIELD_COUNT = 3
 type GitRunner = Callable[[list[str], Path], subprocess.CompletedProcess[bytes]]
 type CwdProvider = Callable[[], Path]
 
@@ -224,29 +227,59 @@ def _git_read_result(produce: Callable[[], str]) -> ToolResult:
 def handle_git_status(
     session: CoordinationSessionLike,
     workspace: object,
-    _params: Mapping[str, object],
+    params: Mapping[str, object],
 ) -> ToolResult:
     """Read the git status of the workspace.
 
-    Args:
-        session: Agent session; must declare ``GitStatusRead``.
-        workspace: Workspace surface whose root is the cwd for ``git status``.
-        _params: Unused; kept for tool-handler signature parity.
-
-    Returns:
-        A ``ToolResult`` whose text content is the ``git status`` output.
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``GitStatusRead``.
-
-    Side effects:
-        Spawns a ``git status`` subprocess registered with the global
-        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
-        No workspace writes, no network calls.
+    AC-11: the optional ``format`` argument selects between
+    ``raw`` (default; unchanged legacy output) and ``compact``
+    (ranked changed paths with role tags + byte budget).
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
-    return _git_read_result(lambda: run_git_command(workspace, ["status"]))
+    format_value = params.get("format", "raw") if params else "raw"
+    if not isinstance(format_value, str) or format_value not in {"raw", "compact"}:
+        raise InvalidParamsError(
+            f"Invalid format: {format_value!r}; expected 'raw' or 'compact'"
+        )
+    if format_value == "raw":
+        return _git_read_result(lambda: run_git_command(workspace, ["status"]))
+    # Compact mode: run ``git status --porcelain`` and emit ranked
+    # JSON cards. The runner is the lenient variant so the absence
+    # of changes returns cleanly.
+    raw_result = run_git_command_lenient(workspace, ["status", "--porcelain"])
+    lines = raw_result.stdout.decode("utf-8", errors="replace").splitlines()
+    cards: list[dict[str, object]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        code = line[:2]
+        path = line[3:].strip()
+        role = (
+            "staged" if code[0] != " " and code[0] != "?" else "unstaged"
+        )
+        cards.append(
+            {
+                "path": path,
+                "code": code,
+                "role": role,
+                "untracked": code == "??",
+            }
+        )
+    payload = {
+        "format": "compact",
+        "changed_count": len(cards),
+        "staged_count": sum(1 for c in cards if c["role"] == "staged"),
+        "unstaged_count": sum(1 for c in cards if c["role"] == "unstaged"),
+        "untracked_count": sum(1 for c in cards if c["untracked"]),
+        "paths": cards,
+        "raw_lines": lines,
+    }
+
+    return ToolResult(
+        content=[ToolContent.text_content(json.dumps(payload))],
+        is_error=bool(raw_result.returncode)
+        and raw_result.returncode not in (0, 1),
+    )
 
 
 def handle_git_diff(
@@ -256,32 +289,71 @@ def handle_git_diff(
 ) -> ToolResult:
     """Read the git diff of the workspace.
 
-    Args:
-        session: Agent session; must declare ``GitDiffRead``.
-        workspace: Workspace surface whose root is the cwd for ``git diff``.
-        params: Mapping with optional ``args`` (list of strings passed
-            verbatim to ``git diff``). Empty mapping returns the
-            full-tree diff.
-
-    Returns:
-        A ``ToolResult`` whose text content is the ``git diff`` output.
-        The lenient runner is used so a non-zero exit (no diff to show,
-        unmatched path filter) surfaces as stdout/stderr rather than
-        an exception.
-
-    Raises:
-        CapabilityDeniedError: When the session does not declare
-            ``GitDiffRead``.
-        InvalidParamsError: When ``params`` fails ``parse_git_diff_params``.
-
-    Side effects:
-        Spawns a ``git diff`` subprocess registered with the global
-        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
-        No workspace writes, no network calls.
+    AC-11: ``format=raw`` (default) preserves the legacy text
+    output. ``format=summary`` returns a compact summary card
+    with changed files, insertion/deletion counts, and an output
+    byte cap so agents do not pay for unread diff bodies.
+    ``max_bytes`` caps the returned text; default 50_000.
     """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
     parsed = parse_git_diff_params(params)
-    return _git_read_result(lambda: run_git_command_lenient(workspace, ["diff", *parsed.args]))
+    format_value = params.get("format", "raw") if params else "raw"
+    if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
+        raise InvalidParamsError(
+            f"Invalid format: {format_value!r}; expected 'raw' or 'summary'"
+        )
+    if format_value == "raw":
+        return _git_read_result(lambda: run_git_command_lenient(workspace, ["diff", *parsed.args]))
+    max_bytes_raw = params.get("max_bytes", 50_000)
+    try:
+        max_bytes = int(max_bytes_raw) if not isinstance(max_bytes_raw, bool) else 50_000
+    except (TypeError, ValueError):
+        max_bytes = 50_000
+    raw_result = run_git_command_lenient(workspace, ["diff", "--numstat", *parsed.args])
+    numstat_output = raw_result.stdout.decode("utf-8", errors="replace")
+    cards: list[dict[str, object]] = []
+    for line in numstat_output.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) < _NUMSTAT_FIELD_COUNT:
+            continue
+        added = parts[0]
+        removed = parts[1]
+        path = parts[2]
+        try:
+            added_count = int(added) if added != "-" else 0
+            removed_count = int(removed) if removed != "-" else 0
+        except ValueError:
+            added_count = 0
+            removed_count = 0
+        cards.append(
+            {
+                "path": path,
+                "added": added_count,
+                "removed": removed_count,
+            }
+        )
+    full_result = run_git_command_lenient(workspace, ["diff", *parsed.args])
+    full_text = full_result.stdout.decode("utf-8", errors="replace")
+    truncated = len(full_text) > max_bytes
+    if truncated:
+        full_text = full_text[:max_bytes]
+    payload = {
+        "format": "summary",
+        "files_changed": len(cards),
+        "added": sum(c["added"] for c in cards if isinstance(c["added"], int)),
+        "removed": sum(c["removed"] for c in cards if isinstance(c["removed"], int)),
+        "files": cards,
+        "diff_excerpt": full_text,
+        "truncated": truncated,
+        "max_bytes": max_bytes,
+    }
+
+    return ToolResult(
+        content=[ToolContent.text_content(json.dumps(payload))],
+        is_error=False,
+    )
 
 
 def handle_git_log(

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.explore import graph as graph_module
 from ralph.mcp.explore.pipeline import (
     DEFAULT_TIMEOUT_MS,
     ReindexOptions,
@@ -180,6 +181,13 @@ def handle_ralph_index_status(
     """Report index health and freshness.
 
     Capability: ``WorkspaceMetadataRead`` (read-only metadata).
+
+    Side-effect free contract: this handler MUST NOT create SQLite
+    files, ``.agent/ralph-explore/`` directories, or modify gitignore
+    state. When the session has no explore index handle, it inspects
+    the existing on-disk state and reports ``enabled=False`` /
+    ``index_exists=False`` so callers can decide whether to run
+    ``ralph_reindex``.
     """
     require_capability(
         session, WORKSPACE_METADATA_READ_CAPABILITY, "Explore index status"
@@ -194,15 +202,24 @@ def handle_ralph_index_status(
     workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()
     handle: ExploreIndex | None = _resolve_explore_index(session)
     if handle is None:
-        handle = build_explore_index(workspace_root)
-        cold_index_required = handle.generation == 0
-        payload = _build_status_payload(
-            handle, workspace_root, cold_index_required
-        )
-        payload["enabled"] = False
-        payload["index_exists"] = False
+        # Side-effect free: inspect existing disk state without
+        # creating files. ``enabled=False`` reports the absence; the
+        # caller decides whether to run ``ralph_reindex`` to enable it.
+        index_dir = _resolve_index_dir(workspace_root)
+        db_path = index_dir / "index.sqlite"
+        index_exists_on_disk = db_path.is_file()
+        cold_index_required = not index_exists_on_disk
         return ToolResult(
-            content=[ToolContent.text_content(_tool_json(payload))],
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        _build_disabled_status_payload(
+                            workspace_root,
+                            cold_index_required=cold_index_required,
+                        )
+                    )
+                )
+            ],
             is_error=False,
         )
     cold_index_required = handle.generation == 0
@@ -212,6 +229,32 @@ def handle_ralph_index_status(
         content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
+
+
+def _build_disabled_status_payload(
+    workspace_root: Path,
+    *,
+    cold_index_required: bool,
+) -> dict[str, object]:
+    """Return the side-effect-free status payload when no handle exists."""
+    return {
+        "enabled": False,
+        "index_exists": False,
+        "generation": 0,
+        "indexed_at": None,
+        "files_indexed": 0,
+        "files_stale": 0,
+        "last_job": None,
+        "capabilities": [],
+        "graph_backend": "sqlite",
+        "dirty_paths_count": 0,
+        "cold_index_required": cold_index_required,
+        "last_refresh_kind": "none",
+        "is_stale": False,
+        "stale_paths_count": 0,
+        "index_storage_bytes": 0,
+        "managed_ignore_rule_present": _gitignore_coverage(workspace_root),
+    }
 
 
 def _build_status_payload(
@@ -261,10 +304,7 @@ def _build_status_payload(
         "is_stale": is_stale,
         "stale_paths_count": stale_paths,
         "index_storage_bytes": handle.index_storage_bytes(),
-        "gitignore_coverage": {
-            "present": _gitignore_coverage(workspace_root),
-            "rule": ".agent/",
-        },
+        "managed_ignore_rule_present": _gitignore_coverage(workspace_root),
     }
 
 
@@ -372,10 +412,196 @@ def _build_reindex_payload(result: ReindexResult) -> dict[str, object]:
     }
 
 
+# --- ralph_graph handler (AC-07) ------------------------------------------
+
+
+_VALID_GRAPH_QUERY_TYPES: tuple[str, ...] = (
+    "neighbors",
+    "path",
+    "impact",
+    "hubs",
+    "tests",
+)
+_VALID_FRESHNESS: tuple[str, ...] = ("required", "prefer_fresh", "allow_stale")
+_VALID_CHANGE_KINDS: tuple[str, ...] = (
+    "rename",
+    "signature",
+    "behavior",
+    "delete",
+    "unknown",
+)
+#: Prompt-exact upper bound for the ``limit`` parameter (the graph
+#: contract always exposes the same cap).
+_GRAPH_LIMIT_MAX: int = 100
+
+
+def _graph_node_to_dict(node: graph_module.GraphNode) -> dict[str, object]:
+    return {
+        "id": node.id,
+        "kind": node.kind,
+        "label": node.label,
+        "path": node.path,
+        "confidence": node.confidence,
+        "provenance": node.provenance,
+        "evidence_ids": list(node.evidence_ids),
+    }
+
+
+def _graph_edge_to_dict(edge: graph_module.GraphEdge) -> dict[str, object]:
+    return {
+        "source": edge.source,
+        "target": edge.target,
+        "relation": edge.relation,
+        "path": edge.path,
+        "confidence": edge.confidence,
+        "provenance": edge.provenance,
+        "reason": edge.reason,
+        "evidence_id": edge.evidence_id,
+    }
+
+
+def _graph_result_to_dict(result: graph_module.GraphResult) -> dict[str, object]:
+    return {
+        "query_type": result.query_type,
+        "nodes": [_graph_node_to_dict(n) for n in result.nodes],
+        "edges": [_graph_edge_to_dict(e) for e in result.edges],
+        "paths": [list(p) for p in result.paths],
+        "impacted_files": list(result.impacted_files),
+        "suggested_tests": [_graph_node_to_dict(n) for n in result.suggested_tests],
+        "confidence": result.confidence,
+        "provenance": result.provenance,
+        "evidence_ids": list(result.evidence_ids),
+        "missing_data": list(result.missing_data),
+        "index_generation": result.index_generation,
+        "is_stale": result.is_stale,
+        "truncated": result.truncated,
+        "metadata": dict(result.metadata),
+    }
+
+
+def handle_ralph_graph(
+    session: CoordinationSessionLike,
+    workspace: object,
+    params: dict[str, object],
+) -> ToolResult:
+    """Bounded graph-native query over the indexed exploration substrate.
+
+    Capability: ``WorkspaceRead``. Every response includes the
+    prompt-exact shared fields (``nodes``, ``edges``, ``paths``,
+    ``impacted_files``, ``suggested_tests``, ``confidence``,
+    ``provenance``, ``evidence_ids``, ``missing_data``,
+    ``index_generation``, ``is_stale``, ``truncated``).
+    """
+    require_capability(session, WORKSPACE_READ_CAPABILITY, "Graph query")
+    query_type_raw: object = params.get("query_type", "")
+    if not isinstance(query_type_raw, str) or query_type_raw not in _VALID_GRAPH_QUERY_TYPES:
+        raise InvalidParamsError(
+            f"Invalid query_type: {query_type_raw!r}; expected one of "
+            f"{', '.join(_VALID_GRAPH_QUERY_TYPES)}"
+        )
+    target = str(params.get("target", "")) if params.get("target") is not None else ""
+    target_b_raw = params.get("target_b")
+    target_b: str | None = (
+        str(target_b_raw) if isinstance(target_b_raw, str) and target_b_raw else None
+    )
+    relations_raw = params.get("relations")
+    relations: tuple[str, ...] | None = None
+    if isinstance(relations_raw, list):
+        relations = tuple(str(rel) for rel in relations_raw if isinstance(rel, str))
+    freshness_raw: object = params.get("freshness", "prefer_fresh")
+    freshness: str = (
+        str(freshness_raw) if isinstance(freshness_raw, str) else "prefer_fresh"
+    )
+    if freshness not in _VALID_FRESHNESS:
+        raise InvalidParamsError(
+            f"Invalid freshness: {freshness!r}; expected one of "
+            f"{', '.join(_VALID_FRESHNESS)}"
+        )
+    limit = _int_param(params, "limit", 25)
+    if limit < 1 or limit > _GRAPH_LIMIT_MAX:
+        raise InvalidParamsError("limit must be between 1 and 100")
+    direction = str(params.get("direction", "both"))
+    if direction not in {"out", "in", "both"}:
+        raise InvalidParamsError(
+            f"Invalid direction: {direction!r}; expected 'out', 'in', or 'both'"
+        )
+    depth = _int_param(params, "depth", 1)
+    max_paths = _int_param(params, "max_paths", 3)
+    change_kind_raw: object = params.get("change_kind", "unknown")
+    change_kind: str = (
+        str(change_kind_raw) if isinstance(change_kind_raw, str) else "unknown"
+    )
+    if change_kind not in _VALID_CHANGE_KINDS:
+        raise InvalidParamsError(
+            f"Invalid change_kind: {change_kind!r}; expected one of "
+            f"{', '.join(_VALID_CHANGE_KINDS)}"
+        )
+    scope_path_raw = params.get("scope_path")
+    scope_path: str | None = (
+        str(scope_path_raw)
+        if isinstance(scope_path_raw, str) and scope_path_raw
+        else None
+    )
+    role_raw = params.get("role")
+    role: str | None = (
+        str(role_raw) if isinstance(role_raw, str) and role_raw else None
+    )
+
+    handle: ExploreIndex | None = _resolve_explore_index(session)
+    if handle is None:
+        workspace_root_obj: object = getattr(workspace, "root", None)
+        workspace_root_raw: object = workspace_root_obj or params.get(
+            "workspace_root", ""
+        )
+        workspace_root_str: str = (
+            str(workspace_root_raw) if workspace_root_raw else ""
+        )
+        workspace_root = (
+            Path(workspace_root_str) if workspace_root_str else Path.cwd()
+        )
+        handle = build_explore_index(workspace_root)
+    result = graph_module.run_query(
+        handle.store,
+        query_type=query_type_raw,
+        target=target,
+        target_b=target_b,
+        relations=relations,
+        limit=limit,
+        freshness=freshness,
+        direction=direction,
+        depth=depth,
+        max_paths=max_paths,
+        change_kind=change_kind,
+        scope_path=scope_path,
+        role=role,
+    )
+    payload = _graph_result_to_dict(result)
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload))],
+        is_error=False,
+    )
+
+
+def _int_param(params: dict[str, object], key: str, default: int) -> int:
+    """Coerce an integer parameter, falling back to ``default`` on error."""
+    raw: object = params.get(key, default)
+    if isinstance(raw, bool):
+        return default
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return int(raw)
+        except ValueError:
+            return default
+    return default
+
+
 __all__ = [
     "DEFAULT_INDEX_ROOT",
     "ExploreIndex",
     "build_explore_index",
+    "handle_ralph_graph",
     "handle_ralph_index_status",
     "handle_ralph_reindex",
 ]

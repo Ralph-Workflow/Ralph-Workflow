@@ -40,7 +40,10 @@ if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
 from collections.abc import Iterable
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from ralph.mcp.explore.store import EvidenceRow
 
 # --- Index metadata helpers -----------------------------------------------
 
@@ -101,37 +104,167 @@ def _indexed_matches(
     whole_word: bool,
     limit: int,
 ) -> list[dict[str, object]]:
-    """Run an FTS5 search and translate rows to the live match shape."""
+    """Run an FTS5 search and translate rows to the live match shape.
+
+    Each returned ``evidence_id`` is a real row in the ``evidence``
+    table so ``read_file(evidence_id=...)`` resolves to the exact
+    span instead of returning ``unknown_evidence``. The translation
+    looks up the chunk's stored line range and content hash, then
+    inserts (or refreshes) the evidence row keyed by the prompt's
+    deterministic evidence-id formula.
+    """
     fts_query = fts_query_for(pattern, whole_word=whole_word)
     raw_rows = store.fts_search(fts_query, limit=max(limit, 1))
     rows: list[sqlite3.Row] = list(raw_rows)
     matches: list[dict[str, object]] = []
     for row in rows:
-        # chunk_id is the deterministic evidence handle. Path + line
-        # are derived from the chunk row when possible; for Phase 1
-        # we record chunk_id only and let the agent resolve the
-        # exact span via read_file(evidence_id=...).
         raw_path_value: object = row["path"]
         raw_chunk_id_value: object = row["chunk_id"]
         try:
             snippet_value: object = row["snippet"]
         except IndexError:
             snippet_value = ""
-        raw_path: object = raw_path_value
-        raw_chunk_id: object = raw_chunk_id_value
-        raw_snippet: object = snippet_value
-        path_str = str(raw_path) if raw_path is not None else ""
-        chunk_id_str = str(raw_chunk_id) if raw_chunk_id is not None else ""
-        snippet_str = str(raw_snippet) if raw_snippet is not None else ""
+        path_str = str(raw_path_value) if raw_path_value is not None else ""
+        chunk_id_str = (
+            str(raw_chunk_id_value) if raw_chunk_id_value is not None else ""
+        )
+        snippet_str = str(snippet_value) if snippet_value is not None else ""
+        evidence_id = _ensure_grep_evidence_row(store, chunk_id_str)
         matches.append(
             {
                 "path": path_str,
                 "line": None,
                 "text": snippet_str,
-                "evidence_id": chunk_id_str,
+                "evidence_id": evidence_id,
             }
         )
     return matches
+
+
+def _ensure_grep_evidence_row(store: ExploreStore, chunk_id: str) -> str:
+    """Translate a chunk_id into a real ``evidence_id`` row.
+
+    The chunk row carries path/line range/text_hash. We compute the
+    prompt-exact evidence id from those deterministic inputs so the
+    handle is stable across reindex, and we insert the row if it
+    does not exist yet. Returns the evidence_id string (or the
+    chunk_id when the chunk row is missing so the caller still has a
+    stable handle).
+    """
+    if not chunk_id:
+        return ""
+    try:
+        chunk_row = store._conn.execute(
+            "SELECT path, start_line, end_line, text_hash, generation "
+            "FROM chunks WHERE chunk_id = ?",
+            (chunk_id,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        chunk_row = None
+    if chunk_row is None:
+        return chunk_id
+    path = str(chunk_row["path"])
+    start_line = int(chunk_row["start_line"])
+    end_line = int(chunk_row["end_line"])
+    text_hash = str(chunk_row["text_hash"])
+    generation = int(chunk_row["generation"])
+    # The content_hash for an indexed chunk is the text_hash until
+    # the row-level file content_hash replaces it. The explore
+    # store's file row already carries the SHA-256 of the file.
+    file_row = store.get_file(path)
+    content_hash = file_row.content_hash if file_row is not None else text_hash
+    evidence_id = _derive_evidence_id_for_span(
+        path=path,
+        content_hash=content_hash,
+        start_line=start_line,
+        end_line=end_line,
+        kind="chunk",
+    )
+    # Insert or refresh. ``is_stale=False`` because the chunk row is
+    # the source of truth right now; staleness is detected when
+    # read_file(evidence_id=...) hashes the file and finds drift.
+    import contextlib
+
+    with contextlib.suppress(sqlite3.IntegrityError, sqlite3.OperationalError):
+        store.insert_evidence(
+            _EvidenceRowBuilder(
+                evidence_id=evidence_id,
+                path=path,
+                start_line=start_line,
+                end_line=end_line,
+                content_hash=content_hash,
+                generation=generation,
+                source_tool="grep_files",
+                evidence_kind="chunk",
+            ).build()
+        )
+    return evidence_id
+
+
+def _derive_evidence_id_for_span(
+    *,
+    path: str,
+    content_hash: str,
+    start_line: int,
+    end_line: int,
+    kind: str,
+) -> str:
+    """Compute the prompt-exact evidence id from deterministic inputs.
+
+    Centralized here so the grep handler and the reindex pipeline
+    produce identical ids for the same file span.
+    """
+    from ralph.mcp.explore.store import derive_evidence_id
+
+    return derive_evidence_id(
+        path=path,
+        content_hash=content_hash,
+        start_line=start_line,
+        end_line=end_line,
+        kind=kind,
+        extractor_version="phase2-structure-v1",
+    )
+
+
+class _EvidenceRowBuilder:
+    """Tiny helper that builds an ``EvidenceRow`` from span inputs."""
+
+    def __init__(
+        self,
+        *,
+        evidence_id: str,
+        path: str,
+        start_line: int,
+        end_line: int,
+        content_hash: str,
+        generation: int,
+        source_tool: str,
+        evidence_kind: str,
+    ) -> None:
+        self.evidence_id = evidence_id
+        self.path = path
+        self.start_line = start_line
+        self.end_line = end_line
+        self.content_hash = content_hash
+        self.generation = generation
+        self.source_tool = source_tool
+        self.evidence_kind = evidence_kind
+
+    def build(self) -> EvidenceRow:
+        from ralph.mcp.explore.store import EvidenceRow
+
+        return EvidenceRow(
+            evidence_id=self.evidence_id,
+            path=self.path,
+            start_line=self.start_line,
+            end_line=self.end_line,
+            content_hash=self.content_hash,
+            generation=self.generation,
+            source_tool=self.source_tool,
+            evidence_kind=self.evidence_kind,
+            created_at=__import__("time").time(),
+            is_stale=False,
+        )
 
 
 # --- Live grep helpers (preserved) ---------------------------------------

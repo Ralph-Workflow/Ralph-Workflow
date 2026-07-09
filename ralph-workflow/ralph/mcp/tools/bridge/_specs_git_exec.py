@@ -58,10 +58,27 @@ def git_exec_specs() -> list[ToolSpec]:
                 name=GIT_STATUS_TOOL,
                 description=(
                     "Get git status showing modified, staged, and untracked files. "
-                    "No parameters required. Returns the raw `git status` text output. "
-                    "Example: {} returns git status output."
+                    "Optional params: format ('raw'|'compact', default 'raw'). "
+                    "Returns the raw `git status` text output by default. "
+                    "``format='compact'`` returns a JSON card with ranked "
+                    "changed paths, staged/unstaged/untracked counts, and the "
+                    "underlying porcelain lines for replay. "
+                    'Example: {"format": "compact"} returns ranked cards.'
                 ),
-                input_schema={"type": "object", "properties": {}},
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "format": {
+                            "type": "string",
+                            "enum": ["raw", "compact"],
+                            "description": (
+                                "Output shape. ``raw`` is the legacy text; "
+                                "``compact`` is a ranked JSON summary card."
+                            ),
+                            "default": "raw",
+                        },
+                    },
+                },
                 required_capability=McpCapability.GIT_STATUS_READ.value,
             ),
             module_name="ralph.mcp.tools.git_read",
@@ -72,10 +89,13 @@ def git_exec_specs() -> list[ToolSpec]:
                 name=GIT_DIFF_TOOL,
                 description=(
                     "Get git diff showing line-by-line differences in modified files. "
-                    "Optional param: args (array of extra git diff arguments as strings). "
-                    "Returns diff output with line changes. "
-                    'Example: {"args": []} shows full diff; '
-                    '{"args": ["--stat"]} shows summary only.'
+                    "Optional params: args (array of extra git diff arguments as strings), "
+                    "format ('raw'|'summary', default 'raw'), max_bytes (cap on the "
+                    "diff excerpt, default 50000). "
+                    "``format='summary'`` returns a compact JSON card with "
+                    "files_changed, insertion/deletion totals, per-file "
+                    "added/removed counts, and a diff excerpt capped at max_bytes. "
+                    'Example: {"args": [], "format": "summary", "max_bytes": 5000}.'
                 ),
                 input_schema={
                     "type": "object",
@@ -87,6 +107,25 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "Array of extra git diff arguments as strings "
                                 "(example values: [], ['--stat'], ['--name-only'])."
                             ),
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["raw", "summary"],
+                            "description": (
+                                "Output shape. ``raw`` is the legacy text; "
+                                "``summary`` is a compact JSON card with a "
+                                "capped diff excerpt."
+                            ),
+                            "default": "raw",
+                        },
+                        "max_bytes": {
+                            "type": "integer",
+                            "description": (
+                                "Cap on the diff excerpt returned in "
+                                "``format='summary'``. Default 50000."
+                            ),
+                            "default": 50000,
+                            "minimum": 1,
                         },
                     },
                 },
@@ -159,11 +198,17 @@ def git_exec_specs() -> list[ToolSpec]:
                 name=EXEC_TOOL,
                 description=(
                     "Execute a bounded subprocess in the workspace. Accepts command or "
-                    "argv as a string or string array, plus optional args and timeout_ms. "
+                    "argv as a string or string array, plus optional args, timeout_ms, "
+                    "and format ('raw'|'summary', default 'raw'). "
                     "Shell-style strings are tokenized; the command blacklist is the "
                     "security boundary. Returns stdout, stderr, "
-                    'and exit_code. Example: {"command": "python -m pytest", '
-                    '"args": ["-q"]}. '
+                    "and exit_code by default. "
+                    "``format='summary'`` returns a JSON envelope with a replayable "
+                    "``stdout_resource_id`` handle plus the spill path; oversized "
+                    "output is spilled to a workspace-relative file with a head/tail "
+                    "preview so the agent never blocks on a giant dump. "
+                    'Example: {"command": "python -m pytest", "args": ["-q"], '
+                    '"format": "summary"}. '
                     "Some commands may still be blacklisted; prefer structured tools "
                     "when available. " + _TIMEOUT_SEMANTICS
                 ),
@@ -205,6 +250,17 @@ def git_exec_specs() -> list[ToolSpec]:
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),
+                        "format": {
+                            "type": "string",
+                            "enum": ["raw", "summary"],
+                            "description": (
+                                "Output shape. ``raw`` is the legacy text/head-tail "
+                                "shape; ``summary`` returns a JSON envelope with a "
+                                "replayable ``stdout_resource_id`` handle and the "
+                                "spill path when output is oversized."
+                            ),
+                            "default": "raw",
+                        },
                     },
                     # The handler accepts command OR argv (see description); reflect
                     # that here instead of falsely requiring only command.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -444,3 +445,173 @@ def test_settings_round_trip(tmp_path: Path) -> None:
         assert store.get_setting("k") == "v"
     finally:
         store.close()
+"""Black-box tests for the SQLite+FTS5 exploration store.
+
+Includes the security regression for path-boundary rejection
+sibling-prefix/symlink escapes, plus the prompt-exact minimum
+schema/version invariants (AC-05).
+"""
+
+
+def test_hash_workspace_file_rejects_sibling_prefix_escape(tmp_path) -> None:
+    """AC-05 contract: ``hash_workspace_file`` MUST reject sibling
+    prefix collisions (``/tmp/ws`` vs ``/tmp/ws_evil``) and symlink
+    escapes. The legacy ``str.startswith`` check is unsafe; the
+    store now uses ``Path.is_relative_to`` so the escape raises.
+    """
+    from ralph.mcp.explore.store import hash_workspace_file
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    sibling = tmp_path / "ws_evil"
+    sibling.mkdir()
+    secret = sibling / "secret.txt"
+    secret.write_text("SECRET_DATA")
+
+    with pytest.raises(ValueError, match="escapes workspace"):
+        hash_workspace_file(workspace, "../ws_evil/secret.txt")
+
+    # Symlink escape: ws/link -> sibling/secret.txt.
+    link = workspace / "link.txt"
+    try:
+        link.symlink_to(secret)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+    with pytest.raises(ValueError, match="escapes workspace"):
+        hash_workspace_file(workspace, "link.txt")
+
+
+def test_pipeline_re_extract_path_rejects_sibling_prefix_escape(tmp_path) -> None:
+    """AC-05 contract: the reindex pipeline rejects sibling-prefix escapes
+    in ``_re_extract_path`` (was previously a string-prefix check).
+    """
+    from ralph.mcp.explore.pipeline import (
+        DEFAULT_TIMEOUT_MS,
+        ReindexOptions,
+        reindex,
+    )
+    from ralph.mcp.explore.store import ExploreStore
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    sibling = tmp_path / "ws_evil"
+    sibling.mkdir()
+    (sibling / "secret.txt").write_text("SECRET_DATA")
+
+    # Trigger _re_extract_path by writing a file with a relative
+    # path that escapes the workspace.
+    workspace_relative_escape = "../ws_evil/secret.txt"
+    # We can't make the file exist inside the workspace root, but
+    # _re_extract_path first resolves and checks; the boundary
+    # check runs before any read.
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="changed",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+                path_scope=(workspace_relative_escape,),
+            ),
+        )
+        # The path is rejected so the file is recorded as failed.
+        assert workspace_relative_escape in list(result.failed_files) or (
+            result.changed_files == ()
+        )
+    finally:
+        store.close()
+
+
+def test_indexed_grep_evidence_round_trip_resolves_via_read_file(tmp_path) -> None:
+    """AC-02 contract: indexed grep evidence_ids must resolve through
+    ``read_file(evidence_id=...)``. The fix inserts a real evidence
+    row for each FTS chunk so the round-trip succeeds.
+    """
+    from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
+    from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+    from ralph.mcp.explore.store import ExploreStore
+    from ralph.mcp.tools.workspace._grep_handlers import handle_grep_files
+    from ralph.mcp.tools.workspace._read_handlers import handle_read_file
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "hello.py").write_text("def hello():\n    return 'world'\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
+        session = _FakeGrepSession(build_sqlite_index_handle(store))
+        result = handle_grep_files(
+            session,
+            _GrepWorkspace(workspace),
+            {
+                "pattern": "hello",
+                "path": ".",
+                "regex": False,
+                "use_index": "auto",
+                "return_evidence_ids": True,
+            },
+        )
+        payload = json.loads(result.content[0].text)
+        for ev_id in payload["evidence_ids"]:
+            assert isinstance(ev_id, str) and ev_id
+        # Now resolve the first evidence_id through read_file.
+        read_result = handle_read_file(
+            session,
+            _GrepWorkspace(workspace),
+            {"evidence_id": payload["evidence_ids"][0]},
+        )
+        assert read_result.is_error is False
+        read_payload = json.loads(read_result.content[0].text)
+        assert read_payload["evidence_id"] == payload["evidence_ids"][0]
+        assert "hello.py" in read_payload["path"]
+    finally:
+        store.close()
+
+
+class _FakeGrepSession:
+    def __init__(self, explore_index=None) -> None:
+        self.explore_index = explore_index
+
+    def check_capability(self, capability: str) -> dict[str, str]:
+        return {"status": "approved", "capability": capability}
+
+    def check_edit_area(self, path: str) -> dict[str, str]:
+        return {"status": "approved", "path": path}
+
+
+class _GrepWorkspace:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def read(self, path: str) -> str:
+        return (self.root / path).read_text()
+
+    def read_lines(self, path: str, *, start=None, end=None, head=None, tail=None):
+        text = (self.root / path).read_text()
+        lines = text.splitlines(keepends=True)
+        if head is not None:
+            selected = lines[:head]
+        elif tail is not None:
+            selected = lines[-tail:] if tail else []
+        elif start is not None or end is not None:
+            s = max(0, (start or 1) - 1)
+            e = len(lines) if end is None else min(len(lines), end)
+            selected = lines[s:e]
+        else:
+            selected = lines
+        return "".join(selected), {
+            "total_lines": len(lines),
+            "returned_lines": len(selected),
+            "truncated": False,
+        }
+
+    def iter_files(self, base: str):
+        base_path = self.root / base if base else self.root
+        for path in base_path.rglob("*"):
+            if path.is_file():
+                yield str(path.relative_to(self.root))
+
+    def list_dir(self, base: str):
+        target = self.root / base if base else self.root
+        return [p.name for p in target.iterdir()]

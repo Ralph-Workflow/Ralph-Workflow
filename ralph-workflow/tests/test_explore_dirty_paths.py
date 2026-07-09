@@ -115,7 +115,14 @@ def test_handle_write_file_marks_dirty(tmp_path: Path) -> None:
         assert payload["bytes_written"] == 6
         assert payload["status"] == "ok"
         assert payload["index_used"] is True
-        assert payload["marked_paths"] == ["a.py"]
+        # AC-04 contract: ``changed_paths`` is the prompt-exact name
+        # for the list of paths this mutation just touched (was
+        # ``marked_paths`` in the original draft).
+        assert payload["changed_paths"] == ["a.py"]
+        assert "stale_paths_count" in payload
+        assert "reindex_in_progress" in payload
+        # The dirty-path queue records the same path so the next
+        # reindex picks it up.
         assert store.peek_dirty_paths() == ["a.py"]
     finally:
         store.close()

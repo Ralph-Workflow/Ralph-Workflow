@@ -33,6 +33,47 @@ class ExploreIndexLike(Protocol):
     def mark_dirty(self, paths: list[str], *, source_tool: str, reason: str = "mutated") -> None:
         ...
 
+    @property
+    def store(self) -> ExploreStoreLike | None:
+        """Optional SQLite-backed store handle. ``None`` for NoOp handles."""
+        ...
+
+    @property
+    def reindex_in_progress(self) -> bool:
+        """True when a reindex writer is active for the attached handle."""
+        ...
+
+
+class ExploreStoreLike(Protocol):
+    """Narrow protocol for the SQLite store surface handlers consume.
+
+    The full :class:`ExploreStore` type is structurally compatible.
+    Kept as a Protocol so handlers stay typed against the surface
+    they actually use.
+    """
+
+    def get_setting(self, key: str) -> str | None:
+        ...
+
+    def peek_dirty_paths(self) -> list[str]:
+        ...
+
+    def iter_files(self) -> object:  # Iterator[FileRow]
+        ...
+
+    def insert_evidence(self, row: object) -> None:
+        ...
+
+    def mark_dirty(
+        self,
+        path: str,
+        *,
+        reason: str,
+        source_tool: str,
+        now: float | None = None,
+    ) -> None:
+        ...
+
 
 class NoOpExploreIndex:
     """Drop-in index handle used when indexing is disabled.
@@ -44,6 +85,14 @@ class NoOpExploreIndex:
 
     def mark_dirty(self, paths: list[str], *, source_tool: str, reason: str = "mutated") -> None:
         del paths, source_tool, reason
+
+    @property
+    def store(self) -> None:
+        return None
+
+    @property
+    def reindex_in_progress(self) -> bool:
+        return False
 
 
 def resolve_explore_index(session: object) -> ExploreIndexLike | None:
@@ -115,6 +164,10 @@ def build_sqlite_index_handle(
         @property
         def store(self) -> ExploreStore:
             return store
+
+        @property
+        def reindex_in_progress(self) -> bool:
+            return False
 
     return _SqliteIndex()
 

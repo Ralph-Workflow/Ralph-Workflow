@@ -37,6 +37,7 @@ from ralph.mcp.tools.workspace._utils import (
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
+    from ralph.mcp.explore.dirty_paths import ExploreStoreLike
     from ralph.mcp.explore.store import EvidenceRow, ExploreStore
     from ralph.workspace import Workspace
 
@@ -673,16 +674,150 @@ def handle_list_directory(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """List entries in a workspace directory, optionally recursive."""
+    """List entries in a workspace directory.
+
+    AC-09 indexed args:
+
+    * ``view`` ``raw|compact|ranked|outline`` — raw preserves
+      the legacy shape; compact adds counts; ranked sorts by
+      symbol count; outline includes top-level symbols/headings.
+    * ``include_counts``, ``include_symbols``, ``changed_only``,
+      ``limit_children`` filter the indexed view.
+    * ``use_index`` ``auto|always|never`` — always fails closed
+      when required indexed metadata cannot be supplied.
+    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory listing")
     path = required_string_param(params, "path")
     recursive = bool(params.get("recursive", False))
-    output = (
-        list_dir_flat(workspace, path)
-        if not recursive
-        else _list_dir_recursive_output(workspace, path)
+    view = str(params.get("view", "raw"))
+    if view not in {"raw", "compact", "ranked", "outline"}:
+        raise InvalidParamsError(
+            f"Invalid view: {view!r}; expected raw, compact, ranked, or outline"
+        )
+    use_index = str(params.get("use_index", "auto"))
+    if use_index not in {"auto", "always", "never"}:
+        raise InvalidParamsError(
+            f"Invalid use_index: {use_index!r}; expected auto, always, or never"
+        )
+    include_counts = bool(params.get("include_counts", False))
+    include_symbols = bool(params.get("include_symbols", False))
+    changed_only = bool(params.get("changed_only", False))
+    limit_children = _int_param(params, "limit_children", 100)
+
+    if view == "raw" and use_index == "never":
+        output = (
+            list_dir_flat(workspace, path)
+            if not recursive
+            else _list_dir_recursive_output(workspace, path)
+        )
+        return ToolResult(
+            content=[ToolContent.text_content(output)], is_error=False
+        )
+
+    # Indexed listing path.
+    handle = resolve_explore_index(session)
+    if handle is None or getattr(handle, "store", None) is None:
+        if use_index == "always":
+            return ToolResult(
+                content=[
+                    ToolContent.text_content(
+                        _tool_json(
+                            {
+                                "status": "indexed_view_unavailable",
+                                "reason": "no_explore_index_handle",
+                            }
+                        )
+                    )
+                ],
+                is_error=True,
+            )
+        # Fall back to legacy live listing when the index is disabled.
+        output = (
+            list_dir_flat(workspace, path)
+            if not recursive
+            else _list_dir_recursive_output(workspace, path)
+        )
+        # Preserve the legacy plain-string shape when the caller did
+        # not explicitly request an indexed view.
+        if view == "raw":
+            return ToolResult(
+                content=[ToolContent.text_content(output)], is_error=False
+            )
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "entries": output,
+                            "view": "raw",
+                            "fallback_reason": "no_index_handle",
+                        }
+                    )
+                )
+            ],
+            is_error=False,
+        )
+
+    entries = list_dir_flat(workspace, path)
+    try:
+        entries_list = json.loads(entries)
+    except (ValueError, TypeError):
+        entries_list = []
+    # Filter / prioritize changed paths when requested.
+    if changed_only:
+        dirty = set(handle.store.peek_dirty_paths())
+        entries_list = [
+            entry
+            for entry in entries_list
+            if isinstance(entry, dict)
+            and isinstance(entry.get("path"), str)
+            and entry["path"] in dirty
+        ]
+    # Symbol counts and headings.
+    if include_counts or include_symbols or view in {"compact", "ranked", "outline"}:
+        counts_by_path: dict[str, dict[str, int]] = {}
+        symbols_by_path: dict[str, list[dict[str, str]]] = {}
+        if handle.store is not None:
+            for sym in handle.store.iter_symbols():
+                counts_by_path.setdefault(sym.path, {"symbols": 0})
+                counts_by_path[sym.path]["symbols"] += 1
+                if include_symbols or view == "outline":
+                    symbols_by_path.setdefault(sym.path, []).append(
+                        {"name": sym.name, "kind": sym.kind}
+                    )
+        for entry in entries_list:
+            if not isinstance(entry, dict):
+                continue
+            entry_path = entry.get("path")
+            if not isinstance(entry_path, str):
+                continue
+            if include_counts or view in {"compact", "ranked"}:
+                entry["counts"] = counts_by_path.get(entry_path, {"symbols": 0})
+            if include_symbols or view == "outline":
+                entry["symbols"] = symbols_by_path.get(entry_path, [])
+    if view == "ranked":
+        entries_list = sorted(
+            entries_list,
+            key=lambda e: (
+                -(e.get("counts", {}).get("symbols", 0) if isinstance(e, dict) else 0),
+                e.get("name", "") if isinstance(e, dict) else "",
+            ),
+        )
+    if limit_children > 0:
+        entries_list = entries_list[:limit_children]
+    payload = {
+        "entries": entries_list,
+        "view": view,
+        "changed_only": changed_only,
+        "include_counts": include_counts,
+        "include_symbols": include_symbols,
+        "limit_children": limit_children,
+        "index_used": True,
+        "is_stale": bool(handle.store.peek_dirty_paths()),
+    }
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload))], is_error=False
     )
-    return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
 
 
 def handle_list_directory_recursive(
@@ -748,7 +883,12 @@ def handle_directory_tree(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
-    """Return a nested JSON directory tree for a workspace path."""
+    """Return a nested JSON directory tree for a workspace path.
+
+    AC-09 indexed args mirror ``list_directory``: ``view``,
+    ``include_counts``, ``include_symbols``, ``limit_children``,
+    ``use_index``. Raw + never preserve the legacy tree shape.
+    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory tree")
     path = required_string_param(params, "path")
     max_depth = _int_opt_param(params, "max_depth")
@@ -757,13 +897,133 @@ def handle_directory_tree(
         exclude_patterns = [str(p) for p in exclude_patterns]
     else:
         exclude_patterns = None
+    view = str(params.get("view", "raw"))
+    if view not in {"raw", "compact", "ranked", "outline"}:
+        raise InvalidParamsError(
+            f"Invalid view: {view!r}; expected raw, compact, ranked, or outline"
+        )
+    use_index = str(params.get("use_index", "auto"))
+    if use_index not in {"auto", "always", "never"}:
+        raise InvalidParamsError(
+            f"Invalid use_index: {use_index!r}; expected auto, always, or never"
+        )
+    include_counts = bool(params.get("include_counts", False))
+    include_symbols = bool(params.get("include_symbols", False))
+    limit_children = _int_param(params, "limit_children", 100)
+
+    if view == "raw" and use_index == "never":
+        try:
+            tree = _build_directory_tree(
+                workspace, path, 0, max_depth, exclude_patterns
+            )
+        except Exception as exc:
+            raise ToolError(
+                f"Failed to build directory tree for '{path}': {exc}"
+            ) from exc
+        return ToolResult(
+            content=[ToolContent.text_content(_tool_json(tree))], is_error=False
+        )
+
+    handle = resolve_explore_index(session)
+    if handle is None or getattr(handle, "store", None) is None:
+        if use_index == "always":
+            return ToolResult(
+                content=[
+                    ToolContent.text_content(
+                        _tool_json(
+                            {
+                                "status": "indexed_view_unavailable",
+                                "reason": "no_explore_index_handle",
+                            }
+                        )
+                    )
+                ],
+                is_error=True,
+            )
+        try:
+            tree = _build_directory_tree(
+                workspace, path, 0, max_depth, exclude_patterns
+            )
+        except Exception as exc:
+            raise ToolError(
+                f"Failed to build directory tree for '{path}': {exc}"
+            ) from exc
+        # Legacy shape when no index is attached and the caller did
+        # not explicitly request an indexed view.
+        if view == "raw":
+            return ToolResult(
+                content=[ToolContent.text_content(_tool_json(tree))],
+                is_error=False,
+            )
+        payload = {"tree": tree, "view": "raw", "fallback_reason": "no_index_handle"}
+        return ToolResult(
+            content=[ToolContent.text_content(_tool_json(payload))], is_error=False
+        )
 
     try:
-        tree = _build_directory_tree(workspace, path, 0, max_depth, exclude_patterns)
+        tree = _build_directory_tree(
+            workspace, path, 0, max_depth, exclude_patterns
+        )
     except Exception as exc:
-        raise ToolError(f"Failed to build directory tree for '{path}': {exc}") from exc
+        raise ToolError(
+            f"Failed to build directory tree for '{path}': {exc}"
+        ) from exc
 
-    return ToolResult(content=[ToolContent.text_content(_tool_json(tree))], is_error=False)
+    # Attach counts/symbols metadata from the explore index.
+    counts_by_path: dict[str, dict[str, int]] = {}
+    symbols_by_path: dict[str, list[dict[str, str]]] = {}
+    for sym in handle.store.iter_symbols():
+        counts_by_path.setdefault(sym.path, {"symbols": 0})
+        counts_by_path[sym.path]["symbols"] += 1
+        if include_symbols or view == "outline":
+            symbols_by_path.setdefault(sym.path, []).append(
+                {"name": sym.name, "kind": sym.kind}
+            )
+
+    def _decorate(node: dict[str, object]) -> dict[str, object]:
+        node_path = node.get("path") if isinstance(node, dict) else None
+        if isinstance(node_path, str):
+            if include_counts or view in {"compact", "ranked"}:
+                node["counts"] = counts_by_path.get(node_path, {"symbols": 0})
+            if include_symbols or view == "outline":
+                node["symbols"] = symbols_by_path.get(node_path, [])
+            children = node.get("children")
+            if isinstance(children, list):
+                children_list = list(children)
+                if view == "ranked":
+                    children_list.sort(
+                        key=lambda c: (
+                            -(
+                                c.get("counts", {}).get("symbols", 0)
+                                if isinstance(c, dict)
+                                else 0
+                            ),
+                            c.get("name", "") if isinstance(c, dict) else "",
+                        )
+                    )
+                if limit_children > 0:
+                    children_list = children_list[:limit_children]
+                node["children"] = [
+                    _decorate(child) if isinstance(child, dict) else child
+                    for child in children_list
+                ]
+        return node
+
+    decorated = _decorate(tree)
+    store_obj: ExploreStoreLike | None = handle.store
+    is_stale = bool(store_obj.peek_dirty_paths()) if store_obj is not None else False
+    payload: dict[str, object] = {
+        "tree": decorated,
+        "view": view,
+        "include_counts": include_counts,
+        "include_symbols": include_symbols,
+        "limit_children": limit_children,
+        "index_used": True,
+        "is_stale": is_stale,
+    }
+    return ToolResult(
+        content=[ToolContent.text_content(_tool_json(payload))], is_error=False
+    )
 
 
 def handle_search_files(

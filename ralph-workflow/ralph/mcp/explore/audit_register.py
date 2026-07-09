@@ -507,6 +507,18 @@ _SEED: tuple[AuditEntry, ...] = (
             "required in this slice."
         ),
     ),
+    AuditEntry(
+        tool=RalphToolName.RALPH_GRAPH,
+        family=AuditFamily.WORKSPACE_READ,
+        outcome=AuditOutcome.ADD_ARGUMENT,
+        rationale=(
+            "Phase 2/3 ships ralph_graph with prompt-exact neighbors, "
+            "path, impact, hubs, and tests queries. Capability is "
+            "WorkspaceRead; every response carries confidence, "
+            "provenance, missing_data, freshness, truncation, and "
+            "evidence_ids."
+        ),
+    ),
 )
 
 

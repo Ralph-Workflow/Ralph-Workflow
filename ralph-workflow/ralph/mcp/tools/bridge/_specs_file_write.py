@@ -22,13 +22,17 @@ def file_write_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=EDIT_FILE_TOOL,
                 description=(
-                    "Structured file edit with precise text replacement and optional dry-run. "
-                    "Required params: path (string), edits (list of {oldText, newText} objects). "
-                    "Each edit replaces first match of oldText. "
-                    "Optional: dry_run (bool, default False). "
-                    "When dry_run=True, returns diff preview without writing. "
-                    "When dry_run=False, applies edits and returns diff and bytes_written. "
-                    "Returns error with status='no_match' when oldText is not found. "
+                    "Structured file edit with precise text replacement, optional dry-run, "
+                    "and optional indexed target/hashing/impact-preview arguments. "
+                    "Required params: path (string), edits (list of {oldText, newText}). "
+                    "Optional: dry_run (bool), expected_content_hash (SHA-256 string "
+                    "fail-closed when current file hash mismatches), target "
+                    "({evidence_id|span_id|symbol}) to anchor an edit, match_strategy "
+                    "('exact'|'within_target'|'all_in_target', default 'exact'), reindex "
+                    "('auto'|'skip'|'changed_blocking', default 'auto'), impact_preview "
+                    "(bool, default False), return_evidence_updates (bool, default False). "
+                    "Each edit replaces the first match of oldText unless target + "
+                    "match_strategy change the anchoring. "
                     'Example: {"path": "f.txt", "edits": [{"oldText": "foo", "newText": "bar"}]}.'
                 ),
                 input_schema={
@@ -53,6 +57,64 @@ def file_write_specs() -> list[ToolSpec]:
                         "dry_run": {
                             "type": "boolean",
                             "description": "Preview changes without writing (default False).",
+                            "default": False,
+                        },
+                        "expected_content_hash": {
+                            "type": "string",
+                            "description": (
+                                "Precondition: fail closed when the file's current "
+                                "SHA-256 does not match this value."
+                            ),
+                        },
+                        "target": {
+                            "type": "object",
+                            "description": (
+                                "Indexed anchor for the edit. One of "
+                                '{"evidence_id": "..."}, {"span_id": "..."}, '
+                                'or {"symbol": "...", "path": "..."}. When '
+                                "omitted the legacy oldText/newText anchor is used."
+                            ),
+                            "additionalProperties": True,
+                        },
+                        "match_strategy": {
+                            "type": "string",
+                            "enum": ["exact", "within_target", "all_in_target"],
+                            "description": (
+                                "Anchoring strategy when ``target`` is set. "
+                                "``exact`` requires the edit's oldText to be "
+                                "the indexed span; ``within_target`` accepts "
+                                "an occurrence inside the span; ``all_in_target`` "
+                                "rejects edits that cross span boundaries."
+                            ),
+                            "default": "exact",
+                        },
+                        "reindex": {
+                            "type": "string",
+                            "enum": ["auto", "skip", "changed_blocking"],
+                            "description": (
+                                "Reindex policy. ``auto`` marks the path "
+                                "dirty and lets the lifecycle refresh; ``skip`` "
+                                "marks dirty without triggering a refresh; "
+                                "``changed_blocking`` runs a bounded refresh "
+                                "after a successful edit before returning."
+                            ),
+                            "default": "auto",
+                        },
+                        "impact_preview": {
+                            "type": "boolean",
+                            "description": (
+                                "Include conservative graph-based impact (callers, "
+                                "importers, tests) for the anchored symbol when "
+                                "dry_run=True and the explore index is available."
+                            ),
+                            "default": False,
+                        },
+                        "return_evidence_updates": {
+                            "type": "boolean",
+                            "description": (
+                                "Return updated generation + freshness metadata "
+                                "after a successful edit."
+                            ),
                             "default": False,
                         },
                     },

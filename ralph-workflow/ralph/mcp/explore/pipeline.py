@@ -33,6 +33,7 @@ agent reads (tools return stale metadata instead of hanging).
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 import uuid
@@ -55,6 +56,9 @@ from ralph.mcp.explore.store import (
     derive_evidence_id,
     hash_workspace_file,
     sha256_text,
+)
+from ralph.mcp.explore.structure import (
+    extract_structure,
 )
 
 # Ponytail: keep imports narrow; nothing from the mcp package is
@@ -223,9 +227,30 @@ def _run_reindex(
 
     seen_paths: set[str] = set()
 
-    for relative_path, (_size_bytes, _mtime_ns) in sorted(next_manifest.items()):
+    for relative_path, (size_bytes, mtime_ns) in sorted(next_manifest.items()):
         _ensure_deadline(state, now_fn)
         seen_paths.add(relative_path)
+        # Ponytail: size+mtime prefilter first. The content hash is
+        # authoritative, but skipping the read+hash for unchanged
+        # files keeps warm no-op refresh work-proportional to the
+        # manifest, not to the workspace bytes.
+        previous = store.get_file(relative_path)
+        if (
+            previous is not None
+            and previous.size_bytes == size_bytes
+            and previous.mtime_ns == mtime_ns
+            and not _dirty_paths_contain(store, relative_path)
+        ):
+            _update_manifest(
+                store,
+                relative_path,
+                content_hash=previous.content_hash,
+                size_bytes=size_bytes,
+                mtime_ns=mtime_ns,
+                last_seen_generation=target_generation,
+            )
+            continue
+
         try:
             content_hash, actual_size, actual_mtime = hash_workspace_file(
                 workspace_root, relative_path
@@ -238,7 +263,6 @@ def _run_reindex(
             state.error_summary = f"hash_failed: {exc}"
             continue
 
-        previous = store.get_file(relative_path)
         if previous is not None and previous.content_hash == content_hash:
             # No-op reuse; the manifest rows stay.
             _update_manifest(
@@ -318,6 +342,17 @@ def _current_generation(store: ExploreStore) -> int:
     return int(raw)
 
 
+def _dirty_paths_contain(store: ExploreStore, path: str) -> bool:
+    """Return True when ``path`` is in the persisted dirty queue.
+
+    Used by the reindex prefilter so a workspace mutation marked
+    dirty by ``mark_path`` forces a re-hash even when the manifest
+    size+mtime match the prior run.
+    """
+    normalized = path.replace(os.sep, "/")
+    return any(existing == normalized for existing in store.peek_dirty_paths())
+
+
 def _drop_all_rows(store: ExploreStore) -> None:
     """Drop every row from the index tables. Used by mode='full'."""
     cur = store._conn.cursor()
@@ -386,7 +421,11 @@ def _re_extract_path(
     """
     full = (Path(workspace_root) / relative_path).resolve()
     root = Path(workspace_root).resolve()
-    if not str(full).startswith(str(root)):
+    try:
+        is_relative = full.is_relative_to(root)
+    except AttributeError:  # pragma: no cover — Python <3.9 fallback
+        is_relative = str(full).startswith(str(root) + os.sep) or full == root
+    if not is_relative:
         raise FileReadError(f"path escapes workspace: {relative_path!r}")
 
     previous = store.get_file(relative_path)
@@ -413,6 +452,15 @@ def _re_extract_path(
             replacement_evidence_id=None,
         )
     store.delete_chunks_for_path(relative_path)
+    # Phase 2 (AC-06): also drop prior structure rows for this path
+    # so the new generation replaces them atomically with no stale
+    # graph rows left behind.
+    store.replace_structure_rows(
+        path=relative_path,
+        spans=(),
+        symbols=(),
+        edges=(),
+    )
     store.upsert_file(
         FileRow(
             path=relative_path,
@@ -468,6 +516,22 @@ def _re_extract_path(
                 created_at=time.time(),
                 is_stale=False,
             )
+        )
+    # Phase 2 (AC-06): persist deterministic structure rows for
+    # Python and Markdown files. Unsupported languages keep their
+    # lexical rows only — no graph edges are emitted for them.
+    extraction = extract_structure(
+        path=relative_path,
+        content=text,
+        content_hash=content_hash,
+        generation=generation,
+    )
+    if extraction.spans or extraction.symbols or extraction.edges:
+        store.replace_structure_rows(
+            path=relative_path,
+            spans=extraction.spans,
+            symbols=extraction.symbols,
+            edges=extraction.edges,
         )
 
 

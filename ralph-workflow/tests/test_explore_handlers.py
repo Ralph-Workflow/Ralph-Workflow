@@ -56,6 +56,23 @@ def test_index_status_disabled_when_no_handle(tmp_path: Path) -> None:
     assert "index_storage_bytes" in payload
 
 
+def test_index_status_is_side_effect_free_when_no_handle(tmp_path: Path) -> None:
+    """AC-03 contract: index_status must not create SQLite files
+    or ``.agent/ralph-explore/`` when no handle exists.
+    """
+    workspace = _seed_workspace(tmp_path)
+    session = _FakeSession(explore_index=None)
+    index_dir = workspace / ".agent" / "ralph-explore"
+    assert not index_dir.exists()
+    result = handle_ralph_index_status(session, _Workspace(workspace), {})
+    payload = _decode(result)
+    assert payload["enabled"] is False
+    assert payload["index_exists"] is False
+    # No directory or file was created on disk.
+    assert not index_dir.exists()
+    assert not (index_dir / "index.sqlite").exists()
+
+
 def test_index_status_returns_expected_fields(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     handle = build_explore_index(workspace)
@@ -79,7 +96,7 @@ def test_index_status_returns_expected_fields(tmp_path: Path) -> None:
             "is_stale",
             "stale_paths_count",
             "index_storage_bytes",
-            "gitignore_coverage",
+            "managed_ignore_rule_present",
         ):
             assert field in payload, f"missing field: {field}"
         assert payload["enabled"] is True
@@ -88,17 +105,28 @@ def test_index_status_returns_expected_fields(tmp_path: Path) -> None:
         handle.store.close()
 
 
-def test_index_status_reports_gitignore_coverage(tmp_path: Path) -> None:
+def test_index_status_reports_managed_ignore_rule(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
-    # The repo .gitignore already lists ``.agent/`` (see
-    # ``ralph/config/bootstrap.py:_DEFAULT_GITIGNORE_PATTERNS``).
     (workspace / ".gitignore").write_text(".agent/\n")
     handle = build_explore_index(workspace)
     try:
         session = _FakeSession(explore_index=handle)
         result = handle_ralph_index_status(session, _Workspace(workspace), {})
         payload = _decode(result)
-        assert payload["gitignore_coverage"]["present"] is True
+        assert payload["managed_ignore_rule_present"] is True
+    finally:
+        handle.store.close()
+
+
+def test_index_status_managed_ignore_rule_absent(tmp_path: Path) -> None:
+    workspace = _seed_workspace(tmp_path)
+    # No .gitignore at all.
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        result = handle_ralph_index_status(session, _Workspace(workspace), {})
+        payload = _decode(result)
+        assert payload["managed_ignore_rule_present"] is False
     finally:
         handle.store.close()
 

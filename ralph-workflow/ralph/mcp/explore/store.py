@@ -38,7 +38,7 @@ import hashlib
 import os
 import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -174,6 +174,56 @@ _DDL: tuple[str, ...] = (
         value TEXT
     )
     """,
+    # Phase 2 structure tables (AC-06). The schema is additive so a
+    # Phase 1 database can reopen and gain structure rows on the
+    # next changed/full reindex. Stable ids are deterministic from
+    # (path, kind, start_line, start_col, end_line, end_col,
+    # extractor_version) so no-op reindex produces stable logical rows.
+    """
+    CREATE TABLE IF NOT EXISTS spans (
+        span_id TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        start_line INTEGER NOT NULL,
+        start_col INTEGER NOT NULL,
+        end_line INTEGER NOT NULL,
+        end_col INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        symbol_id TEXT,
+        content_hash TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        UNIQUE(path, start_line, start_col, end_line, end_col, kind, content_hash)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS symbols (
+        symbol_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        qualified_name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        path TEXT NOT NULL,
+        span_id TEXT NOT NULL,
+        language TEXT,
+        extracted_from TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        generation INTEGER NOT NULL,
+        UNIQUE(path, qualified_name, kind, span_id, generation)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS edges (
+        edge_id TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        relation TEXT NOT NULL,
+        path TEXT NOT NULL,
+        span_id TEXT,
+        provenance TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        reason TEXT,
+        generation INTEGER NOT NULL,
+        UNIQUE(source_id, target_id, relation, path, span_id, generation)
+    )
+    """,
 )
 
 
@@ -221,6 +271,54 @@ class EvidenceRow:
     evidence_kind: str
     created_at: float
     is_stale: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SpanRow:
+    """A row from the ``spans`` table (AC-06 Phase 2 structure)."""
+
+    span_id: str
+    path: str
+    start_line: int
+    start_col: int
+    end_line: int
+    end_col: int
+    kind: str
+    symbol_id: str | None
+    content_hash: str
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolRow:
+    """A row from the ``symbols`` table (AC-06 Phase 2 structure)."""
+
+    symbol_id: str
+    name: str
+    qualified_name: str
+    kind: str
+    path: str
+    span_id: str
+    language: str | None
+    extracted_from: str
+    confidence: float
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class EdgeRow:
+    """A row from the ``edges`` table (AC-06 Phase 2 structure)."""
+
+    edge_id: str
+    source_id: str
+    target_id: str
+    relation: str
+    path: str
+    span_id: str | None
+    provenance: str
+    confidence: float
+    reason: str | None
+    generation: int
 
 
 class Clock(Protocol):
@@ -508,6 +606,223 @@ class ExploreStore:
         if row is None:
             return None
         return _row_to_evidence(row)
+
+    # --- Structure (Phase 2: spans, symbols, edges) ---------------------
+
+    def replace_structure_rows(
+        self,
+        *,
+        path: str,
+        spans: Sequence[SpanRow],
+        symbols: Sequence[SymbolRow],
+        edges: Sequence[EdgeRow],
+    ) -> None:
+        """Atomically replace the structure rows for ``path``.
+
+        Deletes any prior spans/symbols/edges that point at this
+        path's previous generation, then inserts the new ones. Used
+        by the reindex pipeline after extraction; AC-06 requires that
+        changed-file reindex leaves no stale graph rows behind.
+        """
+        with self._transaction() as cur:
+            cur.execute("DELETE FROM spans WHERE path = ?", (path,))
+            cur.execute("DELETE FROM symbols WHERE path = ?", (path,))
+            cur.execute("DELETE FROM edges WHERE path = ?", (path,))
+            for row in spans:
+                cur.execute(
+                    """
+                    INSERT INTO spans (
+                        span_id, path, start_line, start_col,
+                        end_line, end_col, kind, symbol_id,
+                        content_hash, generation
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(span_id) DO UPDATE SET
+                        start_line=excluded.start_line,
+                        start_col=excluded.start_col,
+                        end_line=excluded.end_line,
+                        end_col=excluded.end_col,
+                        kind=excluded.kind,
+                        symbol_id=excluded.symbol_id,
+                        content_hash=excluded.content_hash,
+                        generation=excluded.generation
+                    """,
+                    (
+                        row.span_id,
+                        row.path,
+                        row.start_line,
+                        row.start_col,
+                        row.end_line,
+                        row.end_col,
+                        row.kind,
+                        row.symbol_id,
+                        row.content_hash,
+                        row.generation,
+                    ),
+                )
+            for row in symbols:
+                cur.execute(
+                    """
+                    INSERT INTO symbols (
+                        symbol_id, name, qualified_name, kind, path,
+                        span_id, language, extracted_from,
+                        confidence, generation
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(symbol_id) DO UPDATE SET
+                        name=excluded.name,
+                        qualified_name=excluded.qualified_name,
+                        kind=excluded.kind,
+                        path=excluded.path,
+                        span_id=excluded.span_id,
+                        language=excluded.language,
+                        extracted_from=excluded.extracted_from,
+                        confidence=excluded.confidence,
+                        generation=excluded.generation
+                    """,
+                    (
+                        row.symbol_id,
+                        row.name,
+                        row.qualified_name,
+                        row.kind,
+                        row.path,
+                        row.span_id,
+                        row.language,
+                        row.extracted_from,
+                        row.confidence,
+                        row.generation,
+                    ),
+                )
+            for row in edges:
+                cur.execute(
+                    """
+                    INSERT INTO edges (
+                        edge_id, source_id, target_id, relation,
+                        path, span_id, provenance, confidence,
+                        reason, generation
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(edge_id) DO UPDATE SET
+                        source_id=excluded.source_id,
+                        target_id=excluded.target_id,
+                        relation=excluded.relation,
+                        path=excluded.path,
+                        span_id=excluded.span_id,
+                        provenance=excluded.provenance,
+                        confidence=excluded.confidence,
+                        reason=excluded.reason,
+                        generation=excluded.generation
+                    """,
+                    (
+                        row.edge_id,
+                        row.source_id,
+                        row.target_id,
+                        row.relation,
+                        row.path,
+                        row.span_id,
+                        row.provenance,
+                        row.confidence,
+                        row.reason,
+                        row.generation,
+                    ),
+                )
+
+    def iter_spans(self, path: str | None = None) -> Iterator[SpanRow]:
+        if path is None:
+            cur = self._conn.execute(
+                "SELECT * FROM spans ORDER BY path, start_line, start_col"
+            )
+        else:
+            cur = self._conn.execute(
+                "SELECT * FROM spans WHERE path = ? "
+                "ORDER BY start_line, start_col",
+                (path,),
+            )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        for row in rows:
+            yield SpanRow(
+                span_id=str(row["span_id"]),
+                path=str(row["path"]),
+                start_line=int(row["start_line"]),
+                start_col=int(row["start_col"]),
+                end_line=int(row["end_line"]),
+                end_col=int(row["end_col"]),
+                kind=str(row["kind"]),
+                symbol_id=(
+                    str(row["symbol_id"]) if row["symbol_id"] is not None else None
+                ),
+                content_hash=str(row["content_hash"]),
+                generation=int(row["generation"]),
+            )
+
+    def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
+        if path is None:
+            cur = self._conn.execute(
+                "SELECT * FROM symbols ORDER BY path, qualified_name"
+            )
+        else:
+            cur = self._conn.execute(
+                "SELECT * FROM symbols WHERE path = ? "
+                "ORDER BY qualified_name",
+                (path,),
+            )
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        for row in rows:
+            yield SymbolRow(
+                symbol_id=str(row["symbol_id"]),
+                name=str(row["name"]),
+                qualified_name=str(row["qualified_name"]),
+                kind=str(row["kind"]),
+                path=str(row["path"]),
+                span_id=str(row["span_id"]),
+                language=(
+                    str(row["language"]) if row["language"] is not None else None
+                ),
+                extracted_from=str(row["extracted_from"]),
+                confidence=float(row["confidence"]),
+                generation=int(row["generation"]),
+            )
+
+    def iter_edges(
+        self,
+        *,
+        path: str | None = None,
+        relation: str | None = None,
+    ) -> Iterator[EdgeRow]:
+        sql = "SELECT * FROM edges"
+        params: tuple[object, ...] = ()
+        clauses: list[str] = []
+        if path is not None:
+            clauses.append("path = ?")
+            params = (*params, path)
+        if relation is not None:
+            clauses.append("relation = ?")
+            params = (*params, relation)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY path, relation, source_id, target_id"
+        cur = self._conn.execute(sql, params)
+        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        for row in rows:
+            yield EdgeRow(
+                edge_id=str(row["edge_id"]),
+                source_id=str(row["source_id"]),
+                target_id=str(row["target_id"]),
+                relation=str(row["relation"]),
+                path=str(row["path"]),
+                span_id=(
+                    str(row["span_id"]) if row["span_id"] is not None else None
+                ),
+                provenance=str(row["provenance"]),
+                confidence=float(row["confidence"]),
+                reason=str(row["reason"]) if row["reason"] is not None else None,
+                generation=int(row["generation"]),
+            )
+
+    def count_structure_rows(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for table in ("spans", "symbols", "edges"):
+            cur = self._conn.execute(f"SELECT COUNT(*) FROM {table}")
+            row = cur.fetchone()
+            counts[table] = int(row[0]) if row is not None else 0
+        return counts
 
     # --- Dirty paths --------------------------------------------------
 
@@ -912,10 +1227,21 @@ def hash_workspace_file(workspace_root: Path, relative_path: str) -> tuple[str, 
     Reads via the same workspace boundary the MCP tools enforce. The
     file's content hash is authoritative; mtime/size are a cheap
     prefilter only.
+
+    Uses ``Path.is_relative_to`` (Python 3.9+) so the boundary check
+    cannot be fooled by sibling-prefix escapes (``/tmp/ws`` vs
+    ``/tmp/ws_evil``) or symlink targets outside ``workspace_root``.
     """
     root = Path(workspace_root).resolve()
     full = (root / relative_path).resolve()
-    if not str(full).startswith(str(root)):
+    # Ponytail: string-prefix startswith() is unsafe — ``/tmp/ws_evil``
+    # startswith ``/tmp/ws``. Use Path.is_relative_to instead so
+    # sibling-prefix collisions and symlink escapes are rejected.
+    try:
+        is_relative = full.is_relative_to(root)
+    except AttributeError:  # pragma: no cover — Python <3.9 fallback
+        is_relative = str(full).startswith(str(root) + os.sep) or full == root
+    if not is_relative:
         raise ValueError(f"Path escapes workspace: {relative_path!r}")
     if not full.is_file():
         raise FileNotFoundError(relative_path)
@@ -928,16 +1254,38 @@ def hash_workspace_file(workspace_root: Path, relative_path: str) -> tuple[str, 
     )
 
 
+def assert_within_workspace(workspace_root: Path, full_path: Path) -> None:
+    """Raise ``ValueError`` when ``full_path`` is outside ``workspace_root``.
+
+    Resolves symlinks and uses ``Path.is_relative_to`` to defend
+    against sibling-prefix and symlink-escape attacks on the
+    indexed exploration store. Used by the reindex pipeline and the
+    workspace file handlers to share one boundary check.
+    """
+    root = Path(workspace_root).resolve()
+    resolved = Path(full_path).resolve()
+    try:
+        is_relative = resolved.is_relative_to(root)
+    except AttributeError:  # pragma: no cover
+        is_relative = str(resolved).startswith(str(root) + os.sep) or resolved == root
+    if not is_relative:
+        raise ValueError(f"Path escapes workspace: {full_path}")
+
+
 __all__ = [
     "DEFAULT_CHUNK_LINES",
     "DEFAULT_INDEX_DB",
     "DEFAULT_INDEX_ROOT",
     "ChunkRow",
     "Clock",
+    "EdgeRow",
     "EvidenceRow",
     "ExploreStore",
     "FileRow",
+    "SpanRow",
+    "SymbolRow",
     "SystemClock",
+    "assert_within_workspace",
     "chunk_text",
     "collect_workspace_files",
     "derive_chunk_id",
