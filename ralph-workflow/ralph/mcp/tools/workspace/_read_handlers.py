@@ -1026,7 +1026,23 @@ def handle_list_directory(
     changed_only = bool(params.get("changed_only", False))
     limit_children = _int_param(params, "limit_children", 100)
 
-    if view == "raw" and use_index == "never":
+    # AC-09: ``use_index='never'`` is an unconditional bypass. The
+    # caller has explicitly opted out, so the handler must never
+    # resolve the explore index -- it must use the live listing path
+    # regardless of view/recursive/depth. The same path also covers
+    # the default-raw backward-compat case: when the caller did NOT
+    # pass any indexed view selector (view=raw, no
+    # include_counts/include_symbols/changed_only/use_index=always),
+    # preserve the legacy plain listing shape even if an index
+    # handle is attached.
+    explicit_indexed_request = (
+        view != "raw"
+        or include_counts
+        or include_symbols
+        or changed_only
+        or use_index == "always"
+    )
+    if use_index == "never" or not explicit_indexed_request:
         output = (
             list_dir_flat(workspace, path)
             if not recursive
@@ -1067,17 +1083,34 @@ def handle_list_directory(
                 ],
                 is_error=True,
             )
-        # Fall back to legacy live listing when the index is disabled.
+        # AC-09: when the caller explicitly asked for an indexed view
+        # but no handle is attached, ``use_index='auto'`` falls back to
+        # a documented live-fallback wrapper instead of silently
+        # dropping the metadata. ``use_index='never'`` is handled
+        # above; ``use_index='always'`` is handled by the early
+        # return above.
         output = (
             list_dir_flat(workspace, path)
             if not recursive
             else _list_dir_recursive_output(workspace, path)
         )
-        # Preserve the legacy plain-string shape when the caller did
-        # not explicitly request an indexed view.
+        # The raw view + an explicit indexed view request is
+        # contradictory; honour the raw view and emit a
+        # fallback_reason so the caller can detect the downgrade.
         if view == "raw":
             return ToolResult(
-                content=[ToolContent.text_content(output)], is_error=False
+                content=[
+                    ToolContent.text_content(
+                        _tool_json(
+                            {
+                                "entries": output,
+                                "view": "raw",
+                                "fallback_reason": "no_index_handle",
+                            }
+                        )
+                    )
+                ],
+                is_error=False,
             )
         return ToolResult(
             content=[
@@ -1085,8 +1118,12 @@ def handle_list_directory(
                     _tool_json(
                         {
                             "entries": output,
-                            "view": "raw",
+                            "view": view,
                             "fallback_reason": "no_index_handle",
+                            "include_counts": include_counts,
+                            "include_symbols": include_symbols,
+                            "changed_only": changed_only,
+                            "limit_children": limit_children,
                         }
                     )
                 )
@@ -1219,7 +1256,14 @@ def _build_directory_tree(
     max_depth: int | None,
     exclude_patterns: list[str] | None,
 ) -> dict[str, object]:
-    """Build a recursive directory tree structure."""
+    """Build a recursive directory tree structure.
+
+    AC-09: every node carries its full ``path`` so the directory_tree
+    handler can look up indexed counts/symbols and run
+    ``changed_only`` filters without rebuilding the tree. The
+    ``path`` is the workspace-relative POSIX path used by the
+    explore index.
+    """
     normalized = normalize_relative_path(path)
     name = normalized.split("/")[-1] if normalized else path
 
@@ -1233,10 +1277,10 @@ def _build_directory_tree(
 
     is_dir = workspace.is_dir(normalized)
     if not is_dir:
-        return {"name": name, "type": "file"}
+        return {"name": name, "type": "file", "path": normalized}
 
     if max_depth is not None and current_depth >= max_depth:
-        return {"name": name, "type": "dir", "children": []}
+        return {"name": name, "type": "dir", "path": normalized, "children": []}
 
     entries: list[dict[str, object]] = []
     try:
@@ -1255,7 +1299,7 @@ def _build_directory_tree(
         )
         entries.append(child)
 
-    return {"name": name, "type": "dir", "children": entries}
+    return {"name": name, "type": "dir", "path": normalized, "children": entries}
 
 
 def handle_directory_tree(
@@ -1292,7 +1336,22 @@ def handle_directory_tree(
     limit_children = _int_param(params, "limit_children", 100)
     changed_only = bool(params.get("changed_only", False))
 
-    if view == "raw" and use_index == "never" and not changed_only:
+    # AC-09: ``use_index='never'`` is an unconditional bypass. The
+    # caller has explicitly opted out, so the handler must never
+    # resolve the explore index or decorate the tree. The same path
+    # also covers the default-raw backward-compat case: when the
+    # caller did NOT pass any indexed view selector (view=raw, no
+    # include_counts/include_symbols/changed_only/use_index=always),
+    # preserve the legacy tree shape even if an index handle is
+    # attached.
+    explicit_indexed_request = (
+        view != "raw"
+        or include_counts
+        or include_symbols
+        or changed_only
+        or use_index == "always"
+    )
+    if use_index == "never" or not explicit_indexed_request:
         try:
             tree_obj: object = _build_directory_tree(
                 workspace, path, 0, max_depth, exclude_patterns
@@ -1484,44 +1543,64 @@ def handle_directory_tree(
                     {"name": sym_name, "kind": sym_kind}
                 )
 
-    def _decorate(node: dict[str, object]) -> dict[str, object]:
-        node_path = node.get("path") if isinstance(node, dict) else None
-        if isinstance(node_path, str):
-            if include_counts or view in {"compact", "ranked"}:
-                node["counts"] = counts_by_path.get(node_path, {"symbols": 0})
-            if include_symbols or view == "outline":
-                node["symbols"] = symbols_by_path.get(node_path, [])
-            children_obj: object = node.get("children")
-            if isinstance(children_obj, list):
-                children_list_obj: list[object] = list(children_obj)
-                children_list: list[dict[str, object]] = [
-                    c for c in children_list_obj if isinstance(c, dict)
-                ]
-                if view == "ranked":
+    def _decorate(
+        node: dict[str, object], parent_path: str
+    ) -> dict[str, object]:
+        # AC-09: ensure every node has a usable ``path`` even if the
+        # builder forgot one (e.g. tests build a tree ad-hoc) so the
+        # counts/symbols lookup and changed_only filter are not
+        # silently skipped. Pre-order traversal so children are
+        # decorated BEFORE the ranked sort reads their counts.
+        node_path_obj: object = node.get("path")
+        node_path: str
+        if isinstance(node_path_obj, str) and node_path_obj:
+            node_path = node_path_obj
+        else:
+            name_obj: object = node.get("name", "")
+            name_str: str = (
+                name_obj if isinstance(name_obj, str) else str(name_obj)
+            )
+            node_path = (
+                join_path(parent_path, name_str) if name_str else parent_path
+            )
+            node["path"] = node_path
+        if include_counts or view in {"compact", "ranked"}:
+            node["counts"] = counts_by_path.get(node_path, {"symbols": 0})
+        if include_symbols or view == "outline":
+            node["symbols"] = symbols_by_path.get(node_path, [])
+        children_obj: object = node.get("children")
+        if isinstance(children_obj, list):
+            children_list_obj: list[object] = list(children_obj)
+            children_list: list[dict[str, object]] = [
+                c for c in children_list_obj if isinstance(c, dict)
+            ]
+            # Decorate first so ranked sort sees fresh counts.
+            for child in children_list:
+                _decorate(child, node_path)
+            if view == "ranked":
 
-                    def _tree_rank_key(c: object) -> tuple[int, str]:
-                        if not isinstance(c, dict):
-                            return (0, "")
-                        counts_obj: object = c.get("counts", {})
-                        symbols_count = 0
-                        if isinstance(counts_obj, dict):
-                            count_val: object = counts_obj.get("symbols", 0)
-                            if isinstance(count_val, int):
-                                symbols_count = count_val
-                        name_obj: object = c.get("name", "")
-                        name = name_obj if isinstance(name_obj, str) else str(name_obj)
-                        return (-symbols_count, name)
+                def _tree_rank_key(c: object) -> tuple[int, str]:
+                    if not isinstance(c, dict):
+                        return (0, "")
+                    counts_obj: object = c.get("counts", {})
+                    symbols_count = 0
+                    if isinstance(counts_obj, dict):
+                        count_val: object = counts_obj.get("symbols", 0)
+                        if isinstance(count_val, int):
+                            symbols_count = count_val
+                    name_obj: object = c.get("name", "")
+                    name = (
+                        name_obj if isinstance(name_obj, str) else str(name_obj)
+                    )
+                    return (-symbols_count, name)
 
-                    children_list.sort(key=_tree_rank_key)
-                if limit_children > 0:
-                    children_list = children_list[:limit_children]
-                node["children"] = [
-                    _decorate(child) if isinstance(child, dict) else child
-                    for child in children_list
-                ]
+                children_list.sort(key=_tree_rank_key)
+            if limit_children > 0:
+                children_list = children_list[:limit_children]
+            node["children"] = children_list
         return node
 
-    decorated = _decorate(tree)
+    decorated = _decorate(tree, "")
     is_stale: bool = False
     if raw_tree_store is not None:
         tree_dirty_obj: object = getattr(

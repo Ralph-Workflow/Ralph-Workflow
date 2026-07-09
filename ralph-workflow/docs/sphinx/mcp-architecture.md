@@ -214,18 +214,19 @@ asserts observable behavior on the shipped path.
 
 Ralph Workflow maintains a deterministic, disposable SQLite+FTS5 indexed
 exploration substrate under `.agent/ralph-explore/` for the current
-workspace. The substrate is owned by `ralph.mcp.explore` and exposes two
+workspace. The substrate is owned by `ralph.mcp.explore` and exposes three
 new MCP tools:
 
-* `ralph_index_status` — reports generation, freshness, dirty paths, job history, storage bytes, and gitignore coverage.
-* `ralph_reindex` — runs a bounded `changed`/`full` refresh (timeout-based, fail-closed for the job, fail-open for the agent).
+* `ralph_index_status` — reports generation, freshness, dirty paths, job history, storage bytes, and gitignore coverage. Side-effect free: it inspects the existing on-disk state and never creates SQLite files or `.agent/ralph-explore/` directories.
+* `ralph_reindex` — runs a bounded `changed`/`full` refresh (timeout-based, fail-closed for the job, fail-open for the agent). Returns `job_id`, `job_status`, `generation`, `changed_files`, `failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`, `error_summary`.
+* `ralph_graph` — graph-native queries (`neighbors`, `path`, `impact`, `hubs`, `tests`) with bounded traversal, evidence-backed output, and `freshness` policy (`required` / `prefer_fresh` / `allow_stale`).
 
 Existing read/search tools gain optional indexed arguments (`use_index`,
-`evidence_id`, `rank_by`, `return_evidence_ids`, `ranked`, `role`, etc.) so
-agents can choose indexed or live behavior per call. Indexed responses carry
-`index_used`, `index_generation`, `is_stale`, `stale_paths_count`,
-`dirty_paths_count`, and `fallback_reason` so callers can detect fall-back
-without inspecting tool internals.
+`evidence_id`, `span_id`, `symbol`, `rank_by`, `return_evidence_ids`,
+`ranked`, `role`, etc.) so agents can choose indexed or live behavior per
+call. Indexed responses carry `index_used`, `index_generation`, `is_stale`,
+`stale_paths_count`, `dirty_paths_count`, and `fallback_reason` so callers
+can detect fall-back without inspecting tool internals.
 
 The substrate is:
 
@@ -239,20 +240,22 @@ The substrate is:
 
 The substrate is split into focused submodules under `ralph.mcp.explore`:
 
-* `store` — SQLite + FTS5 DDL, manifest, evidence, tombstones, dirty_paths, jobs, settings.
+* `store` — SQLite + FTS5 DDL, manifest, evidence, tombstones, dirty_paths, jobs, settings, plus the structure tables (`spans`, `symbols`, `edges`).
 * `pipeline` — manifest/hash/generation lifecycle, idempotent reindex, single-writer coalescing.
 * `dirty_paths` — persisted queue + `mark_dirty` seam for write handlers.
-* `ranking` — deterministic score components (Phase 1 lexical; symbol/graph stubbed to `+0` with `disabled:phase2`).
-* `handlers` — `ralph_index_status` and `ralph_reindex` MCP handlers.
+* `ranking` — deterministic score components (lexical, symbol, graph, changed) for `search_files` and `grep_files`.
+* `structure` — Python AST and Markdown heading/link/anchor extractors (Phase 2).
+* `graph` — bounded recursive-CTE graph queries for `ralph_graph` (Phase 2).
+* `handlers` — `ralph_index_status`, `ralph_reindex`, and `ralph_graph` MCP handlers.
 * `bench` — scripted-flow benchmark harness (no LLM, deterministic Clock seam).
 * `audit_register` — Phase 0 per-tool outcome register (keep / add_argument / rework_internals / defer).
-* `deferred_phases` — tracked deferral register for Phases 2-5.
+* `deferred_phases` — tracked deferral register for remaining optional work.
 * `lifecycle` — before/after dev-fix session refresh hooks used by the pipeline runner.
 
-### Phase 1 scope
+### Phase scope
 
-Phase 1 keeps the contract lexical: FTS5 chunking + content-hash + evidence
-handles. Phases 2-5 (Python/Markdown AST extraction, `ralph_graph`, impact-aware
-editing, non-index MCP remediation, optional NetworkX/Kuzu/Tree-sitter adapters)
-are deferred and tracked in `ralph.mcp.explore.deferred_phases` with rationale
-and baseline counters.
+* **Phase 1 (lexical)** — FTS5 chunking, content-hash evidence, idempotent reindex, mutation dirty marking.
+* **Phase 2 (structure + graph)** — Python AST and Markdown structure extraction in `structure.py`, the `spans`/`symbols`/`edges` SQLite tables, and `ralph_graph` for callers/path/impact/hubs/tests queries. The structure and graph tables also feed Phase 2 `+100 / +80 / +60 / +50 / +40 / +30 / +20 / -50` score components for `search_files` and `grep_files`; when the index lacks the corresponding data, those components report `+0` with an explicit `disabled:phase2` reason.
+* **Phase 3 (impact-aware editing)** — `edit_file` accepts `expected_content_hash`, `target` (`evidence_id` / `span_id` / `symbol`), `match_strategy` (`exact` / `within_target` / `all_in_target`), `reindex` (`auto` / `skip` / `changed_blocking`), `impact_preview`, and `return_evidence_updates`. `impact_preview` runs a conservative `ralph_graph` impact query when the index has the target symbol.
+* **Phase 4 (audited non-index remediation)** — `git_status`, `git_diff`, and `exec` are selected for compact/summary output modes; the remaining non-index MCP families (artifact, planning, coordination, web, media) are audited as keep or defer in `audit_register` with baseline counters and rationale. `exec` summary mode returns `stdout_resource_id` and `stderr_resource_id` handles plus spill paths so large output is replayable while the raw output remains available.
+* **Optional deferred work** — the `ralph_explore` wrapper, NetworkX offline metrics, Kuzu adapters, and additional Tree-sitter parsers are tracked in `ralph.mcp.explore.deferred_phases` with rationale. They are not implemented unless measured evidence justifies them.

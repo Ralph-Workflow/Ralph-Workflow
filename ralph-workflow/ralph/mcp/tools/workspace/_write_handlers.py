@@ -95,7 +95,11 @@ def _freshness_payload_from_handle(
     dirty = store.peek_dirty_paths()
     deleted_count = sum(1 for row in store.iter_files() if row.is_deleted)
     is_stale_value = bool(dirty) or deleted_count > 0
-    in_progress: bool = bool(typed_handle.reindex_in_progress)
+    # AC-04: reindex_in_progress is a typed optional attribute. Some
+    # production handle types (older test doubles) do not expose it;
+    # default to False rather than raising after a successful mutation.
+    in_progress_attr: object = getattr(typed_handle, "reindex_in_progress", False)
+    in_progress: bool = bool(in_progress_attr)
     return {
         "index_used": True,
         "index_generation": generation_int,

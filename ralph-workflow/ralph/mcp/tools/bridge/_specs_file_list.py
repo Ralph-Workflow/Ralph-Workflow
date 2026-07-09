@@ -363,7 +363,8 @@ def file_list_specs() -> list[ToolSpec]:
                     "exclude_patterns (list of glob patterns to exclude), "
                     "view ('raw'|'compact'|'ranked'|'outline', default 'raw'), "
                     "include_counts (bool), include_symbols (bool), "
-                    "limit_children (integer), use_index ('auto'|'always'|'never'). "
+                    "changed_only (bool, default false), limit_children (integer), "
+                    "use_index ('auto'|'always'|'never'). "
                     "Indexed views surface symbol counts and headings; raw + never "
                     "preserve the legacy tree shape. "
                     'Example: {"path": ".", "max_depth": 2, "view": "ranked"}.'
@@ -406,6 +407,17 @@ def file_list_specs() -> list[ToolSpec]:
                         "include_symbols": {
                             "type": "boolean",
                             "description": "Include top-level symbols/headings per entry.",
+                            "default": False,
+                        },
+                        "changed_only": {
+                            "type": "boolean",
+                            "description": (
+                                "Filter the tree to subtrees that contain at least one "
+                                "dirty (mutated) descendant. ``use_index='never'`` "
+                                "disables the filter. ``use_index='always'`` fails "
+                                "closed with reason 'no_explore_index_handle' when no "
+                                "index is attached."
+                            ),
                             "default": False,
                         },
                         "limit_children": {

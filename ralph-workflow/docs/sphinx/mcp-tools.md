@@ -319,21 +319,39 @@ Required param: `mode` in `changed | full`. Optional: `timeout_ms` (default 5000
 
 Phase 1 adds optional indexed arguments to existing read/search tools; the legacy behavior is preserved when the argument is absent or set to `use_index="never"`:
 
-* `grep_files(use_index, rank_by, return_evidence_ids, max_snippet_lines, dedupe_by_symbol, include_graph_context)`. Eligibility: literal, whole-word literal, simple token, phrase. Non-eligible (regex, multiline, lookaround, backreferences, byte-oriented) falls back to live grep in `auto` and fails closed in `always`.
-* `search_files(ranked, role, contains_symbol, changed_only, return_evidence_ids)`. `contains_symbol` is Phase 2.
-* `read_file(evidence_id, span_id, symbol, context_lines, expected_content_hash, return_metadata)`. `span_id` and `symbol` are Phase 2.
-* `read_multiple_files(items, per_item_max_bytes, return_metadata, fail_fast)`. Items may mix `{"path": ...}`, `{"path": ..., "line_start": ..., "line_end": ...}`, `{"evidence_id": ...}`, `{"span_id": ...}` (Phase 2), or `{"symbol": ...}` (Phase 2).
+* `grep_files(use_index, rank_by, return_evidence_ids, max_snippet_lines, dedupe_by_symbol, include_graph_context)`. Eligibility: literal, whole-word literal, simple token, phrase. Non-eligible (regex, multiline, lookaround, backreferences, byte-oriented) falls back to live grep in `auto` and fails closed in `always`. `rank_by` accepts `match`, `symbol`, `graph`, `changed`, or `hybrid`; symbol and graph components require the Phase 2 index, otherwise they are marked `+0` with an explicit `disabled:phase2` reason.
+* `search_files(ranked, role, contains_symbol, changed_only, return_evidence_ids)`. `contains_symbol` awards the Phase 2 `SEARCH_SYMBOL_MENTION` score component when the index has symbol rows; otherwise the rank degrades to deterministic path/role scoring.
+* `read_file(evidence_id, span_id, symbol, context_lines, expected_content_hash, return_metadata)`. `span_id` and `symbol` are backed by the Phase 2 spans/symbols tables; `expected_content_hash` fails closed before any mutation.
+* `read_multiple_files(items, per_item_max_bytes, return_metadata, fail_fast)`. Items may mix `{"path": ...}`, `{"path": ..., "line_start": ..., "line_end": ...}`, `{"evidence_id": ...}`, `{"span_id": ...}`, or `{"symbol": ...}`. Per-item metadata reports truncation, freshness, and fallback reason.
+
+### `ralph_graph`
+
+`ralph_graph` is registered alongside the read/search tools and answers graph-native questions. Shared inputs: `query_type` in `neighbors | path | impact | hubs | tests`, `target`, `relations`, `limit` (default 25, max 100), `freshness` in `required | prefer_fresh | allow_stale`. Per-query inputs: `direction`/`depth` (neighbors); `target_b`/`max_paths`/`depth` (path); `change_kind` in `rename | signature | behavior | delete | unknown` (impact); `scope_path`/`relation`/`role` (hubs and tests). Every response includes `nodes`, `edges`, `paths`, `impacted_files`, `suggested_tests`, `confidence`, `provenance`, `evidence_ids`, `missing_data`, `index_generation`, `is_stale`, `truncated`. Graph output is evidence-backed and labels inferred or unknown data rather than claiming runtime certainty.
+
+### `list_directory` and `directory_tree` indexed views
+
+`view` accepts `raw | compact | ranked | outline`. The raw view preserves the legacy plain-text/tree shape unless an explicit indexed selector is requested (for example `view=compact`, `include_counts=true`, `include_symbols=true`, `changed_only=true`, or `use_index=always`). `use_index` accepts `auto | always | never`; `never` is an unconditional bypass of the explore index. `changed_only` filters to entries with a dirty (mutated) descendant and respects the same dirty-path source as the mutation handlers. `directory_tree` decorates every node with a `path` field and decorates children before ranking, so `view=ranked` orders by indexed symbol counts.
+
+### `edit_file` indexed safety arguments
+
+`edit_file` accepts `expected_content_hash`, `target` (`evidence_id` / `span_id` / `symbol`), `match_strategy` in `exact | within_target | all_in_target`, `reindex` in `auto | skip | changed_blocking`, `impact_preview` (requires `dry_run=true`), and `return_evidence_updates`. Hash mismatches and stale evidence fail closed before any mutation. `impact_preview` runs a conservative `ralph_graph` impact query when the index has the target; otherwise it returns `impact_preview_unavailable` plus `impact_preview_unavailable_reason`.
+
+### Mutation freshness metadata
+
+Every successful `write_file`, `edit_file`, `append_file`, `move_file`, `copy_file`, and `delete_path` call returns a freshness block: `index_used`, `index_generation`, `is_stale`, `dirty_paths_count`, `stale_paths_count`, `reindex_in_progress`, and `changed_paths`. The block is omitted only when the explore index is disabled; the prompt never requires an agent to call `ralph_reindex` to keep the index current.
 
 ### Indexed responses
 
 Every indexed response includes `index_used`, `index_generation`, `is_stale`, `stale_paths_count`, `dirty_paths_count`, `fallback_reason`. When `index_used=false`, the response came from live behavior; the caller can decide whether to retry.
 
-### Phase 1 scope
+### Phase 1 / Phase 2 / Phase 3 / Phase 4 scope
 
-* Lexical only: FTS5 chunking + content hash + evidence handles. No AST/symbol extraction, no structural graph, no impact preview. Symbol and graph ranking components are stubbed to `+0` with a `disabled:phase2` reason.
-* Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/` (git-ignored).
+* Phase 1 is the lexical layer: FTS5 chunking + content hash + evidence handles. Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/` (git-ignored).
+* Phase 2 adds Python AST and Markdown structure extraction in `ralph.mcp.explore.structure`. Spans, symbols, and edges live in the `spans`, `symbols`, and `edges` tables with `provenance`, `confidence`, and `extractor_version`. `ralph_graph` is the graph-native query surface (neighbors, path, impact, hubs, tests).
+* Phase 3 wires `edit_file` safety arguments and the conservative impact preview through `ralph_graph`.
+* Phase 4 selects `git_status`, `git_diff`, and `exec` for compact/summary modes. The remaining non-index MCP families are audited as keep or defer in `ralph.mcp.explore.audit_register` with baseline counters and rationale; only `git_status`, `git_diff`, and `exec` have a measured improvement. `exec` summary mode returns `stdout_resource_id` and `stderr_resource_id` handles plus spill paths so large output is replayable while the raw output remains available.
 
-Phases 2-5 (Python/Markdown AST extraction, `ralph_graph`, impact-aware editing, non-index MCP remediation, optional adapters) are deferred and tracked in `ralph.mcp.explore.deferred_phases`.
+The optional `ralph_explore` wrapper remains deferred and is tracked in `ralph.mcp.explore.deferred_phases`. Optional NetworkX offline metrics, Kuzu adapters, and additional Tree-sitter parsers are also deferred until measured evidence justifies them.
 
 ## Related pages
 

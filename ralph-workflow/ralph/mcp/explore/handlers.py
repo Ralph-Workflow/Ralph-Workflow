@@ -82,6 +82,12 @@ class ExploreIndex:
     cold_index_required: bool = False
     generation: int = 0
     last_job_status: str | None = None
+    #: Set by a reindex writer while it owns the work; the mutation
+    #: freshness block reports it. Production writers flip this to
+    #: ``True`` for the duration of the job and back to ``False`` on
+    #: success/failure. The default ``False`` keeps the attribute
+    #: optional for test doubles that subclass or duck-type the handle.
+    reindex_in_progress: bool = False
 
     @property
     def index_dir(self) -> Path:
