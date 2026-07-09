@@ -21,5 +21,16 @@ directory. It runs the docs build, ruff, mypy --strict, the
 E2E suite lives in a separate opt-in target (`make test-subprocess-e2e`).
 
 Pull requests should be small, focused, and include tests for any
-behavior change. By contributing, you agree your contributions are
-licensed under AGPL-3.0-or-later.
+behavior change.
+
+## Contributor License Agreement
+
+Every pull request must agree to the repository
+[`CLA.md`](CLA.md). The PR template includes the required checkbox, and
+CI fails pull-request builds on both Codeberg and GitHub until that box
+is checked.
+
+Ralph Workflow remains published as AGPL-3.0-or-later. The CLA also
+grants the project permission to include accepted contributions in
+commercial licenses, which is required for the planned dual-license
+offering.

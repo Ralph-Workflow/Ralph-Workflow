@@ -11,4 +11,4 @@ contact_links:
     about: See what a good morning-after handoff should look like before opening an issue.
   - name: GitHub mirror
     url: https://github.com/Ralph-Workflow/Ralph-Workflow
-    about: Mirror only. Please open issues on Codeberg when possible.
+    about: PRs are accepted with the CLA gate. Please open issues on Codeberg when possible.

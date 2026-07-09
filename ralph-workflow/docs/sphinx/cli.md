@@ -173,11 +173,11 @@ ralph cleanup --force       # remove without prompting for confirmation
 
 ### `ralph contribute`
 
-Open the canonical Ralph Workflow repository in your default browser so you can review contribution options. Codeberg is the primary repo (default); the GitHub mirror is available via `--source github`. No git repository, configuration, or authentication is required.
+Open the canonical Ralph Workflow repository in your default browser so you can review contribution options. Codeberg is the primary repo (default); GitHub is available via `--source github` for contributors who cannot use Codeberg. No git repository, configuration, or authentication is required. Pull requests on either forge must check the CLA box in the PR template.
 
 ```bash
 ralph contribute                         # open Codeberg (default)
-ralph contribute --source github         # open the GitHub mirror instead
+ralph contribute --source github         # open GitHub instead
 ralph contribute --source codeberg       # explicit form of the default
 ```
 

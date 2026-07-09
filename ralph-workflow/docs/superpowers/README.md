@@ -29,5 +29,5 @@ For the maintained operator manual and the contributor reference, see:
 
 - Codeberg (primary):
   <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub (read-only mirror):
+- GitHub (PRs accepted with the CLA gate):
   <https://github.com/Ralph-Workflow/Ralph-Workflow>

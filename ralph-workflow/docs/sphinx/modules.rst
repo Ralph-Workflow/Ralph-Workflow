@@ -91,6 +91,19 @@ ralph.platform.operating_system
    :members:
    :show-inheritance:
 
+ralph.contrib
+~~~~~~~~~~~~~
+
+.. automodule:: ralph.contrib
+   :no-members:
+
+ralph.contrib.cla
+~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.contrib.cla
+   :members:
+   :show-inheritance:
+
 ralph.verify
 ~~~~~~~~~~~~
 
@@ -3361,4 +3374,3 @@ ralph.pro_support.state_query
 .. automodule:: ralph.pro_support.state_query
    :members:
    :show-inheritance:
-

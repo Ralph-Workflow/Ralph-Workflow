@@ -42,10 +42,29 @@ A few practical notes for a first patch:
   on-ramp.
 
 When you're ready to ship the patch, push your branch and open a PR
-on the primary repo at
-<https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The full
-verification contract, the guardrails, and the contribution policy
-follow below.
+on Codeberg or GitHub. Codeberg remains the primary development repo,
+and GitHub is available for contributors who cannot use Codeberg. The
+full verification contract, the guardrails, and the contribution
+policy follow below.
+
+## Contributor License Agreement
+
+Every pull request must agree to the repository-level
+[`Contributor License Agreement`](../CLA.md). The Codeberg and GitHub
+PR templates include the required checkbox:
+
+```markdown
+- [ ] I have read and agree to the Contributor License Agreement in CLA.md, including the grant that allows Ralph Workflow to distribute my contribution under AGPL-3.0-or-later and commercial licenses.
+```
+
+The CI gate checks that exact line and fails every pull-request build
+until it is checked. This applies to Codeberg pull requests through
+Woodpecker and GitHub pull requests through GitHub Actions.
+
+Ralph Workflow remains published as AGPL-3.0-or-later. The CLA also
+grants the project permission to include accepted contributions in
+commercial licenses, which is required for the planned dual-license
+offering.
 
 ## Development setup
 

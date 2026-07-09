@@ -148,5 +148,5 @@ The guard is a hard invariant, not a configurable check:
 
 - Codeberg (primary):
   <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub (read-only mirror):
+- GitHub (PRs accepted with the CLA gate):
   <https://github.com/Ralph-Workflow/Ralph-Workflow>
