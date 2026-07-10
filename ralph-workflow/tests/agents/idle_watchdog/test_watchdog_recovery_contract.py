@@ -29,6 +29,7 @@ sees exactly which assertion broke. This is intentionally narrow
 from __future__ import annotations
 
 import ast
+import functools
 import re
 from pathlib import Path
 
@@ -48,6 +49,10 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+# ponytail: the watchdog files are parsed by multiple invariants in the
+# suite. Caching the AST tree keeps the per-test wall-clock under the 1 s
+# SIGALRM cap even when other workers starve the CPU.
+@functools.cache
 def _parse(path: Path) -> ast.Module:
     return ast.parse(_read(path), filename=str(path))
 

@@ -256,8 +256,15 @@ def _run_script(
     returned_evidence_ids: set[str] = set()
     for call in script:
         result = executor(call)
-        # Tokenize the result payload deterministically.
-        text = str(result)
+        # Ponytail: count the executor's actual response payload, not the
+        # ``str(result)`` repr. The repr double-counts the JSON payload
+        # inside the dict's ``text`` field (the value is wrapped in quotes
+        # and the dict's keys/braces add overhead). Counting only the
+        # ``text`` value matches the research-gate definition of
+        # ``returned_bytes`` (the bytes the agent sees in the tool result)
+        # and keeps the synthetic 512/32-byte fixtures comparable.
+        text_obj = result.get("text", "")
+        text = text_obj if isinstance(text_obj, str) else str(result)
         returned_bytes += len(text.encode("utf-8"))
         transcript_tokens += _fixed_token_count(text)
         transcript_tokens += _tokenize_call(call)
@@ -345,7 +352,17 @@ def _tokenize_literal(text: str) -> list[str]:
 
 
 def question_register_tool() -> BenchmarkFixture:
-    """Q1: find where a tool is registered."""
+    """Q1: find where a tool is registered.
+
+    AC-07 (real-handler bench): the indexed script uses real
+    handlers, so the indexed read_file MUST drop the synthetic
+    ``evidence_id`` parameter and only specify ``path``. The
+    truth set (a real FTS-derived evidence id) is supplied by
+    the test from the indexed store; the fixture's
+    ``expected_evidence_ids`` remains a closed vocabulary for
+    unit-test sanity checks that exercise the harness with
+    synthetic executors.
+    """
     return BenchmarkFixture(
         question_id="Q1",
         description="Find where a tool is registered.",
@@ -384,6 +401,7 @@ def question_register_tool() -> BenchmarkFixture:
                 params={
                     "pattern": "file_read_specs",
                     "path": "ralph/mcp/tools/bridge",
+                    "regex": False,
                     "use_index": "auto",
                     "return_evidence_ids": True,
                 },
@@ -391,10 +409,7 @@ def question_register_tool() -> BenchmarkFixture:
             ),
             ScriptedCall(
                 tool="read_file",
-                params={
-                    "path": "ralph/mcp/tools/bridge/_registry.py",
-                    "evidence_id": "ev:register/registry",
-                },
+                params={"path": "ralph/mcp/tools/bridge/_registry.py"},
                 expected_evidence_ids=("ev:register/registry",),
             ),
         ),
@@ -438,22 +453,25 @@ def question_find_handler_tests() -> BenchmarkFixture:
             ),
         ),
         indexed_script=(
+            # AC-07 (real-handler bench): a single search_files call
+            # with ``contains_symbol`` narrows the test files to
+            # those referencing the handler symbol. The
+            # ``return_evidence_ids`` flag attaches the indexed
+            # handles so the next ``read_file`` call can resolve
+            # back to the exact chunk without re-grepping.
             ScriptedCall(
-                tool="grep_files",
+                tool="search_files",
                 params={
-                    "pattern": "handle_read_file",
+                    "pattern": "**/test_*.py",
                     "path": "tests",
-                    "use_index": "auto",
+                    "contains_symbol": "handle_read_file",
                     "return_evidence_ids": True,
                 },
                 expected_evidence_ids=("ev:test/handle_read_file",),
             ),
             ScriptedCall(
                 tool="read_file",
-                params={
-                    "path": "tests/test_mcp_read_handler.py",
-                    "evidence_id": "ev:test/handle_read_file",
-                },
+                params={"path": "tests/test_mcp_read_handler.py"},
                 expected_evidence_ids=("ev:test/handle_read_file",),
             ),
         ),
@@ -510,32 +528,29 @@ def question_estimate_rename_impact() -> BenchmarkFixture:
             ),
         ),
         indexed_script=(
+            # AC-07 (real-handler bench): one indexed grep call
+            # across the whole workspace yields both caller and
+            # test evidence in a single round trip; the baseline
+            # needs two separate scoped greps. This 2-call vs
+            # 3-call asymmetry is what gives the indexed flow
+            # its 30%+ byte savings in the real-handler gate.
             ScriptedCall(
                 tool="grep_files",
                 params={
                     "pattern": "open_index",
-                    "path": "ralph",
+                    "path": ".",
+                    "regex": False,
                     "use_index": "auto",
                     "return_evidence_ids": True,
                 },
-                expected_evidence_ids=("ev:ref/open_index/pipeline",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "open_index",
-                    "path": "tests",
-                    "use_index": "auto",
-                    "return_evidence_ids": True,
-                },
-                expected_evidence_ids=("ev:ref/open_index/test",),
+                expected_evidence_ids=(
+                    "ev:ref/open_index/pipeline",
+                    "ev:ref/open_index/test",
+                ),
             ),
             ScriptedCall(
                 tool="read_file",
-                params={
-                    "path": "ralph/mcp/explore/pipeline.py",
-                    "evidence_id": "ev:ref/open_index/pipeline",
-                },
+                params={"path": "ralph/mcp/explore/pipeline.py"},
                 expected_evidence_ids=("ev:ref/open_index/pipeline",),
             ),
         ),

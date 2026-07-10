@@ -26,6 +26,7 @@ file I/O outside ``tmp_path``.
 from __future__ import annotations
 
 import ast as _ast
+import functools
 import tempfile
 from pathlib import Path
 
@@ -35,6 +36,16 @@ from ralph.testing import audit_watchdog_drift as audit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_ROOT = REPO_ROOT / "ralph"
+
+
+# ponytail: each parametrized instance re-uses the same source+tree; caching
+# the read+parse makes the suite resilient under heavy parallel CPU load
+# without raising the per-test timeout.
+@functools.cache
+def _parse_audit_module() -> _ast.Module:
+    audit_path = REPO_ROOT / "ralph" / "testing" / "audit_watchdog_drift.py"
+    source = audit_path.read_text(encoding="utf-8")
+    return _ast.parse(source, filename=str(audit_path))
 
 # The legacy root watchdog sentinel is constructed at import time in
 # the audit module from private string fragments.  The test re-derives
@@ -463,8 +474,7 @@ def test_audit_module_forbids_known_io_primitives(forbidden_name: str) -> None:
     """
 
     audit_path = REPO_ROOT / "ralph" / "testing" / "audit_watchdog_drift.py"
-    source = audit_path.read_text(encoding="utf-8")
-    tree = _ast.parse(source, filename=str(audit_path))
+    tree = _parse_audit_module()
 
     parts = forbidden_name.split(".")
 
