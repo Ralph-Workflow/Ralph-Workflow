@@ -120,6 +120,7 @@ def test_index_status_returns_expected_fields(tmp_path: Path) -> None:
             "stale_paths_count",
             "index_storage_bytes",
             "managed_ignore_rule_present",
+            "managed_ignore_rule_repair",
         ):
             assert field in payload, f"missing field: {field}"
         assert payload["enabled"] is True
@@ -152,6 +153,73 @@ def test_index_status_managed_ignore_rule_absent(tmp_path: Path) -> None:
         assert payload["managed_ignore_rule_present"] is False
     finally:
         handle.store.close()
+
+
+def test_index_status_exposes_managed_ignore_repair_when_present(
+    tmp_path: Path,
+) -> None:
+    """AC-04: when the rule is present, the repair field marks
+    itself as not required.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / ".gitignore").write_text(".agent/\n")
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        result = handle_ralph_index_status(session, _Workspace(workspace), {})
+        payload = _decode(result)
+        assert "managed_ignore_rule_repair" in payload
+        repair = payload["managed_ignore_rule_repair"]
+        assert repair["required"] is False
+        assert repair["action"] == "none"
+        assert repair["reason"] == "managed_ignore_rule_present"
+    finally:
+        handle.store.close()
+
+
+def test_index_status_exposes_managed_ignore_repair_when_absent(
+    tmp_path: Path,
+) -> None:
+    """AC-04: when the rule is missing, the repair field carries
+    the next Ralph seeding instruction so callers can fix the
+    coverage without guessing.
+    """
+    workspace = _seed_workspace(tmp_path)
+    # No .gitignore at all.
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        result = handle_ralph_index_status(session, _Workspace(workspace), {})
+        payload = _decode(result)
+        assert "managed_ignore_rule_repair" in payload
+        repair = payload["managed_ignore_rule_repair"]
+        assert repair["required"] is True
+        assert repair["action"] == "seed_default_gitignore"
+        assert repair["reason"] == "managed_ignore_rule_missing"
+        assert repair["target_file"].endswith(".gitignore")
+        assert ".agent/" in repair["patterns_to_append"]
+        assert repair["next_command"] == "ralph"
+        assert repair.get("description")
+    finally:
+        handle.store.close()
+
+
+def test_index_status_disabled_payload_also_carries_repair_field(
+    tmp_path: Path,
+) -> None:
+    """AC-04: the disabled payload (no handle) reports the same
+    repair field so callers do not have to special-case the
+    enabled=False path.
+    """
+    workspace = _seed_workspace(tmp_path)
+    session = _FakeSession(explore_index=None)
+    result = handle_ralph_index_status(session, _Workspace(workspace), {})
+    payload = _decode(result)
+    assert payload["enabled"] is False
+    assert "managed_ignore_rule_repair" in payload
+    repair = payload["managed_ignore_rule_repair"]
+    assert repair["required"] is True
+    assert repair["action"] == "seed_default_gitignore"
 
 
 def test_index_status_reports_last_job_after_reindex(tmp_path: Path) -> None:
@@ -263,6 +331,139 @@ def test_reindex_rejects_zero_timeout(tmp_path: Path) -> None:
                 _Workspace(workspace),
                 {"mode": "changed", "timeout_ms": 0},
             )
+    finally:
+        handle.store.close()
+
+
+def test_reindex_rejects_negative_timeout(tmp_path: Path) -> None:
+    """AC-05: timeout_ms must be a positive integer."""
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "timeout_ms": -100},
+            )
+    finally:
+        handle.store.close()
+
+
+def test_reindex_rejects_oversized_timeout(tmp_path: Path) -> None:
+    """AC-05: callers cannot extend the budget arbitrarily. The
+    handler rejects ``timeout_ms`` above the documented cap.
+    """
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "timeout_ms": 9_999_999_999},
+            )
+    finally:
+        handle.store.close()
+
+
+def test_reindex_rejects_malformed_timeout_string(tmp_path: Path) -> None:
+    """AC-05: malformed ``timeout_ms`` fails closed instead of
+    silently falling back to the default.
+    """
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "timeout_ms": "bogus"},
+            )
+    finally:
+        handle.store.close()
+
+
+def test_reindex_rejects_bool_timeout(tmp_path: Path) -> None:
+    """AC-05: bool is rejected because Python treats True/False
+    as int; the handler must not accept the silently-typed value.
+    """
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "timeout_ms": True},
+            )
+    finally:
+        handle.store.close()
+
+
+def test_reindex_rejects_non_integer_float_timeout(tmp_path: Path) -> None:
+    """AC-05: non-integer float values fail closed."""
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "timeout_ms": 1.5},
+            )
+    finally:
+        handle.store.close()
+
+
+def test_reindex_accepts_string_integer_timeout(tmp_path: Path) -> None:
+    """AC-05: a string that parses to an integer in range is
+    accepted (JSON params may surface ints as strings on some
+    transports).
+    """
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        result = handle_ralph_reindex(
+            session,
+            _Workspace(workspace),
+            {"mode": "changed", "timeout_ms": "5000"},
+        )
+        payload = _decode(result)
+        assert payload["job_status"] == "ok"
+    finally:
+        handle.store.close()
+
+
+def test_reindex_accepts_at_max_timeout(tmp_path: Path) -> None:
+    """AC-05: the boundary value ``timeout_ms = max`` is accepted."""
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        result = handle_ralph_reindex(
+            session,
+            _Workspace(workspace),
+            {"mode": "changed", "timeout_ms": 60_000},
+        )
+        payload = _decode(result)
+        assert payload["job_status"] == "ok"
     finally:
         handle.store.close()
 

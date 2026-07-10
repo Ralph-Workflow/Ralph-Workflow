@@ -24,8 +24,10 @@ introduced in Phase 2.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
-from collections.abc import Iterable, Mapping, Sequence
+import time
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Final
@@ -35,6 +37,8 @@ from ralph.mcp.explore.store import (
     ExploreStore,
     _row_to_symbol,
 )
+
+logger = logging.getLogger(__name__)
 
 # Relation priority for ordering (matches the prompt's contract).
 _RELATION_PRIORITY: Final[tuple[str, ...]] = (
@@ -108,6 +112,15 @@ class GraphResult:
     index_generation: int = 0
     is_stale: bool = False
     truncated: bool = False
+    #: True when the query returned a bounded incomplete result because
+    #: the caller's deadline elapsed. Always accompanied by
+    #: ``missing_data`` containing ``"deadline_exceeded"`` and a
+    #: zeroed/truncated body. Mutable work in flight is discarded;
+    #: readers see the last committed generation, not partial rows.
+    deadline_exceeded: bool = False
+    #: True when the caller asked for cooperative cancellation. Same
+    #: bounded-incomplete contract as ``deadline_exceeded``.
+    cancelled: bool = False
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def with_staleness(self, *, is_stale: bool) -> GraphResult:
@@ -855,6 +868,8 @@ def run_query(
     change_kind: str = "unknown",
     scope_path: str | None = None,
     role: str | None = None,
+    deadline: float | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> GraphResult:
     """Dispatch a single ``ralph_graph`` query by ``query_type``.
 
@@ -869,9 +884,31 @@ def run_query(
       downgrade the evidence weight.
     * ``freshness="allow_stale"``: dirty paths are ignored; the
       result reports ``is_stale=False`` regardless.
+
+    AC-05 deadline/cancellation contract:
+
+    * ``deadline``: absolute monotonic-clock deadline (``time.monotonic``
+      value, seconds). When the deadline elapses mid-query, the
+      dispatcher returns a bounded, truthful
+      :class:`GraphResult` with ``deadline_exceeded=True`` and
+      ``missing_data=("deadline_exceeded",)``. No mutable work is
+      exposed; readers see the last committed generation, not partial
+      rows. ``deadline`` of ``0`` or negative disables the check
+      (caller responsibility to bound the call site).
+    * ``cancel``: zero-arg callable returning ``True`` to ask for
+      cooperative cancellation. Same bounded-incomplete contract as
+      deadline expiry: ``cancelled=True`` and
+      ``missing_data=("cancelled",)``. The check is invoked before
+      each phase of the dispatcher (freshness, neighbors, path,
+      impact, hubs, tests) and may also be called inside the per-type
+      implementations.
     """
     dirty = list(store.peek_dirty_paths())
     is_stale = bool(dirty)
+    if _is_cancelled(cancel):
+        return _cancelled_result(query_type, target, target_b, store)
+    if _deadline_elapsed(deadline):
+        return _deadline_result(query_type, target, target_b, store)
     if freshness == "required" and dirty:
         return GraphResult(
             query_type=query_type,
@@ -890,6 +927,10 @@ def run_query(
             },
         )
     if query_type == "neighbors":
+        if _is_cancelled(cancel):
+            return _cancelled_result(query_type, target, target_b, store)
+        if _deadline_elapsed(deadline):
+            return _deadline_result(query_type, target, target_b, store)
         result = neighbors(
             store,
             target=target,
@@ -910,6 +951,10 @@ def run_query(
                 is_stale=is_stale,
                 truncated=False,
             )
+        if _is_cancelled(cancel):
+            return _cancelled_result(query_type, target, target_b, store)
+        if _deadline_elapsed(deadline):
+            return _deadline_result(query_type, target, target_b, store)
         result = path_query(
             store,
             target=target,
@@ -920,10 +965,18 @@ def run_query(
             limit=limit,
         )
     elif query_type == "impact":
+        if _is_cancelled(cancel):
+            return _cancelled_result(query_type, target, target_b, store)
+        if _deadline_elapsed(deadline):
+            return _deadline_result(query_type, target, target_b, store)
         result = impact(
             store, target=target, change_kind=change_kind, limit=limit
         )
     elif query_type == "hubs":
+        if _is_cancelled(cancel):
+            return _cancelled_result(query_type, target, target_b, store)
+        if _deadline_elapsed(deadline):
+            return _deadline_result(query_type, target, target_b, store)
         result = hubs(
             store,
             scope_path=scope_path,
@@ -932,6 +985,10 @@ def run_query(
             limit=limit,
         )
     elif query_type == "tests":
+        if _is_cancelled(cancel):
+            return _cancelled_result(query_type, target, target_b, store)
+        if _deadline_elapsed(deadline):
+            return _deadline_result(query_type, target, target_b, store)
         result = tests_for(store, target=target, limit=limit)
     else:
         return GraphResult(
@@ -948,6 +1005,95 @@ def run_query(
     if freshness != "allow_stale":
         result = result.with_staleness(is_stale=is_stale)
     return result
+
+
+def _deadline_elapsed(deadline: float | None) -> bool:
+    """Return True when ``deadline`` is set and the monotonic clock has passed it.
+
+    A non-positive ``deadline`` disables the check; the caller is
+    expected to have bounded the call site.
+    """
+    if deadline is None or deadline <= 0:
+        return False
+    return time.monotonic() >= deadline
+
+
+def _is_cancelled(cancel: Callable[[], bool] | None) -> bool:
+    """Return True when ``cancel`` is set and reports cancellation.
+
+    Catches any exception raised by the cancel callable so a buggy
+    cancel hook never crashes the dispatcher; an exception is treated
+    as "not cancelled" and a debug log line is emitted.
+    """
+    if cancel is None:
+        return False
+    try:
+        return bool(cancel())
+    except Exception:  # pragma: no cover — defensive
+        logger.debug("ralph_graph cancel callable raised; treating as not-cancelled", exc_info=True)
+        return False
+
+
+def _deadline_result(
+    query_type: str,
+    target: str,
+    target_b: str | None,
+    store: ExploreStore,
+) -> GraphResult:
+    """Return the bounded, truthful result when the deadline elapses."""
+    return GraphResult(
+        query_type=query_type,
+        nodes=(),
+        edges=(),
+        paths=(),
+        impacted_files=(),
+        suggested_tests=(),
+        confidence=0.0,
+        provenance="deadline",
+        evidence_ids=(),
+        missing_data=("deadline_exceeded",),
+        index_generation=_current_generation(store),
+        is_stale=False,
+        truncated=True,
+        deadline_exceeded=True,
+        cancelled=False,
+        metadata={
+            "target": target,
+            "target_b": target_b,
+            "bounded_incomplete": True,
+        },
+    )
+
+
+def _cancelled_result(
+    query_type: str,
+    target: str,
+    target_b: str | None,
+    store: ExploreStore,
+) -> GraphResult:
+    """Return the bounded, truthful result when the caller cancels."""
+    return GraphResult(
+        query_type=query_type,
+        nodes=(),
+        edges=(),
+        paths=(),
+        impacted_files=(),
+        suggested_tests=(),
+        confidence=0.0,
+        provenance="cancelled",
+        evidence_ids=(),
+        missing_data=("cancelled",),
+        index_generation=_current_generation(store),
+        is_stale=False,
+        truncated=True,
+        deadline_exceeded=False,
+        cancelled=True,
+        metadata={
+            "target": target,
+            "target_b": target_b,
+            "bounded_incomplete": True,
+        },
+    )
 
 
 __all__ = [

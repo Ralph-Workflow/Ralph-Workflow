@@ -307,13 +307,44 @@ Reports the live index health:
   "stale_paths_count": 0,
   "index_storage_bytes": 4096,
   "gitignore_coverage": {"present": true, "rule": ".agent/"},
-  "managed_ignore_rule_present": true
+  "managed_ignore_rule_present": true,
+  "managed_ignore_rule_repair": {
+    "required": false,
+    "action": "none",
+    "reason": "managed_ignore_rule_present"
+  }
 }
 ```
 
+When the managed ignore rule is absent, `managed_ignore_rule_repair` carries
+the next Ralph Workflow seeding instruction so callers can repair the
+`.agent/ralph-explore/` coverage without guessing:
+
+```
+"managed_ignore_rule_repair": {
+  "required": true,
+  "action": "seed_default_gitignore",
+  "reason": "managed_ignore_rule_missing",
+  "target_file": "/path/to/.gitignore",
+  "patterns_to_append": [".agent/"],
+  "next_command": "ralph",
+  "description": "Run a normal `ralph` invocation (or `auto_seed_default_gitignore`) to seed the default .gitignore so .agent/ralph-explore/ stays a disposable cache and is not committed."
+}
+```
+
+The status handler never mutates the gitignore; the repair is a documented
+next step. The disabled payload (no handle) carries the same repair field so
+callers do not have to special-case the `enabled=False` path.
+
 ### `ralph_reindex`
 
-Required param: `mode` in `changed | full`. Optional: `timeout_ms` (default 5000), `path_scope` (list of relative paths). Returns `job_status`, `generation`, `changed_files`, `failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`, `error_summary`.
+Required param: `mode` in `changed | full`. Optional: `timeout_ms` (1-60000,
+default 5000; out-of-range or malformed values are rejected), `path_scope`
+(list of relative paths). Returns `job_status`, `generation`, `changed_files`,
+`failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`,
+`error_summary`. The handler enforces a maximum permissible `timeout_ms` so
+callers cannot extend the budget arbitrarily. `mode='full'` rebuilds into a
+temp generation and atomically swaps metadata only after success.
 
 ### Indexed arguments on existing tools
 
@@ -326,7 +357,9 @@ Phase 1 adds optional indexed arguments to existing read/search tools; the legac
 
 ### `ralph_graph`
 
-`ralph_graph` is registered alongside the read/search tools and answers graph-native questions. Shared inputs: `query_type` in `neighbors | path | impact | hubs | tests`, `target`, `relations`, `limit` (default 25, max 100), `freshness` in `required | prefer_fresh | allow_stale`. Per-query inputs: `direction`/`depth` (neighbors); `target_b`/`max_paths`/`depth` (path); `change_kind` in `rename | signature | behavior | delete | unknown` (impact); `scope_path`/`relation`/`role` (hubs and tests). Every response includes `nodes`, `edges`, `paths`, `impacted_files`, `suggested_tests`, `confidence`, `provenance`, `evidence_ids`, `missing_data`, `index_generation`, `is_stale`, `truncated`. Graph output is evidence-backed and labels inferred or unknown data rather than claiming runtime certainty.
+`ralph_graph` is registered alongside the read/search tools and answers graph-native questions. Shared inputs: `query_type` in `neighbors | path | impact | hubs | tests`, `target`, `relations`, `limit` (default 25, max 100), `freshness` in `required | prefer_fresh | allow_stale`, `timeout_ms` (1-30000, default 5000), `cancel` (bool, default false). Per-query inputs: `direction`/`depth` (neighbors); `target_b`/`max_paths`/`depth` (path); `change_kind` in `rename | signature | behavior | delete | unknown` (impact); `scope_path`/`relation`/`role` (hubs and tests). Every response includes `nodes`, `edges`, `paths`, `impacted_files`, `suggested_tests`, `confidence`, `provenance`, `evidence_ids`, `missing_data`, `index_generation`, `is_stale`, `truncated`, `cancelled`, `deadline_exceeded`. Graph output is evidence-backed and labels inferred or unknown data rather than claiming runtime certainty.
+
+**Bounded timeout and cancellation:** `timeout_ms` is a bounded per-call budget (1-30000). When the deadline elapses, the dispatcher returns a bounded, truthful incomplete result with `deadline_exceeded=true` and `missing_data=("deadline_exceeded",)`. `cancel=true` returns the same bounded contract with `cancelled=true` and `missing_data=("cancelled",)`. No mutable work is exposed to readers on either path.
 
 ### `list_directory` and `directory_tree` indexed views
 

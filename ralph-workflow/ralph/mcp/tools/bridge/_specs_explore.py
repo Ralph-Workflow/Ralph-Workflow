@@ -42,11 +42,12 @@ def explore_specs() -> list[ToolSpec]:
                 name=RALPH_REINDEX_TOOL,
                 description=(
                     "Run a bounded Ralph indexed exploration reindex. Required: mode "
-                    "('changed'|'full'). Optional: timeout_ms (default 5000), "
+                    "('changed'|'full'). Optional: timeout_ms (1-60000, default 5000), "
                     "path_scope (list of relative paths). Returns: job_status, "
                     "generation, changed_files, failed_files, parse_count, "
                     "dirty_paths_count, elapsed_seconds, error_summary. "
                     "Fail-closed for the job; fail-open for the agent. "
+                    "timeout_ms outside [1, 60000] is rejected. "
                     'Example: {"mode": "changed", "timeout_ms": 5000}.'
                 ),
                 input_schema={
@@ -60,8 +61,13 @@ def explore_specs() -> list[ToolSpec]:
                         },
                         "timeout_ms": {
                             "type": "integer",
-                            "description": "Per-call budget in milliseconds (positive).",
+                            "description": (
+                                "Per-call budget in milliseconds (1-60000, default 5000). "
+                                "Out-of-range values are rejected."
+                            ),
                             "default": 5000,
+                            "minimum": 1,
+                            "maximum": 60000,
                         },
                         "path_scope": {
                             "type": "array",
@@ -85,17 +91,20 @@ def explore_specs() -> list[ToolSpec]:
                 description=(
                     "Bounded graph-native query over Ralph's indexed "
                     "exploration substrate. Required: query_type "
-                    "('neighbors'|'path'|'impact'|'hubs'|'tests') and target "
-                    "(qualified name or path). Optional: target_b (path), "
-                    "relations (list), limit (1-100, default 25), "
+                    "('neighbors'|'path'|'impact'|'hubs'|'tests') and target. "
+                    "Optional: target_b, relations, limit (1-100, default 25), "
                     "freshness ('required'|'prefer_fresh'|'allow_stale'), "
-                    "direction ('out'|'in'|'both'), depth (max 3), "
+                    "direction ('out'|'in'|'both'), depth (max 6), "
                     "max_paths (max 10), change_kind "
                     "('rename'|'signature'|'behavior'|'delete'|'unknown'), "
-                    "scope_path, role. Returns: nodes, edges, paths, "
+                    "scope_path, role, timeout_ms (1-30000, default 5000), "
+                    "cancel (bool). Returns: nodes, edges, paths, "
                     "impacted_files, suggested_tests, confidence, "
                     "provenance, evidence_ids, missing_data, "
-                    "index_generation, is_stale, truncated. "
+                    "index_generation, is_stale, truncated, "
+                    "cancelled, deadline_exceeded. "
+                    "Fail-closed on deadline/cancel: bounded incomplete "
+                    "result, no mutable work exposed. "
                     'Example: {"query_type": "neighbors", "target": '
                     '"ralph.mcp.explore.handlers.handle_ralph_reindex"}.'
                 ),
@@ -186,6 +195,24 @@ def explore_specs() -> list[ToolSpec]:
                             "type": "string",
                             "enum": ["source", "test", "docs", "config", "generated", "any"],
                             "description": "Optional role filter for hubs.",
+                        },
+                        "timeout_ms": {
+                            "type": "integer",
+                            "description": (
+                                "Per-call budget in milliseconds (1-30000, "
+                                "default 5000). Fail-closed on deadline."
+                            ),
+                            "default": 5000,
+                            "minimum": 1,
+                            "maximum": 30000,
+                        },
+                        "cancel": {
+                            "type": "boolean",
+                            "description": (
+                                "Request cooperative cancellation. When true, "
+                                "the query returns a bounded incomplete result."
+                            ),
+                            "default": False,
                         },
                     },
                     "required": ["query_type"],

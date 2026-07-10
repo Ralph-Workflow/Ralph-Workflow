@@ -46,6 +46,10 @@ def _all_tool_names() -> set[str]:
     return {spec.metadata.definition.name for spec in explore_specs()}
 
 
+def _explore_specs_by_name() -> dict[str, object]:
+    return {spec.metadata.definition.name: spec for spec in explore_specs()}
+
+
 def _decode(result) -> dict:
     return json.loads(result.content[0].text)
 
@@ -262,3 +266,231 @@ class _FakeIndex:
         self.generation = 0
         self.last_job_status = None
         self.reindex_in_progress = False
+
+
+# --- AC-05: bounded timeout_ms and explicit cancellation -----------------
+
+
+def test_graph_schema_exposes_bounded_timeout_ms_and_cancel() -> None:
+    """AC-05: the ralph_graph schema must declare a bounded timeout
+    and an explicit cancellation input.
+    """
+    spec = _explore_specs_by_name()[RALPH_GRAPH_TOOL]
+    properties = spec.metadata.definition.input_schema["properties"]
+    assert "timeout_ms" in properties
+    timeout = properties["timeout_ms"]
+    assert timeout["type"] == "integer"
+    assert timeout.get("minimum") == 1
+    assert timeout.get("maximum") == 30_000
+    assert int(timeout["default"]) == 5_000
+    assert "cancel" in properties
+    assert properties["cancel"]["type"] == "boolean"
+
+
+def test_graph_rejects_oversized_timeout_ms(tmp_path: Path) -> None:
+    """AC-05: callers cannot extend the budget arbitrarily. The
+    handler rejects ``timeout_ms`` above the documented cap.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_graph(
+                session,
+                _Workspace(workspace),
+                {
+                    "query_type": "neighbors",
+                    "target": "module.hello",
+                    "timeout_ms": 9_999_999_999,
+                },
+            )
+    finally:
+        store.close()
+
+
+def test_graph_rejects_zero_timeout_ms(tmp_path: Path) -> None:
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_graph(
+                session,
+                _Workspace(workspace),
+                {
+                    "query_type": "neighbors",
+                    "target": "module.hello",
+                    "timeout_ms": 0,
+                },
+            )
+    finally:
+        store.close()
+
+
+def test_graph_rejects_negative_timeout_ms(tmp_path: Path) -> None:
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_graph(
+                session,
+                _Workspace(workspace),
+                {
+                    "query_type": "neighbors",
+                    "target": "module.hello",
+                    "timeout_ms": -1,
+                },
+            )
+    finally:
+        store.close()
+
+
+def test_graph_deadline_exceeded_returns_bounded_incomplete_result(
+    tmp_path: Path,
+) -> None:
+    """AC-05: when the deadline elapses before the query starts,
+    the dispatcher returns a bounded, truthful incomplete result
+    with ``deadline_exceeded=true`` and the missing-data marker.
+    No mutable work is exposed to readers.
+    """
+    import time as _time
+
+    from ralph.mcp.explore import graph as graph_module
+    from ralph.mcp.explore.store import ExploreStore
+
+    _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        # Pick a deadline already in the past.
+        past = _time.monotonic() - 0.1
+        result = graph_module.run_query(
+            store,
+            query_type="neighbors",
+            target="module.hello",
+            deadline=past,
+        )
+        assert result.deadline_exceeded is True
+        assert result.cancelled is False
+        assert "deadline_exceeded" in result.missing_data
+        assert result.nodes == ()
+        assert result.edges == ()
+        assert result.paths == ()
+        assert result.impacted_files == ()
+        assert result.suggested_tests == ()
+        assert result.truncated is True
+        # index_generation reports the last committed value (0 here).
+        assert result.index_generation == 0
+    finally:
+        store.close()
+
+
+def test_graph_cancel_request_returns_bounded_incomplete_result(
+    tmp_path: Path,
+) -> None:
+    """AC-05: ``cancel=true`` returns a bounded, truthful
+    incomplete result with ``cancelled=true`` and the
+    ``cancelled`` marker in ``missing_data``.
+    """
+    from ralph.mcp.explore import graph as graph_module
+    from ralph.mcp.explore.store import ExploreStore
+
+    _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        result = graph_module.run_query(
+            store,
+            query_type="neighbors",
+            target="module.hello",
+            cancel=lambda: True,
+        )
+        assert result.cancelled is True
+        assert result.deadline_exceeded is False
+        assert "cancelled" in result.missing_data
+        assert result.nodes == ()
+        assert result.edges == ()
+        assert result.truncated is True
+    finally:
+        store.close()
+
+
+def test_graph_cancel_via_session_attribute_honored(tmp_path: Path) -> None:
+    """AC-05: the handler reads ``cancel=true`` and sets the
+    session cancel flag; the dispatcher honors it on the next
+    call and returns a bounded incomplete result.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        result = handle_ralph_graph(
+            session,
+            _Workspace(workspace),
+            {
+                "query_type": "neighbors",
+                "target": "module.hello",
+                "cancel": True,
+            },
+        )
+        payload = _decode(result)
+        assert payload["cancelled"] is True
+        assert payload["deadline_exceeded"] is False
+        assert "cancelled" in payload["missing_data"]
+        assert payload["nodes"] == []
+        assert payload["edges"] == []
+    finally:
+        store.close()
+
+
+def test_graph_handler_returns_cancelled_and_deadline_fields(
+    tmp_path: Path,
+) -> None:
+    """The response payload always carries ``cancelled`` and
+    ``deadline_exceeded`` so callers can branch on them without
+    a second round-trip.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        result = handle_ralph_graph(
+            session,
+            _Workspace(workspace),
+            {"query_type": "neighbors", "target": "module.hello"},
+        )
+        payload = _decode(result)
+        assert "cancelled" in payload
+        assert "deadline_exceeded" in payload
+        # Default path: both are False.
+        assert payload["cancelled"] is False
+        assert payload["deadline_exceeded"] is False
+    finally:
+        store.close()
+
+
+def test_graph_rejects_malformed_timeout_string(tmp_path: Path) -> None:
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError):
+            handle_ralph_graph(
+                session,
+                _Workspace(workspace),
+                {
+                    "query_type": "neighbors",
+                    "target": "module.hello",
+                    "timeout_ms": "lots",
+                },
+            )
+    finally:
+        store.close()

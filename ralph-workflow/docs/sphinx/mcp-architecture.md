@@ -217,9 +217,9 @@ exploration substrate under `.agent/ralph-explore/` for the current
 workspace. The substrate is owned by `ralph.mcp.explore` and exposes three
 new MCP tools:
 
-* `ralph_index_status` — reports generation, freshness, dirty paths, job history, storage bytes, and gitignore coverage. Side-effect free: it inspects the existing on-disk state and never creates SQLite files or `.agent/ralph-explore/` directories.
-* `ralph_reindex` — runs a bounded `changed`/`full` refresh (timeout-based, fail-closed for the job, fail-open for the agent). Returns `job_id`, `job_status`, `generation`, `changed_files`, `failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`, `error_summary`.
-* `ralph_graph` — graph-native queries (`neighbors`, `path`, `impact`, `hubs`, `tests`) with bounded traversal, evidence-backed output, and `freshness` policy (`required` / `prefer_fresh` / `allow_stale`).
+* `ralph_index_status` — reports generation, freshness, dirty paths, job history, storage bytes, and gitignore coverage. Side-effect free: it inspects the existing on-disk state and never creates SQLite files or `.agent/ralph-explore/` directories. The response carries `managed_ignore_rule_repair`, a structured next-run seeding instruction surfaced when the managed `.agent/` gitignore rule is absent so callers can repair the disposable-cache coverage without guessing.
+* `ralph_reindex` — runs a bounded `changed`/`full` refresh (timeout-based, fail-closed for the job, fail-open for the agent). `timeout_ms` is bounded in `[1, 60000]`; out-of-range or malformed values are rejected before any I/O. Returns `job_id`, `job_status`, `generation`, `changed_files`, `failed_files`, `parse_count`, `dirty_paths_count`, `elapsed_seconds`, `error_summary`.
+* `ralph_graph` — graph-native queries (`neighbors`, `path`, `impact`, `hubs`, `tests`) with bounded traversal, evidence-backed output, and `freshness` policy (`required` / `prefer_fresh` / `allow_stale`). The query path is bounded by a per-call `timeout_ms` (1-30000) and an explicit `cancel` flag; deadline expiry and cancellation return a bounded, truthful incomplete result (`deadline_exceeded=true` / `cancelled=true` plus `missing_data`) without exposing mutable work to readers.
 
 Existing read/search tools gain optional indexed arguments (`use_index`,
 `evidence_id`, `span_id`, `symbol`, `rank_by`, `return_evidence_ids`,

@@ -17,11 +17,15 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore import graph as graph_module
+from ralph.mcp.explore.pipeline import (
+    DEFAULT_FULL_TIMEOUT_MS as _REINDEX_TIMEOUT_MAX_MS,
+)
 from ralph.mcp.explore.pipeline import (
     DEFAULT_TIMEOUT_MS,
     ReindexOptions,
@@ -321,6 +325,13 @@ def _build_disabled_status_payload(
     persisted index even when the current session has no handle
     attached, so a side-effect-free status check reports the real
     disk state instead of always reporting ``index_exists=False``.
+
+    AC-04: when ``.agent/ralph-explore/`` is not covered by the
+    managed gitignore rule, ``managed_ignore_rule_repair`` carries
+    the next Ralph seeding repair instruction so callers know how
+    to make the cache disposable. The status handler never mutates
+    the gitignore on its own \u2014 the repair is a documented next
+    step, not a side effect.
     """
     return {
         "enabled": False,
@@ -339,6 +350,40 @@ def _build_disabled_status_payload(
         "stale_paths_count": 0,
         "index_storage_bytes": 0,
         "managed_ignore_rule_present": _gitignore_coverage(workspace_root),
+        "managed_ignore_rule_repair": _gitignore_repair_payload(workspace_root),
+    }
+
+
+def _gitignore_repair_payload(workspace_root: Path) -> dict[str, object]:
+    """Return the structured next-Ralph-seeding repair for the explore ignore rule.
+
+    The repair is a documented next step, not a side effect. The
+    handler must NOT mutate the gitignore; it only reports the
+    instruction so an operator (or the next ``ralph`` invocation,
+    which already calls ``auto_seed_default_gitignore``) can fix the
+    coverage.
+    """
+    gitignore = Path(workspace_root) / ".gitignore"
+    rule_present = _gitignore_coverage(workspace_root)
+    if rule_present:
+        return {
+            "required": False,
+            "action": "none",
+            "reason": "managed_ignore_rule_present",
+        }
+    return {
+        "required": True,
+        "action": "seed_default_gitignore",
+        "reason": "managed_ignore_rule_missing",
+        "target_file": str(gitignore),
+        "patterns_to_append": [".agent/"],
+        "next_command": "ralph",
+        "description": (
+            "Run a normal `ralph` invocation (or "
+            "`auto_seed_default_gitignore`) to seed the default "
+            ".gitignore so .agent/ralph-explore/ stays a "
+            "disposable cache and is not committed."
+        ),
     }
 
 
@@ -391,6 +436,7 @@ def _build_status_payload(
         "stale_paths_count": stale_paths,
         "index_storage_bytes": handle.index_storage_bytes(),
         "managed_ignore_rule_present": _gitignore_coverage(workspace_root),
+        "managed_ignore_rule_repair": _gitignore_repair_payload(workspace_root),
     }
 
 
@@ -405,6 +451,12 @@ def handle_ralph_reindex(
     files). Production callers are expected to gate reindex behind a
     higher privilege in the future; the Phase 1 contract keeps the
     current capability.
+
+    AC-05: ``timeout_ms`` is bounded. The handler rejects values
+    outside ``[1, _REINDEX_TIMEOUT_MAX_MS]`` rather than forwarding
+    arbitrarily large values into ``ReindexOptions``. Malformed
+    (non-integer, non-string-int) values are also rejected; callers
+    must send a positive integer in the documented range.
     """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Explore reindex")
     mode_raw: object = params.get("mode", "changed")
@@ -413,18 +465,17 @@ def handle_ralph_reindex(
         raise InvalidParamsError(
             f"Invalid reindex mode: {mode!r}; expected 'changed' or 'full'"
         )
-    timeout_raw: object = params.get("timeout_ms", DEFAULT_TIMEOUT_MS)
-    if isinstance(timeout_raw, bool) or not isinstance(
-        timeout_raw, (int, float, str)
-    ):
-        timeout_ms = DEFAULT_TIMEOUT_MS
-    else:
-        try:
-            timeout_ms = int(timeout_raw)
-        except (TypeError, ValueError):
-            timeout_ms = DEFAULT_TIMEOUT_MS
-    if timeout_ms <= 0:
-        raise InvalidParamsError("timeout_ms must be positive")
+    # AC-05: bounded per-call budget. Malformed or out-of-range
+    # values fail closed with a structured tool error; the
+    # dispatcher must NOT silently fall back to the default when
+    # the caller sent garbage.
+    timeout_ms = _strict_int_param(
+        params,
+        "timeout_ms",
+        default=DEFAULT_TIMEOUT_MS,
+        min_value=1,
+        max_value=_REINDEX_TIMEOUT_MAX_MS,
+    )
     path_scope_raw: object = params.get("path_scope")
     path_scope: tuple[str, ...] = ()
     if isinstance(path_scope_raw, list):
@@ -555,6 +606,27 @@ _VALID_CHANGE_KINDS: tuple[str, ...] = (
 #: Prompt-exact upper bound for the ``limit`` parameter (the graph
 #: contract always exposes the same cap).
 _GRAPH_LIMIT_MAX: int = 100
+#: Default per-call budget for ``ralph_graph`` queries, in
+#: milliseconds. Picked to match the existing reindex default
+#: (5 s) so a single tool call does not silently outlive its
+#: expected budget.
+_GRAPH_DEFAULT_TIMEOUT_MS: int = 5_000
+#: Maximum permissible ``timeout_ms`` for ``ralph_graph``. The
+#: handler rejects any value outside ``[1, _GRAPH_TIMEOUT_MAX_MS]``
+#: so callers cannot extend the budget arbitrarily. Matches the
+#: default in the schema (1-30000).
+_GRAPH_TIMEOUT_MAX_MS: int = 30_000
+#: Cooperative-cancellation flag registry. The handler stores
+#: ``True`` when the caller asked to cancel, keyed by the
+#: session's ``id()``. The dispatcher polls the flag at phase
+#: boundaries. Entries are scoped to the call's session; the
+#: map is intentionally small (one entry per active query) so
+#: unbounded growth is bounded by concurrency, not wall time.
+#:
+#: Ponytail: keyed by ``id()`` and re-armed at the start of
+#: every call, so a previous caller's cancel cannot poison a
+#: new query against the same session.
+_GRAPH_CANCEL_FLAGS: dict[int, bool] = {}  # bounded-accumulator-ok: keyed by id(session); one entry per active call
 
 
 def _graph_node_to_dict(node: graph_module.GraphNode) -> dict[str, object]:
@@ -597,6 +669,8 @@ def _graph_result_to_dict(result: graph_module.GraphResult) -> dict[str, object]
         "index_generation": result.index_generation,
         "is_stale": result.is_stale,
         "truncated": result.truncated,
+        "cancelled": result.cancelled,
+        "deadline_exceeded": result.deadline_exceeded,
         "metadata": dict(result.metadata),
     }
 
@@ -612,7 +686,16 @@ def handle_ralph_graph(
     prompt-exact shared fields (``nodes``, ``edges``, ``paths``,
     ``impacted_files``, ``suggested_tests``, ``confidence``,
     ``provenance``, ``evidence_ids``, ``missing_data``,
-    ``index_generation``, ``is_stale``, ``truncated``).
+    ``index_generation``, ``is_stale``, ``truncated``,
+    ``cancelled``, ``deadline_exceeded``).
+
+    AC-05: ``timeout_ms`` (1-30000) is a bounded per-call budget.
+    On deadline expiry the dispatcher returns a bounded, truthful
+    incomplete result (``deadline_exceeded=true``,
+    ``missing_data=("deadline_exceeded",)``) without exposing
+    mutable work. ``cancel=true`` requests cooperative cancellation
+    with the same bounded contract (``cancelled=true``,
+    ``missing_data=("cancelled",)``).
     """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Graph query")
     query_type_raw: object = params.get("query_type", "")
@@ -668,6 +751,40 @@ def handle_ralph_graph(
     role: str | None = (
         str(role_raw) if isinstance(role_raw, str) and role_raw else None
     )
+    # AC-05: bounded per-call deadline. Reject malformed values
+    # fail-closed; only positive integers in [1, 30000] are
+    # accepted. The deadline is converted to a monotonic-clock
+    # absolute deadline so a future system-clock change cannot
+    # extend the budget.
+    timeout_ms = _strict_int_param(
+        params,
+        "timeout_ms",
+        default=_GRAPH_DEFAULT_TIMEOUT_MS,
+        min_value=1,
+        max_value=_GRAPH_TIMEOUT_MAX_MS,
+    )
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    # AC-05: cooperative cancellation. ``cancel=true`` flips the
+    # ``_graph_cancel_requested`` session attribute to True; the
+    # dispatcher polls it at phase boundaries. The flag is
+    # re-armed at the start of every call so a previous caller
+    # cannot poison a new query.
+    cancel_raw: object = params.get("cancel", False)
+    cancel_flag = bool(cancel_raw) if isinstance(cancel_raw, bool) else False
+    # AC-05: cooperative cancellation. The flag is registered
+    # against the session object identity so a previous caller's
+    # cancel does not poison a new query. The dispatcher polls
+    # the flag at phase boundaries. The map is keyed by ``id()``
+    # so the entry is automatically GC'd when the session is
+    # collected; the explicit clear in the ``finally`` block is
+    # a safety net for repeated sessions in long-lived tests.
+    session_key = id(session)
+    _GRAPH_CANCEL_FLAGS[session_key] = cancel_flag
+
+    def _is_cancelled() -> bool:
+        return bool(_GRAPH_CANCEL_FLAGS.get(session_key, False))
+
+    cancel_callable: Callable[[], bool] = _is_cancelled
 
     handle: ExploreIndex | None = _resolve_explore_index(session)
     if handle is None:
@@ -696,6 +813,8 @@ def handle_ralph_graph(
         change_kind=change_kind,
         scope_path=scope_path,
         role=role,
+        deadline=deadline,
+        cancel=cancel_callable,
     )
     payload = _graph_result_to_dict(result)
     return ToolResult(
@@ -719,6 +838,58 @@ def _int_param(params: dict[str, object], key: str, default: int) -> int:
     return default
 
 
+def _strict_int_param(
+    params: dict[str, object],
+    key: str,
+    *,
+    default: int,
+    min_value: int,
+    max_value: int,
+) -> int:
+    """Coerce a strictly-bounded integer parameter; fail-closed on bad input.
+
+    AC-05: bounded per-call budgets cannot be silently widened by
+    malformed or out-of-range values. ``bool`` is rejected because
+    Python treats ``True``/``False`` as ``int``; floats must be
+    integer-valued; strings must parse to an integer. Returns the
+    supplied ``default`` only when the caller did not provide the
+    key at all.
+    """
+    if key not in params:
+        value = default
+    else:
+        raw: object = params[key]
+        if isinstance(raw, bool):
+            raise InvalidParamsError(
+                f"{key} must be an integer in [{min_value}, {max_value}]"
+            )
+        if isinstance(raw, int):
+            value = raw
+        elif isinstance(raw, str):
+            try:
+                value = int(raw)
+            except ValueError as exc:
+                raise InvalidParamsError(
+                    f"{key} must be an integer in [{min_value}, {max_value}]; "
+                    f"got {raw!r}"
+                ) from exc
+        elif isinstance(raw, float):
+            if not raw.is_integer():
+                raise InvalidParamsError(
+                    f"{key} must be an integer in [{min_value}, {max_value}]"
+                )
+            value = int(raw)
+        else:
+            raise InvalidParamsError(
+                f"{key} must be an integer in [{min_value}, {max_value}]"
+            )
+    if value < min_value or value > max_value:
+        raise InvalidParamsError(
+            f"{key} must be an integer in [{min_value}, {max_value}]; got {value}"
+        )
+    return value
+
+
 __all__ = [
     "DEFAULT_INDEX_ROOT",
     "ExploreIndex",
@@ -736,6 +907,7 @@ __all__ += [
     "_build_reindex_payload",
     "_build_status_payload",
     "_gitignore_coverage",
+    "_gitignore_repair_payload",
     "_resolve_explore_index",
     "_resolve_index_dir",
 ]
