@@ -154,6 +154,48 @@ def test_index_status_managed_ignore_rule_absent(tmp_path: Path) -> None:
         handle.store.close()
 
 
+def test_index_status_reports_last_job_after_reindex(tmp_path: Path) -> None:
+    """Regression for AC-03 status reporting after a successful reindex.
+
+    Prior to the fix, ``_build_status_payload`` iterated a
+    ``sqlite3.Row`` directly which yields values, not column names, so
+    the second ``latest_row[key]`` lookup raised ``IndexError`` and
+    ``ralph_index_status`` crashed whenever a job row existed.
+    """
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        reindex_payload = _decode(
+            handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "timeout_ms": 5_000},
+            )
+        )
+        assert reindex_payload["job_status"] == "ok"
+        assert reindex_payload["generation"] == 1
+
+        # Status must not raise and must report the last_job dict.
+        status_payload = _decode(
+            handle_ralph_index_status(session, _Workspace(workspace), {})
+        )
+        assert status_payload["enabled"] is True
+        assert status_payload["generation"] == 1
+        assert isinstance(status_payload["last_job"], dict), status_payload
+        assert status_payload["last_job"]["status"] == "ok"
+        # last_job carries the same job_id the reindex returned.
+        assert (
+            status_payload["last_job"]["job_id"]
+            == reindex_payload["job_id"]
+        )
+        # generation is recorded as a string in last_job (raw row
+        # values) but the integer appears in the typed status fields.
+        assert status_payload["last_job"]["generation"] == "1"
+    finally:
+        handle.store.close()
+
+
 def test_reindex_changed_runs_and_records(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     handle = build_explore_index(workspace)

@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -371,10 +370,11 @@ def _build_status_payload(
     if latest_row is None:
         last_job_dict = None
     else:
-        last_job_dict = {
-            str(key): str(cast("object", latest_row[key]))
-            for key in cast("Iterable[str]", latest_row)
-        }
+        # Ponytail: ``sqlite3.Row`` iterates values, not column names.
+        # ``dict(row)`` uses ``row.keys()`` internally and stringifies
+        # values, so we do not need a manual comprehension here.
+        row_dict: dict[str, object] = dict(latest_row)
+        last_job_dict = {str(key): str(value) for key, value in row_dict.items()}
     return {
         "index_exists": handle.generation > 0,
         "generation": handle.generation,
