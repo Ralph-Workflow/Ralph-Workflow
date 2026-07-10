@@ -177,6 +177,68 @@ def test_exec_summary_registers_spill_with_session_resolver(
     assert stderr_data == stderr_body
 
 
+def test_exec_summary_registers_stderr_spill_even_when_below_individual_threshold(
+    tmp_path: Path,
+) -> None:
+    """AC-11 regression: when the combined exec output exceeds the inline
+    limit but a nonempty ``stderr`` stream is BELOW its individual
+    truncation threshold, the summary must still register a
+    ``stderr_resource_id`` so the agent can replay the stderr stream.
+
+    Pre-fix, the summary path only spilled a stream when the stream's
+    own byte length exceeded ``INLINE_OUTPUT_LIMIT_BYTES`` (1 MiB).
+    That dropped the stderr resource id when the combined output
+    triggered the spill but stderr was sub-threshold, breaking the
+    AC-11 stdout/stderr replayable contract.
+    """
+    session = _RichSession({"ProcessExecBounded"})
+    resolver = _make_resolver(tmp_path)
+    session.exec_resource_resolver = resolver
+    workspace = MockWorkspaceRoot(tmp_path)
+    spill_dir = tmp_path / ".agent" / "tmp"
+    # stdout crosses the 1 MiB inline limit alone (forces the combined
+    # output to spill) and stderr is non-empty but well below 1 MiB so
+    # the pre-fix ``stderr_truncated`` gate would have skipped it.
+    stdout_body = ("line\n" * 300_000).encode()  # > 1 MiB
+    stderr_body = b"non-empty but small stderr\n"  # << 1 MiB
+
+    def fake_runner(
+        _argv: list[str], _cwd: Path, _timeout: float | None
+    ) -> _CompletedProcessAdapter:
+        return _CompletedProcessAdapter(
+            stdout=stdout_body, stderr=stderr_body, returncode=0
+        )
+
+    deps = ExecRunDeps(runner=fake_runner, spill_dir=spill_dir)
+    result = handle_exec_command(
+        session,
+        workspace,
+        {"command": "make verify", "format": "summary"},
+        deps=deps,
+    )
+    assert result.is_error is False
+    content = result.content[0]
+    assert isinstance(content, ToolContent)
+    payload = json.loads(content.text)
+    assert payload["format"] == "summary"
+    stdout_uri = payload.get("stdout_resource_id")
+    stderr_uri = payload.get("stderr_resource_id")
+    assert isinstance(stdout_uri, str) and stdout_uri.startswith("ralph://exec/")
+    assert isinstance(stderr_uri, str) and stderr_uri.startswith("ralph://exec/"), (
+        "AC-11: stderr_resource_id must be registered when the combined "
+        "output spills, even when stderr is below the 1 MiB individual "
+        "threshold. The pre-fix code only spilled a stream when the "
+        "stream's own bytes exceeded 1 MiB, which dropped the stderr "
+        "resource id whenever stderr was sub-threshold."
+    )
+    # Both ids must resolve to the original bytes through the
+    # session-attached resolver.
+    stdout_data, _, _ = resolver.read(stdout_uri)
+    stderr_data, _, _ = resolver.read(stderr_uri)
+    assert stdout_data == stdout_body
+    assert stderr_data == stderr_body
+
+
 def test_mcp_resources_read_returns_exec_spill_blob(tmp_path: Path) -> None:
     """``resources/read`` returns the base64-encoded spill for a valid URI.
 

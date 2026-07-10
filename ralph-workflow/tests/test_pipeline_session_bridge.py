@@ -50,6 +50,12 @@ class FakeSessionBridge:
         self.started = False
         self.shutdown_called = False
         self.reset_tool_registry_called = False
+        # AC-11: capture the session the bridge was constructed with so
+        # the test for exec-resolver attachment can introspect what
+        # ``build_session_bridge`` attached before ``start()`` was
+        # called.
+        self.attached_session: AgentSession | None = None
+        self.attached_workspace: Workspace | None = None
 
     @property
     def run_id(self) -> str:
@@ -98,7 +104,13 @@ def fake_start_mcp_server(
     workspace: Workspace,
     extras: McpServerExtras | None = None,
 ) -> SessionBridgeLike:
-    return FakeSessionBridge(endpoint="http://localhost:8888", run_id=session.run_id)
+    bridge = FakeSessionBridge(endpoint="http://localhost:8888", run_id=session.run_id)
+    # AC-11: capture the session the bridge was constructed with so the
+    # test for exec-resolver attachment can introspect what
+    # ``build_session_bridge`` attached before ``start()`` was called.
+    bridge.attached_session = session
+    bridge.attached_workspace = workspace
+    return bridge
 
 
 def fake_workspace_factory(root: Path) -> Workspace:
@@ -217,6 +229,142 @@ class TestBuildSessionBridge:
         )
 
         assert isinstance(bridge, FakeSessionBridge)
+
+    def test_exec_resource_resolver_attached_before_bridge_start(self, tmp_path: Path) -> None:
+        """AC-11: ``session.exec_resource_resolver`` MUST be attached to the
+        parent ``AgentSession`` BEFORE the subprocess is spawned.
+
+        ``build_session_bridge`` is the single owner of the production
+        bridge path. The session payload that the subprocess consumes is
+        serialized inside ``server_fn`` (which maps to ``start_mcp_server``).
+        The exec resolver must therefore be attached before that call so
+        the on-disk payload can carry the resolver config and the
+        subprocess MCP server can re-construct the resolver from the
+        payload. Otherwise the production ``resources/read`` path returns
+        a structured "resolver not attached" error and the AC-11
+        stdout/stderr replayable resource IDs are not re-readable inside
+        the spawned MCP subprocess.
+        """
+        bridge = build_session_bridge(
+            workspace_root=tmp_path,
+            drain="commit",
+            agents_policy=None,
+            run_id="commit-plumbing",
+            build_session_mcp_plan_fn=fake_build_session_mcp_plan,
+            start_mcp_server_fn=fake_start_mcp_server,
+            workspace_factory=fake_workspace_factory,
+        )
+        assert isinstance(bridge, FakeSessionBridge)
+        # The session the bridge was constructed with is captured by the
+        # fake. By the time ``start()`` is called, the parent
+        # ``AgentSession`` must already own a resolver. ``start()`` is
+        # the production subprocess spawn point, so this is the
+        # production bridge path's contract.
+        assert bridge.started is True
+        assert bridge.attached_session is not None
+        resolver = bridge.attached_session.exec_resource_resolver
+        assert resolver is not None, (
+            "AC-11: exec_resource_resolver must be attached to the "
+            "parent session before the subprocess MCP server is spawned; "
+            "a missing resolver makes the production resources/read "
+            "path return a structured 'resolver not attached' error and "
+            "the AC-11 replayable stdout/stderr resource IDs are not "
+            "re-readable."
+        )
+
+    def test_session_payload_json_carries_exec_spill_roots(self, tmp_path: Path) -> None:
+        """AC-11: ``session_payload_json`` MUST serialize the exec resolver's
+        trusted spill roots so the subprocess session can re-construct a
+        matching resolver from the on-disk payload.
+
+        Without this re-attach in the subprocess MCP server, the
+        ``resources/read`` handler returns a structured "resolver not
+        attached" error and the AC-11 stdout/stderr replayable contract
+        is broken for the production subprocess path.
+        """
+        from ralph.mcp.server.lifecycle import session_payload_json
+
+        bridge = build_session_bridge(
+            workspace_root=tmp_path,
+            drain="commit",
+            agents_policy=None,
+            run_id="commit-plumbing",
+            build_session_mcp_plan_fn=fake_build_session_mcp_plan,
+            start_mcp_server_fn=fake_start_mcp_server,
+            workspace_factory=fake_workspace_factory,
+        )
+        assert isinstance(bridge, FakeSessionBridge)
+        assert bridge.attached_session is not None
+        import json
+
+        payload = json.loads(session_payload_json(bridge.attached_session))
+        assert "exec_spill_roots" in payload, (
+            "AC-11: session_payload_json must include exec_spill_roots so "
+            "the subprocess MCP server can re-construct the resolver "
+            "from the on-disk payload."
+        )
+        spill_roots = payload["exec_spill_roots"]
+        assert isinstance(spill_roots, list)
+        assert spill_roots, "exec_spill_roots must include at least one path"
+        # All listed roots must be Path-like strings; the subprocess
+        # session re-constructs ``Path`` objects from them.
+        for root in spill_roots:
+            assert isinstance(root, str) and root
+        # Sanity: the workspace's ``.agent/tmp`` is the canonical trusted
+        # root the production bridge attaches. The exact name is
+        # internal to the bridge, but the path must point at something
+        # under the workspace root the bridge was built for.
+        assert any(
+            str(tmp_path) in root or str(tmp_path / ".agent" / "tmp") in root
+            for root in spill_roots
+        ), (
+            f"AC-11: exec_spill_roots must include the workspace "
+            f"<tmp_path>/.agent/tmp, got {spill_roots!r}"
+        )
+
+    def test_file_backed_session_reconstructs_resolver_from_on_disk_payload(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-11: the subprocess ``FileBackedSession`` MUST re-construct
+        the exec resolver from the on-disk session payload's
+        ``exec_spill_roots`` so ``resources/read`` can replay parent-side
+        exec URIs.
+
+        This is the production subprocess path: the parent
+        ``build_session_bridge`` writes the on-disk session payload via
+        ``create_session_file`` and the subprocess session reads it via
+        ``session_from_env``. Without the lazy re-attach, the resolver
+        is ``None`` inside the subprocess and the AC-11 contract is
+        broken.
+        """
+        from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV
+        from ralph.mcp.server.lifecycle import _create_session_file
+        from ralph.mcp.server.runtime_session import session_from_env
+
+        bridge = build_session_bridge(
+            workspace_root=tmp_path,
+            drain="commit",
+            agents_policy=None,
+            run_id="commit-plumbing",
+            build_session_mcp_plan_fn=fake_build_session_mcp_plan,
+            start_mcp_server_fn=fake_start_mcp_server,
+            workspace_factory=fake_workspace_factory,
+        )
+        assert isinstance(bridge, FakeSessionBridge)
+        assert bridge.attached_session is not None
+        # Drop the session file exactly where the production
+        # ``_spawn_mcp_process`` would: under ``.agent/tmp``.
+        session_file = _create_session_file(tmp_path, bridge.attached_session)
+        try:
+            restored = session_from_env({MCP_SESSION_FILE_ENV: str(session_file)})
+            assert restored is not None
+            assert getattr(restored, "exec_resource_resolver", None) is not None, (
+                "AC-11: the subprocess session must re-construct the "
+                "exec resolver from exec_spill_roots in the on-disk "
+                "payload."
+            )
+        finally:
+            session_file.unlink(missing_ok=True)
 
     def test_artifact_format_docs_are_materialized_into_workspace(self, tmp_path: Path) -> None:
         """The pre-render hook must materialize every bundled format doc.

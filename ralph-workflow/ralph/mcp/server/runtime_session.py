@@ -43,6 +43,7 @@ from ralph.mcp.protocol.session import (
     ToolOutputSinkEntry,
     session_has_capability,
 )
+from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 
 
 class FileBackedSession:
@@ -57,6 +58,8 @@ class FileBackedSession:
         run_id_factory: Callable[[], str] | None = None,
         env_getter: Callable[[str], str | None] | None = None,
         broker_secret: str | None = None,
+        exec_resource_resolver: ExecResourceResolverLike | None = None,
+        exec_spill_roots: tuple[Path, ...] | None = None,
     ) -> None:
         self._path = path
         self._loader = loader or _load_session_payload
@@ -103,8 +106,27 @@ class FileBackedSession:
         # ``resources/read`` handler returns a structured
         # "resolver not attached" error. Production bridges attach
         # one resolver so the AC-11 replayable stdout/stderr resource
-        # IDs are actually re-readable.
-        self.exec_resource_resolver: ExecResourceResolverLike | None = None
+        # IDs are actually re-readable. The resolver is either
+        # injected directly (caller owns the object) or discovered
+        # lazily from the on-disk payload's ``exec_spill_roots`` so a
+        # subprocess session restored from the on-disk payload can
+        # replay parent-side spills.
+        self._exec_resource_resolver: ExecResourceResolverLike | None = (
+            exec_resource_resolver
+        )
+        if exec_spill_roots is not None:
+            self._exec_spill_roots: tuple[Path, ...] | None = tuple(
+                exec_spill_roots
+            )
+        else:
+            # AC-11: discover the on-disk payload's ``exec_spill_roots``
+            # so the subprocess MCP server path (which only sees the
+            # session file) can replay parent-side exec URIs. The
+            # discovery is best-effort: a missing or unparseable file
+            # keeps the legacy ``None`` resolver and the resources/read
+            # handler returns a structured "resolver not attached"
+            # error.
+            self._exec_spill_roots = self._discover_exec_spill_roots_from_disk()
 
     def current_thread_tool_output_sink(self) -> Callable[[dict[str, object]], None] | None:
         """Return the sink only when the calling thread owns it (single atomic read)."""
@@ -139,9 +161,76 @@ class FileBackedSession:
         self._cached_payload = payload
         return payload
 
+    def _discover_exec_spill_roots_from_disk(self) -> tuple[Path, ...] | None:
+        """Read ``exec_spill_roots`` from the on-disk session payload.
+
+        AC-11 production subprocess path: the parent process serializes
+        the trusted spill roots via ``session_payload_json`` and the
+        subprocess MCP server reconstructs the resolver here. The
+        method is best-effort: a missing or unparseable file returns
+        ``None`` so the legacy "resolver not attached" error path
+        surfaces rather than a startup failure.
+
+        The payload is read through ``_load()`` so the parsed-payload
+        cache stays consistent: a duplicate read at init time would
+        otherwise inflate the loader's call count and break the
+        per-generation cache contract.
+        """
+        try:
+            payload_obj: object = self._load()
+        except (OSError, ValueError):
+            return None
+        if not isinstance(payload_obj, dict):
+            return None
+        raw_roots: object = payload_obj.get("exec_spill_roots")
+        if not isinstance(raw_roots, list):
+            return None
+        collected = [Path(item) for item in raw_roots if isinstance(item, str) and item]
+        if not collected:
+            return None
+        return tuple(collected)
+
     @property
     def _workspace_root(self) -> Path:
         return self._path.parent.parent.parent.resolve()
+
+    @property
+    def exec_resource_resolver(self) -> ExecResourceResolverLike | None:
+        """Lazily resolve the AC-11 ``ralph://exec/...`` resolver.
+
+        Order of preference:
+
+        #. A resolver injected at ``__init__`` time (production tests
+           and the in-process path that owns the resolver object).
+        #. Spill roots carried by the on-disk session payload's
+           ``exec_spill_roots`` key (subprocess MCP server path
+           restored via ``session_from_env``). The resolver is
+           re-constructed once and cached for the lifetime of the
+           session so repeated ``resources/read`` calls do not pay the
+           construction cost.
+        """
+        if self._exec_resource_resolver is not None:
+            return self._exec_resource_resolver
+        if not self._exec_spill_roots:
+            return None
+        self._exec_resource_resolver = ExecResourceResolver(
+            spill_roots=self._exec_spill_roots
+        )
+        return self._exec_resource_resolver
+
+    @exec_resource_resolver.setter
+    def exec_resource_resolver(
+        self, value: ExecResourceResolverLike | None
+    ) -> None:
+        """Allow callers to inject a resolver after construction.
+
+        The production session_from_env path uses this to attach a
+        resolver that was discovered lazily on first read; tests can
+        use it to swap in a fake. The lazy-discovery branch is
+        re-entered when ``value`` is ``None`` and spill roots are
+        present.
+        """
+        self._exec_resource_resolver = value
 
     @property
     def session_id(self) -> str:
@@ -312,6 +401,11 @@ def session_from_env(
         # are reduced to a single ``broker_secret`` value used by the
         # HMAC contract.
         broker_secret_value: str | None = env_map.get("RALPH_BROKER_SECRET") or None
+        # AC-11: the ``FileBackedSession`` discovers its exec resource
+        # resolver from the on-disk payload's ``exec_spill_roots`` so
+        # the subprocess MCP server can replay parent-side
+        # ``ralph://exec/<spill-name>`` URIs. The discovery is done
+        # inside the session so we do not double-read the payload here.
         return FileBackedSession(
             Path(session_file),
             session_id_factory=session_id_factory,

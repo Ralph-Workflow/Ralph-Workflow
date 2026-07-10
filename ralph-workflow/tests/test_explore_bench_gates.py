@@ -408,4 +408,3 @@ def test_extended_fixtures_run_under_scripted_executors() -> None:
         )
         assert result.indexed.tool_calls == len(fixture.indexed_script)
         assert result.indexed.evidence_recall == 1.0
-

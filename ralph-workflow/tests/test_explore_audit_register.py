@@ -139,6 +139,38 @@ def test_audit_register_has_at_least_one_defer_entry() -> None:
     )
 
 
+def test_audit_register_list_directory_tools_are_implemented() -> None:
+    """The Phase 0 audit must reflect the shipped indexed list view behavior.
+
+    Pre-fix, ``list_directory`` and ``list_directory_recursive`` were
+    classified as DEFER because the compact/ranked/outline views were
+    said to be gated on Phase-2 symbol data. The Phase-2 implementation
+    has shipped: workspace/_read_handlers.py now wires compact/ranked/
+    outline through the indexed handle, consumes Phase-2 structure
+    data when available, and falls back to the raw shape under
+    ``use_index=never``. The audit register is the single source of
+    truth for whether a tool is implemented or deferred; a stale
+    DEFER would mislead audits and benchmark gates. This test pins
+    the current contract: a re-audit is required if the views are
+    ever removed.
+    """
+    entries_by_tool = {entry.tool: entry for entry in AUDIT_REGISTER}
+    for tool_name in (
+        RalphToolName.LIST_DIRECTORY,
+        RalphToolName.LIST_DIRECTORY_RECURSIVE,
+        RalphToolName.DIRECTORY_TREE,
+    ):
+        entry = entries_by_tool.get(tool_name)
+        assert entry is not None, f"{tool_name} must have an audit entry"
+        assert entry.outcome != AuditOutcome.DEFER, (
+            f"AC-01/AC-09: {tool_name} is implemented in "
+            "workspace/_read_handlers.py (compact/ranked/outline views "
+            "wired through the indexed handle). A DEFER outcome would "
+            "contradict the shipped behavior and mislead the audit "
+            "register. Re-audit if the indexed views are ever removed."
+        )
+
+
 def test_audit_register_includes_phase1_add_argument_entries() -> None:
     """The four tools targeted for Phase 1 must be add_argument outcomes."""
     phase1_tools = {

@@ -99,4 +99,3 @@ def test_ralph_explore_remains_deferred_without_measured_bundle_benefit() -> Non
     # wrapper is held in Phase 5 (Optional adapters) implicitly.
     deferred_ids = {entry.phase_id for entry in DEFERRED_PHASES}
     assert "ralph_explore" not in deferred_ids
-

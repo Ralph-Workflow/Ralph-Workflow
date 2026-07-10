@@ -243,11 +243,17 @@ _SEED: tuple[AuditEntry, ...] = (
     AuditEntry(
         tool=RalphToolName.LIST_DIRECTORY,
         family=AuditFamily.WORKSPACE_LIST,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Compact/ranked/outline views gated on Phase-2 symbol data; "
-            "raw listing is cheap and the current 'no-arg + recursive' "
-            "contract is already minimal."
+            "AC-09: add ``view=raw|compact|ranked|outline``, "
+            "``include_counts``, ``include_symbols``, ``changed_only``, "
+            "``limit_children``, and ``use_index=auto|always|never``. "
+            "Compact/ranked/outline views are wired through the indexed "
+            "handle in workspace/_read_handlers.py and the Phase-2 "
+            "structure data is consumed when available. Raw/default "
+            "behavior is preserved and the audit register now reflects "
+            "the shipped behavior (the previous DEFER outcome was "
+            "stale once the ranked view landed)."
         ),
         counters=_counters(
             transcript_tokens=96,
@@ -255,64 +261,42 @@ _SEED: tuple[AuditEntry, ...] = (
             tool_calls=1,
             stale_fallback_events=0,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.LIST_DIRECTORY_RECURSIVE,
         family=AuditFamily.WORKSPACE_LIST,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Same as list_directory: deferred to Phase 2 because the ranked "
-            "view needs symbol/heading counts that Phase 1 does not extract."
+            "Same as list_directory: the recursive sibling shares the "
+            "compact/ranked/outline views and use_index fallbacks. The "
+            "previous DEFER outcome is stale because the implementation "
+            "in workspace/_read_handlers.py already routes through the "
+            "indexed handle."
         ),
         counters=_counters(
             transcript_tokens=256,
             returned_bytes=2048,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.DIRECTORY_TREE,
         family=AuditFamily.WORKSPACE_LIST,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Outline + symbol counts require Phase-2 structure extraction; "
-            "raw tree is already minimal enough to defer."
+            "AC-09: add ``view=raw|compact|ranked|outline``, "
+            "``include_counts``, ``include_symbols``, ``changed_only``, "
+            "``limit_children``, and ``use_index=auto|always|never``. "
+            "directory_tree consumes the same Phase-2 structure data as "
+            "list_directory; the previous DEFER outcome is stale now "
+            "that the ranked/outline view is implemented and routed "
+            "through the indexed handle."
         ),
         counters=_counters(
             transcript_tokens=384,
             returned_bytes=4096,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.SEARCH_FILES,

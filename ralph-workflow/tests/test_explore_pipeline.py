@@ -588,4 +588,3 @@ def test_tombstone_record_is_idempotent_on_repeat_delete(tmp_path: Path) -> None
         assert count >= 1
     finally:
         store.close()
-

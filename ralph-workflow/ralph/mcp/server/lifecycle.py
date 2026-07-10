@@ -819,6 +819,25 @@ def session_payload_json(session: SessionLike) -> str:
         session_payload["capability_profile"] = resolve_capability_profile(
             raw_identity
         ).to_payload()
+    # AC-11: when the parent session owns an exec resource resolver,
+    # serialize the trusted spill roots so the subprocess session
+    # (FileBackedSession) can re-construct a matching resolver. This is
+    # the only path through which ``ralph://exec/<spill-name>`` URIs
+    # returned by ``format=summary`` exec calls are re-readable inside
+    # the production subprocess path.
+    exec_resolver: object = getattr(session, "exec_resource_resolver", None)
+    if exec_resolver is not None:
+        resolver_roots: list[str] = []
+        spill_roots_attr: object = getattr(exec_resolver, "spill_roots", ())
+        if isinstance(spill_roots_attr, tuple):
+            for root_path in spill_roots_attr:
+                if isinstance(root_path, Path):
+                    resolver_roots.append(str(root_path))
+                    continue
+                if isinstance(root_path, str) and root_path:
+                    resolver_roots.append(root_path)
+        if resolver_roots:
+            session_payload["exec_spill_roots"] = resolver_roots
     return json.dumps(session_payload)
 
 

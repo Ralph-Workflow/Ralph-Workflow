@@ -117,8 +117,6 @@ def format_or_spill(
     stderr_value = stderr_text if stderr_text is not None else ""
     stdout_encoded_len = len(stdout_value.encode("utf-8", errors="replace"))
     stderr_encoded_len = len(stderr_value.encode("utf-8", errors="replace"))
-    stdout_truncated = stdout_encoded_len > INLINE_OUTPUT_LIMIT_BYTES
-    stderr_truncated = stderr_encoded_len > INLINE_OUTPUT_LIMIT_BYTES
 
     def _register(spill: Path) -> str:
         if exec_resource_resolver is None:
@@ -152,19 +150,25 @@ def format_or_spill(
             )
         # AC-11: when the caller provided split streams, each stream
         # gets its own resource id and spill path so the agent can
-        # re-read stdout and stderr independently. When the caller
+        # re-read stdout and stderr independently. Both streams are
+        # spilled whenever the combined output triggered this branch,
+        # regardless of each stream's individual truncation flag —
+        # otherwise a nonempty stderr stream below the 1 MiB inline
+        # threshold would have no replayable resource id when the
+        # combined output exceeds the limit, breaking the AC-11
+        # stdout/stderr replayable-resource contract. When the caller
         # did not split, the combined spill is the single source of
         # truth and we report it under stdout_resource_id.
         if has_split_streams:
             stdout_resource_id: str | None = None
             stdout_spill_path_v: str | None = None
-            if stdout_value and (stdout_truncated or stdout_value):
+            if stdout_value:
                 stdout_spill = spill_output(stdout_value, spill_dir)
                 stdout_resource_id = _register(stdout_spill)
                 stdout_spill_path_v = str(stdout_spill)
             stderr_resource_id: str | None = None
             stderr_spill_path: str | None = None
-            if stderr_value and stderr_truncated:
+            if stderr_value:
                 stderr_spill = spill_output(stderr_value, spill_dir)
                 stderr_resource_id = _register(stderr_spill)
                 stderr_spill_path = str(stderr_spill)
