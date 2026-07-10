@@ -340,6 +340,23 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
         assert plan.model_identity.provider == "openai"
         assert plan.model_identity.model_id == "gpt-4o"
 
+    def test_codex_config_override_does_not_pollute_model_identity(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CODEX,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_opts=SessionModelOpts(
+                model_flag="--model gpt-5.3-codex -c 'model_reasoning_effort = \"high\"'"
+            ),
+        )
+
+        assert plan.model_identity.provider == "openai"
+        assert plan.model_identity.model_id == "gpt-5.3-codex"
+
     def test_model_identity_takes_precedence_over_model_flag(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:

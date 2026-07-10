@@ -163,6 +163,34 @@ def test_codex_command_builder_parity(tmp_path: Path) -> None:
     assert cmd == expected
 
 
+def test_codex_command_builder_preserves_quoted_effort_override(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello world", encoding="utf-8")
+    config = AgentConfig(
+        cmd="codex exec",
+        transport=AgentTransport.CODEX,
+        model_flag="--model gpt-5.3-codex -c 'model_reasoning_effort = \"high\"'",
+    )
+
+    cmd = CodexCommandBuilder().build(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+
+    assert cmd == [
+        "codex",
+        "exec",
+        "--json",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--model",
+        "gpt-5.3-codex",
+        "-c",
+        'model_reasoning_effort = "high"',
+        "hello world",
+    ]
+
+
 def test_agy_command_builder_parity(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello world", encoding="utf-8")

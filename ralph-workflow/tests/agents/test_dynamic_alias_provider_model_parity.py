@@ -12,6 +12,14 @@ from ralph.config.models import UnifiedConfig
     ("alias", "expected_model_flag"),
     [
         (
+            "codex/gpt-5.3-codex",
+            "--model gpt-5.3-codex",
+        ),
+        (
+            "codex/gpt-5.3-codex[effort=xhigh]",
+            "--model gpt-5.3-codex -c 'model_reasoning_effort = \"xhigh\"'",
+        ),
+        (
             "opencode/provider/model/family:latest",
             "-m provider/model/family:latest",
         ),
@@ -49,6 +57,7 @@ def test_provider_model_aliases_preserve_nested_model_paths(
 @pytest.mark.parametrize(
     "alias",
     [
+        "codex/gpt-5.3-codex[effort=maximum]",
         "opencode/provider//model",
         "nanocoder/provider//model",
         "pi/provider//model",
@@ -60,6 +69,16 @@ def test_provider_model_aliases_reject_empty_path_segments(alias: str) -> None:
 
     assert registry.get(alias) is None
     assert registry.catalog.get(alias) is None
+
+
+def test_codex_alias_keeps_clean_model_identity() -> None:
+    """Codex effort metadata must not be folded into the model identity."""
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    config = registry.get("codex/gpt-5.3-codex[effort=high]")
+
+    assert config is not None
+    assert config.model == "gpt-5.3-codex"
 
 
 class TestCursorAlias:

@@ -59,6 +59,15 @@ named model. The eight canonical `agy models` display names accepted by
 - `Claude Opus 4.6 (Thinking)`
 - `GPT-OSS 120B (Medium)`
 
+Codex aliases use `codex/<model>` (for example,
+`codex/gpt-5.3-codex`). Add `[effort=low]`, `[effort=medium]`,
+`[effort=high]`, or `[effort=xhigh]` to set that invocation's Codex reasoning
+effort, such as `codex/gpt-5.3-codex[effort=high]`. Ralph Workflow passes the model via
+`--model` and the effort through Codex's `model_reasoning_effort` configuration
+override. This support selects Codex models; it does not introduce a generic
+third-party provider router. Codex's configured OpenAI or supported local OSS
+provider settings remain owned by Codex.
+
 For chain and drain routing — using one agent's output as the next agent's
 input across phases — see [Configuration](configuration.md).
 
@@ -160,8 +169,8 @@ the phase and you do not need live PTY transcript display.
 
 ### Codex
 
-The Codex builder uses OpenAI's `--approve` flag for unattended approval
-plus any resume/session flags the policy declares.
+The Codex builder uses `--dangerously-bypass-approvals-and-sandbox` for
+unattended execution. Codex has no Ralph-managed resume/session flag.
 
 ### OpenCode
 

@@ -366,7 +366,7 @@ class ConfigurableCommandBuilder:
             formatted = self.spec.model_flag_template.format(effective_model)
             return formatted.split()
         if "codex" in self.spec.base_argv[0]:
-            return effective_model.split()
+            return shlex.split(effective_model)
         return shlex.split(effective_model)
 
     def build(

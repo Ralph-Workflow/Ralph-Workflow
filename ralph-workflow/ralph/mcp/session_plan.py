@@ -7,6 +7,7 @@ into the Ralph MCP subprocess for that session.
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,9 +79,15 @@ def resolve_model_identity(
     provider_map: dict[AgentTransport, str] = {
         AgentTransport.CLAUDE: "claude",
         AgentTransport.CLAUDE_INTERACTIVE: "claude",
-        AgentTransport.CODEX: "openai",
         AgentTransport.AGY: "gemini",
     }
+
+    if transport == AgentTransport.CODEX:
+        return MultimodalModelIdentity(
+            provider="openai",
+            model_id=_codex_model_id(model_flag),
+            transport=transport.value,
+        )
 
     if transport in provider_map:
         return MultimodalModelIdentity(
@@ -111,6 +118,17 @@ def resolve_model_identity(
         model_id=model_flag,
         transport=transport.value,
     )
+
+
+def _codex_model_id(model_flag: str | None) -> str | None:
+    """Extract Codex's selected model from a forwarded CLI flag string."""
+    if model_flag is None:
+        return None
+    parts = shlex.split(model_flag)
+    for index, part in enumerate(parts[:-1]):
+        if part in {"--model", "-m"}:
+            return parts[index + 1]
+    return model_flag
 
 
 def resolve_effective_session_mcp_plan(

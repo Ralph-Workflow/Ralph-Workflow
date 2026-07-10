@@ -104,6 +104,7 @@ _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
 _MIN_AGY_SEGMENTS = 2
 _MIN_PI_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
+_CODEX_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -486,7 +487,9 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
         builtin = builtin_agents().get(agent_name)
         return deepcopy(builtin) if builtin is not None else None
 
-    if name.startswith("opencode/"):
+    if name.startswith("codex/"):
+        resolved = _resolve_dynamic_codex_agent(name, _base("codex"))
+    elif name.startswith("opencode/"):
         if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
             return None
 
@@ -576,20 +579,7 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
         }
         resolved = base_config.model_copy(update=cursor_overrides)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
-        if name.startswith("ccs/"):
-            resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
-        elif name.startswith("claude-headless/"):
-            base_config = _base("claude-headless")
-            if base_config is None:
-                return None
-            claude_headless_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
-            resolved = base_config.model_copy(update=claude_headless_overrides)
-        elif name.startswith("claude/"):
-            base_config = _base("claude")
-            if base_config is None:
-                return None
-            claude_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
-            resolved = base_config.model_copy(update=claude_overrides)
+        resolved = _resolve_dynamic_claude_family(name, ccs_defaults, _base)
 
     return resolved
 
@@ -601,8 +591,69 @@ def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfi
     return _resolve_ccs_alias(f"ccs {segments[1]}", ccs_defaults)
 
 
+def _resolve_dynamic_claude_family(
+    name: str,
+    ccs_defaults: CcsConfig,
+    base_lookup: Callable[[str], AgentConfig | None],
+) -> AgentConfig | None:
+    """Resolve the compact Claude and CCS dynamic-alias family."""
+    segments = name.split("/")
+    if name.startswith("ccs/"):
+        return _resolve_dynamic_ccs_agent(name, ccs_defaults)
+    if name.startswith("claude-headless/"):
+        base_config = base_lookup("claude-headless")
+    elif name.startswith("claude/"):
+        base_config = base_lookup("claude")
+    else:
+        return None
+    if base_config is None:
+        return None
+    return base_config.model_copy(update={"model_flag": f"--model {segments[1]}"})
+
+
 def _normalize_opencode_model_id(name: str) -> str:
     return name.removeprefix("opencode/")
+
+
+def _resolve_dynamic_codex_agent(
+    name: str, base_config: AgentConfig | None
+) -> AgentConfig | None:
+    """Resolve a validated Codex model alias against its effective base config."""
+    codex_alias = _parse_codex_alias(name.removeprefix("codex/"))
+    if codex_alias is None or base_config is None:
+        return None
+    model_id, effort = codex_alias
+    model_flag = f"--model {shlex.quote(model_id)}"
+    if effort is not None:
+        effort_override = f'model_reasoning_effort = "{effort}"'
+        model_flag += f" -c {shlex.quote(effort_override)}"
+    return base_config.model_copy(
+        update={"model": model_id, "model_flag": model_flag, "can_commit": True}
+    )
+
+
+def _parse_codex_alias(alias_value: str) -> tuple[str, str | None] | None:
+    """Parse a safe ``codex/<model>[effort=<level>]`` dynamic alias."""
+    model_id, separator, suffix = alias_value.partition("[")
+    if (
+        not model_id
+        or any(char.isspace() for char in model_id)
+        or not all(segment for segment in model_id.split("/"))
+    ):
+        return None
+    if not separator:
+        return model_id, None
+    effort_prefix = "effort="
+    effort = suffix.removesuffix("]")
+    if (
+        not suffix.endswith("]")
+        or suffix.count("[")
+        or suffix.count("]") != 1
+        or not effort.startswith(effort_prefix)
+        or effort.removeprefix(effort_prefix) not in _CODEX_REASONING_EFFORTS
+    ):
+        return None
+    return model_id, effort.removeprefix(effort_prefix)
 
 
 def _normalize_nanocoder_provider_and_model(name: str) -> tuple[str, str | None]:
