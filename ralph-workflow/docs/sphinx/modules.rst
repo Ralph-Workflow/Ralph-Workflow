@@ -2271,6 +2271,13 @@ ralph.mcp.explore.audit_register
    :members:
    :show-inheritance:
 
+ralph.mcp.explore.family_baseline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.family_baseline
+   :members:
+   :show-inheritance:
+
 ralph.mcp.explore.bench
 ~~~~~~~~~~~~~~~~~~~~~~~
 

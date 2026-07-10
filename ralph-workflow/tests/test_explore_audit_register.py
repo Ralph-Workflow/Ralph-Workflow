@@ -24,6 +24,7 @@ from ralph.mcp.explore.audit_register import (
     AuditOutcome,
     audit_register,
 )
+from ralph.mcp.explore.family_baseline import family_baseline_flows
 from ralph.mcp.tools.names import RalphToolName
 
 
@@ -275,4 +276,73 @@ def test_audit_counters_rejects_zero_wall_time() -> None:
             changed_file_count=0,
             index_storage_bytes=0,
             wall_time_seconds=0,
+        )
+
+
+# --- Family baseline flow records (AC-04) -------------------------------
+
+
+_REQUIRED_BASELINE_FAMILIES: tuple[AuditFamily, ...] = (
+    AuditFamily.WORKSPACE_READ,
+    AuditFamily.WORKSPACE_LIST,
+    AuditFamily.WORKSPACE_MUTATE,
+    AuditFamily.GIT_READ,
+    AuditFamily.ARTIFACT,
+    AuditFamily.PROCESS,
+)
+
+
+def test_required_audit_families_have_baseline_flows() -> None:
+    """The Phase 0 audit must include one deterministic representative
+    baseline flow per audited family (read, list, search, edit, git,
+    artifact, exec). The benchmark gate compares the indexed path
+    against this baseline; missing a family is an unaudited state.
+    """
+    flows = family_baseline_flows()
+    by_family = {flow.family: flow for flow in flows}
+    missing = set(_REQUIRED_BASELINE_FAMILIES) - set(by_family)
+    assert not missing, f"Missing baseline flows for families: {missing}"
+
+
+def test_every_family_baseline_flow_is_complete() -> None:
+    """Each baseline flow record must declare a non-empty name, a
+    non-empty current-operation script, complete counters, and a
+    non-empty catalog-token evidence string.
+    """
+    for flow in family_baseline_flows():
+        assert flow.name.strip(), f"{flow.family}: name must be non-empty"
+        assert flow.current_operation_script, (
+            f"{flow.family}: current_operation_script must list at least one tool"
+        )
+        for tool_name in flow.current_operation_script:
+            assert tool_name.strip(), (
+                f"{flow.family}: tool name in script must be non-empty"
+            )
+        assert flow.catalog_token_evidence.strip(), (
+            f"{flow.family}: catalog_token_evidence must be non-empty"
+        )
+        assert flow.counters is not None, f"{flow.family}: counters must be set"
+        assert flow.counters.tool_calls >= 1, (
+            f"{flow.family}: baseline script must declare at least one tool call"
+        )
+        assert flow.counters.transcript_tokens > 0, (
+            f"{flow.family}: baseline transcript_tokens must be > 0"
+        )
+        assert flow.counters.returned_bytes > 0, (
+            f"{flow.family}: baseline returned_bytes must be > 0"
+        )
+        assert 0.0 <= flow.counters.evidence_recall <= 1.0
+        assert 0.0 <= flow.counters.evidence_precision <= 1.0
+
+
+def test_every_audited_tool_family_has_at_least_one_entry() -> None:
+    """The audit register must include at least one entry for every
+    family that has a baseline flow. A baseline flow without an
+    entry means the indexed path is being measured against an
+    ungoverned family.
+    """
+    audit_by_family = {entry.family for entry in AUDIT_REGISTER}
+    for flow in family_baseline_flows():
+        assert flow.family in audit_by_family, (
+            f"Family {flow.family} has a baseline flow but no audit entry"
         )

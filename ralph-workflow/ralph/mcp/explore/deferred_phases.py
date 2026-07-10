@@ -109,25 +109,39 @@ _DEFERRED: tuple[DeferredPhase, ...] = (
     ),
     DeferredPhase(
         phase_id="phase_4",
-        title="Non-index MCP remediation (git, process, artifact, media, coordination)",
+        title="Non-index MCP remediation (artifact, planning, coordination, web, media; git_log/git_show)",
         deliverables=(
-            "git_diff compact diff/status cards and changed-path ranking",
-            "exec output byte/token budgets and replayable resource ids",
-            "Compact artifact validation errors with repair pointers",
-            "Media/web bounded metadata and replayable handles",
-            "Coordination tools with structured progress fields",
+            "Compact artifact validation errors with repair pointers "
+            "(ralph_submit_artifact, planning tools)",
+            "Media/web bounded metadata and replayable handles "
+            "(read_media, read_image, web_search, visit_url, download_url)",
+            "Coordination tools with structured progress fields "
+            "(report_progress, declare_complete, coordinate)",
+            "git_log compact log cards and changed-path ranking",
+            "git_show compact per-object lookup hints",
+            "Planning tool compactness wins (submit_plan_section, "
+            "finalize_plan, validate_draft, etc.)",
         ),
         deferral_rationale=(
-            "Per the Phase 0 audit, the non-index tool families (git, "
-            "process, artifact, planning, media, web, coordination) are "
-            "all deferred. Phase 1 only ships index-related surfaces. "
-            "Phase 4 picks those up after Phase 1 measurement proves "
-            "the substrate does not regress those families."
+            "The shipped non-index remediation for Phase 1 already covers "
+            "git_status format=compact, git_diff format=summary, and "
+            "exec format=summary (recorded as ADD_ARGUMENT outcomes in "
+            "the audit register). unsafe_exec and raw_exec remain "
+            "unchanged (KEEP) because the summary mode is intentionally "
+            "only on the bounded exec path; the alias keeps the same "
+            "capability surface. Phase 4 defers the remaining non-index "
+            "families: git_log, git_show, artifact, planning, "
+            "coordination, web, and media. The audit register records "
+            "the SHIPPED outcomes for git_status, git_diff, exec and the "
+            "KEEP outcomes for unsafe_exec and raw_exec; the deferred "
+            "register is the single source of truth for the rest."
         ),
         risk=(
-            "Agents may continue to over-fetch git/process output until "
-            "compactness wins ship; the bounded-timeout contract already "
-            "limits the worst case."
+            "Agents may continue to over-fetch artifact/planning/web/ "
+            "media output until compactness wins ship; the bounded-timeout "
+            "contract already limits the worst case, and the audit "
+            "register's DEFER rationale names the missing re-measurement "
+            "evidence that gates each deferred outcome."
         ),
         baseline_counters=_audit_baselines(),
     ),

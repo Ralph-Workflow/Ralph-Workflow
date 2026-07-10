@@ -1127,3 +1127,13 @@ def audit_register() -> tuple[AuditEntry, ...]:
     register without changing call sites.
     """
     return AUDIT_REGISTER
+
+
+__all__ = [
+    "AUDIT_REGISTER",
+    "AuditCounters",
+    "AuditEntry",
+    "AuditFamily",
+    "AuditOutcome",
+    "audit_register",
+]
