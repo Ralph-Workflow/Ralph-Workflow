@@ -45,6 +45,7 @@ def _render_pi_mcp_extension(endpoint: str) -> str:
 
 const ENDPOINT = {endpoint_literal};
 const FALLBACK_SCHEMA = {{ type: "object", additionalProperties: true }};
+const TERMINAL_TOOLS = new Set(["declare_complete", "ralph_submit_artifact", "ralph_finalize_plan"]);
 
 let nextId = 1;
 let sessionId: string | undefined;
@@ -230,7 +231,10 @@ export default async function (pi: ExtensionAPI) {{
           name: tool.name,
           arguments: isObject(params) ? params : {{}},
         }}, signal);
-        return piToolResult(result);
+        return {{
+          ...piToolResult(result),
+          terminate: TERMINAL_TOOLS.has(tool.name),
+        }};
       }},
     }});
   }}

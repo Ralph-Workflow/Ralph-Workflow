@@ -67,6 +67,32 @@ def _no_signals(
     return CompletionSignals(False, False, ())
 
 
+def test_pi_session_event_id_is_preserved_for_clean_exit_recovery(tmp_path: Path) -> None:
+    """Pi emits its resumable session identity as top-level ``id``."""
+    handle = _FakeHandle(returncode=0, has_descendants=False)
+    opts = CompletionCheckOptions(
+        execution_strategy=OpenCodeExecutionStrategy(),
+        workspace_path=tmp_path,
+        liveness_probe=FakeLivenessProbe(active=False),
+        policy=TimeoutPolicy(
+            idle_timeout_seconds=None,
+            parent_exit_grace_seconds=0.0,
+            descendant_wait_timeout_seconds=0.0,
+        ),
+        evaluate_completion_fn=_no_signals,
+    )
+
+    with pytest.raises(OpenCodeResumableExitError) as excinfo:
+        check_process_result(
+            handle,
+            "pi",
+            ['{"type":"session","id":"pi-main-session"}'],
+            opts,
+        )
+
+    assert excinfo.value.resumable_session_id == "pi-main-session"
+
+
 def test_captured_session_id_preserved(tmp_path: Path) -> None:
     """When ``captured_session_id`` is set on ``CompletionCheckOptions``
     the resumable exception carries that id (no fallback

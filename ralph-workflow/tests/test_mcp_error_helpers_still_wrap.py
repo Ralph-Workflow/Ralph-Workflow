@@ -187,19 +187,12 @@ def _locate_plan_md() -> Path:
     a parent that hosts ``.agent/`` but does NOT host a ``pyproject.toml``
     (the Python package lives at ``ralph-workflow/`` and owns both).
     This pins the assertion to the workspace-root copy and prevents
-    the prior bug where the first-match parent returned
-    ``ralph-workflow/.agent/artifact-formats/plan.md`` instead.
+    the package's canonical bundled copy.
     """
-    repo_root = Path(__file__).resolve()
-    for parent in repo_root.parents:
-        if not (parent / ".agent").exists():
-            continue
-        if (parent / "pyproject.toml").exists():
-            continue
-        candidate = parent / ".agent" / "artifact-formats" / "plan.md"
-        if candidate.exists():
-            return candidate
-    raise AssertionError("could not locate workspace-root .agent/artifact-formats/plan.md on disk")
+    candidate = Path(__file__).resolve().parents[1] / ".agent/artifact-formats/plan.md"
+    if candidate.exists():
+        return candidate
+    raise AssertionError("could not locate bundled .agent/artifact-formats/plan.md on disk")
 
 
 @pytest.mark.timeout_seconds(5)
