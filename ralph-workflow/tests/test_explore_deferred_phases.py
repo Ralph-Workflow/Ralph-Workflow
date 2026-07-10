@@ -12,9 +12,37 @@ from ralph.mcp.explore.deferred_phases import (
 
 
 def test_deferred_phases_covers_phase_2_through_5() -> None:
-    """The register must include the four deferred phases."""
+    """The register must include the four deferred phases AND
+    distinguish shipped phases (phase_2/3/4, sentinel) from the
+    genuinely-still-deferred phase_5 (real four-deliverable tuple)."""
     ids = {entry.phase_id for entry in DEFERRED_PHASES}
     assert ids == {"phase_2", "phase_3", "phase_4", "phase_5"}
+
+    shipped_phase_ids = {"phase_2", "phase_3", "phase_4"}
+    by_id = {entry.phase_id: entry for entry in DEFERRED_PHASES}
+
+    for phase_id in shipped_phase_ids:
+        entry = by_id[phase_id]
+        assert entry.deliverables[0] == f"{phase_id}_complete_no_remaining_work", (
+            f"{phase_id} must use the {phase_id}_complete_no_remaining_work "
+            f"sentinel prefix; got {entry.deliverables[0]!r}"
+        )
+        assert entry.deferral_rationale.strip(), (
+            f"{phase_id} must keep a non-empty rationale that cites the "
+            f"shipped implementation"
+        )
+
+    phase_5 = by_id["phase_5"]
+    assert phase_5.deliverables == (
+        "NetworkX offline graph metrics behind a feature flag",
+        "Kuzu adapter gated by measured SQLite bottleneck evidence",
+        "FTS + graph + git-change hybrid ranking with explicit scores",
+        "Tree-sitter language parsers after Python/Markdown proves useful",
+    ), (
+        "phase_5 must keep its original four-deliverable tuple because "
+        "NetworkX/Kuzu/Tree-sitter are not yet implemented (no networkx, "
+        "kuzu, or tree-sitter import in ralph/mcp/explore/ or pyproject.toml)"
+    )
 
 
 def test_every_deferred_phase_has_non_empty_rationale() -> None:

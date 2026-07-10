@@ -64,23 +64,41 @@ _DEFERRED: tuple[DeferredPhase, ...] = (
         phase_id="phase_2",
         title="Python and Markdown structure (symbols + edges + ralph_graph neighbors)",
         deliverables=(
-            "Python symbol extraction with stdlib ast",
-            "Markdown heading/link extraction",
-            "Basic edges: contains, defines, imports, tests, mentions",
-            "Indexed optional arguments on list_directory/directory_tree",
-            "ralph_graph with neighbors mode",
-            "Symbol-aware and graph-aware ranking for search_files/grep_files",
+            # Phase 2 has shipped; this deliverable list is intentionally a
+            # single sentinel entry to mirror the Phase 4 shape -- there is
+            # no remaining Phase 2 work to defer. The phase stays in the
+            # register so the zero-DEFER audit-register contract continues
+            # to be testable.
+            "phase_2_complete_no_remaining_work",
         ),
         deferral_rationale=(
-            "Gated on Phase 1 measurement passing the >=30% byte budget "
-            "and 1.0 evidence recall. Phase 2 introduces semantic edges "
-            "that Phase 1 explicitly cannot claim; shipping both at once "
-            "would skip the prompt's ACI gate."
+            "Phase 2 is no longer deferred: Python symbol extraction with "
+            "stdlib ``ast`` lives in ``ralph/mcp/explore/structure.py``; "
+            "Markdown heading + link extraction lives in "
+            "``ralph/mcp/explore/structure.py:extract_markdown`` (called via "
+            "``ralph/mcp/explore/structure.py:extract_structure``); the "
+            "``contains`` / ``defines`` / ``imports`` / ``tests`` / "
+            "``mentions`` edges are emitted by "
+            "``ralph/mcp/explore/structure.py`` and persisted through "
+            "``ralph/mcp/explore/pipeline.py:ExploreStore.replace_structure_rows``; "
+            "``ralph_graph`` ``neighbors`` mode ships in "
+            "``ralph/mcp/explore/graph.py:neighbors``; the ranked "
+            "``contains_symbol`` / ``changed_only`` / "
+            "``return_evidence_ids`` selectors on ``search_files`` and "
+            "``grep_files`` route through "
+            "``ralph/mcp/tools/workspace/_grep_handlers.py`` with the "
+            "LexRanking score-component ladder in "
+            "``ralph/mcp/explore/ranking.py``."
         ),
         risk=(
-            "Without symbols, ranking cannot claim semantic importance; "
-            "the lexical-only ranking is honest but coarse. Once Phase 1 "
-            "proves the substrate works, Phase 2 lifts that ceiling."
+            "If a future audit finds a regression in Phase 2's structure "
+            "extraction or graph-neighbor ordering, this entry must be "
+            "re-audited and either moved back to an actionable deferral "
+            "or have its sentinel retained with the regression recorded "
+            "in this rationale. The "
+            "test_deferred_phases_covers_phase_2_through_5 invariant "
+            "pins the sentinel-prefix contract so a drift is caught "
+            "immediately."
         ),
         baseline_counters=_audit_baselines(),
     ),
@@ -88,22 +106,41 @@ _DEFERRED: tuple[DeferredPhase, ...] = (
         phase_id="phase_3",
         title="Impact-aware editing (ralph_graph impact/tests + edit_file targeting)",
         deliverables=(
-            "ralph_graph with impact and tests modes",
-            "edit_file arguments for expected_content_hash, target, "
-            "match_strategy, impact_preview, reindex",
-            "Conservative caller/importer/test suggestions",
-            "Integration with git_status/git_diff ranking signals",
+            # Phase 3 has shipped; this deliverable list is intentionally a
+            # single sentinel entry to mirror the Phase 4 shape -- there is
+            # no remaining Phase 3 work to defer. The phase stays in the
+            # register so the zero-DEFER audit-register contract continues
+            # to be testable.
+            "phase_3_complete_no_remaining_work",
         ),
         deferral_rationale=(
-            "Impact mode depends on Phase 2 symbol/edge extraction; it "
-            "is meaningless without the structural graph. Tests mode is "
-            "the same. The current Phase 1 lexical evidence-id flows "
-            "already cover the read/search/grep efficiency gates."
+            "Phase 3 is no longer deferred: ``ralph_graph`` ``impact`` "
+            "mode lives in ``ralph/mcp/explore/graph.py:impact`` (~110 "
+            "lines starting at line 551) and uses ``_IMPACT_RELATIONS`` "
+            "(``ralph/mcp/explore/graph.py`` line 60) to bound relations "
+            "per ``change_kind``; ``ralph_graph`` ``tests`` mode lives "
+            "in ``ralph/mcp/explore/graph.py:tests_for`` (line 774) and "
+            "returns ``suggested_tests`` with confidence + evidence_ids; "
+            "``edit_file`` accepts ``expected_content_hash`` / ``target`` "
+            "/ ``match_strategy`` / ``impact_preview`` / ``reindex`` / "
+            "``return_evidence_updates`` per the MCP schema in "
+            "``ralph/mcp/tools/bridge/_specs_file_write.py`` and the spec "
+            "is enforced by ``handle_edit_file`` in "
+            "``ralph/mcp/tools/workspace/_write_handlers.py`` (line 172); "
+            "the conservative impact labels ``rename`` / ``signature`` / "
+            "``behavior`` / ``delete`` / ``unknown`` are defined by "
+            "``_IMPACT_RELATIONS`` in "
+            "``ralph/mcp/explore/graph.py``."
         ),
         risk=(
-            "Agents will continue to over-edit on broad search; an "
-            "explicit 'inferred' marker on every impact result is the "
-            "Phase 3 contract to avoid silent certainty."
+            "If a future audit finds a regression in ``ralph_graph`` "
+            "``impact`` / ``tests`` ordering or in the ``edit_file`` "
+            "spec enforcement, this entry must be re-audited and either "
+            "moved back to an actionable deferral or have its sentinel "
+            "retained with the regression recorded in this rationale. "
+            "The test_deferred_phases_covers_phase_2_through_5 invariant "
+            "pins the sentinel-prefix contract so a drift is caught "
+            "immediately."
         ),
         baseline_counters=_audit_baselines(),
     ),
