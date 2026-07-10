@@ -48,7 +48,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
+
+    from ralph.mcp.explore.store import FileRow as _FileRow
 
 from ralph.mcp.explore.dirty_paths import (
     ExploreIndexLike,
@@ -339,7 +341,7 @@ def _compact_status_index_meta(
     resolved = _resolve_compact_status_index(workspace, session=session)
     if resolved is None:
         return meta
-    handle, store = resolved
+    _handle, store = resolved
     try:
         current_generation_raw = store.get_setting("current_generation")
         current_generation = (
@@ -353,15 +355,47 @@ def _compact_status_index_meta(
         meta["index_status"] = "stale"
         meta["fallback_reason"] = "no_committed_generation"
         return meta
-    # AC-06: ``is_stale`` is computed at the handler level. The
-    # compact payload does not need to recompute it because
-    # the absence of a current generation is already evidence
-    # of staleness for this read path. We do, however, honor
-    # the handle's ``is_stale`` flag when the concrete
-    # ``ExploreIndex`` exposes it (production) and silently
-    # default to ``False`` for protocol-only fakes (tests).
-    is_stale_value: object = getattr(handle, "is_stale", False)
-    is_stale = bool(is_stale_value) if isinstance(is_stale_value, bool) else False
+    # AC-06: ``is_stale`` is computed from the persisted
+    # ``dirty_paths`` queue plus any deleted-file rows still
+    # in the manifest. ``ExploreIndex`` does NOT expose an
+    # ``is_stale`` attribute, so reading one would silently
+    # fall back to ``False`` for every production session;
+    # the truth is on disk. Dirty paths exist when the
+    # write/edit/copy/move/delete handlers have marked paths
+    # after a successful workspace mutation but the next
+    # reindex has not yet consumed them. A deleted-file row
+    # with ``is_deleted=1`` reflects a remove that the next
+    # reindex has not yet processed. Either condition means
+    # the on-disk persisted index is no longer in sync with
+    # the working tree, so the compact payload must fall
+    # back to ``index_used=False`` and report the explicit
+    # reason rather than emitting hints against stale state.
+    dirty_paths: list[str] = []
+    try:
+        dirty_paths = list(store.peek_dirty_paths())
+    except Exception:
+        dirty_paths = []
+    stale_path_count: int = 0
+    try:
+        # The ``ExploreStoreLike`` protocol types ``iter_files``
+        # as ``object`` for cross-handler flexibility; the concrete
+        # ``ExploreStore.iter_files`` returns ``Iterator[FileRow]``.
+        # The cast is local to this read path and the surrounding
+        # ``except Exception`` keeps the helper fail-safe for any
+        # non-conforming test double.
+        for row in cast("Iterator[_FileRow]", store.iter_files()):
+            # ``FileRow.is_deleted`` is typed ``bool``; the runtime
+            # ``getattr`` with a default is only needed to stay
+            # fail-safe against non-conforming test doubles, so
+            # we fall back to ``False`` explicitly via a branch
+            # instead of leaking ``Any`` through the
+            # ``getattr(..., default)`` signature.
+            row_is_deleted: bool = getattr(row, "is_deleted", False)
+            if isinstance(row_is_deleted, bool) and row_is_deleted:
+                stale_path_count += 1
+    except Exception:
+        stale_path_count = 0
+    is_stale: bool = bool(dirty_paths) or stale_path_count > 0
     if is_stale:
         meta["index_status"] = "stale"
         meta["fallback_reason"] = "index_reports_stale"

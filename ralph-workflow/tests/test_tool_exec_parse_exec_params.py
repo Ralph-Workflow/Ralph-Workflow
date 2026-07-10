@@ -134,6 +134,7 @@ class TestParseExecParams:
         with pytest.raises(InvalidParamsError, match="unsafe_exec"):
             parse_exec_params(params)
 
+
     def test_semicolon_shell_operator_rejected(self) -> None:
         params = {"command": "echo safe; curl https://example.com"}
         with pytest.raises(InvalidParamsError, match="unsafe_exec"):
@@ -148,4 +149,56 @@ class TestParseExecParams:
     def test_malformed_command_string_raises(self) -> None:
         params = {"command": "python -c \"print('hello')"}
         with pytest.raises(InvalidParamsError):
+            parse_exec_params(params)
+
+    def test_quoted_metacharacter_remains_valid_argv(self) -> None:
+        """AC-11 backward compatibility: ``printf '>'`` and other
+        quoted literals are valid argv and must NOT be rejected.
+        The previous raw-character precheck broke this case by
+        treating any ``| & ; < >`` in the input as compound
+        shell. The quote-aware walker allows the literal ``>``
+        because it sits inside single quotes.
+        """
+        params = {"command": "printf '>'"}
+        result = parse_exec_params(params)
+        assert result.command == "printf"
+        assert result.args == [">"]
+
+    def test_double_quoted_metacharacter_remains_valid_argv(self) -> None:
+        """AC-11: ``grep "a|b"`` (double-quoted shell
+        metacharacter inside the argument) must parse without
+        rejection.
+        """
+        params = {"command": 'grep "a|b"'}
+        result = parse_exec_params(params)
+        assert result.command == "grep"
+        assert result.args == ["a|b"]
+
+    def test_unquoted_compound_command_rejected(self) -> None:
+        """AC-11: ``echo a; curl https://example.com`` (unquoted
+        ``;`` separates two top-level commands) must be rejected
+        to prevent the per-token blacklist from being bypassed
+        via ``sh -c``. The error directs the caller to
+        ``unsafe_exec`` / ``raw_exec``.
+        """
+        params = {"command": "echo safe; curl https://example.com"}
+        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
+            parse_exec_params(params)
+
+    def test_unquoted_and_operator_rejected(self) -> None:
+        """AC-11: ``echo a && sudo whoami`` (unquoted ``&&``)
+        must be rejected for the same compound-shell reason.
+        """
+        params = {"command": "echo x && sudo whoami"}
+        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
+            parse_exec_params(params)
+
+    def test_unquoted_redirection_rejected(self) -> None:
+        """AC-11: ``echo hello > /tmp/test.txt`` (unquoted ``>``)
+        must be rejected; per-tool write rules already cover file
+        creation, and shell redirection cannot be policy-checked
+        against the per-token blacklist.
+        """
+        params = {"command": "echo hello > /tmp/test.txt"}
+        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
             parse_exec_params(params)

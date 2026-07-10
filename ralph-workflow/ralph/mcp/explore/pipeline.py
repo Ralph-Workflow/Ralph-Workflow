@@ -244,6 +244,16 @@ def _run_reindex(
     current_generation = _current_generation(store)
 
     if options.mode == "full":
+        # AC-02/AC-05: cancel MUST be checked before any destructive
+        # store mutation. ``_drop_all_rows`` issues ``DELETE``
+        # statements on the live connection (each store operation
+        # commits inside ``_transaction``), so a cancel that arrives
+        # after the drop would leave readers seeing an empty index
+        # while the result still reports ``cancelled``. Polling at
+        # the phase boundary preserves the last committed generation
+        # and the reader-visible rows because no mutable work has
+        # been emitted to the store yet.
+        _check_cancel()
         _drop_all_rows(store)
         target_generation = 1
     else:

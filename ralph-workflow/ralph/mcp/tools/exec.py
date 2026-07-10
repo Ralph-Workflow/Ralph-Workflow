@@ -149,44 +149,60 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
 
 
-def _has_shell_operator_tokens(tokens: list[str]) -> bool:
-    return any(token and all(c in _SHELL_OPERATOR_CHARS for c in token) for token in tokens)
+def _has_unquoted_shell_operator(command: str) -> bool:
+    """Return True when ``command`` contains an UNQUOTED shell control operator.
 
-
-def _has_shell_operator_chars(command: str) -> bool:
-    """Detect shell control operators anywhere in the raw command string.
-
-    shlex.posix with ``punctuation_chars`` only marks *unquoted* operators
-    as their own tokens, so an attacker can sneak a ``;`` or ``>`` past the
-    token walker by quoting it. The exec boundary is the trust surface for
-    bounded subprocess execution; any compound expression, redirection,
-    or pipe is unsafe because the per-token blacklist cannot see the
+    Walks the raw string once, tracking single- and double-quote
+    state (and backslash escapes) so a literal ``>`` inside ``'...'``
+    or ``"..."`` is not flagged. Quoted literals are valid argv
+    content (``printf '>'``, ``grep "a|b"``); an unquoted ``|``,
+    ``&``, ``;``, ``<``, or ``>`` is unsafe because the per-token
+    blacklist only inspects the top-level command, not embedded
     sub-commands the shell would run. Direct callers needing shell
-    composition must use ``unsafe_exec`` / ``raw_exec`` (which the docs
-    declare as the appropriate surface for compound shell work).
+    composition must use ``unsafe_exec`` / ``raw_exec``, which
+    docs declare as the appropriate surface for compound shell
+    work.
     """
-    return any(c in _SHELL_OPERATOR_CHARS for c in command)
+    in_single = False
+    in_double = False
+    i = 0
+    length = len(command)
+    while i < length:
+        c = command[i]
+        # Backslash escapes the next char in both shell quote modes.
+        if c == "\\" and i + 1 < length and not in_single:
+            i += 2
+            continue
+        if c == "'" and not in_double:
+            in_single = not in_single
+        elif c == '"' and not in_single:
+            in_double = not in_double
+        elif not in_single and not in_double and c in _SHELL_OPERATOR_CHARS:
+            return True
+        i += 1
+    return False
 
 
 def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
     command_value = params.get("command")
     if isinstance(command_value, str):
-        if _has_shell_operator_chars(command_value):
-            # Security: a compound / piped / redirected command would be
-            # handed to ``sh -c``, where the per-token blacklist only
-            # inspects ``sh`` itself — the embedded sub-commands (curl
-            # to a remote URL, sudo, ``rm -rf /``, etc.) would bypass
-            # the policy. Reject at parse time and direct the caller to
-            # ``unsafe_exec`` / ``raw_exec``, the documented surface for
-            # compound shell work.
+        # AC-11: quote-aware shell-operator rejection. ``shlex``
+        # strips quotes during tokenization, so a quote-only check
+        # on the parsed tokens would falsely reject literals such
+        # as ``printf '>'``. The raw-string walker distinguishes
+        # quoted regions so we reject UNQUOTED compound shell only
+        # while accepting legitimate quoted argv content. We never
+        # fall back to ``sh -c``; the per-token blacklist cannot
+        # see embedded sub-commands, and direct callers needing
+        # compound shell work must use ``unsafe_exec`` / ``raw_exec``
+        # per the docs.
+        if _has_unquoted_shell_operator(command_value):
             raise InvalidParamsError(
                 "Shell control operators (| & ; < >) are not allowed in 'exec'. "
                 "Use 'unsafe_exec' or 'raw_exec' for compound shell commands. "
                 + _EXEC_USAGE_EXAMPLES
             )
         tokens = _parse_shell_words(command_value, field_name="command")
-        if _has_shell_operator_tokens(tokens):
-            return ["sh", "-c", command_value.strip()]
         return tokens
     if isinstance(command_value, list):
         return _coerce_argv_tokens(command_value, field_name="command")
@@ -197,6 +213,12 @@ def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
 
     argv_value = params.get("argv")
     if isinstance(argv_value, str):
+        if _has_unquoted_shell_operator(argv_value):
+            raise InvalidParamsError(
+                "Shell control operators (| & ; < >) are not allowed in 'exec'. "
+                "Use 'unsafe_exec' or 'raw_exec' for compound shell commands. "
+                + _EXEC_USAGE_EXAMPLES
+            )
         return _parse_shell_words(argv_value, field_name="argv")
     if isinstance(argv_value, list):
         return _coerce_argv_tokens(argv_value, field_name="argv")

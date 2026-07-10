@@ -121,6 +121,61 @@ class TestHandleGitStatus:
         assert payload["index_status"] == "stale"
         assert payload["fallback_reason"] == "no_committed_generation"
 
+    def test_status_compact_marks_index_stale_when_dirty_paths_pending(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when the attached index has a current generation
+        but the persisted ``dirty_paths`` queue is non-empty (a
+        workspace mutation marked a path dirty but the reindex
+        has not yet consumed the entry), the compact payload
+        MUST report ``index_used=False`` and
+        ``index_status="stale"`` with an explicit
+        ``fallback_reason``. The payload must NOT emit any
+        ``changed_symbols`` hints because the persisted index no
+        longer reflects the working tree.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        try:
+            # Mark a path dirty WITHOUT consuming it via reindex.
+            # The compact payload must observe the dirty queue
+            # and mark the index as stale.
+            handle.store.mark_dirty(
+                "a.py", reason="mutated", source_tool="write_file"
+            )
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_used"] is False
+            assert payload["index_status"] == "stale"
+            assert payload["fallback_reason"] == "index_reports_stale"
+            # No hints emitted against stale state.
+            assert payload["changed_symbols"] == {}
+        finally:
+            handle.store.close()
+
     def test_status_compact_attaches_changed_symbols_when_index_current(
         self, tmp_path: Path
     ) -> None:

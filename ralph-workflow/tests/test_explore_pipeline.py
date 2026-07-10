@@ -207,6 +207,71 @@ def test_mode_full_rebuilds_atomically(tmp_path: Path) -> None:
         store.close()
 
 
+def test_mode_full_pre_cancel_preserves_committed_generation(tmp_path: Path) -> None:
+    """AC-02/AC-05: a pre-set cancel flag MUST be checked BEFORE
+    ``mode=full`` issues any destructive store writes. The prior
+    committed generation and reader-visible rows are preserved
+    because no ``DELETE`` is sent to the live connection.
+
+    Without the cancel-first guard, ``_drop_all_rows`` would
+    commit deletions (each store operation auto-commits via
+    ``_transaction``), and a subsequent cancel would still
+    report ``cancelled`` while readers observed an empty index.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        # 1. Build an initial index.
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation = int(store.get_setting("current_generation") or 0)
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation >= 1
+        # Snapshot the live row counts; these must survive the
+        # cancelled full reindex unchanged.
+        files_before = _count_files_rows(store)
+        chunks_before = _count_chunks_rows(store)
+        fts_before = _count_fts_rows(store)
+        assert files_before >= 3
+
+        # 2. Issue a full-mode reindex with a pre-set cancel callable.
+        def _cancelled() -> bool:
+            return True
+
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+            cancel=_cancelled,
+        )
+        assert result.status == "cancelled"
+
+        # 3. The committed generation on disk is unchanged.
+        assert store.get_setting("current_generation") == prior_generation_str
+        # 4. Reader-visible rows are unchanged. ``_drop_all_rows``
+        #    would have wiped every row, so the file/chunk/FTS
+        #    counts must still equal their pre-cancel values.
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+
+        # 5. A subsequent full reindex without a cancel rebuilds
+        #    cleanly; the cancelled attempt left no broken state.
+        recover = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert recover.status == "ok"
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+    finally:
+        store.close()
+
+
 def test_timeout_is_fail_closed_for_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
