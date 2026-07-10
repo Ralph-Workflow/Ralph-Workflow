@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
@@ -53,8 +55,6 @@ from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import pytest
 
     from ralph.config.models import UnifiedConfig
 
@@ -226,6 +226,15 @@ class _LateMarkerWatcher:
         self._stopped = True
 
 
+# ``test_pro_invocation_end_to_end_satisfies_all_three_bullets`` exercises a
+# single ``run()`` invocation across three pro_support bullets (heartbeat,
+# state observability, custom pipeline DI). Under parallel xdist load the
+# full ``run()`` path can exceed the 1s default test timeout even though
+# the test itself is correct. 5s is the documented minimum for non-trivial
+# tests (see ``ralph/verify_timeout.py``) and is well under the 60s
+# combined ``make verify`` budget. The 1s default policy is preserved
+# globally; this marker only relaxes the cap for this specific test.
+@pytest.mark.timeout_seconds(5)
 def test_pro_invocation_end_to_end_satisfies_all_three_bullets(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

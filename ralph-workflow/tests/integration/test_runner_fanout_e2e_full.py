@@ -16,6 +16,8 @@ import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
@@ -30,7 +32,20 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+
+# ``test_runner_fanout_e2e_full.py`` exercises the full
+# fan-out → post-fan-out verification + handoff integration with
+# real WorkUnit construction, real WorkspaceScope resolution,
+# monkeypatched coordinator + verification hook, and real
+# WorkUnit processing. Under 12-way xdist contention the
+# integration setup + the runner.run fan-out path has been
+# observed to intermittently exceed the 1s default test timeout.
+# 5s is the documented minimum for non-trivial tests (see
+# ``ralph/verify_timeout.py``) and is well under the 60s combined
+# ``make verify`` budget. The 1s default policy is preserved
+# globally; this module-level marker only relaxes the cap for the
+# fan-out integration tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _legacy_display() -> runner_module.ParallelDisplay:

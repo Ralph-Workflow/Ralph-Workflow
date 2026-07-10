@@ -417,3 +417,152 @@ class TestHandleGitStatus:
             assert iter_calls["n"] == 0
         finally:
             handle.store.close()
+
+    # --- AC-06: ranked-card contract -----------------------------------
+
+    def test_status_compact_attaches_deterministic_score_per_card(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: every compact card carries an integer ``score``
+        and a list of ``score_reasons`` describing which signals
+        contributed. The score is deterministic across calls.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            stdout=b"M  src/a.py\n M b.py\n?? c.txt\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        # Every card carries a score and reasons.
+        for card in cards:
+            assert isinstance(card["score"], int)
+            assert isinstance(card["score_reasons"], list)
+            assert card["score_reasons"], (
+                f"empty score_reasons for {card['path']!r}"
+            )
+        # The ranking metadata documents the contract.
+        ranking = payload["ranking"]
+        assert ranking["scheme"] == "deterministic_integer_score"
+        assert ranking["tiebreak"] == "lexicographic_path"
+        assert any("+100 role=unstaged" in c for c in ranking["components"])
+        assert any("+80 role=staged" in c for c in ranking["components"])
+        assert any("+60 role=untracked" in c for c in ranking["components"])
+        assert any(
+            "-50 generated_or_vendor_path" in c for c in ranking["components"]
+        )
+
+    def test_status_compact_sorts_cards_by_score_descending(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: cards are sorted by ``score`` descending. The
+        documented score formula puts unstaged (+100) above
+        staged (+80) above untracked (+60). The test wires a
+        mixed porcelain output and asserts the cards are in
+        the documented priority order.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        # Order in porcelain is deliberately reverse of the
+        # expected rank so the sort must move entries.
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            # b.txt: untracked (+60)
+            # a.py: staged (+80)
+            # c.py: unstaged (+100)
+            stdout=b"?? b.txt\nM  a.py\n M c.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        # The unsorted test data puts c.py AFTER a.py and
+        # b.txt. After sorting, c.py (unstaged, +100) must
+        # come first, a.py (staged, +80) second, and b.txt
+        # (untracked, +60) last.
+        ordered_paths = [c["path"] for c in cards]
+        assert ordered_paths == ["c.py", "a.py", "b.txt"]
+        assert [c["score"] for c in cards] == [100, 80, 60]
+
+    def test_status_compact_lexicographic_tiebreak(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: cards with equal scores sort lexicographically
+        by path. The test emits two unstaged paths with the
+        same role; the sorted output must put ``a.py`` before
+        ``b.py``.
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            # Two unstaged changes with reversed source order
+            # so the tiebreak must reorder.
+            stdout=b" M b.py\n M a.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        assert [c["path"] for c in cards] == ["a.py", "b.py"]
+        # Both cards carry the same score (+100 unstaged).
+        assert cards[0]["score"] == cards[1]["score"] == 100
+
+    def test_status_compact_generated_or_vendor_path_demoted(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: a generated/vendor path receives the ``-50``
+        penalty and ranks below an unstaged path even when its
+        role is unstaged (a vendor with unstaged status still
+        loses to a regular unstaged path).
+        """
+        session = MockSession({GIT_STATUS_READ_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        completed = subprocess.CompletedProcess(
+            args=["git", "status", "--porcelain"],
+            returncode=0,
+            # vendor/foo.py is unstaged (+100) but vendor path (-50) = +50
+            # a.py is unstaged (+100) = +100
+            stdout=b" M vendor/foo.py\n M a.py\n",
+            stderr=b"",
+        )
+        with patch(
+            "ralph.mcp.tools.git_read.run_git_command_lenient",
+            return_value=completed,
+        ):
+            result = handle_git_status(
+                session, workspace, {"format": "compact"}
+            )
+        payload = json.loads(result.content[0].text)
+        cards = payload["paths"]
+        # ``a.py`` (regular unstaged, +100) ranks first;
+        # ``vendor/foo.py`` (vendor + unstaged, +50) second.
+        assert [c["path"] for c in cards] == ["a.py", "vendor/foo.py"]
+        assert cards[0]["score"] == 100
+        assert cards[1]["score"] == 50
+        # The vendor card explicitly carries the -50 reason.
+        assert "-50 generated_or_vendor_path" in cards[1]["score_reasons"]

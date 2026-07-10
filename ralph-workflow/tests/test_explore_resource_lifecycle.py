@@ -20,6 +20,16 @@ from pathlib import Path
 
 import pytest
 
+# ``test_explore_resource_lifecycle.py`` walks every Python file in
+# ``ralph/mcp/explore`` and parses it via ``ast``. Under parallel xdist
+# load the file I/O + AST parse can exceed the 1s default test timeout
+# even though the tests themselves are correct. 5s is the documented
+# minimum for non-trivial tests (see ``ralph/verify_timeout.py``) and
+# is well under the 60s combined ``make verify`` budget. The 1s default
+# policy is preserved globally; this module-level marker only relaxes
+# the cap for the file-walking tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
 
 

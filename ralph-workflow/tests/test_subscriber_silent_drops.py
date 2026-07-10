@@ -16,6 +16,18 @@ if TYPE_CHECKING:
 
     from ralph.display.snapshot import PipelineSnapshot
 
+# ``test_subscriber_silent_drops.py`` exercises PipelineSubscriber
+# ``notify()`` with a tight queue and asserts no ``loguru`` DEBUG
+# messages are emitted. The caplog bridge to loguru + the
+# MagicMock-heavy state setup is intermittently slow under parallel
+# xdist CPU contention and exceeds the 1s default test timeout.
+# 5s is the documented minimum for non-trivial tests (see
+# ``ralph/verify_timeout.py``) and is well under the 60s combined
+# ``make verify`` budget. The 1s default policy is preserved
+# globally; this module-level marker only relaxes the cap for the
+# log-capture tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 @pytest.fixture
 def subscriber(tmp_path: Path) -> PipelineSubscriber:

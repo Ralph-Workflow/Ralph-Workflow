@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 import ralph.display.parallel_display as pd_module
@@ -23,6 +24,17 @@ from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
+
+# ``test_runner_quiet_mode.py`` runs the full pipeline
+# (``runner_module.run``) end-to-end with stubbed effects so it
+# exercises the entire state-machine + display path. Under parallel
+# xdist CPU contention the per-test wall time can exceed the 1s
+# default cap. 5s is the documented minimum for non-trivial tests
+# (see ``ralph/verify_timeout.py``) and is well under the 60s
+# combined ``make verify`` budget. The 1s default policy is
+# preserved globally; this module-level marker only relaxes the
+# cap for the pipeline-runner regression tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"

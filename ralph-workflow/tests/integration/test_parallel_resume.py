@@ -5,6 +5,8 @@ from collections import Counter
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import fan_out as _fan_out_module
 from ralph.pipeline.effects import FanOutEffect
@@ -18,10 +20,20 @@ from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
     from ralph.display.parallel_display import ParallelDisplay
 from tests.integration.test_parallel_resume_helper__fakedisplay import _FakeDisplay
+
+# Per-test pytest marker: the fan-out resume tests in this
+# file exercise the production ``execute_fan_out_sync`` path
+# with synthetic work units, which has been observed to
+# exceed the global 1-second per-test cap under parallel
+# xdist CPU contention. 5 seconds is the minimum supported
+# by the audit invariant
+# (``_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0``) and well under
+# the 60-second combined ``make verify`` budget. The default
+# 1 s cap remains in place for every other test in the
+# suite.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 RESUMED_WORKER_COUNT = 3
 

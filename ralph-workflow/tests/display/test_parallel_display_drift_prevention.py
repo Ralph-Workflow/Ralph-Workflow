@@ -59,6 +59,7 @@ import inspect
 from io import StringIO
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -69,6 +70,17 @@ from ralph.display.parallel_display import ParallelDisplay
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _RUN_LOOP_PATH = _REPO_ROOT / "ralph" / "pipeline" / "run_loop.py"
 _COMMIT_PLUMBING_PATH = _REPO_ROOT / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
+
+
+# Per-test pytest marker: the AST-walking and parallel-display
+# construction in this file has been observed to exceed the
+# global 1-second per-test cap under parallel xdist CPU
+# contention; 5 seconds is the minimum supported by the
+# audit invariant (``_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0``)
+# and well under the 60-second combined ``make verify``
+# budget. The default 1 s cap remains in place for every
+# other test in the suite.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def test_run_loop_does_not_use_active_display_console_print() -> None:

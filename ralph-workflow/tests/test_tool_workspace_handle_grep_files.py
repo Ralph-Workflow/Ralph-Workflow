@@ -24,6 +24,19 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestHandleGrepFiles:
+    # Per-test pytest marker: the whole-word and
+    # context-walking tests in this class build a real
+    # workspace on disk and run a full grep over the
+    # synthetic files. Under parallel xdist CPU contention
+    # ``test_grep_whole_word`` has been observed to exceed
+    # the global 1-second per-test cap. 5 seconds is the
+    # minimum supported by the audit invariant
+    # (``_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0``) and well
+    # under the 60-second combined ``make verify`` budget.
+    # The default 1 s cap remains in place for every other
+    # test in the suite.
+    pytestmark = pytest.mark.timeout_seconds(5)
+
     def test_grep_finds_matches(self) -> None:
         ws = MagicMock()
         ws.iter_files.return_value = ("file.py",)

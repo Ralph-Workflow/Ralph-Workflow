@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from unittest.mock import MagicMock
 
+import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-
-if TYPE_CHECKING:
-    import pytest
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -26,6 +24,20 @@ from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, Re
 from ralph.policy.loader import load_policy
 
 _EXPECTED_RECOVERY_DETERMINE_CALLS = 2
+
+# ``test_pipeline_orchestration_flow.py`` exercises the full
+# policy-driven ``runner.run`` loop with MagicMock-heavy state
+# setup (resolve_workspace_scope, load_policy_or_die,
+# AgentRegistry, FsWorkspace, materialize_*_prompt_if_needed,
+# execute_effect, ckpt.save). Under parallel xdist CPU
+# contention the mock construction + ``runner.run`` invocation
+# has been observed to intermittently exceed the 1s default test
+# timeout. 5s is the documented minimum for non-trivial tests
+# (see ``ralph/verify_timeout.py``) and is well under the 60s
+# combined ``make verify`` budget. The 1s default policy is
+# preserved globally; this module-level marker only relaxes the
+# cap for the orchestration-flow tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _install_runner_display_context(monkeypatch: pytest.MonkeyPatch) -> Console:

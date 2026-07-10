@@ -13,6 +13,18 @@ if TYPE_CHECKING:
 
 
 class TestFsWorkspaceWrite:
+    # Per-test pytest marker: this class exercises the
+    # ``FsWorkspace.write`` path with several large-buffer and
+    # parent-traversal checks. Under parallel xdist CPU
+    # contention the parent-traversal test has been observed
+    # to exceed the global 1-second per-test cap; 5 seconds is
+    # the minimum supported by the audit invariant
+    # (``_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0``) and well under
+    # the 60-second combined ``make verify`` budget. The
+    # default 1 s cap remains in place for every other test in
+    # the suite.
+    pytestmark = pytest.mark.timeout_seconds(5)
+
     def test_writes_file_content(self, tmp_path: Path) -> None:
         ws = FsWorkspace(tmp_path)
 

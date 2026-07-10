@@ -548,6 +548,168 @@ def test_mode_full_swap_io_failure_preserves_committed_generation(
         store.close()
 
 
+def test_mode_full_swap_refused_when_outer_deadline_already_exceeded(
+    tmp_path: Path,
+) -> None:
+    """AC-05: when the outer absolute deadline has already been
+    exceeded at the moment the staged full reindex is about to
+    publish (the swap step), the swap is refused and the prior
+    committed generation remains queryable. The result is
+    ``timed_out`` (not ``ok``) so a caller cannot observe staged
+    data that was built past the budget.
+
+    The test uses a ``_SequenceClock`` whose first poll returns
+    ``1_000.0`` (used as ``started_at``) and whose subsequent
+    polls return ``1_010.0`` (past the 5 s deadline). The staging
+    build completes inside the budget (its timeout is the
+    remaining budget = ~5 s) and the swap step then observes the
+    deadline already exceeded. The prior generation is preserved.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        # 1. Build an initial index.
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation_str is not None
+        files_before = _count_files_rows(store)
+        chunks_before = _count_chunks_rows(store)
+        fts_before = _count_fts_rows(store)
+        assert files_before >= 3
+
+        # 2. Use a clock whose polls return 1_000.0 (used for
+        #    ``started_at``) then 1_000.0 (used by the staging
+        #    inner-reindex ``started_at`` and the deadline check
+        #    before the swap) and finally 1_010.0 (past the
+        #    5 s deadline). The staging build sees a fresh
+        #    started_at of 1_000.0 and runs against the
+        #    remaining budget (5 s). After the staging build
+        #    completes, the outer deadline check (now at
+        #    1_010.0) finds 1_010.0 - 1_000.0 = 10 s elapsed,
+        #    which exceeds the 5 s deadline. The swap is
+        #    refused and the prior generation is preserved.
+        clock = _SequenceClock([1_000.0, 1_000.0, 1_010.0, 1_010.0, 1_010.0])
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+                clock=clock,
+            ),
+        )
+        assert result.status == "timed_out"
+        # 3. The committed generation on disk is unchanged.
+        assert store.get_setting("current_generation") == prior_generation_str
+        # 4. Reader-visible rows are unchanged. The swap was
+        #    refused before any ``os.replace`` fired, so the
+        #    main DB still points at the prior generation.
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+        # 5. No staging directory is left behind.
+        leftovers = [
+            child
+            for child in store.index_dir.iterdir()
+            if child.name.startswith(".staging-full-")
+        ]
+        assert leftovers == []
+        # 6. A subsequent full reindex without the deadline
+        #    exceeds the budget rebuilds cleanly from the
+        #    preserved prior state.
+        recover = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert recover.status == "ok"
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+    finally:
+        store.close()
+
+
+def test_mode_full_swap_refused_when_outer_cancellation_already_requested(
+    tmp_path: Path,
+) -> None:
+    """AC-05: when the caller has already requested cancellation
+    at the moment the staged full reindex is about to publish
+    (the swap step), the swap is refused and the prior
+    committed generation remains queryable. The result is
+    ``cancelled`` (not ``ok``) so a caller cannot observe
+    staged data after they asked to cancel.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation_str is not None
+        files_before = _count_files_rows(store)
+        chunks_before = _count_chunks_rows(store)
+        fts_before = _count_fts_rows(store)
+
+        # Cancel flips to True only at the swap step. The
+        # staging build runs against a cancel=False callback
+        # so it completes; the swap step then observes the
+        # True flag and refuses to publish.
+        cancel_state = {"n": 0}
+
+        def _cancel_at_swap() -> bool:
+            cancel_state["n"] += 1
+            # The first three polls are inside the staging
+            # build's file loop (one per file in the
+            # ``_seed_workspace`` fixture). The fourth poll
+            # is the outer pre-swap check in
+            # ``_staged_full_reindex``. Flip cancel at poll
+            # 4+ so the staging build completes successfully
+            # and the swap step refuses to publish.
+            return cancel_state["n"] >= 4
+
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+            ),
+            cancel=_cancel_at_swap,
+        )
+        assert result.status == "cancelled"
+        # The committed generation on disk is unchanged.
+        assert store.get_setting("current_generation") == prior_generation_str
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+        # No staging directory is left behind.
+        leftovers = [
+            child
+            for child in store.index_dir.iterdir()
+            if child.name.startswith(".staging-full-")
+        ]
+        assert leftovers == []
+        # A subsequent full reindex without cancel rebuilds
+        # cleanly.
+        recover = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert recover.status == "ok"
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+    finally:
+        store.close()
+
+
 def test_timeout_is_fail_closed_for_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)

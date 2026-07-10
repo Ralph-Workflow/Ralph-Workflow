@@ -5,10 +5,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.cli.main import (
     app,
 )
 from ralph.display.context import DisplayContext, make_display_context
+
+# ``test_cli_removed_review_flags.py`` invokes the production
+# ``ralph --help`` Typer app via ``CliRunner.invoke``. Each cold
+# Typer app invocation pays an import cost that, under 12-way
+# xdist contention, has been observed to push individual test
+# runs past the 1s per-test wall-clock budget. 5s is the
+# documented minimum for non-trivial tests (see
+# ``ralph/verify_timeout.py``) and is well under the 60s combined
+# ``make verify`` budget. The 1s default policy is preserved
+# globally; this module-level marker only relaxes the cap for the
+# CLI help-text tests in this file.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
     from rich.console import Console

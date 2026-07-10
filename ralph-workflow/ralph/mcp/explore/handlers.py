@@ -17,7 +17,9 @@ from __future__ import annotations
 import contextlib
 import logging
 import sqlite3
+import threading
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -552,19 +554,23 @@ def handle_ralph_reindex(
     )
     # AC-05: bounded cancel contract for ralph_reindex. The schema
     # exposes ``cancel: bool``; when set, the handler installs a
-    # session-keyed cancel flag that the reindex writer polls at
-    # phase boundaries. On cancel the prior committed generation
-    # is preserved (no mutable work is exposed) and the response
-    # carries ``cancelled=true`` with a bounded incomplete summary.
+    # per-request cancel flag (keyed by a fresh token) that the
+    # reindex writer polls at phase boundaries. Concurrent
+    # reindex calls against the same session get distinct tokens,
+    # so one caller's cancel never cancels or clears another
+    # caller's flag. On cancel the prior committed generation is
+    # preserved (no mutable work is exposed) and the response
+    # carries ``cancelled=true`` with a bounded incomplete
+    # summary.
     cancel_raw: object = params.get("cancel", False)
     cancel_flag = bool(cancel_raw) if isinstance(cancel_raw, bool) else False
-    reindex_session_key = id(session)
-    _REINDEX_CANCEL_FLAGS[reindex_session_key] = cancel_flag
-
-    def _is_reindex_cancelled() -> bool:
-        return bool(_REINDEX_CANCEL_FLAGS.get(reindex_session_key, False))
-
-    cancel_callable: Callable[[], bool] = _is_reindex_cancelled
+    reindex_cancel_token = _new_cancel_token()
+    cancel_callable: Callable[[], bool] = _arm_cancel_flag(
+        _REINDEX_CANCEL_FLAGS,
+        _REINDEX_CANCEL_LOCK,
+        reindex_cancel_token,
+        cancel_flag,
+    )
     try:
         result = reindex(
             handle.store,
@@ -589,10 +595,16 @@ def handle_ralph_reindex(
             is_error=True,
         )
     finally:
-        # AC-02/AC-05: clear the per-session cancel flag at every
+        # AC-02/AC-05: clear the per-request cancel flag at every
         # exit path so a previous caller's cancel cannot poison a
-        # subsequent reindex against the same session.
-        _REINDEX_CANCEL_FLAGS.pop(reindex_session_key, None)
+        # subsequent reindex against the same session. The token
+        # is unique to this call, so the pop never deletes a
+        # concurrent caller's flag.
+        _disarm_cancel_flag(
+            _REINDEX_CANCEL_FLAGS,
+            _REINDEX_CANCEL_LOCK,
+            reindex_cancel_token,
+        )
     handle.generation = result.generation
     handle.last_job_status = result.status
     handle.last_refresh_kind = "full" if mode == "full" else "changed"
@@ -650,23 +662,78 @@ _GRAPH_DEFAULT_TIMEOUT_MS: int = 5_000
 #: default in the schema (1-30000).
 _GRAPH_TIMEOUT_MAX_MS: int = 30_000
 #: Cooperative-cancellation flag registry. The handler stores
-#: ``True`` when the caller asked to cancel, keyed by the
-#: session's ``id()``. The dispatcher polls the flag at phase
-#: boundaries. Entries are scoped to the call's session; the
-#: map is intentionally small (one entry per active query) so
-#: unbounded growth is bounded by concurrency, not wall time.
+#: ``True`` when the caller asked to cancel, keyed by a
+#: per-request token (UUID). The dispatcher polls the flag at
+#: phase boundaries. The token is generated at the start of
+#: every call and removed in the ``finally`` block, so a
+#: previous caller's cancel cannot poison a concurrent query
+#: against the same session and the map cannot leak across
+#: long-lived sessions.
 #:
-#: Ponytail: keyed by ``id()`` and re-armed at the start of
-#: every call, so a previous caller's cancel cannot poison a
-#: new query against the same session.
-_GRAPH_CANCEL_FLAGS: dict[int, bool] = {}  # bounded-accumulator-ok: keyed by id(session); one entry per active call
+#: Ponytail: each entry is keyed by a unique token that lives
+#: only for the duration of one call. Concurrent calls against
+#: the same session get distinct tokens and never observe each
+#: other's flags. The internal lock guards concurrent mutation
+#: of the dict so a writer that arms its flag and a cleanup
+#: path that pops a different call's flag cannot race.
+_GRAPH_CANCEL_FLAGS: dict[str, bool] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
+_GRAPH_CANCEL_LOCK: threading.Lock = threading.Lock()
 
-#: Per-session cancel flag for ralph_reindex. Mirrors the
+#: Per-request cancel flag for ralph_reindex. Mirrors the
 #: ``_GRAPH_CANCEL_FLAGS`` contract — one entry per active call,
-#: cleared on every exit path. The reindex writer polls this flag
-#: at phase boundaries; when set, the writer preserves the prior
-#: committed generation and returns a ``cancelled`` result.
-_REINDEX_CANCEL_FLAGS: dict[int, bool] = {}  # bounded-accumulator-ok: keyed by id(session); one entry per active call
+#: keyed by a unique request token, cleared on every exit path.
+#: The reindex writer polls this flag at phase boundaries; when
+#: set, the writer preserves the prior committed generation and
+#: returns a ``cancelled`` result. Concurrent reindex calls
+#: against the same session get distinct tokens.
+_REINDEX_CANCEL_FLAGS: dict[str, bool] = {}  # bounded-accumulator-ok: keyed by request token; one entry per active call
+_REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
+
+
+def _new_cancel_token() -> str:
+    """Return a fresh per-request cancellation token (UUID4 string)."""
+    return uuid.uuid4().hex
+
+
+def _arm_cancel_flag(
+    registry: dict[str, bool],
+    lock: threading.Lock,
+    token: str,
+    initial: bool,
+) -> Callable[[], bool]:
+    """Register a per-request cancel flag and return its poll callable.
+
+    The token is unique to this call. A concurrent call against
+    the same session generates a different token, so concurrent
+    callers cannot observe or mutate each other's flags. The
+    returned callable reads the flag under ``lock`` so a writer
+    that flips the flag does not race with the dispatcher's
+    poll. Removal happens in the ``finally`` block via
+    ``_disarm_cancel_flag``.
+    """
+    with lock:
+        registry[token] = bool(initial)
+
+    def _is_set() -> bool:
+        with lock:
+            return bool(registry.get(token, False))
+
+    return _is_set
+
+
+def _disarm_cancel_flag(
+    registry: dict[str, bool],
+    lock: threading.Lock,
+    token: str,
+) -> None:
+    """Remove the per-request cancel flag entry on every exit path.
+
+    The token-based key guarantees the pop never deletes a
+    concurrent caller's flag. The lock prevents the pop from
+    racing with a poll that has already loaded the entry.
+    """
+    with lock:
+        registry.pop(token, None)
 
 
 def _graph_node_to_dict(node: graph_module.GraphNode) -> dict[str, object]:
@@ -816,25 +883,28 @@ def handle_ralph_graph(
     )
     deadline = time.monotonic() + timeout_ms / 1000.0
     # AC-05: cooperative cancellation. ``cancel=true`` flips the
-    # ``_graph_cancel_requested`` session attribute to True; the
-    # dispatcher polls it at phase boundaries. The flag is
-    # re-armed at the start of every call so a previous caller
-    # cannot poison a new query.
+    # per-request flag to True; the dispatcher polls it at phase
+    # boundaries. The flag is keyed by a fresh per-request token
+    # so a previous caller's cancel cannot poison a new query and
+    # concurrent queries against the same session get distinct
+    # tokens that cannot observe each other.
     cancel_raw: object = params.get("cancel", False)
     cancel_flag = bool(cancel_raw) if isinstance(cancel_raw, bool) else False
     # AC-05: cooperative cancellation. The flag is registered
-    # against the session object identity so a previous caller's
-    # cancel does not poison a new query. The dispatcher polls
-    # the flag at phase boundaries. The entry is explicitly
-    # removed in the ``finally`` block so repeated long-lived
-    # sessions do not leak entries into the module-global map.
-    session_key = id(session)
-    _GRAPH_CANCEL_FLAGS[session_key] = cancel_flag
-
-    def _is_cancelled() -> bool:
-        return bool(_GRAPH_CANCEL_FLAGS.get(session_key, False))
-
-    cancel_callable: Callable[[], bool] = _is_cancelled
+    # under a fresh per-request token so concurrent queries
+    # against the same session get distinct entries; one caller's
+    # cancel never cancels or clears another caller's flag. The
+    # dispatcher polls the flag at phase boundaries. The entry is
+    # explicitly removed in the ``finally`` block so repeated
+    # long-lived sessions do not leak entries into the
+    # module-global map.
+    graph_cancel_token = _new_cancel_token()
+    cancel_callable: Callable[[], bool] = _arm_cancel_flag(
+        _GRAPH_CANCEL_FLAGS,
+        _GRAPH_CANCEL_LOCK,
+        graph_cancel_token,
+        cancel_flag,
+    )
 
     # AC-02/AC-05: track whether the graph call lazily built an
     # ephemeral index that no caller is responsible for closing.
@@ -877,8 +947,15 @@ def handle_ralph_graph(
         )
     finally:
         # AC-02/AC-05: bounded accumulator contract. The cancel
-        # flag is scoped to the call, not the session lifetime.
-        _GRAPH_CANCEL_FLAGS.pop(session_key, None)
+        # flag is scoped to a unique per-request token, not the
+        # session lifetime, so the pop never deletes a concurrent
+        # caller's flag. Concurrent queries against the same
+        # session are isolated by their distinct tokens.
+        _disarm_cancel_flag(
+            _GRAPH_CANCEL_FLAGS,
+            _GRAPH_CANCEL_LOCK,
+            graph_cancel_token,
+        )
         # AC-05: ephemeral store cleanup. When the call lazily
         # built a fresh index, close the underlying SQLite store
         # so file handles do not accumulate across calls.

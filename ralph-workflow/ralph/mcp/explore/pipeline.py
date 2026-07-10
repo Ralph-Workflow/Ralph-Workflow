@@ -263,6 +263,13 @@ def _staged_full_reindex(
     staging directory; the main store continues to serve the
     prior generation.
 
+    AC-05: the outer absolute deadline and cancellation token
+    are forwarded into the swap step. The swap is skipped
+    without publishing the staged state when no time remains
+    or the caller has cancelled, even if the staging build
+    itself returned ``ok``. The previously committed
+    generation remains queryable through the swap refusal.
+
     The function finalizes its own result and returns the
     ``ReindexResult`` directly; the caller does not call
     ``_finalize`` again on top of this.
@@ -277,9 +284,19 @@ def _staged_full_reindex(
             # rebuild. The cancel callable and deadline are
             # forwarded so the staging build can also fail
             # closed when the caller is no longer interested.
+            # AC-05: the staging build's ``timeout_ms`` is the
+            # remaining budget from the outer call. Reading
+            # ``now_fn()`` gives the elapsed time used by the
+            # outer dispatch; subtracting it from
+            # ``options.timeout_ms`` gives the remaining budget.
+            # A non-positive result is clamped to 1 ms so the
+            # staging build raises ``timed_out`` instead of
+            # looping on a zero budget.
+            elapsed_ms = max(0, int((now_fn() - state.started_at) * 1000))
+            remaining_ms = max(1, options.timeout_ms - elapsed_ms)
             inner_opts = ReindexOptions(
                 mode="changed",
-                timeout_ms=options.timeout_ms,
+                timeout_ms=remaining_ms,
                 path_scope=options.path_scope,
                 clock=options.clock,
             )
@@ -310,9 +327,56 @@ def _staged_full_reindex(
         state.parse_count += inner_result.parse_count
         state.changed_paths.extend(inner_result.changed_files)
         state.failed_paths.extend(inner_result.failed_files)
-        # Atomic swap: replace the main database files with
-        # the staging ones, then reopen the live connection.
-        _swap_staged_index(store, staging_dir)
+        # AC-05: propagate the outer absolute deadline and
+        # cancellation token into the swap work. The
+        # ``_swap_staged_index`` helper checks both signals
+        # before and during the swap so a deadline expiry or
+        # cancel that fires between staging completion and
+        # swap completion refuses the swap without publishing
+        # the staged state. The previously committed
+        # generation remains queryable.
+        if (now_fn() - state.started_at) * 1000 > state.deadline_ms:
+            state.timed_out = True
+            return _finalize(
+                store,
+                state,
+                status="timed_out",
+                now_fn=now_fn,
+                error_summary="swap skipped: outer deadline exceeded",
+            )
+        if cancel is not None and cancel():
+            return _finalize(
+                store,
+                state,
+                status="cancelled",
+                now_fn=now_fn,
+                error_summary="swap skipped: cancellation requested",
+            )
+        try:
+            _swap_staged_index(
+                store,
+                staging_dir,
+                started_at=state.started_at,
+                deadline_ms=state.deadline_ms,
+                now_fn=now_fn,
+                cancel=cancel,
+            )
+        except _ReindexTimeoutError:
+            return _finalize(
+                store,
+                state,
+                status="timed_out",
+                now_fn=now_fn,
+                error_summary="swap timed out before completion",
+            )
+        except _ReindexCancelledError:
+            return _finalize(
+                store,
+                state,
+                status="cancelled",
+                now_fn=now_fn,
+                error_summary="swap cancelled before completion",
+            )
         return _finalize(store, state, status="ok", now_fn=now_fn)
     finally:
         # Always remove the staging directory; it is
@@ -321,7 +385,15 @@ def _staged_full_reindex(
             shutil.rmtree(staging_dir, ignore_errors=True)
 
 
-def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
+def _swap_staged_index(
+    store: ExploreStore,
+    staging_dir: Path,
+    *,
+    started_at: float,
+    deadline_ms: int,
+    now_fn: Callable[[], float],
+    cancel: Callable[[], bool] | None,
+) -> None:
     """Atomically replace the main index files with the staging ones.
 
     AC-02/AC-05: the swap is fail-safe at the file level. The
@@ -344,6 +416,19 @@ def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
     stale or missing WAL/SHM on the next open (the WAL is
     checkpointed and the SHM is re-created), so a failure there
     does not invalidate the swap.
+
+    AC-05: the swap work is bounded by the outer absolute
+    deadline (``now_fn() - started_at`` vs ``deadline_ms``) and
+    the cancellation token. The deadline/cancel signals are
+    checked at every swap-step boundary: before the connection
+    close, after the cleanup of a stale ``.swap`` file, before
+    the main-DB swap, after the main-DB swap, and after each
+    WAL/SHM swap. When no time remains or the caller has
+    cancelled, the function raises ``_ReindexTimeoutError`` or
+    ``_ReindexCancelledError`` so the caller can finalize the
+    job as ``timed_out`` / ``cancelled`` without publishing
+    the staged state. The prior committed generation is
+    preserved.
     """
     main_db = store.db_path
     main_wal = main_db.with_name(main_db.name + "-wal")
@@ -353,6 +438,15 @@ def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
     staging_shm = staging_db.with_name(staging_db.name + "-shm")
     swap_dir = main_db.parent
     tmp_main = swap_dir / (main_db.name + ".swap")
+    # AC-05: deadline/cancel check before the swap work starts.
+    # The caller (``_staged_full_reindex``) checks these signals
+    # before calling this helper, but a re-check inside the
+    # helper defends against a caller that bypassed the outer
+    # check (tests, future refactors).
+    if (now_fn() - started_at) * 1000 > deadline_ms:
+        raise _ReindexTimeoutError("deadline exceeded before swap")
+    if cancel is not None and cancel():
+        raise _ReindexCancelledError("cancelled before swap")
     # Close the main connection so the WAL is flushed and the
     # file is safe to rename. Reopen at the end of the function
     # against either the new file (success) or the prior file
@@ -360,6 +454,15 @@ def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
     # pattern via the explicit try/except blocks below.
     with suppress(sqlite3.ProgrammingError):
         store._conn.close()
+    # AC-05: deadline/cancel check after the connection close.
+    # The close is irreversible for the duration of this call,
+    # so a deadline that expires here MUST refuse to publish.
+    if (now_fn() - started_at) * 1000 > deadline_ms:
+        store.reopen()
+        raise _ReindexTimeoutError("deadline exceeded after connection close")
+    if cancel is not None and cancel():
+        store.reopen()
+        raise _ReindexCancelledError("cancelled after connection close")
     # Best-effort cleanup of a leftover ``.swap`` temp file
     # from a prior aborted swap. A failure here is treated
     # like a swap failure: reopen the prior DB and re-raise.
@@ -369,6 +472,15 @@ def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
         except OSError:
             store.reopen()
             raise
+    # AC-05: deadline/cancel check immediately before the
+    # main-DB swap. This is the last guard before the
+    # irreversible ``os.replace`` writes the new database.
+    if (now_fn() - started_at) * 1000 > deadline_ms:
+        store.reopen()
+        raise _ReindexTimeoutError("deadline exceeded before main-DB swap")
+    if cancel is not None and cancel():
+        store.reopen()
+        raise _ReindexCancelledError("cancelled before main-DB swap")
     # Atomic main-DB swap. The temp file lives in the same
     # directory as the main DB so ``os.replace`` is atomic on
     # the same filesystem. The main DB is never overwritten
@@ -387,6 +499,20 @@ def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
                 tmp_main.unlink()
         store.reopen()
         raise
+    # AC-05: deadline/cancel check after the main-DB swap.
+    # The new database is now durably in place, but the
+    # WAL/SHM swap and the connection reopen still need
+    # time. A deadline that fires here is non-fatal for
+    # the swap itself (the new DB is already on disk), but
+    # we still surface it so the caller can finalize as
+    # ``timed_out`` with a clear reason rather than as
+    # ``ok`` when budget was exceeded.
+    if (now_fn() - started_at) * 1000 > deadline_ms:
+        store.reopen()
+        raise _ReindexTimeoutError("deadline exceeded after main-DB swap")
+    if cancel is not None and cancel():
+        store.reopen()
+        raise _ReindexCancelledError("cancelled after main-DB swap")
     # Main DB is now durably replaced. Best-effort WAL/SHM
     # swap; failures here are non-fatal because the next open
     # re-creates the SHM and checkpoints the WAL. The main DB
@@ -394,6 +520,22 @@ def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
     for src, dst in ((staging_wal, main_wal), (staging_shm, main_shm)):
         if not src.exists():
             continue
+        # AC-05: deadline/cancel check between each WAL/SHM
+        # swap. The new main DB is already in place; any
+        # remaining auxiliary swaps are best-effort and a
+        # deadline/cancel refusal here only aborts the
+        # remaining auxiliary work. The new DB is not
+        # undone because the deadline/cancel contract is
+        # about refusing to *publish*, not rolling back a
+        # successful publish.
+        if (now_fn() - started_at) * 1000 > deadline_ms:
+            raise _ReindexTimeoutError(
+                "deadline exceeded during auxiliary swap"
+            )
+        if cancel is not None and cancel():
+            raise _ReindexCancelledError(
+                "cancelled during auxiliary swap"
+            )
         tmp_aux = swap_dir / (dst.name + ".swap")
         try:
             if tmp_aux.exists():

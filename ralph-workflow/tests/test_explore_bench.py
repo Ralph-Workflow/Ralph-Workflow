@@ -21,6 +21,24 @@ from ralph.mcp.explore.bench import (
 )
 
 
+class _CountingExecutor:
+    """Counting scripted-call executor for truthful tool-call regression.
+
+    AC-07: records every ``(call)`` invocation so the test can
+    assert the harness invokes each executor exactly once per
+    scripted call (no replay for evidence-id collection). The
+    counter is keyed by tool so the same executor instance can
+    stand in for either the baseline or indexed executor.
+    """
+
+    def __init__(self) -> None:
+        self.invocations: list[ScriptedCall] = []
+
+    def __call__(self, call: ScriptedCall) -> Mapping[str, object]:
+        self.invocations.append(call)
+        return _indexed_executor(call)
+
+
 class FakeClock:
     """Deterministic clock for tests."""
 
@@ -187,3 +205,66 @@ def test_run_benchmark_notes_include_description() -> None:
         clock=FakeClock(),
     )
     assert fixture.description in result.notes
+
+
+def test_run_benchmark_invokes_each_executor_exactly_once_per_scripted_call() -> None:
+    """AC-07: a counting executor MUST observe exactly one invocation per
+    scripted call (no replay for evidence-id collection).
+
+    A previous implementation re-ran the indexed script via
+    ``_collect_returned_evidence_ids`` so a counting executor
+    observed ``len(indexed_script) * 2`` invocations while the
+    reported counter stayed at ``len(indexed_script)``, hiding
+    the duplicate work. This regression pins the truthful
+    behavior: each executor is called once per scripted call.
+    """
+    baseline = _CountingExecutor()
+    indexed = _CountingExecutor()
+    fixture = REQUIRED_FIXTURES[0]
+    run_benchmark(
+        fixture,
+        baseline_executor=baseline,
+        indexed_executor=indexed,
+        clock=FakeClock(),
+    )
+    assert len(baseline.invocations) == len(fixture.baseline_script)
+    assert len(indexed.invocations) == len(fixture.indexed_script)
+    # The reported counter MUST match the executor's observed
+    # call count, not exceed it. The previous implementation
+    # reported ``len(script)`` while the executor saw
+    # ``len(script) * 2``.
+    run_benchmark(
+        fixture,
+        baseline_executor=baseline,
+        indexed_executor=indexed,
+        clock=FakeClock(),
+    )
+    assert len(baseline.invocations) == 2 * len(fixture.baseline_script)
+    assert len(indexed.invocations) == 2 * len(fixture.indexed_script)
+
+
+def test_run_benchmark_collects_evidence_ids_without_replay() -> None:
+    """AC-07: the indexed executor's evidence ids are collected during the
+    counters pass, not via a separate replay.
+
+    The fixture's truth set is the union of per-call expected ids;
+    a scripted indexed flow that returns the truth set on the
+    first call should reach recall == 1.0 without invoking the
+    executor again. A separate replay would still report recall
+    1.0, but it would also double the executor's call count,
+    breaking the truthful-counter contract.
+    """
+    counter = _CountingExecutor()
+    fixture = REQUIRED_FIXTURES[0]
+    result = run_benchmark(
+        fixture,
+        baseline_executor=_baseline_executor,
+        indexed_executor=counter,
+        clock=FakeClock(),
+    )
+    # The executor is invoked exactly once per scripted call and
+    # the harness derives recall from the single-pass evidence
+    # collection (no replay).
+    assert len(counter.invocations) == len(fixture.indexed_script)
+    assert result.indexed.evidence_recall == 1.0
+    assert result.indexed.tool_calls == len(fixture.indexed_script)

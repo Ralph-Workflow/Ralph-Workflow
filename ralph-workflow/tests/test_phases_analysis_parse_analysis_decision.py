@@ -7,6 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.phases.analysis import parse_analysis_decision_status
 from ralph.policy.loader import load_policy
 
@@ -17,6 +19,7 @@ def _default_policy_bundle() -> object:
         return load_policy(Path(tmp) / ".agent")
 
 
+@pytest.mark.timeout_seconds(5)
 class TestParseAnalysisDecision:
     def _default_pipeline_policy(self) -> object:
         return _default_policy_bundle().pipeline

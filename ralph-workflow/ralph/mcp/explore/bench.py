@@ -152,12 +152,21 @@ def _run_script(
     *,
     executor: Callable[[ScriptedCall], Mapping[str, object]],
     clock: Clock,
-) -> BenchmarkCounters:
-    """Run a scripted tool flow and aggregate counters.
+) -> tuple[BenchmarkCounters, set[str]]:
+    """Run a scripted tool flow and aggregate counters + returned evidence ids.
 
     The executor is expected to return a dict with the result payload;
     the harness counts bytes/tokens but does not introspect the
-    payload semantics.
+    payload semantics. The returned evidence ids are collected
+    in the SAME pass that records the counters; the harness MUST
+    NOT replay the script to gather ids because replaying would
+    silently undercount tool calls (a counting executor would see
+    ``len(script) * 2`` invocations while the reported counter
+    stays at ``len(script)``, hiding the duplicate work).
+
+    AC-12: counters include derived recall/precision using the
+    union of per-call expected evidence ids (the truth set) and
+    the actual returned ids (the prediction set).
     """
     start = clock.now()
     returned_bytes = 0
@@ -176,7 +185,10 @@ def _run_script(
         # AC-12: collect returned evidence ids so the harness can
         # compute real recall/precision from the union of (a) the
         # per-call expected ids and (b) any explicit evidence_ids
-        # in the executor's payload.
+        # in the executor's payload. This MUST happen on the same
+        # pass that records tool calls; a separate replay would
+        # double the executor invocations and understate the
+        # call counter relative to real executor work.
         returned_ids: object = result.get("evidence_ids", ())
         if isinstance(returned_ids, (list, tuple)):
             for ev_id in returned_ids:
@@ -193,7 +205,7 @@ def _run_script(
             if isinstance(ev_id, str) and ev_id:
                 expected_ids.add(ev_id)
     recall, precision = _evidence_metrics(expected_ids, returned_evidence_ids)
-    return BenchmarkCounters(
+    counters = BenchmarkCounters(
         tool_calls=len(script),
         returned_bytes=returned_bytes,
         transcript_tokens=transcript_tokens,
@@ -202,6 +214,7 @@ def _run_script(
         evidence_recall=recall,
         evidence_precision=precision,
     )
+    return counters, returned_evidence_ids
 
 
 def _evidence_metrics(
@@ -743,20 +756,28 @@ def run_benchmark(
     over the existing MCP handlers; they MUST NOT call a live LLM
     agent. They are pure functions of (call) -> result-dict.
 
-    AC-07: recall/precision are derived from the fixture's
+    AC-07: each executor is invoked exactly ``len(script)`` times
+    (one invocation per scripted call) so the tool-call counters
+    equal the number of executor invocations a counting harness
+    observes. Recall/precision are derived from the fixture's
     ``expected_evidence_ids`` truth set and the indexed executor's
-    actual returned ``evidence_ids``. The previous implementation
-    silently hardcoded both to ``1.0`` after ``_run_script``,
-    hiding missing-evidence regressions. Callers may override the
-    truth set via ``expected_evidence_ids``; the default is the
-    fixture's declared ``expected_evidence_ids`` (a non-empty,
-    unique tuple, by contract).
+    actual returned ``evidence_ids`` collected during the SAME
+    pass that records the indexed counters. The previous
+    implementation replayed the indexed script solely to gather
+    evidence ids, which silently doubled executor invocations
+    while leaving the reported counter at ``len(script)``; that
+    double-execution broke the "no extra scripted tool calls"
+    budget and let counting executors observe hidden work.
+
+    Callers may override the truth set via ``expected_evidence_ids``;
+    the default is the fixture's declared ``expected_evidence_ids``
+    (a non-empty, unique tuple, by contract).
     """
     clk = clock or SystemClock()
-    baseline_counters = _run_script(
+    baseline_counters, _baseline_returned_ids = _run_script(
         fixture.baseline_script, executor=baseline_executor, clock=clk
     )
-    indexed_counters = _run_script(
+    indexed_counters, indexed_returned_ids = _run_script(
         fixture.indexed_script, executor=indexed_executor, clock=clk
     )
     truth = (
@@ -764,10 +785,7 @@ def run_benchmark(
         if expected_evidence_ids is not None
         else fixture.expected_evidence_ids
     )
-    returned = _collect_returned_evidence_ids(
-        fixture.indexed_script, executor=indexed_executor, clock=clk
-    )
-    recall, precision = _evidence_metrics(set(truth), returned)
+    recall, precision = _evidence_metrics(set(truth), indexed_returned_ids)
     indexed_counters = BenchmarkCounters(
         tool_calls=indexed_counters.tool_calls,
         returned_bytes=indexed_counters.returned_bytes,
@@ -783,29 +801,3 @@ def run_benchmark(
         indexed=indexed_counters,
         notes=(fixture.description,),
     )
-
-
-def _collect_returned_evidence_ids(
-    script: Sequence[ScriptedCall],
-    *,
-    executor: Callable[[ScriptedCall], Mapping[str, object]],
-    clock: Clock,
-) -> set[str]:
-    """Re-run a script and collect every evidence id the executor surfaces.
-
-    AC-07: this helper is only used to derive truthful
-    recall/precision for the indexed flow. It does not modify
-    counters or wall time; the main ``_run_script`` call owns
-    those. We discard the result payloads after collecting the
-    ids so we do not double-count bytes/tokens.
-    """
-    _ = clock
-    returned: set[str] = set()
-    for call in script:
-        result = executor(call)
-        ids: object = result.get("evidence_ids", ())
-        if isinstance(ids, (list, tuple)):
-            for ev_id in ids:
-                if isinstance(ev_id, str) and ev_id:
-                    returned.add(ev_id)
-    return returned

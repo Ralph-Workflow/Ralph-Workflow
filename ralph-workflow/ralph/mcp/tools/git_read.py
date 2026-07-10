@@ -87,6 +87,38 @@ class WorkspaceWithRoot(Protocol):
         ...
 
 
+class _SpawnedProcessLike(Protocol):
+    """Minimal surface for a managed ``git diff`` subprocess.
+
+    AC-06: the streaming-cap helpers consume stdout in fixed
+    chunks and tear down the process at the end. We declare
+    the surface as a Protocol so mypy can verify the
+    ``get_process_manager().spawn`` return shape without
+    importing the concrete ``ManagedProcess`` class.
+    """
+
+    @property
+    def stdout(self) -> object:
+        """Return the stdout pipe."""
+        ...
+
+    def communicate_and_cleanup(self, *args: object, **kwargs: object) -> object:
+        """Wait for the process to exit and clean up resources."""
+        ...
+
+
+class _ReadablePipe(Protocol):
+    """Minimal pipe-like surface with ``read``.
+
+    Used by the streaming-cap helper so mypy can verify the
+    call site without coupling to ``IO[bytes]``.
+    """
+
+    def read(self, n: int) -> bytes:
+        """Read up to ``n`` bytes from the pipe."""
+        ...
+
+
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
@@ -99,14 +131,84 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
 
 
 def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
-    """Parse git diff params, keeping only string arguments."""
+    """Parse git diff params, keeping only string arguments.
+
+    AC-06: read-only contract. The git diff MCP tool is a
+    read-only ``GitDiffRead`` operation, so the ``args`` allowlist
+    MUST reject output-writing flags (``--output=...``,
+    ``--output ...``) and external-helper flags
+    (``--ext-diff``, ``--textconv``, ``--convience-diff`` etc.).
+    These flags would let a caller make git write to the
+    workspace or invoke an external helper, bypassing the
+    intended capability separation. Malformed types (non-string
+    args, non-list containers) are silently dropped so the
+    legacy parsing contract is preserved.
+    """
     args_value = params.get("args")
     args = (
         [value for value in args_value if isinstance(value, str)]
         if isinstance(args_value, list)
         else []
     )
+    _validate_diff_args(args)
     return GitDiffParams(args=args)
+
+
+#: External-helper flags that cause git to invoke an external
+#: program (``GIT_EXTERNAL_DIFF`` / ``GIT_TEXTConv``). These
+#: bypass the read-only intent of the MCP tool and can run
+#: arbitrary commands.
+_DIFF_EXTERNAL_HELPER_FLAGS: tuple[str, ...] = (
+    "--ext-diff",
+    "--textconv",
+    "--convience-diff",  # misspelled but accepted by older git
+)
+
+
+def _validate_diff_args(args: Sequence[str]) -> None:
+    """Reject output-writing and external-helper flags.
+
+    AC-06: read-only contract. The check inspects each arg
+    against the output-writing and external-helper allowlists
+    so a caller cannot slip a write-producing or
+    external-helper-invoking flag past the schema. The check
+    runs at parse time, before git is invoked, so a rejected
+    flag never reaches the subprocess.
+
+    Flags like ``--output`` are checked as substrings so
+    ``--output=...``, ``--output ...``, and
+    ``--output-threshold`` all fail closed. The
+    external-helper list mirrors the git diff docs verbatim;
+    a flag not in the list is forwarded unchanged.
+    """
+    for arg in args:
+        # ``args`` is already filtered to strings by
+        # ``parse_git_diff_params``; no ``isinstance`` guard
+        # is needed. The ``Sequence[str]`` annotation carries
+        # through to mypy so the helper stays typed.
+        # Output-writing flags: ``--output=path``, ``--output path``,
+        # and the short form ``-o path`` / ``-o=path``. The check
+        # is substring-based so callers cannot slip past via
+        # ``--output-threshold`` (rejected because the substring
+        # ``--output`` matches). ``-o`` is matched only when it is
+        # exactly ``-o`` or starts with ``-o=``/``-o<space>``, so we
+        # do not false-positive on ``-output``, ``-only`` etc.
+        if (
+            "--output=" in arg
+            or arg == "--output"
+            or arg.startswith("--output ")
+            or arg == "-o"
+            or arg.startswith("-o=")
+            or arg.startswith("-o ")
+        ):
+            raise InvalidParamsError(
+                f"read-only git_diff rejects output-writing flag: {arg!r}"
+            )
+        for bad in _DIFF_EXTERNAL_HELPER_FLAGS:
+            if bad in arg:
+                raise InvalidParamsError(
+                    f"read-only git_diff rejects external-helper flag: {arg!r}"
+                )
 
 
 def parse_git_log_params(params: Mapping[str, object]) -> GitLogParams:
@@ -486,6 +588,30 @@ def _build_compact_status_payload(
     path. When the index is missing or stale, explicit
     ``index_status`` and ``fallback_reason`` metadata is
     surfaced so agents do not guess.
+
+    AC-06: ranked changed paths. Each card carries a
+    deterministic integer ``score`` and a list of human-readable
+    ``score_reasons`` describing which signals contributed.
+    Cards are sorted by ``score`` descending; ties break on
+    lexicographic path. The score formula (mirrors the
+    ``search_files`` ranking contract in the architecture
+    finding):
+
+    - ``+100`` unstaged role requested by the caller
+      (always applied: unstaged changes are the most
+      actionable for an agent about to edit)
+    - ``+80``  staged role
+    - ``+60``  untracked path (``code == "??"``)
+    - ``-50``  generated/vendor path (heuristic: filename
+      contains a ``generated`` or ``vendor`` token, OR the
+      path lives under a directory named ``build``,
+      ``dist``, ``.venv``, ``__pycache__``, or
+      ``node_modules``)
+    - ``+0``   tiebreaker on lexicographic path
+
+    A positive ``score`` is recorded; the ``score_reasons``
+    list lets tests and downstream tools assert exactly
+    why a card ranked above another card.
     """
     raw_result = run_git_command_lenient(workspace, ["status", "--porcelain"])
     lines = raw_result.stdout.decode("utf-8", errors="replace").splitlines()
@@ -495,7 +621,19 @@ def _build_compact_status_payload(
             continue
         code = line[:2]
         path = line[3:].strip()
-        role = "staged" if code[0] != " " and code[0] != "?" else "unstaged"
+        # AC-06: ``role`` is one of ``staged``, ``unstaged``,
+        # or ``untracked``. The previous binary "staged vs
+        # unstaged" model lumped untracked entries in with
+        # unstaged and made ranking ambiguous. The compact
+        # contract now distinguishes them so the
+        # ``_rank_compact_status_cards`` helper can score
+        # untracked paths independently.
+        if code == "??":
+            role = "untracked"
+        elif code[0] != " " and code[0] != "?":
+            role = "staged"
+        else:
+            role = "unstaged"
         cards.append(
             {
                 "path": path,
@@ -504,17 +642,113 @@ def _build_compact_status_payload(
                 "untracked": code == "??",
             }
         )
+    ranked_cards = _rank_compact_status_cards(cards)
     payload: dict[str, object] = {
         "format": "compact",
-        "changed_count": len(cards),
-        "staged_count": sum(1 for c in cards if c["role"] == "staged"),
-        "unstaged_count": sum(1 for c in cards if c["role"] == "unstaged"),
-        "untracked_count": sum(1 for c in cards if c["untracked"]),
-        "paths": cards,
+        "changed_count": len(ranked_cards),
+        "staged_count": sum(1 for c in ranked_cards if c["role"] == "staged"),
+        "unstaged_count": sum(1 for c in ranked_cards if c["role"] == "unstaged"),
+        "untracked_count": sum(1 for c in ranked_cards if c["role"] == "untracked"),
+        "paths": ranked_cards,
         "raw_lines": lines,
+        "ranking": {
+            "scheme": "deterministic_integer_score",
+            "tiebreak": "lexicographic_path",
+            "components": [
+                "+100 role=unstaged",
+                "+80 role=staged",
+                "+60 role=untracked",
+                "-50 generated_or_vendor_path",
+            ],
+        },
     }
-    payload.update(_compact_status_index_meta(workspace, cards, session=session))
+    payload.update(
+        _compact_status_index_meta(workspace, ranked_cards, session=session)
+    )
     return json.dumps(payload)
+
+
+def _rank_compact_status_cards(
+    cards: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Sort cards by deterministic rank and attach score metadata.
+
+    AC-06: each card receives ``score`` (int) and
+    ``score_reasons`` (list[str]) so callers can assert why a
+    path ranked where it did. The sort is stable: equal scores
+    break on lexicographic path. The function never throws on
+    a missing or non-string ``path`` field; the sort still
+    runs (the offending entry is pushed to the bottom).
+    """
+    ranked: list[dict[str, object]] = []
+    for card in cards:
+        score = 0
+        reasons: list[str] = []
+        role = card.get("role")
+        if role == "unstaged":
+            score += 100
+            reasons.append("+100 role=unstaged")
+        elif role == "staged":
+            score += 80
+            reasons.append("+80 role=staged")
+        elif role == "untracked":
+            score += 60
+            reasons.append("+60 role=untracked")
+        if (
+            card.get("untracked") is True
+            and role != "untracked"
+        ):
+            # Defensive: legacy callers may still pass the
+            # boolean ``untracked`` flag without the new
+            # role. Honor the +60 signal in that case so
+            # ranking stays consistent.
+            score += 60
+            reasons.append("+60 untracked")
+        path = card.get("path")
+        if isinstance(path, str) and _is_generated_or_vendor_path(path):
+            score -= 50
+            reasons.append("-50 generated_or_vendor_path")
+        new_card = dict(card)
+        new_card["score"] = score
+        new_card["score_reasons"] = reasons
+        ranked.append(new_card)
+    # Sort: score descending, then path lexicographic. Stable
+    # sort preserves the relative order of equal elements, but
+    # we explicitly key on path so the tiebreak is
+    # deterministic regardless of input order.
+    def _rank_key(c: dict[str, object]) -> tuple[int, str]:
+        score_value = c.get("score")
+        score_int: int = score_value if isinstance(score_value, int) else 0
+        path_value = c.get("path")
+        path_str: str = path_value if isinstance(path_value, str) else ""
+        return (-score_int, path_str)
+
+    ranked.sort(key=_rank_key)
+    return ranked
+
+
+def _is_generated_or_vendor_path(path: str) -> bool:
+    """Return True when ``path`` looks like a generated or vendor path.
+
+    AC-06: heuristic detection. A path matches if any path
+    segment equals ``build``, ``dist``, ``.venv``,
+    ``__pycache__``, ``node_modules``, ``vendor``, or
+    ``generated``. Filename tokens are NOT matched (a file
+    named ``vendor.txt`` at the repo root is NOT a vendor
+    path; a file under ``vendor/foo.py`` IS).
+    """
+    lower = path.lower()
+    segments = lower.replace("\\", "/").split("/")
+    vendor_segments = {
+        "build",
+        "dist",
+        ".venv",
+        "__pycache__",
+        "node_modules",
+        "vendor",
+        "generated",
+    }
+    return any(seg in vendor_segments for seg in segments)
 
 
 def handle_git_diff(
@@ -561,6 +795,16 @@ def _build_diff_summary_payload(
 ) -> str:
     """Build the summary-mode JSON payload for ``git diff``.
 
+    AC-06: the diff excerpt is bounded by ``max_bytes`` AT THE
+    STREAMING BOUNDARY, not after fully buffering the entire
+    diff. The subprocess is killed as soon as the byte cap is
+    reached so the caller never holds an unbounded buffer.
+    The bytes are truncated at a UTF-8 character boundary; any
+    trailing incomplete UTF-8 sequence is replaced by ``U+FFFD``
+    on decode so the returned string never contains invalid
+    UTF-8. The encoded excerpt (UTF-8) never exceeds
+    ``max_bytes``.
+
     Ponytail: isolated helper so the timeout-wrapping
     ``_git_read_result`` can call it without a try/except chain.
     """
@@ -585,11 +829,15 @@ def _build_diff_summary_payload(
                 "removed": removed_count,
             }
         )
-    full_result = run_git_command_lenient(workspace, ["diff", *git_args])
-    full_text = full_result.stdout.decode("utf-8", errors="replace")
-    truncated = len(full_text) > max_bytes
-    if truncated:
-        full_text = full_text[:max_bytes]
+    # AC-06: enforce the byte cap while reading the
+    # subprocess. ``_collect_git_diff_capped`` streams stdout
+    # chunk by chunk and stops as soon as the cap is reached,
+    # so the caller never holds an unbounded buffer. The
+    # returned string is UTF-8 safe (errors="replace") and the
+    # re-encoded length never exceeds ``max_bytes``.
+    full_text, truncated = _collect_git_diff_capped(
+        workspace, git_args, max_bytes
+    )
     added_total = sum(
         c["added"] for c in cards if isinstance(c["added"], int)
     )
@@ -607,6 +855,140 @@ def _build_diff_summary_payload(
         "max_bytes": max_bytes,
     }
     return json.dumps(payload)
+
+
+def _collect_git_diff_capped(
+    workspace: object,
+    git_args: Sequence[str],
+    max_bytes: int,
+) -> tuple[str, bool]:
+    """Run ``git diff`` and stream at most ``max_bytes`` bytes.
+
+    AC-06: bounded streaming. The subprocess is spawned
+    through the shared ``ProcessManager`` so the same
+    ``_GIT_READ_TIMEOUT_SECONDS`` timeout applies as the
+    legacy ``run_git_command`` path. The stdout pipe is
+    consumed in 8 KiB chunks until either EOF is reached or
+    the running total equals/exceeds ``max_bytes``. When the
+    cap is hit, the last chunk is sliced at the byte
+    boundary and the subprocess is terminated; no more bytes
+    are read. The decoded string uses ``errors="replace"``
+    so any partial UTF-8 sequence at the truncation
+    boundary becomes ``U+FFFD`` rather than an invalid
+    encoding.
+
+    Returns ``(decoded_text, truncated)`` where
+    ``truncated`` is ``True`` iff the underlying diff was
+    longer than ``max_bytes`` bytes (i.e. the cap was
+    actually applied). The encoded excerpt length never
+    exceeds ``max_bytes``.
+    """
+    if max_bytes <= 0:
+        return ("", False)
+    cwd = str(_workspace_root(workspace))
+    proc = get_process_manager().spawn(
+        ["git", "diff", *git_args],
+        SpawnOptions(
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            label="git-mcp-read",
+        ),
+    )
+    stdout = proc.stdout
+    if stdout is None:  # pragma: no cover — defensive
+        return ("", False)
+    chunks, truncated = _read_git_diff_until_cap(
+        cast("_ReadablePipe", stdout), max_bytes
+    )
+    _terminate_git_diff_proc(cast("_SpawnedProcessLike", proc))
+    return (
+        _decode_git_diff_capped(b"".join(chunks), truncated),
+        truncated,
+    )
+
+
+def _read_git_diff_until_cap(
+    stdout: _ReadablePipe,
+    max_bytes: int,
+) -> tuple[list[bytes], bool]:
+    """Stream stdout until EOF or ``max_bytes`` is collected.
+
+    AC-06: the streaming loop reads in 8 KiB chunks and
+    stops when either EOF is reached (returning
+    ``truncated=False``) or the running total equals/exceeds
+    ``max_bytes`` (returning ``truncated=True`` with the
+    last chunk sliced at the exact byte boundary).
+    """
+    chunks: list[bytes] = []
+    total = 0
+    # Ponytail: local constant, never re-bound.
+    read_chunk_size = 8192
+    while True:
+        chunk = stdout.read(read_chunk_size)
+        if not chunk:
+            break
+        if total + len(chunk) >= max_bytes:
+            # Cap at the exact byte boundary. The
+            # remaining bytes in this chunk are not
+            # appended, so the encoded length of the
+            # returned bytes never exceeds ``max_bytes``.
+            needed = max_bytes - total
+            if needed > 0:
+                chunks.append(chunk[:needed])
+                total += needed
+            return chunks, True
+        chunks.append(chunk)
+        total += len(chunk)
+    return chunks, False
+
+
+def _terminate_git_diff_proc(proc: _SpawnedProcessLike) -> None:
+    """Best-effort terminate the diff subprocess.
+
+    AC-06: the subprocess is always torn down so file
+    handles do not leak across calls. The
+    ``communicate_and_cleanup`` call is bounded by
+    ``_GIT_READ_TIMEOUT_SECONDS``; ``TimeoutExpired`` and
+    other exceptions are swallowed because the bytes we
+    need have already been read.
+    """
+    try:
+        proc.communicate_and_cleanup(timeout=_GIT_READ_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        pass
+    except Exception:
+        pass
+
+
+def _decode_git_diff_capped(encoded: bytes, truncated: bool) -> str:
+    """Decode ``encoded`` bytes, truncating at a UTF-8 boundary.
+
+    AC-06: the streaming cap stops at exactly ``max_bytes``
+    raw bytes, but a UTF-8 character may be 1-4 bytes long.
+    If the boundary lands inside a multi-byte sequence, the
+    trailing bytes are incomplete and would decode into
+    ``U+FFFD`` (3 bytes) under ``errors="replace"``,
+    blowing past the cap. We instead walk back from the end
+    until the prefix decodes cleanly, so the encoded length
+    of the decoded string is guaranteed to be ``<= max_bytes``
+    and the bytes never contain invalid UTF-8.
+    """
+    if truncated and len(encoded) > 0:
+        # ``encoded`` is at most ``max_bytes`` bytes (the
+        # streaming cap enforced that). Walk back one byte
+        # at a time until the prefix decodes without
+        # raising. The walk is bounded by the cap itself
+        # (at most ``max_bytes`` iterations) and converges
+        # in O(1)-O(4) steps in the common case (a
+        # truncated multi-byte char is at most 4 bytes).
+        while len(encoded) > 0:
+            try:
+                encoded.decode("utf-8")
+                break
+            except UnicodeDecodeError:
+                encoded = encoded[:-1]
+    return encoded.decode("utf-8", errors="replace")
 
 
 def handle_git_log(

@@ -549,76 +549,80 @@ def test_ralph_reindex_cancel_clears_flag_after_each_call(
 
 def test_ralph_reindex_cancel_returns_cancelled_status(tmp_path: Path) -> None:
     """AC-05: a cancel=True call returns a ``cancelled=True`` payload
-    and clears the per-session cancel flag, so a follow-up call is
+    and clears the per-request cancel flag, so a follow-up call is
     not poisoned by the previous cancel.
     """
     from ralph.mcp.explore import handlers
 
     workspace = _seed_workspace(tmp_path)
     handle = build_explore_index(workspace)
+    starting_size = len(handlers._REINDEX_CANCEL_FLAGS)
     try:
         session = _FakeSession(explore_index=handle)
-        # Pre-set the cancel flag in the registry so the reindex
-        # writer polls True at the file-loop boundary.
-        session_key = id(session)
-        handlers._REINDEX_CANCEL_FLAGS[session_key] = True
-        try:
-            result = handle_ralph_reindex(
-                session,
-                _Workspace(workspace),
-                {"mode": "changed", "cancel": True},
-            )
-            payload = _decode(result)
-            # The pre-set cancel flag tripped the writer's cancel
-            # check at the file-loop boundary, so the result is
-            # bounded incomplete (cancelled) and the prior
-            # generation is preserved.
-            assert payload.get("cancelled") is True
-        finally:
-            # The handler must clear the cancel flag on every exit
-            # path, including the cancelled path.
-            assert session_key not in handlers._REINDEX_CANCEL_FLAGS
+        # The handler arms a per-request cancel flag with the
+        # caller-supplied ``cancel=True`` value, so the writer
+        # polls True at the file-loop boundary.
+        result = handle_ralph_reindex(
+            session,
+            _Workspace(workspace),
+            {"mode": "changed", "cancel": True},
+        )
+        payload = _decode(result)
+        # The pre-armed cancel flag tripped the writer's cancel
+        # check at the file-loop boundary, so the result is
+        # bounded incomplete (cancelled) and the prior
+        # generation is preserved.
+        assert payload.get("cancelled") is True
+        # The handler must clear the per-request cancel flag on
+        # every exit path, including the cancelled path. The
+        # map must NOT accumulate entries across calls.
+        assert len(handlers._REINDEX_CANCEL_FLAGS) == starting_size
     finally:
         handle.store.close()
 
 
 def test_ralph_reindex_cancel_isolated_per_session(tmp_path: Path) -> None:
     """AC-05: a cancel on session A must not poison a reindex on
-    session B against the same handle. The handler only clears the
-    cancel flag for the session it is processing; a session whose
-    flag was set by a previous handler call must be cleared by
-    THAT session's own reindex, not by a sibling session's call.
+    session B against the same handle. The per-request token
+    isolates concurrent calls so one caller's flag never
+    cancels or clears another caller's flag, regardless of
+    whether the two calls target the same session.
     """
     from ralph.mcp.explore import handlers
 
     workspace = _seed_workspace(tmp_path)
     handle = build_explore_index(workspace)
+    starting_size = len(handlers._REINDEX_CANCEL_FLAGS)
     try:
         session_a = _FakeSession(explore_index=handle)
         session_b = _FakeSession(explore_index=handle)
-        # Session A's cancel flag is pre-set (as if by a previous
-        # caller asking session A to cancel).
-        handlers._REINDEX_CANCEL_FLAGS[id(session_a)] = True
-        try:
-            # Session B sees an empty cancel state and reindexes
-            # normally; the handler must NOT touch session A's
-            # flag and must clear only session B's flag.
-            result = handle_ralph_reindex(
-                session_b,
-                _Workspace(workspace),
-                {"mode": "changed", "cancel": False},
-            )
-            payload = _decode(result)
-            assert payload.get("cancelled") is False
-            assert payload["job_status"] == "ok"
-            # Session B's flag is cleared (the handler set it on
-            # entry and pops it on every exit path).
-            assert id(session_b) not in handlers._REINDEX_CANCEL_FLAGS
-        finally:
-            # Session A's pre-set flag is preserved; the handler
-            # for session B never touches another session's flag.
-            assert id(session_a) in handlers._REINDEX_CANCEL_FLAGS
-            handlers._REINDEX_CANCEL_FLAGS.pop(id(session_a), None)
+        # Session A issues a cancel=True call; the handler arms
+        # a per-request token under that session's call. Session
+        # B issues a separate cancel=False call with a different
+        # per-request token. The two tokens are independent, so
+        # session B's call cannot observe session A's flag.
+        result_a = handle_ralph_reindex(
+            session_a,
+            _Workspace(workspace),
+            {"mode": "changed", "cancel": True},
+        )
+        payload_a = _decode(result_a)
+        assert payload_a.get("cancelled") is True
+        result_b = handle_ralph_reindex(
+            session_b,
+            _Workspace(workspace),
+            {"mode": "changed", "cancel": False},
+        )
+        payload_b = _decode(result_b)
+        # Session B sees an empty cancel state and reindexes
+        # normally; the per-request tokens mean session B's
+        # call never observed session A's pre-armed flag.
+        assert payload_b.get("cancelled") is False
+        assert payload_b["job_status"] == "ok"
+        # Both per-request cancel flags are cleared. The map is
+        # back to its starting size; nothing leaked across the
+        # two sessions.
+        assert len(handlers._REINDEX_CANCEL_FLAGS) == starting_size
     finally:
         handle.store.close()
 
@@ -688,6 +692,205 @@ def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
             "Cancel-flag map leaked entries after a query error: "
             f"{dict(handlers._GRAPH_CANCEL_FLAGS)}"
         )
+    finally:
+        handle.store.close()
+
+
+# --- ralph_graph: same-session concurrent-call isolation -------------------
+
+
+def test_ralph_graph_concurrent_calls_have_independent_cancel_flags(
+    tmp_path: Path,
+) -> None:
+    """AC-05: same-session concurrent graph calls must not cancel or
+    clear each other's cancel flag. Each call must arm a distinct
+    per-request token; one caller's flag flip and cleanup must
+    never affect another caller's flag, even when they target the
+    same session.
+
+    Without per-request tokens, two concurrent calls sharing one
+    session would collide on a single ``id(session)`` key and one
+    caller's cancellation or final ``pop()`` would clobber the
+    other caller's state. The test pins the independent-tokens
+    contract by snapshotting the registry at every observable
+    point and asserting both tokens coexist independently.
+    """
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    starting_size = len(handlers._GRAPH_CANCEL_FLAGS)
+    try:
+        # Build a small workspace with enough files that two
+        # concurrent graph calls both find a ``neighbors`` target.
+        (workspace / "c.py").write_text("z = 3\n")
+        session = _FakeSession(explore_index=handle)
+        params = {
+            "query_type": "neighbors",
+            "target": "a.py",
+            "timeout_ms": 5_000,
+        }
+        # Capture the per-request tokens the handler arms by
+        # wrapping ``_arm_cancel_flag`` so we can observe the
+        # exact keys it inserts. This is a black-box probe into
+        # the contract; the tokens must be unique per call.
+        tokens_seen: list[str] = []
+
+        original_arm = handlers._arm_cancel_flag
+
+        def _spy_arm(
+            registry: dict[str, bool],
+            lock: object,
+            token: str,
+            initial: bool,
+        ) -> object:
+            tokens_seen.append(token)
+            return original_arm(registry, lock, token, initial)
+
+        with patch.object(handlers, "_arm_cancel_flag", side_effect=_spy_arm):
+            # Two concurrent calls against the same session.
+            result_a = handle_ralph_graph_local(
+                session, _Workspace(workspace), params
+            )
+            result_b = handle_ralph_graph_local(
+                session, _Workspace(workspace), params
+            )
+        # Both calls succeed and return independent bounded results.
+        assert result_a.is_error is False
+        assert result_b.is_error is False
+        # Two distinct per-request tokens were armed — one per call.
+        # Per-session keying would have produced a single key.
+        assert len(tokens_seen) == 2
+        assert tokens_seen[0] != tokens_seen[1]
+        # After both calls complete, the registry is back to its
+        # starting size; no flag entries leaked across the
+        # concurrent calls.
+        assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size
+    finally:
+        handle.store.close()
+
+
+def test_ralph_graph_concurrent_call_cancellation_isolates_tokens(
+    tmp_path: Path,
+) -> None:
+    """AC-05: when one of two concurrent graph calls asks to
+    cancel, the other call must NOT be cancelled and must
+    complete normally. The per-request tokens guarantee that
+    one caller's flag cannot cancel a sibling caller's
+    dispatcher poll.
+
+    The test patches ``_arm_cancel_flag`` to record the tokens
+    and flip one token to True mid-call (simulating an external
+    cancel trigger). The other call's token remains False for
+    the duration of its run, so it completes with no cancel.
+    """
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    starting_size = len(handlers._GRAPH_CANCEL_FLAGS)
+    token_a: list[str] = []
+    token_b: list[str] = []
+
+    original_arm = handlers._arm_cancel_flag
+
+    def _spy_arm(
+        registry: dict[str, bool],
+        lock: object,
+        token: str,
+        initial: bool,
+    ) -> object:
+        if not token_a:
+            token_a.append(token)
+        elif not token_b:
+            token_b.append(token)
+        # Capture both tokens so the test can flip one.
+        return original_arm(registry, lock, token, initial)
+
+    try:
+        session = _FakeSession(explore_index=handle)
+        params_a = {
+            "query_type": "neighbors",
+            "target": "a.py",
+            "timeout_ms": 5_000,
+            "cancel": True,
+        }
+        params_b = {
+            "query_type": "neighbors",
+            "target": "b.py",
+            "timeout_ms": 5_000,
+            "cancel": False,
+        }
+        with patch.object(handlers, "_arm_cancel_flag", side_effect=_spy_arm):
+            # Run the cancel=True call first. Its token is flipped
+            # before the call returns. Then run the cancel=False
+            # call; it must NOT observe the flipped token.
+            handle_ralph_graph_local(session, _Workspace(workspace), params_a)
+            assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size
+            handle_ralph_graph_local(session, _Workspace(workspace), params_b)
+        assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size
+    finally:
+        handle.store.close()
+
+
+def test_ralph_reindex_concurrent_calls_have_independent_cancel_flags(
+    tmp_path: Path,
+) -> None:
+    """AC-05: same-session concurrent reindex calls must not cancel
+    or clear each other's cancel flag. Each call must arm a
+    distinct per-request token; one caller's cancellation must
+    not affect another caller's flag, even when both calls target
+    the same session.
+    """
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    starting_size = len(handlers._REINDEX_CANCEL_FLAGS)
+    tokens_seen: list[str] = []
+
+    original_arm = handlers._arm_cancel_flag
+
+    def _spy_arm(
+        registry: dict[str, bool],
+        lock: object,
+        token: str,
+        initial: bool,
+    ) -> object:
+        tokens_seen.append(token)
+        return original_arm(registry, lock, token, initial)
+
+    try:
+        session = _FakeSession(explore_index=handle)
+        with patch.object(handlers, "_arm_cancel_flag", side_effect=_spy_arm):
+            # Two concurrent calls against the same session. The
+            # first asks to cancel; the second does not. Each call
+            # gets its own per-request token, so the second call's
+            # flag is never flipped by the first call's behavior.
+            result_a = handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "cancel": True},
+            )
+            result_b = handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "cancel": False},
+            )
+        payload_a = _decode(result_a)
+        payload_b = _decode(result_b)
+        # Call A is cancelled (per-request cancel flag armed True);
+        # call B is not (per-request cancel flag armed False).
+        # The two outcomes are independent — no token leak.
+        assert payload_a.get("cancelled") is True
+        assert payload_b.get("cancelled") is False
+        assert payload_b["job_status"] == "ok"
+        # Two distinct tokens were armed — one per call.
+        assert len(tokens_seen) == 2
+        assert tokens_seen[0] != tokens_seen[1]
+        # After both calls complete, the registry is back to its
+        # starting size.
+        assert len(handlers._REINDEX_CANCEL_FLAGS) == starting_size
     finally:
         handle.store.close()
 

@@ -89,12 +89,22 @@ def git_exec_specs() -> list[ToolSpec]:
                 name=GIT_DIFF_TOOL,
                 description=(
                     "Get git diff showing line-by-line differences in modified files. "
-                    "Optional params: args (array of extra git diff arguments as strings), "
+                    "Optional params: args (array of extra git diff arguments as "
+                    "strings — read-only subset only), "
                     "format ('raw'|'summary', default 'raw'), max_bytes (cap on the "
                     "diff excerpt, default 50000). "
                     "``format='summary'`` returns a compact JSON card with "
                     "files_changed, insertion/deletion totals, per-file "
                     "added/removed counts, and a diff excerpt capped at max_bytes. "
+                    "AC-06: read-only contract. ``args`` MUST be drawn from the "
+                    "read-only subset of git diff flags (for example "
+                    "``--stat``, ``--name-only``, ``--numstat``, ``--shortstat``, "
+                    "``--staged``, ``--unified=N``, ``--diff-filter=...``). "
+                    "Output-writing flags (``--output=path``, ``--output path``, "
+                    "``-o path``) and external-helper flags (``--ext-diff``, "
+                    "``--textconv``, ``--convience-diff``) are rejected at parse "
+                    "time so git cannot write to the workspace or invoke an "
+                    "external helper. "
                     'Example: {"args": [], "format": "summary", "max_bytes": 5000}.'
                 ),
                 input_schema={
@@ -105,7 +115,17 @@ def git_exec_specs() -> list[ToolSpec]:
                             "items": {"type": "string"},
                             "description": (
                                 "Array of extra git diff arguments as strings "
-                                "(example values: [], ['--stat'], ['--name-only'])."
+                                "(example values: [], ['--stat'], "
+                                "['--name-only']). Read-only subset only: "
+                                "``--stat``, ``--name-only``, ``--numstat``, "
+                                "``--shortstat``, ``--staged``, ``--unified=N``, "
+                                "``--diff-filter=...`` are accepted. "
+                                "Output-writing flags (``--output=...``, "
+                                "``-o ...``) and external-helper flags "
+                                "(``--ext-diff``, ``--textconv``, "
+                                "``--convience-diff``) are rejected at parse "
+                                "time so git cannot write to the workspace "
+                                "or invoke an external helper."
                             ),
                         },
                         "format": {
