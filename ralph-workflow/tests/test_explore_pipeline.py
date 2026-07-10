@@ -382,3 +382,106 @@ def test_reindex_records_job_history(tmp_path: Path) -> None:
         assert count >= 1
     finally:
         store.close()
+
+
+def test_changed_reindex_clears_structure_rows_for_deleted_path(
+    tmp_path: Path,
+) -> None:
+    """AC-05/AC-06: deleting a file then running a changed reindex must
+    drop its chunks, evidence, spans, symbols, and edges. Graph
+    queries against the deleted path must return nothing.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / "gone.py").write_text("def gone():\n    return 1\n")
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        assert [s.qualified_name for s in store.iter_symbols("gone.py")] == [
+            "gone.gone"
+        ]
+        # Delete the file and re-run a changed reindex.
+        (workspace / "gone.py").unlink()
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+
+        # Structure rows for the deleted path must be gone.
+        assert list(store.iter_symbols("gone.py")) == []
+        assert list(store.iter_spans("gone.py")) == []
+        assert list(store.iter_edges(path="gone.py")) == []
+        # Lexical rows must also be gone: no chunks, no FTS hits, no
+        # evidence, and the file row is either removed or marked
+        # is_deleted=1 (either is acceptable; what is NOT acceptable
+        # is the file returning live graph/text data).
+        cur = sqlite3.connect(str(store.db_path))
+        try:
+            chunk_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+            fts_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks_fts WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+            evidence_count = cur.execute(
+                "SELECT COUNT(*) FROM evidence WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+        finally:
+            cur.close()
+        assert chunk_count == 0
+        assert fts_count == 0
+        assert evidence_count == 0
+    finally:
+        store.close()
+
+
+def test_full_reindex_clears_structure_rows_for_deleted_path(
+    tmp_path: Path,
+) -> None:
+    """AC-05/AC-06: a full reindex must clear every index table that can
+    serve structural facts, including spans, symbols, and edges. A
+    deleted file's structure rows must not survive a full rebuild.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / "gone.py").write_text("def gone():\n    return 1\n")
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Sanity: the symbol exists before the file is removed.
+        assert [s.qualified_name for s in store.iter_symbols("gone.py")] == [
+            "gone.gone"
+        ]
+        (workspace / "gone.py").unlink()
+        reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        # No spans / symbols / edges / chunks / FTS / evidence for
+        # the deleted path after a full rebuild.
+        cur = sqlite3.connect(str(store.db_path))
+        try:
+            span_count = cur.execute(
+                "SELECT COUNT(*) FROM spans WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+            symbol_count = cur.execute(
+                "SELECT COUNT(*) FROM symbols WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+            edge_count = cur.execute(
+                "SELECT COUNT(*) FROM edges WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+            chunk_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+            fts_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks_fts WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+            evidence_count = cur.execute(
+                "SELECT COUNT(*) FROM evidence WHERE path = ?", ("gone.py",)
+            ).fetchone()[0]
+        finally:
+            cur.close()
+        assert span_count == 0
+        assert symbol_count == 0
+        assert edge_count == 0
+        assert chunk_count == 0
+        assert fts_count == 0
+        assert evidence_count == 0
+    finally:
+        store.close()

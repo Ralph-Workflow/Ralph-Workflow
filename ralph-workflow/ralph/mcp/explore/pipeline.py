@@ -303,11 +303,49 @@ def _run_reindex(
             last_seen_generation=target_generation,
         )
 
-    # Mark deleted paths.
+    # Mark deleted paths. AC-05/AC-06: a removed file must drop its
+    # chunks, FTS rows, evidence, spans, symbols, and edges so graph
+    # queries and indexed text search cannot return facts about
+    # files that no longer exist in the workspace. We tombstone the
+    # path-level evidence before deletion (same contract as the
+    # change-replacement path) and then physically delete the
+    # per-path rows. The file row is recorded as is_deleted=1 for
+    # diagnostics; a subsequent reindex that finds the file again
+    # will replace the rows and clear the is_deleted flag.
     for existing in list(store.iter_files()):
         _ensure_deadline(state, now_fn)
         if existing.path not in seen_paths and existing.path not in path_scope:
             # File is no longer on disk.
+            store.record_tombstone(
+                evidence_id=derive_evidence_id(
+                    path=existing.path,
+                    content_hash=existing.content_hash,
+                    start_line=0,
+                    end_line=0,
+                    kind="path_tombstone",
+                    extractor_version=EXTRACTOR_VERSION,
+                ),
+                path=existing.path,
+                start_line=0,
+                end_line=0,
+                content_hash=existing.content_hash,
+                generation=existing.indexed_generation,
+                stale_reason="file_deleted",
+                stale_at=now_fn(),
+                replacement_evidence_id=None,
+            )
+            store.delete_chunks_for_path(existing.path)
+            # delete_file_rows removes files/chunks/chunks_fts/evidence
+            # for the path; we still need to drop structure rows
+            # (spans, symbols, edges) and re-mark the file row as
+            # is_deleted for diagnostics.
+            store.replace_structure_rows(
+                path=existing.path,
+                spans=(),
+                symbols=(),
+                edges=(),
+            )
+            store.delete_file_rows(existing.path)
             store.upsert_file(
                 FileRow(
                     path=existing.path,
@@ -395,7 +433,14 @@ def _dirty_paths_contain(store: ExploreStore, path: str) -> bool:
 
 
 def _drop_all_rows(store: ExploreStore) -> None:
-    """Drop every row from the index tables. Used by mode='full'."""
+    """Drop every row from the index tables. Used by mode='full'.
+
+    AC-05/AC-06: must clear every persisted table that can serve
+    structural or lexical facts, including ``spans``, ``symbols``,
+    and ``edges``. A full rebuild that leaves stale graph rows
+    behind would silently allow graph queries to return facts about
+    files that no longer exist in the workspace.
+    """
     cur = store._conn.cursor()
     try:
         for table in (
@@ -403,6 +448,9 @@ def _drop_all_rows(store: ExploreStore) -> None:
             "evidence_tombstones",
             "chunks",
             "chunks_fts",
+            "spans",
+            "symbols",
+            "edges",
             "files",
             "manifest",
             "dirty_paths",
