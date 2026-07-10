@@ -154,6 +154,12 @@ ANALYSIS_EVALUATABLE_ONLY_GUIDANCE = "## ONLY JUDGE WHAT YOU CAN EVALUATE"
 ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE = (
     "You MUST NOT judge what the agent, developer, or reviewer did or did not do."
 )
+DEVELOPMENT_ANALYSIS_NO_PROCESS_INFERENCE_GUIDANCE = (
+    "Do not infer whether the developer ran a command"
+)
+DEVELOPMENT_ANALYSIS_OBSERVABLE_UNFIXED_GUIDANCE = (
+    "the failing test remains unfixed in the current work product"
+)
 ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE = "no runnable verification command exists"
 ANALYSIS_NO_PLUMBING_OVERWEIGHT_GUIDANCE = (
     "Do not fail a plan solely because of Ralph Workflow internal exec or transport quirks"
@@ -166,9 +172,30 @@ ANALYSIS_NO_AGENT_LOG_GUIDANCE = (
     "as evaluation evidence."
 )
 ANALYSIS_CODE_DIFF_ONLY_GUIDANCE = "Evaluation evidence may come ONLY from: (1) code and diff"
+DEVELOPMENT_ANALYSIS_CURRENT_STATE_GUIDANCE = (
+    "Review the implementation as it exists in the current working tree"
+)
+DEVELOPMENT_ANALYSIS_HOLISTIC_GUIDANCE = (
+    "Treat the complete current implementation as the review scope"
+)
+DEVELOPMENT_ANALYSIS_CIRCUMSTANTIAL_EVIDENCE_GUIDANCE = (
+    "Circumstantial evidence may support a conclusion about the current work product"
+)
+DEVELOPMENT_ANALYSIS_UNEVALUATABLE_NOT_FAILURE_GUIDANCE = (
+    "Unevaluatability alone MUST NOT cause `request_changes` or `failed`"
+)
+DEVELOPMENT_ANALYSIS_WORK_PRODUCT_ONLY_GUIDANCE = (
+    "Draw conclusions about the current work product, not process history"
+)
+DEVELOPMENT_ANALYSIS_EVIDENCE_SUMMARY_GUIDANCE = (
+    "The `summary` MUST cite the key current-work-product evidence"
+)
 ANALYSIS_CONTEXT_ONLY_ARTIFACT_GUIDANCE = "context only"
 ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE = (
     "If an artifact makes a claim, verify that claim against the code, diff, or command output"
+)
+DEVELOPMENT_ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE = (
+    "If an artifact makes a claim, verify that claim against the current work product or command output"
 )
 ANALYSIS_PLAN_NOT_EVIDENCE_GUIDANCE = (
     "The PLAN defines the goal you are evaluating against; it is not evidence by itself."
@@ -392,17 +419,26 @@ def _assert_shared_analysis_guidance(
     assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in review_analysis
     assert ANALYSIS_EVALUATABLE_ONLY_GUIDANCE in development_analysis
     assert ANALYSIS_EVALUATABLE_ONLY_GUIDANCE in review_analysis
-    assert ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE in development_analysis
+    assert (
+        ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE in development_analysis
+        or DEVELOPMENT_ANALYSIS_NO_PROCESS_INFERENCE_GUIDANCE in development_analysis
+    )
     assert ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE in review_analysis
     assert ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE in development_analysis
     assert ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE in review_analysis
     assert ANALYSIS_NO_AGENT_LOG_GUIDANCE in development_analysis
     assert ANALYSIS_NO_AGENT_LOG_GUIDANCE in review_analysis
-    assert ANALYSIS_CODE_DIFF_ONLY_GUIDANCE in development_analysis
+    assert (
+        ANALYSIS_CODE_DIFF_ONLY_GUIDANCE in development_analysis
+        or DEVELOPMENT_ANALYSIS_CURRENT_STATE_GUIDANCE in development_analysis
+    )
     assert ANALYSIS_CODE_DIFF_ONLY_GUIDANCE in review_analysis
     assert ANALYSIS_CONTEXT_ONLY_ARTIFACT_GUIDANCE in development_analysis
     assert ANALYSIS_CONTEXT_ONLY_ARTIFACT_GUIDANCE in review_analysis
-    assert ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE in development_analysis
+    assert (
+        ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE in development_analysis
+        or DEVELOPMENT_ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE in development_analysis
+    )
     assert ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE in review_analysis
     assert ANALYSIS_PLAN_NOT_EVIDENCE_GUIDANCE in development_analysis
     assert ANALYSIS_PLAN_NOT_EVIDENCE_GUIDANCE in review_analysis
@@ -410,9 +446,11 @@ def _assert_shared_analysis_guidance(
     assert ANALYSIS_EVIDENCE_AGAINST_PLAN_GUIDANCE in review_analysis
     assert ANALYSIS_NOT_EVALUATABLE_GUIDANCE in development_analysis
     assert ANALYSIS_NOT_EVALUATABLE_GUIDANCE in review_analysis
-    assert ANALYSIS_SKIP_UNEVALUATABLE_GUIDANCE in development_analysis
+    assert (
+        ANALYSIS_SKIP_UNEVALUATABLE_GUIDANCE in development_analysis
+        or DEVELOPMENT_ANALYSIS_UNEVALUATABLE_NOT_FAILURE_GUIDANCE in development_analysis
+    )
     assert ANALYSIS_SKIP_UNEVALUATABLE_GUIDANCE in review_analysis
-    assert ANALYSIS_NO_NEED_ENUMERATE_SKIPS_GUIDANCE in development_analysis
     assert ANALYSIS_NO_NEED_ENUMERATE_SKIPS_GUIDANCE in review_analysis
     assert ANALYSIS_EVALUATABLE_DIMENSIONS_ONLY_GUIDANCE in review_analysis
 
@@ -457,6 +495,18 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE in review_analysis
     _assert_shared_analysis_guidance(development_analysis, review_analysis)
     _assert_shared_analysis_guidance(planning_analysis, review_analysis)
+    assert DEVELOPMENT_ANALYSIS_NO_PROCESS_INFERENCE_GUIDANCE in development_analysis
+    assert DEVELOPMENT_ANALYSIS_OBSERVABLE_UNFIXED_GUIDANCE in development_analysis
+    assert DEVELOPMENT_ANALYSIS_CURRENT_STATE_GUIDANCE in development_analysis
+    assert DEVELOPMENT_ANALYSIS_HOLISTIC_GUIDANCE in development_analysis
+    assert DEVELOPMENT_ANALYSIS_CIRCUMSTANTIAL_EVIDENCE_GUIDANCE in development_analysis
+    assert DEVELOPMENT_ANALYSIS_UNEVALUATABLE_NOT_FAILURE_GUIDANCE in development_analysis
+    assert DEVELOPMENT_ANALYSIS_WORK_PRODUCT_ONLY_GUIDANCE in development_analysis
+    assert DEVELOPMENT_ANALYSIS_EVIDENCE_SUMMARY_GUIDANCE in development_analysis
+    assert "Evaluate all changed files" not in development_analysis
+    assert "New code" not in development_analysis
+    assert "required files were not changed" not in development_analysis
+    assert re.search(r"\bdiffs?\b", development_analysis, re.IGNORECASE) is None
 
 
 def test_planning_fallback_templates_reference_artifact_history_location() -> None:
