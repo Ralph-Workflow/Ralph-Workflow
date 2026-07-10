@@ -711,6 +711,110 @@ def question_phase4_exec_summary_spill() -> BenchmarkFixture:
     )
 
 
+def question_phase4_git_log_summary() -> BenchmarkFixture:
+    """Q10: Phase 4 ``git_log`` ``format='summary'``."""
+    return BenchmarkFixture(
+        question_id="Q10",
+        description="Phase 4 git_log summary output.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="git_log",
+                params={"count": 5},
+                expected_evidence_ids=("ev:git/summary/log",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="git_log",
+                params={"count": 5, "format": "summary"},
+                expected_evidence_ids=("ev:git/summary/log",),
+            ),
+        ),
+        expected_evidence_ids=("ev:git/summary/log",),
+        max_returned_bytes=80_000,
+        max_tool_calls=2,
+    )
+
+
+def question_phase4_git_show_summary() -> BenchmarkFixture:
+    """Q11: Phase 4 ``git_show`` ``format='summary'``."""
+    return BenchmarkFixture(
+        question_id="Q11",
+        description="Phase 4 git_show summary output.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="git_show",
+                params={"ref": "HEAD"},
+                expected_evidence_ids=("ev:git/summary/show",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="git_show",
+                params={"ref": "HEAD", "format": "summary"},
+                expected_evidence_ids=("ev:git/summary/show",),
+            ),
+        ),
+        expected_evidence_ids=("ev:git/summary/show",),
+        max_returned_bytes=80_000,
+        max_tool_calls=2,
+    )
+
+
+def question_phase4_web_search_summary() -> BenchmarkFixture:
+    """Q12: Phase 4 ``web_search`` ``format='summary'``."""
+    return BenchmarkFixture(
+        question_id="Q12",
+        description="Phase 4 web_search summary output.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="web_search",
+                params={"query": "ralph workflow"},
+                expected_evidence_ids=("ev:web/search/summary",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="web_search",
+                params={"query": "ralph workflow", "format": "summary"},
+                expected_evidence_ids=("ev:web/search/summary",),
+            ),
+        ),
+        expected_evidence_ids=("ev:web/search/summary",),
+        max_returned_bytes=80_000,
+        max_tool_calls=2,
+    )
+
+
+def question_phase4_read_media_metadata() -> BenchmarkFixture:
+    """Q13: Phase 4 ``read_media`` ``format='metadata'``."""
+    return BenchmarkFixture(
+        question_id="Q13",
+        description="Phase 4 read_media metadata output.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="read_media",
+                params={"path": "report.pdf"},
+                expected_evidence_ids=("ev:media/metadata/report",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="read_media",
+                params={"path": "report.pdf", "format": "metadata"},
+                expected_evidence_ids=("ev:media/metadata/report",),
+            ),
+        ),
+        expected_evidence_ids=("ev:media/metadata/report",),
+        max_returned_bytes=80_000,
+        max_tool_calls=2,
+    )
+
+
 # Ponytail: every workflow that AC-12 requires a benchmark for is a
 # fixture here. ``_REQUIRED_BENCH_WORKFLOW_IDS`` is the closed
 # vocabulary the gate test asserts; adding a workflow is a single
@@ -725,6 +829,10 @@ REQUIRED_BENCH_WORKFLOW_IDS: tuple[str, ...] = (
     "Q7",  # Phase 4 git_status compact
     "Q8",  # Phase 4 git_diff summary
     "Q9",  # Phase 4 exec summary
+    "Q10",  # Phase 4 git_log summary
+    "Q11",  # Phase 4 git_show summary
+    "Q12",  # Phase 4 web_search summary
+    "Q13",  # Phase 4 read_media metadata
 )
 
 EXTENDED_FIXTURES: tuple[BenchmarkFixture, ...] = (
@@ -734,6 +842,10 @@ EXTENDED_FIXTURES: tuple[BenchmarkFixture, ...] = (
     question_phase4_git_status_compact(),
     question_phase4_git_diff_summary(),
     question_phase4_exec_summary_spill(),
+    question_phase4_git_log_summary(),
+    question_phase4_git_show_summary(),
+    question_phase4_web_search_summary(),
+    question_phase4_read_media_metadata(),
 )
 
 ALL_FIXTURES: tuple[BenchmarkFixture, ...] = (

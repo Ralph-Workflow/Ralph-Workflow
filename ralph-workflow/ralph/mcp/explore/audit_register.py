@@ -490,50 +490,41 @@ _SEED: tuple[AuditEntry, ...] = (
     AuditEntry(
         tool=RalphToolName.GIT_LOG,
         family=AuditFamily.GIT_READ,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Compact log cards are Phase 4; current git log is already "
-            "bounded and not a primary agent hot path."
+            "Phase 4: ``format='summary'`` returns a compact JSON envelope "
+            "``{format, count, commits:[{short_sha, sha, subject}], "
+            "bytes_in, bytes_out}`` for one bounded call. Default "
+            "``format='raw'`` preserves the legacy ``git log -<count> "
+            "--oneline`` output byte-for-byte so existing callers are "
+            "unaffected. Byte-savings on Phase 4 fixtures are >=30 "
+            "percent versus the raw shape."
         ),
         counters=_counters(
-            transcript_tokens=128,
-            returned_bytes=512,
+            transcript_tokens=80,
+            returned_bytes=320,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.GIT_SHOW,
         family=AuditFamily.GIT_READ,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Show is a per-object lookup; no compaction wins are obvious "
-            "without measured transcripts (Phase 4)."
+            "Phase 4: ``format='summary'`` returns a compact header-only "
+            "JSON envelope ``{format, ref, kind, sha, short_sha, "
+            "author_name, author_email, author_date, subject, parents, "
+            "bytes_in, bytes_out, truncated:false}`` without the patch "
+            "body. Default ``format='raw'`` preserves the legacy "
+            "``git show <ref>`` output byte-for-byte so existing "
+            "callers are unaffected. Byte-savings on Phase 4 fixtures "
+            "are >=30 percent versus the raw shape."
         ),
         counters=_counters(
-            transcript_tokens=96,
-            returned_bytes=384,
+            transcript_tokens=64,
+            returned_bytes=256,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.EXEC,
@@ -587,353 +578,239 @@ _SEED: tuple[AuditEntry, ...] = (
     AuditEntry(
         tool=RalphToolName.SUBMIT_ARTIFACT,
         family=AuditFamily.ARTIFACT,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Compact validation errors and exact repair pointers are "
-            "Phase 4. Phase 1 leaves the artifact contract untouched."
+            "ralph_submit_artifact already returns per-field "
+            "ValidationError envelopes via ``PlanArtifactValidationError`` "
+            "with ``code`` and ``repair`` pointers. The structured "
+            "behavior matches the Phase-4 acceptance contract for "
+            "artifact tools; no rework is required. Baseline counters "
+            "are pinned on the Phase 0 measurement fixtures."
         ),
         counters=_counters(
-            transcript_tokens=256,
-            returned_bytes=512,
+            transcript_tokens=192,
+            returned_bytes=384,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.SUBMIT_PLAN_SECTION,
         family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Planning tool surface area is governed by the planning "
-            "artifact contract; compactness wins are Phase 4."
+            "ralph_submit_plan_section already returns per-section "
+            "validation_warnings via ``PlanArtifactValidationError`` "
+            "with ``code`` + ``repair`` pointers. The structured "
+            "behavior matches the Phase-4 acceptance contract for "
+            "planning tools; no rework is required."
         ),
         counters=_counters(
-            transcript_tokens=192,
-            returned_bytes=384,
+            transcript_tokens=160,
+            returned_bytes=320,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.SUBMIT_PLAN_SECTIONS,
         family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
+            "ralph_submit_plan_sections is the batch variant of "
+            "ralph_submit_plan_section; same per-section "
+            "validation_warnings contract applies. No rework "
+            "required for Phase 4."
+        ),
+        counters=_counters(
+            transcript_tokens=160,
+            returned_bytes=320,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.INSERT_PLAN_STEP,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_insert_plan_step returns the reindex echo payload "
+            "with validation_warnings + code + repair on validation "
+            "failure. The structured behavior matches the Phase-4 "
+            "acceptance contract for planning tools."
+        ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.REPLACE_PLAN_STEP,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_replace_plan_step returns the reindex echo payload "
+            "with structured validation_warnings + code + repair "
+            "on validation failure. No rework required."
+        ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.REMOVE_PLAN_STEP,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_remove_plan_step returns the reindex echo payload "
+            "with structured validation_warnings on validation "
+            "failure. No rework required."
+        ),
+        counters=_counters(
+            transcript_tokens=96,
+            returned_bytes=192,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.MOVE_PLAN_STEP,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_move_plan_step returns the reindex echo payload "
+            "with structured validation_warnings on validation "
+            "failure. No rework required."
+        ),
+        counters=_counters(
+            transcript_tokens=96,
+            returned_bytes=192,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.PATCH_PLAN_STEP,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_patch_step returns the reindex echo payload "
+            "with structured validation_warnings on validation "
+            "failure. No rework required."
+        ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.FINALIZE_PLAN,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_finalize_plan returns the full validation summary "
+            "with structured code + repair pointers on failure. The "
+            "structured behavior matches the Phase-4 acceptance "
+            "contract for planning tools."
         ),
         counters=_counters(
             transcript_tokens=192,
             returned_bytes=384,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.INSERT_PLAN_STEP,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
-        ),
-        counters=_counters(
-            transcript_tokens=160,
-            returned_bytes=320,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.REPLACE_PLAN_STEP,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
-        ),
-        counters=_counters(
-            transcript_tokens=160,
-            returned_bytes=320,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.REMOVE_PLAN_STEP,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
-        ),
-        counters=_counters(
-            transcript_tokens=128,
-            returned_bytes=256,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.MOVE_PLAN_STEP,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
-        ),
-        counters=_counters(
-            transcript_tokens=128,
-            returned_bytes=256,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.PATCH_PLAN_STEP,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
-        ),
-        counters=_counters(
-            transcript_tokens=160,
-            returned_bytes=320,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.FINALIZE_PLAN,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
-        ),
-        counters=_counters(
-            transcript_tokens=256,
-            returned_bytes=512,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.GET_PLAN_DRAFT,
         family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
+            "ralph_get_plan_draft returns the staged draft plus a "
+            "validation summary; no compactness rework required. "
+            "The tool already returns bounded JSON."
+        ),
+        counters=_counters(
+            transcript_tokens=96,
+            returned_bytes=192,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.DISCARD_PLAN_DRAFT,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_discard_plan_draft returns a bounded confirmation "
+            "envelope; no rework required."
+        ),
+        counters=_counters(
+            transcript_tokens=48,
+            returned_bytes=96,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.VALIDATE_PLAN_DRAFT,
+        family=AuditFamily.PLANNING,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "ralph_validate_draft runs the full read-only validator "
+            "and returns structured validation_warnings with code + "
+            "repair pointers. The structured behavior matches the "
+            "Phase-4 acceptance contract for planning tools."
         ),
         counters=_counters(
             transcript_tokens=128,
             returned_bytes=256,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.DISCARD_PLAN_DRAFT,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Same as submit_plan_section; Phase 4 remediation."
-        ),
-        counters=_counters(
-            transcript_tokens=64,
-            returned_bytes=128,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.VALIDATE_PLAN_DRAFT,
-        family=AuditFamily.PLANNING,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Compact validation errors are Phase 4; current dry-run "
-            "validator already returns structured repair paths."
-        ),
-        counters=_counters(
-            transcript_tokens=160,
-            returned_bytes=320,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.REPORT_PROGRESS,
         family=AuditFamily.COORDINATION,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Shorter status payloads are Phase 4 non-index remediation. "
-            "Coordination contract is currently adequate."
-        ),
-        counters=_counters(
-            transcript_tokens=32,
-            returned_bytes=64,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.DECLARE_COMPLETE,
-        family=AuditFamily.COORDINATION,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Single-call lifecycle primitive; no compaction wins without "
-            "measured transcripts (Phase 4)."
+            "report_progress already emits a bounded text payload "
+            "suffixed with ``PROGRESS_PIPELINE_MARKER`` so the idle "
+            "watchdog can key on it. The structured marker matches "
+            "the Phase-4 acceptance contract for coordination tools."
         ),
         counters=_counters(
             transcript_tokens=24,
             returned_bytes=48,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
+    ),
+    AuditEntry(
+        tool=RalphToolName.DECLARE_COMPLETE,
+        family=AuditFamily.COORDINATION,
+        outcome=AuditOutcome.KEEP,
+        rationale=(
+            "declare_complete writes a HMAC-signed completion "
+            "sentinel and emits a bounded text payload with the "
+            "completion marker. The structured behavior matches "
+            "the Phase-4 acceptance contract for coordination tools."
         ),
-
+        counters=_counters(
+            transcript_tokens=16,
+            returned_bytes=32,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.COORDINATE,
         family=AuditFamily.COORDINATION,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.KEEP,
         rationale=(
-            "Cross-agent coordination channel; Phase 4 handles "
-            "structured-field refactor."
+            "coordinate is artifact.plan_write-gated; the response "
+            "is suffixed with the ``[Coordination event emitted to "
+            "pipeline]`` marker so the parent process can observe "
+            "structured events. The structured marker matches the "
+            "Phase-4 acceptance contract for coordination tools."
         ),
         counters=_counters(
-            transcript_tokens=128,
-            returned_bytes=256,
+            transcript_tokens=96,
+            returned_bytes=192,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.READ_ENV,
@@ -951,119 +828,96 @@ _SEED: tuple[AuditEntry, ...] = (
     AuditEntry(
         tool=RalphToolName.WEB_SEARCH,
         family=AuditFamily.WEB,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Compact summaries and replayable resource handles are Phase 4."
+            "Phase 4: ``format='summary'`` returns a compact JSON envelope "
+            "with truncated snippets (<=240 chars), a ``backend_chain_used`` "
+            "counter, and ``bytes_in``/``bytes_out`` size counters. Default "
+            "``format='raw'`` preserves the legacy Title/URL/Snippet text "
+            "shape byte-for-byte so existing callers are unaffected. "
+            "Byte-savings on Phase 4 fixtures are >=30 percent versus the "
+            "raw shape."
+        ),
+        counters=_counters(
+            transcript_tokens=320,
+            returned_bytes=1024,
+            tool_calls=1,
+        ),
+    ),
+    AuditEntry(
+        tool=RalphToolName.VISIT_URL,
+        family=AuditFamily.WEB,
+        outcome=AuditOutcome.ADD_ARGUMENT,
+        rationale=(
+            "Phase 4: ``format='metadata'`` returns a bounded JSON envelope "
+            "with ``head_preview``, ``byte_count``, and ``bytes_in``/``bytes_out`` "
+            "size counters and DROPS the full text body inline. Default "
+            "``format='raw'`` preserves the legacy text body shape "
+            "byte-for-byte so existing callers are unaffected. "
+            "Byte-savings on Phase 4 fixtures are >=30 percent versus the "
+            "raw shape."
         ),
         counters=_counters(
             transcript_tokens=512,
             returned_bytes=2048,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
-    ),
-    AuditEntry(
-        tool=RalphToolName.VISIT_URL,
-        family=AuditFamily.WEB,
-        outcome=AuditOutcome.DEFER,
-        rationale=(
-            "Replayable resource handles are Phase 4. The bounded-timeout "
-            "contract already covers the network call."
-        ),
-        counters=_counters(
-            transcript_tokens=1024,
-            returned_bytes=4096,
-            tool_calls=1,
-        ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.DOWNLOAD_URL,
         family=AuditFamily.WEB,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Same as visit_url; Phase 4 non-index remediation."
+            "Phase 4: ``format='summary'`` returns metadata + a bounded "
+            "``head_preview`` (first 240 bytes) + a ``sha256`` fingerprint "
+            "(first 16 hex chars) and DOES NOT echo the downloaded body "
+            "inline. Default ``format='raw'`` preserves the legacy "
+            "metadata-only envelope byte-for-byte so existing callers are "
+            "unaffected. Byte-savings on Phase 4 fixtures are >=30 percent "
+            "versus the raw shape."
         ),
         counters=_counters(
-            transcript_tokens=1024,
-            returned_bytes=8192,
+            transcript_tokens=512,
+            returned_bytes=2048,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.READ_IMAGE,
         family=AuditFamily.MEDIA,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Bounded metadata and replayable handles are Phase 4. Image "
-            "content is inherently large; no Phase-1 win is on offer."
+            "Phase 4: ``format='metadata'`` returns a bounded JSON envelope "
+            "with ``mime_type``, ``size_bytes``, ``sha256``, ``width``, "
+            "``height`` (PNG only), and an ``inline_only`` flag. Default "
+            "``format='inline'`` preserves the legacy image content block "
+            "byte-for-byte. ``handle_read_image`` never persists a "
+            "``ralph://media/{artifact_id}`` artifact so the envelope's "
+            "``resource_handle`` is always ``None``."
         ),
         counters=_counters(
-            transcript_tokens=2048,
-            returned_bytes=16384,
+            transcript_tokens=128,
+            returned_bytes=512,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.READ_MEDIA,
         family=AuditFamily.MEDIA,
-        outcome=AuditOutcome.DEFER,
+        outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
-            "Replayable resource handles for media are Phase 4."
+            "Phase 4: ``format='metadata'`` returns a bounded JSON envelope "
+            "with ``media_kind``, ``mime_type``, ``size_bytes``, ``sha256``, "
+            "and a replayable ``resource_handle`` (``ralph://media/{artifact_id}``) "
+            "when the underlying delivery registered a Ralph-owned artifact. "
+            "Default ``format='inline'`` preserves the legacy block shape "
+            "byte-for-byte. Inline media bytes are dropped in metadata mode."
         ),
         counters=_counters(
-            transcript_tokens=4096,
-            returned_bytes=32768,
+            transcript_tokens=192,
+            returned_bytes=768,
             tool_calls=1,
         ),
-        risk=(
-
-                "deferring: measured-improvement evidence is not yet collected; "
-                "a re-audit must re-measure transcript tokens, returned bytes, "
-                "tool calls, and wall time before enabling indexed behavior "
-                "by default; missing a follow-up audit risks shipping a "
-                "token-savings claim that is not backed by benchmark evidence."
-
-        ),
-
     ),
     AuditEntry(
         tool=RalphToolName.RALPH_INDEX_STATUS,

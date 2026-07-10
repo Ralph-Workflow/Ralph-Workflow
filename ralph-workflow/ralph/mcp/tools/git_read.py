@@ -212,18 +212,41 @@ def _validate_diff_args(args: Sequence[str]) -> None:
 
 
 def parse_git_log_params(params: Mapping[str, object]) -> GitLogParams:
-    """Parse git log params with the Rust default count."""
+    """Parse git log params with the Rust default count.
+
+    Phase 4: ``format`` is optional and closed to ``{'raw', 'summary'}``.
+    ``raw`` is the default (preserved legacy output); ``summary`` returns a
+    compact JSON envelope with one entry per commit. Any other value
+    raises ``InvalidParamsError`` naming the closed enum so a malformed
+    selector never reaches the git subprocess.
+    """
     count_value = params.get("count", DEFAULT_LOG_COUNT)
     count = count_value if isinstance(count_value, int) and count_value >= 0 else DEFAULT_LOG_COUNT
-    return GitLogParams(count=count)
+    format_value = params.get("format", "raw")
+    if format_value not in ("raw", "summary"):
+        raise InvalidParamsError(
+            f"Invalid git_log format: {format_value!r}; expected 'raw' or 'summary'"
+        )
+    return GitLogParams(count=count, format=format_value)
 
 
 def parse_git_show_params(params: Mapping[str, object]) -> GitShowParams:
-    """Parse git show params."""
+    """Parse git show params.
+
+    Phase 4: ``format`` is optional and closed to ``{'raw', 'summary'}``.
+    ``raw`` is the default (preserved legacy output); ``summary`` returns
+    a compact header-only envelope without the patch body. Any other
+    value raises ``InvalidParamsError``.
+    """
     ref_value = params.get("ref")
     if not isinstance(ref_value, str):
         raise InvalidParamsError("Missing 'ref' parameter")
-    return GitShowParams(git_ref=ref_value)
+    format_value = params.get("format", "raw")
+    if format_value not in ("raw", "summary"):
+        raise InvalidParamsError(
+            f"Invalid git_show format: {format_value!r}; expected 'raw' or 'summary'"
+        )
+    return GitShowParams(git_ref=ref_value, format=format_value)
 
 
 def _decode_output(data: bytes) -> str:
@@ -1002,11 +1025,14 @@ def handle_git_log(
         session: Agent session; must declare ``GitStatusRead``.
         workspace: Workspace surface whose root is the cwd for ``git log``.
         params: Mapping with optional ``count`` (positive integer,
-            defaults to ``DEFAULT_LOG_COUNT = 10``).
+            defaults to ``DEFAULT_LOG_COUNT = 10``) and optional
+            ``format`` (``'raw'|'summary'``, default ``'raw'``).
 
     Returns:
         A ``ToolResult`` whose text content is the ``git log -<count>
-        --oneline`` output.
+        --oneline`` output when ``format='raw'`` (default), or a compact
+        JSON envelope ``{format, count, commits: [{short_sha, sha,
+        subject}], bytes_in, bytes_out}`` when ``format='summary'``.
 
     Raises:
         CapabilityDeniedError: When the session does not declare
@@ -1020,9 +1046,54 @@ def handle_git_log(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
     parsed = parse_git_log_params(params)
+    if parsed.format == "raw":
+        return _git_read_result(
+            lambda: run_git_command(
+                workspace, ["log", f"-{parsed.count}", "--oneline"]
+            )
+        )
     return _git_read_result(
-        lambda: run_git_command(workspace, ["log", f"-{parsed.count}", "--oneline"])
+        lambda: _build_git_log_summary_payload(workspace, parsed.count)
     )
+
+
+def _build_git_log_summary_payload(workspace: object, count: int) -> str:
+    """Build the summary-mode JSON envelope for ``git log``.
+
+    Ponytail: isolated helper so the timeout-wrapping
+    ``_git_read_result`` can call it without a try/except chain. The
+    porcelain ``--oneline`` output is one line per commit with the
+    form ``<short_sha> <subject>``. The parser ignores blank lines
+    so an empty log still produces an empty ``commits`` list rather
+    than a fake sentinel.
+    """
+    raw = run_git_command(
+        workspace, ["log", f"-{count}", "--oneline"]
+    )
+    raw_bytes = raw.encode("utf-8")
+    commits: list[dict[str, object]] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # ``--oneline`` emits ``<short_sha> <subject>``. The short
+        # sha is exactly the leading 7-12 hex chars; the remainder
+        # of the line is the subject. We do NOT split on a single
+        # space because a subject may itself contain spaces.
+        parts = stripped.split(maxsplit=1)
+        short_sha = parts[0] if parts else ""
+        subject = parts[1] if len(parts) > 1 else ""
+        commits.append(
+            {"short_sha": short_sha, "sha": short_sha, "subject": subject}
+        )
+    envelope: dict[str, object] = {
+        "format": "summary",
+        "count": len(commits),
+        "commits": commits,
+        "bytes_in": len(raw_bytes),
+    }
+    envelope["bytes_out"] = len(json.dumps(envelope).encode("utf-8"))
+    return json.dumps(envelope)
 
 
 def handle_git_show(
@@ -1036,11 +1107,15 @@ def handle_git_show(
         session: Agent session; must declare ``GitStatusRead``.
         workspace: Workspace surface whose root is the cwd for ``git show``.
         params: Mapping with required ``ref`` (string; commit-ish, tag,
-            or branch) per ``parse_git_show_params``.
+            or branch) per ``parse_git_show_params`` and optional
+            ``format`` (``'raw'|'summary'``, default ``'raw'``).
 
     Returns:
         A ``ToolResult`` whose text content is the ``git show <ref>``
-        output.
+        output when ``format='raw'`` (default), or a compact header-only
+        JSON envelope ``{format, ref, kind, sha, short_sha, author_name,
+        author_email, author_date, subject, parents, bytes_in, bytes_out,
+        truncated:false}`` when ``format='summary'``.
 
     Raises:
         CapabilityDeniedError: When the session does not declare
@@ -1054,7 +1129,101 @@ def handle_git_show(
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
     parsed = parse_git_show_params(params)
-    return _git_read_result(lambda: run_git_command(workspace, ["show", parsed.git_ref]))
+    if parsed.format == "raw":
+        return _git_read_result(lambda: run_git_command(workspace, ["show", parsed.git_ref]))
+    return _git_read_result(
+        lambda: _build_git_show_summary_payload(workspace, parsed.git_ref)
+    )
+
+
+def _build_git_show_summary_payload(workspace: object, ref: str) -> str:
+    """Build the summary-mode JSON envelope for ``git show``.
+
+    Ponytail: isolated helper so the timeout-wrapping
+    ``_git_read_result`` can call it without a try/except chain. The
+    ``--no-patch`` flag suppresses the diff body so we only carry the
+    header fields. ``%x1f`` is the ASCII unit separator; we never see
+    that byte in real author/subject lines so it is safe to split on.
+    The ``kind`` field is inferred from the resolved ref: a tag is
+    identified by ``refs/tags/`` in the resolved ref or by a name that
+    matches the tag pattern. Commits are identified by the presence
+    of parents in the header.
+    """
+    fmt = (
+        "%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1f%P%x1f%D%x1f%H"
+    )
+    raw = run_git_command(
+        workspace, ["show", "--no-patch", f"--format={fmt}", ref]
+    )
+    raw_bytes = raw.encode("utf-8")
+    fields = raw.split("\x1f")
+    # ``%D`` is appended to the format above to also include the
+    # ``refs/tags/...`` decoration when present. ``%H`` is duplicated
+    # so the last field is the SHA (we already have it in field 0).
+    sha_idx = 0
+    short_sha_idx = 1
+    author_name_idx = 2
+    author_email_idx = 3
+    author_date_idx = 4
+    subject_idx = 5
+    parents_raw_idx = 6
+    decoration_idx = 7
+    sha = fields[sha_idx].strip() if len(fields) > sha_idx else ""
+    short_sha = fields[short_sha_idx].strip() if len(fields) > short_sha_idx else ""
+    author_name = (
+        fields[author_name_idx].strip()
+        if len(fields) > author_name_idx
+        else ""
+    )
+    author_email = (
+        fields[author_email_idx].strip()
+        if len(fields) > author_email_idx
+        else ""
+    )
+    author_date = (
+        fields[author_date_idx].strip()
+        if len(fields) > author_date_idx
+        else ""
+    )
+    subject = fields[subject_idx].strip() if len(fields) > subject_idx else ""
+    parents_raw = (
+        fields[parents_raw_idx].strip()
+        if len(fields) > parents_raw_idx
+        else ""
+    )
+    decoration = (
+        fields[decoration_idx].strip() if len(fields) > decoration_idx else ""
+    )
+    parents = [p for p in parents_raw.split() if p] if parents_raw else []
+    # ``kind`` is inferred from decoration (tags/blobs/trees): tags
+    # have ``tag:`` in the decoration; otherwise a commit with
+    # parents is a commit. ``blob`` / ``tree`` would only show up
+    # if the caller passes a raw SHA. We keep the inference
+    # conservative: ``commit`` is the default.
+    kind = "commit"
+    if "tag:" in decoration:
+        kind = "tag"
+    elif not parents and sha:
+        # Heuristic: a SHA with no parents and no tag decoration is
+        # most likely a root commit; ``tree`` / ``blob`` are not
+        # reachable through normal ``git show`` usage.
+        kind = "commit"
+    envelope: dict[str, object] = {
+        "format": "summary",
+        "ref": ref,
+        "kind": kind,
+        "sha": sha,
+        "short_sha": short_sha,
+        "author_name": author_name,
+        "author_email": author_email,
+        "author_date": author_date,
+        "subject": subject,
+        "parents": parents,
+        "bytes_in": len(raw_bytes),
+        "truncated": False,
+    }
+    envelope["bytes_out"] = len(json.dumps(envelope).encode("utf-8"))
+    return json.dumps(envelope)
 
 
 __all__ = [

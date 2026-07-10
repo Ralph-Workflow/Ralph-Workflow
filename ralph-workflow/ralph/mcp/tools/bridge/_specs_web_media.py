@@ -30,11 +30,18 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                     name=WEB_SEARCH_TOOL,
                     description=(
                         "Search the web using a multi-backend fallback chain. "
-                        "Required param: query (string). Optional param: limit (integer, "
-                        "default 10, max 25). Returns search results with titles, URLs, "
-                        "and snippets. "
+                        "Required param: query (string). Optional params: limit "
+                        "(integer, default 10, max 25), format ('raw'|'summary', "
+                        "default 'raw'). Returns search results with titles, "
+                        "URLs, and snippets by default. "
+                        "``format='summary'`` returns a compact JSON envelope "
+                        "with truncated snippets (<=240 chars), a "
+                        "``backend_chain_used`` counter, and ``bytes_in``/"
+                        "``bytes_out`` size counters. "
                         'Example: {"query": "python 3.12 features", "limit": 5} '
-                        "returns 5 search results about Python 3.12."
+                        "returns 5 search results about Python 3.12; "
+                        '{"query": "python", "limit": 5, "format": "summary"} '
+                        "returns the same results in a compact envelope."
                     ),
                     input_schema={
                         "type": "object",
@@ -56,6 +63,18 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                                 ),
                                 "default": 10,
                             },
+                            "format": {
+                                "type": "string",
+                                "enum": ["raw", "summary"],
+                                "description": (
+                                    "Output shape. ``raw`` is the legacy "
+                                    "Title/URL/Snippet text blocks; "
+                                    "``summary`` is a compact JSON envelope "
+                                    "with truncated snippets and a "
+                                    "``backend_chain_used`` counter."
+                                ),
+                                "default": "raw",
+                            },
                         },
                         "required": ["query"],
                     },
@@ -73,10 +92,13 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                     description=(
                         "Fetch a single URL and return readable extracted text. "
                         "Required param: url (string, http/https). "
-                        "Optional param: with_links (boolean, default false) to also include "
-                        "up to 100 absolute outbound links. "
-                        "Returns JSON with status, title, effective_url, content_type, text, "
-                        "and optional links. "
+                        "Optional params: with_links (boolean, default false), "
+                        "format ('raw'|'metadata', default 'raw'). "
+                        "``format='raw'`` returns the full text body plus "
+                        "up to 100 outbound links when requested. "
+                        "``format='metadata'`` returns bounded metadata "
+                        "(head_preview, byte_count, bytes_in/bytes_out) "
+                        "and drops the full text body inline. "
                         "On failure returns is_error=true with a status code "
                         "(timeout, unreachable, http_error, unsupported_content, too_large, "
                         "blocked_by_policy, invalid_url)."
@@ -100,6 +122,19 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                                 ),
                                 "default": False,
                             },
+                            "format": {
+                                "type": "string",
+                                "enum": ["raw", "metadata"],
+                                "description": (
+                                    "Output shape. ``raw`` returns the full "
+                                    "text body plus optional links; "
+                                    "``metadata`` returns bounded metadata "
+                                    "(head_preview, byte_count, bytes_in/"
+                                    "bytes_out) and drops the full text "
+                                    "body inline."
+                                ),
+                                "default": "raw",
+                            },
                         },
                         "required": ["url"],
                     },
@@ -117,8 +152,12 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         "Download a URL and save its content to a workspace file. "
                         "Required params: url (string, http/https), "
                         "output_path (string, relative path in workspace). "
-                        "Returns JSON with status, effective_url, content_type, "
-                        "output_path, and bytes_written. "
+                        "Optional param: format ('raw'|'summary', default 'raw'). "
+                        "``format='raw'`` returns status, effective_url, "
+                        "content_type, output_path, and bytes_written. "
+                        "``format='summary'`` adds a sha256 fingerprint and a "
+                        "bounded head_preview (first 240 bytes) and does NOT "
+                        "echo the downloaded body inline. "
                         "On failure returns is_error=true with a status code "
                         "(timeout, unreachable, http_error, unsupported_content, too_large, "
                         "blocked_by_policy, invalid_url)."
@@ -142,6 +181,18 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                                     "Parent directories are created automatically."
                                 ),
                             },
+                            "format": {
+                                "type": "string",
+                                "enum": ["raw", "summary"],
+                                "description": (
+                                    "Output shape. ``raw`` is the legacy "
+                                    "metadata-only envelope; ``summary`` "
+                                    "adds a sha256 fingerprint and a "
+                                    "bounded head_preview and does NOT "
+                                    "echo the downloaded body inline."
+                                ),
+                                "default": "raw",
+                            },
                         },
                         "required": ["url", "output_path"],
                     },
@@ -160,7 +211,11 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         "Read an image file and return it as a base64-encoded content block. "
                         "Requires MediaRead capability and explicit media support enablement. "
                         "Required param: path (string, relative or absolute path). "
-                        "Returns an image content block with type, base64 data, and MIME type. "
+                        "Optional param: format ('inline'|'metadata', default 'inline'). "
+                        "``format='inline'`` returns the image content block with base64 data "
+                        "and MIME type. ``format='metadata'`` returns a bounded JSON "
+                        "envelope with mime_type, size_bytes, sha256, width, height, and "
+                        "an ``inline_only`` flag; no image bytes are echoed inline. "
                         "Supported formats: png, jpg, jpeg, gif, webp. "
                         'Example: {"path": "docs/screenshot.png"} returns the image as base64.'
                     ),
@@ -173,6 +228,18 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                                     "File path as a string, relative or absolute inside "
                                     "the workspace (example values: 'docs/screenshot.png')."
                                 ),
+                            },
+                            "format": {
+                                "type": "string",
+                                "enum": ["inline", "metadata"],
+                                "description": (
+                                    "Output shape. ``inline`` returns the "
+                                    "image content block (base64 + MIME); "
+                                    "``metadata`` returns a bounded JSON "
+                                    "envelope with size, sha256, width, "
+                                    "height, and an ``inline_only`` flag."
+                                ),
+                                "default": "inline",
                             },
                         },
                         "required": ["path"],
@@ -192,12 +259,17 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         "Read a media file and return the appropriate content block. "
                         "Supports images, PDFs, audio, video, and visually meaningful documents. "
                         "Required param: path (string, relative or absolute path). "
-                        "For supported inline images within the size limit, returns an image "
-                        "content block. For PDFs, audio, video, documents, or oversized images, "
-                        "returns a resource_reference block with uri, mimeType, title, modality, "
-                        "and delivery fields. The referenced artifact can be retrieved via "
-                        "resources/read using the returned URI. "
-                        'Example: {"path": "docs/report.pdf"} returns a resource_reference block.'
+                        "Optional param: format ('inline'|'metadata', default 'inline'). "
+                        "``format='inline'`` returns the same block the legacy tool "
+                        "returns: image content block for supported inline images; "
+                        "resource_reference block for PDFs, audio, video, documents, "
+                        "or oversized images. ``format='metadata'`` returns a bounded "
+                        "JSON envelope (mime_type, size_bytes, sha256, modality, "
+                        "resource_handle) and does NOT echo inline media bytes; the "
+                        "artifact is retrievable via ``resources/read`` on the returned "
+                        "handle. "
+                        'Example: {"path": "docs/report.pdf"} returns a resource_reference '
+                        "block; ``format='metadata'`` returns bounded metadata only."
                     ),
                     input_schema={
                         "type": "object",
@@ -209,6 +281,18 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                                     "the workspace (example values: 'docs/report.pdf', "
                                     "'audio/clip.mp3', 'screenshot.png')."
                                 ),
+                            },
+                            "format": {
+                                "type": "string",
+                                "enum": ["inline", "metadata"],
+                                "description": (
+                                    "Output shape. ``inline`` returns the "
+                                    "same block the legacy tool returns; "
+                                    "``metadata`` returns a bounded JSON "
+                                    "envelope with size, sha256, modality, "
+                                    "and a replayable resource handle."
+                                ),
+                                "default": "inline",
                             },
                         },
                         "required": ["path"],

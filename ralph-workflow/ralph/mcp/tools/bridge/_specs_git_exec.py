@@ -166,9 +166,16 @@ def git_exec_specs() -> list[ToolSpec]:
                 name=GIT_LOG_TOOL,
                 description=(
                     "Get git commit log (one line per commit, `--oneline` format). "
-                    "Optional param: count (number, default 10). "
-                    "Returns the raw `git log` text, one commit per line. "
-                    'Example: {"count": 5} returns the 5 most recent commits.'
+                    "Optional params: count (number, default 10), "
+                    "format ('raw'|'summary', default 'raw'). "
+                    "Returns the raw `git log` text by default. "
+                    "``format='summary'`` returns a compact JSON envelope "
+                    "with one commit per entry (short_sha, sha, subject) "
+                    "and ``bytes_in``/``bytes_out`` size counters so agents "
+                    "do not pay for unrelated downstream parsing. "
+                    'Example: {"count": 5} returns the 5 most recent commits; '
+                    '{"count": 5, "format": "summary"} returns the same '
+                    "commits in a compact envelope."
                 ),
                 input_schema={
                     "type": "object",
@@ -180,6 +187,17 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "(default: 10, example values: 5, 20, 100)."
                             ),
                             "default": 10,
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["raw", "summary"],
+                            "description": (
+                                "Output shape. ``raw`` is the legacy one-line-"
+                                "per-commit text; ``summary`` is a compact JSON "
+                                "envelope with one entry per commit and "
+                                "``bytes_in``/``bytes_out`` size counters."
+                            ),
+                            "default": "raw",
                         },
                     },
                 },
@@ -194,9 +212,15 @@ def git_exec_specs() -> list[ToolSpec]:
                 description=(
                     "Show a git object (commit, tag, tree, blob) with full details. "
                     "Required param: ref (string, git object reference). "
-                    "Returns the object contents. "
+                    "Optional param: format ('raw'|'summary', default 'raw'). "
+                    "Returns the object contents by default. "
+                    "``format='summary'`` returns a compact header-only JSON "
+                    "envelope with sha, author, subject, parents and a "
+                    "``bytes_in``/``bytes_out`` size counters; the patch "
+                    "body is omitted. "
                     'Example: {"ref": "HEAD~1"} shows the parent commit; '
-                    '{"ref": "v1.0.0"} shows the tag details.'
+                    '{"ref": "v1.0.0", "format": "summary"} shows the tag '
+                    "in the compact envelope."
                 ),
                 input_schema={
                     "type": "object",
@@ -208,6 +232,17 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "name, or tag "
                                 "(example values: 'HEAD~1', 'main', 'v1.0.0', 'abc123def')."
                             ),
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["raw", "summary"],
+                            "description": (
+                                "Output shape. ``raw`` is the legacy full "
+                                "show output (header + diff body); "
+                                "``summary`` is a compact header-only JSON "
+                                "envelope without the patch body."
+                            ),
+                            "default": "raw",
                         },
                     },
                     "required": ["ref"],

@@ -111,37 +111,39 @@ _DEFERRED: tuple[DeferredPhase, ...] = (
         phase_id="phase_4",
         title="Non-index MCP remediation (artifact, planning, coordination, web, media; git_log/git_show)",
         deliverables=(
-            "Compact artifact validation errors with repair pointers "
-            "(ralph_submit_artifact, planning tools)",
-            "Media/web bounded metadata and replayable handles "
-            "(read_media, read_image, web_search, visit_url, download_url)",
-            "Coordination tools with structured progress fields "
-            "(report_progress, declare_complete, coordinate)",
-            "git_log compact log cards and changed-path ranking",
-            "git_show compact per-object lookup hints",
-            "Planning tool compactness wins (submit_plan_section, "
-            "finalize_plan, validate_draft, etc.)",
+            # Phase 4 promotes every previously-DEFER non-index family
+            # out of DEFER, so this deliverable list is intentionally
+            # a single sentinel entry: there is no remaining Phase 4
+            # work to defer. The phase stays in the register as a
+            # sentinel so future audits can confirm that no audited
+            # tool has been left in an unaudited state.
+            "phase_4_complete_no_remaining_work",
         ),
         deferral_rationale=(
-            "The shipped non-index remediation for Phase 1 already covers "
-            "git_status format=compact, git_diff format=summary, and "
-            "exec format=summary (recorded as ADD_ARGUMENT outcomes in "
-            "the audit register). unsafe_exec and raw_exec remain "
-            "unchanged (KEEP) because the summary mode is intentionally "
-            "only on the bounded exec path; the alias keeps the same "
-            "capability surface. Phase 4 defers the remaining non-index "
-            "families: git_log, git_show, artifact, planning, "
-            "coordination, web, and media. The audit register records "
-            "the SHIPPED outcomes for git_status, git_diff, exec and the "
-            "KEEP outcomes for unsafe_exec and raw_exec; the deferred "
-            "register is the single source of truth for the rest."
+            "Phase 4 ships every previously-deferred non-index family. "
+            "git_log / git_show / web_search / visit_url / download_url / "
+            "read_image / read_media are promoted to ADD_ARGUMENT with a "
+            "new ``format`` arg; the artifact submission tool, the "
+            "eleven planning tools, and the three coordination tools are "
+            "promoted to KEEP because the existing structured behavior "
+            "(per-field ``code``+``repair`` ValidationError envelopes, "
+            "bounded coordination payloads with structured marker "
+            "suffixes) already matches the Phase-4 acceptance contract. "
+            "git_status / git_diff / exec were shipped in Phase 1 as "
+            "ADD_ARGUMENT and unsafe_exec / raw_exec remain KEEP "
+            "because the summary mode is intentionally only on the "
+            "bounded exec path. The audit register is now the single "
+            "source of truth for the post-Phase-4 outcomes; no tool "
+            "is left in an 'audit found inefficient but no decision' "
+            "state."
         ),
         risk=(
-            "Agents may continue to over-fetch artifact/planning/web/ "
-            "media output until compactness wins ship; the bounded-timeout "
-            "contract already limits the worst case, and the audit "
-            "register's DEFER rationale names the missing re-measurement "
-            "evidence that gates each deferred outcome."
+            "If a future audit finds a regression in the structured "
+            "behavior cited by a KEEP entry, the entry must be re-audited "
+            "and either moved to REWORK_INTERNALS or DEFER with a "
+            "non-empty rationale. The audit_register invariant "
+            "test_audit_register_tracks_defer_outcomes pins the empty-"
+            "defer contract so a drift is caught immediately."
         ),
         baseline_counters=_audit_baselines(),
     ),

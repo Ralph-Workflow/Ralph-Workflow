@@ -382,7 +382,34 @@ Every indexed response includes `index_used`, `index_generation`, `is_stale`, `s
 * Phase 1 is the lexical layer: FTS5 chunking + content hash + evidence handles. Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/` (git-ignored).
 * Phase 2 adds Python AST and Markdown structure extraction in `ralph.mcp.explore.structure`. Spans, symbols, and edges live in the `spans`, `symbols`, and `edges` tables with `provenance`, `confidence`, and `extractor_version`. `ralph_graph` is the graph-native query surface (neighbors, path, impact, hubs, tests).
 * Phase 3 wires `edit_file` safety arguments and the conservative impact preview through `ralph_graph`.
-* Phase 4 ships the compact/summary output modes for `git_status` (`format=compact`), `git_diff` (`format=summary`), and `exec` (`format=summary`). The audit register records these as `add_argument` outcomes, with `unsafe_exec` and its `raw_exec` alias kept unchanged (`keep`) because the summary mode is intentionally only on the bounded exec path. The remaining non-index families — `git_log`, `git_show`, the artifact submission tools, the planning tools, the coordination tools, the web tools, and the media tools — are audited as `keep` or `defer` in `ralph.mcp.explore.audit_register` with baseline counters and rationale; only `git_status`, `git_diff`, and `exec` have a measured improvement. `exec` summary mode returns `stdout_resource_id` and `stderr_resource_id` handles of the form `ralph://exec/<spill-name>`; production sessions attach an `ExecResourceResolver` in `ralph.mcp.tools._exec_resource_uri` so those handles are replayable through `resources/read` (the resource template `ralph://exec/{spill_name}` is registered alongside `ralph://media/{artifact_id}`). Sessions without the resolver return a structured "resolver not attached" error so legacy clients get a consistent failure mode while the raw output remains available.
+* Phase 4 ships the compact/summary output modes for `git_status` (`format=compact`), `git_diff` (`format=summary`), and `exec` (`format=summary`). Phase 4 also ships `format=summary` for `git_log` and `git_show`, `format=summary` for `web_search` and `download_url`, `format=metadata` for `visit_url`, and `format=metadata` for `read_image` and `read_media`. The audit register records these as `add_argument` outcomes with measured rationale and counters; `unsafe_exec` and its `raw_exec` alias are kept unchanged (`keep`) because the summary mode is intentionally only on the bounded exec path. The artifact submission tool, the eleven planning tools, and the three coordination tools are audited as `keep` because their existing structured behavior (per-field `code`+`repair` ValidationError envelopes, bounded coordination payloads with structured marker suffixes) already matches the Phase-4 acceptance contract. No audited tool remains in an `audit found inefficient but no decision` state. `exec` summary mode returns `stdout_resource_id` and `stderr_resource_id` handles of the form `ralph://exec/<spill-name>`; production sessions attach an `ExecResourceResolver` in `ralph.mcp.tools._exec_resource_uri` so those handles are replayable through `resources/read` (the resource template `ralph://exec/{spill_name}` is registered alongside `ralph://media/{artifact_id}`). Sessions without the resolver return a structured "resolver not attached" error so legacy clients get a consistent failure mode while the raw output remains available.
+
+### Compact format args (Phase 4)
+
+The following format args are added by Phase 4. Each is opt-in: the default value preserves the legacy output byte-for-byte so existing callers are unaffected. Invalid values return a structured `is_error=true` result naming the closed enum.
+
+| Tool | Format arg | Default | Summary/Metadata shape |
+|------|------------|---------|------------------------|
+| `git_log` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", "count": int, "commits": [{"short_sha", "sha", "subject"}], "bytes_in", "bytes_out"}` |
+| `git_show` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", "ref", "kind" (commit\|tag), "sha", "short_sha", "author_name", "author_email", "author_date", "subject", "parents", "bytes_in", "bytes_out", "truncated": false}` (no patch body) |
+| `web_search` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", "query_length", "result_count", "results": [{title, url, snippet (<=240 chars), snippet_budget_bytes}], "backend_chain_used", "bytes_in", "bytes_out"}` |
+| `visit_url` | `format='raw'\|'metadata'` | `'raw'` | `{"format": "metadata", "status", "title", "effective_url", "content_type", "byte_count", "head_preview" (<=480 chars), "bytes_in", "bytes_out", "truncated", optional links (<=10)}` (full text body dropped) |
+| `download_url` | `format='raw'\|'summary'` | `'raw'` | `{"format": "summary", ..., "sha256" (16 hex chars), "head_preview" (<=240 bytes), "bytes_in", "truncated"}` (downloaded body NOT echoed inline) |
+| `read_image` | `format='inline'\|'metadata'` | `'inline'` | `{"format": "metadata", "media_kind": "image", "mime_type", "size_bytes", "sha256", "width", "height" (PNG only), "resource_handle" (always null for read_image), "inline_only": true, ...}` |
+| `read_media` | `format='inline'\|'metadata'` | `'inline'` | `{"format": "metadata", "media_kind", "mime_type", "size_bytes", "sha256", "resource_handle" (`ralph://media/<artifact-id>` when registered, else null), "inline_only", "title", "path", ...}` |
+
+Example payloads:
+
+```json
+// git_log format=summary
+{"format": "summary", "count": 2, "commits": [{"short_sha": "abc1234", "sha": "abc1234", "subject": "first commit"}], "bytes_in": 32, "bytes_out": 128}
+
+// visit_url format=metadata (no inline text body)
+{"format": "metadata", "status": "ok", "title": "Hello", "effective_url": "https://example.com/", "content_type": "text/html; charset=utf-8", "byte_count": 1024, "head_preview": "...", "bytes_in": 4096, "bytes_out": 256, "truncated": true}
+
+// read_media format=metadata (resource_handle preserved for resource-reference deliveries)
+{"format": "metadata", "media_kind": "pdf", "mime_type": "application/pdf", "size_bytes": 1024, "sha256": "abcdef0123456789", "resource_handle": "ralph://media/12345678", "inline_only": false, "title": "report.pdf", "path": "report.pdf", "bytes_in": 1024, "bytes_out": 256, "truncated": false}
+```
 
 The optional `ralph_explore` wrapper remains deferred and is tracked in `ralph.mcp.explore.deferred_phases`. Optional NetworkX offline metrics, Kuzu adapters, and additional Tree-sitter parsers are also deferred until measured evidence justifies them.
 

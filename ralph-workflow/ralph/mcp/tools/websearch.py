@@ -34,6 +34,7 @@ upstream outages with retries.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -121,6 +122,59 @@ def _format_results(results: list[SearchResult]) -> str:
     return "\n\n".join(blocks)
 
 
+# Phase 4: snippet truncation cap for ``format='summary'``. The raw
+# snippet returned by the backend can be very long; the summary card
+# keeps the top of the snippet plus a ``...`` marker so the agent
+# knows the snippet was elided. The cap is conservative so callers
+# see a measurable byte-savings win.
+SUMMARY_SNIPPET_MAX_CHARS = 240
+
+
+def _format_summary_envelope(
+    results: list[SearchResult],
+    *,
+    backend_chain_used: list[str],
+    query: str,
+) -> str:
+    """Build the ``format='summary'`` JSON envelope for ``handle_web_search``.
+
+    The envelope mirrors the Phase-4 byte-savings contract used by
+    ``git_log``/``git_show``/``exec``: one compact card per result
+    plus ``bytes_in``/``bytes_out``/``backend_chain_used`` counters so
+    callers can verify the savings against the legacy shape. The
+    snippet is truncated to ``SUMMARY_SNIPPET_MAX_CHARS`` with a
+    ``...`` suffix so the agent can see the snippet was elided.
+    """
+    cards: list[dict[str, object]] = []
+    for r in results:
+        snippet = r.snippet or ""
+        if len(snippet) > SUMMARY_SNIPPET_MAX_CHARS:
+            snippet = snippet[:SUMMARY_SNIPPET_MAX_CHARS] + "..."
+        cards.append(
+            {
+                "title": r.title,
+                "url": r.url,
+                "snippet": snippet,
+                "snippet_budget_bytes": len(snippet),
+            }
+        )
+    envelope: dict[str, object] = {
+        "format": "summary",
+        "query_length": len(query),
+        "result_count": len(cards),
+        "results": cards,
+        "backend_chain_used": list(backend_chain_used),
+        "bytes_in": sum(
+            len((r.title or "").encode("utf-8"))
+            + len((r.url or "").encode("utf-8"))
+            + len((r.snippet or "").encode("utf-8"))
+            for r in results
+        ),
+    }
+    envelope["bytes_out"] = len(json.dumps(envelope).encode("utf-8"))
+    return json.dumps(envelope)
+
+
 def handle_web_search(
     session: CoordinationSessionLike,
     _workspace: Workspace,
@@ -133,8 +187,9 @@ def handle_web_search(
     Args:
         session: Agent session; must declare ``WebSearch``.
         _workspace: Unused; kept for tool-handler signature parity.
-        params: Mapping with required ``query`` (string) and optional
-            ``limit`` (int, clamped to ``[MIN_LIMIT, MAX_LIMIT] = [1, 25]``).
+        params: Mapping with required ``query`` (string), optional
+            ``limit`` (int, clamped to ``[MIN_LIMIT, MAX_LIMIT] = [1, 25]``),
+            and optional ``format`` (``'raw'|'summary'``, default ``'raw'``).
         web_search_config: Optional injected ``WebSearchConfig`` for the
             dispatch order and per-backend overrides. Defaults to
             ``WebSearchConfig()``.
@@ -142,13 +197,18 @@ def handle_web_search(
     Returns:
         A ``ToolResult`` whose text content is the formatted backend
         result list (``Title / URL / Snippet`` blocks joined by blank
-        lines). Falls back through the configured backend order and
-        only returns ``is_error=True`` after every backend has failed.
+        lines) when ``format='raw'`` (default), or a compact JSON
+        envelope with bounded snippets, ``bytes_in``/``bytes_out``
+        size counters, and the ``backend_chain_used`` list when
+        ``format='summary'``. Falls back through the configured
+        backend order and only returns ``is_error=True`` after every
+        backend has failed.
 
     Raises:
         CapabilityDeniedError: When the session does not declare
             ``WebSearch``. The handler enforces default-deny.
-        InvalidParamsError: When ``params`` is missing ``query``.
+        InvalidParamsError: When ``params`` is missing ``query`` or
+            carries an unknown ``format`` value.
 
     Side effects (network contract):
         Every backend implementation uses an injected ``timeout_seconds``
@@ -164,13 +224,40 @@ def handle_web_search(
     except (CapabilityDeniedError, InvalidParamsError) as exc:
         return ToolResult(content=[ToolContent.text_content(str(exc))], is_error=True)
 
+    format_value = params.get("format", "raw") if isinstance(params, dict) else "raw"
+    if format_value not in ("raw", "summary"):
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"Invalid web_search format: {format_value!r}; "
+                    "expected 'raw' or 'summary'"
+                )
+            ],
+            is_error=True,
+        )
+
     limit = _clamp_limit(params.get("limit", _DEFAULT_LIMIT))
     dispatch_order = _deduplicated([config.backend, *config.fallback])
+    used_backends: list[str] = []
 
     for name in dispatch_order:
         try:
             backend = build_backend(name, config)
             results = backend.search(query, limit=limit)
+            used_backends.append(name)
+            if format_value == "summary":
+                return ToolResult(
+                    content=[
+                        ToolContent.text_content(
+                            _format_summary_envelope(
+                                results,
+                                backend_chain_used=used_backends,
+                                query=query,
+                            )
+                        )
+                    ],
+                    is_error=False,
+                )
             return ToolResult(
                 content=[ToolContent.text_content(_format_results(results))],
                 is_error=False,

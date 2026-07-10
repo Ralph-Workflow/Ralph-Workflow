@@ -61,17 +61,33 @@ def test_every_entry_has_non_empty_rationale() -> None:
 
 
 def test_every_defer_has_non_empty_rationale() -> None:
-    """Defer entries must explicitly call out the deferred rationale."""
+    """Defer entries must explicitly call out the deferred rationale.
+
+    Phase 4 promotes every previously-DEFER tool out of DEFER. The
+    per-entry rationale/risk assertions are guarded by ``if
+    defer_entries:`` so the test is a no-op when the DEFER set is
+    empty, but still pins the per-entry invariant whenever any DEFER
+    entries are reintroduced by a future phase.
+    """
     defer_entries = [e for e in AUDIT_REGISTER if e.outcome == AuditOutcome.DEFER]
-    assert defer_entries, "Expected at least one defer entry in the Phase 0 seed"
+    if not defer_entries:
+        # Phase 4 contract: zero remaining DEFER entries.
+        return
     for entry in defer_entries:
         assert entry.rationale.strip(), f"Empty rationale for defer: {entry.tool}"
 
 
 def test_every_defer_has_non_empty_risk() -> None:
-    """AC-01: defer entries must include a non-empty ``risk`` field."""
+    """AC-01: defer entries must include a non-empty ``risk`` field.
+
+    Phase 4 contract: when the DEFER set is empty the test is a
+    no-op so it still passes after every audited tool has been
+    promoted out of DEFER.
+    """
     defer_entries = [e for e in AUDIT_REGISTER if e.outcome == AuditOutcome.DEFER]
-    assert defer_entries, "Expected at least one defer entry in the Phase 0 seed"
+    if not defer_entries:
+        # Phase 4 contract: zero remaining DEFER entries.
+        return
     bad = [e.tool for e in defer_entries if not e.risk.strip()]
     assert not bad, f"Defer entries missing risk field: {bad}"
 
@@ -130,13 +146,114 @@ def test_audit_entry_rejects_empty_defer_risk() -> None:
         )
 
 
-def test_audit_register_has_at_least_one_defer_entry() -> None:
-    """The seed must include defer entries for non-index tool families."""
+def test_audit_register_tracks_defer_outcomes() -> None:
+    """The DEFER set may be empty after Phase 4 promotes every audited
+    tool out of DEFER.
+
+    Phase 0 originally required ``>=10`` defer entries for the
+    planning/web/media/process families Phase 4 owns. Phase 4
+    promotes every one of those entries to either ADD_ARGUMENT or
+    KEEP, so the DEFER set is now allowed to be empty. The test
+    pins the new contract: any future audit that reintroduces a
+    DEFER entry must justify it with a non-empty rationale (the
+    per-entry invariants in ``test_every_defer_has_non_empty_*``
+    still apply).
+    """
     defer_outcomes = [e for e in AUDIT_REGISTER if e.outcome == AuditOutcome.DEFER]
-    assert len(defer_outcomes) >= 10, (
-        "Phase 0 audit must defer at least the planning/web/media/process "
-        "tools that Phase 4 owns; got "
-        f"{len(defer_outcomes)} defer entries."
+    assert len(defer_outcomes) >= 0, (
+        "Phase 4 promotes every audited tool out of DEFER; this test "
+        "now pins the contract that the register may have zero DEFER "
+        "entries. A negative defer count is impossible (the filter "
+        "produces a list), so the assertion only documents intent."
+    )
+
+
+def test_implemented_tools_outcome_is_add_argument() -> None:
+    """Phase 4: the seven implemented tools must be ADD_ARGUMENT."""
+    implemented = {
+        RalphToolName.GIT_LOG,
+        RalphToolName.GIT_SHOW,
+        RalphToolName.WEB_SEARCH,
+        RalphToolName.VISIT_URL,
+        RalphToolName.DOWNLOAD_URL,
+        RalphToolName.READ_IMAGE,
+        RalphToolName.READ_MEDIA,
+    }
+    entries_by_tool = {entry.tool: entry for entry in AUDIT_REGISTER}
+    missing = implemented - set(entries_by_tool)
+    assert not missing, f"Implemented tools missing from register: {missing}"
+    for tool in implemented:
+        entry = entries_by_tool[tool]
+        assert entry.outcome == AuditOutcome.ADD_ARGUMENT, (
+            f"Phase 4 tool {tool} should be add_argument, got {entry.outcome}"
+        )
+
+
+def test_structured_tools_outcome_is_keep() -> None:
+    """Phase 4: the 15 already-structured tools must be KEEP and the
+    22 originally-DEFER tools must all be promoted out of DEFER.
+    """
+    structured_tools = {
+        RalphToolName.SUBMIT_ARTIFACT,
+        RalphToolName.SUBMIT_PLAN_SECTION,
+        RalphToolName.SUBMIT_PLAN_SECTIONS,
+        RalphToolName.INSERT_PLAN_STEP,
+        RalphToolName.REPLACE_PLAN_STEP,
+        RalphToolName.REMOVE_PLAN_STEP,
+        RalphToolName.MOVE_PLAN_STEP,
+        RalphToolName.PATCH_PLAN_STEP,
+        RalphToolName.FINALIZE_PLAN,
+        RalphToolName.GET_PLAN_DRAFT,
+        RalphToolName.DISCARD_PLAN_DRAFT,
+        RalphToolName.VALIDATE_PLAN_DRAFT,
+        RalphToolName.REPORT_PROGRESS,
+        RalphToolName.DECLARE_COMPLETE,
+        RalphToolName.COORDINATE,
+    }
+    originally_deferred = {
+        RalphToolName.GIT_LOG,
+        RalphToolName.GIT_SHOW,
+        RalphToolName.SUBMIT_ARTIFACT,
+        RalphToolName.SUBMIT_PLAN_SECTION,
+        RalphToolName.SUBMIT_PLAN_SECTIONS,
+        RalphToolName.INSERT_PLAN_STEP,
+        RalphToolName.REPLACE_PLAN_STEP,
+        RalphToolName.REMOVE_PLAN_STEP,
+        RalphToolName.MOVE_PLAN_STEP,
+        RalphToolName.PATCH_PLAN_STEP,
+        RalphToolName.FINALIZE_PLAN,
+        RalphToolName.GET_PLAN_DRAFT,
+        RalphToolName.DISCARD_PLAN_DRAFT,
+        RalphToolName.VALIDATE_PLAN_DRAFT,
+        RalphToolName.REPORT_PROGRESS,
+        RalphToolName.DECLARE_COMPLETE,
+        RalphToolName.COORDINATE,
+        RalphToolName.WEB_SEARCH,
+        RalphToolName.VISIT_URL,
+        RalphToolName.DOWNLOAD_URL,
+        RalphToolName.READ_IMAGE,
+        RalphToolName.READ_MEDIA,
+    }
+    entries_by_tool = {entry.tool: entry for entry in AUDIT_REGISTER}
+    missing = structured_tools - set(entries_by_tool)
+    assert not missing, f"Structured tools missing from register: {missing}"
+    for tool in structured_tools:
+        entry = entries_by_tool[tool]
+        assert entry.outcome == AuditOutcome.KEEP, (
+            f"Phase 4 tool {tool} should be keep, got {entry.outcome}"
+        )
+    # Originally-DEFER tools must all be promoted out of DEFER.
+    for tool in originally_deferred:
+        entry = entries_by_tool[tool]
+        assert entry.outcome != AuditOutcome.DEFER, (
+            f"Originally-deferred tool {tool} is still DEFER after Phase 4: "
+            f"{entry.outcome}"
+        )
+    assert len(structured_tools) == 15, (
+        f"structured_tools must contain exactly 15 entries, got {len(structured_tools)}"
+    )
+    assert len(originally_deferred) == 22, (
+        f"originally_deferred must contain exactly 22 entries, got {len(originally_deferred)}"
     )
 
 
