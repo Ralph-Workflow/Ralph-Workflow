@@ -43,11 +43,20 @@ def _baseline_executor(_call: ScriptedCall) -> Mapping[str, object]:
     }
 
 
-def _indexed_executor(_call: ScriptedCall) -> Mapping[str, object]:
-    """Indexed executor returns a small evidence handle."""
+def _indexed_executor(call: ScriptedCall) -> Mapping[str, object]:
+    """Indexed executor returns a small evidence handle.
+
+    AC-07: returns the union of the per-call ``expected_evidence_ids``
+    so the harness can compute truthful recall/precision for the
+    fixture's truth set. When the call declares no
+    ``expected_evidence_ids`` we fall back to a single placeholder
+    so unrelated fixtures still record a non-empty list.
+    """
+    ids = list(call.expected_evidence_ids) or ["ev:placeholder"]
     return {
         "text": "x" * 32,
-        "evidence_id": "ev:1",
+        "evidence_id": ids[0] if ids else "ev:placeholder",
+        "evidence_ids": ids,
         "index_used": True,
         "is_stale": False,
     }

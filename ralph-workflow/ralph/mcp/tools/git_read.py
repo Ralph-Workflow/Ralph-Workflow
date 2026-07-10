@@ -50,6 +50,11 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+from ralph.mcp.explore.dirty_paths import (
+    ExploreIndexLike,
+    ExploreStoreLike,
+    resolve_explore_index,
+)
 from ralph.mcp.tools._git_diff_params import GitDiffParams
 from ralph.mcp.tools._git_execution_error import ExecutionError
 from ralph.mcp.tools._git_log_params import GitLogParams
@@ -265,10 +270,186 @@ def handle_git_status(
     # AC-11: compact mode runs through the same timeout-wrapping
     # helper as raw mode so a hung ``git status`` returns an
     # actionable is_error result rather than an uncaught exception.
-    return _git_read_result(lambda: _build_compact_status_payload(workspace))
+    return _git_read_result(
+        lambda: _build_compact_status_payload(workspace, session=session)
+    )
 
 
-def _build_compact_status_payload(workspace: object) -> str:
+def _resolve_compact_status_index(
+    workspace: object,
+    session: object | None = None,
+) -> tuple[ExploreIndexLike, ExploreStoreLike] | None:
+    """Best-effort resolve of the explore index for compact status.
+
+    AC-06: compact ``git_status`` may include bounded
+    changed-symbol hints when the index is current. The lookup
+    is best-effort: a missing handle, missing index, or any
+    exception during resolution produces ``None`` so the caller
+    can emit explicit unavailable/stale metadata without
+    blocking the porcelain payload.
+    """
+    # The index can ride on the session, the workspace, or
+    # ``workspace.session`` (the harness contract). Try the
+    # obvious attributes first; the resolve helper is
+    # session-shaped, so we pass any object that may carry an
+    # ``explore_index`` attribute.
+    handle: ExploreIndexLike | None = None
+    workspace_session: object = (
+        cast("object", getattr(workspace, "session", None))
+        if workspace is not None
+        else None
+    )
+    for candidate in (session, workspace, workspace_session):
+        if candidate is None:
+            continue
+        try:
+            handle = resolve_explore_index(candidate)
+        except Exception:
+            handle = None
+        if handle is not None:
+            break
+    if handle is None:
+        return None
+    store: ExploreStoreLike | None = getattr(handle, "store", None)
+    if store is None:
+        return None
+    return (handle, store)
+
+
+def _compact_status_index_meta(
+    workspace: object,
+    paths: list[dict[str, object]],
+    session: object | None = None,
+) -> dict[str, object]:
+    """Return index metadata for the compact ``git_status`` payload.
+
+    AC-06: when the index is current, attach bounded
+    changed-symbol hints per changed path. When the index is
+    missing, stale, or otherwise unavailable, surface explicit
+    metadata so agents do not guess. The function never raises
+    into the caller.
+    """
+    meta: dict[str, object] = {
+        "index_used": False,
+        "index_generation": 0,
+        "index_status": "unavailable",
+        "changed_symbols": {},
+        "fallback_reason": "index_not_attached",
+    }
+    resolved = _resolve_compact_status_index(workspace, session=session)
+    if resolved is None:
+        return meta
+    handle, store = resolved
+    try:
+        current_generation_raw = store.get_setting("current_generation")
+        current_generation = (
+            int(current_generation_raw)
+            if isinstance(current_generation_raw, str) and current_generation_raw.isdigit()
+            else 0
+        )
+    except Exception:
+        return meta
+    if current_generation <= 0:
+        meta["index_status"] = "stale"
+        meta["fallback_reason"] = "no_committed_generation"
+        return meta
+    # AC-06: ``is_stale`` is computed at the handler level. The
+    # compact payload does not need to recompute it because
+    # the absence of a current generation is already evidence
+    # of staleness for this read path. We do, however, honor
+    # the handle's ``is_stale`` flag when the concrete
+    # ``ExploreIndex`` exposes it (production) and silently
+    # default to ``False`` for protocol-only fakes (tests).
+    is_stale_value: object = getattr(handle, "is_stale", False)
+    is_stale = bool(is_stale_value) if isinstance(is_stale_value, bool) else False
+    if is_stale:
+        meta["index_status"] = "stale"
+        meta["fallback_reason"] = "index_reports_stale"
+        return meta
+    hints: dict[str, list[dict[str, object]]] = {}
+    for card in paths:
+        path_value = card.get("path")
+        if not isinstance(path_value, str) or not path_value:
+            continue
+        try:
+            symbols = store.find_symbols(path=path_value)
+        except Exception:
+            symbols = []
+        if not symbols:
+            continue
+        hints[path_value] = [
+            {
+                "qualified_name": sym.qualified_name,
+                "kind": sym.kind,
+                "symbol_id": sym.symbol_id,
+                "span_id": sym.span_id,
+            }
+            for sym in symbols[:3]
+        ]
+    meta["index_used"] = True
+    meta["index_generation"] = current_generation
+    meta["index_status"] = "current"
+    meta["changed_symbols"] = hints
+    meta["fallback_reason"] = None
+    return meta
+
+
+def _strict_max_bytes_param(
+    params: Mapping[str, object],
+) -> int:
+    """Strict-bounded ``max_bytes`` for ``git_diff`` summary mode.
+
+    AC-06: rejects ``bool``, ``0``, negatives, malformed strings,
+    non-integer floats, and oversized values. Returns the
+    default (``50_000``) only when the caller omits the key.
+    The minimum is ``1`` so the slice ``text[:max_bytes]`` always
+    returns at least one byte when the diff is non-empty; the
+    maximum matches the documented default so callers cannot
+    silently extend the excerpt cap.
+    """
+    default = 50_000
+    minimum = 1
+    if "max_bytes" not in params:
+        return default
+    raw: object = params["max_bytes"]
+    if isinstance(raw, bool):
+        raise InvalidParamsError(
+            f"max_bytes must be an integer in [{minimum}, {default}]; "
+            f"got bool {raw!r}"
+        )
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise InvalidParamsError(
+                f"max_bytes must be an integer in [{minimum}, {default}]; "
+                f"got {raw!r}"
+            ) from exc
+    elif isinstance(raw, float):
+        if not raw.is_integer():
+            raise InvalidParamsError(
+                f"max_bytes must be an integer in [{minimum}, {default}]; "
+                f"got non-integer float {raw!r}"
+            )
+        value = int(raw)
+    else:
+        raise InvalidParamsError(
+            f"max_bytes must be an integer in [{minimum}, {default}]; "
+            f"got {type(raw).__name__}"
+        )
+    if value < minimum or value > default:
+        raise InvalidParamsError(
+            f"max_bytes must be an integer in [{minimum}, {default}]; got {value}"
+        )
+    return value
+
+
+def _build_compact_status_payload(
+    workspace: object,
+    session: object | None = None,
+) -> str:
     """Build the compact-mode JSON payload for ``git status``.
 
     Ponytail: isolated helper so the timeout-wrapping
@@ -276,6 +457,12 @@ def _build_compact_status_payload(workspace: object) -> str:
     The lenient runner is used so a non-zero exit (e.g. outside a
     git repo) still surfaces a useful result; the returncode is
     inspected separately by the caller if needed.
+
+    AC-06: when an explore index is attached and current, the
+    payload includes bounded changed-symbol hints per changed
+    path. When the index is missing or stale, explicit
+    ``index_status`` and ``fallback_reason`` metadata is
+    surfaced so agents do not guess.
     """
     raw_result = run_git_command_lenient(workspace, ["status", "--porcelain"])
     lines = raw_result.stdout.decode("utf-8", errors="replace").splitlines()
@@ -294,7 +481,7 @@ def _build_compact_status_payload(workspace: object) -> str:
                 "untracked": code == "??",
             }
         )
-    payload = {
+    payload: dict[str, object] = {
         "format": "compact",
         "changed_count": len(cards),
         "staged_count": sum(1 for c in cards if c["role"] == "staged"),
@@ -303,6 +490,7 @@ def _build_compact_status_payload(workspace: object) -> str:
         "paths": cards,
         "raw_lines": lines,
     }
+    payload.update(_compact_status_index_meta(workspace, cards, session=session))
     return json.dumps(payload)
 
 
@@ -318,6 +506,10 @@ def handle_git_diff(
     with changed files, insertion/deletion counts, and an output
     byte cap so agents do not pay for unread diff bodies.
     ``max_bytes`` caps the returned text; default 50_000.
+    AC-06: ``max_bytes`` is strictly bounded to a positive
+    integer in ``[1, 50_000]`` so callers cannot bypass the
+    excerpt cap with zero, negative, malformed, or non-integer
+    values.
     """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
     parsed = parse_git_diff_params(params)
@@ -330,18 +522,7 @@ def handle_git_diff(
         return _git_read_result(lambda: lenient_stdout(
             run_git_command_lenient(workspace, ["diff", *parsed.args])
         ))
-    max_bytes_raw = params.get("max_bytes", 50_000)
-    if isinstance(max_bytes_raw, bool):
-        max_bytes = 50_000
-    elif isinstance(max_bytes_raw, int):
-        max_bytes = max_bytes_raw
-    elif isinstance(max_bytes_raw, str):
-        try:
-            max_bytes = int(max_bytes_raw)
-        except ValueError:
-            max_bytes = 50_000
-    else:
-        max_bytes = 50_000
+    max_bytes = _strict_max_bytes_param(params)
     # AC-11: wrap the summary branch in ``_git_read_result`` so a
     # timeout converts into the same actionable ``is_error`` result
     # as the raw branch, never an uncaught exception.

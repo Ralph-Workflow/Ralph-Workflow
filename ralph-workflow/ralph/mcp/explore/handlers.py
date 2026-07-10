@@ -14,6 +14,7 @@ and pass it as ``session.explore_index``.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sqlite3
 import time
@@ -774,10 +775,9 @@ def handle_ralph_graph(
     # AC-05: cooperative cancellation. The flag is registered
     # against the session object identity so a previous caller's
     # cancel does not poison a new query. The dispatcher polls
-    # the flag at phase boundaries. The map is keyed by ``id()``
-    # so the entry is automatically GC'd when the session is
-    # collected; the explicit clear in the ``finally`` block is
-    # a safety net for repeated sessions in long-lived tests.
+    # the flag at phase boundaries. The entry is explicitly
+    # removed in the ``finally`` block so repeated long-lived
+    # sessions do not leak entries into the module-global map.
     session_key = id(session)
     _GRAPH_CANCEL_FLAGS[session_key] = cancel_flag
 
@@ -786,36 +786,55 @@ def handle_ralph_graph(
 
     cancel_callable: Callable[[], bool] = _is_cancelled
 
-    handle: ExploreIndex | None = _resolve_explore_index(session)
-    if handle is None:
-        workspace_root_obj: object = getattr(workspace, "root", None)
-        workspace_root_raw: object = workspace_root_obj or params.get(
-            "workspace_root", ""
+    # AC-02/AC-05: track whether the graph call lazily built an
+    # ephemeral index that no caller is responsible for closing.
+    # The finally block closes the underlying SQLite store so the
+    # per-call file handle is released before the next call.
+    ephemeral_handle: ExploreIndex | None = None
+    try:
+        handle: ExploreIndex | None = _resolve_explore_index(session)
+        if handle is None:
+            workspace_root_obj: object = getattr(workspace, "root", None)
+            workspace_root_raw: object = workspace_root_obj or params.get(
+                "workspace_root", ""
+            )
+            workspace_root_str: str = (
+                str(workspace_root_raw) if workspace_root_raw else ""
+            )
+            workspace_root = (
+                Path(workspace_root_str)
+                if workspace_root_str
+                else Path.cwd()
+            )
+            handle = build_explore_index(workspace_root)
+            ephemeral_handle = handle
+        result = graph_module.run_query(
+            handle.store,
+            query_type=query_type_raw,
+            target=target,
+            target_b=target_b,
+            relations=relations,
+            limit=limit,
+            freshness=freshness,
+            direction=direction,
+            depth=depth,
+            max_paths=max_paths,
+            change_kind=change_kind,
+            scope_path=scope_path,
+            role=role,
+            deadline=deadline,
+            cancel=cancel_callable,
         )
-        workspace_root_str: str = (
-            str(workspace_root_raw) if workspace_root_raw else ""
-        )
-        workspace_root = (
-            Path(workspace_root_str) if workspace_root_str else Path.cwd()
-        )
-        handle = build_explore_index(workspace_root)
-    result = graph_module.run_query(
-        handle.store,
-        query_type=query_type_raw,
-        target=target,
-        target_b=target_b,
-        relations=relations,
-        limit=limit,
-        freshness=freshness,
-        direction=direction,
-        depth=depth,
-        max_paths=max_paths,
-        change_kind=change_kind,
-        scope_path=scope_path,
-        role=role,
-        deadline=deadline,
-        cancel=cancel_callable,
-    )
+    finally:
+        # AC-02/AC-05: bounded accumulator contract. The cancel
+        # flag is scoped to the call, not the session lifetime.
+        _GRAPH_CANCEL_FLAGS.pop(session_key, None)
+        # AC-05: ephemeral store cleanup. When the call lazily
+        # built a fresh index, close the underlying SQLite store
+        # so file handles do not accumulate across calls.
+        if ephemeral_handle is not None:
+            with contextlib.suppress(Exception):
+                ephemeral_handle.store.close()
     payload = _graph_result_to_dict(result)
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(payload))],

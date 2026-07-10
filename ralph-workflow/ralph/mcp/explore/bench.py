@@ -354,7 +354,15 @@ def question_find_handler_tests() -> BenchmarkFixture:
 
 
 def question_estimate_rename_impact() -> BenchmarkFixture:
-    """Q3: estimate rename impact via lexical callers (Phase 1 lexical only)."""
+    """Q3: estimate rename impact via lexical callers (Phase 1 lexical only).
+
+    AC-07: the Q3 fixture truth set includes both the caller
+    evidence (``ev:ref/open_index/pipeline``) and the test
+    evidence (``ev:ref/open_index/test``). A scripted indexed
+    flow that returns only the caller evidence does not recall
+    the test evidence; the gate is the only way to detect that
+    omission.
+    """
     return BenchmarkFixture(
         question_id="Q3",
         description=(
@@ -403,6 +411,16 @@ def question_estimate_rename_impact() -> BenchmarkFixture:
                 expected_evidence_ids=("ev:ref/open_index/pipeline",),
             ),
             ScriptedCall(
+                tool="grep_files",
+                params={
+                    "pattern": "open_index",
+                    "path": "tests",
+                    "use_index": "auto",
+                    "return_evidence_ids": True,
+                },
+                expected_evidence_ids=("ev:ref/open_index/test",),
+            ),
+            ScriptedCall(
                 tool="read_file",
                 params={
                     "path": "ralph/mcp/explore/pipeline.py",
@@ -411,7 +429,10 @@ def question_estimate_rename_impact() -> BenchmarkFixture:
                 expected_evidence_ids=("ev:ref/open_index/pipeline",),
             ),
         ),
-        expected_evidence_ids=("ev:ref/open_index/pipeline",),
+        expected_evidence_ids=(
+            "ev:ref/open_index/pipeline",
+            "ev:ref/open_index/test",
+        ),
         max_returned_bytes=300_000,
         max_tool_calls=4,
     )
@@ -714,12 +735,22 @@ def run_benchmark(
     baseline_executor: Callable[[ScriptedCall], Mapping[str, object]],
     indexed_executor: Callable[[ScriptedCall], Mapping[str, object]],
     clock: Clock | None = None,
+    expected_evidence_ids: Sequence[str] | None = None,
 ) -> BenchmarkResult:
     """Run a fixture's baseline and indexed flows and produce a result.
 
     ``baseline_executor`` and ``indexed_executor`` are scripted flows
     over the existing MCP handlers; they MUST NOT call a live LLM
     agent. They are pure functions of (call) -> result-dict.
+
+    AC-07: recall/precision are derived from the fixture's
+    ``expected_evidence_ids`` truth set and the indexed executor's
+    actual returned ``evidence_ids``. The previous implementation
+    silently hardcoded both to ``1.0`` after ``_run_script``,
+    hiding missing-evidence regressions. Callers may override the
+    truth set via ``expected_evidence_ids``; the default is the
+    fixture's declared ``expected_evidence_ids`` (a non-empty,
+    unique tuple, by contract).
     """
     clk = clock or SystemClock()
     baseline_counters = _run_script(
@@ -728,17 +759,23 @@ def run_benchmark(
     indexed_counters = _run_script(
         fixture.indexed_script, executor=indexed_executor, clock=clk
     )
-    # Ponytail: recall/precision are exact in Phase 1 because the
-    # expected_evidence_ids are explicit and indexed_executor is
-    # scripted; no LLM summarization is involved.
+    truth = (
+        tuple(expected_evidence_ids)
+        if expected_evidence_ids is not None
+        else fixture.expected_evidence_ids
+    )
+    returned = _collect_returned_evidence_ids(
+        fixture.indexed_script, executor=indexed_executor, clock=clk
+    )
+    recall, precision = _evidence_metrics(set(truth), returned)
     indexed_counters = BenchmarkCounters(
         tool_calls=indexed_counters.tool_calls,
         returned_bytes=indexed_counters.returned_bytes,
         transcript_tokens=indexed_counters.transcript_tokens,
         wall_time_seconds=indexed_counters.wall_time_seconds,
         stale_fallback_events=indexed_counters.stale_fallback_events,
-        evidence_recall=1.0,
-        evidence_precision=1.0,
+        evidence_recall=recall,
+        evidence_precision=precision,
     )
     return BenchmarkResult(
         question_id=fixture.question_id,
@@ -746,3 +783,29 @@ def run_benchmark(
         indexed=indexed_counters,
         notes=(fixture.description,),
     )
+
+
+def _collect_returned_evidence_ids(
+    script: Sequence[ScriptedCall],
+    *,
+    executor: Callable[[ScriptedCall], Mapping[str, object]],
+    clock: Clock,
+) -> set[str]:
+    """Re-run a script and collect every evidence id the executor surfaces.
+
+    AC-07: this helper is only used to derive truthful
+    recall/precision for the indexed flow. It does not modify
+    counters or wall time; the main ``_run_script`` call owns
+    those. We discard the result payloads after collecting the
+    ids so we do not double-count bytes/tokens.
+    """
+    _ = clock
+    returned: set[str] = set()
+    for call in script:
+        result = executor(call)
+        ids: object = result.get("evidence_ids", ())
+        if isinstance(ids, (list, tuple)):
+            for ev_id in ids:
+                if isinstance(ev_id, str) and ev_id:
+                    returned.add(ev_id)
+    return returned

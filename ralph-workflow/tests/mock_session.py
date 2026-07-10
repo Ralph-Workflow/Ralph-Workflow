@@ -6,6 +6,10 @@ from __future__ import annotations
 class MockSession:
     session_id = "test-session"
     broker_secret = None
+    # Optional explore index handle. Tests that exercise index
+    # integration assign this directly; the default ``None``
+    # matches the production contract for non-indexed sessions.
+    explore_index: object | None = None
 
     def __init__(self, *args: object) -> None:
         self.run_id = "test-run"

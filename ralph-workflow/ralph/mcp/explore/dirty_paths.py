@@ -22,6 +22,31 @@ from typing import Protocol, cast
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path
 
 
+class _SymbolLike(Protocol):
+    """Narrow protocol for the symbol shape ``find_symbols`` returns.
+
+    The full :class:`ralph.mcp.explore.store.SymbolRow` type is
+    structurally compatible. Kept as a Protocol so handlers can
+    consume the result without importing the concrete dataclass.
+    """
+
+    @property
+    def qualified_name(self) -> str:
+        ...
+
+    @property
+    def kind(self) -> str:
+        ...
+
+    @property
+    def symbol_id(self) -> str:
+        ...
+
+    @property
+    def span_id(self) -> str:
+        ...
+
+
 class ExploreIndexLike(Protocol):
     """The narrow protocol handlers consume to mark dirty paths.
 
@@ -62,6 +87,15 @@ class ExploreStoreLike(Protocol):
         ...
 
     def iter_symbols(self, path: str | None = None) -> object:
+        ...
+
+    def find_symbols(
+        self,
+        *,
+        name: str | None = None,
+        qualified_name: str | None = None,
+        path: str | None = None,
+    ) -> list[_SymbolLike]:
         ...
 
     def insert_evidence(self, row: object) -> None:

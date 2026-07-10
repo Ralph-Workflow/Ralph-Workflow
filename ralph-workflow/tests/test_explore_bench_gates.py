@@ -81,10 +81,17 @@ def _baseline_executor(call: ScriptedCall) -> Mapping[str, object]:
 
 
 def _indexed_executor(call: ScriptedCall) -> Mapping[str, object]:
-    """An indexed executor that returns a compact evidence handle."""
+    """An indexed executor that returns a compact evidence handle.
+
+    AC-07: returns the union of the per-call ``expected_evidence_ids``
+    so the harness can compute truthful recall/precision for the
+    fixture's truth set.
+    """
+    ids = list(call.expected_evidence_ids) or ["ev:placeholder"]
     return {
         "text": "x" * 32,
-        "evidence_id": "ev:1",
+        "evidence_id": ids[0] if ids else "ev:placeholder",
+        "evidence_ids": ids,
         "index_used": True,
         "is_stale": False,
     }
@@ -175,6 +182,49 @@ def test_evidence_precision_is_one_for_indexed_flow() -> None:
         assert result.indexed.evidence_precision == 1.0, _format_counters(
             fixture.question_id, result
         )
+
+
+# --- Q3 negative regression: missing test evidence must fail recall -------
+
+
+def test_q3_negative_omitting_test_evidence_fails_recall() -> None:
+    """AC-07: the Q3 fixture must require both caller and test
+    evidence. An indexed executor that drops the test evidence
+    must drop recall below 1.0 so the gate catches the omission.
+    """
+    fixture = next(
+        f for f in REQUIRED_FIXTURES if f.question_id == "Q3"
+    )
+    assert (
+        "ev:ref/open_index/test" in fixture.expected_evidence_ids
+    ), "Q3 fixture must include test evidence in its truth set"
+
+    def omitting_test_executor(call: ScriptedCall) -> Mapping[str, object]:
+        """Indexed executor that omits the test evidence id."""
+        ids = [
+            ev_id
+            for ev_id in call.expected_evidence_ids
+            if ev_id != "ev:ref/open_index/test"
+        ]
+        return {
+            "text": "x" * 32,
+            "evidence_id": ids[0] if ids else "ev:placeholder",
+            "evidence_ids": ids,
+            "index_used": True,
+            "is_stale": False,
+        }
+
+    result = run_benchmark(
+        fixture,
+        baseline_executor=_baseline_executor,
+        indexed_executor=omitting_test_executor,
+        clock=FakeClock(),
+    )
+    # The negative script returns one of two truth ids; recall must
+    # drop below 1.0 so the gate can detect the omission.
+    assert result.indexed.evidence_recall < 1.0, _format_counters(
+        fixture.question_id, result
+    )
 
 
 # --- Reindex efficiency gates ---------------------------------------------

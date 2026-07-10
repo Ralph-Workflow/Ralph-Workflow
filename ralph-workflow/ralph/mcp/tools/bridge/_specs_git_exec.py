@@ -122,10 +122,14 @@ def git_exec_specs() -> list[ToolSpec]:
                             "type": "integer",
                             "description": (
                                 "Cap on the diff excerpt returned in "
-                                "``format='summary'``. Default 50000."
+                                "``format='summary'``. Default 50000. "
+                                "Strictly bounded to a positive integer "
+                                "in [1, 50000] to preserve the bounded-"
+                                "excerpt contract."
                             ),
                             "default": 50000,
                             "minimum": 1,
+                            "maximum": 50000,
                         },
                     },
                 },

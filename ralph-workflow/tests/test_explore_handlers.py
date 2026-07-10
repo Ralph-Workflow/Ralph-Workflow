@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ralph.mcp.explore.handlers import (
     build_explore_index,
+    handle_ralph_graph,
     handle_ralph_index_status,
     handle_ralph_reindex,
 )
 from ralph.mcp.explore.store import DEFAULT_INDEX_ROOT
+
+# Local alias so the bounded-accumulator tests read naturally.
+handle_ralph_graph_local = handle_ralph_graph
 
 
 class _FakeSession:
@@ -512,3 +517,135 @@ def test_reindex_updates_handle_last_refresh_kind(tmp_path: Path) -> None:
         assert handle.last_refresh_kind == "full"
     finally:
         handle.store.close()
+
+
+# --- ralph_graph: bounded accumulator contract for cancel flags ---------
+
+
+def test_ralph_graph_clears_cancel_flag_map_after_each_call(
+    tmp_path: Path,
+) -> None:
+    """AC-02/AC-05: the module-global ``_GRAPH_CANCEL_FLAGS`` map must
+    not accumulate entries across calls. Repeated calls with
+    distinct sessions must leave the map at its starting size.
+    """
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    starting_size = len(handlers._GRAPH_CANCEL_FLAGS)
+    try:
+        # Two distinct sessions, each issuing a graph call.
+        for _call_index in range(2):
+            call_session = _FakeSession(explore_index=handle)
+            params = {
+                "query_type": "neighbors",
+                "target": "a.py",
+                "timeout_ms": 5_000,
+            }
+            handle_ralph_graph_local(call_session, _Workspace(workspace), params)
+        assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size, (
+            "Cancel-flag map leaked entries: "
+            f"{dict(handlers._GRAPH_CANCEL_FLAGS)}"
+        )
+    finally:
+        handle.store.close()
+
+
+def test_ralph_graph_clears_cancel_flag_on_query_error(tmp_path: Path) -> None:
+    """AC-02/AC-05: even when ``run_query`` raises, the cancel-flag
+    entry must be cleared in the finally block.
+    """
+    from ralph.mcp.explore import graph as graph_module
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    starting_size = len(handlers._GRAPH_CANCEL_FLAGS)
+
+    def _explode(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("simulated dispatcher failure")
+
+    try:
+        call_session = _FakeSession(explore_index=handle)
+        params = {
+            "query_type": "neighbors",
+            "target": "a.py",
+            "timeout_ms": 5_000,
+        }
+        with (
+            patch.object(graph_module, "run_query", side_effect=_explode),
+            pytest.raises(RuntimeError),
+        ):
+            handle_ralph_graph_local(
+                call_session, _Workspace(workspace), params
+            )
+        assert len(handlers._GRAPH_CANCEL_FLAGS) == starting_size, (
+            "Cancel-flag map leaked entries after a query error: "
+            f"{dict(handlers._GRAPH_CANCEL_FLAGS)}"
+        )
+    finally:
+        handle.store.close()
+
+
+def test_ralph_graph_closes_ephemeral_store_when_no_session_handle(
+    tmp_path: Path,
+) -> None:
+    """AC-02/AC-05: when a session has no explore_index, the
+    handler builds an ephemeral index and must close the
+    underlying SQLite store after the call so file handles do
+    not leak across calls.
+    """
+    workspace = _seed_workspace(tmp_path)
+    from ralph.mcp.explore import handlers
+
+    class _NoHandleSession(_FakeSession):
+        def __init__(self) -> None:
+            super().__init__(explore_index=None)
+            # Deliberately expose an attribute that fails the
+            # ``getattr(session, "explore_index", None)`` lookup
+            # so ``_resolve_explore_index`` returns None.
+            delattr(self, "explore_index")
+
+        def check_capability(self, capability: str):
+            return {"status": "approved", "capability": capability}
+
+        def check_edit_area(self, path: str):
+            return {"status": "approved", "path": path}
+
+    no_handle_session = _NoHandleSession()
+    with patch.object(handlers, "build_explore_index") as mock_build:
+        mock_handle = MagicMock()
+        mock_handle.store.close = MagicMock()
+        mock_build.return_value = mock_handle
+        with patch(
+            "ralph.mcp.explore.handlers.graph_module.run_query",
+            return_value=_fake_graph_result(),
+        ):
+            params = {
+                "query_type": "neighbors",
+                "target": "a.py",
+                "timeout_ms": 5_000,
+            }
+            result = handle_ralph_graph_local(
+                no_handle_session, _Workspace(workspace), params
+            )
+        # The ephemeral handle's store must be closed.
+        mock_handle.store.close.assert_called_once()
+    assert result.is_error is False
+
+
+def _fake_graph_result() -> object:
+    """Minimal GraphResult stand-in for handler-level tests."""
+    from ralph.mcp.explore.graph import GraphResult
+
+    return GraphResult(
+        query_type="neighbors",
+        nodes=(),
+        edges=(),
+        missing_data=(),
+        index_generation=0,
+        is_stale=False,
+        truncated=False,
+        metadata={},
+    )
