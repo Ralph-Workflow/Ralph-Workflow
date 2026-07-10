@@ -68,6 +68,13 @@ CONFIDENCE_AMBIGUOUS: Final[float] = 0.3
 # Heading detection (ATX + Setext).
 _ATX_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 _SETEXT_UNDERLINE_RE = re.compile(r"^[=-]+\s*$")
+# AC-02: Markdown link regex matches inline ``[text](target)``
+# and reference-style ``[text][ref]`` forms. The regex captures
+# the link text/label so we can emit ``mentions`` edges with
+# exact spans.
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^)\n]+)\)")
+_MARKDOWN_AUTOLINK_RE = re.compile(r"<([^>\s]+)>")
+_MARKDOWN_REF_LINK_RE = re.compile(r"\[([^\]\n]+)\]\[([^\]\n]+)\]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -893,6 +900,86 @@ def extract_markdown(
             )
             line_no += 2
             continue
+        # AC-02: Markdown links emit ``mentions`` edges with exact
+        # spans. Each inline ``[text](target)`` and reference-style
+        # ``[text][ref]`` match records a span covering the link
+        # text and a ``mentions`` edge from the document span to a
+        # deterministic link symbol id so callers can audit the
+        # relationship. Provenance is ``extracted`` for parser-
+        # detected links; we do not chase the link target, so the
+        # edge describes the textual mention only.
+        for link_match in _MARKDOWN_LINK_RE.finditer(line):
+            link_text_raw: object = link_match.group(1)
+            link_target_raw: object = link_match.group(2)
+            link_text = str(link_text_raw).strip() if link_text_raw is not None else ""
+            link_target = str(link_target_raw).strip() if link_target_raw is not None else ""
+            if not link_text or not link_target:
+                continue
+            link_start_col = int(link_match.start())
+            link_end_col = int(link_match.end())
+            link_span_id = derive_span_id(
+                path=path,
+                start_line=line_no + 1,
+                start_col=link_start_col,
+                end_line=line_no + 1,
+                end_col=link_end_col,
+                kind="md_link",
+                content_hash=content_hash,
+            )
+            link_symbol_id = derive_symbol_id(
+                path=path,
+                qualified_name=f"md_link:{line_no + 1}:{link_start_col}",
+                kind="md_link",
+                span_id=link_span_id,
+            )
+            spans.append(
+                SpanRow(
+                    span_id=link_span_id,
+                    path=path,
+                    start_line=line_no + 1,
+                    start_col=link_start_col,
+                    end_line=line_no + 1,
+                    end_col=link_end_col,
+                    kind="md_link",
+                    symbol_id=link_symbol_id,
+                    content_hash=content_hash,
+                    generation=generation,
+                )
+            )
+            symbols.append(
+                SymbolRow(
+                    symbol_id=link_symbol_id,
+                    name=link_text,
+                    qualified_name=f"md_link:{line_no + 1}:{link_start_col}",
+                    kind="md_link",
+                    path=path,
+                    span_id=link_span_id,
+                    language="markdown",
+                    extracted_from="md_link",
+                    confidence=CONFIDENCE_EXTRACTED,
+                    generation=generation,
+                )
+            )
+            edges.append(
+                EdgeRow(
+                    edge_id=derive_edge_id(
+                        source_id=file_span_id,
+                        target_id=link_symbol_id,
+                        relation="mentions",
+                        path=path,
+                        span_id=link_span_id,
+                    ),
+                    source_id=file_span_id,
+                    target_id=link_symbol_id,
+                    relation="mentions",
+                    path=path,
+                    span_id=link_span_id,
+                    provenance="extracted",
+                    confidence=CONFIDENCE_EXTRACTED,
+                    reason=f"md:link text={link_text!r} target={link_target!r}",
+                    generation=generation,
+                )
+            )
         line_no += 1
 
     return StructureExtraction(

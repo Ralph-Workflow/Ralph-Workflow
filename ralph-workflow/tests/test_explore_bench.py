@@ -207,6 +207,44 @@ def test_run_benchmark_notes_include_description() -> None:
     assert fixture.description in result.notes
 
 
+def test_run_benchmark_derives_catalog_tokens_from_visible_tool_catalog() -> None:
+    """AC-12: when the caller passes a ``visible_tool_catalog``,
+    ``run_benchmark`` derives the catalog token count from the
+    bounded serialized tool descriptions/input schemas and adds
+    it to the indexed transcript exactly once. The harness does
+    not rely on the caller passing a non-zero ``catalog_tokens``
+    parameter to opt into the full-transcript accounting.
+    """
+    from ralph.mcp.explore.bench import BenchmarkFixture
+
+    fixture = BenchmarkFixture(
+        question_id="derive-catalog",
+        description="derive-catalog fixture",
+        workspace_files={"a.py": "x = 1\n"},
+        baseline_script=(ScriptedCall(tool="search_files", params={"pattern": "x"}),),
+        indexed_script=(ScriptedCall(tool="search_files", params={"pattern": "x"}),),
+        expected_evidence_ids=("ev:derive",),
+        max_returned_bytes=2048,
+        max_tool_calls=1,
+    )
+    visible_catalog = (
+        ("search_files", "Find files matching a glob pattern."),
+        ("grep_files", "Find text matching a regex across the workspace."),
+    )
+    expected_catalog_tokens = sum(
+        len(desc.split()) for _name, desc in visible_catalog
+    )
+    result = run_benchmark(
+        fixture,
+        baseline_executor=_baseline_executor,
+        indexed_executor=_indexed_executor,
+        clock=FakeClock(),
+        visible_tool_catalog=visible_catalog,
+    )
+    assert result.baseline.transcript_tokens >= expected_catalog_tokens
+    assert result.indexed.transcript_tokens >= expected_catalog_tokens
+
+
 def test_run_benchmark_invokes_each_executor_exactly_once_per_scripted_call() -> None:
     """AC-07: a counting executor MUST observe exactly one invocation per
     scripted call (no replay for evidence-id collection).

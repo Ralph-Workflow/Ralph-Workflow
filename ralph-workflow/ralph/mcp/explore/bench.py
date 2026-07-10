@@ -75,7 +75,16 @@ class ScriptedCall:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkFixture:
-    """A single benchmark fixture (one question, two flows)."""
+    """A single benchmark fixture (one question, two flows).
+
+    AC-12: the fixture carries its own bounded transcript
+    counters (``catalog_tokens`` and ``final_evidence_tokens``)
+    so the harness can derive the full scripted-transcript
+    total without the caller passing defaults of zero. The
+    bench harness derives catalog tokens from the visible tool
+    descriptions/input schemas the harness itself enumerates;
+    callers do not need to inject them.
+    """
 
     question_id: str
     description: str
@@ -86,6 +95,17 @@ class BenchmarkFixture:
     max_returned_bytes: int
     max_tool_calls: int
     requires_reindex: bool = False
+    # AC-12: fixture-owned transcript token budget. The
+    # ``catalog_tokens`` field is the bounded token cost of the
+    # visible changed-tool descriptions plus input schemas; the
+    # harness derives it from the visible catalog and overrides
+    # this default with the derived value at run time. The
+    # ``final_evidence_tokens`` field is the compact evidence
+    # context the agent keeps after the flow ends. Both fields
+    # default to ``0`` so callers without a measured catalog
+    # remain back-compat.
+    catalog_tokens: int = 0
+    final_evidence_tokens: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -875,8 +895,9 @@ def run_benchmark(
     indexed_executor: Callable[[ScriptedCall], Mapping[str, object]],
     clock: Clock | None = None,
     expected_evidence_ids: Sequence[str] | None = None,
-    catalog_tokens: int = 0,
-    final_evidence_tokens: int = 0,
+    catalog_tokens: int | None = None,
+    final_evidence_tokens: int | None = None,
+    visible_tool_catalog: Sequence[tuple[str, str]] | None = None,
 ) -> BenchmarkResult:
     """Run a fixture's baseline and indexed flows and produce a result.
 
@@ -909,20 +930,38 @@ def run_benchmark(
     transcript" definition. Defaults of ``0`` keep the harness
     back-compat with callers that pass only the script.
     """
+    # AC-12: derive catalog + final-evidence tokens from the
+    # fixture itself when the caller did not supply them. The
+    # fixture owns these constants; the harness does NOT rely on
+    # optional zero defaults for required transcript pieces.
+    derived_catalog_tokens = (
+        catalog_tokens
+        if catalog_tokens is not None
+        else (
+            sum(tool_catalog_tokens(visible_tool_catalog).values())
+            if visible_tool_catalog
+            else fixture.catalog_tokens
+        )
+    )
+    derived_final_evidence_tokens = (
+        final_evidence_tokens
+        if final_evidence_tokens is not None
+        else fixture.final_evidence_tokens
+    )
     clk = clock or SystemClock()
     baseline_counters, _baseline_returned_ids = _run_script(
         fixture.baseline_script,
         executor=baseline_executor,
         clock=clk,
-        catalog_tokens=catalog_tokens,
-        final_evidence_tokens=final_evidence_tokens,
+        catalog_tokens=derived_catalog_tokens,
+        final_evidence_tokens=derived_final_evidence_tokens,
     )
     indexed_counters, indexed_returned_ids = _run_script(
         fixture.indexed_script,
         executor=indexed_executor,
         clock=clk,
-        catalog_tokens=catalog_tokens,
-        final_evidence_tokens=final_evidence_tokens,
+        catalog_tokens=derived_catalog_tokens,
+        final_evidence_tokens=derived_final_evidence_tokens,
     )
     truth = (
         tuple(expected_evidence_ids)

@@ -996,3 +996,149 @@ class TestInjectionPrecedence:
                 pipeline_deps=deps,
                 **{kwarg_name: kwarg_value},
             )
+
+
+# --- AC-04: lifecycle refresh at the runner seam -------------------------
+
+
+def test_runner_wires_pre_post_refresh_around_development_agent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC-04: the public runner seam in ``ralph/pipeline/runner.py``
+    must call ``before_agent_refresh`` exactly once BEFORE invoking
+    the agent and ``after_agent_refresh`` exactly once AFTER, but
+    only for the development/fix execution drain. Planning,
+    review, and commit drains must observe no refresh calls.
+
+    The test drives the actual runner code (not direct hook
+    imports) by calling ``_invoke_execute_effect_with_optional_display``
+    with a fake ``InvokeAgentEffect`` and patches the lifecycle
+    hooks so the test observes the observable event sequence.
+    """
+    from ralph.mcp.explore import lifecycle as lifecycle_module
+    from ralph.mcp.explore.lifecycle import LifecycleHookResult
+
+    runner_module = _load_runner()
+    events: list[str] = []
+
+    def _spy_before(*_args: object, **_kwargs: object) -> LifecycleHookResult:
+        events.append("before")
+        return LifecycleHookResult(invoked=True, timed_out=False)
+
+    def _spy_after(*_args: object, **_kwargs: object) -> LifecycleHookResult:
+        events.append("after")
+        return LifecycleHookResult(invoked=True, timed_out=False)
+
+    # Patch via module __dict__ to satisfy the test-file
+    # type-ignore ban and the B010 lint rule while still
+    # exercising the real runner seam.
+    original_before = lifecycle_module.before_agent_refresh
+    original_after = lifecycle_module.after_agent_refresh
+    lifecycle_module.__dict__["before_agent_refresh"] = _spy_before
+    lifecycle_module.__dict__["after_agent_refresh"] = _spy_after
+    try:
+        # Avoid the agent actually running.
+        def _fake_execute_effect_with_optional_display(
+            *_args: object, **_kwargs: object
+        ) -> object:
+            events.append("invocation")
+            return MagicMock()
+
+        monkeypatch.setattr(
+            runner_module,
+            "execute_effect_with_optional_display",
+            _fake_execute_effect_with_optional_display,
+        )
+        config = _build_config(tmp_path)
+        bundle = _make_fake_bundle()
+        workspace_scope = MagicMock(root=tmp_path, allowed_roots=[tmp_path])
+
+        # Pre-workspace with an explore_index attribute.
+        pre_workspace = MagicMock()
+        pre_workspace.explore_index = MagicMock()
+
+        from ralph.pipeline.effects.invoke_agent_effect import (
+            InvokeAgentEffect,
+        )
+
+        agent_effect = InvokeAgentEffect(
+            agent_name="claude",
+            phase="complete",
+            prompt_file="prompt.md",
+            drain="development",
+        )
+
+        # DEVELOPMENT drain: must observe pre + invocation + post.
+        runner_module._invoke_execute_effect_with_optional_display(
+            agent_effect,
+            config,
+            workspace_scope,
+            display=None,
+            verbosity=Verbosity.NORMAL,
+            state=PipelineState(phase="complete"),
+            policy_bundle=bundle,
+            pre_workspace=pre_workspace,
+            pre_phase_role="execution",
+            pre_phase_drain="development",
+        )
+        assert events.count("before") == 1
+        assert events.count("invocation") == 1
+        assert events.count("after") == 1
+        assert events == ["before", "invocation", "after"]
+
+        # PLANNING drain: must observe no refresh events.
+        events.clear()
+        runner_module._invoke_execute_effect_with_optional_display(
+            agent_effect,
+            config,
+            workspace_scope,
+            display=None,
+            verbosity=Verbosity.NORMAL,
+            state=PipelineState(phase="complete"),
+            policy_bundle=bundle,
+            pre_workspace=pre_workspace,
+            pre_phase_role="planning",
+            pre_phase_drain="planning",
+        )
+        assert events == ["invocation"], (
+            f"planning drain should not trigger refresh; got {events!r}"
+        )
+
+        # REVIEW drain: must observe no refresh events.
+        events.clear()
+        runner_module._invoke_execute_effect_with_optional_display(
+            agent_effect,
+            config,
+            workspace_scope,
+            display=None,
+            verbosity=Verbosity.NORMAL,
+            state=PipelineState(phase="complete"),
+            policy_bundle=bundle,
+            pre_workspace=pre_workspace,
+            pre_phase_role="review",
+            pre_phase_drain="review",
+        )
+        assert events == ["invocation"], (
+            f"review drain should not trigger refresh; got {events!r}"
+        )
+
+        # COMMIT drain: must observe no refresh events.
+        events.clear()
+        runner_module._invoke_execute_effect_with_optional_display(
+            agent_effect,
+            config,
+            workspace_scope,
+            display=None,
+            verbosity=Verbosity.NORMAL,
+            state=PipelineState(phase="complete"),
+            policy_bundle=bundle,
+            pre_workspace=pre_workspace,
+            pre_phase_role="commit",
+            pre_phase_drain="commit",
+        )
+        assert events == ["invocation"], (
+            f"commit drain should not trigger refresh; got {events!r}"
+        )
+    finally:
+        lifecycle_module.__dict__["before_agent_refresh"] = original_before
+        lifecycle_module.__dict__["after_agent_refresh"] = original_after
