@@ -35,8 +35,21 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
 from typing import Final, Protocol
+
+from ralph.mcp.explore._bench_fixtures import (
+    ALL_FIXTURES,
+    EXTENDED_FIXTURES,
+    REQUIRED_BENCH_WORKFLOW_IDS,
+    REQUIRED_FIXTURES,
+)
+from ralph.mcp.explore._bench_types import (
+    BenchmarkCounters,
+    BenchmarkFixture,
+    BenchmarkResult,
+    ScriptedCall,
+)
+
 
 # Ponytail: fixed tokenizer. Counts ASCII whitespace-separated tokens
 # (split on Unicode whitespace). Cheap, deterministic, and not a
@@ -86,85 +99,6 @@ class SystemClock:
     def now(self) -> float:
         return time.monotonic()
 
-
-@dataclass(frozen=True, slots=True)
-class ScriptedCall:
-    """A single scripted tool call used by a benchmark fixture."""
-
-    tool: str
-    params: Mapping[str, object]
-    expected_evidence_ids: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class BenchmarkFixture:
-    """A single benchmark fixture (one question, two flows).
-
-    AC-12: the fixture carries its own bounded transcript
-    counters (``catalog_tokens`` and ``final_evidence_tokens``)
-    so the harness can derive the full scripted-transcript
-    total without the caller passing defaults of zero. The
-    bench harness derives catalog tokens from the visible tool
-    descriptions/input schemas the harness itself enumerates;
-    callers do not need to inject them.
-    """
-
-    question_id: str
-    description: str
-    workspace_files: Mapping[str, str]
-    baseline_script: tuple[ScriptedCall, ...]
-    indexed_script: tuple[ScriptedCall, ...]
-    expected_evidence_ids: tuple[str, ...]
-    max_returned_bytes: int
-    max_tool_calls: int
-    requires_reindex: bool = False
-    # AC-12: fixture-owned transcript token budget. The
-    # ``catalog_tokens`` field is the bounded token cost of the
-    # visible changed-tool descriptions plus input schemas; the
-    # harness derives it from the visible catalog and overrides
-    # this default with the derived value at run time. The
-    # ``final_evidence_tokens`` field is the compact evidence
-    # context the agent keeps after the flow ends. Both fields
-    # default to ``0`` so callers without a measured catalog
-    # remain back-compat.
-    catalog_tokens: int = 0
-    final_evidence_tokens: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class BenchmarkCounters:
-    """Single-script counters."""
-
-    tool_calls: int
-    returned_bytes: int
-    transcript_tokens: int
-    wall_time_seconds: float
-    stale_fallback_events: int
-    evidence_recall: float
-    evidence_precision: float
-
-
-@dataclass(frozen=True, slots=True)
-class BenchmarkResult:
-    """Result of a single benchmark question (one fixture)."""
-
-    question_id: str
-    baseline: BenchmarkCounters
-    indexed: BenchmarkCounters
-    parse_count: int = 0
-    changed_file_count: int = 0
-    index_storage_bytes: int = 0
-    notes: tuple[str, ...] = field(default_factory=tuple)
-
-    def bytes_savings_ratio(self) -> float:
-        """Return 1 - (indexed.bytes / baseline.bytes); 0.0 if baseline is 0."""
-        if self.baseline.returned_bytes == 0:
-            return 0.0
-        return 1.0 - (self.indexed.returned_bytes / self.baseline.returned_bytes)
-
-    def calls_within_budget(self, baseline_calls: int | None = None) -> bool:
-        baseline = baseline_calls or self.baseline.tool_calls
-        return self.indexed.tool_calls <= baseline
 
 
 def _tokenize_call(call: ScriptedCall) -> int:
@@ -445,33 +379,14 @@ def run_benchmark(
     )
 
 
-from ralph.mcp.explore._bench_fixtures import (  # noqa: E402,F401
-    ALL_FIXTURES,
-    EXTENDED_FIXTURES,
-    REQUIRED_BENCH_WORKFLOW_IDS,
-    REQUIRED_FIXTURES,
-    question_edit_impact_preview,
-    question_estimate_rename_impact,
-    question_find_handler_tests,
-    question_graph_callers,
-    question_mutation_freshness,
-    question_phase4_exec_summary_spill,
-    question_phase4_git_diff_summary,
-    question_phase4_git_log_summary,
-    question_phase4_git_show_summary,
-    question_phase4_git_status_compact,
-    question_phase4_read_media_metadata,
-    question_phase4_web_search_summary,
-    question_register_tool,
-)
 
 __all__ = [
     "ALL_FIXTURES",
-    "BenchmarkFixture",
-    "BenchmarkResult",
     "EXTENDED_FIXTURES",
     "REQUIRED_BENCH_WORKFLOW_IDS",
     "REQUIRED_FIXTURES",
+    "BenchmarkFixture",
+    "BenchmarkResult",
     "ScriptedCall",
     "run_benchmark",
 ]

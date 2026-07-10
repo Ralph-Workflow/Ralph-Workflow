@@ -203,12 +203,18 @@ def test_run_benchmark_wall_time_uses_injected_clock() -> None:
         indexed_executor=_indexed_executor,
         clock=clock,
     )
-    # The clock advanced twice per script (once for start, once for now()).
-    expected = 0.5 * (len(fixture.baseline_script) + len(fixture.indexed_script))
-    assert abs(result.baseline.wall_time_seconds - expected) < 1e-9 or True
-    # The injected clock drives the counter; we only assert non-negative.
-    assert result.baseline.wall_time_seconds >= 0
-    assert result.indexed.wall_time_seconds >= 0
+    # The harness calls ``clock.now()`` exactly once per script (start
+    # AND end subtract back to a single ``step`` interval), so each
+    # script's wall_time equals the FakeClock ``step`` of 0.5 s. The
+    # previous ``... or True`` form was vacuous; this rewrite pins
+    # the exact deterministic duration so a future regression that
+    # introduced per-iteration ``clock.now()`` would fail the test.
+    expected_per_script = 0.5
+    assert abs(result.baseline.wall_time_seconds - expected_per_script) < 1e-9
+    assert abs(result.indexed.wall_time_seconds - expected_per_script) < 1e-9
+    # The injected clock drives both counters to the same value
+    # because the FakeClock advances the same way for both branches.
+    assert result.indexed.wall_time_seconds == result.baseline.wall_time_seconds
 
 
 def test_benchmark_counters_is_immutable() -> None:

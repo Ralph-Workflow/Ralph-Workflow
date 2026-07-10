@@ -13,7 +13,7 @@ are the focused-handler coverage set that the bench gate asserts.
 
 from __future__ import annotations
 
-from ralph.mcp.explore.bench import BenchmarkFixture, ScriptedCall
+from ralph.mcp.explore._bench_types import BenchmarkFixture, ScriptedCall
 
 
 def question_register_tool() -> BenchmarkFixture:

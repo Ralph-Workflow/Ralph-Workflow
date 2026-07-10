@@ -12,7 +12,7 @@ provenance end-to-end.
 
 from __future__ import annotations
 
-from ralph.mcp.explore.audit_register import (
+from ralph.mcp.explore._audit_types import (
     AuditEntry,
     AuditFamily,
     AuditOutcome,
