@@ -1,0 +1,106 @@
+def impact(
+    store: ExploreStore,
+    *,
+    target: str,
+    change_kind: str,
+    limit: int = 25,
+) -> GraphResult:
+    """Return a conservative impact estimate for ``change_kind``.
+
+    The output labels dynamic / reflective / generated callers as
+    ``unknown`` rather than claiming runtime certainty. Default
+    relations are looked up in ``_IMPACT_RELATIONS``.
+    """
+    if change_kind not in _IMPACT_RELATIONS:
+        return GraphResult(
+            query_type="impact",
+            nodes=(),
+            edges=(),
+            missing_data=("invalid_change_kind",),
+            index_generation=_current_generation(store),
+            is_stale=False,
+            truncated=False,
+            metadata={"change_kind": change_kind, "target": target},
+        )
+    relations = _IMPACT_RELATIONS[change_kind]
+    resolved_id, _resolved_name = _resolve_target(store, target)
+    if resolved_id is None:
+        return GraphResult(
+            query_type="impact",
+            nodes=(),
+            edges=(),
+            missing_data=("target_unresolved",),
+            index_generation=_current_generation(store),
+            is_stale=False,
+            truncated=False,
+            metadata={"target": target, "change_kind": change_kind},
+        )
+    bounded_limit = max(1, min(limit, 100))
+    impacted: list[GraphEdge] = []
+    for edge in _iter_incoming(
+        store, target_id=resolved_id, relations=relations
+    ):
+        impacted.append(_row_to_edge(edge))
+        if len(impacted) >= bounded_limit:
+            break
+    impacted_paths = sorted({edge.path for edge in impacted if edge.path})
+    # Walk calls_syntax edges to flag dynamic / unknown cases.
+    missing_data: list[str] = []
+    if any(
+        edge.reason and ("getattr" in edge.reason or "dynamic" in edge.reason)
+        for edge in impacted
+    ):
+        missing_data.append("dynamic_dispatch_possible")
+    if any(edge.path.startswith("vendor/") for edge in impacted):
+        missing_data.append("generated_vendor_caller_present")
+
+    nodes_out: list[GraphNode] = []
+    seen: set[str] = set()
+    for impacted_edge in impacted:
+        if impacted_edge.source in seen:
+            continue
+        seen.add(impacted_edge.source)
+        cur = store._conn.execute(
+            "SELECT * FROM symbols WHERE symbol_id = ?", (impacted_edge.source,)
+        )
+        row: sqlite3.Row | None = cur.fetchone()
+        if row is not None:
+            nodes_out.append(_row_to_node_from_symbol(row))
+            continue
+        nodes_out.append(
+            GraphNode(
+                id=impacted_edge.source,
+                kind="unknown",
+                label=impacted_edge.source,
+                path=impacted_edge.path,
+                confidence=0.0,
+                provenance="unknown",
+                evidence_ids=(),
+            )
+        )
+
+    def _impact_node_key(n: GraphNode) -> tuple[str, str]:
+        return (n.path, n.id)
+
+    nodes_out.sort(key=_impact_node_key)
+
+    return GraphResult(
+        query_type="impact",
+        nodes=tuple(nodes_out),
+        edges=tuple(impacted),
+        impacted_files=tuple(impacted_paths),
+        confidence=min((e.confidence for e in impacted), default=0.0),
+        provenance="extracted",
+        evidence_ids=tuple(e.evidence_id for e in impacted if e.evidence_id),
+        missing_data=tuple(missing_data),
+        index_generation=_current_generation(store),
+        is_stale=False,
+        truncated=len(impacted) >= bounded_limit,
+        metadata={
+            "target": target,
+            "resolved_id": resolved_id,
+            "change_kind": change_kind,
+            "relations": list(relations),
+            "limit": bounded_limit,
+        },
+    )

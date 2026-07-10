@@ -296,6 +296,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     assert "You are in PLANNING MODE" not in rendered
 
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.parametrize("analysis_iteration", [2, 3, 4])
 def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on_analysis_loopback(
     tmp_path: Path,

@@ -1,0 +1,39 @@
+def _ensure_deadline(state: _ReindexState, now_fn: Callable[[], float]) -> None:
+    if (now_fn() - state.started_at) * 1000 > state.deadline_ms:
+        state.timed_out = True
+        raise _ReindexTimeoutError("deadline exceeded")
+
+
+def _path_in_scope(path: str, path_scope: Sequence[str]) -> bool:
+    """Return True when ``path`` falls within one of the ``path_scope`` roots.
+
+    An empty ``path_scope`` is treated as "everything is in scope".
+    """
+    if not path_scope:
+        return True
+    for raw_scope in path_scope:
+        normalized_scope = raw_scope.rstrip("/")
+        if not normalized_scope:
+            return True
+        if path == normalized_scope or path.startswith(normalized_scope + "/"):
+            return True
+    return False
+
+
+def _current_generation(store: ExploreStore) -> int:
+    raw = store.get_setting("current_generation")
+    if raw is None or not raw.isdigit():
+        return 0
+    return int(raw)
+
+
+def _dirty_paths_contain(store: ExploreStore, path: str) -> bool:
+    """Return True when ``path`` is in the persisted dirty queue.
+
+    Used by the reindex prefilter so a workspace mutation marked
+    dirty by ``mark_path`` forces a re-hash even when the manifest
+    size+mtime match the prior run.
+    """
+    normalized = path.replace(os.sep, "/")
+    return any(existing == normalized for existing in store.peek_dirty_paths())
+

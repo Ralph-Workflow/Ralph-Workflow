@@ -515,7 +515,14 @@ def handle_edit_file(
                 # / unsupported relations are marked as ``unknown``
                 # by the graph module.
                 try:
-                    from ralph.mcp.explore.graph import run_query
+                    # Import the dispatcher implementation rather
+                    # than going through the ``graph`` module so
+                    # mypy can see the return type as
+                    # ``GraphResult`` rather than ``Any``. The lazy
+                    # PEP 562 re-export on ``graph`` returns the
+                    # same callable; this direct import pins the
+                    # type for the variable annotation below.
+                    from ralph.mcp.explore._graph_query import run_query
 
                     impact_handle = handle_for_impact
                     impact_store_obj: ExploreStoreLike | None = (

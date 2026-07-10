@@ -33,43 +33,133 @@ agent reads (tools return stale metadata instead of hanging).
 from __future__ import annotations
 
 import logging
+import os
+import shutil
+import sqlite3
+import threading
+import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from contextlib import suppress
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final
+
+from ralph.mcp.explore.store import (
+    DEFAULT_CHUNK_LINES,
+    ChunkRow,
+    Clock,
+    EvidenceRow,
+    ExploreStore,
+    FileRow,
+    SystemClock,
+    chunk_text,
+    collect_workspace_files,
+    derive_chunk_id,
+    derive_evidence_id,
+    hash_workspace_file,
+    sha256_text,
+)
+from ralph.mcp.explore.structure import (
+    PythonExtractionError,
+    extract_structure,
+)
 
 # Ponytail: keep imports narrow; nothing from the mcp package is
 # imported here so audit_mcp_timeout stays happy without markers.
-# Use the shared state types from _pipeline_state so the dataclasses,
-# exception classes, and constants are shared across modules
-# (avoids duplicate-class identity bugs and mypy
-# incompatible-return-type errors).
-from ralph.mcp.explore._pipeline_run import _run_reindex
-from ralph.mcp.explore._pipeline_staged import (
-    _finalize,
-    _staged_full_reindex,
-)
-from ralph.mcp.explore._pipeline_state import (
-    DEFAULT_FULL_TIMEOUT_MS,
-    DEFAULT_TIMEOUT_MS,
-    EXTRACTOR_VERSION,
-    ReindexOptions,
-    ReindexResult,
-    _ReindexCancelledError,
-    _ReindexState,
-    _ReindexTimeoutError,
-)
-from ralph.mcp.explore._pipeline_writer import ReindexWriter
-
-# Re-export hash_workspace_file so test patches
-# ``ralph.mcp.explore.pipeline.hash_workspace_file = ...`` keep working.
-from ralph.mcp.explore._store_types import hash_workspace_file
-from ralph.mcp.explore.store import (
-    Clock,
-    ExploreStore,
-    SystemClock,
-)
 
 logger = logging.getLogger(__name__)
+
+# Phase 1 uses an explicit extractor version. Future phases will
+# bump this when AST/symbol extraction ships.
+EXTRACTOR_VERSION: Final[str] = "phase1-lexical-v1"
+
+# Default bounds for the reindex job. Each is fail-closed via the
+# caller (reindex(..., timeout_ms=...)) but we keep safe defaults.
+DEFAULT_TIMEOUT_MS: Final[int] = 5_000
+DEFAULT_FULL_TIMEOUT_MS: Final[int] = 60_000
+
+
+# --- Public dataclasses ---------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ReindexResult:
+    """Result of a reindex invocation."""
+
+    job_id: str
+    generation: int
+    status: str  # "ok" | "timed_out" | "failed" | "skipped_no_changes" | "cancelled"
+    changed_files: tuple[str, ...] = ()
+    failed_files: tuple[str, ...] = ()
+    parse_count: int = 0
+    dirty_paths_count: int = 0
+    elapsed_seconds: float = 0.0
+    error_summary: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReindexOptions:
+    """Options for a reindex call."""
+
+    mode: str = "changed"  # "changed" | "full"
+    timeout_ms: int = DEFAULT_TIMEOUT_MS
+    path_scope: tuple[str, ...] = ()
+    clock: Clock | None = None
+
+
+# --- Internal helpers ------------------------------------------------------
+
+
+class FileReadError(Exception):
+    """A file failed to read during reindex."""
+
+
+@dataclass
+class _ReindexState:
+    """Mutable per-job scratch state."""
+
+    job_id: str
+    started_at: float
+    deadline: float
+    deadline_ms: int = 0
+    parse_count: int = 0
+    dirty_paths_count: int = 0
+    changed_paths: list[str] = field(default_factory=list)
+    failed_paths: list[str] = field(default_factory=list)
+    error_summary: str | None = None
+    timed_out: bool = False
+
+
+def _elapsed(state: _ReindexState, now_fn: Callable[[], float]) -> float:
+    return now_fn() - state.started_at
+
+
+def _ensure_deadline_not_exceeded(state: _ReindexState, now_fn: Callable[[], float]) -> None:
+    if _elapsed(state, now_fn) * 1000 > state.deadline_ms:
+        # Deadline is in ms; we keep the attribute name short to avoid
+        # downstream renames.
+        state.timed_out = True
+        raise _ReindexTimeoutError("deadline exceeded")
+
+
+# Avoid circular import: declare the timeout class only when used.
+class _ReindexTimeoutError(Exception):
+    pass
+
+
+class _ReindexCancelledError(Exception):
+    """Raised by the reindex writer when the cancel callable returns True.
+
+    AC-05: bounded cancellation. The reindex writer polls the cancel
+    callable at phase boundaries. On cancel the prior committed
+    generation is preserved and the result is finalized as
+    ``status='cancelled'`` with a bounded incomplete summary. The
+    writer never raises any mutable partial state into the store
+    after cancellation.
+    """
+
+    pass
 
 
 # --- Main entry point ------------------------------------------------------
@@ -147,15 +237,3 @@ def reindex(
             error_summary=f"{type(exc).__name__}: {exc}",
         )
     return _finalize(store, state, status=result, now_fn=now_fn)
-
-
-__all__ = [
-    "DEFAULT_FULL_TIMEOUT_MS",
-    "DEFAULT_TIMEOUT_MS",
-    "EXTRACTOR_VERSION",
-    "ReindexOptions",
-    "ReindexResult",
-    "ReindexWriter",
-    "hash_workspace_file",
-    "reindex",
-]

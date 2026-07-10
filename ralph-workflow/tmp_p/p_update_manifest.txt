@@ -1,0 +1,194 @@
+def _update_manifest(
+    store: ExploreStore,
+    path: str,
+    *,
+    content_hash: str,
+    size_bytes: int,
+    mtime_ns: int,
+    last_seen_generation: int,
+) -> None:
+    """Insert/update a single manifest row inside the same generation."""
+    store._conn.execute(
+        """
+        INSERT INTO manifest (
+            path, content_hash, size_bytes, mtime_ns,
+            inode_or_file_id, last_seen_generation
+        ) VALUES (?, ?, ?, ?, NULL, ?)
+        ON CONFLICT(path) DO UPDATE SET
+            content_hash=excluded.content_hash,
+            size_bytes=excluded.size_bytes,
+            mtime_ns=excluded.mtime_ns,
+            last_seen_generation=excluded.last_seen_generation
+        """,
+        (
+            path,
+            content_hash,
+            size_bytes,
+            mtime_ns,
+            last_seen_generation,
+        ),
+    )
+
+
+def _re_extract_path(
+    store: ExploreStore,
+    *,
+    workspace_root: Path,
+    relative_path: str,
+    content_hash: str,
+    size_bytes: int,
+    mtime_ns: int,
+    generation: int,
+) -> None:
+    """Re-extract chunks and evidence for ``relative_path``.
+
+    PA-001 / AC-02: this function follows a strict preflight-then-
+    replace ordering. Every per-path destructive store write
+    (tombstone, chunk delete, structure delete, file upsert,
+    chunk/FTS insert, evidence insert, structure upsert) happens
+    only AFTER a successful read + decode + lexical chunk build +
+    structure extraction preflight. If any preflight step raises
+    (e.g. ``PythonSyntaxError`` for malformed Python), no
+    destructive write fires, prior lexical/structure rows remain
+    queryable, and the failure is reported to ``_run_reindex`` so
+    the path lands in ``failed_files`` and stays dirty for a
+    later retry.
+
+    Existing rows for this path are tombstoned (bounded) and then
+    replaced. The caller (``_run_reindex``) handles the file-row
+    update so the manifest reflects the new generation.
+    """
+    full = (Path(workspace_root) / relative_path).resolve()
+    root = Path(workspace_root).resolve()
+    try:
+        is_relative = full.is_relative_to(root)
+    except AttributeError:  # pragma: no cover — Python <3.9 fallback
+        is_relative = str(full).startswith(str(root) + os.sep) or full == root
+    if not is_relative:
+        raise FileReadError(f"path escapes workspace: {relative_path!r}")
+
+    # --- Preflight phase: read + decode + build lexical + structure.
+    # These calls happen BEFORE any destructive write so a failure
+    # (malformed Python, OS read error, OOM) preserves every
+    # prior row in the live store. The caller treats a raised
+    # exception as a per-path failure recorded in failed_files;
+    # the path stays dirty and is retried on the next pass.
+    text = full.read_text(encoding="utf-8", errors="replace")
+    prepared_chunks: list[tuple[int, int, str]] = list(
+        chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES)
+    )
+    # ``extract_structure`` raises ``PythonSyntaxError`` for
+    # malformed Python; the typed exception propagates so the
+    # caller fails-closed without losing prior rows.
+    prepared_extraction = extract_structure(
+        path=relative_path,
+        content=text,
+        content_hash=content_hash,
+        generation=generation,
+    )
+
+    # --- Replacement phase: tombstone + delete + upsert only after
+    # the preflight succeeds.
+    previous = store.get_file(relative_path)
+    if previous is not None:
+        # Write a bounded tombstone for the prior evidence rows
+        # before deleting them. We do not enumerate every prior row
+        # — we record one tombstone per path/generation transition.
+        store.record_tombstone(
+            evidence_id=derive_evidence_id(
+                path=relative_path,
+                content_hash=previous.content_hash,
+                start_line=0,
+                end_line=0,
+                kind="path_tombstone",
+                extractor_version=EXTRACTOR_VERSION,
+            ),
+            path=relative_path,
+            start_line=0,
+            end_line=0,
+            content_hash=previous.content_hash,
+            generation=previous.indexed_generation,
+            stale_reason="content_changed",
+            stale_at=time.time(),
+            replacement_evidence_id=None,
+        )
+    store.delete_chunks_for_path(relative_path)
+    # Phase 2 (AC-06): also drop prior structure rows for this path
+    # so the new generation replaces them atomically with no stale
+    # graph rows left behind.
+    store.replace_structure_rows(
+        path=relative_path,
+        spans=(),
+        symbols=(),
+        edges=(),
+    )
+    store.upsert_file(
+        FileRow(
+            path=relative_path,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            mtime_ns=mtime_ns,
+            language=_detect_language(relative_path),
+            indexed_generation=generation,
+            indexed_at=time.time(),
+            is_deleted=False,
+        )
+    )
+    for start_line, end_line, body in prepared_chunks:
+        text_hash = sha256_text(body)
+        chunk_id = derive_chunk_id(
+            path=relative_path,
+            start_line=start_line,
+            end_line=end_line,
+            text_hash=text_hash,
+            extractor_version=EXTRACTOR_VERSION,
+        )
+        store.upsert_chunk(
+            ChunkRow(
+                chunk_id=chunk_id,
+                path=relative_path,
+                start_line=start_line,
+                end_line=end_line,
+                text_hash=text_hash,
+                role="body",
+                generation=generation,
+            ),
+            text=body,
+        )
+        evidence_id = derive_evidence_id(
+            path=relative_path,
+            content_hash=content_hash,
+            start_line=start_line,
+            end_line=end_line,
+            kind="chunk",
+            extractor_version=EXTRACTOR_VERSION,
+        )
+        store.insert_evidence(
+            EvidenceRow(
+                evidence_id=evidence_id,
+                path=relative_path,
+                start_line=start_line,
+                end_line=end_line,
+                content_hash=content_hash,
+                generation=generation,
+                source_tool="reindex",
+                evidence_kind="chunk",
+                created_at=time.time(),
+                is_stale=False,
+            )
+        )
+    # Phase 2 (AC-06): persist deterministic structure rows for
+    # Python and Markdown files. Unsupported languages keep their
+    # lexical rows only — no graph edges are emitted for them.
+    if (
+        prepared_extraction.spans
+        or prepared_extraction.symbols
+        or prepared_extraction.edges
+    ):
+        store.replace_structure_rows(
+            path=relative_path,
+            spans=prepared_extraction.spans,
+            symbols=prepared_extraction.symbols,
+            edges=prepared_extraction.edges,
+        )
+

@@ -80,6 +80,7 @@ def _function_bodies(tree: ast.Module, name: str) -> list[ast.FunctionDef | ast.
     ]
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_sys_exit_in_idle_watchdog_or_process_reader() -> None:
     """Invariant 1: no sys.exit() OR raise SystemExit anywhere in
     idle_watchdog/ or _process_reader.py.
@@ -273,6 +274,7 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
             raise AssertionError(msg)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_watchdog_fire_reason_created_only_in_canonical_owners() -> None:
     """Invariant 3: WatchdogFireReason is created in the canonical two owner modules.
 

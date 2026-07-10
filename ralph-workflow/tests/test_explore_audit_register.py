@@ -147,25 +147,38 @@ def test_audit_entry_rejects_empty_defer_risk() -> None:
 
 
 def test_audit_register_tracks_defer_outcomes() -> None:
-    """The DEFER set may be empty after Phase 4 promotes every audited
-    tool out of DEFER.
+    """The DEFER set must be empty after Phase 4 promotion, and any
+    regression that re-introduces a DEFER entry must carry a
+    non-empty rationale, non-empty risk, and a measured baseline
+    ``AuditCounters`` record.
 
-    Phase 0 originally required ``>=10`` defer entries for the
-    planning/web/media/process families Phase 4 owns. Phase 4
-    promotes every one of those entries to either ADD_ARGUMENT or
-    KEEP, so the DEFER set is now allowed to be empty. The test
-    pins the new contract: any future audit that reintroduces a
-    DEFER entry must justify it with a non-empty rationale (the
-    per-entry invariants in ``test_every_defer_has_non_empty_*``
-    still apply).
+    AC-06: an empty DEFER set IS the contract after Phase 4 promotion,
+    so this test fails closed if a future mutation re-adds a DEFER
+    outcome without the per-entry justification. The per-entry
+    invariants (rationale, risk, measured counters) are also
+    re-checked here so a regression that removes one of them is
+    caught even when the DEFER set is non-empty.
     """
     defer_outcomes = [e for e in AUDIT_REGISTER if e.outcome == AuditOutcome.DEFER]
-    assert len(defer_outcomes) >= 0, (
-        "Phase 4 promotes every audited tool out of DEFER; this test "
-        "now pins the contract that the register may have zero DEFER "
-        "entries. A negative defer count is impossible (the filter "
-        "produces a list), so the assertion only documents intent."
+    # AC-06: the post-Phase-4 register resolves every Ralph tool
+    # to KEEP / ADD_ARGUMENT / REWORK_INTERNALS, so the DEFER set
+    # is expected to be empty. A non-empty set is a regression
+    # unless each DEFER entry carries full measured justification.
+    assert defer_outcomes == [], (
+        "Phase 4 promotes every audited tool out of DEFER; a non-empty "
+        f"DEFER set ({[e.tool for e in defer_outcomes]}) is a regression "
+        "unless every DEFER entry has a full rationale, risk, and "
+        "measured baseline counters record."
     )
+    # AC-06 follow-on: confirm every Ralph-tool outcome is exactly one
+    # of the closed-vocabulary members (so an empty DEFER set is
+    # backed by an observable all-tools-resolved contract).
+    closed = {AuditOutcome.KEEP, AuditOutcome.ADD_ARGUMENT, AuditOutcome.REWORK_INTERNALS}
+    for entry in AUDIT_REGISTER:
+        assert entry.outcome in closed, (
+            f"tool {entry.tool} has outcome {entry.outcome!r}; "
+            f"post-Phase-4 closed set is {sorted(closed)}"
+        )
 
 
 def test_implemented_tools_outcome_is_add_argument() -> None:
