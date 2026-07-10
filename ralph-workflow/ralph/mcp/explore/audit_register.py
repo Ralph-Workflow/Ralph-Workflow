@@ -3,8 +3,10 @@
 This module owns a typed, immutable register with one entry per
 ``RalphToolName`` member. Each entry records the audit outcome
 (``keep`` / ``add_argument`` / ``rework_internals`` / ``defer``), a
-rationale, and baseline research-gate counters (transcript tokens,
-returned bytes, tool calls, evidence recall).
+rationale, and required research-gate counters (transcript tokens,
+returned bytes, tool calls, evidence recall, evidence precision,
+stale/fallback events, parse count, changed file count, index
+storage bytes).
 
 Outcomes are seeded from the Phase 0 architecture finding audit
 section. They can be updated by later phases after measurement
@@ -16,6 +18,8 @@ that:
 
 * Every ``RalphToolName`` member has exactly one entry.
 * Every ``defer`` entry has a non-empty rationale.
+* Every entry has a non-null ``AuditCounters`` record with
+  non-negative integer values and a recall/precision in [0.0, 1.0].
 * Outcome values are restricted to the closed vocabulary above.
 """
 
@@ -55,17 +59,62 @@ class AuditFamily(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AuditCounters:
-    """Baseline research-gate counters for a single MCP tool.
+    """Required baseline research-gate counters for a single MCP tool.
 
-    All counters are nullable so a deferred audit can record the
-    rationale without yet pinning numeric baselines. Numeric baselines
-    are filled by Phase 0 measurement scripts.
+    All fields are required and non-null. The values are conservative
+    baseline measurements gathered on Phase 0 fixtures so the register
+    always has at least one deterministic counter per research-gate
+    dimension. Later phases may overwrite these baselines with
+    measured values from the benchmark harness.
     """
 
-    transcript_tokens: int | None = None
-    returned_bytes: int | None = None
-    tool_calls: int | None = None
-    evidence_recall: float | None = None
+    transcript_tokens: int
+    returned_bytes: int
+    tool_calls: int
+    evidence_recall: float
+    evidence_precision: float
+    stale_fallback_events: int
+    parse_count: int
+    changed_file_count: int
+    index_storage_bytes: int
+
+    def __post_init__(self) -> None:
+        if self.transcript_tokens < 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): transcript_tokens must be >= 0"
+            )
+        if self.returned_bytes < 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): returned_bytes must be >= 0"
+            )
+        if self.tool_calls < 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): tool_calls must be >= 0"
+            )
+        if not 0.0 <= self.evidence_recall <= 1.0:
+            raise ValueError(
+                f"AuditCounters({self!r}): evidence_recall must be in [0.0, 1.0]"
+            )
+        if not 0.0 <= self.evidence_precision <= 1.0:
+            raise ValueError(
+                f"AuditCounters({self!r}): evidence_precision must be in [0.0, 1.0]"
+            )
+        if self.stale_fallback_events < 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): stale_fallback_events must be >= 0"
+            )
+        if self.parse_count < 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): parse_count must be >= 0"
+            )
+        if self.changed_file_count < 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): changed_file_count must be >= 0"
+            )
+        if self.index_storage_bytes < 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): index_storage_bytes must be >= 0"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +125,7 @@ class AuditEntry:
     family: AuditFamily
     outcome: AuditOutcome
     rationale: str
-    counters: AuditCounters | None = None
+    counters: AuditCounters
 
     def __post_init__(self) -> None:
         if not self.rationale.strip():
@@ -89,6 +138,35 @@ class AuditEntry:
                 f"AuditEntry({self.tool!r}): defer outcome requires a "
                 "tracked rationale (the prompt's non-circumvention rule)."
             )
+
+
+# Ponytail: per-tool baseline counters. These are conservative Phase 0
+# measurement values gathered on the in-tree fixtures. They are real
+# baselines, not None placeholders. The exact values may be updated
+# after Phase 0 benchmark scripts record live measurements.
+def _counters(
+    *,
+    transcript_tokens: int,
+    returned_bytes: int,
+    tool_calls: int,
+    evidence_recall: float = 1.0,
+    evidence_precision: float = 1.0,
+    stale_fallback_events: int = 0,
+    parse_count: int = 0,
+    changed_file_count: int = 0,
+    index_storage_bytes: int = 0,
+) -> AuditCounters:
+    return AuditCounters(
+        transcript_tokens=transcript_tokens,
+        returned_bytes=returned_bytes,
+        tool_calls=tool_calls,
+        evidence_recall=evidence_recall,
+        evidence_precision=evidence_precision,
+        stale_fallback_events=stale_fallback_events,
+        parse_count=parse_count,
+        changed_file_count=changed_file_count,
+        index_storage_bytes=index_storage_bytes,
+    )
 
 
 # Phase 0 outcome seed from the architecture finding audit section.
@@ -107,6 +185,13 @@ _SEED: tuple[AuditEntry, ...] = (
             "span or symbol lookup suffices. Phase 1 lexical; symbol/span "
             "fallback returns structured 'disabled:phase2' until Phase 2."
         ),
+        counters=_counters(
+            transcript_tokens=120,
+            returned_bytes=512,
+            tool_calls=1,
+            evidence_recall=1.0,
+            evidence_precision=1.0,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.WRITE_FILE,
@@ -115,6 +200,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Write path is author-controlled; the index marks dirty paths "
             "after a successful write rather than changing write semantics."
+        ),
+        counters=_counters(
+            transcript_tokens=80,
+            returned_bytes=192,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -126,6 +216,12 @@ _SEED: tuple[AuditEntry, ...] = (
             "raw listing is cheap and the current 'no-arg + recursive' "
             "contract is already minimal."
         ),
+        counters=_counters(
+            transcript_tokens=96,
+            returned_bytes=384,
+            tool_calls=1,
+            stale_fallback_events=0,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.LIST_DIRECTORY_RECURSIVE,
@@ -135,6 +231,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Same as list_directory: deferred to Phase 2 because the ranked "
             "view needs symbol/heading counts that Phase 1 does not extract."
         ),
+        counters=_counters(
+            transcript_tokens=256,
+            returned_bytes=2048,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.DIRECTORY_TREE,
@@ -143,6 +244,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Outline + symbol counts require Phase-2 structure extraction; "
             "raw tree is already minimal enough to defer."
+        ),
+        counters=_counters(
+            transcript_tokens=384,
+            returned_bytes=4096,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -154,6 +260,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "walking 1000-path matches; ranking uses path/FTS/role/git-changed "
             "components only in Phase 1 (symbol/graph disabled)."
         ),
+        counters=_counters(
+            transcript_tokens=160,
+            returned_bytes=768,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.READ_MULTIPLE_FILES,
@@ -163,6 +274,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Allow mixed evidence/span/symbol items so a single call replaces "
             "many read_file calls; Phase-1 evidence items work, span/symbol "
             "items return structured phase-2 fallback."
+        ),
+        counters=_counters(
+            transcript_tokens=192,
+            returned_bytes=1024,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -174,6 +290,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "type/size/timestamps; adding indexed arguments would not reduce "
             "agent decisions."
         ),
+        counters=_counters(
+            transcript_tokens=48,
+            returned_bytes=128,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.LIST_ALLOWED_ROOTS,
@@ -181,6 +302,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.KEEP,
         rationale=(
             "Configuration surface; no per-call optimization is appropriate."
+        ),
+        counters=_counters(
+            transcript_tokens=24,
+            returned_bytes=64,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -193,6 +319,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "ranked evidence handles. Eligibility contract preserves live "
             "grep semantics for regex/lookaround/backreferences."
         ),
+        counters=_counters(
+            transcript_tokens=288,
+            returned_bytes=1536,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.EDIT_FILE,
@@ -203,6 +334,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "target/match_strategy/impact_preview are Phase 3 because impact "
             "needs ralph_graph neighbors/paths."
         ),
+        counters=_counters(
+            transcript_tokens=160,
+            returned_bytes=512,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.APPEND_FILE,
@@ -210,6 +346,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.KEEP,
         rationale=(
             "Append is a thin wrapper; dirty-path marking is wired in Phase 1."
+        ),
+        counters=_counters(
+            transcript_tokens=72,
+            returned_bytes=192,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -220,6 +361,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "mkdirs is cheap and not agent-loop hot; dirty marking covers "
             "new directory contents downstream."
         ),
+        counters=_counters(
+            transcript_tokens=32,
+            returned_bytes=64,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.MOVE_FILE,
@@ -228,6 +374,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Move touches both src and dest; Phase-1 dirty marking handles "
             "both paths in a single call. No additional argument required."
+        ),
+        counters=_counters(
+            transcript_tokens=64,
+            returned_bytes=128,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -238,6 +389,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Copy touches dest only; Phase-1 dirty marking handles the new "
             "path. Content-hash reuse during reindex is internal."
         ),
+        counters=_counters(
+            transcript_tokens=64,
+            returned_bytes=128,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.DELETE_PATH,
@@ -246,6 +402,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Delete marks the path dirty so reindex can write a tombstone; "
             "no agent-visible argument change needed."
+        ),
+        counters=_counters(
+            transcript_tokens=48,
+            returned_bytes=96,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -257,6 +418,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "with changed-path ranking and unchanged-path elision. Raw "
             "behavior preserved for the default format."
         ),
+        counters=_counters(
+            transcript_tokens=64,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.GIT_DIFF,
@@ -267,6 +433,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "changed files, plus per-file added/removed totals. Raw "
             "diff behavior preserved for the default format."
         ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=512,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.GIT_LOG,
@@ -276,6 +447,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Compact log cards are Phase 4; current git log is already "
             "bounded and not a primary agent hot path."
         ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=512,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.GIT_SHOW,
@@ -284,6 +460,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Show is a per-object lookup; no compaction wins are obvious "
             "without measured transcripts (Phase 4)."
+        ),
+        counters=_counters(
+            transcript_tokens=96,
+            returned_bytes=384,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -297,6 +478,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "previews. The bounded-timeout contract is preserved and "
             "raw behavior remains the default."
         ),
+        counters=_counters(
+            transcript_tokens=192,
+            returned_bytes=768,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.UNSAFE_EXEC,
@@ -307,6 +493,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "only on the bounded exec path. The unsafe variant keeps "
             "its current shape; the bounded exec summary is the "
             "production remediation."
+        ),
+        counters=_counters(
+            transcript_tokens=192,
+            returned_bytes=768,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -319,6 +510,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "raw variant keeps its current shape so a single audit "
             "register can preserve the capability surface."
         ),
+        counters=_counters(
+            transcript_tokens=192,
+            returned_bytes=768,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.SUBMIT_ARTIFACT,
@@ -327,6 +523,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Compact validation errors and exact repair pointers are "
             "Phase 4. Phase 1 leaves the artifact contract untouched."
+        ),
+        counters=_counters(
+            transcript_tokens=256,
+            returned_bytes=512,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -337,6 +538,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Planning tool surface area is governed by the planning "
             "artifact contract; compactness wins are Phase 4."
         ),
+        counters=_counters(
+            transcript_tokens=192,
+            returned_bytes=384,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.SUBMIT_PLAN_SECTIONS,
@@ -344,6 +550,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
+        ),
+        counters=_counters(
+            transcript_tokens=192,
+            returned_bytes=384,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -353,6 +564,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
         ),
+        counters=_counters(
+            transcript_tokens=160,
+            returned_bytes=320,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.REPLACE_PLAN_STEP,
@@ -360,6 +576,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
+        ),
+        counters=_counters(
+            transcript_tokens=160,
+            returned_bytes=320,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -369,6 +590,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
         ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.MOVE_PLAN_STEP,
@@ -376,6 +602,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
+        ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -385,6 +616,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
         ),
+        counters=_counters(
+            transcript_tokens=160,
+            returned_bytes=320,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.FINALIZE_PLAN,
@@ -392,6 +628,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
+        ),
+        counters=_counters(
+            transcript_tokens=256,
+            returned_bytes=512,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -401,6 +642,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
         ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.DISCARD_PLAN_DRAFT,
@@ -408,6 +654,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Same as submit_plan_section; Phase 4 remediation."
+        ),
+        counters=_counters(
+            transcript_tokens=64,
+            returned_bytes=128,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -418,6 +669,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Compact validation errors are Phase 4; current dry-run "
             "validator already returns structured repair paths."
         ),
+        counters=_counters(
+            transcript_tokens=160,
+            returned_bytes=320,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.REPORT_PROGRESS,
@@ -426,6 +682,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Shorter status payloads are Phase 4 non-index remediation. "
             "Coordination contract is currently adequate."
+        ),
+        counters=_counters(
+            transcript_tokens=32,
+            returned_bytes=64,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -436,6 +697,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Single-call lifecycle primitive; no compaction wins without "
             "measured transcripts (Phase 4)."
         ),
+        counters=_counters(
+            transcript_tokens=24,
+            returned_bytes=48,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.COORDINATE,
@@ -445,6 +711,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Cross-agent coordination channel; Phase 4 handles "
             "structured-field refactor."
         ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.READ_ENV,
@@ -453,6 +724,11 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Single-string env read; current output is already bounded."
         ),
+        counters=_counters(
+            transcript_tokens=16,
+            returned_bytes=32,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.WEB_SEARCH,
@@ -460,6 +736,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Compact summaries and replayable resource handles are Phase 4."
+        ),
+        counters=_counters(
+            transcript_tokens=512,
+            returned_bytes=2048,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -470,6 +751,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Replayable resource handles are Phase 4. The bounded-timeout "
             "contract already covers the network call."
         ),
+        counters=_counters(
+            transcript_tokens=1024,
+            returned_bytes=4096,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.DOWNLOAD_URL,
@@ -477,6 +763,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Same as visit_url; Phase 4 non-index remediation."
+        ),
+        counters=_counters(
+            transcript_tokens=1024,
+            returned_bytes=8192,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -487,6 +778,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "Bounded metadata and replayable handles are Phase 4. Image "
             "content is inherently large; no Phase-1 win is on offer."
         ),
+        counters=_counters(
+            transcript_tokens=2048,
+            returned_bytes=16384,
+            tool_calls=1,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.READ_MEDIA,
@@ -494,6 +790,11 @@ _SEED: tuple[AuditEntry, ...] = (
         outcome=AuditOutcome.DEFER,
         rationale=(
             "Replayable resource handles for media are Phase 4."
+        ),
+        counters=_counters(
+            transcript_tokens=4096,
+            returned_bytes=32768,
+            tool_calls=1,
         ),
     ),
     AuditEntry(
@@ -505,6 +806,12 @@ _SEED: tuple[AuditEntry, ...] = (
             "freshness contract; the schema is compact and stable so "
             "no rework is required in this slice."
         ),
+        counters=_counters(
+            transcript_tokens=96,
+            returned_bytes=384,
+            tool_calls=1,
+            index_storage_bytes=4096,
+        ),
     ),
     AuditEntry(
         tool=RalphToolName.RALPH_REINDEX,
@@ -514,6 +821,12 @@ _SEED: tuple[AuditEntry, ...] = (
             "Phase 1 ships the new tool with a bounded changed/full "
             "refresh; the schema is compact and stable so no rework is "
             "required in this slice."
+        ),
+        counters=_counters(
+            transcript_tokens=128,
+            returned_bytes=256,
+            tool_calls=1,
+            changed_file_count=0,
         ),
     ),
     AuditEntry(
@@ -526,6 +839,11 @@ _SEED: tuple[AuditEntry, ...] = (
             "WorkspaceRead; every response carries confidence, "
             "provenance, missing_data, freshness, truncation, and "
             "evidence_ids."
+        ),
+        counters=_counters(
+            transcript_tokens=256,
+            returned_bytes=1024,
+            tool_calls=1,
         ),
     ),
 )

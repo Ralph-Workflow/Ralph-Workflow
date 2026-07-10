@@ -331,3 +331,69 @@ def test_indexed_grep_invalid_rank_by_rejected(tmp_path: Path) -> None:
                 "rank_by": "bogus",
             },
         )
+
+
+def test_indexed_grep_path_filter_excludes_other_dirs(tmp_path: Path) -> None:
+    """AC-02: indexed grep with path='src' must not return tests/ matches."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    src = workspace / "src"
+    tests = workspace / "tests"
+    src.mkdir()
+    tests.mkdir()
+    (src / "a.py").write_text("def hello():\n    return 'a'\n")
+    (tests / "b.py").write_text("def hello():\n    return 'b'\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        session = _FakeSession(build_sqlite_index_handle(store))
+        result = handle_grep_files(
+            session,
+            _Workspace(workspace),
+            {
+                "pattern": "hello",
+                "path": "src",
+                "regex": False,
+                "use_index": "always",
+                "return_evidence_ids": True,
+            },
+        )
+        payload = _decode(result)
+        assert payload["index_used"] is True
+        paths = {m.get("path", "") for m in payload["matches"]}
+        assert "src/a.py" in paths, paths
+        assert "tests/b.py" not in paths, (
+            f"indexed grep leaked out-of-scope tests/ match: {paths!r}"
+        )
+    finally:
+        store.close()
+
+
+def test_indexed_grep_include_exclude_globs_filter_matches(tmp_path: Path) -> None:
+    """AC-02: include/exclude globs push into the indexed query."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "keep.py").write_text("def hello():\n    return 1\n")
+    (workspace / "skip.py").write_text("def hello():\n    return 2\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        session = _FakeSession(build_sqlite_index_handle(store))
+        result = handle_grep_files(
+            session,
+            _Workspace(workspace),
+            {
+                "pattern": "hello",
+                "path": ".",
+                "regex": False,
+                "use_index": "always",
+                "include": ["keep.py"],
+                "return_evidence_ids": True,
+            },
+        )
+        payload = _decode(result)
+        paths = {m.get("path", "") for m in payload["matches"]}
+        assert "keep.py" in paths, paths
+        assert "skip.py" not in paths, paths
+    finally:
+        store.close()

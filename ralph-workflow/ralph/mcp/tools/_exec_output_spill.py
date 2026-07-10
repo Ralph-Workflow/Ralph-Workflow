@@ -107,6 +107,7 @@ def format_or_spill(
     stderr_value = stderr_text if stderr_text is not None else ""
     stdout_encoded_len = len(stdout_value.encode("utf-8", errors="replace"))
     stderr_encoded_len = len(stderr_value.encode("utf-8", errors="replace"))
+    stdout_truncated = stdout_encoded_len > INLINE_OUTPUT_LIMIT_BYTES
     stderr_truncated = stderr_encoded_len > INLINE_OUTPUT_LIMIT_BYTES
     if truncated or encoded_len > INLINE_OUTPUT_LIMIT_BYTES:
         # Spill the combined text so the legacy fallback (summary=False)
@@ -118,15 +119,27 @@ def format_or_spill(
             return ToolResult(
                 content=[ToolContent.text_content(preview)], is_error=is_error
             )
-        stdout_resource_id = f"ralph://exec/{spill_path.name}"
-        stdout_spill_path = str(spill_path)
-        stderr_resource_id: str | None = None
-        stderr_spill_path: str | None = None
-        if has_split_streams and stderr_truncated and stderr_value:
-            stderr_spill = spill_output(stderr_value, spill_dir)
-            stderr_resource_id = f"ralph://exec/{stderr_spill.name}"
-            stderr_spill_path = str(stderr_spill)
-        elif has_split_streams and stderr_value and not stderr_truncated:
+        # AC-11: when the caller provided split streams, each stream
+        # gets its own resource id and spill path so the agent can
+        # re-read stdout and stderr independently. When the caller
+        # did not split, the combined spill is the single source of
+        # truth and we report it under stdout_resource_id.
+        if has_split_streams:
+            stdout_resource_id: str | None = None
+            stdout_spill_path_v: str | None = None
+            if stdout_value and (stdout_truncated or stdout_value):
+                stdout_spill = spill_output(stdout_value, spill_dir)
+                stdout_resource_id = f"ralph://exec/{stdout_spill.name}"
+                stdout_spill_path_v = str(stdout_spill)
+            stderr_resource_id: str | None = None
+            stderr_spill_path: str | None = None
+            if stderr_value and stderr_truncated:
+                stderr_spill = spill_output(stderr_value, spill_dir)
+                stderr_resource_id = f"ralph://exec/{stderr_spill.name}"
+                stderr_spill_path = str(stderr_spill)
+        else:
+            stdout_resource_id = f"ralph://exec/{spill_path.name}"
+            stdout_spill_path_v = str(spill_path)
             stderr_resource_id = None
             stderr_spill_path = None
         payload = {
@@ -137,7 +150,7 @@ def format_or_spill(
             "stderr_bytes": stderr_encoded_len,
             "truncated": truncated,
             "stdout_resource_id": stdout_resource_id,
-            "stdout_spill_path": stdout_spill_path,
+            "stdout_spill_path": stdout_spill_path_v,
             "stderr_resource_id": stderr_resource_id,
             "stderr_spill_path": stderr_spill_path,
             "preview": preview,

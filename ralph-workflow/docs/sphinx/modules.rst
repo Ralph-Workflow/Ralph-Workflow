@@ -2299,6 +2299,13 @@ ralph.mcp.explore.graph
    :members:
    :show-inheritance:
 
+ralph.mcp.explore.path_filter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.explore.path_filter
+   :members:
+   :show-inheritance:
+
 ralph.mcp.explore.structure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -37,7 +37,7 @@ import os
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
@@ -333,8 +333,22 @@ def _run_reindex(
     store.set_setting("schema_version", _SCHEMA_VERSION)
     store.set_setting("extractor_version", EXTRACTOR_VERSION)
     store.set_setting("structure_extractor_version", _STRUCTURE_EXTRACTOR_VERSION)
-    # Consume dirty paths so the next refresh starts clean.
-    store.consume_dirty_paths()
+    # AC-05 dirty-path safety: only consume dirty paths that were
+    # actually processed (visited during this reindex pass) and that
+    # are not in the failed set. Out-of-scope manual refreshes
+    # consume their own paths so the queue does not grow over
+    # repeated partial reindexes. Failed paths stay in the queue so
+    # the next reindex retries them.
+    out_of_scope: set[str] = set()
+    if path_scope:
+        dirty = store.peek_dirty_paths()
+        for p in dirty:
+            if not _path_in_scope(p, list(path_scope)):
+                out_of_scope.add(p)
+    failed_set = set(state.failed_paths)
+    survivors = (seen_paths | out_of_scope) - failed_set
+    for p in sorted(survivors):
+        store._remove_dirty_path(p)
     if state.parse_count == 0 and not state.failed_paths:
         return "skipped_no_changes"
     return "ok"
@@ -344,6 +358,22 @@ def _ensure_deadline(state: _ReindexState, now_fn: Callable[[], float]) -> None:
     if (now_fn() - state.started_at) * 1000 > state.deadline_ms:
         state.timed_out = True
         raise _ReindexTimeoutError("deadline exceeded")
+
+
+def _path_in_scope(path: str, path_scope: Sequence[str]) -> bool:
+    """Return True when ``path`` falls within one of the ``path_scope`` roots.
+
+    An empty ``path_scope`` is treated as "everything is in scope".
+    """
+    if not path_scope:
+        return True
+    for raw_scope in path_scope:
+        normalized_scope = raw_scope.rstrip("/")
+        if not normalized_scope:
+            return True
+        if path == normalized_scope or path.startswith(normalized_scope + "/"):
+            return True
+    return False
 
 
 def _current_generation(store: ExploreStore) -> int:

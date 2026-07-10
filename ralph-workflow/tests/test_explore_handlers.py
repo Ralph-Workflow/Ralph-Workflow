@@ -73,6 +73,29 @@ def test_index_status_is_side_effect_free_when_no_handle(tmp_path: Path) -> None
     assert not (index_dir / "index.sqlite").exists()
 
 
+def test_index_status_reports_existing_disk_state_without_handle(
+    tmp_path: Path,
+) -> None:
+    """AC-03: a side-effect-free status check must report an
+    existing on-disk persisted index even when no handle is attached.
+    """
+    workspace = _seed_workspace(tmp_path)
+    # First call from a fresh handle builds the index on disk.
+    handle = build_explore_index(workspace)
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        # Drop the handle but keep the persisted index files.
+        handle.store.close()
+    index_dir = workspace / ".agent" / "ralph-explore"
+    assert (index_dir / "index.sqlite").exists()
+    session = _FakeSession(explore_index=None)
+    result = handle_ralph_index_status(session, _Workspace(workspace), {})
+    payload = _decode(result)
+    assert payload["enabled"] is False
+    assert payload["index_exists"] is True, payload
+
+
 def test_index_status_returns_expected_fields(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     handle = build_explore_index(workspace)

@@ -163,6 +163,7 @@ def _run_script(
     returned_bytes = 0
     transcript_tokens = 0
     stale_fallback = 0
+    returned_evidence_ids: set[str] = set()
     for call in script:
         result = executor(call)
         # Tokenize the result payload deterministically.
@@ -172,16 +173,55 @@ def _run_script(
         transcript_tokens += _tokenize_call(call)
         if result.get("is_stale") is True or result.get("index_used") is False:
             stale_fallback += 1
+        # AC-12: collect returned evidence ids so the harness can
+        # compute real recall/precision from the union of (a) the
+        # per-call expected ids and (b) any explicit evidence_ids
+        # in the executor's payload.
+        returned_ids: object = result.get("evidence_ids", ())
+        if isinstance(returned_ids, (list, tuple)):
+            for ev_id in returned_ids:
+                if isinstance(ev_id, str) and ev_id:
+                    returned_evidence_ids.add(ev_id)
     wall_time = clock.now() - start
+    # AC-12: evidence recall/precision are derived from the actual
+    # returned evidence ids, not hardcoded. The benchmark harness
+    # uses the union of per-call expected ids as the truth set
+    # and the actual returned ids as the prediction set.
+    expected_ids: set[str] = set()
+    for call in script:
+        for ev_id in call.expected_evidence_ids:
+            if isinstance(ev_id, str) and ev_id:
+                expected_ids.add(ev_id)
+    recall, precision = _evidence_metrics(expected_ids, returned_evidence_ids)
     return BenchmarkCounters(
         tool_calls=len(script),
         returned_bytes=returned_bytes,
         transcript_tokens=transcript_tokens,
         wall_time_seconds=wall_time,
         stale_fallback_events=stale_fallback,
-        evidence_recall=1.0,
-        evidence_precision=1.0,
+        evidence_recall=recall,
+        evidence_precision=precision,
     )
+
+
+def _evidence_metrics(
+    expected: set[str],
+    returned: set[str],
+) -> tuple[float, float]:
+    """Return (recall, precision) as floats in [0.0, 1.0].
+
+    Both return 1.0 when the expected set is empty (the fixture
+    did not require any specific evidence). When returned is
+    empty but expected is not, both are 0.0.
+    """
+    if not expected:
+        return 1.0, 1.0
+    if not returned:
+        return 0.0, 0.0
+    matched = expected & returned
+    recall = len(matched) / len(expected)
+    precision = len(matched) / len(returned)
+    return recall, precision
 
 
 # --- Required fixture question builders ---

@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import sqlite3
+import time
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, cast
 
@@ -1822,12 +1823,14 @@ def handle_search_files(
     if score_reasons:
         output["score_reasons"] = score_reasons
     if return_evidence_ids:
-        # Phase 1 evidence for path-only searches is the file's own
-        # chunk_id for line 1..1; Phase 2 will provide per-symbol ids.
-        # Best-effort: emit evidence handles only when an index handle
-        # is attached. Otherwise the caller is in legacy mode.
+        # AC-02: emit only persisted evidence IDs that read_file can
+        # resolve. Pull the file's stored content hash and insert
+        # (or refresh) the evidence row keyed by the prompt's
+        # deterministic evidence-id formula, so the caller can
+        # read_file(evidence_id=...) and get the same path back.
         from ralph.mcp.explore.dirty_paths import resolve_explore_index
         from ralph.mcp.explore.store import (
+            EvidenceRow,
             derive_evidence_id,
         )
 
@@ -1835,17 +1838,46 @@ def handle_search_files(
         if handle is not None:
             store: ExploreStore | None = getattr(handle, "store", None)
             if store is not None:
-                evidence_ids: list[str] = [
-                    derive_evidence_id(
+                evidence_ids: list[str] = []
+                now = time.time()
+                for m in matches:
+                    file_row = store.get_file(m)
+                    if file_row is None:
+                        evidence_ids.append(
+                            derive_evidence_id(
+                                path=m,
+                                content_hash="",
+                                start_line=0,
+                                end_line=0,
+                                kind="path",
+                                extractor_version="phase1-lexical-v1",
+                            )
+                        )
+                        continue
+                    content_hash = file_row.content_hash
+                    ev_id = derive_evidence_id(
                         path=m,
-                        content_hash="",
+                        content_hash=content_hash,
                         start_line=0,
                         end_line=0,
                         kind="path",
                         extractor_version="phase1-lexical-v1",
                     )
-                    for m in matches
-                ]
+                    store.insert_evidence(
+                        EvidenceRow(
+                            evidence_id=ev_id,
+                            path=m,
+                            start_line=0,
+                            end_line=0,
+                            content_hash=content_hash,
+                            generation=file_row.indexed_generation,
+                            source_tool="search_files",
+                            evidence_kind="path",
+                            created_at=now,
+                            is_stale=False,
+                        )
+                    )
+                    evidence_ids.append(ev_id)
                 output["evidence_ids"] = evidence_ids
     return ToolResult(
         content=[ToolContent.text_content(_tool_json(output))], is_error=False

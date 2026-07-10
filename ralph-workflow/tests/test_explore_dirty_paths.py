@@ -313,3 +313,51 @@ def test_mark_path_helper_normalizes() -> None:
     noop = NoOpExploreIndex()
     mark_path(noop, path="./a.py", source_tool="write_file")
     mark_paths(noop, paths=["./a.py", "b.py"], source_tool="write_file")
+
+
+def test_reindex_preserves_failed_dirty_paths(tmp_path: Path) -> None:
+    """AC-05: failed dirty paths must remain in the queue for the next pass."""
+    from ralph.mcp.explore.pipeline import (
+        DEFAULT_TIMEOUT_MS,
+        ReindexOptions,
+        reindex,
+    )
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "good.py").write_text("x = 1\n")
+    (workspace / "bad.py").write_text("y = 2\n")
+
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        # First pass seeds the index.
+        reindex(
+            store,
+            workspace,
+            options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        # Mark both paths dirty, then make bad.py unreadable.
+        store.mark_dirty("good.py", reason="write", source_tool="write_file")
+        store.mark_dirty("bad.py", reason="write", source_tool="write_file")
+        # Replace the bad.py path with a directory to force an
+        # extraction failure during reindex.
+        (workspace / "bad.py").rmdir() if (workspace / "bad.py").is_dir() else None
+        (workspace / "bad.py").unlink()
+        (workspace / "bad.py").mkdir()
+
+        reindex(
+            store,
+            workspace,
+            options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        # good.py is in scope and processed, so it's removed; bad.py
+        # failed and stays in the queue.
+        remaining = sorted(store.peek_dirty_paths())
+        assert "bad.py" in remaining, (
+            f"failed path should remain in queue, got {remaining!r}"
+        )
+        assert "good.py" not in remaining, (
+            f"processed path should be removed, got {remaining!r}"
+        )
+    finally:
+        store.close()

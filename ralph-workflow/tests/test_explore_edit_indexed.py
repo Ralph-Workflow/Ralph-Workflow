@@ -258,6 +258,66 @@ def test_edit_file_ambiguous_symbol_target_returns_structured_error(
         store.close()
 
 
+def test_edit_file_cross_file_evidence_target_is_rejected(tmp_path: Path) -> None:
+    """AC-10: an evidence target that points to another file must be rejected."""
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
+        # Build an evidence row that points at a sibling file.
+        from ralph.mcp.explore.store import (
+            EvidenceRow,
+            derive_evidence_id,
+        )
+
+        ev_id = derive_evidence_id(
+            path="other_module.py",
+            content_hash="any",
+            start_line=1,
+            end_line=2,
+            kind="path",
+            extractor_version="phase1-lexical-v1",
+        )
+        store.insert_evidence(
+            EvidenceRow(
+                evidence_id=ev_id,
+                path="other_module.py",
+                start_line=1,
+                end_line=2,
+                content_hash="any",
+                generation=1,
+                source_tool="test",
+                evidence_kind="path",
+                created_at=0.0,
+                is_stale=False,
+            )
+        )
+        session = _FakeSession(explore_index=build_sqlite_index_handle(store))
+        ws = MagicMock()
+        ws.read.return_value = "def hello():\n    return 1\n"
+        ws.write.return_value = None
+        ws.is_path_git_tracked.return_value = False
+        ws.absolute_path.return_value = str(workspace / "module.py")
+        result = handle_edit_file(
+            session,
+            ws,
+            {
+                "path": "module.py",
+                "edits": [{"oldText": "return 1", "newText": "return 2"}],
+                "target": {"evidence_id": ev_id},
+            },
+        )
+        assert result.is_error is True
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["status"] == "ambiguous_target"
+        assert payload["reason"] == "target_path_mismatch"
+        assert payload["target_path"] == "other_module.py"
+        assert payload["edit_path"] == "module.py"
+        ws.write.assert_not_called()
+    finally:
+        store.close()
+
+
 def test_edit_file_reindex_skip_still_marks_dirty(tmp_path: Path) -> None:
     """AC-04 + AC-10: ``reindex='skip'`` still marks the path dirty."""
     workspace = _seed_workspace(tmp_path)

@@ -6,6 +6,8 @@ Tests cover the contract documented in
 * Every ``RalphToolName`` member has exactly one entry.
 * Every entry's tool name is a member of ``RalphToolName``.
 * Every defer entry has a non-empty rationale.
+* Every entry has a non-null ``AuditCounters`` record with
+  non-negative integer values and a recall/precision in [0.0, 1.0].
 * Outcome values are restricted to the closed vocabulary.
 * The register is immutable from a caller's perspective.
 """
@@ -16,6 +18,7 @@ import pytest
 
 from ralph.mcp.explore.audit_register import (
     AUDIT_REGISTER,
+    AuditCounters,
     AuditEntry,
     AuditFamily,
     AuditOutcome,
@@ -79,6 +82,17 @@ def test_audit_entry_rejects_empty_rationale() -> None:
             family=AuditFamily.WORKSPACE_READ,
             outcome=AuditOutcome.KEEP,
             rationale="",
+            counters=AuditCounters(
+                transcript_tokens=0,
+                returned_bytes=0,
+                tool_calls=0,
+                evidence_recall=1.0,
+                evidence_precision=1.0,
+                stale_fallback_events=0,
+                parse_count=0,
+                changed_file_count=0,
+                index_storage_bytes=0,
+            ),
         )
 
 
@@ -108,4 +122,71 @@ def test_audit_register_includes_phase1_add_argument_entries() -> None:
         entry = entries_by_tool[tool]
         assert entry.outcome == AuditOutcome.ADD_ARGUMENT, (
             f"Phase 1 tool {tool} should be add_argument, got {entry.outcome}"
+        )
+
+
+def test_every_entry_has_required_counters() -> None:
+    """AC-01: every entry must have a non-null ``AuditCounters``."""
+    missing = [entry.tool for entry in AUDIT_REGISTER if entry.counters is None]
+    assert not missing, f"Missing counters for entries: {missing}"
+
+
+def test_every_entry_counters_meet_field_contract() -> None:
+    """AC-01: every counters record must satisfy the field contract."""
+    bad: list[str] = []
+    for entry in AUDIT_REGISTER:
+        c = entry.counters
+        if c is None:
+            bad.append(f"{entry.tool}: counters is None")
+            continue
+        if c.transcript_tokens < 0:
+            bad.append(f"{entry.tool}: transcript_tokens < 0")
+        if c.returned_bytes < 0:
+            bad.append(f"{entry.tool}: returned_bytes < 0")
+        if c.tool_calls < 0:
+            bad.append(f"{entry.tool}: tool_calls < 0")
+        if not 0.0 <= c.evidence_recall <= 1.0:
+            bad.append(f"{entry.tool}: evidence_recall out of [0,1]")
+        if not 0.0 <= c.evidence_precision <= 1.0:
+            bad.append(f"{entry.tool}: evidence_precision out of [0,1]")
+        if c.stale_fallback_events < 0:
+            bad.append(f"{entry.tool}: stale_fallback_events < 0")
+        if c.parse_count < 0:
+            bad.append(f"{entry.tool}: parse_count < 0")
+        if c.changed_file_count < 0:
+            bad.append(f"{entry.tool}: changed_file_count < 0")
+        if c.index_storage_bytes < 0:
+            bad.append(f"{entry.tool}: index_storage_bytes < 0")
+    assert not bad, "Counter contract violations: " + "; ".join(bad)
+
+
+def test_audit_counters_rejects_out_of_range_recall() -> None:
+    """AuditCounters.__post_init__ rejects evidence_recall > 1.0."""
+    with pytest.raises(ValueError, match="evidence_recall"):
+        AuditCounters(
+            transcript_tokens=0,
+            returned_bytes=0,
+            tool_calls=0,
+            evidence_recall=1.5,
+            evidence_precision=1.0,
+            stale_fallback_events=0,
+            parse_count=0,
+            changed_file_count=0,
+            index_storage_bytes=0,
+        )
+
+
+def test_audit_counters_rejects_negative_bytes() -> None:
+    """AuditCounters.__post_init__ rejects negative returned_bytes."""
+    with pytest.raises(ValueError, match="returned_bytes"):
+        AuditCounters(
+            transcript_tokens=0,
+            returned_bytes=-1,
+            tool_calls=0,
+            evidence_recall=1.0,
+            evidence_precision=1.0,
+            stale_fallback_events=0,
+            parse_count=0,
+            changed_file_count=0,
+            index_storage_bytes=0,
         )

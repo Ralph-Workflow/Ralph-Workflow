@@ -1,18 +1,27 @@
 """SQLite+FTS5 store for the Ralph indexed exploration substrate.
 
-Phase 1 keeps the substrate lexical-only:
+Phase 1 + Phase 2 store schema:
 
 * ``files`` table — workspace file manifest with content hash and
   indexed generation.
+* ``content_cache`` / ``content_cache_payload`` — content-hash
+  deduplicated extraction payload store (AC-05 minimum schema).
 * ``chunks`` table — line-windowed text chunks for FTS5.
 * ``chunks_fts`` — external-content FTS5 index tied to ``chunks``.
+* ``spans`` — Phase 2 deterministic structure spans (path, range,
+  kind, content hash, generation).
+* ``symbols`` — Phase 2 deterministic symbol rows (name, qualified
+  name, kind, path, span, language, confidence).
+* ``edges`` — Phase 2 deterministic graph edges (source, target,
+  relation, path, span, provenance, confidence, generation).
 * ``evidence`` table — exact evidence handles (``evidence_id``) used
   by indexed reads.
 * ``evidence_tombstones`` — bounded ledger of stale evidence (used to
   resolve stale reads; capped at 10k rows / 30 days).
 * ``dirty_paths`` — persisted dirty-path queue surviving crashes.
 * ``jobs`` — bounded reindex job history (capped 100 / 14 days).
-* ``settings`` — key/value index settings.
+* ``settings`` — key/value index settings (including
+  ``schema_version`` / ``extractor_version`` for safe cold rebuild).
 * ``manifest`` — disk-level file manifest with mtime/size prefilter
   (content hash is authoritative).
 
@@ -162,6 +171,29 @@ _DDL: tuple[str, ...] = (
         files_changed INTEGER NOT NULL DEFAULT 0,
         files_failed INTEGER NOT NULL DEFAULT 0,
         error_summary TEXT
+    )
+    """,
+    # AC-05: content_cache is required by the minimum storage contract.
+    # It deduplicates extraction payloads by content hash so a moved
+    # or copied file can reuse an already-extracted record. The
+    # payload lives in a separate ``content_cache_payload`` table so
+    # the metadata row stays compact and the payload can be large.
+    """
+    CREATE TABLE IF NOT EXISTS content_cache (
+        content_hash TEXT PRIMARY KEY,
+        language TEXT,
+        extractor_version TEXT NOT NULL,
+        extracted_at REAL NOT NULL,
+        extraction_status TEXT NOT NULL,
+        error_summary TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS content_cache_payload (
+        content_hash TEXT PRIMARY KEY,
+        payload BLOB,
+        FOREIGN KEY (content_hash) REFERENCES content_cache(content_hash)
+            ON DELETE CASCADE
     )
     """,
     """
@@ -358,14 +390,39 @@ def real_clock_seconds() -> float:
 def normalize_index_path(path: str) -> str:
     """Normalize a workspace-relative POSIX path for index storage.
 
-    Ponytail: re-export of the existing workspace boundary check so
-    the index store cannot accept absolute paths or ``..`` segments.
+    Rejects absolute paths and any normalized path that still contains
+    a ``..`` segment after ``PurePosixPath`` normalization. The
+    rejection happens before the path is ever persisted, so the index
+    cannot accept a workspace-boundary escape.
+
+    Raises ``ValueError`` for absolute or parent-escape inputs.
     """
+    if not isinstance(path, str):
+        raise ValueError(
+            f"normalize_index_path: path must be a str, got {type(path).__name__}"
+        )
     # Import lazily to avoid an import cycle at module load time
     # (the workspace utils import the MCP coordination helpers).
     from ralph.mcp.tools.workspace._utils import normalize_relative_path
 
-    return normalize_relative_path(path)
+    if path.startswith("/"):
+        raise ValueError(
+            f"normalize_index_path: absolute path {path!r} is not allowed"
+        )
+    normalized = normalize_relative_path(path)
+    # ``PurePosixPath`` collapses redundant separators but does not
+    # surface ``..`` escapes; explicitly reject any segment that
+    # resolves to ``..`` so the index never stores a parent reference.
+    if normalized != "" and (
+        normalized == ".."
+        or normalized.startswith("../")
+        or "/../" in normalized
+        or normalized.endswith("/..")
+    ):
+        raise ValueError(
+            f"normalize_index_path: parent-escape path {path!r} is not allowed"
+        )
+    return normalized
 
 
 # --- Store -----------------------------------------------------------------
@@ -550,12 +607,30 @@ class ExploreStore:
         query: str,
         *,
         limit: int = 100,
+        path_prefix: str | None = None,
+        include_globs: Sequence[str] | None = None,
+        exclude_globs: Sequence[str] | None = None,
     ) -> list[sqlite3.Row]:
         """Run an FTS5 MATCH query and return rows.
 
         Returns ``chunks_fts`` rows (path, chunk_id, text). Callers
         are expected to translate chunk_id to evidence handles.
+
+        AC-02 indexed-grep filter parity: ``path_prefix`` restricts
+        matches to paths that equal the prefix or start with
+        ``prefix + '/'``. ``include_globs`` / ``exclude_globs`` apply
+        the same glob semantics as the legacy live grep so the
+        indexed branch cannot leak out-of-scope matches.
         """
+        from ralph.mcp.explore.path_filter import (
+            compile_path_filter,
+        )
+
+        path_filter = compile_path_filter(
+            path_prefix=path_prefix,
+            include_globs=include_globs,
+            exclude_globs=exclude_globs,
+        )
         cur = self._conn.execute(
             """
             SELECT path, chunk_id, snippet(chunks_fts, 0, '', '', '...', 8) AS snippet
@@ -566,8 +641,16 @@ class ExploreStore:
             """,
             (query, limit),
         )
-        results = cast("list[sqlite3.Row]", cur.fetchall())
-        return results
+        raw_results = cast("list[sqlite3.Row]", cur.fetchall())
+        if path_filter is None:
+            return raw_results
+        filtered: list[sqlite3.Row] = []
+        for row in raw_results:
+            path_obj: object = row["path"]
+            path_str = str(path_obj) if path_obj is not None else ""
+            if path_filter(path_str):
+                filtered.append(row)
+        return filtered
 
     # --- Evidence -----------------------------------------------------
 
@@ -873,6 +956,15 @@ class ExploreStore:
             paths = [_row_str(row, "path") for row in rows]
             cur.execute("DELETE FROM dirty_paths")
             return paths
+
+    def _remove_dirty_path(self, path: str) -> None:
+        """Remove a single dirty path (used by selective reindex consume)."""
+        try:
+            normalized = normalize_index_path(path)
+        except ValueError:
+            return
+        with self._transaction() as cur:
+            cur.execute("DELETE FROM dirty_paths WHERE path = ?", (normalized,))
 
     def peek_dirty_paths(self) -> list[str]:
         cur = self._conn.execute("SELECT path FROM dirty_paths")
@@ -1303,6 +1395,11 @@ def hash_workspace_file(workspace_root: Path, relative_path: str) -> tuple[str, 
     Uses ``Path.is_relative_to`` (Python 3.9+) so the boundary check
     cannot be fooled by sibling-prefix escapes (``/tmp/ws`` vs
     ``/tmp/ws_evil``) or symlink targets outside ``workspace_root``.
+
+    AC-05: streams the file in bounded chunks so a single large
+    file cannot blow the byte budget or block past a cancellation
+    deadline. The chunk size is the same as the SQLite page size
+    so a workspace file larger than memory can still be hashed.
     """
     root = Path(workspace_root).resolve()
     full = (root / relative_path).resolve()
@@ -1317,10 +1414,19 @@ def hash_workspace_file(workspace_root: Path, relative_path: str) -> tuple[str, 
         raise ValueError(f"Path escapes workspace: {relative_path!r}")
     if not full.is_file():
         raise FileNotFoundError(relative_path)
-    data = full.read_bytes()
+    # AC-05: stream the file in bounded chunks. The chunk size of
+    # 1 MiB keeps memory bounded and matches the default
+    # ProcessManager stdout chunk size for consistency.
+    hasher = hashlib.sha256()
+    with full.open("rb") as f:
+        while True:
+            chunk = f.read(1 << 20)
+            if not chunk:
+                break
+            hasher.update(chunk)
     stat_result = full.stat()
     return (
-        sha256_bytes(data),
+        hasher.hexdigest(),
         stat_result.st_size,
         stat_result.st_mtime_ns,
     )

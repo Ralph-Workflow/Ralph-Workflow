@@ -287,10 +287,12 @@ def handle_edit_file(
             symbol_name = target_param.get("symbol")
             symbol_path = target_param.get("path")
             resolved = None
+            resolved_path: str | None = None
             if isinstance(evidence_id, str) and evidence_id:
                 row = store.get_evidence(evidence_id)
                 if row is not None:
                     resolved = (row.start_line, row.end_line)
+                    resolved_path = row.path
             elif isinstance(span_id, str) and span_id:
                 span_row = next(
                     (
@@ -302,6 +304,7 @@ def handle_edit_file(
                 )
                 if span_row is not None:
                     resolved = (span_row.start_line, span_row.end_line)
+                    resolved_path = span_row.path
             elif isinstance(symbol_name, str) and symbol_name:
                 # Symbol lookup is path-scoped when path is given;
                 # otherwise fall back to ambiguous_target if the
@@ -329,6 +332,7 @@ def handle_edit_file(
                     )
                     if span_row is not None:
                         resolved = (span_row.start_line, span_row.end_line)
+                        resolved_path = span_row.path
                 elif len(scoped) > 1:
                     target_resolution_error = {
                         "status": "ambiguous_target",
@@ -336,6 +340,25 @@ def handle_edit_file(
                         "matches": [m.qualified_name for m in scoped],
                         "target": target_param,
                     }
+            # AC-10: cross-file evidence/span/symbol guards. The
+            # resolved row path must equal the normalized edit path
+            # so an agent cannot edit file_a.py while pointing at
+            # an evidence row that points to file_b.py. The guard
+            # runs after resolution so legitimate same-path edits
+            # succeed.
+            if (
+                resolved is not None
+                and resolved_path is not None
+                and resolved_path != normalized
+            ):
+                target_resolution_error = {
+                    "status": "ambiguous_target",
+                    "reason": "target_path_mismatch",
+                    "target_path": resolved_path,
+                    "edit_path": normalized,
+                    "target": target_param,
+                }
+                resolved = None
             if resolved is None and target_resolution_error is None:
                 target_resolution_error = {
                     "status": "ambiguous_target",

@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
@@ -262,9 +262,21 @@ def handle_git_status(
         )
     if format_value == "raw":
         return _git_read_result(lambda: run_git_command(workspace, ["status"]))
-    # Compact mode: run ``git status --porcelain`` and emit ranked
-    # JSON cards. The runner is the lenient variant so the absence
-    # of changes returns cleanly.
+    # AC-11: compact mode runs through the same timeout-wrapping
+    # helper as raw mode so a hung ``git status`` returns an
+    # actionable is_error result rather than an uncaught exception.
+    return _git_read_result(lambda: _build_compact_status_payload(workspace))
+
+
+def _build_compact_status_payload(workspace: object) -> str:
+    """Build the compact-mode JSON payload for ``git status``.
+
+    Ponytail: isolated helper so the timeout-wrapping
+    ``_git_read_result`` can call it without a try/except chain.
+    The lenient runner is used so a non-zero exit (e.g. outside a
+    git repo) still surfaces a useful result; the returncode is
+    inspected separately by the caller if needed.
+    """
     raw_result = run_git_command_lenient(workspace, ["status", "--porcelain"])
     lines = raw_result.stdout.decode("utf-8", errors="replace").splitlines()
     cards: list[dict[str, object]] = []
@@ -273,9 +285,7 @@ def handle_git_status(
             continue
         code = line[:2]
         path = line[3:].strip()
-        role = (
-            "staged" if code[0] != " " and code[0] != "?" else "unstaged"
-        )
+        role = "staged" if code[0] != " " and code[0] != "?" else "unstaged"
         cards.append(
             {
                 "path": path,
@@ -293,12 +303,7 @@ def handle_git_status(
         "paths": cards,
         "raw_lines": lines,
     }
-
-    return ToolResult(
-        content=[ToolContent.text_content(json.dumps(payload))],
-        is_error=bool(raw_result.returncode)
-        and raw_result.returncode not in (0, 1),
-    )
+    return json.dumps(payload)
 
 
 def handle_git_diff(
@@ -337,7 +342,25 @@ def handle_git_diff(
             max_bytes = 50_000
     else:
         max_bytes = 50_000
-    raw_result = run_git_command_lenient(workspace, ["diff", "--numstat", *parsed.args])
+    # AC-11: wrap the summary branch in ``_git_read_result`` so a
+    # timeout converts into the same actionable ``is_error`` result
+    # as the raw branch, never an uncaught exception.
+    return _git_read_result(
+        lambda: _build_diff_summary_payload(workspace, parsed.args, max_bytes)
+    )
+
+
+def _build_diff_summary_payload(
+    workspace: object,
+    git_args: Sequence[str],
+    max_bytes: int,
+) -> str:
+    """Build the summary-mode JSON payload for ``git diff``.
+
+    Ponytail: isolated helper so the timeout-wrapping
+    ``_git_read_result`` can call it without a try/except chain.
+    """
+    raw_result = run_git_command_lenient(workspace, ["diff", "--numstat", *git_args])
     numstat_output = raw_result.stdout.decode("utf-8", errors="replace")
     cards: list[dict[str, object]] = []
     for line in numstat_output.splitlines():
@@ -358,7 +381,7 @@ def handle_git_diff(
                 "removed": removed_count,
             }
         )
-    full_result = run_git_command_lenient(workspace, ["diff", *parsed.args])
+    full_result = run_git_command_lenient(workspace, ["diff", *git_args])
     full_text = full_result.stdout.decode("utf-8", errors="replace")
     truncated = len(full_text) > max_bytes
     if truncated:
@@ -379,11 +402,7 @@ def handle_git_diff(
         "truncated": truncated,
         "max_bytes": max_bytes,
     }
-
-    return ToolResult(
-        content=[ToolContent.text_content(json.dumps(payload))],
-        is_error=False,
-    )
+    return json.dumps(payload)
 
 
 def handle_git_log(

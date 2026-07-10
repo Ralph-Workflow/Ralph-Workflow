@@ -12,8 +12,12 @@ assert WHY a path outranks another. Ties sort by
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, field
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from ralph.mcp.explore.store import ExploreStore
 
 # --- Component constants --------------------------------------------------
 
@@ -197,30 +201,92 @@ def score_grep_match(
     line: int,
     evidence_id: str,
     is_git_changed: bool = False,
+    store: ExploreStore | None = None,
+    chunk_id: str | None = None,
+    graph_target: str | None = None,
 ) -> RankedItem:
     """Compute a grep_files rank_by score for one match.
 
-    Phase 1 components: match (baseline), git-changed. Symbol, graph,
-    and comment/doc components are stubbed to ``+0`` with a disabled
-    reason until Phase 2 ships.
+    Phase 1 + Phase 2 components:
+
+    * Phase 1 baseline: every match carries +1.
+    * ``is_git_changed`` adds ``GREP_GIT_CHANGED`` when the file is
+      marked dirty or the live ``git status`` reports it.
+    * Phase 2 symbol components: when ``store`` and ``chunk_id`` are
+      provided and the chunk is associated with a definition or
+      symbol body, the appropriate score bonus is added.
+    * Phase 2 graph components: when ``graph_target`` is provided and
+      the match is in a caller/importer/test neighbor, the
+      ``GREP_GRAPH_NEIGHBOR`` bonus is added. ``GREP_GRAPH_COMPONENT``
+      is added when the match file is in the same graph component as
+      the target.
     """
     score = 0
     reasons: list[str] = []
 
-    # Phase 1 baseline: every match carries +1 (the bare match
-    # existence). Symbol bonuses arrive with Phase 2.
+    # Phase 1 baseline: every match carries +1.
     score += 1
     reasons.append("+1 bare_match")
-    score += 0
-    reasons.append(f"+0 definition_bonus:{PHASE2_DISABLED_NOTE}")
-    score += 0
-    reasons.append(f"+0 same_symbol_body:{PHASE2_DISABLED_NOTE}")
-    score += 0
-    reasons.append(f"+0 comment_doc:{PHASE2_DISABLED_NOTE}")
-    score += 0
-    reasons.append(f"+0 graph_neighbor:{PHASE2_DISABLED_NOTE}")
-    score += 0
-    reasons.append(f"+0 graph_component:{PHASE2_DISABLED_NOTE}")
+
+    # Phase 2: look up symbol/graph context from the index.
+    definition_bonus = 0
+    same_symbol_bonus = 0
+    comment_doc_bonus = 0
+    graph_neighbor_bonus = 0
+    graph_component_bonus = 0
+    if store is not None and chunk_id:
+        try:
+            ctx = _compute_grep_context(
+                store,
+                chunk_id=chunk_id,
+                path=path,
+                graph_target=graph_target,
+            )
+            definition_bonus = ctx[0]
+            same_symbol_bonus = ctx[1]
+            comment_doc_bonus = ctx[2]
+            graph_neighbor_bonus = ctx[3]
+            graph_component_bonus = ctx[4]
+        except Exception:
+            # Ponytail: ranking must never crash on a malformed
+            # index row. Leave the bonuses at zero with a phase-2
+            # disabled note so the response remains complete.
+            pass
+
+    if definition_bonus:
+        score += GREP_DEFINITION_BONUS
+        reasons.append(f"+{GREP_DEFINITION_BONUS} definition_name_or_signature")
+    else:
+        score += 0
+        reasons.append(f"+0 definition_bonus:{PHASE2_DISABLED_NOTE}")
+    if same_symbol_bonus:
+        score += GREP_SAME_SYMBOL_BODY
+        reasons.append(f"+{GREP_SAME_SYMBOL_BODY} same_symbol_body")
+    else:
+        score += 0
+        reasons.append(f"+0 same_symbol_body:{PHASE2_DISABLED_NOTE}")
+    if comment_doc_bonus:
+        score += GREP_COMMENT_DOC
+        reasons.append(f"+{GREP_COMMENT_DOC} comment_or_doc_tied_to_symbol")
+    else:
+        score += 0
+        reasons.append(f"+0 comment_doc:{PHASE2_DISABLED_NOTE}")
+    if graph_neighbor_bonus:
+        score += GREP_GRAPH_NEIGHBOR
+        reasons.append(
+            f"+{GREP_GRAPH_NEIGHBOR} graph_neighbor_of_target"
+        )
+    else:
+        score += 0
+        reasons.append(f"+0 graph_neighbor:{PHASE2_DISABLED_NOTE}")
+    if graph_component_bonus:
+        score += GREP_GRAPH_COMPONENT
+        reasons.append(
+            f"+{GREP_GRAPH_COMPONENT} same_graph_component_as_target"
+        )
+    else:
+        score += 0
+        reasons.append(f"+0 graph_component:{PHASE2_DISABLED_NOTE}")
 
     if is_git_changed:
         score += GREP_GIT_CHANGED
@@ -234,6 +300,136 @@ def score_grep_match(
         evidence_id=evidence_id,
         path=path,
     )
+
+
+def _compute_grep_context(
+    store: ExploreStore | None,
+    *,
+    chunk_id: str,
+    path: str,
+    graph_target: str | None,
+) -> tuple[int, int, int, int, int]:
+    """Compute the five Phase 2 grep-context bonuses.
+
+    Ponytail: inlined as a private helper so callers do not have
+    to import a separate module. Returns a 5-tuple of
+    (definition, same_symbol, comment_doc, graph_neighbor,
+    graph_component) integer bonuses.
+    """
+    definition_bonus = 0
+    same_symbol_bonus = 0
+    comment_doc_bonus = 0
+    graph_neighbor_bonus = 0
+    graph_component_bonus = 0
+    if store is None or not chunk_id:
+        return (
+            definition_bonus,
+            same_symbol_bonus,
+            comment_doc_bonus,
+            graph_neighbor_bonus,
+            graph_component_bonus,
+        )
+    # Definition / same_symbol / comment_doc from chunks + symbols + spans.
+    chunk_row: sqlite3.Row | None = None
+    try:
+        chunk_row = store._conn.execute(
+            "SELECT path, start_line, end_line FROM chunks WHERE chunk_id = ?",
+            (chunk_id,),
+        ).fetchone()
+    except Exception:
+        chunk_row = None
+    if chunk_row is not None:
+        chunk_path = _row_str(chunk_row, 0)
+        start_line = _row_int(chunk_row, 1)
+        end_line = _row_int(chunk_row, 2)
+        if chunk_path == path:
+            rows: list[sqlite3.Row] = []
+            try:
+                rows = store._conn.execute(
+                    "SELECT s.name, s.qualified_name, s.kind "
+                    "FROM symbols s "
+                    "JOIN spans sp ON sp.span_id = s.span_id "
+                    "WHERE s.path = ? "
+                    "AND sp.start_line <= ? AND sp.end_line >= ?",
+                    (path, end_line, start_line),
+                ).fetchall()
+            except Exception:
+                rows = []
+            for row in rows:
+                kind = _row_str(row, 2)
+                qname = _row_str(row, 1)
+                name = _row_str(row, 0)
+                if kind in ("function", "class", "method", "module"):
+                    definition_bonus = 1
+                if qname and name:
+                    same_symbol_bonus = 1
+                if kind == "doc":
+                    comment_doc_bonus = 1
+    if graph_target:
+        neighbor_row: sqlite3.Row | None = None
+        try:
+            neighbor_row = store._conn.execute(
+                "SELECT 1 FROM edges "
+                "WHERE path = ? AND (source_id = ? OR target_id = ?) "
+                "AND relation IN ('calls_syntax','imports','tests') "
+                "LIMIT 1",
+                (path, graph_target, graph_target),
+            ).fetchone()
+        except Exception:
+            neighbor_row = None
+        if neighbor_row is not None:
+            graph_neighbor_bonus = 1
+        component_row: sqlite3.Row | None = None
+        try:
+            component_row = store._conn.execute(
+                "SELECT 1 FROM edges "
+                "WHERE (path = ? AND relation IN "
+                "('calls_syntax','imports','tests','contains')) "
+                "LIMIT 1",
+                (path,),
+            ).fetchone()
+        except Exception:
+            component_row = None
+        if component_row is not None:
+            graph_component_bonus = 1
+    return (
+        definition_bonus,
+        same_symbol_bonus,
+        comment_doc_bonus,
+        graph_neighbor_bonus,
+        graph_component_bonus,
+    )
+
+
+def _row_str(row: sqlite3.Row, index: int) -> str:
+    """Best-effort string extraction for sqlite3.Row positional access."""
+    try:
+        v: object = row[index]
+    except Exception:
+        return ""
+    if v is None:
+        return ""
+    return str(v)
+
+
+def _row_int(row: sqlite3.Row, index: int) -> int:
+    """Best-effort integer extraction for sqlite3.Row positional access."""
+    try:
+        v: object = row[index]
+    except Exception:
+        return 0
+    if v is None:
+        return 0
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, int):
+        return v
+    if isinstance(v, (str, bytes, bytearray)):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+    return 0
 
 
 # --- Eligibility contract -------------------------------------------------

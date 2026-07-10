@@ -294,6 +294,7 @@ def handle_ralph_index_status(
                         _build_disabled_status_payload(
                             workspace_root,
                             cold_index_required=cold_index_required,
+                            index_exists=index_exists_on_disk,
                         )
                     )
                 )
@@ -313,11 +314,18 @@ def _build_disabled_status_payload(
     workspace_root: Path,
     *,
     cold_index_required: bool,
+    index_exists: bool = False,
 ) -> dict[str, object]:
-    """Return the side-effect-free status payload when no handle exists."""
+    """Return the side-effect-free status payload when no handle exists.
+
+    ``index_exists`` lets the caller surface an existing on-disk
+    persisted index even when the current session has no handle
+    attached, so a side-effect-free status check reports the real
+    disk state instead of always reporting ``index_exists=False``.
+    """
     return {
         "enabled": False,
-        "index_exists": False,
+        "index_exists": index_exists,
         "generation": 0,
         "indexed_at": None,
         "files_indexed": 0,
@@ -420,11 +428,20 @@ def handle_ralph_reindex(
     path_scope_raw: object = params.get("path_scope")
     path_scope: tuple[str, ...] = ()
     if isinstance(path_scope_raw, list):
-        path_scope = tuple(
-            normalize_index_path(str(p))
-            for p in path_scope_raw
-            if isinstance(p, (str, int, float))
-        )
+        normalized_scope: list[str] = []
+        for p in path_scope_raw:
+            if not isinstance(p, (str, int, float)):
+                continue
+            try:
+                normalized_scope.append(normalize_index_path(str(p)))
+            except ValueError as exc:
+                # AC-05: surface invalid path_scope as a structured
+                # tool error before reindexing rather than letting
+                # the rejection propagate as a generic exception.
+                raise InvalidParamsError(
+                    f"Invalid path_scope entry {p!r}: {exc}"
+                ) from exc
+        path_scope = tuple(normalized_scope)
 
     workspace_root_obj2: object = getattr(workspace, "root", None)
     workspace_root_raw2: object = workspace_root_obj2 or params.get(

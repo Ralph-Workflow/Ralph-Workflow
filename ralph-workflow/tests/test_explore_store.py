@@ -72,6 +72,40 @@ def test_store_creates_minimum_schema(tmp_path: Path) -> None:
     assert {"files", "chunks", "evidence", "jobs", "dirty_paths"}.issubset(tables)
 
 
+def test_store_creates_full_minimum_schema(tmp_path: Path) -> None:
+    """AC-05: minimum schema must include every required table."""
+    store = _build_store(tmp_path)
+    try:
+        cur = sqlite3.connect(str(store.db_path))
+        try:
+            tables = {
+                row[0]
+                for row in cur.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+        finally:
+            cur.close()
+    finally:
+        store.close()
+    required = {
+        "files",
+        "content_cache",
+        "chunks",
+        "spans",
+        "symbols",
+        "edges",
+        "evidence",
+        "evidence_tombstones",
+        "jobs",
+        "dirty_paths",
+        "manifest",
+        "settings",
+    }
+    missing = required - tables
+    assert not missing, f"Minimum schema missing tables: {sorted(missing)}"
+
+
 def test_store_creates_chunks_fts_virtual_table(tmp_path: Path) -> None:
     store = _build_store(tmp_path)
     try:
@@ -316,6 +350,28 @@ def test_index_storage_bytes_includes_wal(tmp_path: Path) -> None:
 def test_normalize_index_path_returns_posix() -> None:
     assert normalize_index_path("") == ""
     assert normalize_index_path("./a/./b/") == "a/b"
+
+
+def test_normalize_index_path_rejects_absolute_paths() -> None:
+    """AC-05: absolute paths must be rejected with ValueError."""
+    with pytest.raises(ValueError, match="absolute path"):
+        normalize_index_path("/tmp/escape")
+    with pytest.raises(ValueError, match="absolute path"):
+        normalize_index_path("/")
+
+
+def test_normalize_index_path_rejects_parent_escapes() -> None:
+    """AC-05: any path containing a ``..`` segment must be rejected."""
+    for bad in ("..", "../escape", "a/../escape", "a/b/../../escape", "a/.."):
+        with pytest.raises(ValueError, match="parent-escape"):
+            normalize_index_path(bad)
+
+
+def test_normalize_index_path_accepts_workspace_relative_paths() -> None:
+    """AC-05: ordinary relative paths normalize without error."""
+    assert normalize_index_path("a") == "a"
+    assert normalize_index_path("a/b/c.py") == "a/b/c.py"
+    assert normalize_index_path("./a/b/") == "a/b"
 
 
 def test_chunk_text_splits_on_line_windows() -> None:

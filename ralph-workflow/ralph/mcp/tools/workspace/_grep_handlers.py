@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 import sqlite3
 import time
-from typing import TYPE_CHECKING
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
 from ralph.mcp.explore.ranking import (
@@ -37,14 +38,8 @@ from ralph.mcp.tools.workspace._utils import (
 )
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.store import ExploreStore
+    from ralph.mcp.explore.store import EvidenceRow, ExploreStore
     from ralph.workspace import Workspace
-
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    from ralph.mcp.explore.store import EvidenceRow
 
 # --- Index metadata helpers -----------------------------------------------
 
@@ -104,6 +99,9 @@ def _indexed_matches(
     *,
     whole_word: bool,
     limit: int,
+    path_prefix: str | None = None,
+    include_globs: Sequence[str] | None = None,
+    exclude_globs: Sequence[str] | None = None,
 ) -> list[dict[str, object]]:
     """Run an FTS5 search and translate rows to the live match shape.
 
@@ -113,9 +111,20 @@ def _indexed_matches(
     looks up the chunk's stored line range and content hash, then
     inserts (or refreshes) the evidence row keyed by the prompt's
     deterministic evidence-id formula.
+
+    AC-02 indexed-grep filter parity: ``path_prefix``,
+    ``include_globs``, and ``exclude_globs`` push the legacy
+    grep filters into the indexed query so out-of-scope matches
+    cannot leak into the indexed branch.
     """
     fts_query = fts_query_for(pattern, whole_word=whole_word)
-    raw_rows = store.fts_search(fts_query, limit=max(limit, 1))
+    raw_rows = store.fts_search(
+        fts_query,
+        limit=max(limit, 1),
+        path_prefix=path_prefix,
+        include_globs=include_globs,
+        exclude_globs=exclude_globs,
+    )
     rows: list[sqlite3.Row] = list(raw_rows)
     matches: list[dict[str, object]] = []
     for row in rows:
@@ -489,8 +498,17 @@ def handle_grep_files(
     indexed_match_rows: list[dict[str, object]] = []
 
     if use_index != "never" and store is not None and eligible:
+        # AC-02 indexed-grep filter parity: push path/include/exclude
+        # into the FTS query so the indexed branch never leaks
+        # out-of-scope matches.
         indexed_match_rows = _indexed_matches(
-            store, pattern, whole_word=whole_word, limit=limit
+            store,
+            pattern,
+            whole_word=whole_word,
+            limit=limit,
+            path_prefix=normalized or None,
+            include_globs=include,
+            exclude_globs=exclude,
         )
         index_used = True
         if not return_evidence_ids:
@@ -533,14 +551,22 @@ def handle_grep_files(
                 else:
                     line_v = 0
                 ev = str(ev_raw) if ev_raw is not None else ""
-                # Phase 1 has no per-file git-changed signal; the
-                # caller can pass it via params['git_changed_paths']
-                # if needed. We default to False here.
+                # Phase 2 wiring: pass the store/chunk_id/graph_target
+                # so the rank_by symbol/graph components can contribute
+                # when the index has structure rows. Phase 1 callers
+                # pass nothing and the lookup returns zero bonuses.
                 ranked_items.append(
                     score_grep_match(
                         path=path_v,
                         line=line_v,
                         evidence_id=ev,
+                        store=store,
+                        chunk_id=str(row.get("chunk_id", "")) or None,
+                        graph_target=(
+                            str(params.get("graph_target"))
+                            if params.get("graph_target")
+                            else None
+                        ),
                     )
                 )
             ranked_items = sort_ranked(ranked_items)
