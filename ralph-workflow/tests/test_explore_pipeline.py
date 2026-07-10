@@ -441,6 +441,113 @@ def test_mode_full_mid_build_timeout_preserves_committed_generation(
         store.close()
 
 
+def test_mode_full_swap_io_failure_preserves_committed_generation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-02/AC-05: a swap-time I/O failure (e.g. disk full, read
+    error from the staging file, ``os.replace`` rejection) does
+    not destroy the prior committed database. The swap is
+    fail-safe: a failure between the close and the rename leaves
+    the main DB untouched, the connection is re-opened against
+    the prior file, and the store remains queryable for
+    subsequent operations.
+
+    The fault is injected by patching ``Path.write_bytes`` to
+    raise when the staging swap writes the ``.swap`` temp
+    file. This triggers the early failure path in
+    ``_swap_staged_index`` before ``os.replace`` is called, so
+    the main database is provably untouched.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        # 1. Build an initial index.
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation_str is not None
+        files_before = _count_files_rows(store)
+        chunks_before = _count_chunks_rows(store)
+        fts_before = _count_fts_rows(store)
+        assert files_before >= 3
+
+        # 2. Patch ``Path.write_bytes`` to fail when the swap
+        #    writes the ``.swap`` temp file. This fires inside
+        #    ``_swap_staged_index`` after the connection close
+        #    but before ``Path.replace``, which is the exact
+        #    window the analysis feedback flagged as
+        #    non-atomic. The fault is scoped to swap files only
+        #    so the staging reindex can still build the new
+        #    database in its own directory.
+        original_write_bytes = Path.write_bytes
+        swap_failures = {"n": 0}
+
+        def flaky_write_bytes(self: Path, data: bytes) -> int:
+            if self.name.endswith(".swap") and self.parent == store.db_path.parent:
+                swap_failures["n"] += 1
+                raise OSError("simulated disk full during swap")
+            return original_write_bytes(self, data)
+
+        monkeypatch.setattr(Path, "write_bytes", flaky_write_bytes)
+
+        # 3. Trigger a full reindex. The fault fires in the
+        #    swap step, so the result is ``failed`` and the
+        #    staging directory is cleaned up by the outer
+        #    ``finally`` block.
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert result.status == "failed"
+        # 4. The fault was actually triggered inside the swap.
+        assert swap_failures["n"] >= 1
+
+        # 5. The committed generation on disk is unchanged.
+        #    Read through a fresh connection so a stale
+        #    in-process view of the prior file is not used.
+        assert store.get_setting("current_generation") == prior_generation_str
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+
+        # 6. The store is still queryable through the live
+        #    connection (the swap reopened it against the
+        #    prior file) and the file rows point at the
+        #    original content.
+        a_row = store.get_file("a.py")
+        assert a_row is not None
+        assert a_row.is_deleted is False
+        assert a_row.content_hash is not None
+
+        # 7. No ``.swap`` temp file is left behind from the
+        #    aborted swap.
+        swap_dir = store.db_path.parent
+        leftovers = [
+            child
+            for child in swap_dir.iterdir()
+            if child.name.endswith(".swap")
+        ]
+        assert leftovers == []
+
+        # 8. A subsequent full reindex without the fault
+        #    rebuilds cleanly from the preserved prior state.
+        monkeypatch.undo()
+        recover = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert recover.status == "ok"
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+    finally:
+        store.close()
+
+
 def test_timeout_is_fail_closed_for_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)

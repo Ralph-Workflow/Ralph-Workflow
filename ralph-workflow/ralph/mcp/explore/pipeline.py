@@ -324,13 +324,26 @@ def _staged_full_reindex(
 def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
     """Atomically replace the main index files with the staging ones.
 
-    The swap is at the file level: the main connection is
-    closed, the main database file is replaced with the
-    staging file (WAL/SHM are removed or replaced), and the
-    connection is reopened. A failure between the close and
-    the reopen leaves the main store unopenable; callers
-    handle that through the index lifecycle, which always
-    treats a missing/invalid index as ``cold_index_required``.
+    AC-02/AC-05: the swap is fail-safe at the file level. The
+    staging database is written to a ``.swap`` temp file in the
+    same directory as the main database, then ``os.replace``
+    atomically renames the temp file into the main path. On
+    POSIX, ``os.replace`` is atomic for files on the same
+    filesystem; on Windows, it is also atomic for same-volume
+    operations. The main database is never partially modified:
+    a failure before ``os.replace`` leaves it untouched.
+
+    The main connection is closed before the swap and re-opened
+    at the end of the function against either the new file
+    (success) or the prior file (failure during swap). Any
+    exception that fires between the close and the swap is
+    re-raised only after the connection is re-opened against
+    the prior database, so the store remains queryable.
+
+    WAL/SHM replacement is best-effort: SQLite recovers from a
+    stale or missing WAL/SHM on the next open (the WAL is
+    checkpointed and the SHM is re-created), so a failure there
+    does not invalidate the swap.
     """
     main_db = store.db_path
     main_wal = main_db.with_name(main_db.name + "-wal")
@@ -338,24 +351,63 @@ def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
     staging_db = staging_dir / main_db.name
     staging_wal = staging_db.with_name(staging_db.name + "-wal")
     staging_shm = staging_db.with_name(staging_db.name + "-shm")
-    # Close the main connection so the WAL is flushed and
-    # the file can be safely replaced on Windows-style
-    # filesystems (and to release the SHM mapping).
+    swap_dir = main_db.parent
+    tmp_main = swap_dir / (main_db.name + ".swap")
+    # Close the main connection so the WAL is flushed and the
+    # file is safe to rename. Reopen at the end of the function
+    # against either the new file (success) or the prior file
+    # (failure). The re-open happens in a ``finally``-like
+    # pattern via the explicit try/except blocks below.
     with suppress(sqlite3.ProgrammingError):
         store._conn.close()
-    # Remove the existing main files (database + WAL/SHM)
-    # before copying the staging ones in.
-    for path in (main_wal, main_shm):
-        if path.exists():
-            path.unlink()
-    if main_db.exists():
-        main_db.unlink()
-    main_db.write_bytes(staging_db.read_bytes())
-    if staging_wal.exists():
-        main_wal.write_bytes(staging_wal.read_bytes())
-    if staging_shm.exists():
-        main_shm.write_bytes(staging_shm.read_bytes())
-    # Reopen the live connection against the new file.
+    # Best-effort cleanup of a leftover ``.swap`` temp file
+    # from a prior aborted swap. A failure here is treated
+    # like a swap failure: reopen the prior DB and re-raise.
+    if tmp_main.exists():
+        try:
+            tmp_main.unlink()
+        except OSError:
+            store.reopen()
+            raise
+    # Atomic main-DB swap. The temp file lives in the same
+    # directory as the main DB so ``os.replace`` is atomic on
+    # the same filesystem. The main DB is never overwritten
+    # until ``os.replace`` succeeds; a failure mid-swap leaves
+    # the prior committed database on disk.
+    try:
+        tmp_main.write_bytes(staging_db.read_bytes())
+        tmp_main.replace(main_db)
+    except BaseException:
+        # The main DB is unchanged because ``os.replace`` did
+        # not complete. Clean up the temp file (best effort)
+        # and reopen the connection against the prior file so
+        # the store stays queryable for subsequent operations.
+        if tmp_main.exists():
+            with suppress(OSError):
+                tmp_main.unlink()
+        store.reopen()
+        raise
+    # Main DB is now durably replaced. Best-effort WAL/SHM
+    # swap; failures here are non-fatal because the next open
+    # re-creates the SHM and checkpoints the WAL. The main DB
+    # is openable in either case.
+    for src, dst in ((staging_wal, main_wal), (staging_shm, main_shm)):
+        if not src.exists():
+            continue
+        tmp_aux = swap_dir / (dst.name + ".swap")
+        try:
+            if tmp_aux.exists():
+                tmp_aux.unlink()
+            tmp_aux.write_bytes(src.read_bytes())
+            tmp_aux.replace(dst)
+        except OSError:
+            # WAL/SHM swap failure is non-fatal: the main DB
+            # is already in place and openable. Continue.
+            with suppress(OSError):
+                if tmp_aux.exists():
+                    tmp_aux.unlink()
+            continue
+    # Reopen the live connection against the new main DB.
     store.reopen()
 
 
