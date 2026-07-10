@@ -198,10 +198,16 @@ def handle_read_file(
 
     * ``evidence_id`` — resolve the indexed evidence handle and read the
       exact span + ``context_lines`` of context.
-    * ``span_id`` — placeholder; Phase 2 will resolve a symbol span.
-      Phase 1 returns structured ``disabled:phase2``.
-    * ``symbol`` — placeholder; Phase 2 will resolve a symbol span.
-      Phase 1 returns structured ``disabled:phase2``.
+    * ``span_id`` — resolve the indexed span from the structure rows
+      and read the exact span + bounded context. Behavior is
+      fail-closed: a stale span, missing generation, or unknown
+      span id produces a structured ``unknown_evidence`` or
+      ``stale_evidence`` response.
+    * ``symbol`` — resolve the indexed symbol span from the
+      structure rows and read the exact span + bounded context.
+      Behavior is fail-closed: a stale symbol, missing generation,
+      or unknown symbol produces a structured ``unknown_evidence``
+      or ``stale_evidence`` response.
     * ``expected_content_hash`` — fail closed if the current file's
       content hash does not match.
     * ``context_lines`` — bounded context around the resolved span.
@@ -209,10 +215,37 @@ def handle_read_file(
     """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Workspace read")
 
-    # --- Phase 1 indexed selectors -------------------------------------
+    # --- Indexed selectors -------------------------------------------
+    # AC-01: the read_file handler accepts exactly one of
+    # ``path``, ``evidence_id``, ``span_id``, or ``symbol``. Direct
+    # callers (without the JSON Schema ``oneOf`` validator) are
+    # rejected here too so an in-process bug or hand-written
+    # client cannot silently pick a selector. Empty (no selector)
+    # is rejected because every selector is required.
     evidence_id = params.get("evidence_id")
     span_id = params.get("span_id")
     symbol_selector = params.get("symbol")
+    path_selector = params.get("path")
+    selected_selectors: list[str] = []
+    if path_selector is not None:
+        selected_selectors.append("path")
+    if evidence_id is not None:
+        selected_selectors.append("evidence_id")
+    if span_id is not None:
+        selected_selectors.append("span_id")
+    if symbol_selector is not None:
+        selected_selectors.append("symbol")
+    if not selected_selectors:
+        raise InvalidParamsError(
+            "read_file requires exactly one of: "
+            "path, evidence_id, span_id, or symbol."
+        )
+    if len(selected_selectors) > 1:
+        raise InvalidParamsError(
+            "read_file accepts exactly one selector; received: "
+            + ", ".join(selected_selectors)
+            + "."
+        )
     expected_hash = params.get("expected_content_hash")
     context_lines = _int_param(params, "context_lines", 0)
     return_metadata = bool(params.get("return_metadata", False))
@@ -775,10 +808,20 @@ def handle_read_multiple_files(
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Read multiple files")
 
     items_param = params.get("items")
+    paths_param = params.get("paths")
+
+    # AC-01: read_multiple_files accepts exactly one of ``paths``
+    # (legacy live read) or ``items`` (mixed live/indexed reads).
+    # Empty / conflicting / both-present inputs are rejected
+    # explicitly so direct callers cannot silently choose a
+    # selector.
+    if items_param is not None and paths_param is not None:
+        raise InvalidParamsError(
+            "read_multiple_files accepts exactly one of 'paths' or 'items'."
+        )
     legacy_paths_mode = items_param is None
     if items_param is None:
         # Legacy ``paths`` path.
-        paths_param = params.get("paths")
         if not isinstance(paths_param, list):
             raise InvalidParamsError("Missing 'paths' parameter as list of strings")
         items_param = [{"path": str(p)} for p in paths_param]
@@ -834,7 +877,34 @@ def _read_multiple_item(
     per_item_max_bytes: int,
     return_metadata: bool,
 ) -> dict[str, object]:
-    """Resolve a single ``items`` entry to a result dict."""
+    """Resolve a single ``items`` entry to a result dict.
+
+    AC-01: each ``items`` entry must specify exactly one selector
+    (``path``, ``evidence_id``, ``span_id``, or ``symbol``). Empty
+    or conflicting selectors are rejected with a structured
+    ``invalid_selector`` error so direct callers cannot silently
+    pick a selector.
+    """
+    _selector_keys = ("path", "evidence_id", "span_id", "symbol")
+    present_selectors = [key for key in _selector_keys if key in item]
+    if not present_selectors:
+        return {
+            "is_error": True,
+            "error": "invalid_selector",
+            "reason": (
+                "items entry requires exactly one of: "
+                "path, evidence_id, span_id, or symbol."
+            ),
+        }
+    if len(present_selectors) > 1:
+        return {
+            "is_error": True,
+            "error": "invalid_selector",
+            "reason": (
+                "items entry accepts exactly one selector; "
+                "received: " + ", ".join(present_selectors) + "."
+            ),
+        }
     if "evidence_id" in item:
         # Reuse the single-read evidence logic via a synthetic call.
         single_result = _read_via_evidence(
@@ -1617,12 +1687,15 @@ def handle_search_files(
 ) -> ToolResult:
     """Search for files matching a glob pattern within a workspace directory.
 
-    Phase 1 indexed args:
+    Indexed args:
 
     * ``ranked``: rank paths by deterministic index signals.
     * ``role`` in {source, test, docs, config, generated, any}.
-    * ``contains_symbol`` (Phase 2; Phase 1 returns structured
-      ``disabled:phase2`` but still returns live glob results).
+    * ``contains_symbol``: filter to files that define or mention
+      the named symbol via the indexed structure rows. The
+      contract ships: absence of the symbol in the index reports
+      ``+0 component:no_indexed_data`` reasons, not a deferred
+      placeholder.
     * ``changed_only``: filter to git-changed paths.
     * ``return_evidence_ids``: attach handles to matched indexed records.
     """

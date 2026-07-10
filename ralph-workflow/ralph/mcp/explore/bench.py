@@ -32,11 +32,12 @@ Required deterministic questions (per the architecture finding):
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Final, Protocol
 
 
 # Ponytail: fixed tokenizer. Counts ASCII whitespace-separated tokens
@@ -48,6 +49,30 @@ def _fixed_token_count(text: str) -> int:
     if not text:
         return 0
     return len(text.split())
+
+
+def _serialize_tool_spec(spec: object) -> str:
+    """Serialize a ToolDefinition-shaped object to a deterministic text.
+
+    The serialized form concatenates the tool ``name``, ``description``,
+    and ``input_schema`` (rendered as compact JSON) so the catalog
+    token counter sees the same bytes the agent sees at the
+    ``tools/list`` boundary. Unknown shapes fall back to ``str(spec)``
+    so a regression in the registry does not blank the transcript.
+    """
+    name_obj: object = getattr(spec, "name", None)
+    desc_obj: object = getattr(spec, "description", None)
+    schema_obj: object = getattr(spec, "input_schema", None)
+    if isinstance(name_obj, str) and isinstance(desc_obj, str):
+        if schema_obj is not None:
+            try:
+                schema_text = json.dumps(schema_obj, sort_keys=True, separators=(",", ":"))
+            except (TypeError, ValueError):
+                schema_text = str(schema_obj)
+        else:
+            schema_text = ""
+        return f"{name_obj} {desc_obj} {schema_text}".strip()
+    return str(spec)
 
 
 class Clock(Protocol):
@@ -153,18 +178,44 @@ def _tokenize_call(call: ScriptedCall) -> int:
 # Ponytail: tool description token accounting. Helper used by the
 # MCP-description gate to estimate per-tool schema tokens. Stable across
 # runs and deterministic.
+# Minimum tuple length for legacy ``(name, description)`` entries
+# that come through the catalog.
+_LEGACY_TUPLE_ARITY: Final[int] = 2
+
+
 def tool_catalog_tokens(
-    tool_descriptions: Iterable[tuple[str, str]],
+    tool_specs: Iterable[object],
 ) -> dict[str, int]:
-    """Estimate token cost per tool description.
+    """Estimate token cost per tool catalog entry.
 
     Args:
-        tool_descriptions: iterable of ``(tool_name, description)`` pairs.
+        tool_specs: iterable of either ``(tool_name, description)``
+            tuples (legacy API) or objects exposing ``name`` /
+            ``description`` / ``input_schema`` attributes (the public
+            ``ToolDefinition`` shape).
 
     Returns:
-        Mapping from tool name to its fixed-token count.
+        Mapping from tool name to its fixed-token count (over the
+        serialized name + description + JSON-schema text).
     """
-    return {name: _fixed_token_count(desc) for name, desc in tool_descriptions}
+    tokens: dict[str, int] = {}
+    for spec in tool_specs:
+        if isinstance(spec, tuple) and len(spec) >= _LEGACY_TUPLE_ARITY:
+            name = str(spec[0])
+            description_obj = spec[1]
+            if isinstance(description_obj, str):
+                description = description_obj
+            else:
+                # ``(name, ToolDefinition)`` form: reuse the spec
+                # serializer so the catalog sees the same text.
+                description = _serialize_tool_spec(description_obj)
+        else:
+            serialized = _serialize_tool_spec(spec)
+            name_obj: object = getattr(spec, "name", None)
+            name = str(name_obj) if isinstance(name_obj, str) else serialized
+            description = serialized
+        tokens[name] = _fixed_token_count(description)
+    return tokens
 
 
 def _run_script(
@@ -224,10 +275,22 @@ def _run_script(
             for ev_id in returned_ids:
                 if isinstance(ev_id, str) and ev_id:
                     returned_evidence_ids.add(ev_id)
-    # AC-12 (full transcript): add the final-evidence-context tokens
-    # exactly once at the end so the total matches the research
-    # gate's "full scripted transcript" definition.
-    transcript_tokens += final_evidence_tokens
+    # AC-12 (full transcript): derive ``final_evidence_tokens`` from
+    # the actual returned evidence ids rather than a constant so
+    # the transcript reflects the compact evidence context the
+    # agent keeps after the flow ends. A ``final_evidence_tokens``
+    # argument may still be supplied as a lower bound or override;
+    # we use ``max(supplied, derived_from_returned)`` so callers
+    # can pin a known-context budget without losing the derived
+    # signal when more ids are actually returned.
+    derived_final_evidence_tokens = sum(
+        len(ev_id.split()) for ev_id in returned_evidence_ids
+    )
+    effective_final_evidence_tokens = max(
+        final_evidence_tokens,
+        derived_final_evidence_tokens,
+    )
+    transcript_tokens += effective_final_evidence_tokens
     wall_time = clock.now() - start
     # AC-12: evidence recall/precision are derived from the actual
     # returned evidence ids, not hardcoded. The benchmark harness

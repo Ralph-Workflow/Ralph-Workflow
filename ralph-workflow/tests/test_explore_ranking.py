@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ralph.mcp.explore.ranking import (
-    PHASE2_DISABLED_NOTE,
+    INDEXED_COMPONENT_NOT_AVAILABLE,
     RankedItem,
     fts_query_for,
     is_fts_eligible,
@@ -122,7 +122,7 @@ def test_sort_ranked_higher_score_first() -> None:
 # --- Score reasons -------------------------------------------------------
 
 
-def test_score_reasons_documents_disabled_phase2_components() -> None:
+def test_score_reasons_documents_missing_indexed_components() -> None:
     item = score_search_file(
         candidate_path="a.py",
         basename="b.py",
@@ -130,7 +130,7 @@ def test_score_reasons_documents_disabled_phase2_components() -> None:
         is_git_changed=False,
     )
     joined = " ".join(item.reasons)
-    assert PHASE2_DISABLED_NOTE in joined
+    assert INDEXED_COMPONENT_NOT_AVAILABLE in joined
     assert "symbol_definition" in joined
     assert "graph_neighbor" in joined
 
@@ -151,13 +151,13 @@ def test_score_search_file_to_dict_includes_reasons() -> None:
 # --- Grep rank_by scoring -----------------------------------------------
 
 
-def test_score_grep_match_returns_phase2_disabled_for_symbol_components() -> None:
+def test_score_grep_match_returns_missing_indexed_data_for_symbol_components() -> None:
     item = score_grep_match(
         path="a.py", line=1, evidence_id="ev-1"
     )
     joined = " ".join(item.reasons)
     assert "bare_match" in joined
-    assert PHASE2_DISABLED_NOTE in joined
+    assert INDEXED_COMPONENT_NOT_AVAILABLE in joined
 
 
 def test_score_grep_match_git_changed_adds_bonus() -> None:

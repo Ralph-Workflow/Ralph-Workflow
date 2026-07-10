@@ -372,21 +372,42 @@ def _gitignore_repair_payload(workspace_root: Path) -> dict[str, object]:
     AC-05: the repair payload names the explicit ``.agent/ralph-explore/``
     child rule so the next ``auto_seed_default_gitignore`` pass
     appends it next to the parent ``.agent/`` rule. Parent-only
-    coverage is reported as "parent_only" so operators see whether
-    the explicit child rule is present yet.
+    coverage is reported as ``"parent_only"`` so operators and tests
+    see whether the explicit child rule is present yet; ``action``
+    becomes ``"append_explicit_child_rule"`` so the next normal
+    Ralph seeding pass repairs the gap instead of leaving the
+    parent-only state in place.
     """
     gitignore = Path(workspace_root) / ".gitignore"
     rule_present = _gitignore_coverage(workspace_root)
     if rule_present:
-        # Existing parent ``.agent/`` coverage continues to be
-        # reported as ``managed_ignore_rule_present`` so callers
-        # and tests do not need to learn a new status string. The
-        # child-rule audit lives elsewhere (see
-        # ``_gitignore_child_rule_present``).
+        # Parent ``.agent/`` coverage plus the explicit child rule
+        # is the fully repaired state. Both reports surface the
+        # current truth so callers do not need to learn a new
+        # status string for the existing-parent-only case.
+        if _gitignore_child_rule_present(workspace_root):
+            return {
+                "required": False,
+                "action": "none",
+                "reason": "managed_ignore_rule_present",
+                "coverage": "explicit_child_rule",
+            }
         return {
-            "required": False,
-            "action": "none",
-            "reason": "managed_ignore_rule_present",
+            "required": True,
+            "action": "append_explicit_child_rule",
+            "reason": "managed_ignore_rule_parent_only",
+            "coverage": "parent_only",
+            "missing_rule": ".agent/ralph-explore/",
+            "target_file": str(gitignore),
+            "next_command": "ralph",
+            "description": (
+                "Parent ``.agent/`` coverage is in place but the "
+                "explicit ``.agent/ralph-explore/`` child rule is "
+                "missing. Run a normal `ralph` invocation (or "
+                "`auto_seed_default_gitignore`) to append the child "
+                "rule so the disposable explore cache is not "
+                "committed."
+            ),
         }
     return {
         "required": True,

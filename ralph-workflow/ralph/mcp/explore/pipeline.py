@@ -500,20 +500,16 @@ def _swap_staged_index(
                 tmp_main.unlink()
         store.reopen()
         raise
-    # AC-05: deadline/cancel check after the main-DB swap.
-    # The new database is now durably in place, but the
-    # WAL/SHM swap and the connection reopen still need
-    # time. A deadline that fires here is non-fatal for
-    # the swap itself (the new DB is already on disk), but
-    # we still surface it so the caller can finalize as
-    # ``timed_out`` with a clear reason rather than as
-    # ``ok`` when budget was exceeded.
-    if (now_fn() - started_at) * 1000 > deadline_ms:
-        store.reopen()
-        raise _ReindexTimeoutError("deadline exceeded after main-DB swap")
-    if cancel is not None and cancel():
-        store.reopen()
-        raise _ReindexCancelledError("cancelled after main-DB swap")
+    # AC-05 (correctness): deadline/cancel check after the
+    # main-DB swap MUST NOT cause the swap function to raise
+    # ``cancelled`` / ``timed_out``. The new main DB is now
+    # durably published on disk; the deadline/cancel contract
+    # is "refuse to publish", not "roll back a successful
+    # publish". A cancel that fires here is a no-op for the
+    # publish decision; the auxiliary WAL/SHM swap is best
+    # effort and may be skipped if the budget is exhausted.
+    # We deliberately do NOT raise so the caller can finalize
+    # as ``ok`` with the new generation visible to readers.
     # Main DB is now durably replaced. Best-effort WAL/SHM
     # swap; failures here are non-fatal because the next open
     # re-creates the SHM and checkpoints the WAL. The main DB
@@ -521,22 +517,17 @@ def _swap_staged_index(
     for src, dst in ((staging_wal, main_wal), (staging_shm, main_shm)):
         if not src.exists():
             continue
-        # AC-05: deadline/cancel check between each WAL/SHM
-        # swap. The new main DB is already in place; any
-        # remaining auxiliary swaps are best-effort and a
-        # deadline/cancel refusal here only aborts the
-        # remaining auxiliary work. The new DB is not
-        # undone because the deadline/cancel contract is
-        # about refusing to *publish*, not rolling back a
-        # successful publish.
+        # AC-05 (correctness): deadline/cancel check between
+        # each WAL/SHM swap. The new main DB is already in
+        # place; cancel/timeout after publish is a no-op for
+        # the publish decision, but the remaining auxiliary
+        # swaps are still best-effort work. We skip the
+        # remaining auxiliary work rather than roll back the
+        # successful publish, and we do not raise.
         if (now_fn() - started_at) * 1000 > deadline_ms:
-            raise _ReindexTimeoutError(
-                "deadline exceeded during auxiliary swap"
-            )
+            break
         if cancel is not None and cancel():
-            raise _ReindexCancelledError(
-                "cancelled during auxiliary swap"
-            )
+            break
         tmp_aux = swap_dir / (dst.name + ".swap")
         try:
             if tmp_aux.exists():
@@ -551,6 +542,10 @@ def _swap_staged_index(
                     tmp_aux.unlink()
             continue
     # Reopen the live connection against the new main DB.
+    # Even if the post-publish cancel/timeout fires
+    # immediately above, the reopen itself is mandatory so
+    # the store is queryable; we do not let the budget
+    # shorten the reopen path.
     store.reopen()
 
 

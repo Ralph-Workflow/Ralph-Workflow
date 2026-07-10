@@ -319,6 +319,34 @@ def extract_python(
                             generation=generation,
                         )
                     )
+                    # AC-02: emit a ``defines`` edge from the parent
+                    # symbol to the new definition so callers can
+                    # discover definitions through graph traversal.
+                    # The endpoint ids are the real deterministic
+                    # symbol ids (not synthetic placeholders) and the
+                    # provenance is ``extracted`` because the AST
+                    # recognizes the definition.
+                    defines_source_id = f"sym:{path}:{parent_qualified}"
+                    edges.append(
+                        EdgeRow(
+                            edge_id=derive_edge_id(
+                                source_id=defines_source_id,
+                                target_id=sym_id,
+                                relation="defines",
+                                path=path,
+                                span_id=span_id,
+                            ),
+                            source_id=defines_source_id,
+                            target_id=sym_id,
+                            relation="defines",
+                            path=path,
+                            span_id=span_id,
+                            provenance="extracted",
+                            confidence=CONFIDENCE_EXTRACTED,
+                            reason=f"ast:{kind_name} inside {parent_qualified}",
+                            generation=generation,
+                        )
+                    )
                 if kind_name == "class" and isinstance(node, ast.ClassDef):
                     for base in node.bases:
                         base_id_obj: object = getattr(base, "id", None)
@@ -820,6 +848,30 @@ def extract_markdown(
                     generation=generation,
                 )
             )
+            # AC-02: emit a ``defines`` edge from the file to the
+            # Markdown heading. The endpoint is the real
+            # deterministic symbol id and provenance is
+            # ``extracted`` because the heading is parser-recognized.
+            edges.append(
+                EdgeRow(
+                    edge_id=derive_edge_id(
+                        source_id=f"file:{path}",
+                        target_id=sym_id,
+                        relation="defines",
+                        path=path,
+                        span_id=span_id,
+                    ),
+                    source_id=f"file:{path}",
+                    target_id=sym_id,
+                    relation="defines",
+                    path=path,
+                    span_id=span_id,
+                    provenance="extracted",
+                    confidence=CONFIDENCE_EXTRACTED,
+                    reason=f"md:heading {kind}={title!r}",
+                    generation=generation,
+                )
+            )
             line_no += 1
             continue
         if (
@@ -895,6 +947,27 @@ def extract_markdown(
                     provenance="extracted",
                     confidence=CONFIDENCE_EXTRACTED,
                     reason="md:setext heading under document",
+                    generation=generation,
+                )
+            )
+            # AC-02: same ``defines`` emission for Setext headings.
+            edges.append(
+                EdgeRow(
+                    edge_id=derive_edge_id(
+                        source_id=f"file:{path}",
+                        target_id=sym_id,
+                        relation="defines",
+                        path=path,
+                        span_id=span_id,
+                    ),
+                    source_id=f"file:{path}",
+                    target_id=sym_id,
+                    relation="defines",
+                    path=path,
+                    span_id=span_id,
+                    provenance="extracted",
+                    confidence=CONFIDENCE_EXTRACTED,
+                    reason=f"md:setext heading {kind}={title!r}",
                     generation=generation,
                 )
             )

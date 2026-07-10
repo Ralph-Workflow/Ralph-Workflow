@@ -163,11 +163,14 @@ def test_index_status_managed_ignore_rule_absent(tmp_path: Path) -> None:
 def test_index_status_exposes_managed_ignore_repair_when_present(
     tmp_path: Path,
 ) -> None:
-    """AC-04: when the rule is present, the repair field marks
-    itself as not required.
+    """AC-04: when the explicit child rule is present, the repair
+    field marks itself as not required. Parent-only coverage
+    continues to surface ``managed_ignore_rule_present`` but the
+    repair field distinguishes the parent-only state from the
+    fully repaired state.
     """
     workspace = _seed_workspace(tmp_path)
-    (workspace / ".gitignore").write_text(".agent/\n")
+    (workspace / ".gitignore").write_text(".agent/ralph-explore/\n")
     handle = build_explore_index(workspace)
     try:
         session = _FakeSession(explore_index=handle)
@@ -178,6 +181,35 @@ def test_index_status_exposes_managed_ignore_repair_when_present(
         assert repair["required"] is False
         assert repair["action"] == "none"
         assert repair["reason"] == "managed_ignore_rule_present"
+        assert repair["coverage"] == "explicit_child_rule"
+    finally:
+        handle.store.close()
+
+
+def test_index_status_parent_only_repair_recommends_child_rule(
+    tmp_path: Path,
+) -> None:
+    """AC-05: parent ``.agent/`` coverage continues to be reported
+    as ``managed_ignore_rule_present``, but the repair field carries
+    an explicit ``append_explicit_child_rule`` action so the next
+    Ralph seeding pass appends the explicit ``.agent/ralph-explore/``
+    rule.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / ".gitignore").write_text(".agent/\n")
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        result = handle_ralph_index_status(session, _Workspace(workspace), {})
+        payload = _decode(result)
+        assert payload["managed_ignore_rule_present"] is True
+        repair = payload["managed_ignore_rule_repair"]
+        assert repair["required"] is True
+        assert repair["action"] == "append_explicit_child_rule"
+        assert repair["reason"] == "managed_ignore_rule_parent_only"
+        assert repair["coverage"] == "parent_only"
+        assert repair["missing_rule"] == ".agent/ralph-explore/"
+        assert repair["next_command"] == "ralph"
     finally:
         handle.store.close()
 

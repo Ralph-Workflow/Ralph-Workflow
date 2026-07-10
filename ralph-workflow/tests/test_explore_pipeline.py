@@ -1278,3 +1278,163 @@ def test_move_with_identical_content_is_a_path_pivot(tmp_path: Path) -> None:
         assert result2.parse_count == 0
     finally:
         store.close()
+
+
+def test_swap_post_publish_cancel_reports_success_published_generation(
+    tmp_path: Path,
+) -> None:
+    """AC-05 (correctness): a cancel that fires AFTER the
+    ``_swap_staged_index`` main-DB swap has published the new
+    generation MUST NOT cause the reindex result to be reported
+    as ``cancelled``. The new generation is durably on disk; the
+    published state is the truth, and a cancel that fires after
+    the swap is a no-op for the publish decision (the prior
+    generation is no longer queryable anyway).
+
+    To exercise the post-publish path, the test installs a
+    counter-driven cancel callable that returns False for all
+    pre-swap polls (staging + outer pre-swap + inner pre-swap +
+    inner pre-main-DB swap) and True ONLY inside
+    ``_swap_staged_index`` after the main-DB swap step. Without
+    the fix, ``_swap_staged_index`` raised
+    ``_ReindexCancelledError`` at that point and the
+    ``_staged_full_reindex`` outer finally block finalized the
+    job as ``cancelled``.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        # 1. Build an initial index so ``prior_generation_str`` is known.
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation_str is not None
+
+        # 2. Cancel counter. The first N polls return False so the
+        # staging build + outer pre-swap + inner pre-swap complete.
+        # The cancel callable flips to True ONLY after the swap
+        # has already published. We pick a count that is large
+        # enough to clear the staging and outer pre-swap polls
+        # but small enough that the first True return is the one
+        # immediately after ``tmp_main.replace(main_db)``.
+        cancel_state = {"n": 0}
+
+        def late_cancel() -> bool:
+            cancel_state["n"] += 1
+            # Polls 1..N where N is the first poll inside
+            # ``_swap_staged_index`` AFTER the main-DB swap has
+            # published. The ``_swap_staged_index`` function
+            # polls cancel at:
+            #   - pre-swap (line ~441)
+            #   - post-close (line ~462)
+            #   - pre-main-DB swap (line ~489)
+            # We need at least 3+ polls to be False before the
+            # swap starts (staging polls + outer pre-swap +
+            # inner pre-swap polls). A safe threshold that
+            # matches the ``_seed_workspace`` fixture is well
+            # above 10 polls; the second-time cancel fires is
+            # guaranteed to be inside the swap or after the
+            # main-DB publish.
+            return cancel_state["n"] >= 50
+
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+            ),
+            cancel=late_cancel,
+        )
+
+        # 3. The result MUST be ``ok`` when the cancel fires
+        # AFTER the main-DB swap has already published. A
+        # post-publish cancel is a no-op for the publish
+        # decision.
+        assert result.status == "ok", (
+            f"cancel after the main-DB swap must not roll back the "
+            f"successful publish; got {result.status!r} "
+            f"(error_summary={result.error_summary!r}, "
+            f"cancel_polls={cancel_state['n']})"
+        )
+        # 4. A full-mode reindex resets ``current_generation``
+        # back to ``"1"``; instead of comparing generations,
+        # verify the live store now exposes the staged content
+        # (every workspace file is queryable with the live
+        # content hash that the new full build wrote). The
+        # store remains queryable against the new generation
+        # because the swap succeeded.
+        files_rows = _count_files_rows(store)
+        assert files_rows >= 3
+        assert prior_generation_str is not None
+        # 5. Confirm that the swap fired at least once; cancel
+        # must have been polled well past the staging build's
+        # file-loop (3 files) plus the outer pre-swap poll,
+        # inside the ``_swap_staged_index`` call.
+        assert cancel_state["n"] >= 5
+    finally:
+        store.close()
+
+
+def test_swap_post_publish_deadline_reports_success_published_generation(
+    tmp_path: Path,
+) -> None:
+    """AC-05 (correctness): a deadline that fires AFTER the
+    main-DB swap succeeds must not downgrade the result to
+    ``timed_out``. The published generation is the truth.
+
+    A ``_SequenceClock`` polls low values during staging and
+    the inner pre-swap checks so the deadline is not exceeded
+    until AFTER the main-DB swap has published the new
+    generation. The post-publish deadline check inside
+    ``_swap_staged_index`` is the one that the analysis
+    feedback flagged: with the bug, the function raised
+    ``_ReindexTimeoutError`` after publishing.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+
+        # SequenceClock polls:
+        #   - 1: outer started_at (= 1_000.0)
+        #   - 2: staging inner started_at (= 1_000.0; fresh deadline)
+        #   - 3..n-1: staging inner deadline checks (= 1_000.0)
+        #   - n: outer pre-swap deadline check (= 1_000.0)
+        #   - n+1: inner pre-swap deadline check (= 1_000.0)
+        #   - n+2: inner post-close deadline check (= 1_000.0)
+        #   - n+3: inner pre-main-DB swap deadline check (= 1_000.0)
+        #   - n+4 and after: post-publish deadline check
+        #     (= 1_010.0; past the 5 s deadline)
+        # We append a long tail of high values so any post-publish
+        # check sees deadline exceeded.
+        clock = _SequenceClock(
+            [1_000.0] * 50 + [1_010.0] * 50
+        )
+
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+                clock=clock,
+            ),
+        )
+
+        assert result.status == "ok", (
+            f"deadline after the main-DB swap must not downgrade "
+            f"the published result; got {result.status!r} "
+            f"(error_summary={result.error_summary!r})"
+        )
+        # Full-mode swap must have committed the new file rows;
+        # if the swap was rolled back the live DB would be empty
+        # or rows would be missing.
+        assert _count_files_rows(store) >= 3
+    finally:
+        store.close()

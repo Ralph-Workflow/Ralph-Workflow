@@ -157,6 +157,36 @@ def test_tool_catalog_tokens_estimates_per_tool() -> None:
     assert tokens["grep_files"] > 0
 
 
+def test_tool_catalog_tokens_estimates_tool_definitions_with_schemas() -> None:
+    """AC-12: ``tool_catalog_tokens`` accepts objects exposing
+    ``name`` / ``description`` / ``input_schema`` attributes
+    (the public ``ToolDefinition`` shape) and counts the
+    serialized name + description + JSON-schema text.
+    """
+
+    class _ToolSpec:
+        def __init__(self, name: str, description: str, input_schema: dict) -> None:
+            self.name = name
+            self.description = description
+            self.input_schema = input_schema
+
+    read_file = _ToolSpec(
+        "read_file",
+        "Read a UTF-8 file from the workspace.",
+        {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    )
+    tokens = tool_catalog_tokens([read_file])
+    assert set(tokens) == {"read_file"}
+    # The serialized form concatenates the description and the
+    # schema text; the token count is at least the description
+    # alone plus the JSON keys.
+    assert tokens["read_file"] > len(read_file.description.split())
+
+
 def test_system_clock_returns_monotonic_values() -> None:
     clock = SystemClock()
     a = clock.now()

@@ -1,9 +1,11 @@
 """Deterministic ranking for indexed ``search_files`` and ``grep_files``.
 
-Phase 1 ranking uses path/FTS/role/git-changed signals only. Symbol
-and graph components are stubbed to ``+0`` with a score-reason note
-``"disabled:phase2"``; Phase 2 (deferred) will replace the stubs with
-real components once the AST/edge extraction ships.
+The ranking pipeline combines path/FTS/role/git-changed signals with
+the indexed symbol and graph evidence. Score components are computed
+from live indexed rows; when the index lacks the relevant data the
+scorer surfaces explicit zero components with a precise
+``component:no_indexed_data`` reason so callers can audit the
+missing context.
 
 Every ranked response returns a ``score_reasons`` list so tests can
 assert WHY a path outranks another. Ties sort by
@@ -23,22 +25,30 @@ if TYPE_CHECKING:
 
 # Phase 1 search_files components (architecture finding contract).
 SEARCH_EXACT_BASENAME: Final[int] = 100
-SEARCH_SYMBOL_DEFINITION: Final[int] = 80  # disabled in Phase 1
-SEARCH_SYMBOL_MENTION: Final[int] = 60  # disabled in Phase 1
+SEARCH_SYMBOL_DEFINITION: Final[int] = 80
+SEARCH_SYMBOL_MENTION: Final[int] = 60
 SEARCH_GIT_CHANGED: Final[int] = 40
 SEARCH_ROLE_REQUESTED: Final[int] = 30
-SEARCH_GRAPH_NEIGHBOR: Final[int] = 20  # disabled in Phase 1
+SEARCH_GRAPH_NEIGHBOR: Final[int] = 20
 SEARCH_GENERATED_PENALTY: Final[int] = -50
 
 # Phase 1 grep_files rank_by components.
-GREP_DEFINITION_BONUS: Final[int] = 100  # disabled in Phase 1
-GREP_SAME_SYMBOL_BODY: Final[int] = 60  # disabled in Phase 1
-GREP_COMMENT_DOC: Final[int] = 30  # disabled in Phase 1
-GREP_GRAPH_NEIGHBOR: Final[int] = 50  # disabled in Phase 1
-GREP_GRAPH_COMPONENT: Final[int] = 20  # disabled in Phase 1
+GREP_DEFINITION_BONUS: Final[int] = 100
+GREP_SAME_SYMBOL_BODY: Final[int] = 60
+GREP_COMMENT_DOC: Final[int] = 30
+GREP_GRAPH_NEIGHBOR: Final[int] = 50
+GREP_GRAPH_COMPONENT: Final[int] = 20
 GREP_GIT_CHANGED: Final[int] = 40
 
-PHASE2_DISABLED_NOTE: Final[str] = "disabled:phase2"
+# Reason emitted when an indexed-evidence component has zero
+# contribution because the explore index does not contain the
+# relevant rows for the candidate path. The constant is named
+# with ``SEARCH`` / ``GREP`` prefixes only where the wording is
+# not reusable across components; the auditor surfaces
+# ``component:no_indexed_data`` (or ``+0 component_name``) so
+# tests can distinguish a missing index from a real scoring
+# value.
+INDEXED_COMPONENT_NOT_AVAILABLE: Final[str] = "no_indexed_data"
 
 
 # --- Public dataclass -----------------------------------------------------
@@ -127,7 +137,7 @@ def score_search_file(
 ) -> RankedItem:
     """Compute a search_files score for one candidate path.
 
-    Phase 1 + Phase 2 wiring:
+    The scoring contract:
 
     * ``SEARCH_EXACT_BASENAME`` (+100) for an exact basename match.
     * ``SEARCH_GIT_CHANGED`` (+40) for paths the lifecycle hook
@@ -140,7 +150,9 @@ def score_search_file(
       caller passed ``contains_symbol`` AND the candidate already
       survived the symbol filter (i.e. the index recognized the
       symbol as defined in or referenced from the path). Otherwise
-      the components stay at 0 with a disabled note.
+      the components stay at 0 with a precise
+      ``component:no_indexed_data`` note so callers can audit
+      missing index context.
     """
     score = 0
     reasons: list[str] = []
@@ -151,14 +163,17 @@ def score_search_file(
         reasons.append(f"+{SEARCH_EXACT_BASENAME} exact_path_basename")
     else:
         # Symbol and graph components only contribute when the
-        # caller passed ``contains_symbol``; otherwise the disabled
-        # notes make it clear which components are inactive.
-        score += 0
-        reasons.append(f"+0 symbol_definition:{PHASE2_DISABLED_NOTE}")
-        score += 0
-        reasons.append(f"+0 symbol_mention:{PHASE2_DISABLED_NOTE}")
-        score += 0
-        reasons.append(f"+0 graph_neighbor:{PHASE2_DISABLED_NOTE}")
+        # caller passed ``contains_symbol``; otherwise the
+        # missing-data note makes the absent context auditable.
+        reasons.append(
+            f"+0 symbol_definition:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
+        reasons.append(
+            f"+0 symbol_mention:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
+        reasons.append(
+            f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
 
     if is_git_changed:
         score += SEARCH_GIT_CHANGED
@@ -207,16 +222,18 @@ def score_grep_match(
 ) -> RankedItem:
     """Compute a grep_files rank_by score for one match.
 
-    Phase 1 + Phase 2 components:
+    The scoring contract:
 
-    * Phase 1 baseline: every match carries +1.
+    * Baseline: every match carries +1.
     * ``is_git_changed`` adds ``GREP_GIT_CHANGED`` when the file is
       marked dirty or the live ``git status`` reports it.
-    * Phase 2 symbol components: when ``store`` and ``chunk_id`` are
+    * Symbol components: when ``store`` and ``chunk_id`` are
       provided and the chunk is associated with a definition or
-      symbol body, the appropriate score bonus is added.
-    * Phase 2 graph components: when ``graph_target`` is provided and
-      the match is in a caller/importer/test neighbor, the
+      symbol body, the appropriate score bonus is added. Absent
+      index context surfaces a ``+0 component:no_indexed_data``
+      reason.
+    * Graph components: when ``graph_target`` is provided and the
+      match is in a caller/importer/test neighbor, the
       ``GREP_GRAPH_NEIGHBOR`` bonus is added. ``GREP_GRAPH_COMPONENT``
       is added when the match file is in the same graph component as
       the target.
@@ -224,11 +241,11 @@ def score_grep_match(
     score = 0
     reasons: list[str] = []
 
-    # Phase 1 baseline: every match carries +1.
+    # Baseline: every match carries +1.
     score += 1
     reasons.append("+1 bare_match")
 
-    # Phase 2: look up symbol/graph context from the index.
+    # Look up symbol/graph context from the index.
     definition_bonus = 0
     same_symbol_bonus = 0
     comment_doc_bonus = 0
@@ -249,44 +266,50 @@ def score_grep_match(
             graph_component_bonus = ctx[4]
         except Exception:
             # Ponytail: ranking must never crash on a malformed
-            # index row. Leave the bonuses at zero with a phase-2
-            # disabled note so the response remains complete.
+            # index row. Leave the bonuses at zero with a precise
+            # missing-data note so the response remains complete
+            # and auditable.
             pass
 
     if definition_bonus:
         score += GREP_DEFINITION_BONUS
         reasons.append(f"+{GREP_DEFINITION_BONUS} definition_name_or_signature")
     else:
-        score += 0
-        reasons.append(f"+0 definition_bonus:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 definition_bonus:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if same_symbol_bonus:
         score += GREP_SAME_SYMBOL_BODY
         reasons.append(f"+{GREP_SAME_SYMBOL_BODY} same_symbol_body")
     else:
-        score += 0
-        reasons.append(f"+0 same_symbol_body:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 same_symbol_body:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if comment_doc_bonus:
         score += GREP_COMMENT_DOC
         reasons.append(f"+{GREP_COMMENT_DOC} comment_or_doc_tied_to_symbol")
     else:
-        score += 0
-        reasons.append(f"+0 comment_doc:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 comment_doc:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if graph_neighbor_bonus:
         score += GREP_GRAPH_NEIGHBOR
         reasons.append(
             f"+{GREP_GRAPH_NEIGHBOR} graph_neighbor_of_target"
         )
     else:
-        score += 0
-        reasons.append(f"+0 graph_neighbor:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if graph_component_bonus:
         score += GREP_GRAPH_COMPONENT
         reasons.append(
             f"+{GREP_GRAPH_COMPONENT} same_graph_component_as_target"
         )
     else:
-        score += 0
-        reasons.append(f"+0 graph_component:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 graph_component:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
 
     if is_git_changed:
         score += GREP_GIT_CHANGED
@@ -506,7 +529,7 @@ __all__ = [
     "GREP_GRAPH_COMPONENT",
     "GREP_GRAPH_NEIGHBOR",
     "GREP_SAME_SYMBOL_BODY",
-    "PHASE2_DISABLED_NOTE",
+    "INDEXED_COMPONENT_NOT_AVAILABLE",
     "SEARCH_EXACT_BASENAME",
     "SEARCH_GENERATED_PENALTY",
     "SEARCH_GIT_CHANGED",

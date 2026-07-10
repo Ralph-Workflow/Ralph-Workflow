@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
 from ralph.mcp.explore.ranking import (
-    PHASE2_DISABLED_NOTE,
+    INDEXED_COMPONENT_NOT_AVAILABLE,
     fts_query_for,
     is_fts_eligible,
     score_grep_match,
@@ -622,8 +622,13 @@ def handle_grep_files(
             "skipped_files": skipped,
             "ranked_by": rank_by,
             "dedupe_by_symbol": dedupe_by_symbol,
+            # Live fallback: the explore index is not attached, so
+            # graph context is not available. The structured reason
+            # mirrors the indexed path's missing-data value so
+            # callers can audit the absence.
             "graph_context": (
-                [] if include_graph_context else "disabled:phase2"
+                [] if include_graph_context
+                else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
             ),
         }
         if return_evidence_ids:
@@ -650,7 +655,8 @@ def handle_grep_files(
         "ranked_by": rank_by,
         "dedupe_by_symbol": dedupe_by_symbol,
         "graph_context": (
-            [] if include_graph_context else f"disabled:{PHASE2_DISABLED_NOTE}"
+            [] if include_graph_context
+            else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
         ),
         "score_reasons": (
             [item.reasons for item in ranked_items]

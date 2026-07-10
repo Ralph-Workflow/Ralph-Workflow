@@ -216,8 +216,10 @@ _SEED: tuple[AuditEntry, ...] = (
         rationale=(
             "Add evidence_id / span_id / symbol selectors with content-hash "
             "preconditions so agents stop reading entire files when an indexed "
-            "span or symbol lookup suffices. Phase 1 lexical; symbol/span "
-            "fallback returns structured 'disabled:phase2' until Phase 2."
+            "span or symbol lookup suffices. The contract ships via the "
+            "structure rows; absent evidence surfaces structured "
+            "'unknown_evidence' / 'stale_evidence' responses rather than a "
+            "deferred placeholder."
         ),
         counters=_counters(
             transcript_tokens=120,

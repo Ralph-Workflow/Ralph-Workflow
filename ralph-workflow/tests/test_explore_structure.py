@@ -153,7 +153,15 @@ def test_python_structure_emits_full_prompt_relation_set(tmp_path: Path) -> None
     reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
     try:
         relations = {row.relation for row in store.iter_edges(path="module.py")}
-        # Every prompt-promised relation must be present.
+        # Every prompt-promised relation must be present. AC-02
+        # requires the extractor to emit ``defines`` for every
+        # parser-recognized definition span (functions, classes,
+        # async functions); the relations assertion must catch a
+        # missing or stalled extractor.
+        assert "defines" in relations, (
+            "Python extractor must emit ``defines`` edges for each "
+            "parser-recognized definition span"
+        )
         assert "contains" in relations
         assert "imports" in relations
         assert "calls_syntax" in relations
