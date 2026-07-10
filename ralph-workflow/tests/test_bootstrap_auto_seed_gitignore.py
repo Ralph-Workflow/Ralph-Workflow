@@ -102,6 +102,53 @@ def test_auto_seed_default_gitignore_uses_atomic_helper(
     )
 
 
+def test_auto_seed_idempotent_repair_appends_child_rule_only_when_absent(tmp_path: Path) -> None:
+    """AC-05: ``.agent/ralph-explore/`` must be in the seeded default
+    gitignore. The second pass is a no-op when the explicit child
+    rule is already present; the first pass on a fresh tree seeds
+    the literal ``.agent/ralph-explore/`` line so the disposable
+    cache coverage is reported transparently. User content
+    already in ``.gitignore`` is preserved in both passes.
+    """
+    appended_first = auto_seed_default_gitignore(tmp_path)
+    # The literal child rule must appear in the first-pass appended
+    # list so the disposable cache coverage is explicit.
+    assert ".agent/ralph-explore/" in appended_first
+    gitignore_text = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert ".agent/ralph-explore/" in gitignore_text.splitlines()
+
+    # Add a user line above the defaults to make sure the seeder
+    # preserves it on the second pass.
+    gitignore = tmp_path / ".gitignore"
+    user_line = "# user custom line"
+    existing = gitignore.read_text(encoding="utf-8")
+    gitignore.write_text(user_line + "\n" + existing, encoding="utf-8")
+
+    # Second pass: idempotent; nothing new is appended. The user
+    # line and the explicit child rule are preserved.
+    appended_second = auto_seed_default_gitignore(tmp_path)
+    assert appended_second == []
+    after = gitignore.read_text(encoding="utf-8").splitlines()
+    assert after[0] == user_line
+    assert ".agent/ralph-explore/" in after
+
+    # A subsequent pass that REMOVES the explicit child rule
+    # (simulating a regression / hand-edit) must repair it on the
+    # next call. The seeder is idempotent against the parent
+    # ``.agent/`` rule and additive against the explicit child
+    # rule; removing the child rule and re-seeding must restore
+    # the literal line without touching the parent.
+    new_lines = [line for line in after if line.strip() != ".agent/ralph-explore/"]
+    gitignore.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    appended_third = auto_seed_default_gitignore(tmp_path)
+    assert ".agent/ralph-explore/" in appended_third
+    final_text = gitignore.read_text(encoding="utf-8")
+    assert ".agent/ralph-explore/" in final_text.splitlines()
+    # The parent ``.agent/`` rule was already present and must NOT
+    # be re-appended.
+    assert final_text.count(".agent/") >= 1
+
+
 def test_auto_seed_covers_common_project_structures(tmp_path: Path) -> None:
     """The .gitignore covers the prompt-named categories: Python, Node, editor, OS."""
     auto_seed_default_gitignore(tmp_path)

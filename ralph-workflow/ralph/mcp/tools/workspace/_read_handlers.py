@@ -727,25 +727,7 @@ def _read_via_symbol(
     )
 
 
-def _read_disabled(
-    session: object,
-    selector_name: str,
-    *,
-    return_metadata: bool,
-    **fields: object,
-) -> ToolResult:
-    payload: dict[str, object] = {
-        "status": "indexed_selector_unavailable",
-        "reason": f"disabled:phase2 (selector={selector_name})",
-        "selector": selector_name,
-    }
-    payload.update(fields)
-    if return_metadata:
-        payload.update(_freshness_for_read(session))
-    return ToolResult(
-        content=[ToolContent.text_content(_tool_json(payload))],
-        is_error=True,
-    )
+
 
 
 def _decode_payload(result: ToolResult) -> dict[str, object]:

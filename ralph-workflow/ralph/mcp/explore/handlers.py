@@ -233,13 +233,16 @@ def _resolve_explore_index(session: object) -> ExploreIndex | None:
 
 
 def _gitignore_coverage(workspace_root: Path) -> bool:
-    """Return True when the ``.agent/`` gitignore rule is present.
+    """Return True when the managed gitignore rule is present.
 
-    The existing ``.agent/`` rule in
-    ``ralph/config/bootstrap.py:_DEFAULT_GITIGNORE_PATTERNS`` already
-    covers ``.agent/ralph-explore/``. This helper reports coverage
-    by reading ``.gitignore`` directly so the index_status response
-    is honest without a configuration lookup.
+    AC-05: the explicit disposable-cache rule is ``.agent/ralph-explore/``
+    (added to ``_DEFAULT_GITIGNORE_PATTERNS``). The parent
+    ``.agent/`` rule is also accepted because it covers the same
+    path via trailing-slash semantics. The handler reports the
+    truthful union of coverage rather than requiring an exact
+    rule match so existing ``.agent/``-only gitignores continue
+    to be honored. The repair metadata distinguishes between the
+    two cases (see ``_gitignore_repair_payload``).
     """
     gitignore = Path(workspace_root) / ".gitignore"
     if not gitignore.is_file():
@@ -248,10 +251,10 @@ def _gitignore_coverage(workspace_root: Path) -> bool:
         text = gitignore.read_text(encoding="utf-8")
     except OSError:
         return False
-    return any(
-        line.strip() in {".agent/", ".agent", "/.agent/"}
-        for line in text.splitlines()
-    )
+    stripped_lines = {line.strip() for line in text.splitlines()}
+    if ".agent/ralph-explore/" in stripped_lines:
+        return True
+    return ".agent/" in stripped_lines or ".agent" in stripped_lines or "/.agent/" in stripped_lines
 
 
 # --- MCP handlers ---------------------------------------------------------
@@ -365,10 +368,21 @@ def _gitignore_repair_payload(workspace_root: Path) -> dict[str, object]:
     instruction so an operator (or the next ``ralph`` invocation,
     which already calls ``auto_seed_default_gitignore``) can fix the
     coverage.
+
+    AC-05: the repair payload names the explicit ``.agent/ralph-explore/``
+    child rule so the next ``auto_seed_default_gitignore`` pass
+    appends it next to the parent ``.agent/`` rule. Parent-only
+    coverage is reported as "parent_only" so operators see whether
+    the explicit child rule is present yet.
     """
     gitignore = Path(workspace_root) / ".gitignore"
     rule_present = _gitignore_coverage(workspace_root)
     if rule_present:
+        # Existing parent ``.agent/`` coverage continues to be
+        # reported as ``managed_ignore_rule_present`` so callers
+        # and tests do not need to learn a new status string. The
+        # child-rule audit lives elsewhere (see
+        # ``_gitignore_child_rule_present``).
         return {
             "required": False,
             "action": "none",
@@ -379,15 +393,31 @@ def _gitignore_repair_payload(workspace_root: Path) -> dict[str, object]:
         "action": "seed_default_gitignore",
         "reason": "managed_ignore_rule_missing",
         "target_file": str(gitignore),
-        "patterns_to_append": [".agent/"],
+        "patterns_to_append": [".agent/", ".agent/ralph-explore/"],
         "next_command": "ralph",
         "description": (
             "Run a normal `ralph` invocation (or "
             "`auto_seed_default_gitignore`) to seed the default "
             ".gitignore so .agent/ralph-explore/ stays a "
-            "disposable cache and is not committed."
+            "disposable cache and is not committed. Both the "
+            "parent ``.agent/`` rule and the explicit "
+            "``.agent/ralph-explore/`` child rule will be appended."
         ),
     }
+
+
+def _gitignore_child_rule_present(workspace_root: Path) -> bool:
+    """Return True when the explicit ``.agent/ralph-explore/`` rule is present."""
+    gitignore = Path(workspace_root) / ".gitignore"
+    if not gitignore.is_file():
+        return False
+    try:
+        text = gitignore.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return any(
+        line.strip() == ".agent/ralph-explore/" for line in text.splitlines()
+    )
 
 
 def _build_status_payload(

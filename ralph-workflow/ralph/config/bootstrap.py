@@ -51,8 +51,17 @@ _GLOBAL_POLICY_FILENAME_MAP = {
 _ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
 _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
 _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
-    # Ralph Workflow local artifacts (existing — DO NOT REORDER)
+    # Ralph Workflow local artifacts (existing — DO NOT REORDER).
+    # The first entry ``.agent/`` already covers the
+    # ``.agent/ralph-explore/`` disposable cache by virtue of its
+    # trailing slash. The explicit child rule below is added to
+    # satisfy the prompt's "managed gitignore child entry"
+    # requirement (AC-05) without reordering the protected entries
+    # above: ``auto_seed_default_gitignore`` only appends missing
+    # patterns, so the parent ``.agent/`` rule is preserved and
+    # the explicit child rule is added next to the parent.
     ".agent/",
+    ".agent/ralph-explore/",
     "/PROMPT*",
     "wt-*/",
     "/checkpoint.json",

@@ -11,28 +11,20 @@ from ralph.mcp.explore.deferred_phases import (
 )
 
 
-def test_deferred_phases_covers_phase_2_through_5() -> None:
-    """The register must include the four deferred phases AND
-    distinguish shipped phases (phase_2/3/4, sentinel) from the
-    genuinely-still-deferred phase_5 (real four-deliverable tuple)."""
+def test_deferred_phases_retains_only_phase_5() -> None:
+    """The register must retain only the genuine optional Phase 5
+    work after Phases 0-4 ship. ``phase_5`` keeps its
+    four-deliverable tuple (NetworkX / Kuzu / hybrid ranking /
+    Tree-sitter). The shipped phases (2/3/4) are no longer in
+    the register because the implementation is in production.
+    """
     ids = {entry.phase_id for entry in DEFERRED_PHASES}
-    assert ids == {"phase_2", "phase_3", "phase_4", "phase_5"}
+    assert ids == {"phase_5"}, (
+        "Only phase_5 should remain in DEFERRED_PHASES once phases "
+        "0-4 ship. Found: " + repr(ids)
+    )
 
-    shipped_phase_ids = {"phase_2", "phase_3", "phase_4"}
-    by_id = {entry.phase_id: entry for entry in DEFERRED_PHASES}
-
-    for phase_id in shipped_phase_ids:
-        entry = by_id[phase_id]
-        assert entry.deliverables[0] == f"{phase_id}_complete_no_remaining_work", (
-            f"{phase_id} must use the {phase_id}_complete_no_remaining_work "
-            f"sentinel prefix; got {entry.deliverables[0]!r}"
-        )
-        assert entry.deferral_rationale.strip(), (
-            f"{phase_id} must keep a non-empty rationale that cites the "
-            f"shipped implementation"
-        )
-
-    phase_5 = by_id["phase_5"]
+    phase_5 = next(entry for entry in DEFERRED_PHASES if entry.phase_id == "phase_5")
     assert phase_5.deliverables == (
         "NetworkX offline graph metrics behind a feature flag",
         "Kuzu adapter gated by measured SQLite bottleneck evidence",
@@ -43,6 +35,8 @@ def test_deferred_phases_covers_phase_2_through_5() -> None:
         "NetworkX/Kuzu/Tree-sitter are not yet implemented (no networkx, "
         "kuzu, or tree-sitter import in ralph/mcp/explore/ or pyproject.toml)"
     )
+    assert phase_5.deferral_rationale.strip()
+    assert phase_5.risk.strip()
 
 
 def test_every_deferred_phase_has_non_empty_rationale() -> None:
@@ -100,9 +94,9 @@ def test_deferred_phase_rejects_empty_deliverables() -> None:
 
 
 def test_registry_lookup_returns_matching_phase() -> None:
-    phase = DeferredPhaseRegistry.get("phase_2")
+    phase = DeferredPhaseRegistry.get("phase_5")
     assert phase is not None
-    assert phase.phase_id == "phase_2"
+    assert phase.phase_id == "phase_5"
 
 
 def test_registry_lookup_returns_none_for_unknown_id() -> None:

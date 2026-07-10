@@ -189,6 +189,18 @@ def _qualify(parent: str, name: str) -> str:
     return f"{parent}.{name}" if parent else name
 
 
+class PythonExtractionError(Exception):
+    """Typed extraction failure raised when Python source fails to parse.
+
+    PA-001 / AC-02: the reindex pipeline translates this exception
+    in its preflight so the per-path failure path appends the file
+    to ``failed_files`` and continues the sorted path loop. Prior
+    lexical/structure rows for the path remain queryable, the dirty
+    entry stays queued, and the failure is retried on the next
+    reindex pass.
+    """
+
+
 def extract_python(
     *,
     path: str,
@@ -198,10 +210,27 @@ def extract_python(
 ) -> StructureExtraction:
     """Extract spans/symbols/edges from a Python source ``content``.
 
-    Returns an empty :class:`StructureExtraction` (no rows) when the
-    source fails to parse. Per the prompt, partial extraction must
-    never poison the index — unparseable Python still produces
-    chunks/evidence rows via the lexical pipeline.
+    Raises ``PythonExtractionError`` when the source fails to parse. Per
+    the prompt's PA-001 invariant, the reindex pipeline catches the
+    typed exception in its preflight so lexical/structure rows for
+    the path remain queryable. Direct callers of ``extract_python``
+    (and tests) can decide their own recovery contract.
+
+    Edge relation coverage (mechanically evidenced):
+
+    * ``contains`` — file/module/class contains child span.
+    * ``defines`` — emitted only for parser-recognized definitions.
+    * ``imports`` — emitted only from ``ast.Import`` / ``ast.ImportFrom``.
+    * ``calls_syntax`` — emitted only when syntax contains a call
+      expression with a recordable callee token. Does NOT claim
+      semantic dispatch.
+    * ``references_text`` — emitted from exact token / text matches
+      after identifier normalization. Lower confidence than parser
+      edges; provenance is ``inferred``.
+    * ``inherits_syntax`` — emitted only from Python class bases.
+    * ``tests`` — emitted from deterministic test-naming conventions.
+    * ``mentions`` — emitted only from comments with exact matched
+      spans. Must not imply code dependency.
     """
     spans: list[SpanRow] = []
     symbols: list[SymbolRow] = []
@@ -209,14 +238,8 @@ def extract_python(
 
     try:
         tree = ast.parse(content)
-    except SyntaxError:
-        return StructureExtraction(
-            path=path,
-            content_hash=content_hash,
-            spans=(),
-            symbols=(),
-            edges=(),
-        )
+    except SyntaxError as exc:
+        raise PythonExtractionError(f"{path!r}: {exc}") from exc
 
     def _walk(node: ast.AST, parent_qualified: str, container_span_id: str) -> None:
         kind_name = _node_kind(node)
@@ -357,6 +380,54 @@ def extract_python(
     module_qualified = Path(path).stem
     _walk(tree, parent_qualified=module_qualified, container_span_id=file_span_id)
 
+    # Calls (calls_syntax). Emitted only when an ast.Call expression
+    # has a recordable callee token. The callee is recorded as a
+    # unresolved target because semantic dispatch is not proven by
+    # syntax alone.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            callee: object | None = None
+            func_obj: object = node.func
+            if isinstance(func_obj, ast.Name):
+                callee = func_obj.id
+            elif isinstance(func_obj, ast.Attribute):
+                attr_id: object = getattr(func_obj, "attr", None)
+                callee = attr_id if isinstance(attr_id, str) else None
+            if not callee or not isinstance(callee, str):
+                continue
+            span_start_line, span_start_col, span_end_line, span_end_col = _line_col(
+                node
+            )
+            span_id = derive_span_id(
+                path=path,
+                start_line=span_start_line,
+                start_col=span_start_col,
+                end_line=span_end_line,
+                end_col=span_end_col,
+                kind="call",
+                content_hash=content_hash,
+            )
+            edges.append(
+                EdgeRow(
+                    edge_id=derive_edge_id(
+                        source_id=f"file:{path}",
+                        target_id=f"unresolved:{callee}",
+                        relation="calls_syntax",
+                        path=path,
+                        span_id=span_id,
+                    ),
+                    source_id=f"file:{path}",
+                    target_id=f"unresolved:{callee}",
+                    relation="calls_syntax",
+                    path=path,
+                    span_id=span_id,
+                    provenance="extracted",
+                    confidence=CONFIDENCE_INFERRED,
+                    reason="ast:Call",
+                    generation=generation,
+                )
+            )
+
     # Imports
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -431,6 +502,157 @@ def extract_python(
                     )
                 )
 
+    # references_text: emit one edge per defined symbol whose
+    # identifier appears in another symbol's body. We use
+    # ``ast.walk`` to scan function/class bodies for raw token
+    # matches after identifier normalization. The relation is
+    # ``inferred`` (lower confidence than parser-verified edges).
+    defined_names: set[str] = {
+        symbol_row.name
+        for symbol_row in symbols
+        if isinstance(symbol_row.name, str) and symbol_row.name
+    }
+    if defined_names:
+        for body_node in ast.walk(tree):
+            if not isinstance(
+                body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
+                continue
+            body_start, _, body_end, _ = _line_col(body_node)
+            for sub in ast.walk(body_node):
+                if isinstance(sub, ast.Name) and isinstance(sub.id, str):
+                    name = sub.id
+                    if name in defined_names:
+                        # Skip the symbol's own definition.
+                        body_node_name: str = ""
+                        if isinstance(
+                            body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                        ):
+                            raw_name: object = getattr(body_node, "name", "")
+                            body_node_name = (
+                                raw_name if isinstance(raw_name, str) else ""
+                            )
+                        if body_node_name == name:
+                            continue
+                        ref_line, _, ref_end, ref_end_col = _line_col(sub)
+                        if ref_line < body_start or ref_line > body_end:
+                            continue
+                        raw_col: object = getattr(sub, "col_offset", 0)
+                        ref_col_offset = (
+                            int(raw_col) if isinstance(raw_col, int) and not isinstance(raw_col, bool) else 0
+                        )
+                        ref_span_id = derive_span_id(
+                            path=path,
+                            start_line=ref_line,
+                            start_col=ref_col_offset,
+                            end_line=ref_end,
+                            end_col=ref_end_col,
+                            kind="reference",
+                            content_hash=content_hash,
+                        )
+                        for def_sym in symbols:
+                            if def_sym.name == name:
+                                edges.append(
+                                    EdgeRow(
+                                        edge_id=derive_edge_id(
+                                            source_id=f"sym:{path}:{def_sym.qualified_name}",
+                                            target_id=f"sym:{path}:{body_node_name}",
+                                            relation="references_text",
+                                            path=path,
+                                            span_id=ref_span_id,
+                                        ),
+                                        source_id=f"sym:{path}:{def_sym.qualified_name}",
+                                        target_id=f"sym:{path}:{body_node_name}",
+                                        relation="references_text",
+                                        path=path,
+                                        span_id=ref_span_id,
+                                        provenance="inferred",
+                                        confidence=CONFIDENCE_INFERRED,
+                                        reason="text_match:identifier",
+                                        generation=generation,
+                                    )
+                                )
+                                break
+
+    # tests: emit edges from any function whose name starts with
+    # ``test_`` to the file-level container span. ``tests`` is a
+    # suggested-verification relation, not proof of behavioral
+    # coverage. Deterministic naming + path heuristics drive the
+    # edge; callers must not assume the relation implies the test
+    # actually verifies the target.
+    for sym_row in symbols:
+        if sym_row.kind == "function" and sym_row.name.startswith("test_"):
+            test_span_id = sym_row.span_id
+            edges.append(
+                EdgeRow(
+                    edge_id=derive_edge_id(
+                        source_id=sym_row.symbol_id,
+                        target_id=f"file:{path}",
+                        relation="tests",
+                        path=path,
+                        span_id=test_span_id,
+                    ),
+                    source_id=sym_row.symbol_id,
+                    target_id=f"file:{path}",
+                    relation="tests",
+                    path=path,
+                    span_id=test_span_id,
+                    provenance="extracted",
+                    confidence=CONFIDENCE_INFERRED,
+                    reason="ast:function:name=test_*",
+                    generation=generation,
+                )
+            )
+
+    # mentions: scan leading ``#``-prefixed comments for defined
+    # symbol names. The relation is ``inferred`` and must never
+    # imply code dependency. Each comment line emits one edge per
+    # matched identifier; the matched token's span is the
+    # comment span itself.
+    if defined_names:
+        lines_list: list[str] = content.splitlines()
+        for line_index, raw_line in enumerate(lines_list, start=1):
+            stripped = raw_line.lstrip()
+            if not stripped.startswith("#"):
+                continue
+            comment_text = stripped.lstrip("#").strip()
+            tokens_raw: list[str] = _IDENT_RE.findall(comment_text)
+            tokens: list[str] = [t for t in tokens_raw if isinstance(t, str)]
+            if not tokens:
+                continue
+            for token in tokens:
+                if token not in defined_names:
+                    continue
+                mention_span_id = derive_span_id(
+                    path=path,
+                    start_line=line_index,
+                    start_col=raw_line.index("#"),
+                    end_line=line_index,
+                    end_col=len(raw_line),
+                    kind="comment",
+                    content_hash=content_hash,
+                )
+                edges.append(
+                    EdgeRow(
+                        edge_id=derive_edge_id(
+                            source_id=f"comment:{path}:{line_index}",
+                            target_id=f"unresolved:{token}",
+                            relation="mentions",
+                            path=path,
+                            span_id=mention_span_id,
+                        ),
+                        source_id=f"comment:{path}:{line_index}",
+                        target_id=f"unresolved:{token}",
+                        relation="mentions",
+                        path=path,
+                        span_id=mention_span_id,
+                        provenance="inferred",
+                        confidence=CONFIDENCE_AMBIGUOUS,
+                        reason="text_match:comment",
+                        generation=generation,
+                    )
+                )
+
     return StructureExtraction(
         path=path,
         content_hash=content_hash,
@@ -438,6 +660,9 @@ def extract_python(
         symbols=tuple(symbols),
         edges=tuple(edges),
     )
+
+
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _node_kind(node: ast.AST) -> str | None:
@@ -719,6 +944,7 @@ __all__ = [
     "CONFIDENCE_EXTRACTED",
     "CONFIDENCE_INFERRED",
     "EXTRACTOR_VERSION",
+    "PythonExtractionError",
     "StructureExtraction",
     "derive_edge_id",
     "derive_span_id",

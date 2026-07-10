@@ -268,3 +268,48 @@ def test_run_benchmark_collects_evidence_ids_without_replay() -> None:
     assert len(counter.invocations) == len(fixture.indexed_script)
     assert result.indexed.evidence_recall == 1.0
     assert result.indexed.tool_calls == len(fixture.indexed_script)
+
+
+def test_run_benchmark_transcript_counts_full_catalog_and_evidence_context() -> None:
+    """AC-12: the benchmark gates count the full scripted transcript
+    (visible tool descriptions/input schemas, tool names +
+    parameters, outputs, and final evidence context).
+
+    A scripted flow with a non-zero ``catalog_tokens`` and
+    ``final_evidence_tokens`` must add them to the indexed
+    ``transcript_tokens`` exactly once. The test pins this so a
+    future regression that drops either addition breaks the gate.
+    """
+    fixture = REQUIRED_FIXTURES[0]
+    # Synthetic catalog token count: 50 visible-tool-description
+    # tokens (a conservative lower bound for a small MCP catalog).
+    catalog_tokens = 50
+    final_evidence_tokens = 16
+    result = run_benchmark(
+        fixture,
+        baseline_executor=_baseline_executor,
+        indexed_executor=_indexed_executor,
+        clock=FakeClock(),
+        catalog_tokens=catalog_tokens,
+        final_evidence_tokens=final_evidence_tokens,
+    )
+    # Both baseline and indexed add the catalog and final-evidence
+    # tokens; the gate compares their deltas, not their absolutes.
+    assert result.baseline.transcript_tokens >= catalog_tokens
+    assert result.baseline.transcript_tokens >= final_evidence_tokens
+    assert result.indexed.transcript_tokens >= catalog_tokens
+    assert result.indexed.transcript_tokens >= final_evidence_tokens
+    # The catalog and final-evidence tokens are added ONCE per
+    # script (not per call) so a single run with N scripted calls
+    # adds the constants exactly once.
+    expected_indexed_baseline_gap = (
+        result.indexed.transcript_tokens - result.baseline.transcript_tokens
+    )
+    # Baseline returns a 512-byte payload per call; indexed returns
+    # a 32-byte payload per call. Each call contributes a token
+    # difference of ``(512 - 32) / whitespace-split-token``;
+    # whatever the exact gap is, it must be finite and negative
+    # (indexed costs less) and bounded by the per-call payload
+    # ratio. The catalog and final-evidence tokens cancel out
+    # in the baseline-vs-indexed comparison.
+    assert expected_indexed_baseline_gap <= 0

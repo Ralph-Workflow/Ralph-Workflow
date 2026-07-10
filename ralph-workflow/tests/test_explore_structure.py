@@ -117,6 +117,56 @@ def test_changed_file_reindex_replaces_structure_rows_without_stale_edges(
         store.close()
 
 
+def test_python_structure_emits_full_prompt_relation_set(tmp_path: Path) -> None:
+    """AC-02: the Python extractor emits every prompt-promised
+    mechanically-evidenced relation: ``defines``, ``contains``,
+    ``imports``, ``calls_syntax``, ``references_text``,
+    ``inherits_syntax``, ``tests``, ``mentions``.
+
+    Each edge carries an explicit ``provenance`` (``extracted`` for
+    parser-verified rows, ``inferred`` for text-match rows) so
+    callers can audit synthetic vs. real facts.
+    """
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "module.py").write_text(
+        "import os\n"
+        "import sys\n"
+        "from typing import Any\n"
+        "\n"
+        "class Base:\n"
+        "    pass\n"
+        "\n"
+        "class Foo(Base):\n"
+        "    def bar(self):\n"
+        "        return os.path.join('a', 'b')\n"
+        "\n"
+        "def hello():\n"
+        "    return Foo()\n"
+        "\n"
+        "def test_smoke():\n"
+        "    # References hello for documentation.\n"
+        "    return hello()\n"
+    )
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
+    try:
+        relations = {row.relation for row in store.iter_edges(path="module.py")}
+        # Every prompt-promised relation must be present.
+        assert "contains" in relations
+        assert "imports" in relations
+        assert "calls_syntax" in relations
+        assert "references_text" in relations
+        assert "inherits_syntax" in relations
+        assert "tests" in relations
+        assert "mentions" in relations
+        # Every edge must carry a recognized provenance.
+        provenances = {row.provenance for row in store.iter_edges(path="module.py")}
+        assert provenances.issubset({"extracted", "inferred", "ambiguous"})
+    finally:
+        store.close()
+
+
 def test_unsupported_language_returns_empty_extraction(tmp_path: Path) -> None:
     """Files outside Python/Markdown get empty structure rows."""
     workspace = _seed_workspace(tmp_path)
@@ -149,18 +199,24 @@ def test_extract_structure_dispatches_by_extension() -> None:
     assert any(span.kind == "module" for span in result.spans)
 
 
-def test_extract_python_syntax_error_returns_empty(tmp_path: Path) -> None:
-    """A Python file that fails to parse returns empty rows."""
+def test_extract_python_syntax_error_raises_python_extraction_error(tmp_path: Path) -> None:
+    """PA-001 / AC-02: A Python file that fails to parse raises the
+    typed :class:`PythonExtractionError` so the reindex pipeline can
+    fail-closed in its preflight while preserving the prior lexical
+    and structure rows for the path.
+    """
+    import pytest
+
+    from ralph.mcp.explore.structure import PythonExtractionError
+
     workspace = tmp_path / "ws"
     workspace.mkdir()
     bad_path = workspace / "bad.py"
     bad_path.write_text("def broken(:\n    pass\n")
-    result = extract_python(
-        path="bad.py",
-        content=bad_path.read_text(encoding="utf-8"),
-        content_hash="0",
-        generation=1,
-    )
-    assert result.spans == ()
-    assert result.symbols == ()
-    assert result.edges == ()
+    with pytest.raises(PythonExtractionError):
+        extract_python(
+            path="bad.py",
+            content=bad_path.read_text(encoding="utf-8"),
+            content_hash="0",
+            generation=1,
+        )

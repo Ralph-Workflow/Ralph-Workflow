@@ -218,7 +218,10 @@ def test_mode_full_rebuilds_atomically(tmp_path: Path) -> None:
     store = _build_store(tmp_path)
     try:
         reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
-        (workspace / "a.py").write_text("NEW CONTENT\n")
+        # Use valid Python so the structure preflight succeeds and
+        # the per-path replacement runs. ``NEW = "CONTENT"`` is a
+        # valid assignment statement that re-indexes cleanly.
+        (workspace / "a.py").write_text('NEW = "CONTENT"\n')
         result = reindex(
             store,
             workspace,
@@ -1048,6 +1051,90 @@ def test_delete_then_identical_restore_reindexes_path(tmp_path: Path) -> None:
         assert [
             s.qualified_name for s in store.iter_symbols("restore.py")
         ] == ["restore.original"]
+    finally:
+        store.close()
+
+
+def test_malformed_changed_python_preserves_prior_rows_and_retries(tmp_path: Path) -> None:
+    """PA-001 / AC-02: a malformed changed Python file preserves all
+    prior lexical and structure rows, lands in ``failed_files``,
+    stays in ``peek_dirty_paths()`` so a later retry replaces the
+    rows with valid content, and never blocks the sorted path loop.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / "a.py").write_text(
+        "def hello():\n    return 1\n\ndef goodbye():\n    return 2\n"
+    )
+    store = _build_store(tmp_path)
+    try:
+        # 1. Cold-index valid ``a.py`` and assert the lexical and
+        # structure rows are queryable.
+        reindex(
+            store,
+            workspace,
+            options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        before_chunks = _count_chunks_rows(store)
+        before_symbols = len(list(store.iter_symbols("a.py")))
+        assert before_chunks > 0
+        assert before_symbols > 0
+        before_qual = {sym.qualified_name for sym in store.iter_symbols("a.py")}
+        # The extractor uses the file basename (``a``) as the
+        # module-qualified parent.
+        assert "a.hello" in before_qual
+
+        # 2. Replace ``a.py`` with malformed Python. The path is
+        # marked dirty manually so the next changed reindex has to
+        # process it.
+        (workspace / "a.py").write_text("def broken(:\n    pass\n")
+        store.mark_dirty("a.py", reason="write", source_tool="write_file")
+        assert "a.py" in store.peek_dirty_paths()
+
+        # 3. Run the changed reindex. The path lands in failed_files
+        # because Python extraction raises; prior rows are kept.
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert "a.py" in result.failed_files
+        # The path is NOT in changed_files; the failed path is
+        # excluded from the success counter.
+        assert "a.py" not in result.changed_files
+
+        # 4. Prior lexical and structure rows for ``a.py`` are
+        # still queryable (the preflight refused to write).
+        assert _count_chunks_rows(store) == before_chunks
+        qual_after = {sym.qualified_name for sym in store.iter_symbols("a.py")}
+        assert qual_after == before_qual
+
+        # 5. ``a.py`` remains in ``peek_dirty_paths()`` so a later
+        # retry replaces the rows.
+        assert "a.py" in store.peek_dirty_paths()
+
+        # 6. Other paths (``b.py``) commit cleanly even when the
+        # malformed path fails.
+        other_row = store.get_file("b.py")
+        assert other_row is not None
+        assert other_row.is_deleted is False
+
+        # 7. Write valid Python and rerun the changed reindex. The
+        # dirty entry clears and the rows are replaced with the new
+        # content hash + generation.
+        (workspace / "a.py").write_text("def hello():\n    return 42\n")
+        result2 = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert result2.status == "ok"
+        assert "a.py" in result2.changed_files
+        # The dirty entry has been consumed for the successful path.
+        assert "a.py" not in store.peek_dirty_paths()
+        qual_recovered = {
+            sym.qualified_name for sym in store.iter_symbols("a.py")
+        }
+        assert "a.hello" in qual_recovered
     finally:
         store.close()
 

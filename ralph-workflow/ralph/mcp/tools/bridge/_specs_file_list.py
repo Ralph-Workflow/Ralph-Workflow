@@ -145,9 +145,11 @@ def file_list_specs() -> list[ToolSpec]:
                         "ranked": {
                             "type": "boolean",
                             "description": (
-                                "Rank matched paths by deterministic Phase-1 "
-                                "score components (path, role, generated-penalty; "
-                                "symbol/graph disabled)."
+                                "Rank matched paths by deterministic score "
+                                "components (path basename, role, "
+                                "git-changed, generated-penalty, and indexed "
+                                "symbol/graph bonuses when the explore index "
+                                "has them)."
                             ),
                             "default": False,
                         },
@@ -165,15 +167,18 @@ def file_list_specs() -> list[ToolSpec]:
                         "contains_symbol": {
                             "type": "string",
                             "description": (
-                                "Phase 2 selector. Phase 1 returns structured "
-                                "'disabled:phase2' but still returns live glob results."
+                                "Indexed selector: only paths defining or "
+                                "referencing the named symbol survive. Returns "
+                                "live glob results when the explore index has "
+                                "no match for the symbol."
                             ),
                         },
                         "changed_only": {
                             "type": "boolean",
                             "description": (
-                                "Restrict matches to git-changed paths. Phase 1 "
-                                "returns an empty list (no git signal)."
+                                "Restrict matches to git-changed paths. Uses "
+                                "the explore index dirty-path queue when "
+                                "available and falls back to live git_status."
                             ),
                             "default": False,
                         },
@@ -276,10 +281,12 @@ def file_list_specs() -> list[ToolSpec]:
                             "type": "string",
                             "enum": ["match", "symbol", "graph", "changed", "hybrid"],
                             "description": (
-                                "Ranking strategy. Phase 1 only differentiates "
-                                "'match' from the others via the git-changed "
-                                "signal; symbol/graph components are stubbed "
-                                "with a 'disabled:phase2' reason."
+                                "Ranking strategy. 'match' is the baseline; "
+                                "'symbol' adds a bonus when the match is inside "
+                                "a definition body; 'graph' adds a bonus for "
+                                "caller/importer/test neighbors; 'changed' adds "
+                                "the git-changed bonus; 'hybrid' combines them "
+                                "with explicit score-reason lines."
                             ),
                             "default": "match",
                         },
@@ -304,8 +311,7 @@ def file_list_specs() -> list[ToolSpec]:
                             "type": "boolean",
                             "description": (
                                 "Collapse repeated hits inside the same chunk/"
-                                "evidence span (no-op in Phase 1 because "
-                                "symbol spans arrive in Phase 2)."
+                                "evidence span when symbol context is available."
                             ),
                             "default": False,
                         },
@@ -313,8 +319,8 @@ def file_list_specs() -> list[ToolSpec]:
                             "type": "boolean",
                             "description": (
                                 "Include caller/importer/test hints in the "
-                                "response. Phase 1 returns 'disabled:phase2' "
-                                "because the structural graph is not built yet."
+                                "response when the explore index has "
+                                "symbol/graph rows for the matched paths."
                             ),
                             "default": False,
                         },

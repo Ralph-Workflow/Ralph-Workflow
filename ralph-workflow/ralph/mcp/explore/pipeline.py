@@ -61,6 +61,7 @@ from ralph.mcp.explore.store import (
     sha256_text,
 )
 from ralph.mcp.explore.structure import (
+    PythonExtractionError,
     extract_structure,
 )
 
@@ -659,6 +660,15 @@ def _run_reindex(
                 mtime_ns=actual_mtime,
                 generation=target_generation,
             )
+        except PythonExtractionError as exc:
+            # PA-001 / AC-02: the typed structure-extraction failure
+            # is translated to the same per-path failure path as
+            # any other FileReadError. Prior lexical/structure
+            # rows are preserved (the preflight refused to write),
+            # the path stays dirty, and the loop continues.
+            state.failed_paths.append(relative_path)
+            state.error_summary = f"extract_failed:python_syntax: {exc}"
+            continue
         except FileReadError as exc:
             state.failed_paths.append(relative_path)
             state.error_summary = f"extract_failed: {exc}"
@@ -847,6 +857,18 @@ def _re_extract_path(
 ) -> None:
     """Re-extract chunks and evidence for ``relative_path``.
 
+    PA-001 / AC-02: this function follows a strict preflight-then-
+    replace ordering. Every per-path destructive store write
+    (tombstone, chunk delete, structure delete, file upsert,
+    chunk/FTS insert, evidence insert, structure upsert) happens
+    only AFTER a successful read + decode + lexical chunk build +
+    structure extraction preflight. If any preflight step raises
+    (e.g. ``PythonSyntaxError`` for malformed Python), no
+    destructive write fires, prior lexical/structure rows remain
+    queryable, and the failure is reported to ``_run_reindex`` so
+    the path lands in ``failed_files`` and stays dirty for a
+    later retry.
+
     Existing rows for this path are tombstoned (bounded) and then
     replaced. The caller (``_run_reindex``) handles the file-row
     update so the manifest reflects the new generation.
@@ -860,6 +882,28 @@ def _re_extract_path(
     if not is_relative:
         raise FileReadError(f"path escapes workspace: {relative_path!r}")
 
+    # --- Preflight phase: read + decode + build lexical + structure.
+    # These calls happen BEFORE any destructive write so a failure
+    # (malformed Python, OS read error, OOM) preserves every
+    # prior row in the live store. The caller treats a raised
+    # exception as a per-path failure recorded in failed_files;
+    # the path stays dirty and is retried on the next pass.
+    text = full.read_text(encoding="utf-8", errors="replace")
+    prepared_chunks: list[tuple[int, int, str]] = list(
+        chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES)
+    )
+    # ``extract_structure`` raises ``PythonSyntaxError`` for
+    # malformed Python; the typed exception propagates so the
+    # caller fails-closed without losing prior rows.
+    prepared_extraction = extract_structure(
+        path=relative_path,
+        content=text,
+        content_hash=content_hash,
+        generation=generation,
+    )
+
+    # --- Replacement phase: tombstone + delete + upsert only after
+    # the preflight succeeds.
     previous = store.get_file(relative_path)
     if previous is not None:
         # Write a bounded tombstone for the prior evidence rows
@@ -905,8 +949,7 @@ def _re_extract_path(
             is_deleted=False,
         )
     )
-    text = full.read_text(encoding="utf-8", errors="replace")
-    for start_line, end_line, body in chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES):
+    for start_line, end_line, body in prepared_chunks:
         text_hash = sha256_text(body)
         chunk_id = derive_chunk_id(
             path=relative_path,
@@ -952,18 +995,16 @@ def _re_extract_path(
     # Phase 2 (AC-06): persist deterministic structure rows for
     # Python and Markdown files. Unsupported languages keep their
     # lexical rows only — no graph edges are emitted for them.
-    extraction = extract_structure(
-        path=relative_path,
-        content=text,
-        content_hash=content_hash,
-        generation=generation,
-    )
-    if extraction.spans or extraction.symbols or extraction.edges:
+    if (
+        prepared_extraction.spans
+        or prepared_extraction.symbols
+        or prepared_extraction.edges
+    ):
         store.replace_structure_rows(
             path=relative_path,
-            spans=extraction.spans,
-            symbols=extraction.symbols,
-            edges=extraction.edges,
+            spans=prepared_extraction.spans,
+            symbols=prepared_extraction.symbols,
+            edges=prepared_extraction.edges,
         )
 
 

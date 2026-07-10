@@ -102,16 +102,20 @@ def file_read_specs() -> list[ToolSpec]:
                         "span_id": {
                             "type": "string",
                             "description": (
-                                "Indexed symbol-span selector. Phase 1 returns "
-                                "structured ``disabled:phase2``; Phase 2 will "
-                                "resolve the symbol span."
+                                "Indexed symbol-span selector. Resolves the "
+                                "exact span via the explore index when present; "
+                                "returns ``unknown_evidence`` when the span id "
+                                "is not in the store."
                             ),
                         },
                         "symbol": {
                             "type": "string",
                             "description": (
-                                "Indexed symbol selector. Phase 1 returns "
-                                "structured ``disabled:phase2``."
+                                "Indexed symbol selector. Resolves via the "
+                                "explore index when present; returns "
+                                "``unknown_evidence`` (or ``ambiguous_symbol`` "
+                                "when multiple candidates match) when the "
+                                "symbol is not in the store."
                             ),
                         },
                         "expected_content_hash": {
@@ -219,8 +223,9 @@ def file_read_specs() -> list[ToolSpec]:
                                 "Mixed read selectors. Each item is one of "
                                 '{"path": "..."}, {"path": "...", '
                                 '"line_start": N, "line_end": N}, '
-                                '{"evidence_id": "..."}, {"span_id": "..."} '
-                                '(Phase 2), or {"symbol": "..."} (Phase 2).'
+                                '{"evidence_id": "..."}, {"span_id": "..."}, '
+                                'or {"symbol": "..."}. The indexed selectors '
+                                'resolve via the explore index when present.'
                             ),
                             "items": {
                                 "type": "object",

@@ -56,7 +56,7 @@ The table below uses a few drain groupings:
 | `ralph_finalize_plan` | `artifact.plan_write` | planning | Finalize and validate the plan draft |
 | `ralph_get_plan_draft` | `artifact.plan_read` | planning | Retrieve the current plan draft |
 | `ralph_discard_plan_draft` | `artifact.plan_write` | planning | Discard the current plan draft |
-| `ralph_index_status` | `workspace.metadata_read` | all | Report the indexed exploration index health and freshness (Phase 1 lexical only) |
+| `ralph_index_status` | `workspace.metadata_read` | all | Report the indexed exploration index health and freshness (lexical + Python/Markdown structure + graph) |
 | `ralph_reindex` | `workspace.read` | all | Run a bounded changed/full reindex of the indexed exploration index |
 | `report_progress` | `run.report_progress` | write drains, commit drains | Report progress to the pipeline |
 | `declare_complete` | `artifact.submit` | all | Declare that the agent has finished |
@@ -348,12 +348,16 @@ temp generation and atomically swaps metadata only after success.
 
 ### Indexed arguments on existing tools
 
-Phase 1 adds optional indexed arguments to existing read/search tools; the legacy behavior is preserved when the argument is absent or set to `use_index="never"`:
+The shipped indexed exploration adds optional indexed arguments to existing read/search tools; the legacy behavior is preserved when the argument is absent or set to `use_index="never"`. `span_id`, `symbol`, `contains_symbol`, `return_evidence_ids`, `ranked`, `role`, and `changed_only` are backed by the live spans/symbols/edges tables and never return `disabled:phase2` for shipped capabilities:
 
-* `grep_files(use_index, rank_by, return_evidence_ids, max_snippet_lines, dedupe_by_symbol, include_graph_context)`. Eligibility: literal, whole-word literal, simple token, phrase. Non-eligible (regex, multiline, lookaround, backreferences, byte-oriented) falls back to live grep in `auto` and fails closed in `always`. `rank_by` accepts `match`, `symbol`, `graph`, `changed`, or `hybrid`; symbol and graph components require the Phase 2 index, otherwise they are marked `+0` with an explicit `disabled:phase2` reason.
-* `search_files(ranked, role, contains_symbol, changed_only, return_evidence_ids)`. `contains_symbol` awards the Phase 2 `SEARCH_SYMBOL_MENTION` score component when the index has symbol rows; otherwise the rank degrades to deterministic path/role scoring.
-* `read_file(evidence_id, span_id, symbol, context_lines, expected_content_hash, return_metadata)`. `span_id` and `symbol` are backed by the Phase 2 spans/symbols tables; `expected_content_hash` fails closed before any mutation.
+* `grep_files(use_index, rank_by, return_evidence_ids, max_snippet_lines, dedupe_by_symbol, include_graph_context)`. Eligibility: literal, whole-word literal, simple token, phrase. Non-eligible (regex, multiline, lookaround, backreferences, byte-oriented) falls back to live grep in `auto` and fails closed in `always`. `rank_by` accepts `match`, `symbol`, `graph`, `changed`, or `hybrid`. The symbol and graph components add their bonus only when the explore index has the relevant rows; when context is absent the reason line records `+0 component:no_indexed_data` so callers see why a component did not contribute.
+* `search_files(ranked, role, contains_symbol, changed_only, return_evidence_ids)`. `contains_symbol` awards the indexed `SEARCH_SYMBOL_MENTION` score component when the index has symbol rows; otherwise the rank degrades to deterministic path/role scoring with an explicit `+0 component:no_indexed_data` reason.
+* `read_file(evidence_id, span_id, symbol, context_lines, expected_content_hash, return_metadata)`. `span_id` and `symbol` resolve via the explore index when present; missing span/symbol lookups return `unknown_evidence` (or `ambiguous_symbol` when multiple candidates match). `expected_content_hash` fails closed before any mutation.
 * `read_multiple_files(items, per_item_max_bytes, return_metadata, fail_fast)`. Items may mix `{"path": ...}`, `{"path": ..., "line_start": ..., "line_end": ...}`, `{"evidence_id": ...}`, `{"span_id": ...}`, or `{"symbol": ...}`. Per-item metadata reports truncation, freshness, and fallback reason.
+
+### Indexed selection exclusivity
+
+`read_file` accepts exactly one of `path`, `evidence_id`, `span_id`, or `symbol`. Passing two or more selectors, or none, fails closed with a structured invalid-parameter error so the legacy wire shape is preserved while the indexed path is strictly exclusive. `read_multiple_files` accepts either a legacy `paths` list or an `items` list of mixed selectors; passing both, or neither, fails closed.
 
 ### `ralph_graph`
 
@@ -379,10 +383,11 @@ Every indexed response includes `index_used`, `index_generation`, `is_stale`, `s
 
 ### Phase 1 / Phase 2 / Phase 3 / Phase 4 scope
 
-* Phase 1 is the lexical layer: FTS5 chunking + content hash + evidence handles. Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/` (git-ignored).
-* Phase 2 adds Python AST and Markdown structure extraction in `ralph.mcp.explore.structure`. Spans, symbols, and edges live in the `spans`, `symbols`, and `edges` tables with `provenance`, `confidence`, and `extractor_version`. `ralph_graph` is the graph-native query surface (neighbors, path, impact, hubs, tests).
-* Phase 3 wires `edit_file` safety arguments and the conservative impact preview through `ralph_graph`.
+* Phase 1 is the lexical layer: FTS5 chunking + content hash + evidence handles. Storage is bounded: job history caps at 100/14 days, evidence tombstones at 10k/30 days, and the index lives under `.agent/ralph-explore/`. The bootstrap seeder appends both the parent `.agent/` rule and the explicit `.agent/ralph-explore/` child rule so the disposable cache coverage is reported transparently in `.gitignore`.
+* Phase 2 ships Python AST and Markdown structure extraction in `ralph.mcp.explore.structure`. Spans, symbols, and edges live in the `spans`, `symbols`, and `edges` tables with `provenance` (`extracted` / `inferred` / `ambiguous`), `confidence`, and `extractor_version`. The relation set covers `contains`, `defines`, `imports`, `calls_syntax`, `references_text`, `inherits_syntax`, `tests`, and `mentions`. Malformed Python raises a typed `PythonExtractionError` that the reindex pipeline catches in its preflight so lexical/structure rows for the path remain queryable while the path is reported in `failed_files` and retried on the next pass. `ralph_graph` is the graph-native query surface (`neighbors`, `path`, `impact`, `hubs`, `tests`) with bounded per-call deadlines and cooperative cancellation.
+* Phase 3 wires `edit_file` safety arguments (`expected_content_hash`, `target`, `match_strategy`, `reindex`, `impact_preview`, `return_evidence_updates`) and the conservative impact preview through `ralph_graph`.
 * Phase 4 ships the compact/summary output modes for `git_status` (`format=compact`), `git_diff` (`format=summary`), and `exec` (`format=summary`). Phase 4 also ships `format=summary` for `git_log` and `git_show`, `format=summary` for `web_search` and `download_url`, `format=metadata` for `visit_url`, and `format=metadata` for `read_image` and `read_media`. The audit register records these as `add_argument` outcomes with measured rationale and counters; `unsafe_exec` and its `raw_exec` alias are kept unchanged (`keep`) because the summary mode is intentionally only on the bounded exec path. The artifact submission tool, the eleven planning tools, and the three coordination tools are audited as `keep` because their existing structured behavior (per-field `code`+`repair` ValidationError envelopes, bounded coordination payloads with structured marker suffixes) already matches the Phase-4 acceptance contract. No audited tool remains in an `audit found inefficient but no decision` state. `exec` summary mode returns `stdout_resource_id` and `stderr_resource_id` handles of the form `ralph://exec/<spill-name>`; production sessions attach an `ExecResourceResolver` in `ralph.mcp.tools._exec_resource_uri` so those handles are replayable through `resources/read` (the resource template `ralph://exec/{spill_name}` is registered alongside `ralph://media/{artifact_id}`). Sessions without the resolver return a structured "resolver not attached" error so legacy clients get a consistent failure mode while the raw output remains available.
+* Phases 0-4 are all shipped; the only remaining deferred register entry is `phase_5` (NetworkX / Kuzu / hybrid ranking / Tree-sitter) tracked in `ralph.mcp.explore.deferred_phases` and gated on measured SQLite bottleneck evidence.
 
 ### Compact format args (Phase 4)
 

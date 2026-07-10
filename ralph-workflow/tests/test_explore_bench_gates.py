@@ -167,6 +167,40 @@ def test_indexed_tool_calls_do_not_exceed_baseline() -> None:
         )
 
 
+# --- AC-12 graph negative controls ----------------------------------------
+
+
+def test_lexical_questions_never_dispatch_ralph_graph(tmp_path: Path) -> None:
+    """AC-12 graph-navigation gate: lexical/list/read fixtures must
+    NOT call ``ralph_graph``. Graph endpoints are reserved for
+    callers who asked a graph-native question (callers, paths,
+    impact, hubs, tests). The negative control asserts the
+    scripted executor never sees the graph tool.
+    """
+    fixtures = [f for f in REQUIRED_FIXTURES if f.question_id in {"Q1", "Q2", "Q3"}]
+
+    class _RecordingExecutor:
+        def __init__(self) -> None:
+            self.seen: list[str] = []
+
+        def __call__(self, call: ScriptedCall) -> Mapping[str, object]:
+            self.seen.append(call.tool)
+            return _indexed_executor(call)
+
+    for fixture in fixtures:
+        recorder = _RecordingExecutor()
+        run_benchmark(
+            fixture,
+            baseline_executor=_baseline_executor,
+            indexed_executor=recorder,
+            clock=FakeClock(),
+        )
+        assert "ralph_graph" not in recorder.seen, (
+            f"Lexical fixture {fixture.question_id} dispatched ralph_graph; "
+            f"observed tools: {recorder.seen!r}"
+        )
+
+
 # --- Precision gate (informational) ---------------------------------------
 
 

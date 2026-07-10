@@ -552,7 +552,11 @@ def test_ensure_local_configs_preserves_gitignore_without_duplicate_default_entr
     ensure_local_configs(agent_dir)
 
     content = gitignore.read_text(encoding="utf-8")
-    assert content.count(".agent/") == 1
+    # The parent ``.agent/`` rule is in the file exactly once (the
+    # explicit ``.agent/ralph-explore/`` child rule is permitted
+    # alongside it because the seeder appends the child only when
+    # it is absent).
+    assert content.count(".agent/\n") == 1
     assert content.count("/PROMPT*") == 1
     assert content.count("wt-*/") == 1
 

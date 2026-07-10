@@ -152,6 +152,8 @@ def _run_script(
     *,
     executor: Callable[[ScriptedCall], Mapping[str, object]],
     clock: Clock,
+    catalog_tokens: int = 0,
+    final_evidence_tokens: int = 0,
 ) -> tuple[BenchmarkCounters, set[str]]:
     """Run a scripted tool flow and aggregate counters + returned evidence ids.
 
@@ -167,10 +169,18 @@ def _run_script(
     AC-12: counters include derived recall/precision using the
     union of per-call expected evidence ids (the truth set) and
     the actual returned ids (the prediction set).
+
+    AC-12 (full transcript): ``catalog_tokens`` (bounded serialized
+    visible tool descriptions/input schemas) and
+    ``final_evidence_tokens`` (the compact evidence context the
+    agent keeps after the flow ends) are added once per script so
+    the transcript cost matches the research gate's "full
+    scripted transcript" definition. Defaults of ``0`` keep the
+    harness back-compat with callers that pass only the script.
     """
     start = clock.now()
     returned_bytes = 0
-    transcript_tokens = 0
+    transcript_tokens = catalog_tokens
     stale_fallback = 0
     returned_evidence_ids: set[str] = set()
     for call in script:
@@ -194,6 +204,10 @@ def _run_script(
             for ev_id in returned_ids:
                 if isinstance(ev_id, str) and ev_id:
                     returned_evidence_ids.add(ev_id)
+    # AC-12 (full transcript): add the final-evidence-context tokens
+    # exactly once at the end so the total matches the research
+    # gate's "full scripted transcript" definition.
+    transcript_tokens += final_evidence_tokens
     wall_time = clock.now() - start
     # AC-12: evidence recall/precision are derived from the actual
     # returned evidence ids, not hardcoded. The benchmark harness
@@ -861,6 +875,8 @@ def run_benchmark(
     indexed_executor: Callable[[ScriptedCall], Mapping[str, object]],
     clock: Clock | None = None,
     expected_evidence_ids: Sequence[str] | None = None,
+    catalog_tokens: int = 0,
+    final_evidence_tokens: int = 0,
 ) -> BenchmarkResult:
     """Run a fixture's baseline and indexed flows and produce a result.
 
@@ -884,13 +900,29 @@ def run_benchmark(
     Callers may override the truth set via ``expected_evidence_ids``;
     the default is the fixture's declared ``expected_evidence_ids``
     (a non-empty, unique tuple, by contract).
+
+    AC-12 (full transcript): ``catalog_tokens`` (bounded serialized
+    visible tool descriptions/input schemas) and
+    ``final_evidence_tokens`` (the compact evidence context the
+    agent keeps after the flow ends) are added once per script so
+    the transcript cost matches the research gate's "full scripted
+    transcript" definition. Defaults of ``0`` keep the harness
+    back-compat with callers that pass only the script.
     """
     clk = clock or SystemClock()
     baseline_counters, _baseline_returned_ids = _run_script(
-        fixture.baseline_script, executor=baseline_executor, clock=clk
+        fixture.baseline_script,
+        executor=baseline_executor,
+        clock=clk,
+        catalog_tokens=catalog_tokens,
+        final_evidence_tokens=final_evidence_tokens,
     )
     indexed_counters, indexed_returned_ids = _run_script(
-        fixture.indexed_script, executor=indexed_executor, clock=clk
+        fixture.indexed_script,
+        executor=indexed_executor,
+        clock=clk,
+        catalog_tokens=catalog_tokens,
+        final_evidence_tokens=final_evidence_tokens,
     )
     truth = (
         tuple(expected_evidence_ids)
