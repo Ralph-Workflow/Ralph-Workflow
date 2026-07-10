@@ -110,7 +110,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
         ),
     ),
     FamilyBaselineFlow(
-        family=AuditFamily.WORKSPACE_READ,
+        family=AuditFamily.WORKSPACE_SEARCH,
         name="search_for_symbol_or_path",
         current_operation_script=(
             "search_files",

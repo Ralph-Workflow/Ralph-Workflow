@@ -588,3 +588,103 @@ def test_tombstone_record_is_idempotent_on_repeat_delete(tmp_path: Path) -> None
         assert count >= 1
     finally:
         store.close()
+
+
+def test_move_path_reindexes_with_normalized_paths(tmp_path: Path) -> None:
+    """AC-02: reindex normalizes relative paths and treats a move as
+    source-tombstone + destination-create. The old path's file row
+    is marked deleted; the new path gets fresh chunks/symbols/
+    evidence keyed by the new normalized path.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Move a.py to sub/helper.py (a brand-new directory).
+        (workspace / "sub").mkdir()
+        (workspace / "a.py").rename(workspace / "sub" / "helper.py")
+        result = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result.status in {"ok", "skipped_no_changes"}
+        # Source path is marked deleted.
+        old_row = store.get_file("a.py")
+        assert old_row is not None and old_row.is_deleted is True
+        # Destination path is a fresh, non-deleted file.
+        new_row = store.get_file("sub/helper.py")
+        assert new_row is not None and new_row.is_deleted is False
+        # Destination has extracted symbols.
+        symbols = list(store.iter_symbols("sub/helper.py"))
+        assert [s.qualified_name for s in symbols] == ["helper.hello"]
+    finally:
+        store.close()
+
+
+def test_copy_path_reindexes_with_fresh_destination(tmp_path: Path) -> None:
+    """AC-02: reindex treats a copy as destination-create. The source
+    path stays intact; the destination path gets fresh chunks /
+    symbols / evidence keyed by the new normalized path.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Copy b.py to b_copy.py.
+        (workspace / "b_copy.py").write_bytes((workspace / "b.py").read_bytes())
+        result = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result.status == "ok"
+        # Source stays live.
+        old_row = store.get_file("b.py")
+        assert old_row is not None and old_row.is_deleted is False
+        # Destination is a fresh file with chunks.
+        new_row = store.get_file("b_copy.py")
+        assert new_row is not None and new_row.is_deleted is False
+        cur = sqlite3.connect(str(store.db_path))
+        try:
+            chunk_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks WHERE path = ?", ("b_copy.py",)
+            ).fetchone()[0]
+            fts_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks_fts WHERE path = ?", ("b_copy.py",)
+            ).fetchone()[0]
+        finally:
+            cur.close()
+        assert chunk_count > 0
+        assert fts_count > 0
+    finally:
+        store.close()
+
+
+def test_move_with_identical_content_is_a_path_pivot(tmp_path: Path) -> None:
+    """AC-02: a move that preserves the file content reuses the
+    extraction payloads via the content hash. The destination path
+    must still be a fresh, non-deleted file keyed by the new
+    normalized path. A path pivot is a deterministic, idempotent
+    reindex, not a parse event.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Save the content, move the file, restore the same content.
+        original = (workspace / "a.py").read_bytes()
+        (workspace / "moved.py").write_bytes(original)
+        (workspace / "a.py").unlink()
+        result = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result.status in {"ok", "skipped_no_changes"}
+        # Old path marked deleted; new path live.
+        old_row = store.get_file("a.py")
+        assert old_row is not None and old_row.is_deleted is True
+        new_row = store.get_file("moved.py")
+        assert new_row is not None and new_row.is_deleted is False
+        # Idempotent: a second reindex with no further edits is a no-op.
+        result2 = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result2.parse_count == 0
+    finally:
+        store.close()

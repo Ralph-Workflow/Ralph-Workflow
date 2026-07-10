@@ -45,6 +45,7 @@ class AuditFamily(StrEnum):
     """Closed vocabulary of tool families used by the audit register."""
 
     WORKSPACE_READ = "workspace_read"
+    WORKSPACE_SEARCH = "workspace_search"
     WORKSPACE_LIST = "workspace_list"
     WORKSPACE_MUTATE = "workspace_mutate"
     GIT_READ = "git_read"
@@ -300,7 +301,7 @@ _SEED: tuple[AuditEntry, ...] = (
     ),
     AuditEntry(
         tool=RalphToolName.SEARCH_FILES,
-        family=AuditFamily.WORKSPACE_READ,
+        family=AuditFamily.WORKSPACE_SEARCH,
         outcome=AuditOutcome.ADD_ARGUMENT,
         rationale=(
             "Add ranked/role/changed_only/return_evidence_ids so agents stop "

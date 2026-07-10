@@ -519,6 +519,110 @@ def test_reindex_updates_handle_last_refresh_kind(tmp_path: Path) -> None:
         handle.store.close()
 
 
+# --- ralph_reindex: bounded cancel contract -----------------------------
+
+
+def test_ralph_reindex_cancel_clears_flag_after_each_call(
+    tmp_path: Path,
+) -> None:
+    """AC-02/AC-05: the module-global ``_REINDEX_CANCEL_FLAGS`` map must
+    not accumulate entries across calls. Repeated calls with
+    distinct sessions must leave the map at its starting size.
+    """
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    starting_size = len(handlers._REINDEX_CANCEL_FLAGS)
+    try:
+        for _call_index in range(2):
+            call_session = _FakeSession(explore_index=handle)
+            handle_ralph_reindex(
+                call_session,
+                _Workspace(workspace),
+                {"mode": "changed", "cancel": False},
+            )
+        assert len(handlers._REINDEX_CANCEL_FLAGS) == starting_size
+    finally:
+        handle.store.close()
+
+
+def test_ralph_reindex_cancel_returns_cancelled_status(tmp_path: Path) -> None:
+    """AC-05: a cancel=True call returns a ``cancelled=True`` payload
+    and clears the per-session cancel flag, so a follow-up call is
+    not poisoned by the previous cancel.
+    """
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session = _FakeSession(explore_index=handle)
+        # Pre-set the cancel flag in the registry so the reindex
+        # writer polls True at the file-loop boundary.
+        session_key = id(session)
+        handlers._REINDEX_CANCEL_FLAGS[session_key] = True
+        try:
+            result = handle_ralph_reindex(
+                session,
+                _Workspace(workspace),
+                {"mode": "changed", "cancel": True},
+            )
+            payload = _decode(result)
+            # The pre-set cancel flag tripped the writer's cancel
+            # check at the file-loop boundary, so the result is
+            # bounded incomplete (cancelled) and the prior
+            # generation is preserved.
+            assert payload.get("cancelled") is True
+        finally:
+            # The handler must clear the cancel flag on every exit
+            # path, including the cancelled path.
+            assert session_key not in handlers._REINDEX_CANCEL_FLAGS
+    finally:
+        handle.store.close()
+
+
+def test_ralph_reindex_cancel_isolated_per_session(tmp_path: Path) -> None:
+    """AC-05: a cancel on session A must not poison a reindex on
+    session B against the same handle. The handler only clears the
+    cancel flag for the session it is processing; a session whose
+    flag was set by a previous handler call must be cleared by
+    THAT session's own reindex, not by a sibling session's call.
+    """
+    from ralph.mcp.explore import handlers
+
+    workspace = _seed_workspace(tmp_path)
+    handle = build_explore_index(workspace)
+    try:
+        session_a = _FakeSession(explore_index=handle)
+        session_b = _FakeSession(explore_index=handle)
+        # Session A's cancel flag is pre-set (as if by a previous
+        # caller asking session A to cancel).
+        handlers._REINDEX_CANCEL_FLAGS[id(session_a)] = True
+        try:
+            # Session B sees an empty cancel state and reindexes
+            # normally; the handler must NOT touch session A's
+            # flag and must clear only session B's flag.
+            result = handle_ralph_reindex(
+                session_b,
+                _Workspace(workspace),
+                {"mode": "changed", "cancel": False},
+            )
+            payload = _decode(result)
+            assert payload.get("cancelled") is False
+            assert payload["job_status"] == "ok"
+            # Session B's flag is cleared (the handler set it on
+            # entry and pops it on every exit path).
+            assert id(session_b) not in handlers._REINDEX_CANCEL_FLAGS
+        finally:
+            # Session A's pre-set flag is preserved; the handler
+            # for session B never touches another session's flag.
+            assert id(session_a) in handlers._REINDEX_CANCEL_FLAGS
+            handlers._REINDEX_CANCEL_FLAGS.pop(id(session_a), None)
+    finally:
+        handle.store.close()
+
+
 # --- ralph_graph: bounded accumulator contract for cancel flags ---------
 
 

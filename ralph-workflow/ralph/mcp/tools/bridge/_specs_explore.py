@@ -43,11 +43,14 @@ def explore_specs() -> list[ToolSpec]:
                 description=(
                     "Run a bounded Ralph indexed exploration reindex. Required: mode "
                     "('changed'|'full'). Optional: timeout_ms (1-60000, default 5000), "
-                    "path_scope (list of relative paths). Returns: job_status, "
-                    "generation, changed_files, failed_files, parse_count, "
-                    "dirty_paths_count, elapsed_seconds, error_summary. "
-                    "Fail-closed for the job; fail-open for the agent. "
+                    "path_scope (list of relative paths), cancel (bool). "
+                    "Returns: job_status, generation, changed_files, failed_files, "
+                    "parse_count, dirty_paths_count, elapsed_seconds, error_summary, "
+                    "cancelled. Fail-closed for the job; fail-open for the agent. "
                     "timeout_ms outside [1, 60000] is rejected. "
+                    "cancel=true requests cooperative cancellation: the job is "
+                    "interrupted, the prior committed generation is preserved, and "
+                    "cancelled=true is returned with a bounded incomplete summary. "
                     'Example: {"mode": "changed", "timeout_ms": 5000}.'
                 ),
                 input_schema={
@@ -77,6 +80,14 @@ def explore_specs() -> list[ToolSpec]:
                                 "Empty list = whole workspace."
                             ),
                         },
+                        "cancel": {
+                            "type": "boolean",
+                            "description": (
+                                "Request cooperative cancellation. Preserves the "
+                                "prior committed generation; returns cancelled=true."
+                            ),
+                            "default": False,
+                        },
                     },
                     "required": ["mode"],
                 },
@@ -90,23 +101,20 @@ def explore_specs() -> list[ToolSpec]:
                 name=RALPH_GRAPH_TOOL,
                 description=(
                     "Bounded graph-native query over Ralph's indexed "
-                    "exploration substrate. Required: query_type "
-                    "('neighbors'|'path'|'impact'|'hubs'|'tests') and target. "
-                    "Optional: target_b, relations, limit (1-100, default 25), "
-                    "freshness ('required'|'prefer_fresh'|'allow_stale'), "
-                    "direction ('out'|'in'|'both'), depth (max 6), "
-                    "max_paths (max 10), change_kind "
-                    "('rename'|'signature'|'behavior'|'delete'|'unknown'), "
-                    "scope_path, role, timeout_ms (1-30000, default 5000), "
-                    "cancel (bool). Returns: nodes, edges, paths, "
-                    "impacted_files, suggested_tests, confidence, "
-                    "provenance, evidence_ids, missing_data, "
-                    "index_generation, is_stale, truncated, "
-                    "cancelled, deadline_exceeded. "
+                    "substrate. Required: query_type "
+                    "('neighbors'|'path'|'impact'|'hubs'|'tests'). "
+                    "Target: required for 'neighbors'|'path'|'impact'|'tests'; "
+                    "optional for 'hubs'. Optional: target_b, relations, "
+                    "limit (1-100, default 25), freshness, direction, "
+                    "depth, max_paths, change_kind, scope_path, role, "
+                    "timeout_ms (1-30000, default 5000), cancel. "
+                    "Returns: nodes, edges, paths, impacted_files, "
+                    "suggested_tests, confidence, provenance, "
+                    "evidence_ids, missing_data, index_generation, "
+                    "is_stale, truncated, cancelled, deadline_exceeded. "
                     "Fail-closed on deadline/cancel: bounded incomplete "
                     "result, no mutable work exposed. "
-                    'Example: {"query_type": "neighbors", "target": '
-                    '"ralph.mcp.explore.handlers.handle_ralph_reindex"}.'
+                    'Example: {"query_type": "neighbors", "target": "x"}.'
                 ),
                 input_schema={
                     "type": "object",

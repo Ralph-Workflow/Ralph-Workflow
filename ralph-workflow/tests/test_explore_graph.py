@@ -214,6 +214,62 @@ def test_graph_rejects_invalid_query_type(tmp_path: Path) -> None:
         store.close()
 
 
+@pytest.mark.parametrize(
+    "query_type",
+    ["neighbors", "path", "impact", "tests"],
+)
+def test_graph_rejects_targetless_required_query_types(
+    tmp_path: Path, query_type: str
+) -> None:
+    """AC-05: ``neighbors``/``path``/``impact``/``tests`` require ``target``.
+
+    The contract documented in
+    ``_specs_explore.ralph_graph.description`` states ``target`` is
+    required for these four query types and optional only for
+    ``hubs``. The handler must enforce that at the parameter boundary
+    rather than running a degenerate traversal that returns no
+    evidence. ``hubs`` is the single allowed targetless query type
+    and is covered separately by
+    :func:`test_graph_hubs_accepts_targetless_query`.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        from ralph.mcp.tools.coordination import InvalidParamsError
+
+        with pytest.raises(InvalidParamsError) as exc_info:
+            handle_ralph_graph(
+                session,
+                _Workspace(workspace),
+                {"query_type": query_type},
+            )
+        # The error message must name the missing field and the
+        # query type so an agent can repair the call deterministically.
+        message = str(exc_info.value)
+        assert "target" in message
+        assert query_type in message
+    finally:
+        store.close()
+
+
+def test_graph_hubs_accepts_targetless_query(tmp_path: Path) -> None:
+    """AC-05: ``hubs`` is the single allowed targetless query type."""
+    workspace = _seed_workspace(tmp_path)
+    store = _build_index(workspace, tmp_path)
+    try:
+        session = _FakeSession(explore_index=_FakeIndex(store))
+        # Must not raise InvalidParamsError for the missing target.
+        result = handle_ralph_graph(
+            session,
+            _Workspace(workspace),
+            {"query_type": "hubs"},
+        )
+        assert result.is_error is False
+    finally:
+        store.close()
+
+
 def test_graph_rejects_invalid_change_kind(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_index(workspace, tmp_path)

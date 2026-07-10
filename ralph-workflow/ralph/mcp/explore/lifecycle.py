@@ -58,6 +58,16 @@ logger = logging.getLogger(__name__)
 # has its own deadline so the agent cannot be starved by slow I/O.
 DEFAULT_HOOK_TIMEOUT_MS: Final[int] = 2_000
 
+#: Phase drains whose agent invocations are allowed to trigger an
+#: indexed refresh. The set is intentionally narrow — AC-04 only
+#: refreshes for explicit development / fix session drains, never for
+#: planning, review, commit, or analysis. A phase that is mapped to
+#: ``role=execution`` for any other reason (e.g. the planning block
+#: inherits the legacy ``execution`` role) must NOT trigger a refresh
+#: just because the role matches; the drain is the authoritative
+#: identity of a dev/fix session.
+REFRESHABLE_PHASE_DRAINS: Final[frozenset[str]] = frozenset({"development", "fix"})
+
 
 @dataclass(frozen=True, slots=True)
 class LifecycleHookResult:
@@ -69,15 +79,28 @@ class LifecycleHookResult:
     skipped_reason: str | None = None
 
 
-def is_execution_phase_for_refresh(*, phase_role: str | None) -> bool:
-    """Return True when the phase role triggers an indexed refresh.
+def is_execution_phase_for_refresh(
+    *,
+    phase_role: str | None,
+    phase_drain: str | None = None,
+) -> bool:
+    """Return True when the phase triggers an indexed refresh.
 
-    Phase 1 only refreshes for explicit ``execution`` roles whose
-    drain is development or fix. The function intentionally accepts
-    the role string rather than a phase enum so it stays decoupled
-    from the policy package (and is easy to test).
+    AC-04: the lifecycle refresh must only run for development / fix
+    sessions, never for planning, review, commit, or analysis. The
+    ``role`` check alone is too permissive: the planning block in
+    ``ralph/policy/defaults/pipeline.toml`` is mapped to
+    ``role = "execution"`` while its drain is ``planning``, and
+    allowing that drain to trigger a refresh would index the
+    workspace for the planning agent — an unrelated and uncosted
+    cost. The ``phase_drain`` is therefore the authoritative gate;
+    the ``phase_role`` argument is preserved for backward
+    compatibility (and as a defensive cross-check) but the drain
+    must also be in :data:`REFRESHABLE_PHASE_DRAINS`.
     """
-    return phase_role == "execution"
+    if phase_role != "execution":
+        return False
+    return phase_drain in REFRESHABLE_PHASE_DRAINS
 
 
 def before_agent_refresh(

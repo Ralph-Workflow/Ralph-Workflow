@@ -412,12 +412,20 @@ def _invoke_execute_effect_with_optional_display(
     pipeline_deps: PipelineDeps | None = None,
     pre_workspace: object | None = None,
     pre_phase_role: str | None = None,
+    pre_phase_drain: str | None = None,
 ) -> Event:
     # Phase 1 lifecycle hooks: bounded changed-file refresh before
     # and after an InvokeAgentEffect. Hooks skip cleanly when the
     # explore index is disabled or missing; they never block the
     # agent indefinitely (fail-open for the agent, fail-closed for
     # the reindex job).
+    #
+    # AC-04: the refresh gate is the development / fix phase drain
+    # (NOT just the role). The planning block in
+    # ``ralph/policy/defaults/pipeline.toml`` is also mapped to
+    # ``role = "execution"``; gating on role alone would trigger
+    # an uncosted index refresh for the planning agent. The drain
+    # is the authoritative identity of a dev/fix session.
     from ralph.mcp.explore.lifecycle import (
         after_agent_refresh,
         before_agent_refresh,
@@ -426,7 +434,8 @@ def _invoke_execute_effect_with_optional_display(
 
     is_agent = isinstance(effect, InvokeAgentEffect)
     should_refresh = is_agent and is_execution_phase_for_refresh(
-        phase_role=pre_phase_role
+        phase_role=pre_phase_role,
+        phase_drain=pre_phase_drain,
     )
 
     if should_refresh:
@@ -588,6 +597,12 @@ def _run_pipeline_step(
     _phase_role = (
         phase_def.role if (phase_def is not None and phase_def.role is not None) else "execution"
     )
+    # AC-04: the drain is the authoritative identity of a dev/fix
+    # session; the role alone is too permissive (planning also maps
+    # to ``role=execution``).
+    _phase_drain = (
+        phase_def.drain if (phase_def is not None and phase_def.drain is not None) else None
+    )
     _phase_timer = PhaseTimer.start(state.phase)
     _phase_outcome = "crashed"
     try:
@@ -670,6 +685,7 @@ def _run_pipeline_step(
                 pipeline_deps=pipeline_deps,
                 pre_workspace=workspace,
                 pre_phase_role=_phase_role,
+                pre_phase_drain=_phase_drain,
             )
             if isinstance(effect, InvokeAgentEffect):
                 state = _apply_session_capture(state)

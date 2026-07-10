@@ -48,10 +48,67 @@ def _seed_workspace(tmp_path: Path) -> Path:
 
 
 def test_is_execution_phase_for_refresh_only_true_for_execution_role() -> None:
-    assert is_execution_phase_for_refresh(phase_role="execution") is True
-    assert is_execution_phase_for_refresh(phase_role="analysis") is False
-    assert is_execution_phase_for_refresh(phase_role="commit") is False
-    assert is_execution_phase_for_refresh(phase_role=None) is False
+    # AC-04: the role alone is not enough — the phase drain must also
+    # be in REFRESHABLE_PHASE_DRAINS. ``planning`` is also mapped to
+    # ``role=execution`` in the default pipeline but must NOT trigger
+    # a refresh.
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="development"
+    ) is True
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="fix"
+    ) is True
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="planning"
+    ) is False
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="commit"
+    ) is False
+    assert is_execution_phase_for_refresh(
+        phase_role="analysis", phase_drain="development"
+    ) is False
+    assert is_execution_phase_for_refresh(
+        phase_role="commit", phase_drain="development"
+    ) is False
+    assert is_execution_phase_for_refresh(phase_role=None, phase_drain=None) is False
+    # Backward-compat: callers that pass only the role get False
+    # because the drain defaults to None, which is never refreshable.
+    assert is_execution_phase_for_refresh(phase_role="execution") is False
+
+
+def test_planning_phase_does_not_trigger_refresh() -> None:
+    """AC-04 regression: the planning block (``role=execution``,
+    ``drain=planning``) must not trigger an indexed refresh.
+
+    The default pipeline maps the planning block to ``role =
+    \"execution\"`` for historical reasons. A role-only gate would
+    therefore refresh the index for the planning agent, which is
+    uncosted. The drain is the authoritative gate.
+    """
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="planning"
+    ) is False
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="planning_analysis"
+    ) is False
+
+
+def test_development_and_fix_phases_trigger_refresh() -> None:
+    """AC-04: only the development / fix drains trigger a refresh."""
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="development"
+    ) is True
+    assert is_execution_phase_for_refresh(
+        phase_role="execution", phase_drain="fix"
+    ) is True
+
+
+def test_review_and_commit_phases_do_not_trigger_refresh() -> None:
+    """AC-04: review and commit drains never trigger a refresh."""
+    for drain in ("commit", "commit_cleanup", "review", "terminal", "complete"):
+        assert is_execution_phase_for_refresh(
+            phase_role="execution", phase_drain=drain
+        ) is False, f"drain {drain!r} must not trigger refresh"
 
 
 def test_before_hook_skips_when_explore_index_is_none(tmp_path: Path) -> None:

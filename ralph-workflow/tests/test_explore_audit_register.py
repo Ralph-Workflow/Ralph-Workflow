@@ -284,6 +284,7 @@ def test_audit_counters_rejects_zero_wall_time() -> None:
 
 _REQUIRED_BASELINE_FAMILIES: tuple[AuditFamily, ...] = (
     AuditFamily.WORKSPACE_READ,
+    AuditFamily.WORKSPACE_SEARCH,
     AuditFamily.WORKSPACE_LIST,
     AuditFamily.WORKSPACE_MUTATE,
     AuditFamily.GIT_READ,
@@ -302,6 +303,17 @@ def test_required_audit_families_have_baseline_flows() -> None:
     by_family = {flow.family: flow for flow in flows}
     missing = set(_REQUIRED_BASELINE_FAMILIES) - set(by_family)
     assert not missing, f"Missing baseline flows for families: {missing}"
+
+
+def test_required_audit_families_are_distinct() -> None:
+    """The required baseline family set must be unique. A duplicate
+    family in the test contract (e.g. WORKSPACE_READ listed twice)
+    silently masks a missing audit family and is an unaudited state.
+    """
+    assert len(_REQUIRED_BASELINE_FAMILIES) == len(set(_REQUIRED_BASELINE_FAMILIES)), (
+        "Duplicate families in _REQUIRED_BASELINE_FAMILIES would "
+        "silently mask a missing audit family"
+    )
 
 
 def test_every_family_baseline_flow_is_complete() -> None:

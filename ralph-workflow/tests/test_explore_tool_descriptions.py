@@ -89,6 +89,27 @@ def test_ralph_reindex_timeout_ms_is_positive_integer() -> None:
     assert int(timeout["default"]) > 0
 
 
+def test_ralph_reindex_cancel_is_bounded_bool() -> None:
+    """AC-05: ralph_reindex must expose a boolean ``cancel`` argument
+    so the bounded cancel contract is discoverable in the schema.
+
+    The cancel contract is required for every reindex path; a
+    boolean default of ``False`` keeps the existing call shape
+    unchanged. The argument description must point the caller at
+    the bounded incomplete-summary semantics, not generic prose.
+    """
+    spec = _explore_specs_by_name()[RALPH_REINDEX_TOOL]
+    properties = spec.metadata.definition.input_schema["properties"]
+    assert "cancel" in properties, (
+        "ralph_reindex must expose a cancel argument so the bounded "
+        "cancellation contract is part of the tool's public surface"
+    )
+    cancel_schema = properties["cancel"]
+    assert cancel_schema["type"] == "boolean"
+    assert cancel_schema.get("default", False) is False
+    assert "cancel" in str(cancel_schema.get("description", "")).lower()
+
+
 def test_explore_catalog_token_count_stays_bounded() -> None:
     """The explore tool catalog token count must remain under 15% growth."""
     text = " ".join(

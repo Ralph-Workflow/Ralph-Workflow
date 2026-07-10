@@ -545,8 +545,28 @@ def handle_ralph_reindex(
         timeout_ms=timeout_ms,
         path_scope=path_scope,
     )
+    # AC-05: bounded cancel contract for ralph_reindex. The schema
+    # exposes ``cancel: bool``; when set, the handler installs a
+    # session-keyed cancel flag that the reindex writer polls at
+    # phase boundaries. On cancel the prior committed generation
+    # is preserved (no mutable work is exposed) and the response
+    # carries ``cancelled=true`` with a bounded incomplete summary.
+    cancel_raw: object = params.get("cancel", False)
+    cancel_flag = bool(cancel_raw) if isinstance(cancel_raw, bool) else False
+    reindex_session_key = id(session)
+    _REINDEX_CANCEL_FLAGS[reindex_session_key] = cancel_flag
+
+    def _is_reindex_cancelled() -> bool:
+        return bool(_REINDEX_CANCEL_FLAGS.get(reindex_session_key, False))
+
+    cancel_callable: Callable[[], bool] = _is_reindex_cancelled
     try:
-        result = reindex(handle.store, handle.workspace_root, options=options)
+        result = reindex(
+            handle.store,
+            handle.workspace_root,
+            options=options,
+            cancel=cancel_callable,
+        )
     except Exception as exc:
         logger.exception("ralph_reindex crashed: %s", exc)
         return ToolResult(
@@ -563,11 +583,18 @@ def handle_ralph_reindex(
             ],
             is_error=True,
         )
+    finally:
+        # AC-02/AC-05: clear the per-session cancel flag at every
+        # exit path so a previous caller's cancel cannot poison a
+        # subsequent reindex against the same session.
+        _REINDEX_CANCEL_FLAGS.pop(reindex_session_key, None)
     handle.generation = result.generation
     handle.last_job_status = result.status
     handle.last_refresh_kind = "full" if mode == "full" else "changed"
+    payload = _build_reindex_payload(result)
+    payload["cancelled"] = result.status == "cancelled"
     return ToolResult(
-        content=[ToolContent.text_content(_tool_json(_build_reindex_payload(result)))],
+        content=[ToolContent.text_content(_tool_json(payload))],
         is_error=False,
     )
 
@@ -628,6 +655,13 @@ _GRAPH_TIMEOUT_MAX_MS: int = 30_000
 #: every call, so a previous caller's cancel cannot poison a
 #: new query against the same session.
 _GRAPH_CANCEL_FLAGS: dict[int, bool] = {}  # bounded-accumulator-ok: keyed by id(session); one entry per active call
+
+#: Per-session cancel flag for ralph_reindex. Mirrors the
+#: ``_GRAPH_CANCEL_FLAGS`` contract — one entry per active call,
+#: cleared on every exit path. The reindex writer polls this flag
+#: at phase boundaries; when set, the writer preserves the prior
+#: committed generation and returns a ``cancelled`` result.
+_REINDEX_CANCEL_FLAGS: dict[int, bool] = {}  # bounded-accumulator-ok: keyed by id(session); one entry per active call
 
 
 def _graph_node_to_dict(node: graph_module.GraphNode) -> dict[str, object]:
@@ -706,6 +740,17 @@ def handle_ralph_graph(
             f"{', '.join(_VALID_GRAPH_QUERY_TYPES)}"
         )
     target = str(params.get("target", "")) if params.get("target") is not None else ""
+    # AC-05: the documented contract is that ``target`` is required for
+    # ``neighbors`` / ``path`` / ``impact`` / ``tests`` and optional only
+    # for ``hubs``. A targetless request against the four required-target
+    # query types would otherwise run a degenerate traversal that returns
+    # no evidence; failing closed at the boundary prevents callers from
+    # silently relying on an undocumented ``empty-target`` fallback.
+    if not target and query_type_raw in {"neighbors", "path", "impact", "tests"}:
+        raise InvalidParamsError(
+            f"target is required for query_type={query_type_raw!r}; "
+            "only 'hubs' accepts a targetless query."
+        )
     target_b_raw = params.get("target_b")
     target_b: str | None = (
         str(target_b_raw) if isinstance(target_b_raw, str) and target_b_raw else None

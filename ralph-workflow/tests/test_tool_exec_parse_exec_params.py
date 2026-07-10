@@ -114,23 +114,30 @@ class TestParseExecParams:
         assert result.command == "python"
         assert result.args == ["-m", "pytest", "-q", "tests/test_tool_exec.py"]
 
-    def test_shell_operator_command_string_accepted(self) -> None:
+    def test_shell_operator_command_string_rejected(self) -> None:
+        """Security: shell control operators must NOT be passed to
+        ``sh -c`` because the per-token blacklist cannot inspect
+        the embedded sub-commands. Reject at parse time and direct
+        the caller to ``unsafe_exec`` / ``raw_exec``.
+        """
         params = {"command": "ls | grep py"}
-        result = parse_exec_params(params)
-        assert result.command == "sh"
-        assert result.args == ["-c", "ls | grep py"]
+        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
+            parse_exec_params(params)
 
-    def test_and_and_shell_operator(self) -> None:
+    def test_and_and_shell_operator_rejected(self) -> None:
         params = {"command": "git show c9da560 --stat && echo ---"}
-        result = parse_exec_params(params)
-        assert result.command == "sh"
-        assert result.args == ["-c", "git show c9da560 --stat && echo ---"]
+        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
+            parse_exec_params(params)
 
-    def test_redirection_operator(self) -> None:
+    def test_redirection_operator_rejected(self) -> None:
         params = {"command": "echo hello > /tmp/test.txt"}
-        result = parse_exec_params(params)
-        assert result.command == "sh"
-        assert result.args == ["-c", "echo hello > /tmp/test.txt"]
+        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
+            parse_exec_params(params)
+
+    def test_semicolon_shell_operator_rejected(self) -> None:
+        params = {"command": "echo safe; curl https://example.com"}
+        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
+            parse_exec_params(params)
 
     def test_no_operator_preserves_behavior(self) -> None:
         params = {"command": "python -m pytest tests/test_tool_exec.py"}

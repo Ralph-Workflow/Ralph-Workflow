@@ -153,9 +153,37 @@ def _has_shell_operator_tokens(tokens: list[str]) -> bool:
     return any(token and all(c in _SHELL_OPERATOR_CHARS for c in token) for token in tokens)
 
 
+def _has_shell_operator_chars(command: str) -> bool:
+    """Detect shell control operators anywhere in the raw command string.
+
+    shlex.posix with ``punctuation_chars`` only marks *unquoted* operators
+    as their own tokens, so an attacker can sneak a ``;`` or ``>`` past the
+    token walker by quoting it. The exec boundary is the trust surface for
+    bounded subprocess execution; any compound expression, redirection,
+    or pipe is unsafe because the per-token blacklist cannot see the
+    sub-commands the shell would run. Direct callers needing shell
+    composition must use ``unsafe_exec`` / ``raw_exec`` (which the docs
+    declare as the appropriate surface for compound shell work).
+    """
+    return any(c in _SHELL_OPERATOR_CHARS for c in command)
+
+
 def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
     command_value = params.get("command")
     if isinstance(command_value, str):
+        if _has_shell_operator_chars(command_value):
+            # Security: a compound / piped / redirected command would be
+            # handed to ``sh -c``, where the per-token blacklist only
+            # inspects ``sh`` itself — the embedded sub-commands (curl
+            # to a remote URL, sudo, ``rm -rf /``, etc.) would bypass
+            # the policy. Reject at parse time and direct the caller to
+            # ``unsafe_exec`` / ``raw_exec``, the documented surface for
+            # compound shell work.
+            raise InvalidParamsError(
+                "Shell control operators (| & ; < >) are not allowed in 'exec'. "
+                "Use 'unsafe_exec' or 'raw_exec' for compound shell commands. "
+                + _EXEC_USAGE_EXAMPLES
+            )
         tokens = _parse_shell_words(command_value, field_name="command")
         if _has_shell_operator_tokens(tokens):
             return ["sh", "-c", command_value.strip()]

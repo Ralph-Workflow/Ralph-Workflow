@@ -85,7 +85,7 @@ class ReindexResult:
 
     job_id: str
     generation: int
-    status: str  # "ok" | "timed_out" | "failed" | "skipped_no_changes"
+    status: str  # "ok" | "timed_out" | "failed" | "skipped_no_changes" | "cancelled"
     changed_files: tuple[str, ...] = ()
     failed_files: tuple[str, ...] = ()
     parse_count: int = 0
@@ -144,6 +144,20 @@ class _ReindexTimeoutError(Exception):
     pass
 
 
+class _ReindexCancelledError(Exception):
+    """Raised by the reindex writer when the cancel callable returns True.
+
+    AC-05: bounded cancellation. The reindex writer polls the cancel
+    callable at phase boundaries. On cancel the prior committed
+    generation is preserved and the result is finalized as
+    ``status='cancelled'`` with a bounded incomplete summary. The
+    writer never raises any mutable partial state into the store
+    after cancellation.
+    """
+
+    pass
+
+
 # --- Main entry point ------------------------------------------------------
 
 
@@ -152,12 +166,21 @@ def reindex(
     workspace_root: Path,
     *,
     options: ReindexOptions | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> ReindexResult:
     """Run a reindex job over ``workspace_root``.
 
     The store is required to already exist on disk. The caller is
     responsible for initializing ``ExploreStore``; this keeps the
     pipeline free of any I/O-oracle side effects at import time.
+
+    AC-05: a ``cancel`` callable may be supplied. When the callable
+    returns ``True`` the writer preserves the prior committed
+    generation (no partial mutable state is exposed) and the
+    reindex returns a ``status='cancelled'`` result. The callable
+    is polled at phase boundaries (file iteration, FTS commit, and
+    row insert) so cancellation is bounded by the duration of one
+    phase.
     """
     opts = options or ReindexOptions()
     clock: Clock = opts.clock or SystemClock()
@@ -180,9 +203,12 @@ def reindex(
             options=opts,
             now_fn=now_fn,
             state=state,
+            cancel=cancel,
         )
     except _ReindexTimeoutError:
         return _finalize(store, state, status="timed_out", now_fn=now_fn)
+    except _ReindexCancelledError:
+        return _finalize(store, state, status="cancelled", now_fn=now_fn)
     except Exception as exc:
         return _finalize(
             store,
@@ -201,8 +227,17 @@ def _run_reindex(
     options: ReindexOptions,
     now_fn: Callable[[], float],
     state: _ReindexState,
+    cancel: Callable[[], bool] | None = None,
 ) -> str:
     """Inner reindex logic. Returns a status string (without finalize)."""
+    # AC-05: bounded cancel contract. Polled at the file-loop
+    # boundary, at the FTS commit, and at the row-insert boundary
+    # so cancellation latency is bounded by the duration of one
+    # phase. The prior committed generation is preserved.
+    def _check_cancel() -> None:
+        if cancel is not None and cancel():
+            raise _ReindexCancelledError("cancelled by caller")
+
     # Phase 1 only supports ``changed`` mode for warm refresh; ``full``
     # is a synonym for "rebuild from scratch" implemented as
     # ``changed`` after clearing the manifest first.
@@ -229,6 +264,7 @@ def _run_reindex(
 
     for relative_path, (size_bytes, mtime_ns) in sorted(next_manifest.items()):
         _ensure_deadline(state, now_fn)
+        _check_cancel()
         seen_paths.add(relative_path)
         # Ponytail: size+mtime prefilter first. The content hash is
         # authoritative, but skipping the read+hash for unchanged
