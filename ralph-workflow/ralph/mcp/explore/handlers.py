@@ -407,10 +407,15 @@ def _build_status_payload(
         except ValueError:
             indexed_at = None
     dirty_paths = store.peek_dirty_paths()
-    files_indexed = sum(1 for _ in store.iter_files())
-    # Ponytail: ``files_stale`` counts deleted files; ``is_stale`` is
-    # true when dirty paths exist OR a deleted file still has a row.
-    stale_paths = sum(1 for row in store.iter_files() if row.is_deleted)
+    # Ponytail: bounded aggregates, not ``iter_files()``; both
+    # are single ``COUNT(*)`` queries so the status call does
+    # not materialize the entire ``files`` table.
+    files_indexed = store.count_files()
+    # Ponytail: ``files_stale`` counts deleted files; ``is_stale``
+    # is true when dirty paths exist OR a deleted file still has
+    # a row. ``iter_files`` filters out deleted rows, so the
+    # count must come from a dedicated aggregate.
+    stale_paths = store.count_deleted_files()
     is_stale = bool(dirty_paths) or stale_paths > 0
     last_job_dict: dict[str, object] | None
     if latest_row is None:

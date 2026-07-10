@@ -226,3 +226,194 @@ class TestHandleGitStatus:
             assert first["span_id"]
         finally:
             handle.store.close()
+
+    def test_status_compact_marks_index_unavailable_when_dirty_paths_raises(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when ``peek_dirty_paths()`` raises, the compact
+        payload must report ``index_used=False`` and
+        ``index_status='unavailable'`` with the explicit
+        fallback reason ``dirty_paths_read_failed``. The
+        payload must NOT emit any ``changed_symbols`` hints
+        because freshness is unknown.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        try:
+            # Force ``peek_dirty_paths`` to raise.
+            handle.store.peek_dirty_paths = (
+                lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+            )
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_used"] is False
+            assert payload["index_status"] == "unavailable"
+            assert payload["fallback_reason"] == "dirty_paths_read_failed"
+            assert payload["changed_symbols"] == {}
+        finally:
+            handle.store.close()
+
+    def test_status_compact_marks_index_stale_when_deleted_file_present(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: when a file row with ``is_deleted=1`` is
+        present in the manifest (a remove that the next
+        reindex has not yet processed), the compact payload
+        must report ``index_used=False`` and
+        ``index_status='stale'`` with
+        ``fallback_reason='index_reports_stale'``. The
+        detection MUST use the bounded
+        ``has_deleted_files`` aggregate rather than
+        ``iter_files`` (which filters out deleted rows) or a
+        materializing ``fetchall`` scan.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+        from ralph.mcp.explore.store import FileRow
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        try:
+            # Inject a deleted file row so the persisted
+            # manifest no longer matches the working tree.
+            handle.store.upsert_file(
+                FileRow(
+                    path="gone.py",
+                    content_hash="deadbeef" * 8,
+                    size_bytes=0,
+                    mtime_ns=0,
+                    language="python",
+                    indexed_generation=1,
+                    indexed_at=0.0,
+                    is_deleted=True,
+                )
+            )
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_used"] is False
+            assert payload["index_status"] == "stale"
+            assert payload["fallback_reason"] == "index_reports_stale"
+            assert payload["changed_symbols"] == {}
+        finally:
+            handle.store.close()
+
+    def test_status_compact_does_not_materialize_files_table(
+        self, tmp_path: Path
+    ) -> None:
+        """AC-06: the compact ``git_status`` payload must
+        detect stale state through bounded aggregates
+        (``has_deleted_files``) rather than calling
+        ``iter_files`` and materializing the full table. The
+        test swaps the live store for a subclass that wraps
+        the bounded-aggregate call and counts it; if the
+        helper regresses to ``fetchall``/``iter_files`` the
+        test will reveal the regression.
+        """
+        from ralph.mcp.explore.handlers import build_explore_index
+        from ralph.mcp.explore.pipeline import ReindexOptions, reindex
+
+        workspace_dir = tmp_path / "ws"
+        workspace_dir.mkdir()
+        (workspace_dir / "a.py").write_text(
+            "def hello():\n    return 1\n"
+        )
+        handle = build_explore_index(workspace_dir)
+        reindex(handle.store, workspace_dir, options=ReindexOptions(timeout_ms=5000))
+        iter_calls = {"n": 0}
+        has_deleted_calls = {"n": 0}
+        try:
+            inner = handle.store
+
+            class _SpyingStore(type(inner)):
+                """Subclass that delegates every attribute to
+                ``inner`` except for the two freshness
+                signals, which are counted."""
+
+                def __init__(self) -> None:
+                    self._inner = inner
+
+                def __getattr__(self, name: str) -> object:
+                    return getattr(self._inner, name)
+
+                def has_deleted_files(self) -> bool:
+                    has_deleted_calls["n"] += 1
+                    return self._inner.has_deleted_files()
+
+                def iter_files(self) -> object:
+                    iter_calls["n"] += 1
+                    return self._inner.iter_files()
+
+            spy: object = _SpyingStore()
+            # ``handle.store`` is typed as a concrete
+            # ``ExploreStore`` but at runtime accepts any
+            # object exposing the same surface. The
+            # runtime ``__dict__`` mutation keeps the test
+            # typed (no ``type: ignore``).
+            handle.__dict__["store"] = spy
+            session = MockSession({GIT_STATUS_READ_CAPABILITY})
+            session.explore_index = handle
+            workspace = MockWorkspaceRoot(workspace_dir)
+            completed = subprocess.CompletedProcess(
+                args=["git", "status", "--porcelain"],
+                returncode=0,
+                stdout=b"M  a.py\n",
+                stderr=b"",
+            )
+            with patch(
+                "ralph.mcp.tools.git_read.run_git_command_lenient",
+                return_value=completed,
+            ):
+                result = handle_git_status(
+                    session, workspace, {"format": "compact"}
+                )
+            payload = json.loads(result.content[0].text)
+            assert payload["index_status"] == "current"
+            # The bounded aggregate is consulted; the
+            # materializing ``iter_files`` path is NOT.
+            assert has_deleted_calls["n"] >= 1
+            assert iter_calls["n"] == 0
+        finally:
+            handle.store.close()

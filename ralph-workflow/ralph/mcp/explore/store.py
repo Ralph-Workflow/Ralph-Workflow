@@ -495,6 +495,31 @@ class ExploreStore:
     def close(self) -> None:
         self._conn.close()
 
+    def reopen(self) -> None:
+        """Close the live connection and reopen it against the same file.
+
+        Used by the staged ``mode='full'`` reindex after the
+        staging database is swapped in at the file level: the
+        connection must be re-opened to observe the new file
+        content. Pragmas are reapplied because the prior
+        connection is gone; the DDL is left to ``_initialize``
+        and is idempotent (the staging file already contains
+        the DDL).
+        """
+        with suppress(sqlite3.ProgrammingError):
+            # Already closed; safe to ignore.
+            self._conn.close()
+        self._conn = sqlite3.connect(
+            str(self._db_path),
+            timeout=self._busy_timeout_ms / 1000.0,
+            isolation_level=None,
+        )
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA foreign_keys=ON")
+
     # --- File-row access ----------------------------------------------
 
     def upsert_file(self, row: FileRow) -> None:
@@ -541,6 +566,53 @@ class ExploreStore:
         all_rows = cast("list[sqlite3.Row]", cur.fetchall())
         for row in all_rows:
             yield _row_to_file(row)
+
+    def count_files(self) -> int:
+        """Return the live file row count.
+
+        Bounded: a single ``COUNT(*)`` aggregate, no row
+        materialization. Callers that need per-row data use
+        :meth:`iter_files`. The method exists so the index
+        status and git_status compact paths can compute
+        freshness with O(1) work instead of pulling the entire
+        ``files`` table into memory.
+        """
+        cur = self._conn.execute(
+            "SELECT COUNT(*) FROM files WHERE is_deleted = 0"
+        )
+        row: sqlite3.Row | None = cur.fetchone()
+        return _row_int_opt(row, 0) if row is not None else 0
+
+    def count_deleted_files(self) -> int:
+        """Return the count of file rows marked ``is_deleted=1``.
+
+        Bounded: a single ``COUNT(*)`` aggregate. ``iter_files``
+        filters out deleted rows, so this method is the only
+        bounded way for callers to observe the deleted-row
+        stale signal without materializing the entire table.
+        """
+        cur = self._conn.execute(
+            "SELECT COUNT(*) FROM files WHERE is_deleted = 1"
+        )
+        row: sqlite3.Row | None = cur.fetchone()
+        return _row_int_opt(row, 0) if row is not None else 0
+
+    def has_deleted_files(self) -> bool:
+        """Bounded existence check for any deleted file row.
+
+        Equivalent to ``count_deleted_files() > 0`` but uses
+        ``EXISTS`` so SQLite short-circuits on the first match.
+        Callers that only need a boolean freshness signal
+        (e.g., compact ``git_status``) should prefer this
+        method over a count query.
+        """
+        cur = self._conn.execute(
+            "SELECT EXISTS(SELECT 1 FROM files WHERE is_deleted = 1)"
+        )
+        row: sqlite3.Row | None = cur.fetchone()
+        if row is None:
+            return False
+        return _row_int_opt(row, 0) > 0
 
     def delete_file_rows(self, path: str) -> None:
         """Remove file/chunk/evidence rows for ``path`` in current generation."""

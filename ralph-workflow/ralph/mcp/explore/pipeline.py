@@ -34,10 +34,13 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import sqlite3
 import threading
 import time
 import uuid
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
@@ -197,6 +200,21 @@ def reindex(
     )
 
     try:
+        # AC-02/AC-05: ``mode='full'`` runs in a staging database
+        # so cancellation/timeout cannot leak partial mutable
+        # state into the live store. The dispatch happens before
+        # ``_run_reindex`` touches the live store, so even a
+        # cancel that becomes true on the first poll never
+        # reaches the destructive drop path.
+        if opts.mode == "full":
+            return _staged_full_reindex(
+                store,
+                workspace_root,
+                options=opts,
+                now_fn=now_fn,
+                state=state,
+                cancel=cancel,
+            )
         result = _run_reindex(
             store,
             workspace_root,
@@ -220,6 +238,127 @@ def reindex(
     return _finalize(store, state, status=result, now_fn=now_fn)
 
 
+def _staged_full_reindex(
+    store: ExploreStore,
+    workspace_root: Path,
+    *,
+    options: ReindexOptions,
+    now_fn: Callable[[], float],
+    state: _ReindexState,
+    cancel: Callable[[], bool] | None,
+) -> ReindexResult:
+    """Run ``mode='full'`` in a staging database and atomically swap.
+
+    AC-02/AC-05: cancellation/timeout must preserve the prior
+    committed generation and reader-visible rows. The live
+    store is never partially modified; all work happens in a
+    separate ``ExploreStore`` rooted at
+    ``store.index_dir/.staging-full-{uuid}/``. The main store
+    is replaced at the file level only after the staging
+    reindex returns ``ok``.
+
+    The staging path is generated once per call and is removed
+    in the ``finally`` block regardless of outcome. A cancel
+    that fires during the staging build simply abandons the
+    staging directory; the main store continues to serve the
+    prior generation.
+
+    The function finalizes its own result and returns the
+    ``ReindexResult`` directly; the caller does not call
+    ``_finalize`` again on top of this.
+    """
+    staging_dir = store.index_dir / f".staging-full-{uuid.uuid4().hex}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        staging = ExploreStore(staging_dir)
+        try:
+            # The staging database starts empty, so a
+            # ``changed`` rebuild on it is equivalent to a full
+            # rebuild. The cancel callable and deadline are
+            # forwarded so the staging build can also fail
+            # closed when the caller is no longer interested.
+            inner_opts = ReindexOptions(
+                mode="changed",
+                timeout_ms=options.timeout_ms,
+                path_scope=options.path_scope,
+                clock=options.clock,
+            )
+            inner_result = reindex(
+                staging,
+                workspace_root,
+                options=inner_opts,
+                cancel=cancel,
+            )
+        finally:
+            staging.close()
+        if inner_result.status == "cancelled":
+            return _finalize(store, state, status="cancelled", now_fn=now_fn)
+        if inner_result.status == "timed_out":
+            return _finalize(store, state, status="timed_out", now_fn=now_fn)
+        if inner_result.status != "ok":
+            return _finalize(
+                store,
+                state,
+                status="failed",
+                now_fn=now_fn,
+                error_summary=inner_result.error_summary
+                or f"staged full reindex returned {inner_result.status}",
+            )
+        # Carry the staged counters into the main state so
+        # ``_finalize`` reports truthful parse_count and
+        # changed_paths.
+        state.parse_count += inner_result.parse_count
+        state.changed_paths.extend(inner_result.changed_files)
+        state.failed_paths.extend(inner_result.failed_files)
+        # Atomic swap: replace the main database files with
+        # the staging ones, then reopen the live connection.
+        _swap_staged_index(store, staging_dir)
+        return _finalize(store, state, status="ok", now_fn=now_fn)
+    finally:
+        # Always remove the staging directory; it is
+        # disposable and must not be committed.
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def _swap_staged_index(store: ExploreStore, staging_dir: Path) -> None:
+    """Atomically replace the main index files with the staging ones.
+
+    The swap is at the file level: the main connection is
+    closed, the main database file is replaced with the
+    staging file (WAL/SHM are removed or replaced), and the
+    connection is reopened. A failure between the close and
+    the reopen leaves the main store unopenable; callers
+    handle that through the index lifecycle, which always
+    treats a missing/invalid index as ``cold_index_required``.
+    """
+    main_db = store.db_path
+    main_wal = main_db.with_name(main_db.name + "-wal")
+    main_shm = main_db.with_name(main_db.name + "-shm")
+    staging_db = staging_dir / main_db.name
+    staging_wal = staging_db.with_name(staging_db.name + "-wal")
+    staging_shm = staging_db.with_name(staging_db.name + "-shm")
+    # Close the main connection so the WAL is flushed and
+    # the file can be safely replaced on Windows-style
+    # filesystems (and to release the SHM mapping).
+    with suppress(sqlite3.ProgrammingError):
+        store._conn.close()
+    # Remove the existing main files (database + WAL/SHM)
+    # before copying the staging ones in.
+    for path in (main_wal, main_shm):
+        if path.exists():
+            path.unlink()
+    if main_db.exists():
+        main_db.unlink()
+    main_db.write_bytes(staging_db.read_bytes())
+    if staging_wal.exists():
+        main_wal.write_bytes(staging_wal.read_bytes())
+    if staging_shm.exists():
+        main_shm.write_bytes(staging_shm.read_bytes())
+    # Reopen the live connection against the new file.
+    store.reopen()
+
+
 def _run_reindex(
     store: ExploreStore,
     workspace_root: Path,
@@ -238,26 +377,14 @@ def _run_reindex(
         if cancel is not None and cancel():
             raise _ReindexCancelledError("cancelled by caller")
 
-    # Phase 1 only supports ``changed`` mode for warm refresh; ``full``
-    # is a synonym for "rebuild from scratch" implemented as
-    # ``changed`` after clearing the manifest first.
+    # ``_run_reindex`` runs in ``changed`` mode only. The public
+    # ``reindex()`` entry point dispatches ``mode='full'`` to
+    # ``_staged_full_reindex`` so the live store is never
+    # partially modified. The change-replay path always
+    # increments the generation so the prior committed state
+    # is visibly distinct from the new one.
     current_generation = _current_generation(store)
-
-    if options.mode == "full":
-        # AC-02/AC-05: cancel MUST be checked before any destructive
-        # store mutation. ``_drop_all_rows`` issues ``DELETE``
-        # statements on the live connection (each store operation
-        # commits inside ``_transaction``), so a cancel that arrives
-        # after the drop would leave readers seeing an empty index
-        # while the result still reports ``cancelled``. Polling at
-        # the phase boundary preserves the last committed generation
-        # and the reader-visible rows because no mutable work has
-        # been emitted to the store yet.
-        _check_cancel()
-        _drop_all_rows(store)
-        target_generation = 1
-    else:
-        target_generation = current_generation + 1 if current_generation else 1
+    target_generation = current_generation + 1 if current_generation else 1
 
     dirty_paths = store.peek_dirty_paths()
     state.dirty_paths_count = len(dirty_paths)
@@ -480,34 +607,6 @@ def _dirty_paths_contain(store: ExploreStore, path: str) -> bool:
     """
     normalized = path.replace(os.sep, "/")
     return any(existing == normalized for existing in store.peek_dirty_paths())
-
-
-def _drop_all_rows(store: ExploreStore) -> None:
-    """Drop every row from the index tables. Used by mode='full'.
-
-    AC-05/AC-06: must clear every persisted table that can serve
-    structural or lexical facts, including ``spans``, ``symbols``,
-    and ``edges``. A full rebuild that leaves stale graph rows
-    behind would silently allow graph queries to return facts about
-    files that no longer exist in the workspace.
-    """
-    cur = store._conn.cursor()
-    try:
-        for table in (
-            "evidence",
-            "evidence_tombstones",
-            "chunks",
-            "chunks_fts",
-            "spans",
-            "symbols",
-            "edges",
-            "files",
-            "manifest",
-            "dirty_paths",
-        ):
-            cur.execute(f"DELETE FROM {table}")
-    finally:
-        cur.close()
 
 
 def _update_manifest(

@@ -83,6 +83,9 @@ class ExploreStoreLike(Protocol):
     def peek_dirty_paths(self) -> list[str]:
         ...
 
+    def has_deleted_files(self) -> bool:
+        ...
+
     def iter_files(self) -> object:  # Iterator[FileRow]
         ...
 

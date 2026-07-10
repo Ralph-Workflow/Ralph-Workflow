@@ -47,6 +47,32 @@ class FakeClock:
         self._t += seconds
 
 
+class _SequenceClock:
+    """Clock that returns successive values from a list.
+
+    Used by timeout-sensitive tests where the first ``now()``
+    call must return a low value (``started_at`` baseline) and
+    the next call must return a value past the deadline. The
+    internal ``_t`` is updated to the most recent returned
+    value so callers that read it after the reindex returns
+    see the final clock position.
+    """
+
+    def __init__(self, values: list[float]) -> None:
+        self._values = list(values)
+        self._idx = 0
+        self._t: float = self._values[0] if self._values else 0.0
+
+    def now(self) -> float:
+        if self._idx >= len(self._values):
+            value = self._values[-1]
+        else:
+            value = self._values[self._idx]
+            self._idx += 1
+        self._t = value
+        return value
+
+
 def _seed_workspace(tmp_path: Path) -> Path:
     """Create a small workspace with three files."""
     workspace = tmp_path / "ws"
@@ -268,6 +294,149 @@ def test_mode_full_pre_cancel_preserves_committed_generation(tmp_path: Path) -> 
         assert _count_files_rows(store) == files_before
         assert _count_chunks_rows(store) == chunks_before
         assert _count_fts_rows(store) == fts_before
+    finally:
+        store.close()
+
+
+def test_mode_full_mid_build_cancel_preserves_committed_generation(
+    tmp_path: Path,
+) -> None:
+    """AC-02/AC-05: ``mode='full'`` runs in a staging database, so
+    a cancel that becomes true during the rebuild does not leave
+    the live store partially modified. The prior committed
+    generation and all reader-visible rows must remain
+    queryable through the cancellation.
+
+    The cancel callable returns ``False`` for the first
+    check (the dispatch) and ``True`` from the second check
+    onward (during the staging file loop). The staging
+    directory is abandoned in the ``finally`` block; the
+    main store is never touched.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        # 1. Build an initial index.
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation_str is not None
+        files_before = _count_files_rows(store)
+        chunks_before = _count_chunks_rows(store)
+        fts_before = _count_fts_rows(store)
+        assert files_before >= 3
+
+        # 2. Cancel becomes true from the second check onward.
+        call_state = {"n": 0}
+
+        def _mid_cancel() -> bool:
+            call_state["n"] += 1
+            return call_state["n"] > 1
+
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+            cancel=_mid_cancel,
+        )
+        assert result.status == "cancelled"
+
+        # 3. The committed generation on disk is unchanged.
+        assert store.get_setting("current_generation") == prior_generation_str
+        # 4. Reader-visible rows are unchanged. A partial drop
+        #    in the live store would have wiped file/chunk/FTS
+        #    rows; the staged rebuild never touches the live
+        #    store until the swap step.
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+
+        # 5. No staging directory is left behind. The full
+        #    reindex path always cleans up the staging tree
+        #    in its ``finally`` block, even on cancellation.
+        staging_root = store.index_dir
+        leftovers = [
+            child
+            for child in staging_root.iterdir()
+            if child.name.startswith(".staging-full-")
+        ]
+        assert leftovers == []
+
+        # 6. A subsequent full reindex without cancel rebuilds
+        #    cleanly from the preserved prior state.
+        recover = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(mode="full", timeout_ms=DEFAULT_TIMEOUT_MS),
+        )
+        assert recover.status == "ok"
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+    finally:
+        store.close()
+
+
+def test_mode_full_mid_build_timeout_preserves_committed_generation(
+    tmp_path: Path,
+) -> None:
+    """AC-02/AC-05: a timeout that fires during the staged
+    ``mode='full'`` rebuild does not modify the live store.
+    The committed generation and reader-visible rows remain
+    intact and the staging directory is cleaned up.
+
+    The test uses a ``_SequenceClock`` whose first poll
+    returns ``1_000.0`` (used as ``started_at``) and whose
+    subsequent polls return ``1_010.0`` (past the 5s
+    deadline). The first ``_ensure_deadline`` inside the
+    staging file loop fires and raises
+    ``_ReindexTimeoutError``; the live store is never
+    touched.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation_str is not None
+        files_before = _count_files_rows(store)
+        chunks_before = _count_chunks_rows(store)
+        fts_before = _count_fts_rows(store)
+
+        # The first two calls are the ``started_at`` of the
+        # outer reindex and the ``started_at`` of the
+        # staged inner reindex. They both return ``1_000.0``
+        # so the 5s deadline is at ``1_005.0``. Every later
+        # call returns ``1_010.0`` (past the deadline), so
+        # the next ``_ensure_deadline`` check inside the
+        # staging file loop raises
+        # ``_ReindexTimeoutError``.
+        clock = _SequenceClock([1_000.0, 1_000.0, 1_010.0, 1_010.0, 1_010.0])
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+                clock=clock,
+            ),
+        )
+        assert result.status == "timed_out"
+        assert store.get_setting("current_generation") == prior_generation_str
+        assert _count_files_rows(store) == files_before
+        assert _count_chunks_rows(store) == chunks_before
+        assert _count_fts_rows(store) == fts_before
+        leftovers = [
+            child
+            for child in store.index_dir.iterdir()
+            if child.name.startswith(".staging-full-")
+        ]
+        assert leftovers == []
     finally:
         store.close()
 
