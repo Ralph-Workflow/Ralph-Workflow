@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.mcp.tools._exec_resource_protocol import ExecResourceResolverLike
+
 
 def _normalize_capability_token(value: str) -> str:
     return value.strip().replace("-", "_").replace(".", "_").lower()
@@ -188,6 +190,20 @@ class McpSession(Protocol):
         """
         ...
 
+    @property
+    def exec_resource_resolver(self) -> ExecResourceResolverLike | None:
+        """Optional ``ralph.mcp.tools._exec_resource_uri.ExecResourceResolver``.
+
+        ``None`` keeps the legacy contract: ``resources/read`` for a
+        ``ralph://exec/<spill-name>`` URI returns a structured
+        "unsupported resource URI" error. Production sessions built
+        by :func:`ralph.pipeline.session_bridge.build_session_bridge`
+        attach one resolver so the AC-11 replayable stdout/stderr
+        resource IDs returned by ``format=summary`` exec calls can
+        be re-read through ``resources/read``.
+        """
+        ...
+
 
 @dataclass
 class AgentSession:
@@ -224,6 +240,15 @@ class AgentSession:
     #: indexed read/search/grep/list/edit operations share the same
     #: generation and dirty-path state.
     explore_index: object | None = field(default=None, repr=False)
+    #: AC-11: optional resolver for ``ralph://exec/<spill-name>`` resource
+    #: URIs returned by ``format=summary`` exec calls. When ``None`` the
+    #: ``resources/read`` handler reports an unsupported URI error and the
+    #: legacy contract is preserved. Production bridges attach one
+    #: resolver in :func:`ralph.pipeline.session_bridge.build_session_bridge`
+    #: so spill files can be replayed through ``resources/read``.
+    exec_resource_resolver: ExecResourceResolverLike | None = field(
+        default=None, repr=False
+    )
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile:

@@ -21,6 +21,9 @@ from pathlib import Path
 import pytest
 
 from ralph.mcp.explore.bench import (
+    ALL_FIXTURES,
+    EXTENDED_FIXTURES,
+    REQUIRED_BENCH_WORKFLOW_IDS,
     REQUIRED_FIXTURES,
     BenchmarkFixture,
     ScriptedCall,
@@ -332,3 +335,77 @@ class _StubWorkspace:
 
     def is_dir(self, path: str) -> bool:
         return (self.root / path).is_dir()
+
+
+# --- AC-12 benchmark coverage gate ----------------------------------------
+
+
+def test_all_required_bench_workflows_have_fixtures() -> None:
+    """AC-12: every workflow required by the gate has a fixture in
+    ``REQUIRED_BENCH_WORKFLOW_IDS`` and a corresponding entry in
+    ``ALL_FIXTURES``. The closed vocabulary lives in bench.py; the
+    test only fails when a workflow is missing.
+    """
+    by_id = {fixture.question_id for fixture in ALL_FIXTURES}
+    missing = set(REQUIRED_BENCH_WORKFLOW_IDS) - by_id
+    assert not missing, f"Missing benchmark fixtures for: {missing}"
+
+
+def test_extended_fixtures_cover_graph_edit_mutation_and_phase4() -> None:
+    """AC-12: the extended fixture set covers graph queries, edit
+    impact preview, mutation freshness, and the Phase 4 git/exec
+    remediation. Each of the four required workflow groups is
+    represented by at least one fixture.
+    """
+    by_id = {fixture.question_id: fixture for fixture in ALL_FIXTURES}
+    # Graph (Q4) and edit impact (Q5) are explicitly named so a
+    # test failure points the agent at the missing workflow.
+    assert "Q4" in by_id, "Missing graph-callers fixture (Q4)"
+    assert "Q5" in by_id, "Missing edit-impact-preview fixture (Q5)"
+    # Mutation freshness (Q6) and the Phase 4 slice (Q7/Q8/Q9)
+    # share the same coverage requirement.
+    assert "Q6" in by_id, "Missing mutation-freshness fixture (Q6)"
+    for qid in ("Q7", "Q8", "Q9"):
+        assert qid in by_id, f"Missing Phase 4 fixture {qid}"
+
+
+def test_extended_fixtures_emit_required_evidence_ids() -> None:
+    """AC-12: the new fixtures declare the evidence ids the gate
+    uses to assert recall/precision. A fixture without
+    ``expected_evidence_ids`` cannot be measured.
+    """
+    for fixture in EXTENDED_FIXTURES:
+        assert fixture.expected_evidence_ids, (
+            f"{fixture.question_id} must declare expected_evidence_ids"
+        )
+
+
+def test_extended_fixtures_enforce_tool_call_budget() -> None:
+    """AC-12: the extended fixtures' indexed script must use no more
+    tool calls than the baseline (the research-gate contract).
+    """
+    for fixture in EXTENDED_FIXTURES:
+        indexed_calls = len(fixture.indexed_script)
+        baseline_calls = len(fixture.baseline_script)
+        assert indexed_calls <= baseline_calls, (
+            f"{fixture.question_id}: indexed script uses {indexed_calls} "
+            f"calls; baseline uses {baseline_calls}"
+        )
+
+
+def test_extended_fixtures_run_under_scripted_executors() -> None:
+    """AC-12: the extended fixtures pass through the scripted
+    benchmark harness. The harness records tool calls / returned
+    bytes / transcript tokens but the new fixtures must still
+    exercise the harness.
+    """
+    for fixture in EXTENDED_FIXTURES:
+        result = run_benchmark(
+            fixture,
+            baseline_executor=_baseline_executor,
+            indexed_executor=_indexed_executor,
+            clock=FakeClock(),
+        )
+        assert result.indexed.tool_calls == len(fixture.indexed_script)
+        assert result.indexed.evidence_recall == 1.0
+

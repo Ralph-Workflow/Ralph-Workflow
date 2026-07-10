@@ -263,7 +263,11 @@ def _run_reindex(
             state.error_summary = f"hash_failed: {exc}"
             continue
 
-        if previous is not None and previous.content_hash == content_hash:
+        if (
+            previous is not None
+            and previous.content_hash == content_hash
+            and not previous.is_deleted
+        ):
             # No-op reuse; the manifest rows stay.
             _update_manifest(
                 store,

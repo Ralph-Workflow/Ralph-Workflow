@@ -79,3 +79,24 @@ def test_registry_lookup_returns_matching_phase() -> None:
 
 def test_registry_lookup_returns_none_for_unknown_id() -> None:
     assert DeferredPhaseRegistry.get("phase_99") is None
+
+
+def test_ralph_explore_remains_deferred_without_measured_bundle_benefit() -> None:
+    """AC-12: ralph_explore is not registered in deferred phases because
+    it was never started. The gate asserts that the
+    ``bench.ALL_FIXTURES`` set covers graph, edit, mutation, and
+    Phase 4 workflows WITHOUT ralph_explore, so the optional wrapper
+    stays deferred until measured evidence justifies it.
+    """
+    from ralph.mcp.explore.bench import (
+        ALL_FIXTURES,
+        REQUIRED_BENCH_WORKFLOW_IDS,
+    )
+    question_ids = {fixture.question_id for fixture in ALL_FIXTURES}
+    assert "Q_explore" not in question_ids
+    assert "ralph_explore" not in REQUIRED_BENCH_WORKFLOW_IDS
+    # No deferred phase is named ralph_explore either; the optional
+    # wrapper is held in Phase 5 (Optional adapters) implicitly.
+    deferred_ids = {entry.phase_id for entry in DEFERRED_PHASES}
+    assert "ralph_explore" not in deferred_ids
+

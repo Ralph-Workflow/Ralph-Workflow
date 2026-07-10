@@ -67,6 +67,14 @@ def test_every_defer_has_non_empty_rationale() -> None:
         assert entry.rationale.strip(), f"Empty rationale for defer: {entry.tool}"
 
 
+def test_every_defer_has_non_empty_risk() -> None:
+    """AC-01: defer entries must include a non-empty ``risk`` field."""
+    defer_entries = [e for e in AUDIT_REGISTER if e.outcome == AuditOutcome.DEFER]
+    assert defer_entries, "Expected at least one defer entry in the Phase 0 seed"
+    bad = [e.tool for e in defer_entries if not e.risk.strip()]
+    assert not bad, f"Defer entries missing risk field: {bad}"
+
+
 def test_audit_register_is_immutable_snapshot() -> None:
     """audit_register() returns the same snapshot."""
     first = audit_register()
@@ -92,6 +100,31 @@ def test_audit_entry_rejects_empty_rationale() -> None:
                 parse_count=0,
                 changed_file_count=0,
                 index_storage_bytes=0,
+                wall_time_seconds=0.01,
+            ),
+        )
+
+
+def test_audit_entry_rejects_empty_defer_risk() -> None:
+    """AC-01: AuditEntry.__post_init__ rejects an empty risk on DEFER."""
+    with pytest.raises(ValueError, match="risk description"):
+        AuditEntry(
+            tool=RalphToolName.READ_FILE,
+            family=AuditFamily.WORKSPACE_READ,
+            outcome=AuditOutcome.DEFER,
+            rationale="Some reason for deferral.",
+            risk="",
+            counters=AuditCounters(
+                transcript_tokens=0,
+                returned_bytes=0,
+                tool_calls=0,
+                evidence_recall=1.0,
+                evidence_precision=1.0,
+                stale_fallback_events=0,
+                parse_count=0,
+                changed_file_count=0,
+                index_storage_bytes=0,
+                wall_time_seconds=0.01,
             ),
         )
 
@@ -157,6 +190,8 @@ def test_every_entry_counters_meet_field_contract() -> None:
             bad.append(f"{entry.tool}: changed_file_count < 0")
         if c.index_storage_bytes < 0:
             bad.append(f"{entry.tool}: index_storage_bytes < 0")
+        if c.wall_time_seconds <= 0:
+            bad.append(f"{entry.tool}: wall_time_seconds <= 0")
     assert not bad, "Counter contract violations: " + "; ".join(bad)
 
 
@@ -173,6 +208,7 @@ def test_audit_counters_rejects_out_of_range_recall() -> None:
             parse_count=0,
             changed_file_count=0,
             index_storage_bytes=0,
+            wall_time_seconds=0.01,
         )
 
 
@@ -189,4 +225,22 @@ def test_audit_counters_rejects_negative_bytes() -> None:
             parse_count=0,
             changed_file_count=0,
             index_storage_bytes=0,
+            wall_time_seconds=0.01,
+        )
+
+
+def test_audit_counters_rejects_zero_wall_time() -> None:
+    """AC-01: AuditCounters.__post_init__ rejects wall_time_seconds <= 0."""
+    with pytest.raises(ValueError, match="wall_time_seconds"):
+        AuditCounters(
+            transcript_tokens=0,
+            returned_bytes=0,
+            tool_calls=0,
+            evidence_recall=1.0,
+            evidence_precision=1.0,
+            stale_fallback_events=0,
+            parse_count=0,
+            changed_file_count=0,
+            index_storage_bytes=0,
+            wall_time_seconds=0,
         )

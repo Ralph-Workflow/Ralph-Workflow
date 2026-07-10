@@ -424,6 +424,290 @@ REQUIRED_FIXTURES: tuple[BenchmarkFixture, ...] = (
 )
 
 
+# AC-12: the benchmark gate must cover graph queries, edit impact
+# preview, mutation freshness metadata, and the Phase 4 git/exec
+# remediation. Each new fixture is a positive control (the
+# indexed/path script must succeed and beat the baseline) AND a
+# negative control (the negative script is a known-bad pattern that
+# the gate must reject). The deferred_phases list keeps optional
+# ralph_explore out of the gate until benchmarked.
+
+
+def question_graph_callers() -> BenchmarkFixture:
+    """Q4: graph callers via ``ralph_graph query_type=neighbors``.
+
+    The positive script asks the graph for ``hello`` and reads
+    back the resulting evidence handles; the negative script
+    walks the directory tree and greps repeatedly to find the
+    same information, with a larger returned byte budget.
+    """
+    return BenchmarkFixture(
+        question_id="Q4",
+        description="Find callers of a symbol via ralph_graph.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="search_files",
+                params={"pattern": "**/*.py", "path": "ralph"},
+                expected_evidence_ids=("ev:graph/callers/hello",),
+            ),
+            ScriptedCall(
+                tool="grep_files",
+                params={"pattern": "hello", "path": "ralph"},
+                expected_evidence_ids=("ev:graph/callers/hello",),
+            ),
+            ScriptedCall(
+                tool="grep_files",
+                params={"pattern": "hello", "path": "tests"},
+                expected_evidence_ids=("ev:graph/callers/tests",),
+            ),
+            ScriptedCall(
+                tool="read_file",
+                params={"path": "ralph/tools/foo.py"},
+                expected_evidence_ids=("ev:graph/callers/hello",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="ralph_graph",
+                params={
+                    "query_type": "neighbors",
+                    "target": "ralph.tools.foo.hello",
+                    "depth": 2,
+                    "return_evidence_ids": True,
+                },
+                expected_evidence_ids=("ev:graph/callers/hello",),
+            ),
+            ScriptedCall(
+                tool="read_file",
+                params={
+                    "path": "ralph/tools/foo.py",
+                    "evidence_id": "ev:graph/callers/hello",
+                },
+                expected_evidence_ids=("ev:graph/callers/hello",),
+            ),
+        ),
+        expected_evidence_ids=("ev:graph/callers/hello",),
+        max_returned_bytes=200_000,
+        max_tool_calls=4,
+    )
+
+
+def question_edit_impact_preview() -> BenchmarkFixture:
+    """Q5: edit impact preview via ralph_graph impact.
+
+    The positive script asks for an impact preview (Phase 3
+    feature) and reads the targeted evidence handle. The negative
+    script greps for callers and re-reads the function body.
+    """
+    return BenchmarkFixture(
+        question_id="Q5",
+        description="Estimate rename impact via ralph_graph impact preview.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="grep_files",
+                params={"pattern": "hello", "path": "ralph"},
+                expected_evidence_ids=("ev:impact/hello",),
+            ),
+            ScriptedCall(
+                tool="grep_files",
+                params={"pattern": "hello", "path": "tests"},
+                expected_evidence_ids=("ev:impact/hello",),
+            ),
+            ScriptedCall(
+                tool="read_file",
+                params={"path": "ralph/tools/foo.py"},
+                expected_evidence_ids=("ev:impact/hello",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="ralph_graph",
+                params={
+                    "query_type": "impact",
+                    "target": "ralph.tools.foo.hello",
+                    "change_kind": "rename",
+                },
+                expected_evidence_ids=("ev:impact/hello",),
+            ),
+            ScriptedCall(
+                tool="read_file",
+                params={
+                    "path": "ralph/tools/foo.py",
+                    "evidence_id": "ev:impact/hello",
+                },
+                expected_evidence_ids=("ev:impact/hello",),
+            ),
+        ),
+        expected_evidence_ids=("ev:impact/hello",),
+        max_returned_bytes=200_000,
+        max_tool_calls=3,
+    )
+
+
+def question_mutation_freshness() -> BenchmarkFixture:
+    """Q6: mutation freshness metadata after a workspace write.
+
+    The positive script calls edit_file with a target selector and
+    expects the response to include the freshness metadata. The
+    negative script performs the same edit with a plain
+    oldText/newText and re-reads the file to confirm content.
+    """
+    return BenchmarkFixture(
+        question_id="Q6",
+        description="Mutation freshness metadata via edit_file target.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="edit_file",
+                params={
+                    "path": "ralph/tools/foo.py",
+                    "oldText": "return 'world'",
+                    "newText": "return 'world!'",
+                },
+                expected_evidence_ids=("ev:mutation/foo",),
+            ),
+            ScriptedCall(
+                tool="read_file",
+                params={"path": "ralph/tools/foo.py"},
+                expected_evidence_ids=("ev:mutation/foo",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="edit_file",
+                params={
+                    "path": "ralph/tools/foo.py",
+                    "oldText": "return 'world'",
+                    "newText": "return 'world!'",
+                    "reindex": "auto",
+                    "return_evidence_updates": True,
+                },
+                expected_evidence_ids=("ev:mutation/foo",),
+            ),
+        ),
+        expected_evidence_ids=("ev:mutation/foo",),
+        max_returned_bytes=200_000,
+        max_tool_calls=2,
+    )
+
+
+def question_phase4_git_status_compact() -> BenchmarkFixture:
+    """Q7: Phase 4 git_status compact output.
+
+    The positive script requests ``format=compact``; the negative
+    script uses the default (raw) format and pays a larger byte
+    budget. The benchmark gate requires the compact form to use
+    fewer bytes than the default at parity call count.
+    """
+    return BenchmarkFixture(
+        question_id="Q7",
+        description="Phase 4 git_status compact output.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="git_status",
+                params={},
+                expected_evidence_ids=("ev:git/compact/status",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="git_status",
+                params={"format": "compact"},
+                expected_evidence_ids=("ev:git/compact/status",),
+            ),
+        ),
+        expected_evidence_ids=("ev:git/compact/status",),
+        max_returned_bytes=80_000,
+        max_tool_calls=2,
+    )
+
+
+def question_phase4_git_diff_summary() -> BenchmarkFixture:
+    """Q8: Phase 4 git_diff summary output."""
+    return BenchmarkFixture(
+        question_id="Q8",
+        description="Phase 4 git_diff summary output.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="git_diff",
+                params={},
+                expected_evidence_ids=("ev:git/summary/diff",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="git_diff",
+                params={"format": "summary"},
+                expected_evidence_ids=("ev:git/summary/diff",),
+            ),
+        ),
+        expected_evidence_ids=("ev:git/summary/diff",),
+        max_returned_bytes=80_000,
+        max_tool_calls=2,
+    )
+
+
+def question_phase4_exec_summary_spill() -> BenchmarkFixture:
+    """Q9: Phase 4 exec summary output with replayable spill handles."""
+    return BenchmarkFixture(
+        question_id="Q9",
+        description="Phase 4 exec summary output.",
+        workspace_files={},
+        baseline_script=(
+            ScriptedCall(
+                tool="exec",
+                params={"command": "make verify"},
+                expected_evidence_ids=("ev:exec/spill/stdout",),
+            ),
+        ),
+        indexed_script=(
+            ScriptedCall(
+                tool="exec",
+                params={"command": "make verify", "format": "summary"},
+                expected_evidence_ids=("ev:exec/spill/stdout",),
+            ),
+        ),
+        expected_evidence_ids=("ev:exec/spill/stdout",),
+        max_returned_bytes=80_000,
+        max_tool_calls=2,
+    )
+
+
+# Ponytail: every workflow that AC-12 requires a benchmark for is a
+# fixture here. ``_REQUIRED_BENCH_WORKFLOW_IDS`` is the closed
+# vocabulary the gate test asserts; adding a workflow is a single
+# entry in both places.
+REQUIRED_BENCH_WORKFLOW_IDS: tuple[str, ...] = (
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",  # graph callers
+    "Q5",  # edit impact preview
+    "Q6",  # mutation freshness
+    "Q7",  # Phase 4 git_status compact
+    "Q8",  # Phase 4 git_diff summary
+    "Q9",  # Phase 4 exec summary
+)
+
+EXTENDED_FIXTURES: tuple[BenchmarkFixture, ...] = (
+    question_graph_callers(),
+    question_edit_impact_preview(),
+    question_mutation_freshness(),
+    question_phase4_git_status_compact(),
+    question_phase4_git_diff_summary(),
+    question_phase4_exec_summary_spill(),
+)
+
+ALL_FIXTURES: tuple[BenchmarkFixture, ...] = (
+    *REQUIRED_FIXTURES,
+    *EXTENDED_FIXTURES,
+)
+
+
 def run_benchmark(
     fixture: BenchmarkFixture,
     *,

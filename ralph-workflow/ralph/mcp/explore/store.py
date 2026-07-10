@@ -1074,12 +1074,26 @@ class ExploreStore:
     ) -> None:
         now_seconds = time.time() if now is None else now
         with self._transaction() as cur:
+            # AC-05: tombstone identity is derived deterministically
+            # from (path, content_hash, kind), so a delete-then-restore
+            # cycle of the same bytes can produce the same evidence_id
+            # on the next delete. The lifecycle must remain idempotent
+            # to avoid ``IntegrityError`` on the primary-key collision.
+            # An ON CONFLICT refreshes ``stale_at``/``stale_reason``/
+            # ``replacement_evidence_id`` on the existing row so the
+            # row count does not balloon and the most recent deletion
+            # wins for lookup, while bounded retention still applies.
             cur.execute(
                 """
                 INSERT INTO evidence_tombstones (
                     evidence_id, path, start_line, end_line, content_hash,
                     generation, stale_reason, stale_at, replacement_evidence_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(evidence_id) DO UPDATE SET
+                    stale_at=excluded.stale_at,
+                    stale_reason=excluded.stale_reason,
+                    replacement_evidence_id=excluded.replacement_evidence_id,
+                    generation=excluded.generation
                 """,
                 (
                     evidence_id,

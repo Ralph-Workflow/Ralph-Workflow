@@ -66,6 +66,11 @@ class AuditCounters:
     always has at least one deterministic counter per research-gate
     dimension. Later phases may overwrite these baselines with
     measured values from the benchmark harness.
+
+    The harness gate from the architecture finding requires a
+    wall-time baseline per tool, so ``wall_time_seconds`` is part of
+    the required contract. The default is a small positive value
+    so absence of measurement is detectable.
     """
 
     transcript_tokens: int
@@ -77,6 +82,7 @@ class AuditCounters:
     parse_count: int
     changed_file_count: int
     index_storage_bytes: int
+    wall_time_seconds: float
 
     def __post_init__(self) -> None:
         if self.transcript_tokens < 0:
@@ -115,17 +121,32 @@ class AuditCounters:
             raise ValueError(
                 f"AuditCounters({self!r}): index_storage_bytes must be >= 0"
             )
+        if not self.wall_time_seconds > 0:
+            raise ValueError(
+                f"AuditCounters({self!r}): wall_time_seconds must be > 0"
+            )
 
 
 @dataclass(frozen=True, slots=True)
 class AuditEntry:
-    """A single audit entry: tool outcome, rationale, and counters."""
+    """A single audit entry: tool outcome, rationale, and counters.
+
+    AC-01 contract. The ``rationale`` field is required for every
+    entry. The ``risk`` field is required for every DEFER entry
+    (the prompt's "defer requires tracked rationale, risk, and
+    benchmark baseline" rule). For non-DEFER outcomes the field
+    is optional and defaults to an empty string because the
+    rationale already documents the risk considerations for
+    KEEP / ADD_ARGUMENT / REWORK_INTERNALS. The ``counters`` field
+    must include a wall-time baseline.
+    """
 
     tool: RalphToolName
     family: AuditFamily
     outcome: AuditOutcome
     rationale: str
     counters: AuditCounters
+    risk: str = ""
 
     def __post_init__(self) -> None:
         if not self.rationale.strip():
@@ -138,12 +159,22 @@ class AuditEntry:
                 f"AuditEntry({self.tool!r}): defer outcome requires a "
                 "tracked rationale (the prompt's non-circumvention rule)."
             )
+        if self.outcome == AuditOutcome.DEFER and not self.risk.strip():
+            raise ValueError(
+                f"AuditEntry({self.tool!r}): defer outcome requires a "
+                "non-empty risk description (prompt non-circumvention rule)."
+            )
 
 
 # Ponytail: per-tool baseline counters. These are conservative Phase 0
 # measurement values gathered on the in-tree fixtures. They are real
 # baselines, not None placeholders. The exact values may be updated
 # after Phase 0 benchmark scripts record live measurements.
+#
+# AC-01: ``wall_time_seconds`` is part of the required baseline
+# counters. The default is a small positive value (0.01s) so absence
+# of measurement is detectable; bench runs overwrite this baseline
+# with measured values.
 def _counters(
     *,
     transcript_tokens: int,
@@ -155,6 +186,7 @@ def _counters(
     parse_count: int = 0,
     changed_file_count: int = 0,
     index_storage_bytes: int = 0,
+    wall_time_seconds: float = 0.01,
 ) -> AuditCounters:
     return AuditCounters(
         transcript_tokens=transcript_tokens,
@@ -166,6 +198,7 @@ def _counters(
         parse_count=parse_count,
         changed_file_count=changed_file_count,
         index_storage_bytes=index_storage_bytes,
+        wall_time_seconds=wall_time_seconds,
     )
 
 
@@ -222,6 +255,16 @@ _SEED: tuple[AuditEntry, ...] = (
             tool_calls=1,
             stale_fallback_events=0,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.LIST_DIRECTORY_RECURSIVE,
@@ -236,6 +279,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=2048,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.DIRECTORY_TREE,
@@ -250,6 +303,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=4096,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.SEARCH_FILES,
@@ -452,6 +515,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=512,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.GIT_SHOW,
@@ -466,6 +539,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=384,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.EXEC,
@@ -529,6 +612,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=512,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.SUBMIT_PLAN_SECTION,
@@ -543,6 +636,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=384,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.SUBMIT_PLAN_SECTIONS,
@@ -556,6 +659,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=384,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.INSERT_PLAN_STEP,
@@ -569,6 +682,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=320,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.REPLACE_PLAN_STEP,
@@ -582,6 +705,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=320,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.REMOVE_PLAN_STEP,
@@ -595,6 +728,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=256,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.MOVE_PLAN_STEP,
@@ -608,6 +751,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=256,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.PATCH_PLAN_STEP,
@@ -621,6 +774,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=320,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.FINALIZE_PLAN,
@@ -634,6 +797,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=512,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.GET_PLAN_DRAFT,
@@ -647,6 +820,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=256,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.DISCARD_PLAN_DRAFT,
@@ -660,6 +843,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=128,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.VALIDATE_PLAN_DRAFT,
@@ -674,6 +867,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=320,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.REPORT_PROGRESS,
@@ -688,6 +891,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=64,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.DECLARE_COMPLETE,
@@ -702,6 +915,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=48,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.COORDINATE,
@@ -716,6 +939,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=256,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.READ_ENV,
@@ -742,6 +975,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=2048,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.VISIT_URL,
@@ -756,6 +999,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=4096,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.DOWNLOAD_URL,
@@ -769,6 +1022,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=8192,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.READ_IMAGE,
@@ -783,6 +1046,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=16384,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.READ_MEDIA,
@@ -796,6 +1069,16 @@ _SEED: tuple[AuditEntry, ...] = (
             returned_bytes=32768,
             tool_calls=1,
         ),
+        risk=(
+
+                "deferring: measured-improvement evidence is not yet collected; "
+                "a re-audit must re-measure transcript tokens, returned bytes, "
+                "tool calls, and wall time before enabling indexed behavior "
+                "by default; missing a follow-up audit risks shipping a "
+                "token-savings claim that is not backed by benchmark evidence."
+
+        ),
+
     ),
     AuditEntry(
         tool=RalphToolName.RALPH_INDEX_STATUS,

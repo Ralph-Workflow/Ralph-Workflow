@@ -200,6 +200,25 @@ def build_session_bridge(
     if explore_handle is not None:
         session.explore_index = explore_handle
         workspace.explore_index = explore_handle
+    # AC-11: attach one ``ExecResourceResolver`` per session so
+    # ``ralph://exec/<spill-name>`` URIs returned by ``format=summary``
+    # exec calls are replayable through ``resources/read``. The
+    # resolver owns the workspace's exec spill directory as a trusted
+    # root, plus any per-call spill roots a tool may register later.
+    try:
+        from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
+
+        spill_root = workspace_root / ".agent" / "tmp"
+        # The concrete class satisfies the resolver protocol; the
+        # session attribute is typed as the protocol. Assigning the
+        # concrete instance is structurally valid because the
+        # protocol narrows to the same public surface.
+        session.exec_resource_resolver = ExecResourceResolver(
+            spill_roots=(spill_root,)
+        )
+    except Exception:
+        # Surface as no resolver rather than failing the bridge.
+        session.exec_resource_resolver = None
     return bridge
 
 

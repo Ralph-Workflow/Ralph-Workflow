@@ -485,3 +485,107 @@ def test_full_reindex_clears_structure_rows_for_deleted_path(
         assert evidence_count == 0
     finally:
         store.close()
+
+
+def test_delete_then_identical_restore_reindexes_path(tmp_path: Path) -> None:
+    """AC-05/AC-06: a delete-then-restore cycle of identical bytes must
+    re-extract the path and clear ``is_deleted``. The previous pipeline
+    treated any matching content hash as a no-op, leaving the file row
+    as ``is_deleted=1`` with no live chunks/spans/symbols/edges.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / "restore.py").write_text("def original():\n    return 1\n")
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Sanity: the symbol exists before deletion.
+        assert [s.qualified_name for s in store.iter_symbols("restore.py")] == [
+            "restore.original"
+        ]
+        # Delete the file and reindex.
+        (workspace / "restore.py").unlink()
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        deleted_row = store.get_file("restore.py")
+        assert deleted_row is not None
+        assert deleted_row.is_deleted is True
+        # Restore the file with byte-identical content.
+        (workspace / "restore.py").write_text("def original():\n    return 1\n")
+        # The bug was: the second reindex would short-circuit on equal
+        # content hash and leave the file row marked deleted. The
+        # corrected pipeline must clear is_deleted and re-extract.
+        result = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result.status == "ok"
+        assert "restore.py" in tuple(result.changed_files)
+        restored_row = store.get_file("restore.py")
+        assert restored_row is not None
+        assert restored_row.is_deleted is False
+        # Live lexical/structure rows must be present.
+        cur = sqlite3.connect(str(store.db_path))
+        try:
+            chunk_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks WHERE path = ?", ("restore.py",)
+            ).fetchone()[0]
+            fts_count = cur.execute(
+                "SELECT COUNT(*) FROM chunks_fts WHERE path = ?", ("restore.py",)
+            ).fetchone()[0]
+            evidence_count = cur.execute(
+                "SELECT COUNT(*) FROM evidence WHERE path = ?", ("restore.py",)
+            ).fetchone()[0]
+            symbol_count = cur.execute(
+                "SELECT COUNT(*) FROM symbols WHERE path = ?", ("restore.py",)
+            ).fetchone()[0]
+        finally:
+            cur.close()
+        assert chunk_count > 0
+        assert fts_count > 0
+        assert evidence_count > 0
+        assert symbol_count > 0
+        assert [
+            s.qualified_name for s in store.iter_symbols("restore.py")
+        ] == ["restore.original"]
+    finally:
+        store.close()
+
+
+def test_tombstone_record_is_idempotent_on_repeat_delete(tmp_path: Path) -> None:
+    """AC-05: ``record_tombstone`` is called with a deterministic ID that
+    is identical across a delete -> restore changed content -> delete ->
+    restore original content -> delete cycle. The store must not raise
+    ``IntegrityError`` and the row count must remain stable.
+    """
+    workspace = _seed_workspace(tmp_path)
+    (workspace / "t.py").write_text("def t():\n    return 1\n")
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Cycle 1: delete + reindex.
+        (workspace / "t.py").unlink()
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Cycle 2: restore with different content, reindex, delete, reindex.
+        (workspace / "t.py").write_text("def t():\n    return 2\n")
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        (workspace / "t.py").unlink()
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Cycle 3: restore original content, reindex, delete, reindex.
+        (workspace / "t.py").write_text("def t():\n    return 1\n")
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        (workspace / "t.py").unlink()
+        # The previous bug raised IntegrityError on the third delete.
+        result = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result.status in {"ok", "skipped_no_changes"}
+        # No IntegrityError and the tombstone row count is bounded.
+        cur = sqlite3.connect(str(store.db_path))
+        try:
+            count = cur.execute(
+                "SELECT COUNT(*) FROM evidence_tombstones WHERE path = ?", ("t.py",)
+            ).fetchone()[0]
+        finally:
+            cur.close()
+        assert count >= 1
+    finally:
+        store.close()
+

@@ -730,7 +730,26 @@ def handle_exec_command(
         summary=summary,
         stdout_text=stdout_text,
         stderr_text=stderr_text,
+        exec_resource_resolver=_resolve_exec_resolver(session),
     )
+
+
+def _resolve_exec_resolver(session: object) -> object | None:
+    """Read the session's exec resource resolver attribute (or ``None``).
+
+    The attribute is typed as the
+    :class:`ralph.mcp.tools._exec_resource_protocol.ExecResourceResolverLike`
+    protocol on the production session classes; the helper returns
+    ``object | None`` to keep the surrounding ``format_or_spill``
+    signature narrow without importing the protocol at module
+    load time.
+    """
+    # The local annotation is intentionally ``Any | None`` so the
+    # surrounding ``format_or_spill`` keeps its broad ``object | None``
+    # parameter type. The helper is internal; callers that need
+    # the protocol type import it directly.
+    result: object | None = getattr(session, "exec_resource_resolver", None)
+    return result
 
 
 __all__ = [

@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from ralph.mcp.tools._exec_resource_protocol import ExecResourceResolverLike
+
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -96,6 +98,13 @@ class FileBackedSession:
         # the legacy contract: handlers fall back to the live
         # implementation.
         self.explore_index: object | None = None
+        # AC-11: optional resolver for ``ralph://exec/<spill-name>``
+        # resource URIs. ``None`` keeps the legacy contract: the
+        # ``resources/read`` handler returns a structured
+        # "resolver not attached" error. Production bridges attach
+        # one resolver so the AC-11 replayable stdout/stderr resource
+        # IDs are actually re-readable.
+        self.exec_resource_resolver: ExecResourceResolverLike | None = None
 
     def current_thread_tool_output_sink(self) -> Callable[[dict[str, object]], None] | None:
         """Return the sink only when the calling thread owns it (single atomic read)."""

@@ -83,6 +83,7 @@ def format_or_spill(
     summary: bool = False,
     stdout_text: str | None = None,
     stderr_text: str | None = None,
+    exec_resource_resolver: object | None = None,
 ) -> ToolResult:
     """Return the result inline, or spill to a file when it is too large.
 
@@ -99,6 +100,15 @@ def format_or_spill(
     resource ids point at per-stream spill files instead of the
     combined text. When omitted, ``text`` is treated as stdout (the
     pre-AC-11 contract).
+
+    ``exec_resource_resolver`` is an optional
+    :class:`ralph.mcp.tools._exec_resource_uri.ExecResourceResolver`.
+    When supplied, every spill path is registered with the resolver
+    so the resulting ``ralph://exec/<spill-name>`` URIs can be
+    replayed through ``resources/read``. When ``None``, the URIs
+    remain well-formed but the server returns a structured
+    "resolver not attached" error on read. Callers should pass the
+    session's resolver to keep the resource IDs replayable.
     """
     encoded_len = len(text.encode("utf-8", errors="replace"))
     is_error = returncode != 0
@@ -109,6 +119,27 @@ def format_or_spill(
     stderr_encoded_len = len(stderr_value.encode("utf-8", errors="replace"))
     stdout_truncated = stdout_encoded_len > INLINE_OUTPUT_LIMIT_BYTES
     stderr_truncated = stderr_encoded_len > INLINE_OUTPUT_LIMIT_BYTES
+
+    def _register(spill: Path) -> str:
+        if exec_resource_resolver is None:
+            return f"ralph://exec/{spill.name}"
+        # Resolver returns a stable URI for the registered spill; the
+        # legacy ``ralph://exec/<name>`` shape is also acceptable.
+        # The resolver attribute is typed as
+        # ``ExecResourceResolverLike`` on the production session
+        # classes; the closure-bound argument here is ``object | None``
+        # to keep the surrounding ``format_or_spill`` signature
+        # narrow, so a local ``getattr`` is required to invoke
+        # ``register`` without an audit policy-violating blanket
+        # type-ignore marker.
+        register_method: object = getattr(exec_resource_resolver, "register", None)
+        if not callable(register_method):
+            return f"ralph://exec/{spill.name}"
+        raw_result: object = register_method(spill)
+        if isinstance(raw_result, str):
+            return raw_result
+        return f"ralph://exec/{spill.name}"
+
     if truncated or encoded_len > INLINE_OUTPUT_LIMIT_BYTES:
         # Spill the combined text so the legacy fallback (summary=False)
         # keeps working; for summary=True we also spill each stream
@@ -129,16 +160,16 @@ def format_or_spill(
             stdout_spill_path_v: str | None = None
             if stdout_value and (stdout_truncated or stdout_value):
                 stdout_spill = spill_output(stdout_value, spill_dir)
-                stdout_resource_id = f"ralph://exec/{stdout_spill.name}"
+                stdout_resource_id = _register(stdout_spill)
                 stdout_spill_path_v = str(stdout_spill)
             stderr_resource_id: str | None = None
             stderr_spill_path: str | None = None
             if stderr_value and stderr_truncated:
                 stderr_spill = spill_output(stderr_value, spill_dir)
-                stderr_resource_id = f"ralph://exec/{stderr_spill.name}"
+                stderr_resource_id = _register(stderr_spill)
                 stderr_spill_path = str(stderr_spill)
         else:
-            stdout_resource_id = f"ralph://exec/{spill_path.name}"
+            stdout_resource_id = _register(spill_path)
             stdout_spill_path_v = str(spill_path)
             stderr_resource_id = None
             stderr_spill_path = None
