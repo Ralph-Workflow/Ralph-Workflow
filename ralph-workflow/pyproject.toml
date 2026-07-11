@@ -104,6 +104,7 @@ include = [
   "ralph/policy/defaults/*.toml",
   "ralph/mcp/artifacts/format_docs/*.md",
   "ralph/skills/content/**/*.md",
+  "ralph/project_policy/starters/**/*.md",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -114,6 +115,7 @@ include = [
   "/ralph/prompts/templates/**/*.jinja",
   "/ralph/mcp/artifacts/format_docs/*.md",
   "/ralph/skills/content/**/*.md",
+  "/ralph/project_policy/starters/**/*.md",
 ]
 
 [tool.hatch.envs.publish]

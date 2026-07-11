@@ -1,0 +1,658 @@
+"""Deterministic project-policy validator.
+
+This module is the ONLY authority on whether a project is policy-ready.
+There is no AI, no network, no prose NLP — every check is a structural
+pattern match against the canonical file content. Each failure emits a
+:class:`~ralph.project_policy.models.PolicyFinding` with a stable
+``requirement_id`` (one of the ``ID_*`` constants in
+:mod:`ralph.project_policy.markers`), the affected path, the missing
+evidence, and the required remediation outcome.
+
+The validator is the consumer of the shared readiness-evidence inventory
+in :mod:`ralph.project_policy.evidence`. The inventory enumerates every
+file the validator needs to read; the cache hashes the same inventory so
+the cache cannot drift from the validator.
+
+A project is ready iff ``validate_readiness`` returns an empty list.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING
+
+from ralph.project_policy import evidence, markers
+from ralph.project_policy.models import PolicyFinding
+
+if TYPE_CHECKING:
+    from ralph.language_detector.models import ProjectStack
+    from ralph.workspace.protocol import Workspace
+
+# Regex helpers: line-prefixed field markers. The validator slices content
+# into lines and looks at the start of each line; this avoids prose NLP.
+_FACT_LINE_RE = re.compile(r"^RALPH-FACT:\s*\S+")
+_COMMAND_LINE_RE = re.compile(r"^RALPH-COMMAND:\s*(.*\S)?\s*$")
+_INAPPLICABLE_LINE_RE = re.compile(r"^RALPH-INAPPLICABLE:\s*(.*\S)?\s*$")
+_LANG_LINE_RE = re.compile(r"^RALPH-LANG:\s*(\S.*?)\s*$")
+_HEADING_LINE_RE = re.compile(r"^\s*#{1,2}\s+(.+?)\s*$")
+_POLICY_ID_LINE_RE = re.compile(r"<!--\s*ralph-policy-id:\s*([^>\s]+)\s*-->")
+
+
+def _has_any(content: str, substrings: tuple[str, ...]) -> str | None:
+    """Return the first matching substring in ``content`` or None."""
+    for sub in substrings:
+        if sub in content:
+            return sub
+    return None
+
+
+def _contains_placeholder(content: str) -> str | None:
+    """Return the first placeholder token found in ``content`` or None."""
+    return _has_any(content, markers.PLACEHOLDER_TOKENS)
+
+
+def _command_values(content: str) -> list[str]:
+    """Return the trimmed command values from every RALPH-COMMAND line."""
+    values: list[str] = []
+    for line in content.splitlines():
+        match = _COMMAND_LINE_RE.match(line)
+        if match is not None:
+            values.append(match.group(1) or "")
+    return values
+
+
+def _inapplicable_present(content: str) -> bool:
+    """Return True when at least one RALPH-INAPPLICABLE line exists."""
+    return any(_INAPPLICABLE_LINE_RE.match(line) for line in content.splitlines())
+
+
+def _lang_blocks(content: str) -> dict[str, tuple[bool, bool]]:
+    """Return a mapping of language name -> (has_command, has_inapplicable).
+
+    The validator slices the file into per-language blocks delimited by
+    ``RALPH-LANG:`` lines. Each block ends at the next RALPH-LANG line OR
+    the end of the file. A block must contain at least one
+    RALPH-COMMAND or RALPH-INAPPLICABLE line to satisfy per-language
+    coverage.
+    """
+    blocks: dict[str, list[str]] = {}
+    current_lang: str | None = None
+    for line in content.splitlines():
+        lang_match = _LANG_LINE_RE.match(line)
+        if lang_match is not None:
+            current_lang = str(lang_match.group(1)).strip()
+            if not current_lang:
+                current_lang = ""
+            blocks.setdefault(current_lang, [])
+            continue
+        if current_lang is not None:
+            blocks[current_lang].append(line)
+    out: dict[str, tuple[bool, bool]] = {}
+    for lang, lines in blocks.items():
+        joined = "\n".join(lines)
+        out[lang] = (
+            bool(_COMMAND_LINE_RE.search(joined)),
+            bool(_INAPPLICABLE_LINE_RE.search(joined)),
+        )
+    return out
+
+
+def _headings(content: str) -> set[str]:
+    """Return the normalized heading texts in ``content``."""
+    headings: set[str] = set()
+    for line in content.splitlines():
+        match = _HEADING_LINE_RE.match(line)
+        if match is not None:
+            text = str(match.group(1)).strip().lower()
+            headings.add(text)
+    return headings
+
+
+def _citation_blocks(content: str) -> list[str]:
+    """Return the per-citation blocks in the Research basis section.
+
+    The validator splits the file at every "## Research basis" heading and
+    takes the slice up to the next H2 (or end-of-file). It then treats each
+    non-empty paragraph (separated by blank lines) as one citation block
+    that must contain every :data:`markers.CITATION_REQUIRED_FIELDS` token.
+    """
+    lines = content.splitlines()
+    start_idx: int | None = None
+    for idx, line in enumerate(lines):
+        if line.strip().lower() == "## research basis":
+            start_idx = idx + 1
+            break
+    if start_idx is None:
+        # No research basis section: caller will surface a separate finding.
+        return []
+    end_idx = len(lines)
+    for idx in range(start_idx, len(lines)):
+        line = lines[idx]
+        if line.startswith("## ") and idx > start_idx:
+            end_idx = idx
+            break
+    section_lines = lines[start_idx:end_idx]
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in section_lines:
+        if not line.strip():
+            if current:
+                blocks.append("\n".join(current).strip())
+                current = []
+        else:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current).strip())
+    return [b for b in blocks if b]
+
+
+def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
+    """Validate the AGENTS.md contract (managed block + canonical-dir reference)."""
+    findings: list[PolicyFinding] = []
+    if not workspace.exists(markers.AGENTS_MD):
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.ID_AGENTS_MD_MISSING}:missing",
+                path=markers.AGENTS_MD,
+                missing_evidence="AGENTS.md is missing",
+                required_outcome="create AGENTS.md containing the managed Ralph Workflow block",
+            )
+        ]
+    content = workspace.read(markers.AGENTS_MD)
+    if markers.AGENTS_BLOCK_BEGIN not in content or markers.AGENTS_BLOCK_END not in content:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MARKER_MISSING}:agents-block",
+                path=markers.AGENTS_MD,
+                missing_evidence=f"missing managed block markers {markers.AGENTS_BLOCK_BEGIN} / {markers.AGENTS_BLOCK_END}",
+                required_outcome="append the managed Ralph Workflow block (preserve all existing content)",
+            )
+        )
+    if markers.CANONICAL_DIR not in content:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MARKER_MISSING}:canonical-dir-ref",
+                path=markers.AGENTS_MD,
+                missing_evidence=f"no reference to canonical policy dir {markers.CANONICAL_DIR}",
+                required_outcome=f"reference {markers.CANONICAL_DIR} from the managed block",
+            )
+        )
+    return findings
+
+
+def _check_claude_md(workspace: Workspace) -> list[PolicyFinding]:
+    """Validate the CLAUDE.md contract (AGENTS.md pointer when CLAUDE.md exists)."""
+    if not workspace.exists(markers.CLAUDE_MD):
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.ID_CLAUDE_MD_MISSING}:missing",
+                path=markers.CLAUDE_MD,
+                missing_evidence="CLAUDE.md is missing",
+                required_outcome=f"create CLAUDE.md pointing Claude-compatible agents at {markers.AGENTS_MD}",
+            )
+        ]
+    content = workspace.read(markers.CLAUDE_MD)
+    if "AGENTS.md" not in content:
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MARKER_MISSING}:claude-agents-ref",
+                path=markers.CLAUDE_MD,
+                missing_evidence=f"CLAUDE.md does not reference {markers.AGENTS_MD}",
+                required_outcome=f"append a pointer from CLAUDE.md to {markers.AGENTS_MD}",
+            )
+        ]
+    return []
+
+
+def _check_core_policy_file(
+    workspace: Workspace, filename: str
+) -> list[PolicyFinding]:
+    """Validate one canonical core policy file."""
+    path = f"{markers.CANONICAL_DIR}{filename}"
+    return _check_policy_file(workspace, path, filename)
+
+
+def _check_policy_file(workspace: Workspace, path: str, filename: str) -> list[PolicyFinding]:
+    """Validate one canonical policy file (presence, structure, fields, completion).
+
+    Composed from small focused helpers to keep the branch count low.
+    """
+    if not workspace.exists(path):
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.ID_CORE_MISSING}:{filename}",
+                path=path,
+                missing_evidence=f"file does not exist: {path}",
+                required_outcome=f"create the canonical policy file at {path}",
+            )
+        ]
+    content = workspace.read(path)
+    return _validate_existing_policy_file(content, path, filename)
+
+
+def _validate_existing_policy_file(
+    content: str, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Validate every check that operates on an existing policy file's content."""
+    findings: list[PolicyFinding] = []
+    findings.extend(_check_markers(content, path, filename))
+    findings.extend(_check_required_headings(content, path, filename))
+    findings.extend(_check_research_basis(content, path, filename))
+    findings.extend(_check_placeholders(content, path, filename))
+    findings.extend(_check_commands(content, path, filename))
+    findings.extend(_check_completion_marker(content, path, filename))
+    return findings
+
+
+def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    """Validate the schema + policy-id markers."""
+    findings: list[PolicyFinding] = []
+    if markers.POLICY_SCHEMA_MARKER not in content:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MARKER_MISSING}:schema-{filename}",
+                path=path,
+                missing_evidence=f"missing schema marker {markers.POLICY_SCHEMA_MARKER}",
+                required_outcome="add the schema marker comment at the top of the file",
+            )
+        )
+    expected_id = f"{markers.POLICY_ID_PREFIX} {filename} -->"
+    if expected_id not in content:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MARKER_MISSING}:id-{filename}",
+                path=path,
+                missing_evidence=f"missing policy-id line: {expected_id}",
+                required_outcome=(
+                    f"add `<!-- ralph-policy-id: {filename} -->` comment to the file"
+                ),
+            )
+        )
+    return findings
+
+
+def _check_required_headings(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    """Validate every required heading is present (case-insensitive)."""
+    required = markers.REQUIRED_HEADINGS.get(filename, ())
+    headings_present = _headings(content)
+    return [
+        PolicyFinding(
+            requirement_id=f"{markers.ID_HEADING_MISSING}:{filename}:{required_heading}",
+            path=path,
+            missing_evidence=f"missing required heading '{required_heading}'",
+            required_outcome=f"add a heading with the exact text '{required_heading}'",
+        )
+        for required_heading in required
+        if required_heading.lower() not in headings_present
+    ]
+
+
+def _check_research_basis(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    """Validate the Research basis section exists and every citation is complete."""
+    findings: list[PolicyFinding] = []
+    headings_lower = {h.lower() for h in _headings(content)}
+    if "research basis" not in headings_lower:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_HEADING_MISSING}:{filename}:research-basis",
+                path=path,
+                missing_evidence="Research basis section is missing",
+                required_outcome="add a 'Research basis' heading with at least one citation",
+            )
+        )
+        return findings
+    blocks = _citation_blocks(content)
+    if not blocks:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_CITATION_MISSING}:{filename}:empty",
+                path=path,
+                missing_evidence=(
+                    "Research basis section has no citations; "
+                    f"each citation must include {', '.join(markers.CITATION_REQUIRED_FIELDS)}"
+                ),
+                required_outcome=(
+                    "add at least one citation under Research basis with "
+                    "publisher, title, URL (http), and review date"
+                ),
+            )
+        )
+        return findings
+    findings.extend(_check_individual_citations(blocks, path, filename))
+    return findings
+
+
+def _check_individual_citations(
+    blocks: list[str], path: str, filename: str
+) -> list[PolicyFinding]:
+    """Validate every citation block contains the required fields."""
+    findings: list[PolicyFinding] = []
+    for index, block in enumerate(blocks, start=1):
+        missing = [
+            field
+            for field in markers.CITATION_REQUIRED_FIELDS
+            if field.lower() not in block.lower()
+        ]
+        if not missing:
+            continue
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_CITATION_MISSING}:{filename}:block-{index}",
+                path=path,
+                missing_evidence=(
+                    f"Research basis citation {index} missing field(s): {missing}"
+                ),
+                required_outcome=(
+                    f"add missing fields {missing} to citation {index} "
+                    f"(publisher, title, http URL, review date)"
+                ),
+            )
+        )
+    return findings
+
+
+def _check_placeholders(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    """Validate the file is free of placeholder tokens and unresolved FACT lines."""
+    findings: list[PolicyFinding] = []
+    placeholder = _contains_placeholder(content)
+    if placeholder is not None:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_PLACEHOLDER}:{filename}",
+                path=path,
+                missing_evidence=f"unresolved placeholder token: {placeholder}",
+                required_outcome=f"replace '{placeholder}' with verified project fact",
+            )
+        )
+    for line in content.splitlines():
+        if not line.startswith(markers.FACT_MARKER):
+            continue
+        for placeholder_token in markers.PLACEHOLDER_TOKENS:
+            if placeholder_token in line:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=f"{markers.ID_PLACEHOLDER}:{filename}:fact-line",
+                        path=path,
+                        missing_evidence=(
+                            f"RALPH-FACT line contains placeholder '{placeholder_token}'"
+                        ),
+                        required_outcome="resolve every RALPH-FACT line with a verified value",
+                    )
+                )
+                break
+    return findings
+
+
+def _check_commands(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    """Validate at least one command OR inapplicable marker exists, and commands are usable."""
+    findings: list[PolicyFinding] = []
+    command_values = _command_values(content)
+    has_command = any(value for value in command_values)
+    if not has_command and not _inapplicable_present(content):
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:missing",
+                path=path,
+                missing_evidence="file contains neither RALPH-COMMAND nor RALPH-INAPPLICABLE",
+                required_outcome=(
+                    "add at least one RALPH-COMMAND line with a real runnable "
+                    "verification command (or RALPH-INAPPLICABLE with a reason)"
+                ),
+            )
+        )
+    findings.extend(_check_individual_commands(command_values, path, filename))
+    return findings
+
+
+def _check_individual_commands(
+    command_values: list[str], path: str, filename: str
+) -> list[PolicyFinding]:
+    """Validate every RALPH-COMMAND value is non-empty and placeholder-free."""
+    findings: list[PolicyFinding] = []
+    for index, value in enumerate(command_values, start=1):
+        if not value:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:empty-cmd-{index}",
+                    path=path,
+                    missing_evidence=f"RALPH-COMMAND line {index} is empty",
+                    required_outcome="remove the empty command or replace it with a runnable command",
+                )
+            )
+            continue
+        for placeholder_token in markers.PLACEHOLDER_TOKENS:
+            if placeholder_token in value:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=(
+                            f"{markers.ID_CMD_UNUSABLE}:{filename}:placeholder-cmd-{index}"
+                        ),
+                        path=path,
+                        missing_evidence=(
+                            f"RALPH-COMMAND line {index} contains placeholder "
+                            f"token '{placeholder_token}'"
+                        ),
+                        required_outcome=(
+                            "replace the placeholder in RALPH-COMMAND with the "
+                            "real runnable command"
+                        ),
+                    )
+                )
+                break
+    return findings
+
+
+def _check_completion_marker(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    """Validate the completion marker is present."""
+    if markers.COMPLETION_MARKER in content:
+        return []
+    return [
+        PolicyFinding(
+            requirement_id=f"{markers.ID_COMPLETION_MISSING}:{filename}",
+            path=path,
+            missing_evidence=(
+                f"missing completion marker {markers.COMPLETION_MARKER}"
+            ),
+            required_outcome=(
+                "add the completion marker comment ONLY when every other "
+                "requirement is satisfied and the file is verified project-specific"
+            ),
+        )
+    ]
+
+
+def _check_per_language_coverage(
+    workspace: Workspace, stack: ProjectStack
+) -> list[PolicyFinding]:
+    """Validate per-language RALPH-LANG coverage in typecheck and lint policies."""
+    required_langs = evidence.required_languages(stack)
+    if not required_langs:
+        return []
+    findings: list[PolicyFinding] = []
+    for filename in ("typechecking-policy.md", "linting-policy.md"):
+        path = f"{markers.CANONICAL_DIR}{filename}"
+        if not workspace.exists(path):
+            continue  # core-file presence check already emitted a finding.
+        content = workspace.read(path)
+        blocks = _lang_blocks(content)
+        for language in sorted(required_langs):
+            if language not in blocks:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=f"{markers.ID_LANG_COVERAGE}:{filename}:{language}",
+                        path=path,
+                        missing_evidence=(
+                            f"no RALPH-LANG block for '{language}' in {filename}"
+                        ),
+                        required_outcome=(
+                            f"add `RALPH-LANG: {language}` followed by a "
+                            "RALPH-COMMAND or RALPH-INAPPLICABLE line for this language"
+                        ),
+                    )
+                )
+                continue
+            has_command, has_inapplicable = blocks[language]
+            if not has_command and not has_inapplicable:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=f"{markers.ID_LANG_COVERAGE}:{filename}:{language}:empty",
+                        path=path,
+                        missing_evidence=(
+                            f"RALPH-LANG block for '{language}' has neither "
+                            "RALPH-COMMAND nor RALPH-INAPPLICABLE"
+                        ),
+                        required_outcome=(
+                            f"add a RALPH-COMMAND or RALPH-INAPPLICABLE line "
+                            f"after `RALPH-LANG: {language}`"
+                        ),
+                    )
+                )
+    return findings
+
+
+def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
+    """Validate the verification-policy bypass-detection gate."""
+    path = f"{markers.CANONICAL_DIR}verification-policy.md"
+    findings: list[PolicyFinding] = []
+    if not workspace.exists(path):
+        return findings  # core-file presence check covers it.
+    content = workspace.read(path)
+    headings_present = _headings(content)
+    if "bypass detection" not in headings_present:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_HEADING_MISSING}:verification-policy.md:bypass-detection",
+                path=path,
+                missing_evidence=(
+                    "verification-policy.md is missing the 'Bypass detection' heading"
+                ),
+                required_outcome=(
+                    "add a 'Bypass detection' heading with at least one "
+                    "RALPH-COMMAND that runs the lint/typecheck bypass audit"
+                ),
+            )
+        )
+        return findings
+    # The bypass-detection block must include at least one command.
+    in_section = False
+    saw_command = False
+    for line in content.splitlines():
+        heading_match = _HEADING_LINE_RE.match(line)
+        if heading_match is not None:
+            heading_text = str(heading_match.group(1)).strip().lower()
+            in_section = heading_text == "bypass detection"
+            continue
+        if in_section and line.startswith(markers.COMMAND_MARKER):
+            saw_command = True
+            break
+    if not saw_command:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd",
+                path=path,
+                missing_evidence=(
+                    "'Bypass detection' section has no RALPH-COMMAND line"
+                ),
+                required_outcome=(
+                    "add a RALPH-COMMAND line under 'Bypass detection' that "
+                    "runs the bypass-detection audit"
+                ),
+            )
+        )
+    return findings
+
+
+def _check_conditional_domain(
+    workspace: Workspace,
+    domain: str,
+    filename: str,
+    required: bool,
+) -> list[PolicyFinding]:
+    """Validate one conditional policy file when its domain is required."""
+    if not required:
+        return []
+    return _check_policy_file(workspace, f"{markers.CANONICAL_DIR}{filename}", filename)
+
+
+def _check_migration(workspace: Workspace) -> list[PolicyFinding]:
+    """Emit a finding for every unresolved migration candidate."""
+    findings: list[PolicyFinding] = []
+    for candidate in evidence.migration_candidates(workspace):
+        if candidate.resolved:
+            continue
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MIGRATE}:{candidate.path}",
+                path=candidate.path,
+                missing_evidence=(
+                    f"policy-like content with heading '{candidate.recognized_heading}' "
+                    "has not been migrated into the canonical policy directory"
+                ),
+                required_outcome=(
+                    "consolidate the policy into the matching canonical file "
+                    f"under {markers.CANONICAL_DIR} and add the "
+                    "ralph-workflow-policy:migrated -> marker at this location, "
+                    "OR remove the recognized heading so this doc is no longer "
+                    "flagged as a candidate"
+                ),
+            )
+        )
+    return findings
+
+
+def validate_readiness(
+    workspace: Workspace, stack: ProjectStack
+) -> list[PolicyFinding]:
+    """Run every deterministic readiness check and return the findings list.
+
+    The function is pure: it does NOT mutate the workspace and it does NOT
+    consult any AI. Every check reads through the workspace seam and emits
+    zero or more findings. A project is ready iff the returned list is
+    empty.
+    """
+    findings: list[PolicyFinding] = []
+    findings.extend(_check_agents_md(workspace))
+    findings.extend(_check_claude_md(workspace))
+    for filename in markers.CORE_POLICY_FILES:
+        findings.extend(_check_core_policy_file(workspace, filename))
+
+    findings.extend(_check_per_language_coverage(workspace, stack))
+    findings.extend(_check_verification_bypass(workspace))
+
+    ds_required, _ = evidence.design_system_required(workspace, stack)
+    ux_required, _ = evidence.ux_required(workspace, stack)
+    perf_required, _ = evidence.performance_required(workspace, stack)
+    mem_required, _ = evidence.memory_required(workspace, stack)
+
+    findings.extend(
+        _check_conditional_domain(
+            workspace, "design-system", markers.CONDITIONAL_POLICY_FILES["design-system"], ds_required
+        )
+    )
+    findings.extend(
+        _check_conditional_domain(
+            workspace, "ux", markers.CONDITIONAL_POLICY_FILES["ux"], ux_required
+        )
+    )
+    findings.extend(
+        _check_conditional_domain(
+            workspace,
+            "performance",
+            markers.CONDITIONAL_POLICY_FILES["performance"],
+            perf_required,
+        )
+    )
+    findings.extend(
+        _check_conditional_domain(
+            workspace,
+            "memory-usage",
+            markers.CONDITIONAL_POLICY_FILES["memory-usage"],
+            mem_required,
+        )
+    )
+
+    findings.extend(_check_migration(workspace))
+    return findings
+
+
+__all__ = ["validate_readiness"]

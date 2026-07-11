@@ -3209,6 +3209,95 @@ ralph.language_detector.signatures
 
 ----
 
+Project Policy
+--------------
+
+This group owns the project-policy-readiness preflight: the versioned,
+machine-checkable schema (markers, required headings, RALPH-FACT /
+RALPH-COMMAND / RALPH-LANG / RALPH-INAPPLICABLE field markers), the
+shared readiness-evidence inventory the validator and the cache share,
+the deterministic validator, the change-aware READY cache, the AGENTS.md
+/ CLAUDE.md idempotent bootstrap, the bundled starter policies, the
+deterministic preflight orchestrator, and the synchronous, bounded,
+out-of-graph remediation driver.
+
+ralph.project_policy
+~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.project_policy re-exports the public preflight API and the
+   submodules; using :no-members: avoids duplicate cross-reference warnings.
+
+.. automodule:: ralph.project_policy
+   :no-members:
+
+ralph.project_policy.markers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.markers
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.models
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.evidence
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.evidence
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.agents_md
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.agents_md
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.validators
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.validators
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.cache
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.cache
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.preflight
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.preflight
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.remediation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.remediation
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.starters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.project_policy.starters exposes the bundled starter-policy
+   bundle; using :no-members: avoids duplicate cross-reference warnings
+   because the bundled markdown content is data, not Python API surface.
+
+.. automodule:: ralph.project_policy.starters
+   :no-members:
+
+----
+
 Prompts
 -------
 

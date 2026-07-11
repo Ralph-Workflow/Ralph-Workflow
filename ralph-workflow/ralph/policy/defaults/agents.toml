@@ -51,6 +51,19 @@ agents = ["claude"]
 max_retries = 2
 retry_delay_ms = 500
 
+# Out-of-graph policy-remediation chain. Invoked synchronously by the
+# project-policy-readiness preflight (ralph/project_policy/) when the
+# deterministic validator emits remediation-required findings. The chain
+# is NOT referenced by any non-terminal pipeline phase, so the validator
+# (validate_drain_contracts / validate_agent_chains_satisfiable) does not
+# require its drain to be bound to a phase. The drain entry below is the
+# binding that the synchronous out-of-graph remediation driver invokes
+# through ralph/pipeline/effect_executor.execute_agent_effect.
+[agent_chains.policy_remediation]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 1000
+
 # ---------------------------------------------------------------------------
 # Drain bindings
 # ---------------------------------------------------------------------------
@@ -82,3 +95,11 @@ drain_class = "analysis"
 [agent_drains.commit]
 chain = "commit"
 drain_class = "commit"
+
+# Out-of-graph policy-remediation drain. Bound only to the dedicated
+# policy_remediation chain; not referenced by any pipeline phase. The
+# drain is exercised exclusively by the synchronous remediation driver
+# from ralph/project_policy/remediation.py::remediate.
+[agent_drains.policy_remediation]
+chain = "policy_remediation"
+drain_class = "development"

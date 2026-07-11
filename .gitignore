@@ -379,3 +379,4 @@ ralph-workflow/.gemini/
 ralph-workflow/.opencode/
 
 .pi-subagents/*
+.agent/ralph-explore/

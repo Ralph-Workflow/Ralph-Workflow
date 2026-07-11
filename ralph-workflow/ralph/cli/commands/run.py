@@ -546,6 +546,136 @@ def _print_project_skill_conflict_hint(failures: list[str]) -> None:
     display.emit_skill_failure_warning(failures)
 
 
+def _run_project_policy_readiness(
+    *,
+    load_result: _LoadResult,
+    display_context: DisplayContext,
+) -> int:
+    """Run the project-policy-readiness preflight at run_pipeline startup.
+
+    Steps:
+    1. Build the workspace + project stack via the injected seams.
+    2. Call :func:`ralph.project_policy.run_policy_readiness_preflight`.
+    3. Map the result status to a CLI exit code: ``READY`` / ``SKIPPED``
+       continue, ``REMEDIATION_REQUIRED`` triggers an in-process bounded
+       remediation loop, ``BLOCKED`` returns the recoverable
+       ``_EXIT_PREFLIGHT`` exit.
+
+    The preflight runs ONLY when ``load_result.workspace_scope`` is set and
+    the request is not an inline prompt or a parallel-worker manifest
+    (those short-circuit earlier in the flow).
+    """
+    from ralph.language_detector import get_project_stack
+    from ralph.project_policy import remediation as policy_remediation
+    from ralph.project_policy import (
+        run_policy_readiness_preflight as run_preflight,
+    )
+    from ralph.workspace.fs import FsWorkspace
+
+    workspace_scope = load_result.workspace_scope
+    if workspace_scope is None:
+        return _EXIT_SUCCESS
+
+    def emit(message: str) -> None:
+        display = resolve_active_display(None, display_context)
+        display.emit_info_panel(
+            title="Project-Policy Readiness",
+            content=message,
+        )
+
+    workspace = FsWorkspace(workspace_scope.root, allowed_roots=workspace_scope.allowed_roots)
+    stack = get_project_stack(workspace)
+    result = run_preflight(workspace, stack, emit=emit)
+
+    if result.is_skipped():
+        emit("Project opted out of policy management; continuing the run.")
+        return _EXIT_SUCCESS
+
+    if result.is_ready():
+        return _EXIT_SUCCESS
+
+    if not result.requires_remediation() and not result.is_blocked():
+        # Defensive: any non-REMEDIATION_REQUIRED non-READY non-SKIPPED status
+        # is treated as a blocked state.
+        return _EXIT_PREFLIGHT
+
+    # Resolve remediation max attempts from recovery budget.
+    max_attempts: int = 2
+    if load_result.policy_bundle is not None:
+        recovery = load_result.policy_bundle.pipeline.recovery
+        raw_attempts: object = getattr(recovery, "cycle_cap", None)
+        if isinstance(raw_attempts, int) and raw_attempts > 0:
+            max_attempts = raw_attempts
+
+    # Build the production invoke_remediation_agent closure. The synchronous
+    # remediation driver invokes the agent via execute_agent_effect bound to
+    # the policy_remediation chain/drain. We construct the closure here so
+    # remediation.py stays free of pipeline plumbing.
+    from ralph.pipeline.effect_executor import execute_agent_effect
+    from ralph.pipeline.effects import InvokeAgentEffect
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.pipeline.factory import PipelineDeps
+
+    def _build_pipeline_deps() -> PipelineDeps | None:
+        if load_result.policy_bundle is None:
+            return None
+        try:
+            return DefaultPipelineFactory().build(
+                load_result.config,
+                display_context,
+                model_identity=None,
+                policy_bundle=load_result.policy_bundle,
+                pro_hooks=None,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not build pipeline deps for remediation: {}", exc)
+            return None
+
+    pipeline_deps: PipelineDeps | None = _build_pipeline_deps()
+
+    def invoke_remediation_agent(prompt_path: str) -> bool:
+        if pipeline_deps is None or load_result.policy_bundle is None:
+            return False
+        effect = InvokeAgentEffect(
+            agent_name="claude",
+            phase="policy_remediation",
+            prompt_file=prompt_path,
+            drain="policy_remediation",
+            chain_name="policy_remediation",
+        )
+        try:
+            event = execute_agent_effect(
+                effect,
+                load_result.config,
+                pipeline_deps,
+                workspace_scope,
+                run_id=load_result.run_id,
+                policy_bundle=load_result.policy_bundle,
+            )
+        except Exception as exc:
+            logger.warning("Remediation agent invocation failed: {}", exc)
+            return False
+        return event == PipelineEvent.AGENT_SUCCESS
+
+    final = policy_remediation.remediate(
+        workspace,
+        stack,
+        result.findings,
+        invoke_remediation_agent=invoke_remediation_agent,
+        max_attempts=max_attempts,
+        emit=emit,
+    )
+    if final.is_ready():
+        return _EXIT_SUCCESS
+    # BLOCKED (or any unresolved): surface the report and return the
+    # recoverable _EXIT_PREFLIGHT exit so the run ends in a recoverable
+    # blocked state with the findings preserved.
+    report_lines = ["Project-policy-readiness: BLOCKED"]
+    report_lines.extend(final.report_lines)
+    emit("\n".join(report_lines))
+    return _EXIT_PREFLIGHT
+
+
 def _print_user_global_update_hint() -> None:
     """Surface an outdated user-global baseline on a normal ``ralph`` run.
 
@@ -746,6 +876,21 @@ def run_pipeline(
             keep_run_id=sweep_keep_run_id,
         )
         _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
+
+    # Phase 2c: project-policy-readiness preflight (deterministic, opt-out
+    # honored, change-aware cache, bounded synchronous remediation). Runs
+    # only for non-inline, non-parallel-worker startup invocations so
+    # parallel-worker sub-runs never reach this code path.
+    if (
+        load_result.workspace_scope is not None
+        and effective_request.inline_prompt is None
+    ):
+        policy_readiness_result = _run_project_policy_readiness(
+            load_result=load_result,
+            display_context=ctx,
+        )
+        if policy_readiness_result != _EXIT_SUCCESS:
+            return policy_readiness_result
 
     # Phase 3: Handle dry-run
     if effective_request.dry_run:
