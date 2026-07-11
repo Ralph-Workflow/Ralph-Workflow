@@ -604,6 +604,7 @@ def test_indexed_grep_evidence_round_trip_resolves_via_read_file(tmp_path) -> No
                 "pattern": "hello",
                 "path": ".",
                 "regex": False,
+                "case_sensitive": False,
                 "use_index": "auto",
                 "return_evidence_ids": True,
             },

@@ -489,7 +489,17 @@ def handle_grep_files(
     store: ExploreStore | None = store_value
 
     # Determine if FTS is eligible.
-    eligible = is_fts_eligible(pattern, is_regex=is_regex, whole_word=whole_word)
+    # AC-04 (case-sensitive parity): the FTS5 ``unicode61`` tokenizer
+    # is case-INsensitive by default; we pass ``case_sensitive``
+    # through to ``is_fts_eligible`` so an explicit case-sensitive
+    # search falls back to live grep instead of silently returning a
+    # case-INsensitive FTS match.
+    eligible = is_fts_eligible(
+        pattern,
+        is_regex=is_regex,
+        whole_word=whole_word,
+        case_sensitive=case_sensitive,
+    )
     index_used = False
     fallback_reason: str | None = None
     from ralph.mcp.explore.ranking import RankedItem

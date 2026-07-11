@@ -115,6 +115,179 @@ def is_test_role(path: str) -> bool:
     )
 
 
+def is_docs_role(path: str) -> bool:
+    """True for documentation-only files (heuristic).
+
+    Matches Markdown / RST / text files that live under the
+    canonical docs tree or carry an obvious documentation name.
+    """
+    lowered = path.lower()
+    if (
+        "/docs/" in lowered
+        or lowered.startswith("docs/")
+        or "/doc/" in lowered
+        or lowered.startswith("doc/")
+        or "/documentation/" in lowered
+    ):
+        return True
+    name = lowered.rsplit("/", maxsplit=1)[-1]
+    return name in {
+        "readme.md",
+        "readme.rst",
+        "readme.txt",
+        "license.md",
+        "license",
+        "license.txt",
+        "license.rst",
+        "contributing.md",
+        "code_of_conduct.md",
+        "changelog.md",
+        "changes.md",
+    }
+
+
+def is_config_role(path: str) -> bool:
+    """True for build/config/toolchain files (heuristic).
+
+    Matches canonical configuration extensions and a small set of
+    well-known build / CI filenames. List-extension files
+    (``requirements.txt``, ``pyproject.toml`` ...) and dotfile
+    configurations (``.gitignore``, ``.ruff.toml`` ...) both count
+    so a caller asking for ``role=config`` actually narrows the
+    result instead of returning the full glob set.
+    """
+    lowered = path.lower()
+    if lowered.endswith(
+        (
+            ".toml",
+            ".yaml",
+            ".yml",
+            ".cfg",
+            ".ini",
+            ".json",
+        )
+    ):
+        return True
+    name = lowered.rsplit("/", maxsplit=1)[-1]
+    if not name:
+        return False
+    if name.startswith("."):
+        # Dotfile configs (``pyproject.toml`` is a normal ``.toml``
+        # match; dotfiles that are NOT configs are usually
+        # editor / VCS metadata and belong to ``generated``).
+        config_dotfiles = {
+            ".gitignore",
+            ".gitattributes",
+            ".gitkeep",
+            ".editorconfig",
+            ".ruff.toml",
+            ".ruff_cache",
+            ".mypy.ini",
+            ".flake8",
+            ".pylintrc",
+            ".env",
+            ".env.example",
+            ".envrc",
+        }
+        return name in config_dotfiles
+    config_names = {
+        "makefile",
+        "dockerfile",
+        "vagrantfile",
+        "rakefile",
+        "tox.ini",
+        "noxfile.py",
+        "pyproject.toml",
+        "setup.cfg",
+        "setup.py",
+        "requirements.txt",
+        "poetry.lock",
+        "uv.lock",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "tsconfig.json",
+        "package.json",
+        "gemfile",
+        ".gitlab-ci.yml",
+        ".github",
+    }
+    return name in config_names or name.endswith(
+        ("-config.json", "-config.yaml", "-config.yml", "-config.toml")
+    )
+
+
+def is_generated_role(path: str) -> bool:
+    """True for generated / vendor / build-output files (heuristic).
+
+    Ponytail: kept narrow on purpose so a ``role=generated`` filter
+    does not silently nuke results an agent expected to be
+    editable source. Vendor trees (``vendor/``, ``node_modules/``)
+    and obvious build outputs (``dist/``, ``build/`` ...) count,
+    but a regular test fixture is NOT generated just because the
+    word "generated" appears in a comment.
+    """
+    lowered = path.lower()
+    if (
+        lowered.startswith("vendor/")
+        or "/vendor/" in lowered
+        or lowered.startswith("node_modules/")
+        or "/node_modules/" in lowered
+        or lowered.startswith(".venv/")
+        or "/.venv/" in lowered
+        or lowered.startswith("__pycache__/")
+        or "/__pycache__/" in lowered
+        or lowered.startswith("dist/")
+        or "/dist/" in lowered
+        or lowered.startswith("build/")
+        or "/build/" in lowered
+        or lowered.startswith(".ruff_cache/")
+        or "/.ruff_cache/" in lowered
+        or lowered.startswith(".mypy_cache/")
+        or "/.mypy_cache/" in lowered
+        or lowered.startswith(".pytest_cache/")
+        or "/.pytest_cache/" in lowered
+        or lowered.startswith("target/")
+        or "/target/" in lowered
+    ):
+        return True
+    name = lowered.rsplit("/", maxsplit=1)[-1]
+    return (
+        name in {"package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
+        or name.endswith(".min.js")
+        or name.endswith(".min.css")
+        or name.endswith(".generated.py")
+        or name.endswith("_pb2.py")
+        or name.endswith("_pb2.pyi")
+        or name.endswith(".pb.go")
+    )
+
+
+_ROLE_PREDICATES = {
+    "source": is_source_role,
+    "test": is_test_role,
+    "docs": is_docs_role,
+    "config": is_config_role,
+    "generated": is_generated_role,
+}
+
+
+def matches_role(path: str, role: str) -> bool:
+    """Return True when ``path`` matches the requested ``role`` predicate.
+
+    The set of roles is the canonical ``source`` / ``test`` /
+    ``docs`` / ``config`` / ``generated`` / ``any`` taxonomy that
+    ``search_files`` advertises. Unrecognized role names return
+    False instead of falling back to a free glob, so the handler
+    can surface the typo to the caller rather than silently
+    returning the full glob set.
+    """
+    predicate = _ROLE_PREDICATES.get(role)
+    if predicate is None:
+        return False
+    return predicate(path)
+
+
 def sort_ranked(items: list[RankedItem]) -> list[RankedItem]:
     """Stable sort: score DESC, then path ASC, then line ASC, then evidence_id ASC."""
     def _sort_key(item: RankedItem) -> tuple[int, str, int, str]:
@@ -481,7 +654,13 @@ _FTS_DISQUALIFYING_METACHARS: Final[frozenset[str]] = frozenset(
 )
 
 
-def is_fts_eligible(pattern: str, *, is_regex: bool, whole_word: bool) -> bool:
+def is_fts_eligible(
+    pattern: str,
+    *,
+    is_regex: bool,
+    whole_word: bool,
+    case_sensitive: bool = False,
+) -> bool:
     """Return True when the pattern is safe to run through FTS5.
 
     Index-eligible queries are:
@@ -495,6 +674,20 @@ def is_fts_eligible(pattern: str, *, is_regex: bool, whole_word: bool) -> bool:
     multiline patterns, lookaround, capture-group semantics,
     backreferences, byte-oriented searches, and substring patterns
     that FTS tokenization cannot represent exactly.
+
+    Case-sensitive search: the FTS5 ``unicode61`` tokenizer is
+    case-INsensitive by default, so requesting a ``case_sensitive``
+    literal would change match semantics compared to the live grep
+    path. ``is_fts_eligible`` returns False when ``case_sensitive``
+    is True so the handler falls back to live grep in
+    ``use_index='auto'`` and fails closed in ``use_index='always'``
+    instead of silently returning a case-INsensitive FTS match.
+
+    ``case_sensitive`` defaults to ``False`` because the live grep
+    default is case-sensitive and the prior call site omitted the
+    argument entirely; ``is_fts_eligible`` keeps accepting its
+    legacy ``case_sensitive`` semantics by treating omitted ==
+    case-INsensitive == same as the FTS5 tokenizer.
     """
     if is_regex:
         return False
@@ -504,7 +697,9 @@ def is_fts_eligible(pattern: str, *, is_regex: bool, whole_word: bool) -> bool:
         return False
     # whole_word with literal is supported; reject when combined
     # with multi-word phrase syntax that FTS cannot represent exactly.
-    return not (whole_word and " " in pattern)
+    if whole_word and " " in pattern:
+        return False
+    return not case_sensitive
 
 
 def fts_query_for(pattern: str, *, whole_word: bool) -> str:
@@ -539,11 +734,15 @@ __all__ = [
     "SEARCH_SYMBOL_MENTION",
     "RankedItem",
     "fts_query_for",
+    "is_config_role",
+    "is_docs_role",
     "is_fts_eligible",
     "is_generated_path",
+    "is_generated_role",
     "is_source_role",
     "is_test_role",
+    "matches_role",
     "score_grep_match",
     "score_search_file",
     "sort_ranked",
-]
+]  # grouped for readability

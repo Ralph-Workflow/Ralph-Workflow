@@ -1727,16 +1727,15 @@ def handle_search_files(
     if truncated:
         matches = matches[:limit]
 
-    # Live role filter (Phase 1 keeps role filter in-handler).
+    # AC-04: every role accepted by the parameter validator (source,
+    # test, docs, config, generated) actually narrows the result
+    # instead of silently falling back to the unfiltered glob set.
+    # The handler used to pass ``docs`` / ``config`` / ``generated``
+    # through unchanged; the canonical taxonomy now narrows each.
     if role != "any":
-        from ralph.mcp.explore.ranking import is_source_role, is_test_role
+        from ralph.mcp.explore.ranking import matches_role
 
-        role_filter = {
-            "source": is_source_role,
-            "test": is_test_role,
-        }.get(role)
-        if role_filter is not None:
-            matches = [m for m in matches if role_filter(m)]
+        matches = [m for m in matches if matches_role(m, role)]  # m is str; matches_role(str, str) -> bool
 
     # Pull the explore handle once so every subsequent branch uses
     # the same store; ``None`` preserves the legacy live contract.
