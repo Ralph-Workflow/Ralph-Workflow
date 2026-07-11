@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import replace
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.explore._audit_seed_artifact_planning import (
     _SEED_ARTIFACT_PLANNING,
@@ -61,6 +61,32 @@ from ralph.mcp.explore._audit_types import (
     _counters,
 )
 from ralph.mcp.tools.names import RalphToolName
+
+if TYPE_CHECKING:
+    from ralph.mcp.explore._bench_types import BenchmarkResult
+
+# ponytail: map each benchmark fixture's ``question_id`` to the
+# single RalphToolName the fixture's indexed script attributes
+# counters to. The first tool in ``indexed_script`` is the gate's
+# primary cost driver (it dispatches the real public handler and
+# triggers the bytes-/call-savings measurement). Tools not listed
+# here keep the seed baseline; tools listed in multiple fixtures
+# are folded together by ``bench_results_to_measurements``.
+_FIXTURE_PRIMARY_TOOL: Final[dict[str, RalphToolName]] = {
+    "Q1": RalphToolName.GREP_FILES,
+    "Q2": RalphToolName.SEARCH_FILES,
+    "Q3": RalphToolName.GREP_FILES,
+    "Q4": RalphToolName.RALPH_GRAPH,
+    "Q5": RalphToolName.EDIT_FILE,
+    "Q6": RalphToolName.EDIT_FILE,
+    "Q7": RalphToolName.GIT_STATUS,
+    "Q8": RalphToolName.GIT_DIFF,
+    "Q9": RalphToolName.EXEC,
+    "Q10": RalphToolName.GIT_LOG,
+    "Q11": RalphToolName.GIT_SHOW,
+    "Q12": RalphToolName.WEB_SEARCH,
+    "Q13": RalphToolName.READ_MEDIA,
+}
 
 _SEED: tuple[AuditEntry, ...] = (
     *_SEED_WORKSPACE,
@@ -169,5 +195,58 @@ __all__ = [
     "RefreshResult",
     "_counters",
     "audit_register",
+    "bench_results_to_measurements",
     "refresh_audit_register",
 ]
+
+
+def bench_results_to_measurements(
+    results: Sequence[BenchmarkResult],
+) -> list[Measurement]:
+    """Convert BenchmarkResult records into Measurement objects.
+
+    AC-06 measured provenance. The audit gate's source field must
+    point to a reproducible real benchmark fixture identifier, not
+    the static seed baseline. Each BenchmarkResult is attributed to
+    its primary RalphToolName via the _FIXTURE_PRIMARY_TOOL mapping;
+    the indexed counters (the gate's research target) drive the
+    AuditCounters payload; the provenance label is the fixture's
+    question_id so a downstream consumer can replay the exact fixture.
+
+    Multiple fixtures can attribute to the same RalphToolName (Q1 and
+    Q3 both drive grep_files); the resulting Measurement records
+    collide in refresh_audit_register and the duplicate is reported
+    via RefreshResult.duplicates so the bench rerun can fix the
+    attribution.
+
+    Fixtures whose question_id is not in _FIXTURE_PRIMARY_TOOL are
+    skipped (the bench harness can grow without breaking the audit
+    pipeline until the mapping is extended).
+    """
+    measurements: list[Measurement] = []
+    for result in results:
+        question_id = result.question_id
+        tool = _FIXTURE_PRIMARY_TOOL.get(question_id)
+        if tool is None:
+            continue
+        indexed = result.indexed
+        counters = AuditCounters(
+            transcript_tokens=indexed.transcript_tokens,
+            returned_bytes=indexed.returned_bytes,
+            tool_calls=indexed.tool_calls,
+            evidence_recall=indexed.evidence_recall,
+            evidence_precision=indexed.evidence_precision,
+            stale_fallback_events=indexed.stale_fallback_events,
+            parse_count=result.parse_count,
+            changed_file_count=result.changed_file_count,
+            index_storage_bytes=result.index_storage_bytes,
+            wall_time_seconds=indexed.wall_time_seconds,
+        )
+        measurements.append(
+            Measurement(
+                tool=tool,
+                counters=counters,
+                source=f"bench_fixtures/{question_id}",
+            )
+        )
+    return measurements

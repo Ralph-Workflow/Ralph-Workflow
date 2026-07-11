@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from ralph.mcp.explore import pipeline
+from ralph.mcp.explore import pipeline as _pipeline_module
 from ralph.mcp.explore._pipeline_state import (
     EXTRACTOR_VERSION,
     FileReadError,
@@ -28,6 +28,9 @@ from ralph.mcp.explore._pipeline_state import (
 from ralph.mcp.explore.store import (
     DEFAULT_CHUNK_LINES,
     ChunkRow,
+    ContentCacheChunk,
+    ContentCachePayload,
+    ContentCacheRow,
     EvidenceRow,
     ExploreStore,
     FileRow,
@@ -35,6 +38,8 @@ from ralph.mcp.explore.store import (
     collect_workspace_files,
     derive_chunk_id,
     derive_evidence_id,
+    deserialize_content_cache_payload,
+    serialize_content_cache_payload,
     sha256_text,
 )
 from ralph.mcp.explore.structure import (
@@ -111,7 +116,7 @@ def _run_reindex(
             continue
 
         try:
-            content_hash, actual_size, actual_mtime = pipeline.hash_workspace_file(
+            content_hash, actual_size, actual_mtime = _pipeline_module.hash_workspace_file(
                 workspace_root, relative_path
             )
         except (FileNotFoundError, ValueError):
@@ -360,6 +365,15 @@ def _re_extract_path(
     the path lands in ``failed_files`` and stays dirty for a
     later retry.
 
+    AC-05 content cache: when ``content_hash`` already has a
+    fresh-enough cache row (matching ``EXTRACTOR_VERSION``), the
+    lexical preflight reuses the cached chunks and skips the
+    file read + chunk_text build. Structure rows (spans/symbols/
+    edges) are still re-derived for the new path because their
+    identifiers are path-dependent. The cache is then repopulated
+    so a future copy/move of an equivalent file can reuse it
+    again.
+
     Existing rows for this path are tombstoned (bounded) and then
     replaced. The caller (``_run_reindex``) handles the file-row
     update so the manifest reflects the new generation.
@@ -373,19 +387,46 @@ def _re_extract_path(
     if not is_relative:
         raise FileReadError(f"path escapes workspace: {relative_path!r}")
 
+    # --- Content-cache lookup. AC-05: a cache hit skips the
+    # ``chunk_text`` build because the cached payload already
+    # carries every (start_line, end_line, text_hash) tuple.
+    # File text is still read so ``extract_structure`` and any
+    # structure rows can be re-derived for the new path
+    # (path-derived ids and qualified_name depend on the path,
+    # even when the file contents are identical). Saving only the
+    # ``chunk_text`` + ``sha256_text`` work keeps the cache
+    # path-neutral while still preserving structure correctness.
+    cached_payload: ContentCachePayload | None = _maybe_load_cached_payload(
+        store, content_hash
+    )
+
     # --- Preflight phase: read + decode + build lexical + structure.
     # These calls happen BEFORE any destructive write so a failure
     # (malformed Python, OS read error, OOM) preserves every
     # prior row in the live store. The caller treats a raised
     # exception as a per-path failure recorded in failed_files;
     # the path stays dirty and is retried on the next pass.
-    text = full.read_text(encoding="utf-8", errors="replace")
-    prepared_chunks: list[tuple[int, int, str]] = list(
-        chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES)
-    )
+    text: str = full.read_text(encoding="utf-8", errors="replace")
+    prepared_chunks: list[tuple[int, int, str]]
+    extracted_at: float
+    if cached_payload is not None:
+        # Cache hit: reuse the chunk coordinates but rebuild the
+        # chunk rows with path-derived ids; this also keeps the
+        # ``chunks_fts`` text fresh for the new path.
+        prepared_chunks = [
+            (chunk.start_line, chunk.end_line, chunk.text)
+            for chunk in cached_payload.chunks
+        ]
+        extracted_at = time.time()
+    else:
+        prepared_chunks = list(
+            chunk_text(text, lines_per_chunk=DEFAULT_CHUNK_LINES)
+        )
+        extracted_at = time.time()
     # ``extract_structure`` raises ``PythonSyntaxError`` for
     # malformed Python; the typed exception propagates so the
-    # caller fails-closed without losing prior rows.
+    # caller fails-closed without losing prior rows. Structure is
+    # always rederived because symbol/span/edge ids are path-bound.
     prepared_extraction = extract_structure(
         path=relative_path,
         content=text,
@@ -497,6 +538,98 @@ def _re_extract_path(
             symbols=prepared_extraction.symbols,
             edges=prepared_extraction.edges,
         )
+
+    # AC-05: repopulate the content cache when we performed fresh
+    # lexical work. Cache hits do not need to rewrite the cache
+    # because the row was already written by the prior extraction
+    # that populated it. The repopulation step is best-effort: if
+    # the cache write raises, we log and continue because the
+    # chunk/evidence rows are already persisted.
+    if cached_payload is None:
+        try:
+            _write_cached_payload(
+                store,
+                content_hash=content_hash,
+                language=_detect_language(relative_path),
+                prepared_chunks=prepared_chunks,
+                extracted_at=extracted_at,
+            )
+        except Exception:  # bounded: cache writes never block reindex
+            logger.warning("content_cache write failed for %s", relative_path)
+
+
+def _maybe_load_cached_payload(
+    store: ExploreStore,
+    content_hash: str,
+) -> ContentCachePayload | None:
+    """Return a deserialized cache payload or ``None`` on miss/invalid.
+
+    AC-05: a cache hit only counts when ``EXTRACTOR_VERSION`` is
+    current. Stale-version hits return ``None`` so the pipeline
+    re-extracts instead of trusting an obsolete schema. Malformed
+    payloads are dropped and treated as cache misses so a corrupt
+    row cannot poison subsequent reindexes.
+    """
+    row: ContentCacheRow | None = store.lookup_content_cache(
+        content_hash=content_hash,
+        extractor_version=EXTRACTOR_VERSION,
+    )
+    if row is None:
+        return None
+    blob = store.read_content_cache_payload(content_hash=content_hash)
+    if blob is None:
+        return None
+    try:
+        return deserialize_content_cache_payload(blob)
+    except ValueError:
+        return None
+
+
+def _write_cached_payload(
+    store: ExploreStore,
+    *,
+    content_hash: str,
+    language: str | None,
+    prepared_chunks: list[tuple[int, int, str]],
+    extracted_at: float,
+) -> None:
+    """Insert or refresh the content cache for ``content_hash``.
+
+    Builds a fresh :class:`ContentCachePayload` from the freshly
+    chunked text and serializes it into a deterministic JSON BLOB.
+    The chunk ``text_hash`` is the same ``sha256_text`` the
+    pipeline computes for the ``chunks`` table, so the cache row
+    is interchangeable with the live ``chunks`` rows without an
+    extra hash recompute.
+    """
+    cache_chunks: list[ContentCacheChunk] = []
+    for start_line, end_line, body in prepared_chunks:
+        cache_chunks.append(
+            ContentCacheChunk(
+                start_line=start_line,
+                end_line=end_line,
+                text_hash=sha256_text(body),
+                text=body,
+                role="body",
+            )
+        )
+    payload = ContentCachePayload(
+        content_hash=content_hash,
+        extractor_version=EXTRACTOR_VERSION,
+        chunks=tuple(cache_chunks),
+    )
+    blob = serialize_content_cache_payload(payload)
+    store.insert_content_cache(
+        row=ContentCacheRow(
+            content_hash=content_hash,
+            language=language,
+            extractor_version=EXTRACTOR_VERSION,
+            extracted_at=extracted_at,
+            extraction_status="ok",
+            error_summary=None,
+        ),
+        payload=blob,
+    )
 
 
 def _detect_language(path: str) -> str | None:

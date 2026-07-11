@@ -13,6 +13,7 @@ from ralph.mcp.multimodal.resources import (
     build_media_identity,
     parse_media_uri,
 )
+from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     ToolContent,
@@ -106,24 +107,26 @@ def _build_image_metadata_envelope(
     ``resource_handle`` is always ``None``.
     """
     width, height = _png_dimensions(raw_bytes)
-    envelope: dict[str, object] = {
-        "format": "metadata",
-        "media_kind": "image",
-        "mime_type": mime_type,
-        "size_bytes": len(raw_bytes),
-        "sha256": hashlib.sha256(raw_bytes).hexdigest(),
-        "width": width,
-        "height": height,
-        "resource_handle": None,
-        "inline_only": True,
-        "bytes_in": len(raw_bytes),
-        "truncated": False,
-        "max_inline_bytes": max_inline_bytes,
-    }
-    serialized = json.dumps(envelope).encode("utf-8")
-    envelope["bytes_out"] = len(serialized)
+    envelope = finalize_envelope_bytes_out(
+        {
+            "format": "metadata",
+            "media_kind": "image",
+            "mime_type": mime_type,
+            "size_bytes": len(raw_bytes),
+            "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+            "width": width,
+            "height": height,
+            "resource_handle": None,
+            "inline_only": True,
+            "bytes_in": len(raw_bytes),
+            "truncated": False,
+            "max_inline_bytes": max_inline_bytes,
+        }
+    )
     return ToolResult(
-        content=[ToolContent.text_content(json.dumps(envelope))],
+        content=[
+            ToolContent.text_content(json.dumps(envelope, separators=(",", ":")))
+        ],
         is_error=False,
     )
 
@@ -145,7 +148,7 @@ def _build_media_metadata_envelope(
     so the resource_handle is preserved. For inline images the
     artifact was never persisted, so the handle is ``None``.
     """
-    envelope: dict[str, object] = {
+    base_envelope: dict[str, object] = {
         "format": "metadata",
         "media_kind": modality,
         "mime_type": mime_type,
@@ -160,12 +163,13 @@ def _build_media_metadata_envelope(
     }
     if modality == "image":
         width, height = _png_dimensions(raw_bytes)
-        envelope["width"] = width
-        envelope["height"] = height
-    serialized = json.dumps(envelope).encode("utf-8")
-    envelope["bytes_out"] = len(serialized)
+        base_envelope["width"] = width
+        base_envelope["height"] = height
+    envelope = finalize_envelope_bytes_out(base_envelope)
     return ToolResult(
-        content=[ToolContent.text_content(json.dumps(envelope))],
+        content=[
+            ToolContent.text_content(json.dumps(envelope, separators=(",", ":")))
+        ],
         is_error=False,
     )
 

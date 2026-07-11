@@ -34,8 +34,8 @@ from ralph.mcp.explore.pipeline import (
     DEFAULT_TIMEOUT_MS,
     ReindexOptions,
     ReindexResult,
-    reindex,
 )
+from ralph.mcp.explore._pipeline_writer import ReindexWriter
 from ralph.mcp.explore.store import normalize_index_path
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
@@ -192,9 +192,19 @@ def handle_ralph_reindex(
         cancel_flag,
     )
     try:
-        result = reindex(
+        # AC-02 / AC-05: route the public ``ralph_reindex`` tool
+        # through :meth:`ReindexWriter.claim` so concurrent MCP
+        # requests, parallel lifecycle hooks, and a second
+        # ``ralph_reindex`` call against the same store coalesce
+        # into a single writer. The writer's ``claim`` preserves
+        # cancellation/deadline semantics and dirty-path
+        # coalescing; the per-request cancel flag in
+        # ``_REINDEX_CANCEL_FLAGS`` still propagates through to
+        # ``reindex`` because the cancel callable is forwarded
+        # via ``ReindexWriter.claim``.
+        result = ReindexWriter.claim(
             handle.store,
-            handle.workspace_root,
+            workspace_root=handle.workspace_root,
             options=options,
             cancel=cancel_callable,
         )

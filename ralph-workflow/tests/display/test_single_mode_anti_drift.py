@@ -259,80 +259,91 @@ def _token_marker(token: str) -> str:
 
 
 # Per-test timeout: the drift-check shell script greps ralph/, tests/, docs/
-# on every invocation. With 8 parametrized tokens x 2 invocations each, the
-# cumulative wall-clock cost is well under the 60s combined budget, but each
-# individual parametrized variant needs more headroom than the default 1s
-# because the bash startup + grep cost on the ralph-workflow tree takes
-# ~0.5-1s per invocation on a busy CI runner.
+# on every invocation. The 8 named legacy tokens are batched into ONE FAIL
+# invocation (with all 8 probes present) and ONE PASS invocation (after
+# all probes are removed), so the cumulative subprocess cost stays well
+# within the 60s combined budget. Each individual probe write/delete is
+# bounded by the per-test 8s timeout; the bash + grep cost on the
+# ralph-workflow tree is ~0.7-0.9s per invocation on a busy CI runner.
 #
 # The subprocess_e2e marker exempts this file from the audit_test_policy
 # subprocess audit: the bash script IS the system-under-test (the same
 # artifact make verify-drift invokes), so subprocess.run is the
 # legitimate invocation path, not a bypass of the MockProcessExecutor
 # test-infra seam.
-pytestmark = [pytest.mark.timeout_seconds(8), pytest.mark.subprocess_e2e]
+pytestmark = [pytest.mark.timeout_seconds(15), pytest.mark.subprocess_e2e]
 
 
-@pytest.mark.parametrize("token", _DRIFT_PROBE_TOKENS)
-def test_drift_check_script_fails_closed_against_every_named_legacy_token(
-    token: str,
-) -> None:
+def test_drift_check_script_fails_closed_against_every_named_legacy_token() -> None:
     """``scripts/wt028-drift-check.sh`` is fail-closed against every legacy token.
+
+    Batched probe strategy (cuts subprocess cost ~8x vs. a parametrized
+    one-probe-per-test design): all 8 named legacy probes are written at
+    once, the bash script is run ONCE to assert FAIL with every probe
+    file name and every token marker in the output, then all 8 probes
+    are removed and the bash script is run ONCE to assert PASS.
 
     For each named legacy token the closure-pass consolidation named,
     this test (a) writes the token to a temporary probe file under
     ``ralph/``, (b) runs the actual bash script via subprocess with a
     bounded timeout (the same invocation path ``make verify-drift``
-    uses), (c) asserts non-zero exit AND that the offending token's
-    recognizable marker appears in the FAIL output (proving the
-    script actually identified the token, not just the probe file),
-    (d) deletes the probe and re-runs the script, (e) asserts exit
+    uses), (c) asserts non-zero exit AND that every offending token's
+    recognizable marker appears in the FAIL output (proving the script
+    actually identified every token, not just the probe files),
+    (d) deletes all probes and re-runs the script, (e) asserts exit
     code 0.
 
-    The probe file is named ``_drift_probe_<sanitized-token>.py`` and
-    lives under ``ralph/`` — outside the historical-context allowlist
+    The probe files are named ``_drift_probe_<sanitized-token>.py`` and
+    live under ``ralph/`` — outside the historical-context allowlist
     (the allowlist covers ``ralph/display/status_bar.py``,
     ``ralph/display/__init__.py``, ``ralph/display/mode.py``,
     ``ralph/display/_mode_adaptive_limits.py``, ``ralph/display/context.py``,
     so a probe file at ``ralph/_drift_probe_*.py`` cannot accidentally
-    fall inside it). try/finally guarantees the probe is cleaned up
+    fall inside it). try/finally guarantees the probes are cleaned up
     even on assertion failure.
     """
-    probe_name = f"_drift_probe_{_safe_probe_name(token)}.py"
-    probe_path = _PROJECT_ROOT / "ralph" / probe_name
-    assert not probe_path.exists(), (
-        f"probe file {probe_path!r} should not exist before the test starts"
-    )
-    token_marker = _token_marker(token)
+    probes: list[tuple[Path, str, str, str]] = []
+    for token in _DRIFT_PROBE_TOKENS:
+        probe_name = f"_drift_probe_{_safe_probe_name(token)}.py"
+        probe_path = _PROJECT_ROOT / "ralph" / probe_name
+        assert not probe_path.exists(), (
+            f"probe file {probe_path!r} should not exist before the test starts"
+        )
+        probes.append(
+            (probe_path, probe_name, token, _token_marker(token))
+        )
     try:
-        probe_path.write_text(f"{token} = '1'\n", encoding="utf-8")
+        for probe_path, _probe_name, token, _marker in probes:
+            probe_path.write_text(f"{token} = '1'\n", encoding="utf-8")
         result = _run_drift_check()
         assert result.returncode != 0, (
-            f"drift-check script must FAIL when probe file contains the "
-            f"legacy token {token!r}; got rc={result.returncode}, "
+            f"drift-check script must FAIL when probe files contain "
+            f"the legacy tokens; got rc={result.returncode}, "
             f"stdout={result.stdout!r}, stderr={result.stderr!r}"
         )
         combined_output = result.stdout + "\n" + result.stderr
-        assert probe_name in combined_output, (
-            f"drift-check FAIL output must name the offending probe file "
-            f"{probe_name!r}; got stdout={result.stdout!r}, "
-            f"stderr={result.stderr!r}"
-        )
-        assert token_marker in combined_output, (
-            f"drift-check FAIL output must surface the offending token "
-            f"itself (marker {token_marker!r} derived from {token!r}); "
-            f"got stdout={result.stdout!r}, stderr={result.stderr!r}"
-        )
+        for _probe_path, probe_name, _token, token_marker in probes:
+            assert probe_name in combined_output, (
+                f"drift-check FAIL output must name the offending probe "
+                f"file {probe_name!r}; got stdout={result.stdout!r}, "
+                f"stderr={result.stderr!r}"
+            )
+            assert token_marker in combined_output, (
+                f"drift-check FAIL output must surface the offending "
+                f"token itself (marker {token_marker!r}); got "
+                f"stdout={result.stdout!r}, stderr={result.stderr!r}"
+            )
         assert "FAIL" in combined_output, (
             f"drift-check FAIL output must include the FAIL marker; "
             f"got stdout={result.stdout!r}, stderr={result.stderr!r}"
         )
     finally:
-        if probe_path.exists():
-            probe_path.unlink()
+        for probe_path, _probe_name, _token, _marker in probes:
+            if probe_path.exists():
+                probe_path.unlink()
     result_after = _run_drift_check()
     assert result_after.returncode == 0, (
-        f"drift-check script must PASS after the probe file is removed; "
+        f"drift-check script must PASS after the probe files are removed; "
         f"got rc={result_after.returncode}, stdout={result_after.stdout!r}, "
         f"stderr={result_after.stderr!r}"
     )

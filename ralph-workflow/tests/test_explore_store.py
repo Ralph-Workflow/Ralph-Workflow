@@ -11,6 +11,9 @@ import pytest
 from ralph.mcp.explore.store import (
     DEFAULT_CHUNK_LINES,
     ChunkRow,
+    ContentCacheChunk,
+    ContentCachePayload,
+    ContentCacheRow,
     EvidenceRow,
     ExploreStore,
     FileRow,
@@ -18,9 +21,11 @@ from ralph.mcp.explore.store import (
     collect_workspace_files,
     derive_chunk_id,
     derive_evidence_id,
+    deserialize_content_cache_payload,
     hash_workspace_file,
     iter_indexable_files,
     normalize_index_path,
+    serialize_content_cache_payload,
     sha256_bytes,
     sha256_text,
 )
@@ -760,3 +765,219 @@ class _GrepWorkspace:
     def list_dir(self, base: str):
         target = self.root / base if base else self.root
         return [p.name for p in target.iterdir()]
+
+
+def _make_content_cache_row(
+    content_hash: str = "deadbeef" * 8,
+    language: str | None = "python",
+    extractor_version: str = "phase1-lexical-v1",
+) -> ContentCacheRow:
+    """Build a deterministic ``ContentCacheRow`` for round-trip tests."""
+    return ContentCacheRow(
+        content_hash=content_hash,
+        language=language,
+        extractor_version=extractor_version,
+        extracted_at=1700000000.0,
+        extraction_status="ok",
+        error_summary=None,
+    )
+
+
+def _make_content_cache_payload(content_hash: str) -> ContentCachePayload:
+    """Build a small but non-trivial ``ContentCachePayload``."""
+    return ContentCachePayload(
+        content_hash=content_hash,
+        extractor_version="phase1-lexical-v1",
+        chunks=(
+            ContentCacheChunk(
+                start_line=1,
+                end_line=2,
+                text_hash=sha256_text("def hello():\n"),
+                text="def hello():\n",
+                role="body",
+            ),
+            ContentCacheChunk(
+                start_line=2,
+                end_line=4,
+                text_hash=sha256_text("    return 1\n"),
+                text="    return 1\n",
+                role="body",
+            ),
+        ),
+    )
+
+
+def test_content_cache_metadata_round_trip(tmp_path: Path) -> None:
+    """AC-05: ``insert_content_cache`` persists the metadata row and
+    ``lookup_content_cache`` returns it back when the extractor
+    version matches. ``content_cache_size`` reports the new row.
+    """
+    store = _build_store(tmp_path)
+    try:
+        row = _make_content_cache_row()
+        blob = serialize_content_cache_payload(
+            _make_content_cache_payload(row.content_hash)
+        )
+        store.insert_content_cache(row=row, payload=blob)
+        assert store.content_cache_size() == 1
+        looked_up = store.lookup_content_cache(
+            content_hash=row.content_hash,
+            extractor_version=row.extractor_version,
+        )
+        assert looked_up is not None
+        assert looked_up.content_hash == row.content_hash
+        assert looked_up.extraction_status == "ok"
+        # Iter shows the row too.
+        rows = list(store.iter_content_cache())
+        assert len(rows) == 1
+        assert rows[0].content_hash == row.content_hash
+    finally:
+        store.close()
+
+
+def test_content_cache_lookup_misses_on_version_mismatch(tmp_path: Path) -> None:
+    """AC-05: a stale ``extractor_version`` must NOT serve a payload
+    that was extracted under an older schema. ``lookup_content_cache``
+    returns ``None`` so the pipeline re-extracts from source.
+    """
+    store = _build_store(tmp_path)
+    try:
+        row = _make_content_cache_row(extractor_version="old-version")
+        blob = serialize_content_cache_payload(
+            _make_content_cache_payload(row.content_hash)
+        )
+        store.insert_content_cache(row=row, payload=blob)
+        looked_up = store.lookup_content_cache(
+            content_hash=row.content_hash,
+            extractor_version="new-version",
+        )
+        assert looked_up is None
+    finally:
+        store.close()
+
+
+def test_content_cache_lookup_misses_on_unknown_hash(tmp_path: Path) -> None:
+    """AC-05: ``lookup_content_cache`` returns ``None`` when the hash
+    has never been cached. The cache must never invent a payload.
+    """
+    store = _build_store(tmp_path)
+    try:
+        looked_up = store.lookup_content_cache(
+            content_hash="0" * 64,
+            extractor_version="phase1-lexical-v1",
+        )
+        assert looked_up is None
+    finally:
+        store.close()
+
+
+def test_content_cache_payload_blob_round_trip() -> None:
+    """AC-05: ``serialize_content_cache_payload`` round-trips through
+    ``deserialize_content_cache_payload`` with every chunk attribute
+    preserved. The BLOB is JSON-encoded UTF-8 bytes.
+    """
+    payload = _make_content_cache_payload("abcdef")
+    blob = serialize_content_cache_payload(payload)
+    assert isinstance(blob, bytes)
+    # JSON object, not array.
+    envelope = json.loads(blob.decode("utf-8"))
+    assert isinstance(envelope, dict)
+    assert envelope["format_version"] == "v1"
+    recovered = deserialize_content_cache_payload(blob)
+    assert recovered.content_hash == payload.content_hash
+    assert recovered.extractor_version == payload.extractor_version
+    assert recovered.chunk_count() == payload.chunk_count()
+    assert recovered.chunk_bytes() == payload.chunk_bytes()
+    for original, decoded in zip(payload.chunks, recovered.chunks):
+        assert decoded.start_line == original.start_line
+        assert decoded.end_line == original.end_line
+        assert decoded.text_hash == original.text_hash
+        assert decoded.text == original.text
+        assert decoded.role == original.role
+
+
+def test_content_cache_payload_rejects_unknown_format_version() -> None:
+    """AC-05: ``deserialize_content_cache_payload`` fails closed when
+    the encoded ``format_version`` is unknown. A corrupt row must not
+    be silently accepted into the live cache.
+    """
+    bad_blob = json.dumps(
+        {
+            "format_version": "v999",
+            "content_hash": "abc",
+            "extractor_version": "phase1-lexical-v1",
+            "chunks": [],
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    with pytest.raises(ValueError, match="format_version"):
+        deserialize_content_cache_payload(bad_blob)
+
+
+def test_content_cache_payload_rejects_malformed_json() -> None:
+    """AC-05: malformed UTF-8 / JSON blobs raise ``ValueError`` so
+    the pipeline treats them as cache misses.
+    """
+    with pytest.raises(ValueError, match="UTF-8 JSON"):
+        deserialize_content_cache_payload(b"not-json-at-all")
+
+
+def test_content_cache_insert_then_delete_round_trip(tmp_path: Path) -> None:
+    """AC-05: ``delete_content_cache`` removes both metadata and
+    payload rows so a retried extraction starts with a clean slate.
+    """
+    store = _build_store(tmp_path)
+    try:
+        row = _make_content_cache_row(content_hash="feedface" * 8)
+        blob = serialize_content_cache_payload(
+            _make_content_cache_payload(row.content_hash)
+        )
+        store.insert_content_cache(row=row, payload=blob)
+        assert store.content_cache_size() == 1
+        blob_back = store.read_content_cache_payload(content_hash=row.content_hash)
+        assert blob_back == blob
+        store.delete_content_cache(content_hash=row.content_hash)
+        assert store.content_cache_size() == 0
+        assert store.read_content_cache_payload(content_hash=row.content_hash) is None
+    finally:
+        store.close()
+
+
+def test_content_cache_reinsert_replaces_payload(tmp_path: Path) -> None:
+    """AC-05: a second ``insert_content_cache`` for the same hash
+    refreshes the payload. ``read_content_cache_payload`` returns
+    the latest blob so cache hits observe the most recent
+    extraction result.
+    """
+    store = _build_store(tmp_path)
+    try:
+        content_hash = "a1b2c3d4" * 8
+        first = _make_content_cache_payload(content_hash)
+        second = ContentCachePayload(
+            content_hash=content_hash,
+            extractor_version=first.extractor_version,
+            chunks=(
+                ContentCacheChunk(
+                    start_line=1,
+                    end_line=3,
+                    text_hash=sha256_text("x = 99\n"),
+                    text="x = 99\n",
+                ),
+            ),
+        )
+        first_blob = serialize_content_cache_payload(first)
+        second_blob = serialize_content_cache_payload(second)
+        assert first_blob != second_blob
+        store.insert_content_cache(
+            row=_make_content_cache_row(content_hash=content_hash),
+            payload=first_blob,
+        )
+        store.insert_content_cache(
+            row=_make_content_cache_row(content_hash=content_hash),
+            payload=second_blob,
+        )
+        recovered = store.read_content_cache_payload(content_hash=content_hash)
+        assert recovered == second_blob
+    finally:
+        store.close()

@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.config.mcp_models import WebVisitConfig
+from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -196,15 +197,18 @@ def handle_visit_url(
             "bytes_in": bytes_in,
             "truncated": truncated,
         }
-        # ``bytes_out`` is computed after optional ``links`` so the
-        # counter reflects the finalized payload size.
+        # ponytail: bytes_out reflects the finalized payload size after
+        # optional ``links`` are included, and is recomputed so it equals
+        # the utf8 length of the envelope that includes itself.
         if with_links:
             metadata_payload["links"] = list(page.links)[:10]
-        metadata_payload["bytes_out"] = len(
-            json.dumps(metadata_payload).encode("utf-8")
-        )
+        metadata_payload = finalize_envelope_bytes_out(metadata_payload)
         return ToolResult(
-            content=[ToolContent.text_content(json.dumps(metadata_payload))],
+            content=[
+                ToolContent.text_content(
+                    json.dumps(metadata_payload, separators=(",", ":"))
+                )
+            ],
             is_error=False,
         )
 
@@ -352,24 +356,25 @@ def handle_download_url(
     # ``output_path`` or via ``read_file``.
     head_preview_bytes = body_bytes[:_DOWNLOAD_HEAD_PREVIEW_BYTES]
     sha256_full = hashlib.sha256(body_bytes).hexdigest()
-    summary_payload: dict[str, object] = {
-        **payload,
-        "format": "summary",
-        "sha256": sha256_full[:16],
-        "head_preview": (
-            head_preview_bytes.decode("utf-8", errors="replace")
-            + (
-                f"... [+{len(body_bytes) - len(head_preview_bytes)} bytes]"
-                if len(body_bytes) > _DOWNLOAD_HEAD_PREVIEW_BYTES
-                else ""
-            )
-        ),
-        "bytes_in": len(body_bytes),
-        "truncated": len(body_bytes) > _DOWNLOAD_HEAD_PREVIEW_BYTES,
-    }
-    summary_payload["bytes_out"] = len(json.dumps(summary_payload).encode("utf-8"))
+    summary_payload = finalize_envelope_bytes_out(
+        {
+            **payload,
+            "format": "summary",
+            "sha256": sha256_full[:16],
+            "head_preview": (
+                head_preview_bytes.decode("utf-8", errors="replace")
+                + (
+                    f"... [+{len(body_bytes) - len(head_preview_bytes)} bytes]"
+                    if len(body_bytes) > _DOWNLOAD_HEAD_PREVIEW_BYTES
+                    else ""
+                )
+            ),
+            "bytes_in": len(body_bytes),
+            "truncated": len(body_bytes) > _DOWNLOAD_HEAD_PREVIEW_BYTES,
+        }
+    )
     return ToolResult(
-        content=[ToolContent.text_content(json.dumps(summary_payload))],
+        content=[ToolContent.text_content(json.dumps(summary_payload, separators=(",", ":")))],
         is_error=False,
     )
 

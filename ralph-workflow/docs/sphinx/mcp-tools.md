@@ -64,8 +64,10 @@ The table below uses a few drain groupings:
 | `read_env` | `env.read` | write drains | Read an environment variable |
 | `web_search` | `web.search` | non-commit drains (default-enabled) | Search the web via configured backends |
 | `visit_url` | `web.visit` | non-commit drains (granted by default) | Fetch and extract text from a single URL |
+| `download_url` | `web.visit` | non-commit drains (granted by default) | Download a URL to a workspace path; bounded by `max_bytes`; same SSRF posture as `visit_url` |
 | `read_media` | `media.read` | all (default-on; opt-out via mcp.toml) | Read a media file — images, PDFs, documents, audio, video; inline or resource-reference delivery based on model capability |
 | `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Compatibility alias for `read_media` for image inputs; follows the same capability-aware delivery contract (inline image when supported, resource reference or explicit error otherwise) |
+| `ralph_graph` | `workspace.read` | all | Graph-native queries against the indexed substrate (`neighbors` / `path` / `impact` / `hubs` / `tests`) with bounded `timeout_ms` and cooperative `cancel`; see [Indexed exploration](#indexed-exploration) below |
 
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
 See `ralph.mcp.tools.names` for the canonical name constants.

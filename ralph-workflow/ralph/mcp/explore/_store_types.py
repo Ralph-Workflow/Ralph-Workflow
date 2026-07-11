@@ -17,6 +17,7 @@ compatibility.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re as _re_migration
 import sqlite3
@@ -392,6 +393,46 @@ class EdgeRow:
     generation: int
 
 
+@dataclass(frozen=True, slots=True)
+class ContentCacheRow:
+    """A row from the ``content_cache`` metadata table.
+
+    The cache deduplicates extraction payloads by ``content_hash``
+    so a moved or copied file can reuse an already-extracted record.
+    Path-specific rows (chunks/FTS/evidence/spans/symbols/edges)
+    are rebuilt by the reindex pipeline because their identity
+    depends on the normalized path. The payload itself lives in
+    the ``content_cache_payload`` BLOB table; this row carries
+    only the bookkeeping so metadata reads stay cheap.
+    """
+
+    content_hash: str
+    language: str | None
+    extractor_version: str
+    extracted_at: float
+    extraction_status: str
+    error_summary: str | None
+
+
+# ContentCacheChunk and ContentCachePayload live in
+# :mod:`ralph.mcp.explore._store_types_payload` so the hub module
+# stays under the per-file line ceiling. They are re-exported
+# here for backward compatibility with callers that import
+# them from ``ralph.mcp.explore._store_types`` directly.
+from ralph.mcp.explore._store_types_payload import (
+    ContentCacheChunk,
+    ContentCachePayload,
+    deserialize_content_cache_payload,
+    serialize_content_cache_payload,
+)
+
+__all__ = [
+    "ContentCacheChunk",
+    "ContentCachePayload",
+    "deserialize_content_cache_payload",
+    "serialize_content_cache_payload",
+]
+
 class Clock(Protocol):
     """Protocol for wall-clock injection. Tests inject a FakeClock."""
 
@@ -607,6 +648,18 @@ def _row_to_edge(row: sqlite3.Row) -> EdgeRow:
     )
 
 
+def _row_to_content_cache(row: sqlite3.Row) -> ContentCacheRow:
+    """Convert a ``content_cache`` metadata row to ``ContentCacheRow``."""
+    return ContentCacheRow(
+        content_hash=_row_str(row, "content_hash"),
+        language=_row_optional_str(row, "language"),
+        extractor_version=_row_str(row, "extractor_version"),
+        extracted_at=_row_float(row, "extracted_at"),
+        extraction_status=_row_str(row, "extraction_status"),
+        error_summary=_row_optional_str(row, "error_summary"),
+    )
+
+
 def sha256_text(text: str) -> str:
     """Return the SHA-256 hex digest of ``text`` (UTF-8 encoded)."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -782,12 +835,22 @@ def assert_within_workspace(workspace_root: Path, full_path: Path) -> None:
         raise ValueError(f"Path escapes workspace: {full_path}")
 
 
+# AC-05: content-cache payload (de)serialization lives in
+# :mod:`ralph.mcp.explore._store_types_payload` so this hub
+# module stays under the per-file line ceiling. The same names
+# are re-exported above for backward compatibility with
+# callers that import them from this module directly.
+
+
 __all__ = [
     "DEFAULT_CHUNK_LINES",
     "DEFAULT_INDEX_DB",
     "DEFAULT_INDEX_ROOT",
     "ChunkRow",
     "Clock",
+    "ContentCacheChunk",
+    "ContentCachePayload",
+    "ContentCacheRow",
     "EdgeRow",
     "EvidenceRow",
     "FileRow",
@@ -797,6 +860,7 @@ __all__ = [
     "assert_within_workspace",
     "chunk_text",
     "collect_workspace_files",
+    "deserialize_content_cache_payload",
     "derive_chunk_id",
     "derive_evidence_id",
     "hash_workspace_file",
@@ -804,6 +868,7 @@ __all__ = [
     "normalize_index_path",
     "real_clock_seconds",
     "row_str",
+    "serialize_content_cache_payload",
     "sha256_bytes",
     "sha256_text",
 ]

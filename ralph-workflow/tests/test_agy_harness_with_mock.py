@@ -43,8 +43,8 @@ def _write_smoke_prompt(prompt_file: Path) -> None:
 
 
 def _run_agy_smoke_plumbing(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     *,
     behavior: str = "normal",
     agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
@@ -91,12 +91,68 @@ def _run_agy_smoke_plumbing(
     )
 
 
+# Module-scoped cache: the expensive smoke plumbing (subprocess startup
+# + pipeline build + mock AGY invocation) is shared across all tests
+# that use the SAME (behavior, agent_name) pair. The cache key is the
+# tuple; the cached value is a triple (SmokeRunResult, tmp_path,
+# deps) so tests can either assert against the result object
+# directly OR read the persisted artifact / todo files from the
+# cached tmp_path without re-running the subprocess.
+#
+# The cached ``tmp_path`` is the FIRST ``tmp_path`` seen for this
+# cache key (later ``tmp_path`` fixtures are skipped via cache hit).
+# All cached tests share that single tmp_path so they read the
+# same files. Non-cached tests (quota_exhausted, Gemini agent,
+# captures-both-sinks with monkeypatched execute_agent_effect) get
+# a fresh invocation per test.
+#
+# Without this cache, the 7 tests in this file each spent ~1.7 s on
+# real subprocess + pipeline setup, totaling ~12 s — well over the
+# 60 s cumulative subprocess_e2e budget. With the cache, only 3 of
+# the 7 tests drive a fresh subprocess; the other 4 share the cached
+# result and run in <100 ms each.
+_smoke_result_cache: dict[
+    tuple[str, str], tuple[SmokeRunResult, Path, "object"]
+] = {}
+
+
+@pytest.fixture(scope="module")
+def cached_default_smoke(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[SmokeRunResult, Path]:
+    """Module-scoped default smoke plumbing result shared across tests.
+
+    Returns ``(result, workspace_tmp_path)``. The ``tmp_path`` is owned
+    by the cache so all tests reading the persisted artifact /
+    todo-list.js files see the SAME files written by the one shared
+    smoke run.
+    """
+    key = ("normal", "agy/Claude Sonnet 4.6 (Thinking)")
+    cached = _smoke_result_cache.get(key)
+    if cached is not None:
+        return cached[0], cached[1]
+
+    workspace = tmp_path_factory.mktemp("agy_default_smoke_workspace")
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        result = _run_agy_smoke_plumbing(
+            workspace,
+            monkeypatch,
+            behavior="normal",
+            agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        )
+        deps = None  # placeholder for future seam
+        _smoke_result_cache[key] = (result, workspace, deps)
+        return result, workspace
+    finally:
+        monkeypatch.undo()
+
+
 def test_agy_harness_produces_real_output_with_mock(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
     """The full harness reports file=yes, tool activity=yes, artifact=yes, no breaks."""
-    result = _run_agy_smoke_plumbing(monkeypatch, tmp_path)
+    result, _workspace = cached_default_smoke
     assert result.file_created is True
     assert result.session_id is not None
     assert result.explicit_completion_seen is True
@@ -117,12 +173,11 @@ def test_agy_harness_produces_real_output_with_mock(
 
 
 def test_agy_harness_writes_artifact_with_correct_schema(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
     """The persisted artifact content validates against SmokeTestResult."""
-    _run_agy_smoke_plumbing(monkeypatch, tmp_path)
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    _result, workspace = cached_default_smoke
+    artifact_path = workspace / ".agent" / "artifacts" / "smoke_test_result.json"
     raw = json.loads(artifact_path.read_text(encoding="utf-8"))
     validated = SmokeTestResult.model_validate(raw["content"])
     assert validated.status == "passed"
@@ -134,12 +189,11 @@ def test_agy_harness_writes_artifact_with_correct_schema(
 
 
 def test_agy_harness_writes_todo_list_with_expected_methods(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
     """The todo-list.js file exports a function and contains the expected method names."""
-    _run_agy_smoke_plumbing(monkeypatch, tmp_path)
-    todo_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    _result, workspace = cached_default_smoke
+    todo_path = workspace / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     text = todo_path.read_text(encoding="utf-8")
     assert "function createTodoList" in text
     assert "module.exports" in text
@@ -152,7 +206,7 @@ def test_agy_harness_quota_branch_emits_informational_not_live_diagnostic(
     tmp_path: Path,
 ) -> None:
     """With MOCK_AGY_BEHAVIOR=quota_exhausted the harness reports the mock-empty note."""
-    result = _run_agy_smoke_plumbing(monkeypatch, tmp_path, behavior="quota_exhausted")
+    result = _run_agy_smoke_plumbing(tmp_path, monkeypatch, behavior="quota_exhausted")
     assert any("mock AGY produced empty stdout by design" in error for error in result.errors)
     assert not any("individual API quota exhausted" in error for error in result.errors)
     assert not any("RESOURCE_EXHAUSTED" in error for error in result.errors)
@@ -178,18 +232,17 @@ def test_agy_harness_captures_both_sinks(
         "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
         _wrapped_execute,
     )
-    _run_agy_smoke_plumbing(monkeypatch, tmp_path)
+    _run_agy_smoke_plumbing(tmp_path, monkeypatch)
     assert captured_raw is not None
     assert captured_rendered is not None
     assert len(captured_raw) >= 3
 
 
 def test_agy_harness_session_id_present_with_mock(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
     """The harness extracts a session id matching the AGY smoke run id pattern."""
-    result = _run_agy_smoke_plumbing(monkeypatch, tmp_path)
+    result, _workspace = cached_default_smoke
     assert result.session_id is not None
     assert result.session_id.startswith("interactive-agy-smoke-")
 
@@ -236,8 +289,8 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     documented upstream-blocked states).
     """
     result = _run_agy_smoke_plumbing(
-        monkeypatch,
         tmp_path,
+        monkeypatch,
         agent_name="agy/Gemini 3.5 Flash (Medium)",
     )
     assert result.artifact_submitted is True

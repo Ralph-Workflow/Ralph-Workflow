@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.mcp.explore.pipeline import (
+from ralph.mcp.explore._pipeline_state import (
     ReindexOptions,
     ReindexResult,
 )
@@ -61,8 +61,17 @@ class ReindexWriter:
         *,
         workspace_root: Path,
         options: ReindexOptions | None = None,
+        cancel: "Callable[[], bool] | None" = None,
     ) -> ReindexResult:
-        """Run reindex, coalescing with any active writer for the same store."""
+        """Run reindex, coalescing with any active writer for the same store.
+
+        ``cancel`` is forwarded to the underlying ``reindex`` so
+        callers can preserve their per-request cancel semantics
+        while still going through the single-writer/coalescing
+        seam. A second concurrent call against the same store
+        short-circuits with a synthetic ``skipped_no_changes``
+        result so the prior committed generation is preserved.
+        """
         # Lazy import: ``pipeline.py`` imports ``ReindexWriter`` at
         # module scope. Importing ``reindex`` from this module's top
         # scope would form a partial-init cycle. The function-level
@@ -73,17 +82,31 @@ class ReindexWriter:
         if cls._active_lock is None:
             # Production callers should have configured the lock
             # factory in module init; tests bypass via direct calls.
-            return reindex(store, workspace_root, options=options)
+            return reindex(
+                store, workspace_root, options=options, cancel=cancel
+            )
         key = str(store.db_path)
         assert cls._active_lock is not None
         with cls._active_lock:
             active = cls._active.get(key)
             if active is not None:
                 # Coalesce: just process any pending dirty paths and
-                # return a synthetic skipped result.
+                # return a synthetic skipped result. The cancel
+                # callable still applies to the active writer; a
+                # coalesced caller cannot independently cancel.
                 pending = store.peek_dirty_paths()
                 if options is None:
                     options = ReindexOptions()
+                if cancel is not None and cancel():
+                    return ReindexResult(
+                        job_id=f"coalesced-cancel-{key}",
+                        generation=int(
+                            store.get_setting("current_generation") or 0
+                        ),
+                        status="cancelled",
+                        dirty_paths_count=len(pending),
+                        elapsed_seconds=0.0,
+                    )
                 return ReindexResult(
                     job_id=f"coalesced-{active.store.db_path.name}",
                     generation=int(store.get_setting("current_generation") or 0),
@@ -93,7 +116,9 @@ class ReindexWriter:
                 )
             cls._active[key] = cls(store)
         try:
-            return reindex(store, workspace_root, options=options)
+            return reindex(
+                store, workspace_root, options=options, cancel=cancel
+            )
         finally:
             with cls._active_lock:
                 cls._active.pop(key, None)

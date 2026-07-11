@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+from ralph.mcp.explore._bench_types import BenchmarkCounters, BenchmarkResult
 from ralph.mcp.explore.audit_register import (
     AUDIT_REGISTER,
     AuditCounters,
@@ -24,6 +25,7 @@ from ralph.mcp.explore.audit_register import (
     AuditOutcome,
     Measurement,
     audit_register,
+    bench_results_to_measurements,
     refresh_audit_register,
 )
 from ralph.mcp.explore.family_baseline import family_baseline_flows
@@ -818,3 +820,113 @@ def test_audit_entry_rejects_empty_source() -> None:
         )
     # Constructed AuditEntry retains the seed source label.
     assert seed_entry.source == "seed"
+
+
+# -----------------------------------------------------------------------------
+# AC-06 measured-provenance: bench_results_to_measurements + integration
+# -----------------------------------------------------------------------------
+
+
+def _make_indexed(
+    tool_calls: int = 2,
+    returned_bytes: int = 320,
+    transcript_tokens: int = 100,
+    wall_time_seconds: float = 0.05,
+    stale_fallback_events: int = 0,
+    evidence_recall: float = 1.0,
+    evidence_precision: float = 1.0,
+) -> BenchmarkCounters:
+    return BenchmarkCounters(
+        tool_calls=tool_calls,
+        returned_bytes=returned_bytes,
+        transcript_tokens=transcript_tokens,
+        wall_time_seconds=wall_time_seconds,
+        stale_fallback_events=stale_fallback_events,
+        evidence_recall=evidence_recall,
+        evidence_precision=evidence_precision,
+    )
+
+
+def _make_result(
+    question_id: str,
+    *,
+    indexed: BenchmarkCounters,
+    parse_count: int = 0,
+    changed_file_count: int = 0,
+    index_storage_bytes: int = 0,
+    baseline: BenchmarkCounters | None = None,
+) -> BenchmarkResult:
+    return BenchmarkResult(
+        question_id=question_id,
+        baseline=baseline or _make_indexed(),
+        indexed=indexed,
+        parse_count=parse_count,
+        changed_file_count=changed_file_count,
+        index_storage_bytes=index_storage_bytes,
+    )
+
+
+def test_bench_results_to_measurements_attaches_per_fixture_source() -> None:
+    """Each fixture becomes one Measurement with the bench fixture id
+    as the provenance label so the audit register can replay the
+    measurement instead of falling back to the static seed.
+    """
+    results = [
+        _make_result(
+            question_id="Q1",
+            indexed=_make_indexed(tool_calls=2, returned_bytes=320),
+        ),
+        _make_result(
+            question_id="Q4",
+            indexed=_make_indexed(tool_calls=2, returned_bytes=600),
+        ),
+    ]
+    measurements = bench_results_to_measurements(results)
+    assert len(measurements) == 2
+    by_source = {m.source: m for m in measurements}
+    assert "bench_fixtures/Q1" in by_source
+    assert "bench_fixtures/Q4" in by_source
+    q1 = by_source["bench_fixtures/Q1"]
+    q4 = by_source["bench_fixtures/Q4"]
+    assert q1.tool is RalphToolName.GREP_FILES
+    assert q4.tool is RalphToolName.RALPH_GRAPH
+    assert q1.counters.returned_bytes == 320
+    assert q1.counters.tool_calls == 2
+
+
+def test_bench_results_to_measurements_skips_unknown_question_id() -> None:
+    """Fixtures not in ``_FIXTURE_PRIMARY_TOOL`` are skipped silently
+    so a future fixture addition does not break the audit pipeline
+    until the mapping is explicitly extended.
+    """
+    results = [
+        _make_result(
+            question_id="Q9999",
+            indexed=_make_indexed(tool_calls=1, returned_bytes=10),
+        ),
+    ]
+    assert bench_results_to_measurements(results) == []
+
+
+def test_refresh_audit_register_with_bench_measurements_keeps_source() -> None:
+    """Feeding bench measurements through ``refresh_audit_register``
+    overwrites the matching entry's counters AND source attribution
+    so the audit consumer can trace the source back to the bench
+    fixture instead of seeing the static seed label.
+    """
+    results = [
+        _make_result(
+            question_id="Q1",
+            indexed=_make_indexed(tool_calls=2, returned_bytes=320),
+        ),
+    ]
+    measurements = bench_results_to_measurements(results)
+    refreshed = refresh_audit_register(measurements)
+    by_tool = {entry.tool: entry for entry in refreshed.register}
+    grep_entry = by_tool[RalphToolName.GREP_FILES]
+    assert grep_entry.source == "bench_fixtures/Q1"
+    assert grep_entry.counters.returned_bytes == 320
+    assert grep_entry.counters.tool_calls == 2
+    # Tools NOT in the measurement list keep the seed baseline.
+    read_entry = by_tool[RalphToolName.READ_FILE]
+    assert read_entry.source == "seed"

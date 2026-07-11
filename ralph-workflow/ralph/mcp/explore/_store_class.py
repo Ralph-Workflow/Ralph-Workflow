@@ -17,6 +17,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import cast
 
+from ralph.mcp.explore._store_class_content_cache import _ContentCacheMethods
 from ralph.mcp.explore._store_types import (
     _DDL,
     _SCHEMA_MIGRATIONS,
@@ -50,7 +51,7 @@ from ralph.mcp.explore._store_types import (
 logger = logging.getLogger(__name__)
 
 
-class ExploreStore:
+class ExploreStore(_ContentCacheMethods):
     """Owns the SQLite connection and DDL for the index.
 
     Construct with an explicit index directory. WAL mode + busy
@@ -68,13 +69,22 @@ class ExploreStore:
         self.index_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self.index_dir / DEFAULT_INDEX_DB
         self._busy_timeout_ms = busy_timeout_ms
-        # Ponytail: open with ``isolation_level=None`` so we can
-        # control transactions explicitly with BEGIN/COMMIT and
-        # avoid implicit transactions bloating the WAL.
+        # AC-02/AC-05: open with ``check_same_thread=False`` so
+        # concurrent reindex claims (public ``ralph_reindex`` and
+        # lifecycle hooks) can each hold their own connection
+        # without blocking the cross-thread single-writer seam.
+        # Without this, a second thread touching the same
+        # ``ExploreStore`` instance raises
+        # ``ProgrammingError: SQLite objects created in a thread
+        # can only be used in that same thread`` and the call
+        # hangs forever on the GIL-released busy_timeout wait.
+        # WAL mode + the ``ReindexWriter.claim`` lock serialize
+        # writers, so cross-thread access is safe.
         self._conn = sqlite3.connect(
             str(self._db_path),
             timeout=busy_timeout_ms / 1000.0,
             isolation_level=None,
+            check_same_thread=False,
         )
         self._conn.row_factory = sqlite3.Row
         self._initialize()
@@ -145,6 +155,7 @@ class ExploreStore:
             str(self._db_path),
             timeout=self._busy_timeout_ms / 1000.0,
             isolation_level=None,
+            check_same_thread=False,
         )
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -757,6 +768,10 @@ class ExploreStore:
                 "DELETE FROM jobs WHERE started_at < ?",
                 (now_seconds - JOB_HISTORY_RETENTION_SECONDS,),
             )
+
+    # Content-cache methods are provided by the
+    # :class:`_ContentCacheMethods` mixin imported above. They
+    # are documented in ``_store_class_content_cache.py``.
 
     def latest_job(self) -> sqlite3.Row | None:
         cur = self._conn.execute(

@@ -22,6 +22,35 @@ if TYPE_CHECKING:
 
 CUSTOM_LOG_COUNT = 20
 
+
+# AC-06 / analysis-feedback regression: see
+# ``test_tool_git_read_handle_git_log.py`` for the precedent.
+# ``_build_git_show_summary_payload`` previously computed
+# ``bytes_out`` BEFORE adding the field, so the declared value
+# was smaller than the actual returned text. This regression pins
+# the new convention that declared ``bytes_out`` equals the actual
+# UTF-8 length of the final serialized envelope the caller sees.
+def test_format_summary_bytes_out_matches_actual_payload(
+    tmp_path: Path,
+) -> None:
+    session = MockSession({GIT_STATUS_READ_CAPABILITY})
+    workspace = MockWorkspaceRoot(tmp_path)
+    raw = (
+        "commit abc1234def5678abc1234def5678abc1234def5\n"
+        "Author: Test <test@example.com>\n"
+        "Date:   Tue Jan 1 00:00:00 2026 +0000\n"
+        "\n"
+        "    hello subject\n"
+    )
+    with patch("ralph.mcp.tools.git_read.run_git_command") as mock_git:
+        mock_git.return_value = raw
+        result = handle_git_show(
+            session, workspace, {"ref": "HEAD", "format": "summary"}
+        )
+    envelope = json.loads(result.content[0].text)
+    assert envelope["bytes_out"] == len(result.content[0].text.encode("utf-8"))
+
+
 # =============================================================================
 # Tests
 # =============================================================================
