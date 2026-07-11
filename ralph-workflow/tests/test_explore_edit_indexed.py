@@ -440,3 +440,25 @@ def test_edit_file_all_in_target_boundary_uses_old_text_length(tmp_path: Path) -
         ws.write.assert_not_called()
     finally:
         store.close()
+
+
+def test_edit_file_rejects_empty_oldtext_before_matching(tmp_path: Path) -> None:
+    """An empty replacement anchor is rejected instead of looping."""
+    workspace = _seed_workspace(tmp_path)
+    from ralph.mcp.tools.coordination import InvalidParamsError
+
+    ws = MagicMock()
+    ws.read.return_value = "def hello():\n    return 1\n"
+    ws.absolute_path.return_value = str(workspace / "module.py")
+    try:
+        handle_edit_file(
+            _FakeSession(),
+            ws,
+            {
+                "path": "module.py",
+                "edits": [{"oldText": "", "newText": "replacement"}],
+            },
+        )
+    except InvalidParamsError:
+        return
+    raise AssertionError("Expected InvalidParamsError for empty oldText")

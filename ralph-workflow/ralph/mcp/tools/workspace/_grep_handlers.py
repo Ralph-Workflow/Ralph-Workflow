@@ -140,12 +140,15 @@ def _indexed_matches(
         )
         snippet_str = str(snippet_value) if snippet_value is not None else ""
         evidence_id = _ensure_grep_evidence_row(store, chunk_id_str)
+        evidence_row = store.get_evidence(evidence_id)
+        line = evidence_row.start_line if evidence_row is not None else 0
         matches.append(
             {
                 "path": path_str,
-                "line": None,
+                "line": line,
                 "text": snippet_str,
                 "evidence_id": evidence_id,
+                "chunk_id": chunk_id_str,
             }
         )
     return matches
@@ -506,6 +509,7 @@ def handle_grep_files(
 
     ranked_items: list[RankedItem] = []
     indexed_match_rows: list[dict[str, object]] = []
+    graph_context: list[dict[str, object]] = []
 
     if use_index != "never" and store is not None and eligible:
         # AC-02 indexed-grep filter parity: push path/include/exclude
@@ -521,11 +525,6 @@ def handle_grep_files(
             exclude_globs=exclude,
         )
         index_used = True
-        if not return_evidence_ids:
-            # Strip the explicit evidence_id from each match when the
-            # caller did not request it. The handle is still on disk.
-            for row in indexed_match_rows:
-                row.pop("evidence_id", None)
         # Snippet cap.
         if max_snippet_lines and max_snippet_lines > 0:
             for row in indexed_match_rows:
@@ -582,13 +581,34 @@ def handle_grep_files(
             ranked_items = sort_ranked(ranked_items)
             # Apply the same order to the match rows.
             order = {item.key: idx for idx, item in enumerate(ranked_items)}
-            indexed_match_rows.sort(
-                key=lambda r: order.get(
-                    f"{r.get('path', '')}:{r.get('line', '')}:"
-                    f"{r.get('evidence_id', '')}",
-                    len(order),
-                )
-            )
+            def _indexed_order(row: dict[str, object]) -> int:
+                line_obj = row.get("line")
+                line_key = line_obj if isinstance(line_obj, int) else 0
+                key = f"{row.get('path', '')}:{line_key}:{row.get('evidence_id', '')}"
+                return order.get(key, len(order))
+
+            indexed_match_rows.sort(key=_indexed_order)
+        if include_graph_context:
+            for row in indexed_match_rows[:limit]:
+                evidence_id = row.get("evidence_id")
+                if not isinstance(evidence_id, str):
+                    continue
+                evidence = store.get_evidence(evidence_id)
+                if evidence is not None:
+                    graph_context.append(
+                        {
+                            "evidence_id": evidence_id,
+                            "path": evidence.path,
+                            "start_line": evidence.start_line,
+                            "end_line": evidence.end_line,
+                        }
+                    )
+        # Ranking retains evidence/chunk identity internally; only the
+        # public response hides identifiers the caller did not request.
+        for row in indexed_match_rows:
+            row.pop("chunk_id", None)
+            if not return_evidence_ids:
+                row.pop("evidence_id", None)
     elif use_index == "always" and not eligible:
         raise InvalidParamsError(
             "use_index='always' requires an FTS-eligible pattern; "
@@ -665,7 +685,8 @@ def handle_grep_files(
         "ranked_by": rank_by,
         "dedupe_by_symbol": dedupe_by_symbol,
         "graph_context": (
-            [] if include_graph_context
+            graph_context
+            if include_graph_context
             else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
         ),
         "score_reasons": (

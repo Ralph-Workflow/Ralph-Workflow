@@ -191,6 +191,7 @@ def _run_reindex(
     # will replace the rows and clear the is_deleted flag.
     for existing in list(store.iter_files()):
         _ensure_deadline(state, now_fn)
+        _check_cancel()
         if existing.path not in seen_paths and existing.path not in path_scope:
             # File is no longer on disk.
             store.record_tombstone(

@@ -414,12 +414,11 @@ def test_derive_visible_catalog_reads_registered_tool_specs() -> None:
         "the gate, and an extra tool overstates the full-transcript "
         "counter."
     )
-    # Every entry has a non-empty description (the catalog would
-    # silently undercount tokens if any description was empty).
-    for name, description in catalog:
+    # Every entry carries the registered definition, including schema.
+    for name, definition in catalog:
         assert isinstance(name, str) and name, f"{name!r} must be a non-empty string"
-        assert isinstance(description, str) and description.strip(), (
-            f"{name!r} must have a non-empty description"
+        assert getattr(definition, "input_schema", None) is not None, (
+            f"{name!r} must carry an input schema"
         )
 
 
@@ -455,11 +454,8 @@ def test_run_benchmark_default_catalog_matches_registered_specs() -> None:
     derived_catalog = derive_visible_catalog()
     derived_tokens = tool_catalog_tokens(derived_catalog)
     expected_min = sum(
-        len(desc.split()) for _name, desc in derived_catalog
+        len(str(definition.input_schema).split())
+        for _name, definition in derived_catalog
     )
-    # ``tool_catalog_tokens`` returns the serialized name +
-    # description + schema, which is always >= the description-
-    # only token count. The test pins the lower bound so a
-    # regression that empties the description (or drops the name)
-    # breaks the gate.
+    # The full visible catalog must include input schemas, not only prose.
     assert sum(derived_tokens.values()) >= expected_min

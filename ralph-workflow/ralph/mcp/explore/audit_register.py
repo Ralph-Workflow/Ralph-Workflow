@@ -141,14 +141,17 @@ def refresh_audit_register(
     contract so a future refactor that drops the dedup check
     breaks the gate.
     """
-    selected: dict[RalphToolName, Measurement] = {}
-    duplicates: set[RalphToolName] = set()
+    grouped: dict[RalphToolName, list[Measurement]] = {}
     if measurements:
         for measurement in measurements:
-            if measurement.tool in selected:
-                duplicates.add(measurement.tool)
-                continue
-            selected[measurement.tool] = measurement
+            grouped.setdefault(measurement.tool, []).append(measurement)
+    selected = {
+        tool: _aggregate_measurements(tool_measurements)
+        for tool, tool_measurements in grouped.items()
+    }
+    duplicates = {
+        tool for tool, tool_measurements in grouped.items() if len(tool_measurements) > 1
+    }
     rebuilt: list[AuditEntry] = []
     applied: set[RalphToolName] = set()
     for entry in AUDIT_REGISTER:
@@ -198,6 +201,42 @@ __all__ = [
     "bench_results_to_measurements",
     "refresh_audit_register",
 ]
+
+
+def _aggregate_measurements(measurements: Sequence[Measurement]) -> Measurement:
+    """Aggregate every same-tool fixture into one auditable measurement."""
+
+    if not measurements:
+        raise ValueError("cannot aggregate an empty measurement sequence")
+    first = measurements[0]
+    counters = first.counters
+    for measurement in measurements[1:]:
+        other = measurement.counters
+        counters = AuditCounters(
+            transcript_tokens=counters.transcript_tokens + other.transcript_tokens,
+            returned_bytes=counters.returned_bytes + other.returned_bytes,
+            tool_calls=counters.tool_calls + other.tool_calls,
+            evidence_recall=min(counters.evidence_recall, other.evidence_recall),
+            evidence_precision=min(counters.evidence_precision, other.evidence_precision),
+            stale_fallback_events=(
+                counters.stale_fallback_events + other.stale_fallback_events
+            ),
+            parse_count=counters.parse_count + other.parse_count,
+            changed_file_count=(
+                counters.changed_file_count + other.changed_file_count
+            ),
+            index_storage_bytes=max(
+                counters.index_storage_bytes, other.index_storage_bytes
+            ),
+            wall_time_seconds=(
+                counters.wall_time_seconds + other.wall_time_seconds
+            ),
+        )
+    return Measurement(
+        tool=first.tool,
+        counters=counters,
+        source=" + ".join(measurement.source for measurement in measurements),
+    )
 
 
 def bench_results_to_measurements(

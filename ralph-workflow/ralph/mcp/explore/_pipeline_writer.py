@@ -38,13 +38,9 @@ class ReindexWriter:
     Tests inject a custom ``lock_factory`` to avoid contention.
     """
 
-    @staticmethod
-    def _default_lock_factory() -> threading.Lock:
-        raise RuntimeError("lock_factory not configured")
-
-    _lock_factory: Callable[[], threading.Lock] = _default_lock_factory
+    _lock_factory: Callable[[], threading.Lock] = threading.Lock
     _active: dict[str, ReindexWriter] = {}  # bounded-accumulator-ok: keyed by db_path; entries are popped in `finally` of claim()
-    _active_lock: threading.Lock | None = None
+    _active_lock: threading.Lock = threading.Lock()
 
     @classmethod
     def configure(cls, *, lock_factory: Callable[[], threading.Lock]) -> None:
@@ -84,14 +80,7 @@ class ReindexWriter:
         # without weakening the audit allowlist.
         from ralph.mcp.explore.pipeline import reindex
 
-        if cls._active_lock is None:
-            # Production callers should have configured the lock
-            # factory in module init; tests bypass via direct calls.
-            return reindex(
-                store, workspace_root, options=options, cancel=cancel
-            )
         key = str(store.db_path)
-        assert cls._active_lock is not None
         with cls._active_lock:
             active = cls._active.get(key)
             if active is not None:

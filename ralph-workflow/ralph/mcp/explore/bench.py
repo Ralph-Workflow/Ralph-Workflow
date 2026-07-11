@@ -152,8 +152,8 @@ def tool_catalog_tokens(
 
 def derive_visible_catalog(
     mcp_config: object | None = None,
-) -> tuple[tuple[str, str], ...]:
-    """Return the visible Ralph-owned tool catalog as ``(name, description)`` tuples.
+) -> tuple[object, ...]:
+    """Return registered schema-bearing entries for visible Ralph-owned tools.
 
     AC-12 (acceptance gate): the benchmark harness MUST derive the
     visible catalog from the registered Ralph-owned registry/specs
@@ -192,11 +192,11 @@ def derive_visible_catalog(
         from ralph.mcp.tools.names import RalphToolName
 
         return tuple(
-            (member.value, member.name.replace("_", " "))
+            (member.value, {"type": "object", "properties": {}})
             for member in RalphToolName
         )
 
-    catalog: list[tuple[str, str]] = []
+    catalog: list[object] = []
     for spec in specs:
         # ``spec`` is a ``ToolSpec`` instance with a ``ToolMetadata``
         # payload; we access ``.definition`` lazily rather than
@@ -215,19 +215,20 @@ def derive_visible_catalog(
         # the canonical name in either case (``StrEnum.__str__``
         # returns the value), so the catalog tuple stays ``(str, str)``.
         name = str(metadata.definition.name)
-        description_obj: object = metadata.definition.description
-        description = (
-            description_obj
-            if isinstance(description_obj, str)
-            else str(description_obj)
-        )
-        # ponytail: keep the catalog tuple order stable and the
-        # (name, description) shape the harness already supports.
-        # Multi-line descriptions are normalized to a single line
-        # so the byte counts match what ``_fixed_token_count``
-        # would see in a compact transcript context.
-        catalog.append((name, description.strip()))
+        catalog.append((name, metadata.definition))
     return tuple(catalog)
+
+
+def _registered_tool_definitions() -> tuple[object, ...]:
+    """Load registered definitions so default accounting includes schemas."""
+
+    from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.tools.bridge._registry import tool_specs as _bridge_tool_specs
+
+    try:
+        return tuple(spec.metadata.definition for spec in _bridge_tool_specs(McpConfig()))
+    except Exception:
+        return derive_visible_catalog()
 
 
 def _run_script(
@@ -370,7 +371,7 @@ def run_benchmark(
     expected_evidence_ids: Sequence[str] | None = None,
     catalog_tokens: int | None = None,
     final_evidence_tokens: int | None = None,
-    visible_tool_catalog: Sequence[tuple[str, str]] | None = None,
+    visible_tool_catalog: Sequence[object] | None = None,
 ) -> BenchmarkResult:
     """Run a fixture's baseline and indexed flows and produce a result.
 
@@ -412,8 +413,8 @@ def run_benchmark(
         if catalog_tokens is not None
         else (
             sum(tool_catalog_tokens(visible_tool_catalog).values())
-            if visible_tool_catalog
-            else fixture.catalog_tokens
+            if visible_tool_catalog is not None
+            else sum(tool_catalog_tokens(_registered_tool_definitions()).values())
         )
     )
     derived_final_evidence_tokens = (

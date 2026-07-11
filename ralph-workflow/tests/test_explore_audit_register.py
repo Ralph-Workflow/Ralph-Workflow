@@ -630,8 +630,12 @@ def test_refresh_audit_register_detects_duplicate_measurements() -> None:
     )
     assert result.duplicates == frozenset({RalphToolName.READ_FILE})
     by_tool = {entry.tool: entry for entry in result.register}
-    # First-wins ordering keeps the gate deterministic.
-    assert by_tool[RalphToolName.READ_FILE].counters == first
+    # Same-tool fixtures are aggregated so no measured flow is discarded.
+    counters = by_tool[RalphToolName.READ_FILE].counters
+    assert counters.transcript_tokens == 109
+    assert counters.returned_bytes == 119
+    assert counters.tool_calls == 10
+    assert counters.wall_time_seconds == 0.51
 
 
 def test_refresh_audit_register_with_no_measurements_returns_seed_baseline() -> None:

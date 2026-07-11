@@ -951,8 +951,12 @@ def _read_multiple_item(
             session,
             workspace,
             span_id=str(item["span_id"]),
-            context_lines=0,
-            expected_hash=None,
+            context_lines=_int_opt_param(item, "context_lines") or 0,
+            expected_hash=(
+                str(item["expected_content_hash"])
+                if item.get("expected_content_hash") is not None
+                else None
+            ),
             return_metadata=return_metadata,
         )
         span_payload = _decode_payload(span_result)
@@ -969,8 +973,12 @@ def _read_multiple_item(
             session,
             workspace,
             symbol=str(item["symbol"]),
-            context_lines=0,
-            expected_hash=None,
+            context_lines=_int_opt_param(item, "context_lines") or 0,
+            expected_hash=(
+                str(item["expected_content_hash"])
+                if item.get("expected_content_hash") is not None
+                else None
+            ),
             return_metadata=return_metadata,
         )
         symbol_payload = _decode_payload(symbol_result)

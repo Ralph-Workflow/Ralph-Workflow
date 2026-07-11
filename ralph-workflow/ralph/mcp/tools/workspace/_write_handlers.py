@@ -286,16 +286,26 @@ def handle_edit_file(
             span_id = target_param.get("span_id")
             symbol_name = target_param.get("symbol")
             symbol_path = target_param.get("path")
+            selector_count = sum(
+                isinstance(value, str) and bool(value)
+                for value in (evidence_id, span_id, symbol_name)
+            )
+            if selector_count != 1:
+                target_resolution_error = {
+                    "status": "ambiguous_target",
+                    "reason": "target_requires_exactly_one_selector",
+                    "target": target_param,
+                }
             resolved = None
             resolved_path: str | None = None
             resolved_content_hash: str | None = None
-            if isinstance(evidence_id, str) and evidence_id:
+            if target_resolution_error is None and isinstance(evidence_id, str) and evidence_id:
                 row = store.get_evidence(evidence_id)
                 if row is not None:
                     resolved = (row.start_line, row.end_line)
                     resolved_path = row.path
                     resolved_content_hash = row.content_hash
-            elif isinstance(span_id, str) and span_id:
+            elif target_resolution_error is None and isinstance(span_id, str) and span_id:
                 span_row = next(
                     (
                         s
@@ -308,7 +318,7 @@ def handle_edit_file(
                     resolved = (span_row.start_line, span_row.end_line)
                     resolved_path = span_row.path
                     resolved_content_hash = span_row.content_hash
-            elif isinstance(symbol_name, str) and symbol_name:
+            elif target_resolution_error is None and isinstance(symbol_name, str) and symbol_name:
                 # Symbol lookup is path-scoped when path is given;
                 # otherwise fall back to ambiguous_target if the
                 # symbol appears in more than one file.
@@ -419,6 +429,8 @@ def handle_edit_file(
         new_text = edit.get("newText", "")
         if not isinstance(old_text, str):
             raise InvalidParamsError(f"Edit {i}: missing 'oldText' string")
+        if not old_text:
+            raise InvalidParamsError(f"Edit {i}: 'oldText' must be non-empty")
 
         idx = current_content.find(old_text)
         if idx == -1:
@@ -450,7 +462,7 @@ def handle_edit_file(
                 current_content, line_start, line_end
             )
             if match_strategy == "exact":
-                if idx != anchor_offset or (idx + len(old_text)) > anchor_end:
+                if idx != anchor_offset or (idx + len(old_text)) != anchor_end:
                     return ToolResult(
                         content=[
                             ToolContent.text_content(
