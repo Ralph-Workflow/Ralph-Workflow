@@ -19,29 +19,14 @@ import json
 from dataclasses import dataclass
 from typing import Final, cast
 
+from ralph.mcp.explore._store_types_chunk import ContentCacheChunk
+
 # AC-05: content-cache payload (de)serialization. The keys are
 # stable across reindex passes so a future cold rebuild of an
 # older payload table succeeds without an explicit codec version
 # bump. The format version is a string sentinel so a future
 # migration can detect (and reject) older payloads.
 _CACHE_PAYLOAD_FORMAT_VERSION: Final[str] = "v1"
-
-
-@dataclass(frozen=True, slots=True)
-class ContentCacheChunk:
-    """Single chunk row stored inside a content-cache payload.
-
-    ``text_hash`` is the SHA-256 of the chunk text, used by the
-    pipeline to detect tiny edits without re-chunking; ``text`` is
-    the full chunk body so an evicted source file can be
-    recovered from the cache.
-    """
-
-    start_line: int
-    end_line: int
-    text_hash: str
-    text: str
-    role: str = "body"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,17 +65,16 @@ def serialize_content_cache_payload(payload: ContentCachePayload) -> bytes:
         TypeError: when ``payload`` contains a non-JSON-serializable
             value.
     """
-    raw_chunks: list[dict[str, object]] = []
-    for chunk in payload.chunks:
-        raw_chunks.append(
-            {
-                "start_line": chunk.start_line,
-                "end_line": chunk.end_line,
-                "text_hash": chunk.text_hash,
-                "text": chunk.text,
-                "role": chunk.role,
-            }
-        )
+    raw_chunks: list[dict[str, object]] = [
+        {
+            "start_line": chunk.start_line,
+            "end_line": chunk.end_line,
+            "text_hash": chunk.text_hash,
+            "text": chunk.text,
+            "role": chunk.role,
+        }
+        for chunk in payload.chunks
+    ]
     envelope = {
         "format_version": _CACHE_PAYLOAD_FORMAT_VERSION,
         "content_hash": payload.content_hash,

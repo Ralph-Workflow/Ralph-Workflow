@@ -1,7 +1,9 @@
 """Idempotent, work-proportional reindex pipeline.
 
-Phase 1 builds only the lexical part of the index. Phase 2 (deferred)
-will add Python AST symbol extraction and the structural graph.
+The shipped pipeline indexes lexical chunks plus deterministic Python and
+Markdown structure, symbols, and provenance-labelled graph edges. Optional
+Phase 5 adapters remain deferred; the core extraction path has no LLM, vector,
+or third-party parser dependency.
 
 The pipeline follows the Idempotence And Efficiency Contract from the
 architecture finding:

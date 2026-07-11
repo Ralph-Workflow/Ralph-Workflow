@@ -39,6 +39,7 @@ from ralph.mcp.explore.bench import (
     REQUIRED_FIXTURES,
     BenchmarkFixture,
     ScriptedCall,
+    derive_visible_catalog,
     run_benchmark,
 )
 from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
@@ -397,6 +398,7 @@ def test_evidence_recall_is_one_for_all_required_fixtures(
             indexed_executor=_real_handler_executor,
             clock=FakeClock(),
             expected_evidence_ids=expected,
+            visible_tool_catalog=derive_visible_catalog(),
         )
         assert result.indexed.evidence_recall == 1.0, _format_counters(
             fixture.question_id, result
@@ -450,6 +452,7 @@ def test_indexed_bytes_are_at_least_20_percent_smaller(
             baseline_executor=_real_baseline_executor,
             indexed_executor=_real_handler_executor,
             clock=FakeClock(),
+            visible_tool_catalog=derive_visible_catalog(),
         )
         baseline_bytes = result.baseline.returned_bytes
         indexed_bytes = result.indexed.returned_bytes
@@ -546,13 +549,14 @@ def test_evidence_precision_is_one_for_indexed_flow(
             indexed_executor=_real_handler_executor,
             clock=FakeClock(),
             expected_evidence_ids=expected,
+            visible_tool_catalog=derive_visible_catalog(),
         )
         # Real handlers may legitimately return a strict superset
         # if the fixture content grew extra matches; the gate
         # asserts recall first, and precision is at least as good
         # as the indexed grep selectivity. With the shipped
         # fixture content, precision is exact.
-        assert result.indexed.evidence_precision >= 0.0, _format_counters(
+        assert result.indexed.evidence_precision == 1.0, _format_counters(
             fixture.question_id, result
         )
         assert result.indexed.evidence_recall == 1.0, _format_counters(
@@ -737,18 +741,21 @@ def test_extended_fixtures_enforce_tool_call_budget() -> None:
         )
 
 
-def test_extended_fixtures_run_under_scripted_executors() -> None:
-    """AC-12: the extended fixtures pass through the scripted
-    benchmark harness. The harness records tool calls / returned
-    bytes / transcript tokens but the new fixtures must still
-    exercise the harness.
+def test_extended_fixtures_target_registered_public_handlers() -> None:
+    """Extended measurements name only real, registered public handlers.
+
+    The acceptance executor is intentionally not a synthetic byte/evidence
+    stub: external-I/O tools are covered through their public handler tests
+    with injected process/network/media seams. This guard keeps the benchmark
+    fixture vocabulary tied to the bridge registry, so adding a fictional
+    tool name cannot make an efficiency gate appear to pass.
     """
+    from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.tools.bridge._registry import tool_specs
+
+    registered = {str(spec.metadata.definition.name) for spec in tool_specs(McpConfig())}
     for fixture in EXTENDED_FIXTURES:
-        result = run_benchmark(
-            fixture,
-            baseline_executor=_synthetic_baseline_executor,
-            indexed_executor=_synthetic_indexed_executor,
-            clock=FakeClock(),
-        )
-        assert result.indexed.tool_calls == len(fixture.indexed_script)
-        assert result.indexed.evidence_recall == 1.0
+        for call in (*fixture.baseline_script, *fixture.indexed_script):
+            assert call.tool in registered, (
+                f"{fixture.question_id} uses unregistered public tool {call.tool!r}"
+            )

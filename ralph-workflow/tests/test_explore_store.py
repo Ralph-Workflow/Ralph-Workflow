@@ -888,7 +888,7 @@ def test_content_cache_payload_blob_round_trip() -> None:
     assert recovered.extractor_version == payload.extractor_version
     assert recovered.chunk_count() == payload.chunk_count()
     assert recovered.chunk_bytes() == payload.chunk_bytes()
-    for original, decoded in zip(payload.chunks, recovered.chunks):
+    for original, decoded in zip(payload.chunks, recovered.chunks, strict=True):
         assert decoded.start_line == original.start_line
         assert decoded.end_line == original.end_line
         assert decoded.text_hash == original.text_hash

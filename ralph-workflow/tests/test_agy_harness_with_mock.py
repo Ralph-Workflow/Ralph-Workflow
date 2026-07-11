@@ -112,7 +112,7 @@ def _run_agy_smoke_plumbing(
 # the 7 tests drive a fresh subprocess; the other 4 share the cached
 # result and run in <100 ms each.
 _smoke_result_cache: dict[
-    tuple[str, str], tuple[SmokeRunResult, Path, "object"]
+    tuple[str, str], tuple[SmokeRunResult, Path, object]
 ] = {}
 
 

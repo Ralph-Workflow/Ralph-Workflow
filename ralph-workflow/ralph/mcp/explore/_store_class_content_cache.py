@@ -13,7 +13,8 @@ class only imports a small ``_ContentCacheMethods`` alias.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager
 from typing import cast
 
 from ralph.mcp.explore._store_types import (
@@ -45,7 +46,7 @@ class _ContentCacheMethods:
     # docstring; a regression that breaks the contract would
     # raise ``AttributeError`` at the first call.
     _conn: sqlite3.Connection
-    _transaction: Iterator[sqlite3.Cursor]
+    _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
 
     # --- Content cache (AC-05: deterministic extraction reuse) -------
 
@@ -96,14 +97,12 @@ class _ContentCacheMethods:
         row: sqlite3.Row | None = cur.fetchone()
         if row is None:
             return None
-        value_obj: object = row["payload"]
-        if value_obj is None:
+        value = cast("bytes | memoryview | None", row["payload"])
+        if value is None:
             return None
-        if isinstance(value_obj, bytes):
-            return value_obj
-        if isinstance(value_obj, memoryview):
-            return bytes(value_obj)
-        return bytes(cast("object", value_obj))
+        if isinstance(value, bytes):
+            return value
+        return bytes(value)
 
     def insert_content_cache(
         self,

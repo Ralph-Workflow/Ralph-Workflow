@@ -53,6 +53,11 @@ class ReindexWriter:
 
     def __init__(self, store: ExploreStore) -> None:
         self.store = store
+        # Snapshot the reader-visible state before this writer is
+        # advertised as active. Coalesced callers must not touch the
+        # shared SQLite connection while the active writer is mutating it.
+        self.generation = int(store.get_setting("current_generation") or 0)
+        self.dirty_paths_count = len(store.peek_dirty_paths())
 
     @classmethod
     def claim(
@@ -61,7 +66,7 @@ class ReindexWriter:
         *,
         workspace_root: Path,
         options: ReindexOptions | None = None,
-        cancel: "Callable[[], bool] | None" = None,
+        cancel: Callable[[], bool] | None = None,
     ) -> ReindexResult:
         """Run reindex, coalescing with any active writer for the same store.
 
@@ -94,24 +99,21 @@ class ReindexWriter:
                 # return a synthetic skipped result. The cancel
                 # callable still applies to the active writer; a
                 # coalesced caller cannot independently cancel.
-                pending = store.peek_dirty_paths()
                 if options is None:
                     options = ReindexOptions()
                 if cancel is not None and cancel():
                     return ReindexResult(
                         job_id=f"coalesced-cancel-{key}",
-                        generation=int(
-                            store.get_setting("current_generation") or 0
-                        ),
+                        generation=active.generation,
                         status="cancelled",
-                        dirty_paths_count=len(pending),
+                        dirty_paths_count=active.dirty_paths_count,
                         elapsed_seconds=0.0,
                     )
                 return ReindexResult(
                     job_id=f"coalesced-{active.store.db_path.name}",
-                    generation=int(store.get_setting("current_generation") or 0),
+                    generation=active.generation,
                     status="skipped_no_changes",
-                    dirty_paths_count=len(pending),
+                    dirty_paths_count=active.dirty_paths_count,
                     elapsed_seconds=0.0,
                 )
             cls._active[key] = cls(store)

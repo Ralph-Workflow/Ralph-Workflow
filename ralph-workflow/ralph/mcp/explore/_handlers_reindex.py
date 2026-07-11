@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore import handlers as handlers_module
+from ralph.mcp.explore._pipeline_writer import ReindexWriter
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
     _new_cancel_token,
@@ -35,7 +36,6 @@ from ralph.mcp.explore.pipeline import (
     ReindexOptions,
     ReindexResult,
 )
-from ralph.mcp.explore._pipeline_writer import ReindexWriter
 from ralph.mcp.explore.store import normalize_index_path
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,

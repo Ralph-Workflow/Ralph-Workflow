@@ -17,7 +17,6 @@ compatibility.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re as _re_migration
 import sqlite3
@@ -26,6 +25,18 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, cast
+
+# ContentCacheChunk and ContentCachePayload live in
+# :mod:`ralph.mcp.explore._store_types_payload` so the hub module
+# stays under the per-file line ceiling. They are re-exported
+# here for backward compatibility with callers that import
+# them from ``ralph.mcp.explore._store_types`` directly.
+from ralph.mcp.explore._store_types_payload import (
+    ContentCacheChunk,
+    ContentCachePayload,
+    deserialize_content_cache_payload,
+    serialize_content_cache_payload,
+)
 
 # --- Constants -------------------------------------------------------------
 
@@ -414,17 +425,9 @@ class ContentCacheRow:
     error_summary: str | None
 
 
-# ContentCacheChunk and ContentCachePayload live in
-# :mod:`ralph.mcp.explore._store_types_payload` so the hub module
-# stays under the per-file line ceiling. They are re-exported
-# here for backward compatibility with callers that import
-# them from ``ralph.mcp.explore._store_types`` directly.
-from ralph.mcp.explore._store_types_payload import (
-    ContentCacheChunk,
-    ContentCachePayload,
-    deserialize_content_cache_payload,
-    serialize_content_cache_payload,
-)
+# ContentCacheChunk and ContentCachePayload are imported at the top
+# of this module (see :mod:`ralph.mcp.explore._store_types_payload`)
+# and re-exported here for backward compatibility.
 
 __all__ = [
     "ContentCacheChunk",
@@ -860,9 +863,9 @@ __all__ = [
     "assert_within_workspace",
     "chunk_text",
     "collect_workspace_files",
-    "deserialize_content_cache_payload",
     "derive_chunk_id",
     "derive_evidence_id",
+    "deserialize_content_cache_payload",
     "hash_workspace_file",
     "iter_indexable_files",
     "normalize_index_path",

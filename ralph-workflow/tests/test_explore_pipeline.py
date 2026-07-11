@@ -16,11 +16,11 @@ architecture finding:
 
 from __future__ import annotations
 
+import dataclasses
 import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -37,9 +37,6 @@ from ralph.mcp.explore.store import (
     deserialize_content_cache_payload,
     sha256_text,
 )
-
-if TYPE_CHECKING:
-    pass  # pragma: no cover
 
 
 class FakeClock:
@@ -916,15 +913,11 @@ def test_coalesces_concurrent_handler_and_lifecycle_claims(tmp_path: Path) -> No
         prior_generation = int(store.get_setting("current_generation") or "1")
 
         barrier = threading.Barrier(2)
-        results: dict[str, "threading.Thread"] = {}
         results_list: list[tuple[str, object]] = []
         results_lock = threading.Lock()
 
         def _handler_call() -> None:
-            from ralph.mcp.explore.handlers import ExploreIndex
-
-            handle = ExploreIndex(store=store, workspace_root=workspace)
-            barrier.wait()
+            barrier.wait(timeout=1)
             result = ReindexWriter.claim(store, workspace_root=workspace)
             with results_lock:
                 results_list.append(("handler", result))
@@ -932,7 +925,7 @@ def test_coalesces_concurrent_handler_and_lifecycle_claims(tmp_path: Path) -> No
         def _lifecycle_call() -> None:
             from ralph.mcp.explore.lifecycle import claim_reindex
 
-            barrier.wait()
+            barrier.wait(timeout=1)
             result = claim_reindex(
                 store, workspace, options=ReindexOptions(mode="changed", timeout_ms=5000)
             )
@@ -953,9 +946,8 @@ def test_coalesces_concurrent_handler_and_lifecycle_claims(tmp_path: Path) -> No
         # gets a coalesced ``skipped_no_changes`` because the
         # writer is single-flighted. Never the same call running
         # twice independently with two different generations.
-        statuses = [status for _, status in results_list]
-        assert len(statuses) == 2
-        for _, status in statuses:
+        assert len(results_list) == 2
+        for _, status in results_list:
             status_str = getattr(status, "status", "")
             assert status_str in {"ok", "skipped_no_changes"}, (
                 f"unexpected status {status_str!r}"
@@ -1656,7 +1648,7 @@ def test_cache_payload_round_trips_through_reindex(tmp_path: Path) -> None:
                 # text_hash must equal sha256(text) for every chunk.
                 assert chunk.text_hash == sha256_text(chunk.text)
         # And the round-trip is encoding-stable.
-        sample = list(store.iter_content_cache())[0]
+        sample = next(iter(store.iter_content_cache()))
         blob1 = store.read_content_cache_payload(content_hash=sample.content_hash)
         assert blob1 is not None
         # Re-encode payload and compare; serializer is deterministic.
@@ -1731,6 +1723,5 @@ def test_content_cache_row_dataclass_is_frozen() -> None:
         extraction_status="ok",
         error_summary=None,
     )
-    with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
-        row.content_hash = "deadbeef" * 8  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-
+    with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
+        type(row).__setattr__(row, "content_hash", "deadbeef" * 8)

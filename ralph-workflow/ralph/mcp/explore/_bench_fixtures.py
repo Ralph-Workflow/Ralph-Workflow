@@ -291,14 +291,6 @@ def question_graph_callers() -> BenchmarkFixture:
                 },
                 expected_evidence_ids=("ev:graph/callers/hello",),
             ),
-            ScriptedCall(
-                tool="read_file",
-                params={
-                    "path": "ralph/tools/foo.py",
-                    "evidence_id": "ev:graph/callers/hello",
-                },
-                expected_evidence_ids=("ev:graph/callers/hello",),
-            ),
         ),
         expected_evidence_ids=("ev:graph/callers/hello",),
         max_returned_bytes=200_000,
@@ -344,14 +336,6 @@ def question_edit_impact_preview() -> BenchmarkFixture:
                 },
                 expected_evidence_ids=("ev:impact/hello",),
             ),
-            ScriptedCall(
-                tool="read_file",
-                params={
-                    "path": "ralph/tools/foo.py",
-                    "evidence_id": "ev:impact/hello",
-                },
-                expected_evidence_ids=("ev:impact/hello",),
-            ),
         ),
         expected_evidence_ids=("ev:impact/hello",),
         max_returned_bytes=200_000,
@@ -376,8 +360,9 @@ def question_mutation_freshness() -> BenchmarkFixture:
                 tool="edit_file",
                 params={
                     "path": "ralph/tools/foo.py",
-                    "oldText": "return 'world'",
-                    "newText": "return 'world!'",
+                    "edits": [
+                        {"oldText": "return 'world'", "newText": "return 'world!'"}
+                    ],
                 },
                 expected_evidence_ids=("ev:mutation/foo",),
             ),
@@ -392,8 +377,9 @@ def question_mutation_freshness() -> BenchmarkFixture:
                 tool="edit_file",
                 params={
                     "path": "ralph/tools/foo.py",
-                    "oldText": "return 'world'",
-                    "newText": "return 'world!'",
+                    "edits": [
+                        {"oldText": "return 'world'", "newText": "return 'world!'"}
+                    ],
                     "reindex": "auto",
                     "return_evidence_updates": True,
                 },

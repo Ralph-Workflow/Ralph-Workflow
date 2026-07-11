@@ -33,8 +33,8 @@ from typing import TYPE_CHECKING, Final, Protocol, cast
 if TYPE_CHECKING:
     from ralph.mcp.explore.store import ExploreStore
 
-from ralph.mcp.explore.pipeline import ReindexOptions, ReindexResult
 from ralph.mcp.explore._pipeline_writer import ReindexWriter
+from ralph.mcp.explore.pipeline import ReindexOptions, ReindexResult
 
 
 class ReindexRunner(Protocol):
@@ -197,7 +197,7 @@ def _run_hook(
             workspace_root,
             **{kwargs_name: options_value},
         )
-        result: ReindexResult = raw_result
+        result = cast("ReindexResult", raw_result)
     except Exception as exc:
         logger.warning(
             "Lifecycle refresh (%s) failed: %s",
@@ -223,7 +223,7 @@ def _run_hook(
 
 
 def claim_reindex(
-    store: "ExploreStore",
+    store: ExploreStore,
     workspace_root: Path,
     *,
     options: ReindexOptions,
@@ -244,9 +244,9 @@ def claim_reindex(
 
 __all__ = [
     "DEFAULT_HOOK_TIMEOUT_MS",
-    "claim_reindex",
     "LifecycleHookResult",
     "after_agent_refresh",
     "before_agent_refresh",
+    "claim_reindex",
     "is_execution_phase_for_refresh",
 ]
