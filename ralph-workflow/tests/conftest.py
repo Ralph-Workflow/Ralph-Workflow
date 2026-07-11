@@ -61,8 +61,21 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
     else:
         timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
 
+    # ``_completed`` is mutated by ``_handle_timeout`` and by the ``finally``
+    # block below to make the per-test SIGALRM contract race-safe. Once the
+    # test body returns, the handler must not raise even if a SIGALRM was
+    # already pending in the kernel queue while we tried to cancel the
+    # ITIMER_REAL timer. Storing the flag in a single-element list keeps the
+    # closure scoped to this test invocation; a plain ``bool`` would capture
+    # by value and could not be mutated from the nested handler.
+    _completed = [False]
+
     def _handle_timeout(signum: int, frame: FrameType | None) -> None:
         del signum, frame
+        # Race-safe: if cleanup already flipped ``_completed`` to ``True``,
+        # the SIGALRM is from a just-cancelled timer and must be swallowed.
+        if _completed[0]:
+            return
         raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
 
     previous_handler = signal.getsignal(signal.SIGALRM)
@@ -71,8 +84,39 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
     try:
         yield
     finally:
+        # Block SIGALRM FIRST so a SIGALRM that was already queued in the
+        # kernel cannot fire ``_handle_timeout`` during cleanup. ``sigwait``
+        # semantics on POSIX deliver the pending signal as soon as we
+        # unblock, so we then point the handler at ``SIG_IGN`` to drain it,
+        # and only then restore the previous handler. ``signal.SIG_IGN``
+        # discards the pending signal but does not terminate the worker,
+        # which is what we want for the spurious-timeout race under heavy
+        # pytest-xdist load. ``pthread_sigmask`` is a POSIX-only call; on
+        # Windows the per-test SIGALRM enforcement is delegated to the
+        # test-timeout plugin and the cleanup path here degrades to a
+        # best-effort cancel without the mask, which is the same behaviour
+        # the previous implementation provided.
+        _completed[0] = True
         signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_handler)
+        if hasattr(signal, "pthread_sigmask"):
+            # Block SIGALRM so any pending signal cannot fire
+            # ``_handle_timeout`` during cleanup. ``pthread_sigmask`` queues
+            # the pending signal while the mask blocks it.
+            signal.pthread_sigmask(signal.SIG_BLOCK, [signal.SIGALRM])
+            # Point the handler at SIG_IGN BEFORE unblocking so the queued
+            # SIGALRM is discarded at delivery time instead of falling
+            # through to ``previous_handler``. The default SIGALRM action
+            # (``SIG_DFL``) terminates the worker process, so a stray
+            # pending signal must not be allowed to reach it.
+            signal.signal(signal.SIGALRM, signal.SIG_IGN)
+            # Unblock: any pending SIGALRM is delivered to SIG_IGN and
+            # silently discarded.
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, [signal.SIGALRM])
+            # Now safe to restore the real previous handler for any
+            # subsequent SIGALRMs (none expected after timer cancellation).
+            signal.signal(signal.SIGALRM, previous_handler)
+        else:  # pragma: no cover - non-POSIX fallback
+            signal.signal(signal.SIGALRM, previous_handler)
 
 
 @pytest.fixture(autouse=True)
