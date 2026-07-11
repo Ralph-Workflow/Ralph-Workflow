@@ -1,0 +1,130 @@
+def neighbors(
+    store: ExploreStore,
+    *,
+    target: str,
+    relations: Sequence[str] | None = None,
+    direction: str = "both",
+    depth: int = 1,
+    limit: int = 25,
+) -> GraphResult:
+    """Return bounded-depth neighbors for ``target``.
+
+    Relations default to the full evidence-backed allowlist. ``depth``
+    is capped at 3. Ordering: confidence DESC, relation priority
+    ASC, then path ASC for stable output.
+    """
+    relations_actual = tuple(relations) if relations else _RELATION_PRIORITY
+    resolved_id, resolved_name = _resolve_target(store, target)
+    if resolved_id is None:
+        return GraphResult(
+            query_type="neighbors",
+            nodes=(),
+            edges=(),
+            missing_data=("target_unresolved",),
+            index_generation=_current_generation(store),
+            is_stale=False,
+            truncated=False,
+            metadata={"target": target},
+        )
+    bounded_depth = max(1, min(depth, 3))
+    bounded_limit = max(1, min(limit, 100))
+    visited_nodes: dict[str, GraphNode] = {}
+    visited_edges: list[GraphEdge] = []
+    truncated = False
+
+    def _node_for_symbol(symbol_id: str) -> GraphNode | None:
+        if symbol_id in visited_nodes:
+            return visited_nodes[symbol_id]
+        cur = store._conn.execute(
+            "SELECT * FROM symbols WHERE symbol_id = ?", (symbol_id,)
+        )
+        row: sqlite3.Row | None = cur.fetchone()
+        if row is None:
+            if symbol_id.startswith("file:"):
+                return _row_to_node_from_file(symbol_id, symbol_id[5:])
+            if symbol_id.startswith("unresolved:"):
+                label = symbol_id[len("unresolved:") :]
+                return GraphNode(
+                    id=symbol_id,
+                    kind="unresolved",
+                    label=label,
+                    path="",
+                    confidence=0.5,
+                    provenance="inferred",
+                    evidence_ids=(),
+                )
+            return None
+        node = _row_to_node_from_symbol(row)
+        visited_nodes[symbol_id] = node
+        return node
+
+    # Seed the frontier with the target itself.
+    frontier: list[str] = [resolved_id]
+    visited_ids: set[str] = {resolved_id}
+    for _current_depth in range(bounded_depth):
+        next_frontier: list[str] = []
+        for current_id in frontier:
+            if direction in {"out", "both"}:
+                for edge in _iter_outgoing(
+                    store, source_id=current_id, relations=relations_actual
+                ):
+                    visited_edges.append(_row_to_edge(edge))
+                    _node_for_symbol(edge.target_id)
+                    if edge.target_id not in visited_ids:
+                        visited_ids.add(edge.target_id)
+                        next_frontier.append(edge.target_id)
+                        if len(visited_nodes) >= bounded_limit:
+                            truncated = True
+                            break
+            if direction in {"in", "both"}:
+                for edge in _iter_incoming(
+                    store, target_id=current_id, relations=relations_actual
+                ):
+                    visited_edges.append(_row_to_edge(edge))
+                    _node_for_symbol(edge.source_id)
+                    if edge.source_id not in visited_ids:
+                        visited_ids.add(edge.source_id)
+                        next_frontier.append(edge.source_id)
+                        if len(visited_nodes) >= bounded_limit:
+                            truncated = True
+                            break
+            if len(visited_nodes) >= bounded_limit:
+                truncated = True
+                break
+        frontier = next_frontier
+        if not frontier or truncated:
+            break
+
+    nodes_list: list[GraphNode] = list(visited_nodes.values())
+
+    def _node_sort_key(n: GraphNode) -> tuple[float, int, str]:
+        return (-n.confidence, _relation_priority("defines"), n.path)
+
+    nodes_sorted = sorted(nodes_list, key=_node_sort_key)[:bounded_limit]
+    edges_list: list[GraphEdge] = list(visited_edges)
+
+    def _edge_sort_key(e: GraphEdge) -> tuple[float, int, str]:
+        return (-e.confidence, _relation_priority(e.relation), e.path)
+
+    edges_sorted = sorted(edges_list, key=_edge_sort_key)[:bounded_limit]
+    return GraphResult(
+        query_type="neighbors",
+        nodes=tuple(nodes_sorted),
+        edges=tuple(edges_sorted),
+        confidence=min((n.confidence for n in nodes_sorted), default=0.0),
+        provenance="extracted",
+        evidence_ids=tuple(e.evidence_id for e in edges_sorted if e.evidence_id),
+        missing_data=(),
+        index_generation=_current_generation(store),
+        is_stale=False,
+        truncated=truncated,
+        metadata={
+            "target": target,
+            "resolved_id": resolved_id,
+            "resolved_name": resolved_name,
+            "direction": direction,
+            "depth": bounded_depth,
+            "limit": bounded_limit,
+            "relations": list(relations_actual),
+        },
+    )

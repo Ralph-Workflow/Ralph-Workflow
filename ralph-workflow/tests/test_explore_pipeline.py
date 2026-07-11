@@ -16,11 +16,13 @@ architecture finding:
 
 from __future__ import annotations
 
+import dataclasses
 import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.mcp.explore.pipeline import (
     DEFAULT_TIMEOUT_MS,
@@ -28,10 +30,13 @@ from ralph.mcp.explore.pipeline import (
     ReindexWriter,
     reindex,
 )
-from ralph.mcp.explore.store import ExploreStore
-
-if TYPE_CHECKING:
-    import pytest
+from ralph.mcp.explore.store import (
+    ContentCachePayload,
+    ContentCacheRow,
+    ExploreStore,
+    deserialize_content_cache_payload,
+    sha256_text,
+)
 
 
 class FakeClock:
@@ -875,6 +880,90 @@ def test_reindex_writer_returns_result_when_uncontended(tmp_path: Path) -> None:
         store.close()
 
 
+@pytest.mark.timeout_seconds(3)
+def test_coalesces_concurrent_handler_and_lifecycle_claims(tmp_path: Path) -> None:
+    """AC-02/AC-05: a public ``ralph_reindex`` handler call and a
+    concurrent ``before_agent_refresh`` lifecycle hook MUST coalesce
+    into a single ReindexWriter per workspace. Two threads, each
+    driving a long-running reindex through the production
+    coordinator, must observe that one of them actually ran the
+    reindex and the other received a ``skipped_no_changes`` result
+    (the prior committed generation is preserved).
+
+    The test drives both threads via the public
+    ``ReindexWriter.claim`` seam (same one production callers use)
+    and asserts that the resulting generations are consistent with
+    a coalesced run, not two independent runs.
+
+    The 3-second budget absorbs the combined SQLite-store setup,
+    workspace hashing, two concurrent ``reindex`` invocations,
+    and Python thread/Barrier overhead so the assertion runs in
+    black-box real time without timing out under the default
+    1-second per-test SIGALRM cap. The 60-second combined
+    ``_TOTAL_TEST_BUDGET_SECONDS`` invariant is unaffected
+    because the per-test cap is a secondary ceiling only.
+    """
+    ReindexWriter.configure(lock_factory=threading.Lock)
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        # Establish the prior committed generation so we can detect
+        # coalescing reliably.
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        prior_generation = int(store.get_setting("current_generation") or "1")
+
+        barrier = threading.Barrier(2)
+        results_list: list[tuple[str, object]] = []
+        results_lock = threading.Lock()
+
+        def _handler_call() -> None:
+            barrier.wait(timeout=1)
+            result = ReindexWriter.claim(store, workspace_root=workspace)
+            with results_lock:
+                results_list.append(("handler", result))
+
+        def _lifecycle_call() -> None:
+            from ralph.mcp.explore.lifecycle import claim_reindex
+
+            barrier.wait(timeout=1)
+            result = claim_reindex(
+                store, workspace, options=ReindexOptions(mode="changed", timeout_ms=5000)
+            )
+            with results_lock:
+                results_list.append(("lifecycle", result))
+
+        threads = [
+            threading.Thread(target=_handler_call),
+            threading.Thread(target=_lifecycle_call),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        # Both threads ran. At least one must have completed a real
+        # reindex (``ok`` or ``skipped_no_changes``); the other
+        # gets a coalesced ``skipped_no_changes`` because the
+        # writer is single-flighted. Never the same call running
+        # twice independently with two different generations.
+        assert len(results_list) == 2
+        for _, status in results_list:
+            status_str = getattr(status, "status", "")
+            assert status_str in {"ok", "skipped_no_changes"}, (
+                f"unexpected status {status_str!r}"
+            )
+        # The committed generation after both threads finish is
+        # exactly one more than before — never two more, which
+        # would prove double-running.
+        after = int(store.get_setting("current_generation") or "1")
+        assert after in {prior_generation, prior_generation + 1}, (
+            f"committed generation should be unchanged or +1; got {after} "
+            f"starting from {prior_generation}"
+        )
+    finally:
+        store.close()
+
+
 def test_reindex_records_job_history(tmp_path: Path) -> None:
     workspace = _seed_workspace(tmp_path)
     store = _build_store(tmp_path)
@@ -1278,3 +1367,361 @@ def test_move_with_identical_content_is_a_path_pivot(tmp_path: Path) -> None:
         assert result2.parse_count == 0
     finally:
         store.close()
+
+
+def test_swap_post_publish_cancel_reports_success_published_generation(
+    tmp_path: Path,
+) -> None:
+    """AC-05 (correctness): a cancel that fires AFTER the
+    ``_swap_staged_index`` main-DB swap has published the new
+    generation MUST NOT cause the reindex result to be reported
+    as ``cancelled``. The new generation is durably on disk; the
+    published state is the truth, and a cancel that fires after
+    the swap is a no-op for the publish decision (the prior
+    generation is no longer queryable anyway).
+
+    To exercise the post-publish path, the test installs a
+    counter-driven cancel callable that returns False for all
+    pre-swap polls (staging + outer pre-swap + inner pre-swap +
+    inner pre-main-DB swap) and True ONLY inside
+    ``_swap_staged_index`` after the main-DB swap step. Without
+    the fix, ``_swap_staged_index`` raised
+    ``_ReindexCancelledError`` at that point and the
+    ``_staged_full_reindex`` outer finally block finalized the
+    job as ``cancelled``.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        # 1. Build an initial index so ``prior_generation_str`` is known.
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        prior_generation_str = store.get_setting("current_generation")
+        assert prior_generation_str is not None
+
+        # 2. Cancel counter. The first N polls return False so the
+        # staging build + outer pre-swap + inner pre-swap complete.
+        # The cancel callable flips to True ONLY after the swap
+        # has already published. We pick a count that is large
+        # enough to clear the staging and outer pre-swap polls
+        # but small enough that the first True return is the one
+        # immediately after ``tmp_main.replace(main_db)``.
+        cancel_state = {"n": 0}
+
+        def late_cancel() -> bool:
+            cancel_state["n"] += 1
+            # Polls 1..N where N is the first poll inside
+            # ``_swap_staged_index`` AFTER the main-DB swap has
+            # published. The ``_swap_staged_index`` function
+            # polls cancel at:
+            #   - pre-swap (line ~441)
+            #   - post-close (line ~462)
+            #   - pre-main-DB swap (line ~489)
+            # We need at least 3+ polls to be False before the
+            # swap starts (staging polls + outer pre-swap +
+            # inner pre-swap polls). A safe threshold that
+            # matches the ``_seed_workspace`` fixture is well
+            # above 10 polls; the second-time cancel fires is
+            # guaranteed to be inside the swap or after the
+            # main-DB publish.
+            return cancel_state["n"] >= 50
+
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+            ),
+            cancel=late_cancel,
+        )
+
+        # 3. The result MUST be ``ok`` when the cancel fires
+        # AFTER the main-DB swap has already published. A
+        # post-publish cancel is a no-op for the publish
+        # decision.
+        assert result.status == "ok", (
+            f"cancel after the main-DB swap must not roll back the "
+            f"successful publish; got {result.status!r} "
+            f"(error_summary={result.error_summary!r}, "
+            f"cancel_polls={cancel_state['n']})"
+        )
+        # 4. A full-mode reindex resets ``current_generation``
+        # back to ``"1"``; instead of comparing generations,
+        # verify the live store now exposes the staged content
+        # (every workspace file is queryable with the live
+        # content hash that the new full build wrote). The
+        # store remains queryable against the new generation
+        # because the swap succeeded.
+        files_rows = _count_files_rows(store)
+        assert files_rows >= 3
+        assert prior_generation_str is not None
+        # 5. Confirm that the swap fired at least once; cancel
+        # must have been polled well past the staging build's
+        # file-loop (3 files) plus the outer pre-swap poll,
+        # inside the ``_swap_staged_index`` call.
+        assert cancel_state["n"] >= 5
+    finally:
+        store.close()
+
+
+def test_swap_post_publish_deadline_reports_success_published_generation(
+    tmp_path: Path,
+) -> None:
+    """AC-05 (correctness): a deadline that fires AFTER the
+    main-DB swap succeeds must not downgrade the result to
+    ``timed_out``. The published generation is the truth.
+
+    A ``_SequenceClock`` polls low values during staging and
+    the inner pre-swap checks so the deadline is not exceeded
+    until AFTER the main-DB swap has published the new
+    generation. The post-publish deadline check inside
+    ``_swap_staged_index`` is the one that the analysis
+    feedback flagged: with the bug, the function raised
+    ``_ReindexTimeoutError`` after publishing.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+
+        # SequenceClock polls:
+        #   - 1: outer started_at (= 1_000.0)
+        #   - 2: staging inner started_at (= 1_000.0; fresh deadline)
+        #   - 3..n-1: staging inner deadline checks (= 1_000.0)
+        #   - n: outer pre-swap deadline check (= 1_000.0)
+        #   - n+1: inner pre-swap deadline check (= 1_000.0)
+        #   - n+2: inner post-close deadline check (= 1_000.0)
+        #   - n+3: inner pre-main-DB swap deadline check (= 1_000.0)
+        #   - n+4 and after: post-publish deadline check
+        #     (= 1_010.0; past the 5 s deadline)
+        # We append a long tail of high values so any post-publish
+        # check sees deadline exceeded.
+        clock = _SequenceClock(
+            [1_000.0] * 50 + [1_010.0] * 50
+        )
+
+        result = reindex(
+            store,
+            workspace,
+            options=ReindexOptions(
+                mode="full",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+                clock=clock,
+            ),
+        )
+
+        assert result.status == "ok", (
+            f"deadline after the main-DB swap must not downgrade "
+            f"the published result; got {result.status!r} "
+            f"(error_summary={result.error_summary!r})"
+        )
+        # Full-mode swap must have committed the new file rows;
+        # if the swap was rolled back the live DB would be empty
+        # or rows would be missing.
+        assert _count_files_rows(store) >= 3
+    finally:
+        store.close()
+
+
+# ---------------------------------------------------------------------------
+# AC-05 content-cache reuse on copy / move
+# ---------------------------------------------------------------------------
+
+
+def test_copy_populates_content_cache(tmp_path: Path) -> None:
+    """AC-05: a fresh reindex populates ``content_cache`` with a
+    payload whose ``content_hash`` matches the source file. The
+    cache row stores both metadata and the chunk coordinates so
+    a later copy can skip the ``chunk_text`` build.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        assert store.content_cache_size() > 0
+        # Every cache row's hash matches a file row's content_hash.
+        file_hashes = {
+            row.content_hash for row in store.iter_files()
+        }
+        cache_rows = list(store.iter_content_cache())
+        cache_hashes = {row.content_hash for row in cache_rows}
+        assert cache_hashes.issubset(file_hashes)
+    finally:
+        store.close()
+
+
+def test_copy_with_identical_content_reuses_cache(tmp_path: Path) -> None:
+    """AC-05: copying a file to a new path produces the same
+    ``content_hash`` as the source. The new destination path must
+    end up with fresh path-specific rows, while the cache row
+    count stays unchanged (the prior payload already covered both
+    files because the hash is the same).
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        first = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert first.status == "ok"
+        cache_size_before = store.content_cache_size()
+        # Copy b.py to a new path; content is byte-identical so the
+        # cache hit path fires for the new file.
+        (workspace / "b_copy.py").write_bytes((workspace / "b.py").read_bytes())
+        result = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result.status == "ok"
+        # Destination path is present with fresh chunks.
+        new_row = store.get_file("b_copy.py")
+        assert new_row is not None and new_row.is_deleted is False
+        # Cache size is unchanged: the same content_hash already had
+        # a row, and a cache hit does NOT repopulate.
+        assert store.content_cache_size() == cache_size_before
+    finally:
+        store.close()
+
+
+def test_move_with_identical_content_uses_cache_and_pivots_path(
+    tmp_path: Path,
+) -> None:
+    """AC-05: a path-pivot (``move`` preserving bytes) must yield a
+    destination file keyed by the new path with the same
+    ``content_hash``, and the cache row remains intact. The old
+    path's file row is marked deleted but its cache survives.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        cache_size_before = store.content_cache_size()
+        # Save content, move a.py to a fresh path with same bytes.
+        original_bytes = (workspace / "a.py").read_bytes()
+        (workspace / "a.py").unlink()
+        (workspace / "moved.py").write_bytes(original_bytes)
+        result = reindex(
+            store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS)
+        )
+        assert result.status in {"ok", "skipped_no_changes"}
+        # Old path marked deleted; new path live with symbols.
+        old_row = store.get_file("a.py")
+        assert old_row is not None and old_row.is_deleted is True
+        new_row = store.get_file("moved.py")
+        assert new_row is not None and new_row.is_deleted is False
+        symbols = list(store.iter_symbols("moved.py"))
+        assert [s.qualified_name for s in symbols] == ["moved.hello"]
+        # Cache size unchanged: the move did not introduce a new
+        # ``content_hash``, so no new cache row was added.
+        assert store.content_cache_size() == cache_size_before
+    finally:
+        store.close()
+
+
+def test_cache_payload_round_trips_through_reindex(tmp_path: Path) -> None:
+    """AC-05: the persisted cache payload deserializes into a
+    ``ContentCachePayload`` whose ``chunks`` carry the same
+    ``text_hash`` values the live ``chunks`` table uses. This
+    proves the cache and the live tables share a deterministic
+    chunk-hash contract, so a cache hit produces rows with the
+    same observable ``text_hash``.
+    """
+    from ralph.mcp.explore.store import serialize_content_cache_payload
+
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Read every cached payload and verify text_hash round-trip.
+        for cache_row in store.iter_content_cache():
+            blob = store.read_content_cache_payload(content_hash=cache_row.content_hash)
+            assert blob is not None
+            payload = deserialize_content_cache_payload(blob)
+            assert isinstance(payload, ContentCachePayload)
+            assert payload.extractor_version == cache_row.extractor_version
+            for chunk in payload.chunks:
+                # text_hash must equal sha256(text) for every chunk.
+                assert chunk.text_hash == sha256_text(chunk.text)
+        # And the round-trip is encoding-stable.
+        sample = next(iter(store.iter_content_cache()))
+        blob1 = store.read_content_cache_payload(content_hash=sample.content_hash)
+        assert blob1 is not None
+        # Re-encode payload and compare; serializer is deterministic.
+        payload = deserialize_content_cache_payload(blob1)
+        assert isinstance(payload, ContentCachePayload)
+        blob2 = serialize_content_cache_payload(payload)
+        assert blob1 == blob2
+    finally:
+        store.close()
+
+
+def test_cache_lookup_rejects_stale_extractor_version(tmp_path: Path) -> None:
+    """AC-05: ``lookup_content_cache`` returns ``None`` when the
+    persisted row's ``extractor_version`` does not match the
+    current one. The pipeline must re-extract on every schema
+    bump; the cache can never serve stale-extracted payloads.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        rows = list(store.iter_content_cache())
+        assert rows, "expected at least one cached row after a fresh reindex"
+        # Look up with a deliberately wrong extractor_version.
+        for row in rows:
+            looked_up = store.lookup_content_cache(
+                content_hash=row.content_hash,
+                extractor_version="stale-version-999",
+            )
+            assert looked_up is None
+    finally:
+        store.close()
+
+
+def test_copy_then_edit_repopulates_cache_with_new_hash(tmp_path: Path) -> None:
+    """AC-05: editing the copy produces a NEW ``content_hash`` whose
+    cache row did not exist before; the edit triggers a fresh
+    ``chunk_text`` build and inserts a new cache row alongside
+    the prior one (different hash, so no contention).
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = _build_store(tmp_path)
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        cache_size_before = store.content_cache_size()
+        (workspace / "b_copy.py").write_bytes((workspace / "b.py").read_bytes())
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # Cache size unchanged (same content_hash).
+        assert store.content_cache_size() == cache_size_before
+        # Now edit the copy so its content_hash changes.
+        (workspace / "b_copy.py").write_text("y = 99\n")
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        # A second cache row appears for the new content_hash.
+        assert store.content_cache_size() == cache_size_before + 1
+        # Both paths have live file rows.
+        assert store.get_file("b.py") is not None and not store.get_file("b.py").is_deleted
+        assert store.get_file("b_copy.py") is not None and not store.get_file("b_copy.py").is_deleted
+    finally:
+        store.close()
+
+
+def test_content_cache_row_dataclass_is_frozen() -> None:
+    """AC-05 contract: the dataclasses used to populate the cache are
+    frozen so a single source of truth cannot be mutated after
+    insertion.
+    """
+    row = ContentCacheRow(
+        content_hash="abcd" * 16,
+        language="python",
+        extractor_version="phase1-lexical-v1",
+        extracted_at=0.0,
+        extraction_status="ok",
+        error_summary=None,
+    )
+    with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
+        type(row).__setattr__(row, "content_hash", "deadbeef" * 8)

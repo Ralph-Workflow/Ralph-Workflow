@@ -86,6 +86,9 @@ class ExploreStoreLike(Protocol):
     def has_deleted_files(self) -> bool:
         ...
 
+    def count_deleted_files(self) -> int:
+        ...
+
     def iter_files(self) -> object:  # Iterator[FileRow]
         ...
 

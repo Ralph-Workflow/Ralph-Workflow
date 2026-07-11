@@ -54,13 +54,20 @@ if TYPE_CHECKING:
 
 
 # Default: capped ``auto`` — pytest-xdist auto-detects available CPU cores,
-# but we cap at 12 to avoid I/O contention on loaded machines while still
+# but we cap at 8 to avoid I/O contention on loaded machines while still
 # using the full machine on modern hardware. ``loadfile`` scheduling keeps
 # each test file on a single worker, which preserves test isolation and
-# reduces scheduling overhead compared to ``worksteal``. Override via
+# reduces scheduling overhead compared to ``worksteal``. The 8-worker
+# cap (down from 12) was selected because the per-test 1.0 s SIGALRM
+# budget established in ``tests/conftest.py`` could be exceeded by a
+# handful of fast-but-CPU-bound tests under full 12-worker saturation
+# on shared hosts with 12+ cores. 8 workers leaves enough scheduling
+# headroom that every kept test reliably finishes inside its 1 s window
+# while still keeping the combined wall-clock well under the
+# immutable 60 s combined budget (~30 s observed). Override via
 # PYTEST_WORKERS env var if needed.
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 12
+_MAX_PYTEST_WORKERS = 8
 
 
 def _pytest_workers() -> str:

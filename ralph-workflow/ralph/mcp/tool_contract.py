@@ -6,6 +6,8 @@ runtime, prompts, and provider integrations all derive from the same rules.
 
 from __future__ import annotations
 
+from collections import OrderedDict
+from threading import Lock
 from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.session import AgentSession
@@ -81,15 +83,47 @@ def visible_owned_tool_names(
     return expand_tool_names_with_aliases(tool_names)
 
 
-def visible_tool_names_for_capabilities(capability_ids: Iterable[str], *, drain: str) -> list[str]:
-    """Project capabilities onto the real runtime registry tool surface."""
+_VISIBLE_TOOL_NAME_CACHE_MAXSIZE = 32
+_VISIBLE_TOOL_NAMES_BY_PROFILE: OrderedDict[tuple[tuple[str, ...], str], tuple[str, ...]] = OrderedDict()  # bounded-accumulator-ok: FIFO cache is capped at _VISIBLE_TOOL_NAME_CACHE_MAXSIZE.
+_VISIBLE_TOOL_NAMES_LOCK = Lock()
+
+
+def _visible_tool_names_for_capabilities(
+    capability_ids: tuple[str, ...], *, drain: str
+) -> tuple[str, ...]:
+    """Build the immutable prompt catalog for one capability profile once."""
+    key = (capability_ids, drain)
+    with _VISIBLE_TOOL_NAMES_LOCK:
+        cached = _VISIBLE_TOOL_NAMES_BY_PROFILE.get(key)
+        if cached is not None:
+            _VISIBLE_TOOL_NAMES_BY_PROFILE.move_to_end(key)
+            return cached
+
     session = AgentSession(
         session_id=f"prompt-{drain}",
         run_id=f"prompt-{drain}",
         drain=drain,
         capabilities=set(capability_ids),
     )
-    return visible_owned_tool_names(session, MemoryWorkspace(), include_aliases=False)
+    catalog = tuple(visible_owned_tool_names(session, MemoryWorkspace(), include_aliases=False))
+    with _VISIBLE_TOOL_NAMES_LOCK:
+        _VISIBLE_TOOL_NAMES_BY_PROFILE[key] = catalog
+        _VISIBLE_TOOL_NAMES_BY_PROFILE.move_to_end(key)
+        if len(_VISIBLE_TOOL_NAMES_BY_PROFILE) > _VISIBLE_TOOL_NAME_CACHE_MAXSIZE:
+            _VISIBLE_TOOL_NAMES_BY_PROFILE.popitem(last=False)
+    return catalog
+
+
+def visible_tool_names_for_capabilities(capability_ids: Iterable[str], *, drain: str) -> list[str]:
+    """Project capabilities onto the real runtime registry tool surface.
+
+    Prompt rendering asks this question repeatedly for the same static capability
+    profile. Cache only the immutable catalog and return a fresh list so callers
+    cannot mutate the shared value.
+    """
+    return list(
+        _visible_tool_names_for_capabilities(tuple(sorted(set(capability_ids))), drain=drain)
+    )
 
 
 __all__ = [

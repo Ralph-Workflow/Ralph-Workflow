@@ -140,7 +140,50 @@ def file_read_specs() -> list[ToolSpec]:
                             "default": False,
                         },
                     },
-                    "required": ["path"],
+                    # AC-01: exactly-one selector alternative. The
+                    # handler accepts legacy ``path`` reads OR a single
+                    # indexed selector (``evidence_id`` / ``span_id`` /
+                    # ``symbol``). Mixed or empty selector sets are
+                    # rejected by schema validation BEFORE the handler
+                    # runs.
+                    "oneOf": [
+                        {
+                            "title": "Path selector",
+                            "required": ["path"],
+                            "properties": {
+                                "evidence_id": False,
+                                "span_id": False,
+                                "symbol": False,
+                            },
+                        },
+                        {
+                            "title": "Evidence selector",
+                            "required": ["evidence_id"],
+                            "properties": {
+                                "path": False,
+                                "span_id": False,
+                                "symbol": False,
+                            },
+                        },
+                        {
+                            "title": "Span selector",
+                            "required": ["span_id"],
+                            "properties": {
+                                "path": False,
+                                "evidence_id": False,
+                                "symbol": False,
+                            },
+                        },
+                        {
+                            "title": "Symbol selector",
+                            "required": ["symbol"],
+                            "properties": {
+                                "path": False,
+                                "evidence_id": False,
+                                "span_id": False,
+                            },
+                        },
+                    ],
                     "allOf": [
                         {"not": {"required": ["line_start", "offset"]}},
                         {"not": {"required": ["line_start", "limit"]}},
@@ -256,7 +299,23 @@ def file_read_specs() -> list[ToolSpec]:
                             "default": True,
                         },
                     },
-                    "required": ["paths"],
+                    # AC-01: exactly one of ``paths`` (legacy full-
+                    # path reads) or ``items`` (mixed selector batch
+                    # including indexed ``evidence_id``/``span_id``/
+                    # ``symbol`` entries) must be supplied; neither
+                    # alone nor both is a structural schema error.
+                    "oneOf": [
+                        {
+                            "title": "Legacy paths",
+                            "required": ["paths"],
+                            "properties": {"items": False},
+                        },
+                        {
+                            "title": "Mixed selector items",
+                            "required": ["items"],
+                            "properties": {"paths": False},
+                        },
+                    ],
                 },
                 required_capability=McpCapability.WORKSPACE_READ.value,
             ),

@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.config.mcp_models import WebSearchConfig
+from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -150,29 +151,35 @@ def _format_summary_envelope(
         snippet = r.snippet or ""
         if len(snippet) > SUMMARY_SNIPPET_MAX_CHARS:
             snippet = snippet[:SUMMARY_SNIPPET_MAX_CHARS] + "..."
+        # ponytail: ``snippet_budget_bytes`` records the actual
+        # UTF-8 bytes the agent would receive when this snippet is
+        # sent through JSON; counting characters would undercount
+        # multi-byte code points (emoji, CJK) by 2-4x and break
+        # byte-budget planning.
         cards.append(
             {
                 "title": r.title,
                 "url": r.url,
                 "snippet": snippet,
-                "snippet_budget_bytes": len(snippet),
+                "snippet_budget_bytes": len(snippet.encode("utf-8")),
             }
         )
-    envelope: dict[str, object] = {
-        "format": "summary",
-        "query_length": len(query),
-        "result_count": len(cards),
-        "results": cards,
-        "backend_chain_used": list(backend_chain_used),
-        "bytes_in": sum(
-            len((r.title or "").encode("utf-8"))
-            + len((r.url or "").encode("utf-8"))
-            + len((r.snippet or "").encode("utf-8"))
-            for r in results
-        ),
-    }
-    envelope["bytes_out"] = len(json.dumps(envelope).encode("utf-8"))
-    return json.dumps(envelope)
+    envelope = finalize_envelope_bytes_out(
+        {
+            "format": "summary",
+            "query_length": len(query),
+            "result_count": len(cards),
+            "results": cards,
+            "backend_chain_used": list(backend_chain_used),
+            "bytes_in": sum(
+                len((r.title or "").encode("utf-8"))
+                + len((r.url or "").encode("utf-8"))
+                + len((r.snippet or "").encode("utf-8"))
+                for r in results
+            ),
+        }
+    )
+    return json.dumps(envelope, separators=(",", ":"))
 
 
 def handle_web_search(

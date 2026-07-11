@@ -55,6 +55,7 @@ from ralph.mcp.explore.dirty_paths import (
     ExploreStoreLike,
     resolve_explore_index,
 )
+from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
 from ralph.mcp.tools._git_diff_params import GitDiffParams
 from ralph.mcp.tools._git_execution_error import ExecutionError
 from ralph.mcp.tools._git_log_params import GitLogParams
@@ -1086,14 +1087,15 @@ def _build_git_log_summary_payload(workspace: object, count: int) -> str:
         commits.append(
             {"short_sha": short_sha, "sha": short_sha, "subject": subject}
         )
-    envelope: dict[str, object] = {
-        "format": "summary",
-        "count": len(commits),
-        "commits": commits,
-        "bytes_in": len(raw_bytes),
-    }
-    envelope["bytes_out"] = len(json.dumps(envelope).encode("utf-8"))
-    return json.dumps(envelope)
+    envelope = finalize_envelope_bytes_out(
+        {
+            "format": "summary",
+            "count": len(commits),
+            "commits": commits,
+            "bytes_in": len(raw_bytes),
+        }
+    )
+    return json.dumps(envelope, separators=(",", ":"))
 
 
 def handle_git_show(
@@ -1208,22 +1210,23 @@ def _build_git_show_summary_payload(workspace: object, ref: str) -> str:
         # most likely a root commit; ``tree`` / ``blob`` are not
         # reachable through normal ``git show`` usage.
         kind = "commit"
-    envelope: dict[str, object] = {
-        "format": "summary",
-        "ref": ref,
-        "kind": kind,
-        "sha": sha,
-        "short_sha": short_sha,
-        "author_name": author_name,
-        "author_email": author_email,
-        "author_date": author_date,
-        "subject": subject,
-        "parents": parents,
-        "bytes_in": len(raw_bytes),
-        "truncated": False,
-    }
-    envelope["bytes_out"] = len(json.dumps(envelope).encode("utf-8"))
-    return json.dumps(envelope)
+    envelope = finalize_envelope_bytes_out(
+        {
+            "format": "summary",
+            "ref": ref,
+            "kind": kind,
+            "sha": sha,
+            "short_sha": short_sha,
+            "author_name": author_name,
+            "author_email": author_email,
+            "author_date": author_date,
+            "subject": subject,
+            "parents": parents,
+            "bytes_in": len(raw_bytes),
+            "truncated": False,
+        }
+    )
+    return json.dumps(envelope, separators=(",", ":"))
 
 
 __all__ = [

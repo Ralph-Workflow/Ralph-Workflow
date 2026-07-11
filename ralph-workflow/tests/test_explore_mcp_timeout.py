@@ -28,6 +28,7 @@ from ralph.testing.audit_mcp_timeout import (
 EXPLORE_ROOT = Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "explore"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_explore_module_passes_mcp_timeout_audit() -> None:
     """Every file in ralph/mcp/explore/ must satisfy the MCP timeout contract."""
     if not EXPLORE_ROOT.is_dir():

@@ -152,3 +152,62 @@ def test_format_summary_records_backend_chain(
     assert result.is_error is False
     envelope = json.loads(result.content[0].text)
     assert envelope["backend_chain_used"] == ["tavily"]
+
+
+# AC-06 / analysis-feedback regression: see the prior fix in
+# ``git_read.py``. ``_format_summary_envelope`` previously
+# computed ``bytes_out`` from the envelope BEFORE adding the
+# field, so the declared counter was smaller than the actually
+# returned text. This test pins the new convention.
+def test_format_summary_bytes_out_matches_actual_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_backend = MagicMock()
+    mock_backend.search.return_value = _GOOD_RESULTS
+    monkeypatch.setattr(
+        tool_websearch, "build_backend", lambda name, cfg: mock_backend
+    )
+    config = _make_config(backend="ddgs")
+    result = tool_websearch.handle_web_search(
+        _AllowedSession(),
+        _StubWorkspace(),
+        {"query": "python mcp", "format": "summary"},
+        web_search_config=config,
+    )
+    envelope = json.loads(result.content[0].text)
+    assert envelope["bytes_out"] == len(result.content[0].text.encode("utf-8"))
+
+
+# AC-06 / analysis-feedback regression: ``snippet_budget_bytes``
+# previously used ``len(snippet)`` (character count) instead of
+# ``len(snippet.encode("utf-8"))``. Multi-byte snippets (CJK,
+# emoji) undercounted by 2-4x and broke byte-budget planning.
+# This test pins the UTF-8 byte count convention with a 4-byte
+# emoji that spans 4 UTF-8 bytes per code point.
+def test_format_summary_snippet_budget_bytes_is_utf8(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    multibyte_snippet = "\U0001f600\U0001f601\U0001f602"
+    multibyte_results = [
+        SearchResult(
+            title="Unicode",
+            url="https://example.com/u",
+            snippet=multibyte_snippet,
+        ),
+    ]
+    mock_backend = MagicMock()
+    mock_backend.search.return_value = multibyte_results
+    monkeypatch.setattr(
+        tool_websearch, "build_backend", lambda name, cfg: mock_backend
+    )
+    config = _make_config(backend="ddgs")
+    result = tool_websearch.handle_web_search(
+        _AllowedSession(),
+        _StubWorkspace(),
+        {"query": "unicode", "format": "summary"},
+        web_search_config=config,
+    )
+    envelope = json.loads(result.content[0].text)
+    card = envelope["results"][0]
+    assert card["snippet_budget_bytes"] == len(multibyte_snippet.encode("utf-8"))
+    assert card["snippet_budget_bytes"] != len(multibyte_snippet)

@@ -93,7 +93,7 @@ def _freshness_payload_from_handle(
     except (TypeError, ValueError):
         generation_int = 0
     dirty = store.peek_dirty_paths()
-    deleted_count = sum(1 for row in store.iter_files() if row.is_deleted)
+    deleted_count = store.count_deleted_files()
     is_stale_value = bool(dirty) or deleted_count > 0
     # AC-04: reindex_in_progress is a typed optional attribute. Some
     # production handle types (older test doubles) do not expose it;
@@ -286,14 +286,26 @@ def handle_edit_file(
             span_id = target_param.get("span_id")
             symbol_name = target_param.get("symbol")
             symbol_path = target_param.get("path")
+            selector_count = sum(
+                isinstance(value, str) and bool(value)
+                for value in (evidence_id, span_id, symbol_name)
+            )
+            if selector_count != 1:
+                target_resolution_error = {
+                    "status": "ambiguous_target",
+                    "reason": "target_requires_exactly_one_selector",
+                    "target": target_param,
+                }
             resolved = None
             resolved_path: str | None = None
-            if isinstance(evidence_id, str) and evidence_id:
+            resolved_content_hash: str | None = None
+            if target_resolution_error is None and isinstance(evidence_id, str) and evidence_id:
                 row = store.get_evidence(evidence_id)
                 if row is not None:
                     resolved = (row.start_line, row.end_line)
                     resolved_path = row.path
-            elif isinstance(span_id, str) and span_id:
+                    resolved_content_hash = row.content_hash
+            elif target_resolution_error is None and isinstance(span_id, str) and span_id:
                 span_row = next(
                     (
                         s
@@ -305,7 +317,8 @@ def handle_edit_file(
                 if span_row is not None:
                     resolved = (span_row.start_line, span_row.end_line)
                     resolved_path = span_row.path
-            elif isinstance(symbol_name, str) and symbol_name:
+                    resolved_content_hash = span_row.content_hash
+            elif target_resolution_error is None and isinstance(symbol_name, str) and symbol_name:
                 # Symbol lookup is path-scoped when path is given;
                 # otherwise fall back to ambiguous_target if the
                 # symbol appears in more than one file.
@@ -333,6 +346,7 @@ def handle_edit_file(
                     if span_row is not None:
                         resolved = (span_row.start_line, span_row.end_line)
                         resolved_path = span_row.path
+                        resolved_content_hash = span_row.content_hash
                 elif len(scoped) > 1:
                     target_resolution_error = {
                         "status": "ambiguous_target",
@@ -366,6 +380,35 @@ def handle_edit_file(
                     "target": target_param,
                 }
             target_span = resolved
+            # AC-10: hash-check a resolved indexed evidence/span/symbol
+            # target against the current file before any mutation.
+            # ``expected_content_hash`` is the caller-supplied escape
+            # hatch; this implicit guard catches stale rows even when
+            # the caller forgot to pass the expected hash. The check
+            # only fires when the resolved row carries a content_hash
+            # recorded at extraction time AND the edit path matches
+            # the resolved path; otherwise the mismatch is benign.
+            if (
+                expected_hash is None
+                and resolved is not None
+                and resolved_path == normalized
+                and resolved_content_hash
+                and isinstance(resolved_content_hash, str)
+            ):
+                original_target_hash = _hash_file_text(workspace, normalized)
+                if (
+                    original_target_hash is not None
+                    and original_target_hash != resolved_content_hash
+                ):
+                    target_resolution_error = {
+                        "status": "stale_evidence",
+                        "reason": "content_changed",
+                        "path": normalized,
+                        "target": target_param,
+                        "resolved_content_hash": resolved_content_hash,
+                        "current_content_hash": original_target_hash,
+                    }
+                    target_span = None
 
     if target_resolution_error is not None:
         return ToolResult(
@@ -386,6 +429,8 @@ def handle_edit_file(
         new_text = edit.get("newText", "")
         if not isinstance(old_text, str):
             raise InvalidParamsError(f"Edit {i}: missing 'oldText' string")
+        if not old_text:
+            raise InvalidParamsError(f"Edit {i}: 'oldText' must be non-empty")
 
         idx = current_content.find(old_text)
         if idx == -1:
@@ -417,7 +462,7 @@ def handle_edit_file(
                 current_content, line_start, line_end
             )
             if match_strategy == "exact":
-                if idx != anchor_offset or (idx + len(old_text)) > anchor_end:
+                if idx != anchor_offset or (idx + len(old_text)) != anchor_end:
                     return ToolResult(
                         content=[
                             ToolContent.text_content(
@@ -448,17 +493,33 @@ def handle_edit_file(
                         ],
                         is_error=True,
                     )
-            elif (
-                match_strategy == "all_in_target"
-                and (idx < anchor_offset or (idx + len(new_text)) > anchor_end)
-            ):
+            elif match_strategy == "all_in_target":
+                # AC-10: every oldText occurrence must lie within the
+                # target span. The boundary is checked against
+                # ``len(old_text)`` (NOT ``len(new_text)``) so a caller
+                # cannot hide an over-broad oldText behind a short
+                # replacement. ``findallindex`` walks all
+                # non-overlapping occurrences; the first-occurrence
+                # index reported by ``find()`` is re-validated against
+                # the full occurrence list so a single edit cannot
+                # silently reach outside the span.
+                first_occurrence_idx = idx
+                old_len = len(old_text)
+                occurrence_starts: list[int] = []
+                search_from = 0
+                while True:
+                    found_idx = current_content.find(old_text, search_from)
+                    if found_idx == -1:
+                        break
+                    occurrence_starts.append(found_idx)
+                    search_from = found_idx + old_len
+                if not occurrence_starts:
                     return ToolResult(
                         content=[
                             ToolContent.text_content(
                                 _tool_json(
                                     {
-                                        "status": "ambiguous_target",
-                                        "reason": "match_strategy_all_in_target_violation",
+                                        "status": "no_match",
                                         "edit_index": i,
                                     }
                                 )
@@ -466,6 +527,34 @@ def handle_edit_file(
                         ],
                         is_error=True,
                     )
+                for occ_idx in occurrence_starts:
+                    if (
+                        occ_idx < anchor_offset
+                        or (occ_idx + old_len) > anchor_end
+                    ):
+                        return ToolResult(
+                            content=[
+                                ToolContent.text_content(
+                                    _tool_json(
+                                        {
+                                            "status": "ambiguous_target",
+                                            "reason": "match_strategy_all_in_target_violation",
+                                            "edit_index": i,
+                                            "first_match_index": first_occurrence_idx,
+                                            "first_match_in_target": (
+                                                anchor_offset
+                                                <= first_occurrence_idx
+                                                and (
+                                                    first_occurrence_idx + old_len
+                                                )
+                                                <= anchor_end
+                                            ),
+                                        }
+                                    )
+                                )
+                            ],
+                            is_error=True,
+                        )
         current_content = current_content[:idx] + new_text + current_content[idx + len(old_text) :]
         applied_edits.append({"oldText": old_text, "newText": new_text})
 
@@ -515,7 +604,14 @@ def handle_edit_file(
                 # / unsupported relations are marked as ``unknown``
                 # by the graph module.
                 try:
-                    from ralph.mcp.explore.graph import run_query
+                    # Import the dispatcher implementation rather
+                    # than going through the ``graph`` module so
+                    # mypy can see the return type as
+                    # ``GraphResult`` rather than ``Any``. The lazy
+                    # PEP 562 re-export on ``graph`` returns the
+                    # same callable; this direct import pins the
+                    # type for the variable annotation below.
+                    from ralph.mcp.explore._graph_query import run_query
 
                     impact_handle = handle_for_impact
                     impact_store_obj: ExploreStoreLike | None = (

@@ -26,14 +26,17 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 | File | Purpose |
 |------|---------|
 | `names.py` | Tool name constants (`RALPH_MCP_SERVER_NAME`, `READ_FILE_TOOL`, etc.) |
-| `bridge.py` | `ToolBridge` registry and `build_ralph_tool_registry` |
-| `workspace.py` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_media`, `handle_read_image`, etc. |
-| `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show` |
-| `exec.py` | `handle_exec_command`, `run_command` — bounded subprocess execution routed through the reusable sandbox pool; `_build_effective_deps` captures the thread-owned sink from `session.current_thread_tool_output_sink()` once at dispatch and wires it into `on_output_chunk` for SSE streaming |
+| `bridge/` | `ToolBridge` registry, spec helpers, lazy handler dispatchers, `_specs_file_read/_file_write/_file_list/_git_exec/_web_media/_artifacts/_explore.py` MCP schemas; canonical re-export `ralph.mcp.tools.bridge.tool_specs` |
+| `workspace/` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_media`, `handle_read_image`; sub-modules split by concern (`_read_handlers`, `_grep_handlers`, `_write_handlers`, `_list_ops`, `_media_handlers`, `_media_blocks`, `_media_io`, `_media_session`, `_utils`) |
+| `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show`; `format='summary'` compact cards for git_log/git_show |
+| `exec.py` | `handle_exec_command`, `run_command` — bounded subprocess execution routed through the reusable sandbox pool; `_build_effective_deps` captures the thread-owned sink from `session.current_thread_tool_output_sink()` once at dispatch and wires it into `on_output_chunk` for SSE streaming; `format='summary'` returns compact envelope plus replayable `ralph://exec/<spill-name>` handles |
+| `unsafe_exec.py` | `handle_unsafe_exec_command`, `handle_raw_exec_command` — unrestricted shell command execution in the real workspace; intentionally kept without `format='summary'` so the legacy behavior stays unchanged (audited as `keep`) |
 | `exec_sandbox.py` | `ExecSandboxManager` — lock-free bounded round-robin sandbox pool: per-workspace `_next_slot_index` counter selects slot `(counter % max_slots) + 1` without filesystem locks; `_active_slots` set prevents capacity recovery from deleting live slots; cleanup runs only when `base_dir > max_total_bytes` (capacity-gated, never under budget) |
 | `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. (canonical contract: `docs/agents/artifact-submission-contract.md`) |
 | `coordination.py` | `handle_report_progress`, `handle_declare_complete`, `handle_coordinate`, `handle_read_env` |
-| `websearch.py` | `handle_web_search` |
+| `websearch.py` | `handle_web_search` with `format='summary'` compact envelopes and UTF-8-accurate `snippet_budget_bytes` |
+| `webvisit.py` | `handle_visit_url` and `handle_download_url` with `format='metadata'` / `format='summary'` replayable resource handles |
+| `_envelope_bytes.py` | `finalize_envelope_bytes_out` shared helper for self-referential `bytes_out` envelopes used by git_read, websearch, webvisit, and read_image/read_media |
 
 **Canonical import path:** `from ralph.mcp.tools import ...` or `from ralph.mcp.tools.<module> import ...`
 
@@ -316,6 +319,11 @@ The following table lists the canonical import path for each public symbol:
 | `handle_submit_artifact`, `handle_submit_plan_section`, etc. | `from ralph.mcp.tools.artifact import ...` (canonical contract: `docs/agents/artifact-submission-contract.md`) |
 | `handle_report_progress`, `handle_declare_complete`, etc. | `from ralph.mcp.tools.coordination import ...` |
 | `handle_web_search` | `from ralph.mcp.tools.websearch import ...` |
+| `handle_visit_url`, `handle_download_url` | `from ralph.mcp.tools.webvisit import ...` |
+| `handle_unsafe_exec_command`, `handle_raw_exec_command` | `from ralph.mcp.tools.unsafe_exec import ...` |
+| `finalize_envelope_bytes_out` | `from ralph.mcp.tools._envelope_bytes import ...` |
+| `AUDIT_REGISTER`, `bench_results_to_measurements`, `refresh_audit_register` | `from ralph.mcp.explore.audit_register import ...` |
+| `ralph_index_status`, `ralph_reindex`, `ralph_graph` handlers | `from ralph.mcp.explore.handlers import ...` |
 | `HttpUpstreamClient`, `StdioUpstreamClient`, `make_upstream_client` | `from ralph.mcp.upstream.client import ...` |
 | `UpstreamMcpServer`, `load_upstream_mcp_servers`, etc. | `from ralph.mcp.upstream.config import ...` |
 | `UpstreamTool`, `UpstreamCallError` | `from ralph.mcp.upstream.models import ...` |
@@ -356,6 +364,19 @@ ralph/mcp/
 │   ├── plan.py
 │   ├── policy_outcomes.py
 │   └── store.py
+├── explore/             # Phase 0-4 indexed exploration substrate (SQLite + FTS5 + graph)
+│   ├── __init__.py
+│   ├── audit_register.py  # Per-tool outcome register (keep/add_argument/rework_internals/defer)
+│   ├── bench.py          # Scripted-flow benchmark harness, no LLM, deterministic Clock seam
+│   ├── dirty_paths.py    # Persisted queue + mark_dirty seam for write handlers
+│   ├── graph.py          # Bounded recursive-CTE graph queries for ralph_graph
+│   ├── handlers.py       # ralph_index_status / ralph_reindex / ralph_graph MCP handlers
+│   ├── lifecycle.py      # Before/after dev-fix session refresh hooks
+│   ├── pipeline.py       # Manifest/hash/generation lifecycle, idempotent reindex
+│   ├── ranking.py        # Deterministic score components for search_files and grep_files
+│   ├── store.py          # SQLite + FTS5 schema, manifest, evidence, tombstones, dirty_paths, jobs, settings
+│   ├── structure.py      # Python AST and Markdown heading/link extractors
+│   └── deferred_phases.py
 ├── protocol/            # Shared protocol plumbing (both server and client)
 │   ├── __init__.py
 │   ├── capability_mapping.py
@@ -372,14 +393,37 @@ ralph/mcp/
 │   └── runtime.py
 ├── tools/               # Ralph-as-MCP-server tools (Ralph → agents)
 │   ├── __init__.py
+│   ├── _envelope_bytes.py  # Shared self-referential bytes_out helper
 │   ├── artifact.py
-│   ├── bridge.py
+│   ├── bridge/             # ToolBridge registry, lazy dispatchers, spec helpers
+│   │   ├── __init__.py
+│   │   ├── _registry.py
+│   │   ├── _tool_bridge.py
+│   │   ├── _specs_file_read.py
+│   │   ├── _specs_file_write.py
+│   │   ├── _specs_file_list.py
+│   │   ├── _specs_git_exec.py
+│   │   ├── _specs_web_media.py
+│   │   ├── _specs_artifacts.py
+│   │   └── _specs_explore.py
 │   ├── coordination.py
 │   ├── exec.py
 │   ├── git_read.py
 │   ├── names.py
+│   ├── unsafe_exec.py
 │   ├── websearch.py
-│   └── workspace.py
+│   ├── webvisit.py        # handle_visit_url, handle_download_url
+│   └── workspace/         # handle_read_file, handle_write_file, etc., split into:
+│       ├── __init__.py
+│       ├── _read_handlers.py
+│       ├── _grep_handlers.py
+│       ├── _write_handlers.py
+│       ├── _list_ops.py
+│       ├── _media_handlers.py
+│       ├── _media_blocks.py
+│       ├── _media_io.py
+│       ├── _media_session.py
+│       └── _utils.py
 └── upstream/            # Ralph-as-MCP-client (Ralph → external servers)
     ├── __init__.py
     ├── agent_probe.py

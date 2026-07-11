@@ -32,11 +32,23 @@ Required deterministic questions (per the architecture finding):
 
 from __future__ import annotations
 
-import re
+import json
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Final, Protocol, cast
+
+from ralph.mcp.explore._bench_fixtures import (
+    ALL_FIXTURES,
+    EXTENDED_FIXTURES,
+    REQUIRED_BENCH_WORKFLOW_IDS,
+    REQUIRED_FIXTURES,
+)
+from ralph.mcp.explore._bench_types import (
+    BenchmarkCounters,
+    BenchmarkFixture,
+    BenchmarkResult,
+    ScriptedCall,
+)
 
 
 # Ponytail: fixed tokenizer. Counts ASCII whitespace-separated tokens
@@ -48,6 +60,30 @@ def _fixed_token_count(text: str) -> int:
     if not text:
         return 0
     return len(text.split())
+
+
+def _serialize_tool_spec(spec: object) -> str:
+    """Serialize a ToolDefinition-shaped object to a deterministic text.
+
+    The serialized form concatenates the tool ``name``, ``description``,
+    and ``input_schema`` (rendered as compact JSON) so the catalog
+    token counter sees the same bytes the agent sees at the
+    ``tools/list`` boundary. Unknown shapes fall back to ``str(spec)``
+    so a regression in the registry does not blank the transcript.
+    """
+    name_obj: object = getattr(spec, "name", None)
+    desc_obj: object = getattr(spec, "description", None)
+    schema_obj: object = getattr(spec, "input_schema", None)
+    if isinstance(name_obj, str) and isinstance(desc_obj, str):
+        if schema_obj is not None:
+            try:
+                schema_text = json.dumps(schema_obj, sort_keys=True, separators=(",", ":"))
+            except (TypeError, ValueError):
+                schema_text = str(schema_obj)
+        else:
+            schema_text = ""
+        return f"{name_obj} {desc_obj} {schema_text}".strip()
+    return str(spec)
 
 
 class Clock(Protocol):
@@ -64,65 +100,6 @@ class SystemClock:
         return time.monotonic()
 
 
-@dataclass(frozen=True, slots=True)
-class ScriptedCall:
-    """A single scripted tool call used by a benchmark fixture."""
-
-    tool: str
-    params: Mapping[str, object]
-    expected_evidence_ids: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class BenchmarkFixture:
-    """A single benchmark fixture (one question, two flows)."""
-
-    question_id: str
-    description: str
-    workspace_files: Mapping[str, str]
-    baseline_script: tuple[ScriptedCall, ...]
-    indexed_script: tuple[ScriptedCall, ...]
-    expected_evidence_ids: tuple[str, ...]
-    max_returned_bytes: int
-    max_tool_calls: int
-    requires_reindex: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class BenchmarkCounters:
-    """Single-script counters."""
-
-    tool_calls: int
-    returned_bytes: int
-    transcript_tokens: int
-    wall_time_seconds: float
-    stale_fallback_events: int
-    evidence_recall: float
-    evidence_precision: float
-
-
-@dataclass(frozen=True, slots=True)
-class BenchmarkResult:
-    """Result of a single benchmark question (one fixture)."""
-
-    question_id: str
-    baseline: BenchmarkCounters
-    indexed: BenchmarkCounters
-    parse_count: int = 0
-    changed_file_count: int = 0
-    index_storage_bytes: int = 0
-    notes: tuple[str, ...] = field(default_factory=tuple)
-
-    def bytes_savings_ratio(self) -> float:
-        """Return 1 - (indexed.bytes / baseline.bytes); 0.0 if baseline is 0."""
-        if self.baseline.returned_bytes == 0:
-            return 0.0
-        return 1.0 - (self.indexed.returned_bytes / self.baseline.returned_bytes)
-
-    def calls_within_budget(self, baseline_calls: int | None = None) -> bool:
-        baseline = baseline_calls or self.baseline.tool_calls
-        return self.indexed.tool_calls <= baseline
-
 
 def _tokenize_call(call: ScriptedCall) -> int:
     """Approximate token cost of a single tool call's description+input."""
@@ -133,18 +110,125 @@ def _tokenize_call(call: ScriptedCall) -> int:
 # Ponytail: tool description token accounting. Helper used by the
 # MCP-description gate to estimate per-tool schema tokens. Stable across
 # runs and deterministic.
+# Minimum tuple length for legacy ``(name, description)`` entries
+# that come through the catalog.
+_LEGACY_TUPLE_ARITY: Final[int] = 2
+
+
 def tool_catalog_tokens(
-    tool_descriptions: Iterable[tuple[str, str]],
+    tool_specs: Iterable[object],
 ) -> dict[str, int]:
-    """Estimate token cost per tool description.
+    """Estimate token cost per tool catalog entry.
 
     Args:
-        tool_descriptions: iterable of ``(tool_name, description)`` pairs.
+        tool_specs: iterable of either ``(tool_name, description)``
+            tuples (legacy API) or objects exposing ``name`` /
+            ``description`` / ``input_schema`` attributes (the public
+            ``ToolDefinition`` shape).
 
     Returns:
-        Mapping from tool name to its fixed-token count.
+        Mapping from tool name to its fixed-token count (over the
+        serialized name + description + JSON-schema text).
     """
-    return {name: _fixed_token_count(desc) for name, desc in tool_descriptions}
+    tokens: dict[str, int] = {}
+    for spec in tool_specs:
+        if isinstance(spec, tuple) and len(spec) >= _LEGACY_TUPLE_ARITY:
+            name = str(spec[0])
+            description_obj = spec[1]
+            if isinstance(description_obj, str):
+                description = description_obj
+            else:
+                # ``(name, ToolDefinition)`` form: reuse the spec
+                # serializer so the catalog sees the same text.
+                description = _serialize_tool_spec(description_obj)
+        else:
+            serialized = _serialize_tool_spec(spec)
+            name_obj: object = getattr(spec, "name", None)
+            name = str(name_obj) if isinstance(name_obj, str) else serialized
+            description = serialized
+        tokens[name] = _fixed_token_count(description)
+    return tokens
+
+
+def derive_visible_catalog(
+    mcp_config: object | None = None,
+) -> tuple[object, ...]:
+    """Return registered schema-bearing entries for visible Ralph-owned tools.
+
+    AC-12 (acceptance gate): the benchmark harness MUST derive the
+    visible catalog from the registered Ralph-owned registry/specs
+    so the ``catalog_tokens`` counter reflects the actual MCP
+    ``tools/list`` bytes an agent sees rather than a synthetic
+    fixture-provided constant. The default ``mcp_config`` argument
+    lets unit tests pin the catalog without instantiating a full
+    bridge; production callers should pass the active ``McpConfig``.
+
+    The helper is intentionally lazy: it imports the bridge and
+    ``McpConfig`` on first call so the harness module stays cheap
+    to import and unit tests can stub the bridge without
+    instantiating the full MCP server. The tuple is deterministic
+    across runs (the underlying ``tool_specs`` is deterministic)
+    so the gate tests can pin both the count and the order.
+    """
+    from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.tools.bridge._registry import tool_specs as _bridge_tool_specs
+
+    if mcp_config is None:
+        cfg: McpConfig = McpConfig()
+    else:
+        # ``mcp_config`` is declared as ``object | None`` so callers
+        # without a real bridge can pass a stub. The bridge
+        # ``tool_specs`` requires ``McpConfig``; the cast happens at
+        # the boundary where we know the caller satisfied it.
+        cfg = cast("McpConfig", mcp_config)
+    try:
+        specs = _bridge_tool_specs(cfg)
+    except Exception:
+        # ponytail: bridge loading must not break the harness when
+        # an optional upstream is missing or the bridge depends on
+        # environment-only configuration. Fall back to the canonical
+        # ``RalphToolName`` enum (the harness is part of the explore
+        # MCP and may load before the bridge is initialized in tests).
+        from ralph.mcp.tools.names import RalphToolName
+
+        return tuple(
+            (member.value, {"type": "object", "properties": {}})
+            for member in RalphToolName
+        )
+
+    catalog: list[object] = []
+    for spec in specs:
+        # ``spec`` is a ``ToolSpec`` instance with a ``ToolMetadata``
+        # payload; we access ``.definition`` lazily rather than
+        # importing the metadata class at module scope (TC001:
+        # type-only imports must live in a ``TYPE_CHECKING`` block).
+        metadata = spec.metadata
+        # ponytail: the bridge spec helper passes a ``RalphToolName``
+        # enum member rather than the raw string. ``StrEnum`` makes
+        # ``str(member)`` and ``member.value`` both return the
+        # canonical name, but the type annotation is ``str`` so we
+        # coerce defensively to keep the gate tests agnostic to
+        # which form the spec helper happens to use today.
+        # ponytail: ``metadata.definition.name`` is annotated
+        # ``str`` in ``ToolDefinition`` but the bridge passes a
+        # ``StrEnum`` member at runtime. ``str(...)`` produces
+        # the canonical name in either case (``StrEnum.__str__``
+        # returns the value), so the catalog tuple stays ``(str, str)``.
+        name = str(metadata.definition.name)
+        catalog.append((name, metadata.definition))
+    return tuple(catalog)
+
+
+def _registered_tool_definitions() -> tuple[object, ...]:
+    """Load registered definitions so default accounting includes schemas."""
+
+    from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.tools.bridge._registry import tool_specs as _bridge_tool_specs
+
+    try:
+        return tuple(spec.metadata.definition for spec in _bridge_tool_specs(McpConfig()))
+    except Exception:
+        return derive_visible_catalog()
 
 
 def _run_script(
@@ -185,8 +269,15 @@ def _run_script(
     returned_evidence_ids: set[str] = set()
     for call in script:
         result = executor(call)
-        # Tokenize the result payload deterministically.
-        text = str(result)
+        # Ponytail: count the executor's actual response payload, not the
+        # ``str(result)`` repr. The repr double-counts the JSON payload
+        # inside the dict's ``text`` field (the value is wrapped in quotes
+        # and the dict's keys/braces add overhead). Counting only the
+        # ``text`` value matches the research-gate definition of
+        # ``returned_bytes`` (the bytes the agent sees in the tool result)
+        # and keeps the synthetic 512/32-byte fixtures comparable.
+        text_obj = result.get("text", "")
+        text = text_obj if isinstance(text_obj, str) else str(result)
         returned_bytes += len(text.encode("utf-8"))
         transcript_tokens += _fixed_token_count(text)
         transcript_tokens += _tokenize_call(call)
@@ -204,10 +295,22 @@ def _run_script(
             for ev_id in returned_ids:
                 if isinstance(ev_id, str) and ev_id:
                     returned_evidence_ids.add(ev_id)
-    # AC-12 (full transcript): add the final-evidence-context tokens
-    # exactly once at the end so the total matches the research
-    # gate's "full scripted transcript" definition.
-    transcript_tokens += final_evidence_tokens
+    # AC-12 (full transcript): derive ``final_evidence_tokens`` from
+    # the actual returned evidence ids rather than a constant so
+    # the transcript reflects the compact evidence context the
+    # agent keeps after the flow ends. A ``final_evidence_tokens``
+    # argument may still be supplied as a lower bound or override;
+    # we use ``max(supplied, derived_from_returned)`` so callers
+    # can pin a known-context budget without losing the derived
+    # signal when more ids are actually returned.
+    derived_final_evidence_tokens = sum(
+        len(ev_id.split()) for ev_id in returned_evidence_ids
+    )
+    effective_final_evidence_tokens = max(
+        final_evidence_tokens,
+        derived_final_evidence_tokens,
+    )
+    transcript_tokens += effective_final_evidence_tokens
     wall_time = clock.now() - start
     # AC-12: evidence recall/precision are derived from the actual
     # returned evidence ids, not hardcoded. The benchmark harness
@@ -251,621 +354,12 @@ def _evidence_metrics(
     return recall, precision
 
 
-# --- Required fixture question builders ---
-
-_REQUIRED_LITERAL_TOKENS = re.compile(r"\w+", re.UNICODE)
-
-
-def _tokenize_literal(text: str) -> list[str]:
-    raw: list[str] = _REQUIRED_LITERAL_TOKENS.findall(text)
-    return raw
-
-
-def question_register_tool() -> BenchmarkFixture:
-    """Q1: find where a tool is registered."""
-    return BenchmarkFixture(
-        question_id="Q1",
-        description="Find where a tool is registered.",
-        workspace_files={
-            "ralph/mcp/tools/workspace/_read_handlers.py": (
-                "def handle_read_file(...):\n    ...\n"
-            ),
-            "ralph/mcp/tools/bridge/_registry.py": (
-                "from ralph.mcp.tools.bridge._specs_file_read import file_read_specs\n"
-                "def tool_specs(...):\n    specs.extend(file_read_specs())\n    return tuple(specs)\n"
-            ),
-        },
-        baseline_script=(
-            ScriptedCall(
-                tool="search_files",
-                params={"pattern": "**/*.py", "path": "ralph"},
-                expected_evidence_ids=("ev:register/registry",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "file_read_specs",
-                    "path": "ralph/mcp/tools/bridge",
-                },
-                expected_evidence_ids=("ev:register/registry",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={"path": "ralph/mcp/tools/bridge/_registry.py"},
-                expected_evidence_ids=("ev:register/registry",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "file_read_specs",
-                    "path": "ralph/mcp/tools/bridge",
-                    "use_index": "auto",
-                    "return_evidence_ids": True,
-                },
-                expected_evidence_ids=("ev:register/registry",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={
-                    "path": "ralph/mcp/tools/bridge/_registry.py",
-                    "evidence_id": "ev:register/registry",
-                },
-                expected_evidence_ids=("ev:register/registry",),
-            ),
-        ),
-        expected_evidence_ids=("ev:register/registry",),
-        max_returned_bytes=200_000,
-        max_tool_calls=4,
-    )
-
-
-def question_find_handler_tests() -> BenchmarkFixture:
-    """Q2: find likely tests for a handler."""
-    return BenchmarkFixture(
-        question_id="Q2",
-        description="Find likely tests for a handler.",
-        workspace_files={
-            "ralph/mcp/tools/workspace/_read_handlers.py": (
-                "def handle_read_file(...):\n    ...\n"
-            ),
-            "tests/test_mcp_read_handler.py": (
-                "def test_handle_read_file_basic():\n    ...\n"
-            ),
-        },
-        baseline_script=(
-            ScriptedCall(
-                tool="search_files",
-                params={"pattern": "**/test_*.py", "path": "tests"},
-                expected_evidence_ids=("ev:test/handle_read_file",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "handle_read_file",
-                    "path": "tests",
-                },
-                expected_evidence_ids=("ev:test/handle_read_file",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={"path": "tests/test_mcp_read_handler.py"},
-                expected_evidence_ids=("ev:test/handle_read_file",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "handle_read_file",
-                    "path": "tests",
-                    "use_index": "auto",
-                    "return_evidence_ids": True,
-                },
-                expected_evidence_ids=("ev:test/handle_read_file",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={
-                    "path": "tests/test_mcp_read_handler.py",
-                    "evidence_id": "ev:test/handle_read_file",
-                },
-                expected_evidence_ids=("ev:test/handle_read_file",),
-            ),
-        ),
-        expected_evidence_ids=("ev:test/handle_read_file",),
-        max_returned_bytes=200_000,
-        max_tool_calls=4,
-    )
-
-
-def question_estimate_rename_impact() -> BenchmarkFixture:
-    """Q3: estimate rename impact via lexical callers (Phase 1 lexical only).
-
-    AC-07: the Q3 fixture truth set includes both the caller
-    evidence (``ev:ref/open_index/pipeline``) and the test
-    evidence (``ev:ref/open_index/test``). A scripted indexed
-    flow that returns only the caller evidence does not recall
-    the test evidence; the gate is the only way to detect that
-    omission.
-    """
-    return BenchmarkFixture(
-        question_id="Q3",
-        description=(
-            "Estimate rename impact via lexical callers. Graph/semantic "
-            "impact is Phase 3 and tracked in deferred_phases.py."
-        ),
-        workspace_files={
-            "ralph/mcp/explore/store.py": "def open_index():\n    ...\n",
-            "ralph/mcp/explore/pipeline.py": "from ralph.mcp.explore.store import open_index\n",
-            "tests/test_explore_pipeline.py": (
-                "from ralph.mcp.explore.store import open_index\n"
-            ),
-        },
-        baseline_script=(
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "open_index",
-                    "path": "ralph",
-                },
-                expected_evidence_ids=("ev:ref/open_index/pipeline",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "open_index",
-                    "path": "tests",
-                },
-                expected_evidence_ids=("ev:ref/open_index/test",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={"path": "ralph/mcp/explore/pipeline.py"},
-                expected_evidence_ids=("ev:ref/open_index/pipeline",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "open_index",
-                    "path": "ralph",
-                    "use_index": "auto",
-                    "return_evidence_ids": True,
-                },
-                expected_evidence_ids=("ev:ref/open_index/pipeline",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={
-                    "pattern": "open_index",
-                    "path": "tests",
-                    "use_index": "auto",
-                    "return_evidence_ids": True,
-                },
-                expected_evidence_ids=("ev:ref/open_index/test",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={
-                    "path": "ralph/mcp/explore/pipeline.py",
-                    "evidence_id": "ev:ref/open_index/pipeline",
-                },
-                expected_evidence_ids=("ev:ref/open_index/pipeline",),
-            ),
-        ),
-        expected_evidence_ids=(
-            "ev:ref/open_index/pipeline",
-            "ev:ref/open_index/test",
-        ),
-        max_returned_bytes=300_000,
-        max_tool_calls=4,
-    )
-
-
-REQUIRED_FIXTURES: tuple[BenchmarkFixture, ...] = (
-    question_register_tool(),
-    question_find_handler_tests(),
-    question_estimate_rename_impact(),
-)
-
-
-# AC-12: the benchmark gate must cover graph queries, edit impact
-# preview, mutation freshness metadata, and the Phase 4 git/exec
-# remediation. Each new fixture is a positive control (the
-# indexed/path script must succeed and beat the baseline) AND a
-# negative control (the negative script is a known-bad pattern that
-# the gate must reject). The deferred_phases list keeps optional
-# ralph_explore out of the gate until benchmarked.
-
-
-def question_graph_callers() -> BenchmarkFixture:
-    """Q4: graph callers via ``ralph_graph query_type=neighbors``.
-
-    The positive script asks the graph for ``hello`` and reads
-    back the resulting evidence handles; the negative script
-    walks the directory tree and greps repeatedly to find the
-    same information, with a larger returned byte budget.
-    """
-    return BenchmarkFixture(
-        question_id="Q4",
-        description="Find callers of a symbol via ralph_graph.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="search_files",
-                params={"pattern": "**/*.py", "path": "ralph"},
-                expected_evidence_ids=("ev:graph/callers/hello",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={"pattern": "hello", "path": "ralph"},
-                expected_evidence_ids=("ev:graph/callers/hello",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={"pattern": "hello", "path": "tests"},
-                expected_evidence_ids=("ev:graph/callers/tests",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={"path": "ralph/tools/foo.py"},
-                expected_evidence_ids=("ev:graph/callers/hello",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="ralph_graph",
-                params={
-                    "query_type": "neighbors",
-                    "target": "ralph.tools.foo.hello",
-                    "depth": 2,
-                    "return_evidence_ids": True,
-                },
-                expected_evidence_ids=("ev:graph/callers/hello",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={
-                    "path": "ralph/tools/foo.py",
-                    "evidence_id": "ev:graph/callers/hello",
-                },
-                expected_evidence_ids=("ev:graph/callers/hello",),
-            ),
-        ),
-        expected_evidence_ids=("ev:graph/callers/hello",),
-        max_returned_bytes=200_000,
-        max_tool_calls=4,
-    )
-
-
-def question_edit_impact_preview() -> BenchmarkFixture:
-    """Q5: edit impact preview via ralph_graph impact.
-
-    The positive script asks for an impact preview (Phase 3
-    feature) and reads the targeted evidence handle. The negative
-    script greps for callers and re-reads the function body.
-    """
-    return BenchmarkFixture(
-        question_id="Q5",
-        description="Estimate rename impact via ralph_graph impact preview.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="grep_files",
-                params={"pattern": "hello", "path": "ralph"},
-                expected_evidence_ids=("ev:impact/hello",),
-            ),
-            ScriptedCall(
-                tool="grep_files",
-                params={"pattern": "hello", "path": "tests"},
-                expected_evidence_ids=("ev:impact/hello",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={"path": "ralph/tools/foo.py"},
-                expected_evidence_ids=("ev:impact/hello",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="ralph_graph",
-                params={
-                    "query_type": "impact",
-                    "target": "ralph.tools.foo.hello",
-                    "change_kind": "rename",
-                },
-                expected_evidence_ids=("ev:impact/hello",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={
-                    "path": "ralph/tools/foo.py",
-                    "evidence_id": "ev:impact/hello",
-                },
-                expected_evidence_ids=("ev:impact/hello",),
-            ),
-        ),
-        expected_evidence_ids=("ev:impact/hello",),
-        max_returned_bytes=200_000,
-        max_tool_calls=3,
-    )
-
-
-def question_mutation_freshness() -> BenchmarkFixture:
-    """Q6: mutation freshness metadata after a workspace write.
-
-    The positive script calls edit_file with a target selector and
-    expects the response to include the freshness metadata. The
-    negative script performs the same edit with a plain
-    oldText/newText and re-reads the file to confirm content.
-    """
-    return BenchmarkFixture(
-        question_id="Q6",
-        description="Mutation freshness metadata via edit_file target.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="edit_file",
-                params={
-                    "path": "ralph/tools/foo.py",
-                    "oldText": "return 'world'",
-                    "newText": "return 'world!'",
-                },
-                expected_evidence_ids=("ev:mutation/foo",),
-            ),
-            ScriptedCall(
-                tool="read_file",
-                params={"path": "ralph/tools/foo.py"},
-                expected_evidence_ids=("ev:mutation/foo",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="edit_file",
-                params={
-                    "path": "ralph/tools/foo.py",
-                    "oldText": "return 'world'",
-                    "newText": "return 'world!'",
-                    "reindex": "auto",
-                    "return_evidence_updates": True,
-                },
-                expected_evidence_ids=("ev:mutation/foo",),
-            ),
-        ),
-        expected_evidence_ids=("ev:mutation/foo",),
-        max_returned_bytes=200_000,
-        max_tool_calls=2,
-    )
-
-
-def question_phase4_git_status_compact() -> BenchmarkFixture:
-    """Q7: Phase 4 git_status compact output.
-
-    The positive script requests ``format=compact``; the negative
-    script uses the default (raw) format and pays a larger byte
-    budget. The benchmark gate requires the compact form to use
-    fewer bytes than the default at parity call count.
-    """
-    return BenchmarkFixture(
-        question_id="Q7",
-        description="Phase 4 git_status compact output.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="git_status",
-                params={},
-                expected_evidence_ids=("ev:git/compact/status",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="git_status",
-                params={"format": "compact"},
-                expected_evidence_ids=("ev:git/compact/status",),
-            ),
-        ),
-        expected_evidence_ids=("ev:git/compact/status",),
-        max_returned_bytes=80_000,
-        max_tool_calls=2,
-    )
-
-
-def question_phase4_git_diff_summary() -> BenchmarkFixture:
-    """Q8: Phase 4 git_diff summary output."""
-    return BenchmarkFixture(
-        question_id="Q8",
-        description="Phase 4 git_diff summary output.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="git_diff",
-                params={},
-                expected_evidence_ids=("ev:git/summary/diff",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="git_diff",
-                params={"format": "summary"},
-                expected_evidence_ids=("ev:git/summary/diff",),
-            ),
-        ),
-        expected_evidence_ids=("ev:git/summary/diff",),
-        max_returned_bytes=80_000,
-        max_tool_calls=2,
-    )
-
-
-def question_phase4_exec_summary_spill() -> BenchmarkFixture:
-    """Q9: Phase 4 exec summary output with replayable spill handles."""
-    return BenchmarkFixture(
-        question_id="Q9",
-        description="Phase 4 exec summary output.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="exec",
-                params={"command": "make verify"},
-                expected_evidence_ids=("ev:exec/spill/stdout",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="exec",
-                params={"command": "make verify", "format": "summary"},
-                expected_evidence_ids=("ev:exec/spill/stdout",),
-            ),
-        ),
-        expected_evidence_ids=("ev:exec/spill/stdout",),
-        max_returned_bytes=80_000,
-        max_tool_calls=2,
-    )
-
-
-def question_phase4_git_log_summary() -> BenchmarkFixture:
-    """Q10: Phase 4 ``git_log`` ``format='summary'``."""
-    return BenchmarkFixture(
-        question_id="Q10",
-        description="Phase 4 git_log summary output.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="git_log",
-                params={"count": 5},
-                expected_evidence_ids=("ev:git/summary/log",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="git_log",
-                params={"count": 5, "format": "summary"},
-                expected_evidence_ids=("ev:git/summary/log",),
-            ),
-        ),
-        expected_evidence_ids=("ev:git/summary/log",),
-        max_returned_bytes=80_000,
-        max_tool_calls=2,
-    )
-
-
-def question_phase4_git_show_summary() -> BenchmarkFixture:
-    """Q11: Phase 4 ``git_show`` ``format='summary'``."""
-    return BenchmarkFixture(
-        question_id="Q11",
-        description="Phase 4 git_show summary output.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="git_show",
-                params={"ref": "HEAD"},
-                expected_evidence_ids=("ev:git/summary/show",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="git_show",
-                params={"ref": "HEAD", "format": "summary"},
-                expected_evidence_ids=("ev:git/summary/show",),
-            ),
-        ),
-        expected_evidence_ids=("ev:git/summary/show",),
-        max_returned_bytes=80_000,
-        max_tool_calls=2,
-    )
-
-
-def question_phase4_web_search_summary() -> BenchmarkFixture:
-    """Q12: Phase 4 ``web_search`` ``format='summary'``."""
-    return BenchmarkFixture(
-        question_id="Q12",
-        description="Phase 4 web_search summary output.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="web_search",
-                params={"query": "ralph workflow"},
-                expected_evidence_ids=("ev:web/search/summary",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="web_search",
-                params={"query": "ralph workflow", "format": "summary"},
-                expected_evidence_ids=("ev:web/search/summary",),
-            ),
-        ),
-        expected_evidence_ids=("ev:web/search/summary",),
-        max_returned_bytes=80_000,
-        max_tool_calls=2,
-    )
-
-
-def question_phase4_read_media_metadata() -> BenchmarkFixture:
-    """Q13: Phase 4 ``read_media`` ``format='metadata'``."""
-    return BenchmarkFixture(
-        question_id="Q13",
-        description="Phase 4 read_media metadata output.",
-        workspace_files={},
-        baseline_script=(
-            ScriptedCall(
-                tool="read_media",
-                params={"path": "report.pdf"},
-                expected_evidence_ids=("ev:media/metadata/report",),
-            ),
-        ),
-        indexed_script=(
-            ScriptedCall(
-                tool="read_media",
-                params={"path": "report.pdf", "format": "metadata"},
-                expected_evidence_ids=("ev:media/metadata/report",),
-            ),
-        ),
-        expected_evidence_ids=("ev:media/metadata/report",),
-        max_returned_bytes=80_000,
-        max_tool_calls=2,
-    )
-
-
-# Ponytail: every workflow that AC-12 requires a benchmark for is a
-# fixture here. ``_REQUIRED_BENCH_WORKFLOW_IDS`` is the closed
-# vocabulary the gate test asserts; adding a workflow is a single
-# entry in both places.
-REQUIRED_BENCH_WORKFLOW_IDS: tuple[str, ...] = (
-    "Q1",
-    "Q2",
-    "Q3",
-    "Q4",  # graph callers
-    "Q5",  # edit impact preview
-    "Q6",  # mutation freshness
-    "Q7",  # Phase 4 git_status compact
-    "Q8",  # Phase 4 git_diff summary
-    "Q9",  # Phase 4 exec summary
-    "Q10",  # Phase 4 git_log summary
-    "Q11",  # Phase 4 git_show summary
-    "Q12",  # Phase 4 web_search summary
-    "Q13",  # Phase 4 read_media metadata
-)
-
-EXTENDED_FIXTURES: tuple[BenchmarkFixture, ...] = (
-    question_graph_callers(),
-    question_edit_impact_preview(),
-    question_mutation_freshness(),
-    question_phase4_git_status_compact(),
-    question_phase4_git_diff_summary(),
-    question_phase4_exec_summary_spill(),
-    question_phase4_git_log_summary(),
-    question_phase4_git_show_summary(),
-    question_phase4_web_search_summary(),
-    question_phase4_read_media_metadata(),
-)
-
-ALL_FIXTURES: tuple[BenchmarkFixture, ...] = (
-    *REQUIRED_FIXTURES,
-    *EXTENDED_FIXTURES,
-)
+# --- Fixture question builders (Q1-Q13) ---
+# Ponytail: fixtures live in :mod:`ralph.mcp.explore._bench_fixtures`
+# so this harness stays under the per-file line ceiling. Re-export the
+# question-builder functions and the workflow registry so
+# ``from ralph.mcp.explore.bench import REQUIRED_FIXTURES`` etc.
+# remains source-compat.
 
 
 def run_benchmark(
@@ -875,8 +369,9 @@ def run_benchmark(
     indexed_executor: Callable[[ScriptedCall], Mapping[str, object]],
     clock: Clock | None = None,
     expected_evidence_ids: Sequence[str] | None = None,
-    catalog_tokens: int = 0,
-    final_evidence_tokens: int = 0,
+    catalog_tokens: int | None = None,
+    final_evidence_tokens: int | None = None,
+    visible_tool_catalog: Sequence[object] | None = None,
 ) -> BenchmarkResult:
     """Run a fixture's baseline and indexed flows and produce a result.
 
@@ -909,20 +404,38 @@ def run_benchmark(
     transcript" definition. Defaults of ``0`` keep the harness
     back-compat with callers that pass only the script.
     """
+    # AC-12: derive catalog + final-evidence tokens from the
+    # fixture itself when the caller did not supply them. The
+    # fixture owns these constants; the harness does NOT rely on
+    # optional zero defaults for required transcript pieces.
+    derived_catalog_tokens = (
+        catalog_tokens
+        if catalog_tokens is not None
+        else (
+            sum(tool_catalog_tokens(visible_tool_catalog).values())
+            if visible_tool_catalog is not None
+            else sum(tool_catalog_tokens(_registered_tool_definitions()).values())
+        )
+    )
+    derived_final_evidence_tokens = (
+        final_evidence_tokens
+        if final_evidence_tokens is not None
+        else fixture.final_evidence_tokens
+    )
     clk = clock or SystemClock()
     baseline_counters, _baseline_returned_ids = _run_script(
         fixture.baseline_script,
         executor=baseline_executor,
         clock=clk,
-        catalog_tokens=catalog_tokens,
-        final_evidence_tokens=final_evidence_tokens,
+        catalog_tokens=derived_catalog_tokens,
+        final_evidence_tokens=derived_final_evidence_tokens,
     )
     indexed_counters, indexed_returned_ids = _run_script(
         fixture.indexed_script,
         executor=indexed_executor,
         clock=clk,
-        catalog_tokens=catalog_tokens,
-        final_evidence_tokens=final_evidence_tokens,
+        catalog_tokens=derived_catalog_tokens,
+        final_evidence_tokens=derived_final_evidence_tokens,
     )
     truth = (
         tuple(expected_evidence_ids)
@@ -945,3 +458,17 @@ def run_benchmark(
         indexed=indexed_counters,
         notes=(fixture.description,),
     )
+
+
+
+__all__ = [
+    "ALL_FIXTURES",
+    "EXTENDED_FIXTURES",
+    "REQUIRED_BENCH_WORKFLOW_IDS",
+    "REQUIRED_FIXTURES",
+    "BenchmarkFixture",
+    "BenchmarkResult",
+    "ScriptedCall",
+    "derive_visible_catalog",
+    "run_benchmark",
+]

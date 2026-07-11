@@ -3,25 +3,30 @@
 # pytest-xdist worker count for parallel test execution.
 #
 # Default: ``auto`` — uses all available CPU cores up to the cap in
-# ralph/test_suites.py (_MAX_PYTEST_WORKERS = 12). On a 12-core machine
-# this is 12 workers; on smaller hosts fewer. The earlier default of 4
+# ralph/test_suites.py (_MAX_PYTEST_WORKERS = 8). On an 8+-core machine
+# this is 8 workers; on smaller hosts fewer. The earlier default of 4
 # was safe on the legacy ~10k test corpus but is borderline once a
 # feature branch adds a few hundred tests (per-tick wall-clock with 4
 # workers is ~49-55s pytest + ~4s Python startup overhead, which
-# intermittently exceeds 60s). With auto (12) workers the pytest run
-# drops to ~42-49s with the same per-test 1s timeout, leaving ample
-# headroom under the 60s combined budget. On systems with 12+ fast
-# cores, ``auto`` (capped at 12 by ralph.test_suites) is also
-# acceptable, but may starve some tests at the 1s per-test cap;
-# override as needed:
+# intermittently exceeds 60s). The cap moved from 12 down to 8 because
+# the per-test 1.0 s SIGALRM budget established in ``tests/conftest.py``
+# was occasionally exceeded by fast-but-CPU-bound tests under full
+# 12-worker saturation on shared hosts with 12+ cores. 8 workers leaves
+# enough scheduling headroom that every kept test reliably finishes
+# inside its 1 s window while keeping the combined wall-clock well under
+# the 60 s combined budget (~30 s observed). On systems with 12+ fast
+# cores, ``auto`` (capped at 8 by ralph.test_suites) is the safe
+# default; bump workers manually only after measuring the impact:
 #   PYTEST_WORKERS=auto make test
-#   PYTEST_WORKERS=8 make test
+#   PYTEST_WORKERS=12 make test   # may exceed 1s per-test under load
 #   PYTEST_WORKERS=2  make test   # legacy default — may exceed budget
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
 # is a SECONDARY cap only. PYTEST_WORKERS is parallelism, not a budget
-# extension — increasing parallelism keeps wall-clock under the budget.
+# extension — increasing parallelism keeps wall-clock under the budget,
+# but past a saturation point it starves individual workers past the
+# per-test 1 s SIGALRM cap instead.
 PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)

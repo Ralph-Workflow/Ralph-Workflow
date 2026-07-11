@@ -15,6 +15,8 @@ from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.completion_signals import is_artifact_submitted
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
@@ -73,6 +75,7 @@ def test_commit_plumbing_never_directly_writes_receipt_or_sentinel() -> None:
         assert not matches, f"Found direct write to protected path matching {pattern}: {matches}"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
     """Clear run receipts is called at the start of _run_commit_agent_attempt_with_recovery.
 

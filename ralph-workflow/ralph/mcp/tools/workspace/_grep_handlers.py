@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
 from ralph.mcp.explore.ranking import (
-    PHASE2_DISABLED_NOTE,
+    INDEXED_COMPONENT_NOT_AVAILABLE,
     fts_query_for,
     is_fts_eligible,
     score_grep_match,
@@ -140,12 +140,15 @@ def _indexed_matches(
         )
         snippet_str = str(snippet_value) if snippet_value is not None else ""
         evidence_id = _ensure_grep_evidence_row(store, chunk_id_str)
+        evidence_row = store.get_evidence(evidence_id)
+        line = evidence_row.start_line if evidence_row is not None else 0
         matches.append(
             {
                 "path": path_str,
-                "line": None,
+                "line": line,
                 "text": snippet_str,
                 "evidence_id": evidence_id,
+                "chunk_id": chunk_id_str,
             }
         )
     return matches
@@ -489,13 +492,24 @@ def handle_grep_files(
     store: ExploreStore | None = store_value
 
     # Determine if FTS is eligible.
-    eligible = is_fts_eligible(pattern, is_regex=is_regex, whole_word=whole_word)
+    # AC-04 (case-sensitive parity): the FTS5 ``unicode61`` tokenizer
+    # is case-INsensitive by default; we pass ``case_sensitive``
+    # through to ``is_fts_eligible`` so an explicit case-sensitive
+    # search falls back to live grep instead of silently returning a
+    # case-INsensitive FTS match.
+    eligible = is_fts_eligible(
+        pattern,
+        is_regex=is_regex,
+        whole_word=whole_word,
+        case_sensitive=case_sensitive,
+    )
     index_used = False
     fallback_reason: str | None = None
     from ralph.mcp.explore.ranking import RankedItem
 
     ranked_items: list[RankedItem] = []
     indexed_match_rows: list[dict[str, object]] = []
+    graph_context: list[dict[str, object]] = []
 
     if use_index != "never" and store is not None and eligible:
         # AC-02 indexed-grep filter parity: push path/include/exclude
@@ -511,11 +525,6 @@ def handle_grep_files(
             exclude_globs=exclude,
         )
         index_used = True
-        if not return_evidence_ids:
-            # Strip the explicit evidence_id from each match when the
-            # caller did not request it. The handle is still on disk.
-            for row in indexed_match_rows:
-                row.pop("evidence_id", None)
         # Snippet cap.
         if max_snippet_lines and max_snippet_lines > 0:
             for row in indexed_match_rows:
@@ -572,13 +581,34 @@ def handle_grep_files(
             ranked_items = sort_ranked(ranked_items)
             # Apply the same order to the match rows.
             order = {item.key: idx for idx, item in enumerate(ranked_items)}
-            indexed_match_rows.sort(
-                key=lambda r: order.get(
-                    f"{r.get('path', '')}:{r.get('line', '')}:"
-                    f"{r.get('evidence_id', '')}",
-                    len(order),
-                )
-            )
+            def _indexed_order(row: dict[str, object]) -> int:
+                line_obj = row.get("line")
+                line_key = line_obj if isinstance(line_obj, int) else 0
+                key = f"{row.get('path', '')}:{line_key}:{row.get('evidence_id', '')}"
+                return order.get(key, len(order))
+
+            indexed_match_rows.sort(key=_indexed_order)
+        if include_graph_context:
+            for row in indexed_match_rows[:limit]:
+                evidence_id = row.get("evidence_id")
+                if not isinstance(evidence_id, str):
+                    continue
+                evidence = store.get_evidence(evidence_id)
+                if evidence is not None:
+                    graph_context.append(
+                        {
+                            "evidence_id": evidence_id,
+                            "path": evidence.path,
+                            "start_line": evidence.start_line,
+                            "end_line": evidence.end_line,
+                        }
+                    )
+        # Ranking retains evidence/chunk identity internally; only the
+        # public response hides identifiers the caller did not request.
+        for row in indexed_match_rows:
+            row.pop("chunk_id", None)
+            if not return_evidence_ids:
+                row.pop("evidence_id", None)
     elif use_index == "always" and not eligible:
         raise InvalidParamsError(
             "use_index='always' requires an FTS-eligible pattern; "
@@ -622,8 +652,13 @@ def handle_grep_files(
             "skipped_files": skipped,
             "ranked_by": rank_by,
             "dedupe_by_symbol": dedupe_by_symbol,
+            # Live fallback: the explore index is not attached, so
+            # graph context is not available. The structured reason
+            # mirrors the indexed path's missing-data value so
+            # callers can audit the absence.
             "graph_context": (
-                [] if include_graph_context else "disabled:phase2"
+                [] if include_graph_context
+                else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
             ),
         }
         if return_evidence_ids:
@@ -650,7 +685,9 @@ def handle_grep_files(
         "ranked_by": rank_by,
         "dedupe_by_symbol": dedupe_by_symbol,
         "graph_context": (
-            [] if include_graph_context else f"disabled:{PHASE2_DISABLED_NOTE}"
+            graph_context
+            if include_graph_context
+            else f"graph_context:{INDEXED_COMPONENT_NOT_AVAILABLE}"
         ),
         "score_reasons": (
             [item.reasons for item in ranked_items]

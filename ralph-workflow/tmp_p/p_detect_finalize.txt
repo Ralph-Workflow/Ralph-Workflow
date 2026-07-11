@@ -1,0 +1,56 @@
+def _detect_language(path: str) -> str | None:
+    """Best-effort language detection for the file row."""
+    lower = path.lower()
+    if lower.endswith(".py"):
+        return "python"
+    if lower.endswith(".md") or lower.endswith(".markdown"):
+        return "markdown"
+    if lower.endswith(".json"):
+        return "json"
+    if lower.endswith(".toml"):
+        return "toml"
+    if lower.endswith(".yaml") or lower.endswith(".yml"):
+        return "yaml"
+    if lower.endswith(".sh") or lower.endswith(".bash"):
+        return "shell"
+    return None
+
+
+def _finalize(
+    store: ExploreStore,
+    state: _ReindexState,
+    *,
+    status: str,
+    now_fn: Callable[[], float],
+    error_summary: str | None = None,
+) -> ReindexResult:
+    """Write the job history row and return the result."""
+    finished_at = now_fn()
+    error = error_summary if error_summary is not None else state.error_summary
+    store.record_job(
+        job_id=state.job_id,
+        generation=int(store.get_setting("current_generation") or 0),
+        status=status,
+        started_at=state.started_at,
+        finished_at=finished_at,
+        files_seen=len(state.changed_paths) + len(state.failed_paths),
+        files_changed=len(state.changed_paths),
+        files_failed=len(state.failed_paths),
+        error_summary=error,
+        now=finished_at,
+    )
+    return ReindexResult(
+        job_id=state.job_id,
+        generation=int(store.get_setting("current_generation") or 0),
+        status=status,
+        changed_files=tuple(state.changed_paths),
+        failed_files=tuple(state.failed_paths),
+        parse_count=state.parse_count,
+        dirty_paths_count=state.dirty_paths_count,
+        elapsed_seconds=finished_at - state.started_at,
+        error_summary=error,
+    )
+
+
+# --- Single-writer guard ---------------------------------------------------
+

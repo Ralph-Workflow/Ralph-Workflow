@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Final, Protocol, cast
 if TYPE_CHECKING:
     from ralph.mcp.explore.store import ExploreStore
 
+from ralph.mcp.explore._pipeline_writer import ReindexWriter
 from ralph.mcp.explore.pipeline import ReindexOptions, ReindexResult
 
 
@@ -175,33 +176,28 @@ def _run_hook(
             resolved_runner: object = handle_runner_obj()
             runner_value = cast("ReindexRunner", resolved_runner)
     if runner_value is None:
-        # Default runner: invoke the pipeline.reindex function with
-        # the live ``store`` and a short timeout. The runner is
-        # injected in tests so the hook stays decoupled from the
-        # concrete reindex implementation.
-        from ralph.mcp.explore.pipeline import reindex as _reindex
-
-        runner_value = cast("ReindexRunner", _reindex)
-    opts_factory_obj: object = getattr(explore_index, "build_options", None)
-    options_value: ReindexOptions
-    if callable(opts_factory_obj):
-        options_value = opts_factory_obj(timeout_ms=timeout_ms)
-    else:
-        from ralph.mcp.explore.pipeline import ReindexOptions
-
-        options_value = ReindexOptions(mode="changed", timeout_ms=timeout_ms)
+        # Default runner: invoke ``claim_reindex`` so the
+        # production coordinator handles concurrent calls and
+        # dirty-path coalescing. Tests bypass this path with the
+        # ``reindex_runner`` injection.
+        runner_value = cast("ReindexRunner", claim_reindex)
+    options_value: ReindexOptions = ReindexOptions(
+        mode="changed", timeout_ms=timeout_ms
+    )
     try:
         runner: ReindexRunner = runner_value
-        raw_result: object
-        raw_name: object = getattr(runner, "__name__", "")
-        runner_name: str = (
-            raw_name if isinstance(raw_name, str) else str(raw_name)
+        # Backward compat: legacy/test runners accept ``opts=`` while
+        # the production ``ReindexWriter.claim``-style runner accepts
+        # ``options=``. Detect the keyword name once at runtime and
+        # dispatch with the matching name so existing test fixtures
+        # (which still use ``opts=``) keep working unchanged.
+        kwargs_name = "opts" if reindex_runner is not None else "options"
+        raw_result: object = runner(
+            store,
+            workspace_root,
+            **{kwargs_name: options_value},
         )
-        if reindex_runner is None and runner is not None and runner_name == "reindex":
-            raw_result = runner(store, workspace_root, options=options_value)
-        else:
-            raw_result = runner(store, workspace_root, opts=options_value)
-        result: ReindexResult = raw_result
+        result = cast("ReindexResult", raw_result)
     except Exception as exc:
         logger.warning(
             "Lifecycle refresh (%s) failed: %s",
@@ -226,10 +222,31 @@ def _run_hook(
     )
 
 
+def claim_reindex(
+    store: ExploreStore,
+    workspace_root: Path,
+    *,
+    options: ReindexOptions,
+) -> ReindexResult:
+    """Default reindex runner for the lifecycle hooks.
+
+    Routes through :meth:`ReindexWriter.claim` so concurrent MCP
+    ``ralph_reindex`` calls and lifecycle hooks coalesce into a
+    single writer per workspace. Exposed at module scope so the
+    coalescing integration test can drive it on its own thread.
+    """
+    return ReindexWriter.claim(
+        store,
+        workspace_root=workspace_root,
+        options=options,
+    )
+
+
 __all__ = [
     "DEFAULT_HOOK_TIMEOUT_MS",
     "LifecycleHookResult",
     "after_agent_refresh",
     "before_agent_refresh",
+    "claim_reindex",
     "is_execution_phase_for_refresh",
 ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import pytest
 from typer.testing import CliRunner as TyperCliRunner
 
 from ralph.cli.main import (
@@ -14,7 +15,6 @@ from ralph.cli.main import (
 from ralph.display.context import DisplayContext, make_display_context
 
 if TYPE_CHECKING:
-    import pytest
     from rich.console import Console
 
 CliRunner = TyperCliRunner
@@ -29,6 +29,9 @@ _BUNDLED_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" /
 def _make_display_context_for_console(console: Console) -> DisplayContext:
     """Create a DisplayContext for a given console."""
     return make_display_context(console=console, env={})
+
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class TestThoroughModeSemantics:

@@ -1,0 +1,239 @@
+"""Idempotent, work-proportional reindex pipeline.
+
+Phase 1 builds only the lexical part of the index. Phase 2 (deferred)
+will add Python AST symbol extraction and the structural graph.
+
+The pipeline follows the Idempotence And Efficiency Contract from the
+architecture finding:
+
+1. Build/compare deterministic manifest sorted by normalized path.
+2. Reuse unchanged file records/chunks/edges by ``(path, content_hash)``.
+3. Re-extract only changed/new files (warm small-edit).
+4. Delete stale non-evidence rows for a changed path BEFORE inserting
+   replacement rows; delete FTS rows by ``chunk_id`` first.
+5. Write bounded ``evidence_tombstones`` BEFORE deleting stale evidence.
+6. Mark missing paths deleted/stale.
+7. Commit a new generation atomically (short transactions).
+8. Cap job history (latest 100 / 14 days) and tombstones (latest 10k /
+   30 days).
+
+Warm no-op refresh checks the manifest and does NO parsing and NO
+FTS/edge rewrites. Warm small-edit reparses only changed-file bytes
+plus bounded local edge cleanup.
+
+``mode='full'`` rebuilds into a temp generation and atomically swaps
+metadata only after success.
+
+A single reindex writer per workspace; concurrent requests coalesce
+dirty paths rather than starting a second writer. Timeout is
+fail-closed for the job (``status='timed_out'``) and fail-open for
+agent reads (tools return stale metadata instead of hanging).
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import shutil
+import sqlite3
+import threading
+import time
+import uuid
+from collections.abc import Callable, Sequence
+from contextlib import suppress
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Final
+
+from ralph.mcp.explore.store import (
+    DEFAULT_CHUNK_LINES,
+    ChunkRow,
+    Clock,
+    EvidenceRow,
+    ExploreStore,
+    FileRow,
+    SystemClock,
+    chunk_text,
+    collect_workspace_files,
+    derive_chunk_id,
+    derive_evidence_id,
+    hash_workspace_file,
+    sha256_text,
+)
+from ralph.mcp.explore.structure import (
+    PythonExtractionError,
+    extract_structure,
+)
+
+# Ponytail: keep imports narrow; nothing from the mcp package is
+# imported here so audit_mcp_timeout stays happy without markers.
+
+logger = logging.getLogger(__name__)
+
+# Phase 1 uses an explicit extractor version. Future phases will
+# bump this when AST/symbol extraction ships.
+EXTRACTOR_VERSION: Final[str] = "phase1-lexical-v1"
+
+# Default bounds for the reindex job. Each is fail-closed via the
+# caller (reindex(..., timeout_ms=...)) but we keep safe defaults.
+DEFAULT_TIMEOUT_MS: Final[int] = 5_000
+DEFAULT_FULL_TIMEOUT_MS: Final[int] = 60_000
+
+
+# --- Public dataclasses ---------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ReindexResult:
+    """Result of a reindex invocation."""
+
+    job_id: str
+    generation: int
+    status: str  # "ok" | "timed_out" | "failed" | "skipped_no_changes" | "cancelled"
+    changed_files: tuple[str, ...] = ()
+    failed_files: tuple[str, ...] = ()
+    parse_count: int = 0
+    dirty_paths_count: int = 0
+    elapsed_seconds: float = 0.0
+    error_summary: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReindexOptions:
+    """Options for a reindex call."""
+
+    mode: str = "changed"  # "changed" | "full"
+    timeout_ms: int = DEFAULT_TIMEOUT_MS
+    path_scope: tuple[str, ...] = ()
+    clock: Clock | None = None
+
+
+# --- Internal helpers ------------------------------------------------------
+
+
+class FileReadError(Exception):
+    """A file failed to read during reindex."""
+
+
+@dataclass
+class _ReindexState:
+    """Mutable per-job scratch state."""
+
+    job_id: str
+    started_at: float
+    deadline: float
+    deadline_ms: int = 0
+    parse_count: int = 0
+    dirty_paths_count: int = 0
+    changed_paths: list[str] = field(default_factory=list)
+    failed_paths: list[str] = field(default_factory=list)
+    error_summary: str | None = None
+    timed_out: bool = False
+
+
+def _elapsed(state: _ReindexState, now_fn: Callable[[], float]) -> float:
+    return now_fn() - state.started_at
+
+
+def _ensure_deadline_not_exceeded(state: _ReindexState, now_fn: Callable[[], float]) -> None:
+    if _elapsed(state, now_fn) * 1000 > state.deadline_ms:
+        # Deadline is in ms; we keep the attribute name short to avoid
+        # downstream renames.
+        state.timed_out = True
+        raise _ReindexTimeoutError("deadline exceeded")
+
+
+# Avoid circular import: declare the timeout class only when used.
+class _ReindexTimeoutError(Exception):
+    pass
+
+
+class _ReindexCancelledError(Exception):
+    """Raised by the reindex writer when the cancel callable returns True.
+
+    AC-05: bounded cancellation. The reindex writer polls the cancel
+    callable at phase boundaries. On cancel the prior committed
+    generation is preserved and the result is finalized as
+    ``status='cancelled'`` with a bounded incomplete summary. The
+    writer never raises any mutable partial state into the store
+    after cancellation.
+    """
+
+    pass
+
+
+# --- Main entry point ------------------------------------------------------
+
+
+def reindex(
+    store: ExploreStore,
+    workspace_root: Path,
+    *,
+    options: ReindexOptions | None = None,
+    cancel: Callable[[], bool] | None = None,
+) -> ReindexResult:
+    """Run a reindex job over ``workspace_root``.
+
+    The store is required to already exist on disk. The caller is
+    responsible for initializing ``ExploreStore``; this keeps the
+    pipeline free of any I/O-oracle side effects at import time.
+
+    AC-05: a ``cancel`` callable may be supplied. When the callable
+    returns ``True`` the writer preserves the prior committed
+    generation (no partial mutable state is exposed) and the
+    reindex returns a ``status='cancelled'`` result. The callable
+    is polled at phase boundaries (file iteration, FTS commit, and
+    row insert) so cancellation is bounded by the duration of one
+    phase.
+    """
+    opts = options or ReindexOptions()
+    clock: Clock = opts.clock or SystemClock()
+    now_fn = clock.now
+
+    job_id = f"job-{uuid.uuid4().hex}"
+    started_at = now_fn()
+    deadline = opts.timeout_ms / 1000.0
+    state = _ReindexState(
+        job_id=job_id,
+        started_at=started_at,
+        deadline=deadline,
+        deadline_ms=opts.timeout_ms,
+    )
+
+    try:
+        # AC-02/AC-05: ``mode='full'`` runs in a staging database
+        # so cancellation/timeout cannot leak partial mutable
+        # state into the live store. The dispatch happens before
+        # ``_run_reindex`` touches the live store, so even a
+        # cancel that becomes true on the first poll never
+        # reaches the destructive drop path.
+        if opts.mode == "full":
+            return _staged_full_reindex(
+                store,
+                workspace_root,
+                options=opts,
+                now_fn=now_fn,
+                state=state,
+                cancel=cancel,
+            )
+        result = _run_reindex(
+            store,
+            workspace_root,
+            options=opts,
+            now_fn=now_fn,
+            state=state,
+            cancel=cancel,
+        )
+    except _ReindexTimeoutError:
+        return _finalize(store, state, status="timed_out", now_fn=now_fn)
+    except _ReindexCancelledError:
+        return _finalize(store, state, status="cancelled", now_fn=now_fn)
+    except Exception as exc:
+        return _finalize(
+            store,
+            state,
+            status="failed",
+            now_fn=now_fn,
+            error_summary=f"{type(exc).__name__}: {exc}",
+        )
+    return _finalize(store, state, status=result, now_fn=now_fn)

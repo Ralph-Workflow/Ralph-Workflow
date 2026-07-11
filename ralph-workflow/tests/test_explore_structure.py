@@ -12,6 +12,7 @@ from pathlib import Path
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.explore.structure import (
+    CONFIDENCE_EXTRACTED,
     EXTRACTOR_VERSION,
     extract_markdown,
     extract_python,
@@ -152,7 +153,15 @@ def test_python_structure_emits_full_prompt_relation_set(tmp_path: Path) -> None
     reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
     try:
         relations = {row.relation for row in store.iter_edges(path="module.py")}
-        # Every prompt-promised relation must be present.
+        # Every prompt-promised relation must be present. AC-02
+        # requires the extractor to emit ``defines`` for every
+        # parser-recognized definition span (functions, classes,
+        # async functions); the relations assertion must catch a
+        # missing or stalled extractor.
+        assert "defines" in relations, (
+            "Python extractor must emit ``defines`` edges for each "
+            "parser-recognized definition span"
+        )
         assert "contains" in relations
         assert "imports" in relations
         assert "calls_syntax" in relations
@@ -220,3 +229,46 @@ def test_extract_python_syntax_error_raises_python_extraction_error(tmp_path: Pa
             content_hash="0",
             generation=1,
         )
+
+
+def test_extract_markdown_recognizes_links_with_mentions_relation() -> None:
+    """AC-02: Markdown link extraction must emit exact-span
+    ``mentions`` relation rows with ``extracted`` provenance and
+    a resolvable symbol id. The fixture must expose its matching
+    evidence-backed edge/span so callers can audit the link.
+    """
+    content = (
+        "# Heading\n"
+        "\n"
+        "See [example](https://example.test) and "
+        "[docs](docs/index.md) for more.\n"
+    )
+    result = extract_markdown(
+        path="doc.md",
+        content=content,
+        content_hash="deadbeef",
+        generation=1,
+    )
+    relations = {row.relation for row in result.edges}
+    assert "mentions" in relations
+    # Find the link edges.
+    link_edges = [row for row in result.edges if row.relation == "mentions"]
+    assert len(link_edges) == 2, (
+        f"expected 2 mentions edges for two links, got {len(link_edges)}: "
+        f"{[e.reason for e in link_edges]}"
+    )
+    # Each link edge must have exact spans and extracted provenance.
+    for edge in link_edges:
+        assert edge.provenance == "extracted"
+        assert edge.confidence == CONFIDENCE_EXTRACTED
+        assert edge.span_id is not None
+        assert edge.generation == 1
+    # The link symbol ids must be resolvable in the symbol rows
+    # so callers can dereference the evidence.
+    link_symbol_ids = {edge.target_id for edge in link_edges}
+    symbol_ids = {sym.symbol_id for sym in result.symbols}
+    assert link_symbol_ids.issubset(symbol_ids)
+    # The link span ids must be resolvable in the span rows.
+    link_span_ids = {edge.span_id for edge in link_edges}
+    span_ids = {span.span_id for span in result.spans}
+    assert link_span_ids.issubset(span_ids)

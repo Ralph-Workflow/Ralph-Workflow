@@ -1,9 +1,11 @@
 """Deterministic ranking for indexed ``search_files`` and ``grep_files``.
 
-Phase 1 ranking uses path/FTS/role/git-changed signals only. Symbol
-and graph components are stubbed to ``+0`` with a score-reason note
-``"disabled:phase2"``; Phase 2 (deferred) will replace the stubs with
-real components once the AST/edge extraction ships.
+The ranking pipeline combines path/FTS/role/git-changed signals with
+the indexed symbol and graph evidence. Score components are computed
+from live indexed rows; when the index lacks the relevant data the
+scorer surfaces explicit zero components with a precise
+``component:no_indexed_data`` reason so callers can audit the
+missing context.
 
 Every ranked response returns a ``score_reasons`` list so tests can
 assert WHY a path outranks another. Ties sort by
@@ -23,22 +25,30 @@ if TYPE_CHECKING:
 
 # Phase 1 search_files components (architecture finding contract).
 SEARCH_EXACT_BASENAME: Final[int] = 100
-SEARCH_SYMBOL_DEFINITION: Final[int] = 80  # disabled in Phase 1
-SEARCH_SYMBOL_MENTION: Final[int] = 60  # disabled in Phase 1
+SEARCH_SYMBOL_DEFINITION: Final[int] = 80
+SEARCH_SYMBOL_MENTION: Final[int] = 60
 SEARCH_GIT_CHANGED: Final[int] = 40
 SEARCH_ROLE_REQUESTED: Final[int] = 30
-SEARCH_GRAPH_NEIGHBOR: Final[int] = 20  # disabled in Phase 1
+SEARCH_GRAPH_NEIGHBOR: Final[int] = 20
 SEARCH_GENERATED_PENALTY: Final[int] = -50
 
 # Phase 1 grep_files rank_by components.
-GREP_DEFINITION_BONUS: Final[int] = 100  # disabled in Phase 1
-GREP_SAME_SYMBOL_BODY: Final[int] = 60  # disabled in Phase 1
-GREP_COMMENT_DOC: Final[int] = 30  # disabled in Phase 1
-GREP_GRAPH_NEIGHBOR: Final[int] = 50  # disabled in Phase 1
-GREP_GRAPH_COMPONENT: Final[int] = 20  # disabled in Phase 1
+GREP_DEFINITION_BONUS: Final[int] = 100
+GREP_SAME_SYMBOL_BODY: Final[int] = 60
+GREP_COMMENT_DOC: Final[int] = 30
+GREP_GRAPH_NEIGHBOR: Final[int] = 50
+GREP_GRAPH_COMPONENT: Final[int] = 20
 GREP_GIT_CHANGED: Final[int] = 40
 
-PHASE2_DISABLED_NOTE: Final[str] = "disabled:phase2"
+# Reason emitted when an indexed-evidence component has zero
+# contribution because the explore index does not contain the
+# relevant rows for the candidate path. The constant is named
+# with ``SEARCH`` / ``GREP`` prefixes only where the wording is
+# not reusable across components; the auditor surfaces
+# ``component:no_indexed_data`` (or ``+0 component_name``) so
+# tests can distinguish a missing index from a real scoring
+# value.
+INDEXED_COMPONENT_NOT_AVAILABLE: Final[str] = "no_indexed_data"
 
 
 # --- Public dataclass -----------------------------------------------------
@@ -105,6 +115,179 @@ def is_test_role(path: str) -> bool:
     )
 
 
+def is_docs_role(path: str) -> bool:
+    """True for documentation-only files (heuristic).
+
+    Matches Markdown / RST / text files that live under the
+    canonical docs tree or carry an obvious documentation name.
+    """
+    lowered = path.lower()
+    if (
+        "/docs/" in lowered
+        or lowered.startswith("docs/")
+        or "/doc/" in lowered
+        or lowered.startswith("doc/")
+        or "/documentation/" in lowered
+    ):
+        return True
+    name = lowered.rsplit("/", maxsplit=1)[-1]
+    return name in {
+        "readme.md",
+        "readme.rst",
+        "readme.txt",
+        "license.md",
+        "license",
+        "license.txt",
+        "license.rst",
+        "contributing.md",
+        "code_of_conduct.md",
+        "changelog.md",
+        "changes.md",
+    }
+
+
+def is_config_role(path: str) -> bool:
+    """True for build/config/toolchain files (heuristic).
+
+    Matches canonical configuration extensions and a small set of
+    well-known build / CI filenames. List-extension files
+    (``requirements.txt``, ``pyproject.toml`` ...) and dotfile
+    configurations (``.gitignore``, ``.ruff.toml`` ...) both count
+    so a caller asking for ``role=config`` actually narrows the
+    result instead of returning the full glob set.
+    """
+    lowered = path.lower()
+    if lowered.endswith(
+        (
+            ".toml",
+            ".yaml",
+            ".yml",
+            ".cfg",
+            ".ini",
+            ".json",
+        )
+    ):
+        return True
+    name = lowered.rsplit("/", maxsplit=1)[-1]
+    if not name:
+        return False
+    if name.startswith("."):
+        # Dotfile configs (``pyproject.toml`` is a normal ``.toml``
+        # match; dotfiles that are NOT configs are usually
+        # editor / VCS metadata and belong to ``generated``).
+        config_dotfiles = {
+            ".gitignore",
+            ".gitattributes",
+            ".gitkeep",
+            ".editorconfig",
+            ".ruff.toml",
+            ".ruff_cache",
+            ".mypy.ini",
+            ".flake8",
+            ".pylintrc",
+            ".env",
+            ".env.example",
+            ".envrc",
+        }
+        return name in config_dotfiles
+    config_names = {
+        "makefile",
+        "dockerfile",
+        "vagrantfile",
+        "rakefile",
+        "tox.ini",
+        "noxfile.py",
+        "pyproject.toml",
+        "setup.cfg",
+        "setup.py",
+        "requirements.txt",
+        "poetry.lock",
+        "uv.lock",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "tsconfig.json",
+        "package.json",
+        "gemfile",
+        ".gitlab-ci.yml",
+        ".github",
+    }
+    return name in config_names or name.endswith(
+        ("-config.json", "-config.yaml", "-config.yml", "-config.toml")
+    )
+
+
+def is_generated_role(path: str) -> bool:
+    """True for generated / vendor / build-output files (heuristic).
+
+    Ponytail: kept narrow on purpose so a ``role=generated`` filter
+    does not silently nuke results an agent expected to be
+    editable source. Vendor trees (``vendor/``, ``node_modules/``)
+    and obvious build outputs (``dist/``, ``build/`` ...) count,
+    but a regular test fixture is NOT generated just because the
+    word "generated" appears in a comment.
+    """
+    lowered = path.lower()
+    if (
+        lowered.startswith("vendor/")
+        or "/vendor/" in lowered
+        or lowered.startswith("node_modules/")
+        or "/node_modules/" in lowered
+        or lowered.startswith(".venv/")
+        or "/.venv/" in lowered
+        or lowered.startswith("__pycache__/")
+        or "/__pycache__/" in lowered
+        or lowered.startswith("dist/")
+        or "/dist/" in lowered
+        or lowered.startswith("build/")
+        or "/build/" in lowered
+        or lowered.startswith(".ruff_cache/")
+        or "/.ruff_cache/" in lowered
+        or lowered.startswith(".mypy_cache/")
+        or "/.mypy_cache/" in lowered
+        or lowered.startswith(".pytest_cache/")
+        or "/.pytest_cache/" in lowered
+        or lowered.startswith("target/")
+        or "/target/" in lowered
+    ):
+        return True
+    name = lowered.rsplit("/", maxsplit=1)[-1]
+    return (
+        name in {"package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
+        or name.endswith(".min.js")
+        or name.endswith(".min.css")
+        or name.endswith(".generated.py")
+        or name.endswith("_pb2.py")
+        or name.endswith("_pb2.pyi")
+        or name.endswith(".pb.go")
+    )
+
+
+_ROLE_PREDICATES = {
+    "source": is_source_role,
+    "test": is_test_role,
+    "docs": is_docs_role,
+    "config": is_config_role,
+    "generated": is_generated_role,
+}
+
+
+def matches_role(path: str, role: str) -> bool:
+    """Return True when ``path`` matches the requested ``role`` predicate.
+
+    The set of roles is the canonical ``source`` / ``test`` /
+    ``docs`` / ``config`` / ``generated`` / ``any`` taxonomy that
+    ``search_files`` advertises. Unrecognized role names return
+    False instead of falling back to a free glob, so the handler
+    can surface the typo to the caller rather than silently
+    returning the full glob set.
+    """
+    predicate = _ROLE_PREDICATES.get(role)
+    if predicate is None:
+        return False
+    return predicate(path)
+
+
 def sort_ranked(items: list[RankedItem]) -> list[RankedItem]:
     """Stable sort: score DESC, then path ASC, then line ASC, then evidence_id ASC."""
     def _sort_key(item: RankedItem) -> tuple[int, str, int, str]:
@@ -127,7 +310,7 @@ def score_search_file(
 ) -> RankedItem:
     """Compute a search_files score for one candidate path.
 
-    Phase 1 + Phase 2 wiring:
+    The scoring contract:
 
     * ``SEARCH_EXACT_BASENAME`` (+100) for an exact basename match.
     * ``SEARCH_GIT_CHANGED`` (+40) for paths the lifecycle hook
@@ -140,7 +323,9 @@ def score_search_file(
       caller passed ``contains_symbol`` AND the candidate already
       survived the symbol filter (i.e. the index recognized the
       symbol as defined in or referenced from the path). Otherwise
-      the components stay at 0 with a disabled note.
+      the components stay at 0 with a precise
+      ``component:no_indexed_data`` note so callers can audit
+      missing index context.
     """
     score = 0
     reasons: list[str] = []
@@ -151,14 +336,17 @@ def score_search_file(
         reasons.append(f"+{SEARCH_EXACT_BASENAME} exact_path_basename")
     else:
         # Symbol and graph components only contribute when the
-        # caller passed ``contains_symbol``; otherwise the disabled
-        # notes make it clear which components are inactive.
-        score += 0
-        reasons.append(f"+0 symbol_definition:{PHASE2_DISABLED_NOTE}")
-        score += 0
-        reasons.append(f"+0 symbol_mention:{PHASE2_DISABLED_NOTE}")
-        score += 0
-        reasons.append(f"+0 graph_neighbor:{PHASE2_DISABLED_NOTE}")
+        # caller passed ``contains_symbol``; otherwise the
+        # missing-data note makes the absent context auditable.
+        reasons.append(
+            f"+0 symbol_definition:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
+        reasons.append(
+            f"+0 symbol_mention:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
+        reasons.append(
+            f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
 
     if is_git_changed:
         score += SEARCH_GIT_CHANGED
@@ -207,16 +395,18 @@ def score_grep_match(
 ) -> RankedItem:
     """Compute a grep_files rank_by score for one match.
 
-    Phase 1 + Phase 2 components:
+    The scoring contract:
 
-    * Phase 1 baseline: every match carries +1.
+    * Baseline: every match carries +1.
     * ``is_git_changed`` adds ``GREP_GIT_CHANGED`` when the file is
       marked dirty or the live ``git status`` reports it.
-    * Phase 2 symbol components: when ``store`` and ``chunk_id`` are
+    * Symbol components: when ``store`` and ``chunk_id`` are
       provided and the chunk is associated with a definition or
-      symbol body, the appropriate score bonus is added.
-    * Phase 2 graph components: when ``graph_target`` is provided and
-      the match is in a caller/importer/test neighbor, the
+      symbol body, the appropriate score bonus is added. Absent
+      index context surfaces a ``+0 component:no_indexed_data``
+      reason.
+    * Graph components: when ``graph_target`` is provided and the
+      match is in a caller/importer/test neighbor, the
       ``GREP_GRAPH_NEIGHBOR`` bonus is added. ``GREP_GRAPH_COMPONENT``
       is added when the match file is in the same graph component as
       the target.
@@ -224,11 +414,11 @@ def score_grep_match(
     score = 0
     reasons: list[str] = []
 
-    # Phase 1 baseline: every match carries +1.
+    # Baseline: every match carries +1.
     score += 1
     reasons.append("+1 bare_match")
 
-    # Phase 2: look up symbol/graph context from the index.
+    # Look up symbol/graph context from the index.
     definition_bonus = 0
     same_symbol_bonus = 0
     comment_doc_bonus = 0
@@ -249,44 +439,50 @@ def score_grep_match(
             graph_component_bonus = ctx[4]
         except Exception:
             # Ponytail: ranking must never crash on a malformed
-            # index row. Leave the bonuses at zero with a phase-2
-            # disabled note so the response remains complete.
+            # index row. Leave the bonuses at zero with a precise
+            # missing-data note so the response remains complete
+            # and auditable.
             pass
 
     if definition_bonus:
         score += GREP_DEFINITION_BONUS
         reasons.append(f"+{GREP_DEFINITION_BONUS} definition_name_or_signature")
     else:
-        score += 0
-        reasons.append(f"+0 definition_bonus:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 definition_bonus:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if same_symbol_bonus:
         score += GREP_SAME_SYMBOL_BODY
         reasons.append(f"+{GREP_SAME_SYMBOL_BODY} same_symbol_body")
     else:
-        score += 0
-        reasons.append(f"+0 same_symbol_body:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 same_symbol_body:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if comment_doc_bonus:
         score += GREP_COMMENT_DOC
         reasons.append(f"+{GREP_COMMENT_DOC} comment_or_doc_tied_to_symbol")
     else:
-        score += 0
-        reasons.append(f"+0 comment_doc:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 comment_doc:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if graph_neighbor_bonus:
         score += GREP_GRAPH_NEIGHBOR
         reasons.append(
             f"+{GREP_GRAPH_NEIGHBOR} graph_neighbor_of_target"
         )
     else:
-        score += 0
-        reasons.append(f"+0 graph_neighbor:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 graph_neighbor:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
     if graph_component_bonus:
         score += GREP_GRAPH_COMPONENT
         reasons.append(
             f"+{GREP_GRAPH_COMPONENT} same_graph_component_as_target"
         )
     else:
-        score += 0
-        reasons.append(f"+0 graph_component:{PHASE2_DISABLED_NOTE}")
+        reasons.append(
+            f"+0 graph_component:{INDEXED_COMPONENT_NOT_AVAILABLE}"
+        )
 
     if is_git_changed:
         score += GREP_GIT_CHANGED
@@ -458,7 +654,13 @@ _FTS_DISQUALIFYING_METACHARS: Final[frozenset[str]] = frozenset(
 )
 
 
-def is_fts_eligible(pattern: str, *, is_regex: bool, whole_word: bool) -> bool:
+def is_fts_eligible(
+    pattern: str,
+    *,
+    is_regex: bool,
+    whole_word: bool,
+    case_sensitive: bool = False,
+) -> bool:
     """Return True when the pattern is safe to run through FTS5.
 
     Index-eligible queries are:
@@ -472,6 +674,20 @@ def is_fts_eligible(pattern: str, *, is_regex: bool, whole_word: bool) -> bool:
     multiline patterns, lookaround, capture-group semantics,
     backreferences, byte-oriented searches, and substring patterns
     that FTS tokenization cannot represent exactly.
+
+    Case-sensitive search: the FTS5 ``unicode61`` tokenizer is
+    case-INsensitive by default, so requesting a ``case_sensitive``
+    literal would change match semantics compared to the live grep
+    path. ``is_fts_eligible`` returns False when ``case_sensitive``
+    is True so the handler falls back to live grep in
+    ``use_index='auto'`` and fails closed in ``use_index='always'``
+    instead of silently returning a case-INsensitive FTS match.
+
+    ``case_sensitive`` defaults to ``False`` because the live grep
+    default is case-sensitive and the prior call site omitted the
+    argument entirely; ``is_fts_eligible`` keeps accepting its
+    legacy ``case_sensitive`` semantics by treating omitted ==
+    case-INsensitive == same as the FTS5 tokenizer.
     """
     if is_regex:
         return False
@@ -481,7 +697,9 @@ def is_fts_eligible(pattern: str, *, is_regex: bool, whole_word: bool) -> bool:
         return False
     # whole_word with literal is supported; reject when combined
     # with multi-word phrase syntax that FTS cannot represent exactly.
-    return not (whole_word and " " in pattern)
+    if whole_word and " " in pattern:
+        return False
+    return not case_sensitive
 
 
 def fts_query_for(pattern: str, *, whole_word: bool) -> str:
@@ -506,7 +724,7 @@ __all__ = [
     "GREP_GRAPH_COMPONENT",
     "GREP_GRAPH_NEIGHBOR",
     "GREP_SAME_SYMBOL_BODY",
-    "PHASE2_DISABLED_NOTE",
+    "INDEXED_COMPONENT_NOT_AVAILABLE",
     "SEARCH_EXACT_BASENAME",
     "SEARCH_GENERATED_PENALTY",
     "SEARCH_GIT_CHANGED",
@@ -516,11 +734,15 @@ __all__ = [
     "SEARCH_SYMBOL_MENTION",
     "RankedItem",
     "fts_query_for",
+    "is_config_role",
+    "is_docs_role",
     "is_fts_eligible",
     "is_generated_path",
+    "is_generated_role",
     "is_source_role",
     "is_test_role",
+    "matches_role",
     "score_grep_match",
     "score_search_file",
     "sort_ranked",
-]
+]  # grouped for readability

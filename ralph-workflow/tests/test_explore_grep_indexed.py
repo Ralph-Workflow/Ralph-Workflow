@@ -110,6 +110,7 @@ def test_indexed_grep_returns_compact_match(tmp_path: Path) -> None:
                 "pattern": "hello",
                 "path": ".",
                 "regex": False,
+                "case_sensitive": False,
                 "use_index": "auto",
                 "return_evidence_ids": True,
             },
@@ -190,6 +191,7 @@ def test_indexed_grep_use_index_never_preserves_legacy_output(tmp_path: Path) ->
                 "pattern": "hello",
                 "path": ".",
                 "regex": False,
+                "case_sensitive": False,
                 "use_index": "never",
             },
         )
@@ -214,6 +216,7 @@ def test_indexed_grep_returns_score_reasons(tmp_path: Path) -> None:
                 "pattern": "hello",
                 "path": ".",
                 "regex": False,
+                "case_sensitive": False,
                 "use_index": "auto",
                 "rank_by": "hybrid",
             },
@@ -237,6 +240,7 @@ def test_indexed_grep_without_index_handle_falls_back(tmp_path: Path) -> None:
             "pattern": "hello",
             "path": ".",
             "regex": False,
+                "case_sensitive": False,
             "use_index": "auto",
         },
     )
@@ -354,6 +358,7 @@ def test_indexed_grep_path_filter_excludes_other_dirs(tmp_path: Path) -> None:
                 "pattern": "hello",
                 "path": "src",
                 "regex": False,
+                "case_sensitive": False,
                 "use_index": "always",
                 "return_evidence_ids": True,
             },
@@ -386,6 +391,7 @@ def test_indexed_grep_include_exclude_globs_filter_matches(tmp_path: Path) -> No
                 "pattern": "hello",
                 "path": ".",
                 "regex": False,
+                "case_sensitive": False,
                 "use_index": "always",
                 "include": ["keep.py"],
                 "return_evidence_ids": True,
@@ -395,5 +401,69 @@ def test_indexed_grep_include_exclude_globs_filter_matches(tmp_path: Path) -> No
         paths = {m.get("path", "") for m in payload["matches"]}
         assert "keep.py" in paths, paths
         assert "skip.py" not in paths, paths
+    finally:
+        store.close()
+
+
+def test_indexed_grep_returns_bounded_evidence_backed_graph_context(
+    tmp_path: Path,
+) -> None:
+    """Indexed graph context is bounded and references returned evidence."""
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        result = handle_grep_files(
+            _FakeSession(build_sqlite_index_handle(store)),
+            _Workspace(workspace),
+            {
+                "pattern": "hello",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": False,
+                "use_index": "always",
+                "include_graph_context": True,
+                "return_evidence_ids": True,
+                "limit": 1,
+            },
+        )
+        payload = _decode(result)
+        context = payload["graph_context"]
+        assert len(context) == 1
+        assert context[0]["evidence_id"] in payload["evidence_ids"]
+        assert context[0]["path"] == "hello.py"
+        assert context[0]["start_line"] <= context[0]["end_line"]
+    finally:
+        store.close()
+
+
+def test_indexed_symbol_ranking_reorders_definition_ahead_of_plain_text(
+    tmp_path: Path,
+) -> None:
+    """Distinct indexed symbol scores produce observable handler ordering."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "definition.py").write_text("def hello():\n    return 1\n")
+    (workspace / "notes.md").write_text("hello appears in prose only\n")
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        _populate_index(workspace, store)
+        result = handle_grep_files(
+            _FakeSession(build_sqlite_index_handle(store)),
+            _Workspace(workspace),
+            {
+                "pattern": "hello",
+                "path": ".",
+                "regex": False,
+                "case_sensitive": False,
+                "use_index": "always",
+                "rank_by": "symbol",
+                "return_evidence_ids": False,
+            },
+        )
+        payload = _decode(result)
+        assert payload["matches"][0]["path"] == "definition.py"
+        assert "evidence_id" not in payload["matches"][0]
+        assert payload["score_reasons"][0][0] == "+1 bare_match"
     finally:
         store.close()
