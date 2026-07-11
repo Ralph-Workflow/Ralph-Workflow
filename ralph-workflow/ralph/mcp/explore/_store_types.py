@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re as _re_migration
 import sqlite3
 import time
 from collections.abc import Iterator
@@ -57,6 +58,54 @@ DEFAULT_MAX_CHUNK_BYTES: Final[int] = 16 * 1024
 
 
 # --- Schema ----------------------------------------------------------------
+
+# AC-01: ordered additive migrations. Each entry maps a from-version
+# to the ALTER TABLE / CREATE statements that bring the database
+# forward. Migrations run in tuple order during :meth:`ExploreStore._initialize`
+# before the recorded ``settings.schema_version`` is pinned.
+_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    (
+        # adds durable evidence->chunk and evidence->span links so
+        # the persisted evidence row resolves to the exact chunk
+        # and span ids rather than re-derived line coordinates.
+        "explore-v1",
+        "ALTER TABLE evidence ADD COLUMN chunk_id TEXT",
+    ),
+    (
+        "explore-v1",
+        "ALTER TABLE evidence ADD COLUMN span_id TEXT",
+    ),
+)
+
+
+_ADD_COLUMN_RE = _re_migration.compile(
+    r"^\s*ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)\b",
+    _re_migration.IGNORECASE,
+)
+
+
+def _is_add_column(sql: str) -> bool:
+    """Return True when ``sql`` is an ``ALTER TABLE ... ADD COLUMN``."""
+    return bool(_ADD_COLUMN_RE.match(sql))
+
+
+def _parse_add_column(sql: str) -> tuple[str, str]:
+    """Return ``(table_name, column_name)`` for a matched ADD COLUMN sql."""
+    match = _ADD_COLUMN_RE.match(sql)
+    assert match is not None  # callers gate via ``_is_add_column``
+    return match.group(1), match.group(2)
+
+
+def _column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
+    """Return True when ``table`` already has a ``column`` row."""
+    pragma_cur = cur.execute(f"PRAGMA table_info({table})")
+    info_rows = cast("list[sqlite3.Row]", pragma_cur.fetchall())
+    for row in info_rows:
+        value_obj: object = row["name"]
+        if isinstance(value_obj, str) and value_obj == column:
+            return True
+    return False
+
 
 _DDL: tuple[str, ...] = (
     """
@@ -107,7 +156,9 @@ _DDL: tuple[str, ...] = (
         evidence_kind TEXT NOT NULL,
         created_at REAL NOT NULL,
         is_stale INTEGER NOT NULL DEFAULT 0
-            CHECK(is_stale IN (0, 1))
+            CHECK(is_stale IN (0, 1)),
+        chunk_id TEXT,
+        span_id TEXT
     )
     """,
     """
@@ -269,7 +320,15 @@ class ChunkRow:
 
 @dataclass(frozen=True, slots=True)
 class EvidenceRow:
-    """A row from the ``evidence`` table."""
+    """A row from the ``evidence`` table.
+
+    AC-01: ``chunk_id`` and ``span_id`` are durable links to the
+    persisted ``chunks`` and ``spans`` rows so the evidence row
+    resolves to the exact indexed identity (line and column bounds,
+    text hash, chunk role, structured symbol) rather than to raw
+    coordinates that can drift between reindex passes. Both fields
+    may be None when the evidence predates the linked extraction.
+    """
 
     evidence_id: str
     path: str
@@ -281,6 +340,8 @@ class EvidenceRow:
     evidence_kind: str
     created_at: float
     is_stale: bool
+    chunk_id: str | None = None
+    span_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -493,6 +554,8 @@ def _row_to_evidence(row: sqlite3.Row) -> EvidenceRow:
         evidence_kind=_row_str(row, "evidence_kind"),
         created_at=_row_float(row, "created_at"),
         is_stale=bool(_row_int(row, "is_stale")),
+        chunk_id=_row_optional_str(row, "chunk_id"),
+        span_id=_row_optional_str(row, "span_id"),
     )
 
 

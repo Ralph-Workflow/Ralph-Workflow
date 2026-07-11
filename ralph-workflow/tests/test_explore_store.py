@@ -367,6 +367,94 @@ def test_normalize_index_path_rejects_parent_escapes() -> None:
             normalize_index_path(bad)
 
 
+def test_schema_version_pinned_after_init(tmp_path: Path) -> None:
+    """AC-01: opening a brand new store records the current
+    ``settings.schema_version`` so the next open reuses the DDL
+    without re-running migrations.
+    """
+    index_dir = tmp_path / ".agent" / "ralph-explore"
+    store = ExploreStore(index_dir)
+    try:
+        assert store.get_setting("schema_version") == "explore-v1"
+    finally:
+        store.close()
+
+
+def test_evidence_round_trip_persists_chunk_and_span_links(tmp_path: Path) -> None:
+    """AC-01: the persisted evidence row carries the durable
+    ``chunk_id`` and ``span_id`` columns from the minimum schema
+    so an evidence lookup can resolve the exact chunk/span
+    identities without re-deriving line coordinates.
+    """
+    from ralph.mcp.explore.store import (
+        EvidenceRow,
+        derive_chunk_id,
+        derive_evidence_id,
+    )
+
+    index_dir = tmp_path / ".agent" / "ralph-explore"
+    store = ExploreStore(index_dir)
+    try:
+        ev_id = derive_evidence_id(
+            path="module.py",
+            content_hash="hash",
+            start_line=1,
+            end_line=2,
+            kind="path",
+            extractor_version="phase1-lexical-v1",
+        )
+        chunk_id = derive_chunk_id(
+            path="module.py",
+            start_line=1,
+            end_line=2,
+            text_hash="hash",
+            extractor_version="phase1-lexical-v1",
+        )
+        store.insert_evidence(
+            EvidenceRow(
+                evidence_id=ev_id,
+                path="module.py",
+                start_line=1,
+                end_line=2,
+                content_hash="hash",
+                generation=1,
+                source_tool="test",
+                evidence_kind="path",
+                created_at=0.0,
+                is_stale=False,
+                chunk_id=chunk_id,
+                span_id="span-abc",
+            )
+        )
+        row = store.get_evidence(ev_id)
+        assert row is not None
+        assert row.chunk_id == chunk_id
+        assert row.span_id == "span-abc"
+    finally:
+        store.close()
+
+
+def test_schema_migration_is_idempotent_on_reopen(tmp_path: Path) -> None:
+    """AC-01: reopening an up-to-date explore store does not
+    re-run migrations (settings.schema_version matches
+    SCHEMA_VERSION).
+    """
+    from ralph.mcp.explore.store import SCHEMA_VERSION
+
+    index_dir = tmp_path / ".agent" / "ralph-explore"
+    store = ExploreStore(index_dir)
+    try:
+        assert store.get_setting("schema_version") == SCHEMA_VERSION
+    finally:
+        store.close()
+    # Reopen; the second init must remain a no-op (no SQL errors).
+    store_again = ExploreStore(index_dir)
+    try:
+        assert store_again.get_setting("schema_version") == SCHEMA_VERSION
+    finally:
+        store_again.close()
+
+
 def test_normalize_index_path_accepts_workspace_relative_paths() -> None:
     """AC-05: ordinary relative paths normalize without error."""
     assert normalize_index_path("a") == "a"

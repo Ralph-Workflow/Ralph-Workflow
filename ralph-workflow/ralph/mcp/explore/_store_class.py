@@ -19,10 +19,12 @@ from typing import cast
 
 from ralph.mcp.explore._store_types import (
     _DDL,
+    _SCHEMA_MIGRATIONS,
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_INDEX_DB,
     JOB_HISTORY_CAP,
     JOB_HISTORY_RETENTION_SECONDS,
+    SCHEMA_VERSION,
     TOMBSTONE_CAP,
     TOMBSTONE_RETENTION_SECONDS,
     ChunkRow,
@@ -31,6 +33,9 @@ from ralph.mcp.explore._store_types import (
     FileRow,
     SpanRow,
     SymbolRow,
+    _column_exists,
+    _is_add_column,
+    _parse_add_column,
     _row_int_opt,
     _row_str,
     _row_to_edge,
@@ -75,7 +80,16 @@ class ExploreStore:
         self._initialize()
 
     def _initialize(self) -> None:
-        """Apply DDL + pragmas. Idempotent across reloads."""
+        """Apply DDL + pragmas. Idempotent across reloads.
+
+        AC-01: the on-disk ``settings.schema_version`` is compared to
+        :data:`SCHEMA_VERSION`; a missing row or an older version
+        triggers ``ALTER TABLE`` migrations to bring the database up
+        to the current schema, or in the worst case a safe cold
+        rebuild when an additive migration is not possible. The
+        versions are pinned in ``_SCHEMA_MIGRATIONS`` so a future
+        upgrade only needs to append one entry.
+        """
         # Ponytail: pragmas (journal_mode, synchronous, busy_timeout,
         # foreign_keys) must be set OUTSIDE of an explicit transaction
         # because SQLite rejects ``PRAGMA synchronous`` (and friends)
@@ -87,6 +101,7 @@ class ExploreStore:
         with self._transaction() as cur:
             for stmt in _DDL:
                 cur.execute(stmt)
+        self._migrate_schema()
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Cursor]:
@@ -349,8 +364,9 @@ class ExploreStore:
                 """
                 INSERT INTO evidence (
                     evidence_id, path, start_line, end_line, content_hash,
-                    generation, source_tool, evidence_kind, created_at, is_stale
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    generation, source_tool, evidence_kind, created_at, is_stale,
+                    chunk_id, span_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(evidence_id) DO UPDATE SET
                     path=excluded.path,
                     start_line=excluded.start_line,
@@ -360,7 +376,9 @@ class ExploreStore:
                     source_tool=excluded.source_tool,
                     evidence_kind=excluded.evidence_kind,
                     created_at=excluded.created_at,
-                    is_stale=excluded.is_stale
+                    is_stale=excluded.is_stale,
+                    chunk_id=excluded.chunk_id,
+                    span_id=excluded.span_id
                 """,
                 (
                     row.evidence_id,
@@ -373,6 +391,8 @@ class ExploreStore:
                     row.evidence_kind,
                     row.created_at,
                     1 if row.is_stale else 0,
+                    row.chunk_id,
+                    row.span_id,
                 ),
             )
 
@@ -834,3 +854,55 @@ class ExploreStore:
         if shm.exists():
             total += shm.stat().st_size
         return total
+
+    # --- Schema migration (AC-01) ------------------------------------
+
+    def _migrate_schema(self) -> None:
+        """Bring an existing SQLite file up to ``SCHEMA_VERSION``.
+
+        Reads ``settings.schema_version``; if the value is missing or
+        older than :data:`SCHEMA_VERSION`, the additive migration
+        statements in :data:`_SCHEMA_MIGRATIONS` are executed. Each
+        migration is itself idempotent (``ALTER TABLE ... ADD COLUMN``
+        guarded by a schema introspection) so a re-open of a fully
+        migrated database is a no-op. The recorded version is then
+        pinned to ``SCHEMA_VERSION`` so the next open is also a no-op.
+        """
+        cur = self._conn.execute(
+            "SELECT value FROM settings WHERE key = 'schema_version'"
+        )
+        row_obj: sqlite3.Row | None = cur.fetchone()
+        on_disk: str = ""
+        if row_obj is not None:
+            cell_obj: object = row_obj["value"]
+            on_disk = cell_obj if isinstance(cell_obj, str) else ""
+        if on_disk == SCHEMA_VERSION:
+            return
+        known_migration_versions = {m[0] for m in _SCHEMA_MIGRATIONS}
+        if on_disk and on_disk not in known_migration_versions:
+            # Future / newer-than-known schema: refuse rather than
+            # silently serve incompatible rows.
+            raise RuntimeError(
+                f"explore schema version {on_disk!r} is newer than "
+                f"supported {SCHEMA_VERSION!r}; rebuild required"
+            )
+        for version, migration_sql in _SCHEMA_MIGRATIONS:
+            if on_disk and on_disk >= version:
+                continue
+            with self._transaction() as cur:
+                # Idempotency guard: ``ALTER TABLE ... ADD COLUMN`` is
+                # not idempotent on SQLite and ``CREATE ... IF NOT
+                # EXISTS`` already handles itself. We only run an
+                # ADD COLUMN when the column is genuinely missing.
+                if _is_add_column(migration_sql):
+                    table, column = _parse_add_column(migration_sql)
+                    if _column_exists(cur, table, column):
+                        continue
+                cur.execute(migration_sql)
+        with self._transaction() as cur:
+            cur.execute(
+                "INSERT INTO settings (key, value) VALUES "
+                "('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (SCHEMA_VERSION,),
+            )

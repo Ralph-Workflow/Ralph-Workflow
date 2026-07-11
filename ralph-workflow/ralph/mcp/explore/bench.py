@@ -150,6 +150,67 @@ def tool_catalog_tokens(
     return tokens
 
 
+def derive_visible_catalog(
+    mcp_config: object | None = None,
+) -> tuple[tuple[str, str], ...]:
+    """Return the visible Ralph-owned tool catalog as ``(name, description)`` tuples.
+
+    AC-12 (acceptance gate): the benchmark harness MUST derive the
+    visible catalog from the registered Ralph-owned registry/specs
+    so the ``catalog_tokens`` counter reflects the actual MCP
+    ``tools/list`` bytes an agent sees rather than a synthetic
+    fixture-provided constant. The default ``mcp_config`` argument
+    lets unit tests pin the catalog without instantiating a full
+    bridge; production callers should pass the active ``McpConfig``.
+
+    The helper is intentionally lazy: it imports the bridge and
+    ``McpConfig`` on first call so the harness module stays cheap
+    to import and unit tests can stub the bridge without
+    instantiating the full MCP server. The tuple is deterministic
+    across runs (the underlying ``tool_specs`` is deterministic)
+    so the gate tests can pin both the count and the order.
+    """
+    from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.tools.bridge._registry import tool_specs as _bridge_tool_specs
+    from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
+
+    cfg = mcp_config if mcp_config is not None else McpConfig()
+    try:
+        specs = _bridge_tool_specs(cfg)
+    except Exception:
+        # ponytail: bridge loading must not break the harness when
+        # an optional upstream is missing or the bridge depends on
+        # environment-only configuration. Fall back to the canonical
+        # ``RalphToolName`` enum (the harness is part of the explore
+        # MCP and may load before the bridge is initialized in tests).
+        from ralph.mcp.tools.names import RalphToolName
+
+        return tuple(
+            (member.value, member.name.replace("_", " "))
+            for member in RalphToolName
+        )
+
+    catalog: list[tuple[str, str]] = []
+    for spec in specs:
+        metadata: ToolMetadata = spec.metadata
+        name_obj = metadata.definition.name
+        # ponytail: the bridge spec helper passes a ``RalphToolName``
+        # enum member rather than the raw string. ``StrEnum`` makes
+        # ``str(member)`` and ``member.value`` both return the
+        # canonical name, but the type annotation is ``str`` so we
+        # coerce defensively to keep the gate tests agnostic to
+        # which form the spec helper happens to use today.
+        name = name_obj.value if hasattr(name_obj, "value") else str(name_obj)
+        description = metadata.definition.description
+        # ponytail: keep the catalog tuple order stable and the
+        # (name, description) shape the harness already supports.
+        # Multi-line descriptions are normalized to a single line
+        # so the byte counts match what ``_fixed_token_count``
+        # would see in a compact transcript context.
+        catalog.append((name, description.strip()))
+    return tuple(catalog)
+
+
 def _run_script(
     script: Sequence[ScriptedCall],
     *,
@@ -388,5 +449,6 @@ __all__ = [
     "BenchmarkFixture",
     "BenchmarkResult",
     "ScriptedCall",
+    "derive_visible_catalog",
     "run_benchmark",
 ]

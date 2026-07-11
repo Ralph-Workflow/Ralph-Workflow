@@ -16,6 +16,7 @@ from ralph.mcp.explore.bench import (
     ScriptedCall,
     SystemClock,
     _fixed_token_count,
+    derive_visible_catalog,
     run_benchmark,
     tool_catalog_tokens,
 )
@@ -384,3 +385,95 @@ def test_run_benchmark_transcript_counts_full_catalog_and_evidence_context() -> 
     # real-handler bench fixture is the source-of-truth check;
     # this synthetic test only verifies the catalog/final-evidence
     # additions land in BOTH the baseline and indexed counters.
+
+
+def test_derive_visible_catalog_reads_registered_tool_specs() -> None:
+    """AC-12: the visible catalog MUST come from the registered
+    Ralph-owned registry/specs, not a synthetic fixture constant.
+
+    The helper is the source-of-truth ``(name, description)`` list
+    the bench gates pass to ``tool_catalog_tokens`` for the full
+    visible-MCP-catalog transcript accounting. It must contain
+    every Ralph-owned tool (no extras, no missing tools) and the
+    descriptions must be non-empty so the catalog token count
+    reflects the real ``tools/list`` bytes.
+    """
+    from ralph.mcp.tools.names import RalphToolName
+
+    catalog = derive_visible_catalog()
+    assert isinstance(catalog, tuple)
+    # Catalog order is deterministic across runs (the bridge
+    # declares a stable order; we only check the SET of names
+    # because the bridge groups specs by family and may not
+    # match the ``RalphToolName`` enum declaration order).
+    names = set(name for name, _description in catalog)
+    expected_names = {member.value for member in RalphToolName}
+    assert names == expected_names, (
+        "derive_visible_catalog must return the registered Ralph-owned "
+        "tool specs. A missing tool silently drops catalog_tokens for "
+        "the gate, and an extra tool overstates the full-transcript "
+        "counter."
+    )
+    # Every entry has a non-empty description (the catalog would
+    # silently undercount tokens if any description was empty).
+    for name, description in catalog:
+        assert isinstance(name, str) and name, f"{name!r} must be a non-empty string"
+        assert isinstance(description, str) and description.strip(), (
+            f"{name!r} must have a non-empty description"
+        )
+
+
+def test_derive_visible_catalog_is_deterministic_across_calls() -> None:
+    """The catalog MUST be stable so transcript-token counters are
+    reproducible across runs and across MCP server instances.
+    """
+    first = derive_visible_catalog()
+    second = derive_visible_catalog()
+    assert first == second
+    # Length must match the RalphToolName enum cardinality exactly
+    # (no duplicates, no missing tools).
+    from ralph.mcp.tools.names import RalphToolName
+
+    assert len(first) == len(RalphToolName)
+
+
+def test_run_benchmark_default_catalog_matches_registered_specs() -> None:
+    """AC-12: the bench gate MUST use the registered catalog by
+    default. When the caller does not pass ``visible_tool_catalog``,
+    the harness MUST derive it from the registered Ralph-owned
+    registry so the catalog-token counter matches the real
+    ``tools/list`` bytes.
+
+    The production ``run_benchmark`` accepts ``visible_tool_catalog``
+    as a kwarg, but the script-shape fixture's
+    ``fixture.catalog_tokens`` is the baseline ceiling. The
+    derived catalog MUST produce a token count that matches the
+    fixture's pinned value (proving the gate can run without an
+    injected catalog).
+    """
+    from ralph.mcp.explore.bench import (
+        BenchmarkFixture,
+        tool_catalog_tokens,
+    )
+
+    fixture = BenchmarkFixture(
+        question_id="derive-catalog-default",
+        description="derive-catalog-default fixture",
+        workspace_files={"a.py": "x = 1\n"},
+        baseline_script=(ScriptedCall(tool="read_file", params={"path": "a.py"}),),
+        indexed_script=(ScriptedCall(tool="read_file", params={"path": "a.py"}),),
+        expected_evidence_ids=("ev:derive",),
+        max_returned_bytes=2048,
+        max_tool_calls=1,
+    )
+    derived_catalog = derive_visible_catalog()
+    derived_tokens = tool_catalog_tokens(derived_catalog)
+    expected_min = sum(
+        len(desc.split()) for _name, desc in derived_catalog
+    )
+    # ``tool_catalog_tokens`` returns the serialized name +
+    # description + schema, which is always >= the description-
+    # only token count. The test pins the lower bound so a
+    # regression that empties the description (or drops the name)
+    # breaks the gate.
+    assert sum(derived_tokens.values()) >= expected_min

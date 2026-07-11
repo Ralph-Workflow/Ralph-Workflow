@@ -155,8 +155,12 @@ def test_edit_file_target_symbol_returns_impact_preview_and_evidence_updates(
         ]
         assert len(hello_symbols) == 1
         sym = hello_symbols[0]
+        # The MagicMock must mirror the workspace file the index was
+        # built from so the implicit stale-target hash-check does
+        # not falsely flag a fresh edit.
+        mock_file_text = (workspace / "module.py").read_text(encoding="utf-8")
         ws = MagicMock()
-        ws.read.return_value = "def hello():\n    return 1\n"
+        ws.read.return_value = mock_file_text
         ws.write.return_value = None
         ws.is_path_git_tracked.return_value = False
         ws.absolute_path.return_value = str(workspace / "module.py")
@@ -339,5 +343,100 @@ def test_edit_file_reindex_skip_still_marks_dirty(tmp_path: Path) -> None:
             },
         )
         assert store.peek_dirty_paths() == ["module.py"]
+    finally:
+        store.close()
+
+
+def test_edit_file_stale_target_hash_fails_closed_before_mutation(tmp_path: Path) -> None:
+    """AC-10: when a ``target`` resolves to an evidence/span whose
+    recorded ``content_hash`` no longer matches the current file, the
+    edit fails closed with ``status='stale_evidence'`` and never
+    writes the file.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
+        hello_rows = [sym for sym in store.iter_symbols() if sym.name == "hello"]
+        assert len(hello_rows) == 1
+        original_file = "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
+        ws = MagicMock()
+        # The on-disk file has changed since the indexed hash; the
+        # handler must refuse to mutate because the row is stale.
+        mutated_file = "def hello():\n    return 99\n"
+        ws.read.return_value = mutated_file
+        ws.is_path_git_tracked.return_value = False
+        ws.absolute_path.return_value = str(workspace / "module.py")
+        session = _FakeSession(explore_index=build_sqlite_index_handle(store))
+        result = handle_edit_file(
+            session,
+            ws,
+            {
+                "path": "module.py",
+                "edits": [{"oldText": "return 99", "newText": "return 100"}],
+                "target": {
+                    "symbol": hello_rows[0].qualified_name,
+                    "path": "module.py",
+                },
+                "match_strategy": "within_target",
+            },
+        )
+        assert result.is_error is True
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["status"] == "stale_evidence"
+        assert payload["path"] == "module.py"
+        assert payload["reason"] == "content_changed"
+        ws.write.assert_not_called()
+        del original_file  # silence linter; the read returns mutated_file above
+    finally:
+        store.close()
+
+
+def test_edit_file_all_in_target_boundary_uses_old_text_length(tmp_path: Path) -> None:
+    """AC-10: ``match_strategy='all_in_target'`` constrains every
+    ``oldText`` occurrence to lie inside the target span using
+    ``len(old_text)`` (NOT ``len(new_text)``). A caller that
+    supplies a short ``new_text`` while ``old_text`` would bleed
+    past the target boundary must fail closed.
+    """
+    workspace = _seed_workspace(tmp_path)
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
+        hello_rows = [sym for sym in store.iter_symbols() if sym.name == "hello"]
+        assert len(hello_rows) == 1
+        file_text = "def hello():\n    return 1\n\nclass Foo:\n    def bar(self):\n        return 2\n"
+        ws = MagicMock()
+        ws.read.return_value = file_text
+        ws.is_path_git_tracked.return_value = False
+        ws.absolute_path.return_value = str(workspace / "module.py")
+        session = _FakeSession(explore_index=build_sqlite_index_handle(store))
+        # The span covers only the ``def hello(): return 1`` body,
+        # but the edit asks to replace a snippet that lives partly
+        # outside the function body. ``all_in_target`` must refuse
+        # even though the new_text is shorter than old_text.
+        result = handle_edit_file(
+            session,
+            ws,
+            {
+                "path": "module.py",
+                "edits": [
+                    {
+                        "oldText": "    return 1\n\nclass Foo:",
+                        "newText": "    return 42",
+                    }
+                ],
+                "target": {
+                    "symbol": hello_rows[0].qualified_name,
+                    "path": "module.py",
+                },
+                "match_strategy": "all_in_target",
+            },
+        )
+        assert result.is_error is True
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["status"] == "ambiguous_target"
+        assert payload["reason"] == "match_strategy_all_in_target_violation"
+        ws.write.assert_not_called()
     finally:
         store.close()
