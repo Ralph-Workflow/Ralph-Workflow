@@ -14,6 +14,7 @@ from ralph.mcp.explore.dirty_paths import (
     mark_paths,
     resolve_explore_index,
 )
+from ralph.mcp.explore.pipeline import DEFAULT_TIMEOUT_MS, ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.workspace._write_handlers import (
     handle_append_file,
@@ -124,6 +125,32 @@ def test_handle_write_file_marks_dirty(tmp_path: Path) -> None:
         # The dirty-path queue records the same path so the next
         # reindex picks it up.
         assert store.peek_dirty_paths() == ["a.py"]
+    finally:
+        store.close()
+
+
+def test_mutation_freshness_reports_deleted_index_rows(tmp_path: Path) -> None:
+    """A mutation exposes deleted indexed files as stale freshness metadata."""
+    workspace_root = tmp_path / "ws"
+    workspace_root.mkdir()
+    deleted_path = workspace_root / "deleted.py"
+    deleted_path.write_text("value = 1\n")
+
+    store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
+    try:
+        reindex(store, workspace_root, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+        deleted_path.unlink()
+        reindex(store, workspace_root, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
+
+        result = handle_write_file(
+            _FakeSession(build_sqlite_index_handle(store)),
+            _Workspace(workspace_root),
+            {"path": "replacement.py", "content": "value = 2\n"},
+        )
+
+        payload = _decode(result)
+        assert payload["stale_paths_count"] == 1
+        assert payload["is_stale"] is True
     finally:
         store.close()
 

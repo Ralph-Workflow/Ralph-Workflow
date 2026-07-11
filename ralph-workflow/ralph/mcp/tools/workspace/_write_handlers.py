@@ -93,7 +93,7 @@ def _freshness_payload_from_handle(
     except (TypeError, ValueError):
         generation_int = 0
     dirty = store.peek_dirty_paths()
-    deleted_count = sum(1 for row in store.iter_files() if row.is_deleted)
+    deleted_count = store.count_deleted_files()
     is_stale_value = bool(dirty) or deleted_count > 0
     # AC-04: reindex_in_progress is a typed optional attribute. Some
     # production handle types (older test doubles) do not expose it;
