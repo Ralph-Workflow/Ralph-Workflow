@@ -406,7 +406,7 @@ def test_derive_visible_catalog_reads_registered_tool_specs() -> None:
     # declares a stable order; we only check the SET of names
     # because the bridge groups specs by family and may not
     # match the ``RalphToolName`` enum declaration order).
-    names = set(name for name, _description in catalog)
+    names = {name for name, _description in catalog}
     expected_names = {member.value for member in RalphToolName}
     assert names == expected_names, (
         "derive_visible_catalog must return the registered Ralph-owned "
@@ -445,27 +445,13 @@ def test_run_benchmark_default_catalog_matches_registered_specs() -> None:
     ``tools/list`` bytes.
 
     The production ``run_benchmark`` accepts ``visible_tool_catalog``
-    as a kwarg, but the script-shape fixture's
-    ``fixture.catalog_tokens`` is the baseline ceiling. The
-    derived catalog MUST produce a token count that matches the
-    fixture's pinned value (proving the gate can run without an
-    injected catalog).
+    as a kwarg; the harness's own catalog-token derivation (see
+    ``tool_catalog_tokens``) MUST agree with the description-only
+    token count so a regression that empties the description (or
+    drops the name) breaks the gate.
     """
-    from ralph.mcp.explore.bench import (
-        BenchmarkFixture,
-        tool_catalog_tokens,
-    )
+    from ralph.mcp.explore.bench import tool_catalog_tokens
 
-    fixture = BenchmarkFixture(
-        question_id="derive-catalog-default",
-        description="derive-catalog-default fixture",
-        workspace_files={"a.py": "x = 1\n"},
-        baseline_script=(ScriptedCall(tool="read_file", params={"path": "a.py"}),),
-        indexed_script=(ScriptedCall(tool="read_file", params={"path": "a.py"}),),
-        expected_evidence_ids=("ev:derive",),
-        max_returned_bytes=2048,
-        max_tool_calls=1,
-    )
     derived_catalog = derive_visible_catalog()
     derived_tokens = tool_catalog_tokens(derived_catalog)
     expected_min = sum(

@@ -707,7 +707,7 @@ def test_refresh_audit_register_rejects_unknown_tool() -> None:
         wall_time_seconds=0.01,
     )
     bogus_entry = next(iter(AUDIT_REGISTER))
-    bogus_tool = _replace(bogus_entry, tool=RalphToolName.READ_FILE)
+    _replace(bogus_entry, tool=RalphToolName.READ_FILE)
     # Construct a seed register with a duplicate ``READ_FILE``
     # so the measurement would target an entry outside the
     # dedup-protected set. We use a clear sentinel: a
@@ -732,3 +732,89 @@ def test_refresh_audit_register_rejects_unknown_tool() -> None:
     # expected length (one entry per Ralph tool).
     assert result.duplicates == frozenset({RalphToolName.READ_FILE})
     assert len(result.register) == len(set(RalphToolName))
+
+
+# --- AC-06 measured provenance: source survives refresh -------------------
+
+
+def test_refresh_audit_register_overlays_measurement_source_on_entry() -> None:
+    """AC-06: each ``Measurement`` carries a ``source`` label that
+    must persist onto the matching ``AuditEntry`` after refresh.
+
+    The seed baseline uses ``source='seed'``; a measured entry
+    exposes the measurement's ``source`` (e.g. the benchmark
+    fixture/result identifier) so the audit consumer can
+    identify which benchmark produced the counter overlay. A
+    regression that drops the source on overlay would silently
+    make every refreshed entry indistinguishable from the seed
+    baseline, defeating the provenance contract.
+    """
+    measured_counters = AuditCounters(
+        transcript_tokens=64,
+        returned_bytes=256,
+        tool_calls=2,
+        evidence_recall=1.0,
+        evidence_precision=1.0,
+        stale_fallback_events=0,
+        parse_count=0,
+        changed_file_count=0,
+        index_storage_bytes=0,
+        wall_time_seconds=0.04,
+    )
+    measurement = Measurement(
+        tool=RalphToolName.READ_FILE,
+        counters=measured_counters,
+        source="tests/test_explore_bench_gates.py:Q1",
+    )
+    result = refresh_audit_register([measurement])
+    by_tool = {entry.tool: entry for entry in result.register}
+    replaced = by_tool[RalphToolName.READ_FILE]
+    assert replaced.source == "tests/test_explore_bench_gates.py:Q1", (
+        "Measurement.source must be overlaid onto the matching "
+        "AuditEntry.source so the audit consumer can identify "
+        "the real benchmark fixture/result identifier that "
+        "produced the counters."
+    )
+    # Unmeasured entries keep the seed baseline source label.
+    unmeasured_entry = next(
+        entry for entry in result.register if entry.tool == RalphToolName.WRITE_FILE
+    )
+    assert unmeasured_entry.source == "seed"
+
+
+def test_audit_entry_rejects_empty_source() -> None:
+    """AC-06: ``AuditEntry.source`` MUST be non-empty so a
+    regression that drops the provenance label breaks the gate
+    immediately.
+    """
+    import pytest
+
+    measured_counters = AuditCounters(
+        transcript_tokens=1,
+        returned_bytes=1,
+        tool_calls=1,
+        evidence_recall=1.0,
+        evidence_precision=1.0,
+        stale_fallback_events=0,
+        parse_count=0,
+        changed_file_count=0,
+        index_storage_bytes=0,
+        wall_time_seconds=0.01,
+    )
+    seed_entry = next(iter(AUDIT_REGISTER))
+    # Frozen dataclass cannot mutate; construction-time check is
+    # the only valid gate. Constructing with an empty ``source``
+    # must raise ValueError so a regression that drops the
+    # provenance label breaks immediately.
+    with pytest.raises(ValueError):
+        AuditEntry(
+            tool=seed_entry.tool,
+            family=seed_entry.family,
+            outcome=seed_entry.outcome,
+            rationale=seed_entry.rationale,
+            counters=measured_counters,
+            risk=seed_entry.risk,
+            source="",
+        )
+    # Constructed AuditEntry retains the seed source label.
+    assert seed_entry.source == "seed"

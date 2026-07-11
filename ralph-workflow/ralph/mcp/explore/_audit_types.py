@@ -143,12 +143,26 @@ class AuditEntry:
     rationale: str
     counters: AuditCounters
     risk: str = ""
+    # AC-06 measured provenance: ``source`` records the provenance
+    # label for the entry's counters so the audit consumer can
+    # distinguish seed-baseline entries from real benchmark
+    # measurements. ``refresh_audit_register`` overlays the
+    # measurement's ``source`` on the matching entry; the default
+    # ``"seed"`` preserves the previous behaviour for callers that
+    # construct ``AuditEntry`` directly without going through
+    # ``refresh_audit_register``.
+    source: str = "seed"
 
     def __post_init__(self) -> None:
         if not self.rationale.strip():
             raise ValueError(
                 f"AuditEntry({self.tool!r}): rationale must be non-empty, "
                 "especially for defer outcomes."
+            )
+        if not self.source.strip():
+            raise ValueError(
+                f"AuditEntry({self.tool!r}): source must be non-empty "
+                "(AC-06 measured provenance invariant)."
             )
         if self.outcome == AuditOutcome.DEFER and not self.rationale.strip():
             raise ValueError(
@@ -160,6 +174,44 @@ class AuditEntry:
                 f"AuditEntry({self.tool!r}): defer outcome requires a "
                 "non-empty risk description (prompt non-circumvention rule)."
             )
+
+
+@dataclass(frozen=True, slots=True)
+class Measurement:
+    """One reproducible measurement for a single audit entry.
+
+    ``tool`` is the canonical ``RalphToolName`` the measurement
+    applies to. ``counters`` is the measured ``AuditCounters``
+    record (callers MUST source it from a real ``run_benchmark``
+    result or a fixture; the type prevents synthesized values).
+    The ``source`` string is a free-form provenance label
+    (e.g. ``"tests/test_explore_bench_gates.py:Q1"``) that the
+    audit register preserves alongside the merged entry.
+    """
+
+    tool: RalphToolName
+    counters: AuditCounters
+    source: str = "seed"
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshResult:
+    """Outcome of :func:`refresh_audit_register`.
+
+    ``register`` is the rebuilt tuple of ``AuditEntry`` with the
+    measured counters overlaid. ``applied`` is the set of tools
+    for which a measurement was supplied. ``unmeasured`` is the
+    set of tools that kept the seed baseline. ``duplicates`` is
+    the set of tool names that received more than one
+    measurement; refresh uses the first and reports the rest so
+    callers can detect and correct upstream bench fixtures.
+    """
+
+    register: tuple[AuditEntry, ...]
+    applied: frozenset[RalphToolName]
+    unmeasured: frozenset[RalphToolName]
+    duplicates: frozenset[RalphToolName]
+    source: str = "refresh_audit_register"
 
 
 # Ponytail: per-tool baseline counters. These are conservative Phase 0

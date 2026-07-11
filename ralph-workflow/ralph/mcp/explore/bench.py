@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 
 from ralph.mcp.explore._bench_fixtures import (
     ALL_FIXTURES,
@@ -172,9 +172,15 @@ def derive_visible_catalog(
     """
     from ralph.config.mcp_models import McpConfig
     from ralph.mcp.tools.bridge._registry import tool_specs as _bridge_tool_specs
-    from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 
-    cfg = mcp_config if mcp_config is not None else McpConfig()
+    if mcp_config is None:
+        cfg: McpConfig = McpConfig()
+    else:
+        # ``mcp_config`` is declared as ``object | None`` so callers
+        # without a real bridge can pass a stub. The bridge
+        # ``tool_specs`` requires ``McpConfig``; the cast happens at
+        # the boundary where we know the caller satisfied it.
+        cfg = cast("McpConfig", mcp_config)
     try:
         specs = _bridge_tool_specs(cfg)
     except Exception:
@@ -192,16 +198,29 @@ def derive_visible_catalog(
 
     catalog: list[tuple[str, str]] = []
     for spec in specs:
-        metadata: ToolMetadata = spec.metadata
-        name_obj = metadata.definition.name
+        # ``spec`` is a ``ToolSpec`` instance with a ``ToolMetadata``
+        # payload; we access ``.definition`` lazily rather than
+        # importing the metadata class at module scope (TC001:
+        # type-only imports must live in a ``TYPE_CHECKING`` block).
+        metadata = spec.metadata
         # ponytail: the bridge spec helper passes a ``RalphToolName``
         # enum member rather than the raw string. ``StrEnum`` makes
         # ``str(member)`` and ``member.value`` both return the
         # canonical name, but the type annotation is ``str`` so we
         # coerce defensively to keep the gate tests agnostic to
         # which form the spec helper happens to use today.
-        name = name_obj.value if hasattr(name_obj, "value") else str(name_obj)
-        description = metadata.definition.description
+        # ponytail: ``metadata.definition.name`` is annotated
+        # ``str`` in ``ToolDefinition`` but the bridge passes a
+        # ``StrEnum`` member at runtime. ``str(...)`` produces
+        # the canonical name in either case (``StrEnum.__str__``
+        # returns the value), so the catalog tuple stays ``(str, str)``.
+        name = str(metadata.definition.name)
+        description_obj: object = metadata.definition.description
+        description = (
+            description_obj
+            if isinstance(description_obj, str)
+            else str(description_obj)
+        )
         # ponytail: keep the catalog tuple order stable and the
         # (name, description) shape the harness already supports.
         # Multi-line descriptions are normalized to a single line

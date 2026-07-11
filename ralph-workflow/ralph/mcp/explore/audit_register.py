@@ -40,7 +40,7 @@ that:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import Final
 
 from ralph.mcp.explore._audit_seed_artifact_planning import (
@@ -56,6 +56,8 @@ from ralph.mcp.explore._audit_types import (
     AuditEntry,
     AuditFamily,
     AuditOutcome,
+    Measurement,
+    RefreshResult,
     _counters,
 )
 from ralph.mcp.tools.names import RalphToolName
@@ -78,44 +80,6 @@ baseline flow contracts). They are not arbitrary placeholders:
 each entry's counters are pinned to the smallest non-zero value
 that satisfies the ``AuditCounters`` validation contract.
 """
-
-
-@dataclass(frozen=True, slots=True)
-class Measurement:
-    """One reproducible measurement for a single audit entry.
-
-    ``tool`` is the canonical ``RalphToolName`` the measurement
-    applies to. ``counters`` is the measured ``AuditCounters``
-    record (callers MUST source it from a real ``run_benchmark``
-    result or a fixture; the type prevents synthesized values).
-    The ``source`` string is a free-form provenance label
-    (e.g. ``"tests/test_explore_bench_gates.py:Q1"``) that the
-    audit register preserves alongside the merged entry.
-    """
-
-    tool: RalphToolName
-    counters: AuditCounters
-    source: str = "seed"
-
-
-@dataclass(frozen=True, slots=True)
-class RefreshResult:
-    """Outcome of :func:`refresh_audit_register`.
-
-    ``register`` is the rebuilt tuple of ``AuditEntry`` with the
-    measured counters overlaid. ``applied`` is the set of tools
-    for which a measurement was supplied. ``unmeasured`` is the
-    set of tools that kept the seed baseline. ``duplicates`` is
-    the set of tool names that received more than one
-    measurement; refresh uses the first and reports the rest so
-    callers can detect and correct upstream bench fixtures.
-    """
-
-    register: tuple[AuditEntry, ...]
-    applied: frozenset[RalphToolName]
-    unmeasured: frozenset[RalphToolName]
-    duplicates: frozenset[RalphToolName]
-    source: str = "refresh_audit_register"
 
 
 def audit_register() -> tuple[AuditEntry, ...]:
@@ -165,8 +129,19 @@ def refresh_audit_register(
         if entry.tool in selected:
             measurement = selected[entry.tool]
             applied.add(entry.tool)
+            # AC-06 measured provenance: overlay the
+            # ``counters`` AND the ``source`` from the measurement
+            # so the audit consumer can identify the real
+            # benchmark fixture/result identifier that produced
+            # the counters (the prior implementation discarded
+            # the ``source`` and left every refreshed entry
+            # indistinguishable from the seed baseline).
             rebuilt.append(
-                replace(entry, counters=measurement.counters)
+                replace(
+                    entry,
+                    counters=measurement.counters,
+                    source=measurement.source,
+                )
             )
         else:
             rebuilt.append(entry)
