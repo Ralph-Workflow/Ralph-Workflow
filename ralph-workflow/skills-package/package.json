@@ -1,6 +1,6 @@
 {
   "name": "@ralph-workflow/skills",
-  "version": "0.8.23",
+  "version": "0.8.24",
   "description": "Baseline workflow skills for Ralph Workflow \u2014 ships 17 Ralph-managed mirrored skills sourced from upstream Superpowers content.",
   "license": "AGPL-3.0-or-later",
   "repository": {
