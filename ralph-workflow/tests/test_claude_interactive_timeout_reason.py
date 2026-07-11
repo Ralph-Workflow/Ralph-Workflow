@@ -180,7 +180,7 @@ def test_pty_line_reader_exits_when_completion_evidence_appears(tmp_path: Path) 
 
         def fake_evaluate_completion(*_args: object, **_kwargs: object) -> CompletionSignals:
             return CompletionSignals(
-                explicit_complete=False,
+                explicit_complete=True,
                 required_artifact_present=False,
                 artifact_types=(),
                 completion_sentinel_present=True,
@@ -205,6 +205,46 @@ def test_pty_line_reader_exits_when_completion_evidence_appears(tmp_path: Path) 
 
         assert reader._completion_exit_sent is True
         assert handle.terminate_calls == [0.5]
+        os.close(reader._input_writer_fd)
+    finally:
+        os.close(master_fd)
+
+
+def test_pty_line_reader_waits_for_explicit_completion_after_required_artifact(
+    tmp_path: Path,
+) -> None:
+    master_fd = os.open("/dev/null", os.O_WRONLY)
+    try:
+        handle = _FakeHandle(master_fd)
+        clock = FakeClock(start=25.0)
+
+        def fake_evaluate_completion(*_args: object, **_kwargs: object) -> CompletionSignals:
+            return CompletionSignals(
+                explicit_complete=False,
+                required_artifact_present=True,
+                artifact_types=("smoke_test_result",),
+                completion_sentinel_present=True,
+            )
+
+        ctx = SimpleNamespace(
+            config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            policy=TimeoutPolicy(idle_timeout_seconds=300.0),
+            monitor=None,
+            execution_strategy=None,
+            liveness_probe=None,
+            waiting_listener=None,
+            workspace_path=tmp_path,
+            extra_env={str(MCP_RUN_ID_ENV): "run-1"},
+            evaluate_completion_fn=fake_evaluate_completion,
+            required_artifact=None,
+        )
+        reader = PtyLineReader(handle, "claude", ctx, clock, extras=None)
+        reader._monitor_stop = _StopAfterOneCompletionPoll()
+
+        reader._completion_evidence_thread()
+
+        assert reader._completion_exit_sent is False
+        assert handle.terminate_calls == []
         os.close(reader._input_writer_fd)
     finally:
         os.close(master_fd)

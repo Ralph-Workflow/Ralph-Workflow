@@ -147,6 +147,19 @@ def test_stream_parsed_agent_activity_invokes_sink_for_text_lines(tmp_path: Path
         reset_subagent_sink(token)
 
 
+def test_stream_parsed_agent_activity_renders_raw_content_verbatim() -> None:
+    rendered: list[str] = []
+
+    stream_parsed_agent_activity(
+        ["meaningful provider output\n"],
+        parser_type="generic",
+        agent_name="provider/model",
+        rendered_output_sink=rendered,
+    )
+
+    assert rendered == ["provider/model: meaningful provider output"]
+
+
 def test_stream_parsed_agent_activity_does_not_invoke_sink_when_none_set(
     tmp_path: Path,
 ) -> None:

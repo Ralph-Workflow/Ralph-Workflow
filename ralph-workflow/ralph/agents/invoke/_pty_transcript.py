@@ -21,7 +21,8 @@ def _path_name(path: Path) -> str:
 
 
 def _project_transcript_root(project_path: Path) -> Path:
-    return Path.home() / ".claude" / "projects" / str(project_path.resolve()).replace("/", "-")
+    project_key = str(project_path.resolve()).replace("/", "-").replace(" ", "-")
+    return Path.home() / ".claude" / "projects" / project_key
 
 
 def _path_mtime(path: Path) -> float:

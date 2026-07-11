@@ -487,6 +487,7 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
         "tool_use": lambda: _render_tool_use_line(agent_name, output),
         "tool_result": lambda: _render_tool_result_line(agent_name, output.content),
         "error": lambda: _render_error_line(agent_name, output.content),
+        "raw": lambda: _render_text_line(agent_name, output.content, "dim"),
     }
     renderer = content_renderers.get(output.type)
     if renderer is not None:

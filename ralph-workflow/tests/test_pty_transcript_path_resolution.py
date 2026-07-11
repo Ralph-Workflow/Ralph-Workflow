@@ -44,6 +44,24 @@ def test_find_claude_transcript_path_preserves_single_session_lookup(
     assert observed == expected_path
 
 
+def test_find_latest_claude_transcript_entry_supports_workspace_paths_with_spaces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace with spaces"
+    workspace_root.mkdir()
+    project_dir_name = str(workspace_root).replace("/", "-").replace(" ", "-")
+    project_root = tmp_path / ".claude" / "projects" / project_dir_name
+    project_root.mkdir(parents=True)
+    expected_path = project_root / "session.jsonl"
+    expected_path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(transcript_module.Path, "home", lambda: tmp_path)
+
+    entry = transcript_module.find_latest_claude_transcript_entry(workspace_root, min_mtime=0.0)
+
+    assert entry == (expected_path, "session")
+
+
 def test_find_latest_claude_transcript_entry_uses_project_scoped_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

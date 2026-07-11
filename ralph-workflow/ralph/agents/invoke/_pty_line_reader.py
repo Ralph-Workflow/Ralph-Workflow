@@ -659,11 +659,7 @@ class PtyLineReader:
                 sentinel_secret=_parent_broker_secret(),
                 receipt_secret=_parent_broker_secret(),
             )
-            if (
-                signals.explicit_complete
-                or signals.required_artifact_present
-                or signals.completion_sentinel_present
-            ):
+            if signals.explicit_complete:
                 self._request_interactive_exit()
                 return
 
