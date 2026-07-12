@@ -148,8 +148,10 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
      validator mechanics in the prose. The required `Ralph markers`
      section is the one designated home for machine markers — keep it,
      and keep it minimal.
-   * Add the completion marker `{markers.COMPLETION_MARKER}` ONLY when every
-     other requirement is satisfied.
+   * There is NO completion marker to add. A file is complete exactly when
+     no `RALPH-STARTER-TEMPLATE` banner, no `REPLACE-ME` comment, and no
+     placeholder token remains and every requirement above is satisfied —
+     completion is the absence of unresolved markers.
 3. MIGRATE existing project policy-like content into the matching canonical
    file and add `{markers.MIGRATED_MARKER_TEMPLATE.format(target="<canonical-filename>")}`
    at the old location (replacing `<canonical-filename>` with the destination).

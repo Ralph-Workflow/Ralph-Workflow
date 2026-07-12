@@ -126,10 +126,10 @@ def run_policy_readiness_preflight(
 def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[str]:
     """Seed every missing core starter and every required conditional starter.
 
-    Seeding does NOT make a file complete — the starter ships without the
-    completion marker, contains ``RALPH-FACT`` placeholders, and lacks
-    project-specific commands. The remediation agent is the only owner of
-    the completion marker.
+    Seeding does NOT make a file complete — the starter ships with the
+    template banner, ``REPLACE-ME`` section comments, and unresolved
+    ``RALPH-FACT`` placeholders, so the validator blocks readiness until
+    the remediation agent resolves every one of them.
 
     Returns the list of newly-created starter paths.
     """

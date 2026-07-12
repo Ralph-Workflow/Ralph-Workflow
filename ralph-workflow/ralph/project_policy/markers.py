@@ -232,12 +232,14 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 
-# Per-policy identifier prefix and per-file completion marker. Each canonical
-# file must contain a `<!-- ralph-policy-id: <filename> -->` line and the
-# completion marker. Both are exact-substring matches; the validator rejects
-# any file that omits them or whose identifier does not match its filename.
+# Per-policy identifier prefix. Each canonical file must contain a
+# `<!-- ralph-policy-id: <filename> -->` line (exact-substring match); the
+# validator rejects any file that omits it or whose identifier does not match
+# its filename. There is NO completion marker: a policy file is complete
+# exactly when it carries no template banner, no REPLACE-ME comment, and no
+# placeholder token — completion is the absence of unresolved markers, never
+# a certification comment an agent writes.
 POLICY_ID_PREFIX: Final[str] = "<!-- ralph-policy-id:"
-COMPLETION_MARKER: Final[str] = "<!-- ralph-policy-complete -->"
 
 # Machine-checkable field markers. The validator parses these as line-prefixed
 # facts so policy content can be checked deterministically (no prose NLP).
@@ -273,6 +275,11 @@ PLACEHOLDER_TOKENS: Final[tuple[str, ...]] = (
     "{{",
     "REPLACE-ME",
     "PROJECT-FACT-UNRESOLVED",
+    # The REPLACE-ME guidance comments show the provisional-fact convention
+    # "(assumed <date>; revisit when <trigger>)"; agents that copy the
+    # example literally must stay blocked until they substitute real values.
+    "<date>",
+    "<trigger>",
 )
 
 # Every starter opens with a RALPH-STARTER-TEMPLATE banner comment that marks
@@ -306,10 +313,6 @@ STARTER_TEMPLATE_TOKEN: Final[str] = "RALPH-STARTER-TEMPLATE"
 #   program itself reports an unknown target at runtime; declaring
 #   ``make <target>`` is the documented gate form, not a contract we can
 #   verify without an AI.
-# * ``echo``, ``cat``, ``ls``, ``find``, ``true``, ``bash``, ``sh`` are
-#   shell utilities permitted in test fixtures and smoke checks; they
-#   are not verification gates themselves but the unit-test commands
-#   used in policy test fixtures rely on them.
 APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
     {
         "make",
@@ -350,7 +353,18 @@ APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
         "kubectl",
         "terraform",
         "ansible",
-        # Shell utilities permitted in test fixtures / smoke checks.
+    }
+)
+
+# Shell utilities the validator ACCEPTS as command first-tokens (test
+# fixtures and smoke checks rely on them, and bash/sh wrap legitimate CI
+# scripts) but which are NEVER advertised to remediation agents: they are
+# not verification gates, and advertising them would hand a weak agent the
+# hollow-gate loophole (``RALPH-COMMAND: echo ok`` reaching READY with zero
+# real verification). The remediation prompt renders APPROVED_GATE_TOOLS
+# only.
+FIXTURE_GATE_UTILITIES: Final[frozenset[str]] = frozenset(
+    {
         "echo",
         "cat",
         "ls",
@@ -532,7 +546,6 @@ ID_LANG_COVERAGE: Final[str] = "RWP-LANG"
 ID_CITATION_MISSING: Final[str] = "RWP-CITATION"
 ID_HEADING_MISSING: Final[str] = "RWP-HEADING"
 ID_PLACEHOLDER: Final[str] = "RWP-PLACEHOLDER"
-ID_COMPLETION_MISSING: Final[str] = "RWP-COMPLETION"
 ID_MARKER_MISSING: Final[str] = "RWP-MARKER"
 ID_AGENTS_MD_MISSING: Final[str] = "RWP-AGENTS-MD"
 ID_CLAUDE_MD_MISSING: Final[str] = "RWP-CLAUDE-MD"
@@ -550,16 +563,15 @@ __all__ = [
     "CITATION_REQUIRED_FIELDS",
     "CLAUDE_MD",
     "COMMAND_MARKER",
-    "COMPLETION_MARKER",
     "CONDITIONAL_POLICY_FILES",
     "CORE_POLICY_FILES",
     "CSS_LANGUAGE_SIGNALS",
     "FACT_MARKER",
+    "FIXTURE_GATE_UTILITIES",
     "ID_AGENTS_MD_MISSING",
     "ID_CITATION_MISSING",
     "ID_CLAUDE_MD_MISSING",
     "ID_CMD_UNUSABLE",
-    "ID_COMPLETION_MISSING",
     "ID_CORE_MISSING",
     "ID_DOMAIN",
     "ID_HEADING_MISSING",

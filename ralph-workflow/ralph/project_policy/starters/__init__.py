@@ -16,9 +16,10 @@ Public API:
   policy directory via the workspace seam, but ONLY when the target is
   absent (never overwrite an existing project-customized file).
 
-Every starter is shipped WITHOUT the completion marker so a freshly-seeded
-starter fails the validator until the remediation agent resolves every
-RALPH-FACT placeholder and adds the completion marker.
+Every starter ships with a template banner, REPLACE-ME guidance comments,
+and placeholder tokens, so a freshly-seeded starter fails the validator
+until the remediation agent resolves every one of them. Completion is the
+absence of unresolved markers — there is no completion marker to add.
 """
 
 from __future__ import annotations

@@ -74,6 +74,25 @@ def test_prompt_names_the_approved_gate_tool_allowlist() -> None:
         assert tool in prompt, f"approved gate tool {tool!r} missing from prompt"
 
 
+def test_prompt_never_advertises_fixture_shell_utilities() -> None:
+    """The validator ACCEPTS shell utilities (test fixtures rely on them),
+    but the prompt must never advertise them as approved gate tools: a weak
+    agent picking from the advertised list could otherwise declare
+    ``RALPH-COMMAND: echo ok`` and reach READY with zero real verification."""
+    prompt = remediation._render_prompt([_stub_finding()])
+    # Extract exactly the rendered tool list after "Approved tools:".
+    segment = prompt.split("Approved tools:", 1)[1].split(".", 1)[0]
+    advertised = {token.strip() for token in segment.replace("\n", " ").split(",")}
+    assert advertised == set(markers.APPROVED_GATE_TOOLS)
+    assert not advertised & set(markers.FIXTURE_GATE_UTILITIES)
+
+
+def test_fixture_utilities_disjoint_from_advertised_tools() -> None:
+    """The two allowlists must stay disjoint: an entry in both would be
+    advertised while claiming fixture-only status."""
+    assert not set(markers.APPROVED_GATE_TOOLS) & set(markers.FIXTURE_GATE_UTILITIES)
+
+
 def test_prompt_steers_standard_community_files_to_migrated_marker() -> None:
     """Migration offers two resolutions: add the migrated marker, or remove
     the recognized heading. For standard community files (SECURITY.md,

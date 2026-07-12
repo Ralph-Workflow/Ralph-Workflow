@@ -3,9 +3,8 @@
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
 facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
-project's established practice, deletes this banner, and adds the completion
-marker. Readiness stays blocked while this banner or any placeholder token
-remains. -->
+project's established practice, and deletes this banner. Readiness stays
+blocked while this banner or any placeholder token remains. -->
 
 # Performance Policy
 
@@ -152,5 +151,3 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: performance-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` comment; its presence
-  certifies this file passed validation when it was last amended.

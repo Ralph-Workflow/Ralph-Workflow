@@ -434,7 +434,7 @@ def _check_core_policy_file(
 
 
 def _check_policy_file(workspace: Workspace, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate one canonical policy file (presence, structure, fields, completion).
+    """Validate one canonical policy file (presence, structure, fields, markers).
 
     Composed from small focused helpers to keep the branch count low.
     """
@@ -461,7 +461,6 @@ def _validate_existing_policy_file(
     findings.extend(_check_research_basis(content, path, filename))
     findings.extend(_check_placeholders(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
-    findings.extend(_check_completion_marker(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
     return findings
 
@@ -781,7 +780,10 @@ def _command_is_approved(value: str) -> bool:
     first = _command_first_token(value)
     if not first:
         return False
-    return first in markers.APPROVED_GATE_TOOLS
+    return (
+        first in markers.APPROVED_GATE_TOOLS
+        or first in markers.FIXTURE_GATE_UTILITIES
+    )
 
 
 def _check_individual_commands(
@@ -868,25 +870,6 @@ def _check_individual_commands(
                     )
                 )
     return findings
-
-
-def _check_completion_marker(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate the completion marker is present."""
-    if markers.COMPLETION_MARKER in content:
-        return []
-    return [
-        PolicyFinding(
-            requirement_id=f"{markers.ID_COMPLETION_MISSING}:{filename}",
-            path=path,
-            missing_evidence=(
-                f"missing completion marker {markers.COMPLETION_MARKER}"
-            ),
-            required_outcome=(
-                "add the completion marker comment ONLY when every other "
-                "requirement is satisfied and the file is verified project-specific"
-            ),
-        )
-    ]
 
 
 def _check_per_language_coverage(

@@ -74,8 +74,6 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
     lines.append(f"RALPH-FACT: {filename}: path = docs/ralph-workflow-policy/{filename}")
     lines.append("RALPH-FACT: owner = test-owner")
     lines.append("")
-    lines.append(markers.COMPLETION_MARKER)
-    lines.append("")
     if lang is not None:
         lines.append(f"RALPH-LANG: {lang}")
         lines.append("RALPH-COMMAND: echo ok")
@@ -180,16 +178,20 @@ def test_missing_command_and_inapplicable_emits_finding() -> None:
     assert any(f.path == path and f.requirement_id.startswith(markers.ID_CMD_UNUSABLE) for f in findings)
 
 
-def test_completion_marker_missing_emits_finding() -> None:
+def test_no_completion_marker_is_required_for_readiness() -> None:
+    """Completion is the absence of unresolved markers, not a certification
+    comment: a fully-resolved project reaches READY without any completion
+    marker, and the validator never emits a completion finding."""
     ws = MemoryWorkspace()
     _seed_agents_md(ws)
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, _stack_with())
-    path = f"{markers.CANONICAL_DIR}testing-policy.md"
-    content = ws.read(path).replace(markers.COMPLETION_MARKER, "")
-    ws.write(path, content)
     findings = validators.validate_readiness(ws, _stack_with())
-    assert any(f.path == path and f.requirement_id.startswith(markers.ID_COMPLETION_MISSING) for f in findings)
+    assert findings == []
+    for filename in markers.CORE_POLICY_FILES:
+        assert "ralph-policy-complete" not in ws.read(
+            f"{markers.CANONICAL_DIR}{filename}"
+        )
 
 
 def test_per_language_coverage_required_for_secondary_language() -> None:
@@ -250,25 +252,22 @@ def test_resolved_migration_candidate_emits_no_finding() -> None:
 
 
 def test_headings_only_never_ready() -> None:
-    """A policy file with every heading but no completion marker or commands must fail."""
+    """A policy file with every heading but no commands must fail."""
     ws = MemoryWorkspace()
     _seed_agents_md(ws)
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, _stack_with())
-    # Strip the completion marker AND the command from one policy.
+    # Strip the command from one policy.
     path = f"{markers.CANONICAL_DIR}testing-policy.md"
     content = ws.read(path)
     lines = [
         line
         for line in content.splitlines()
         if not line.startswith(markers.COMMAND_MARKER)
-        and line.strip() != markers.COMPLETION_MARKER
     ]
     ws.write(path, "\n".join(lines) + "\n")
     findings = validators.validate_readiness(ws, _stack_with())
     ids = {f.requirement_id for f in findings}
-    # Both markers missing must produce findings.
-    assert any(i.startswith(markers.ID_COMPLETION_MISSING) for i in ids)
     assert any(i.startswith(markers.ID_CMD_UNUSABLE) for i in ids)
 
 
@@ -304,7 +303,7 @@ def test_design_system_required_emits_design_system_finding() -> None:
 
 
 def test_starter_content_fails_validation_until_customized() -> None:
-    """A freshly-seeded starter has placeholders and no completion marker -> failing."""
+    """A freshly-seeded starter has a banner and placeholders -> failing."""
     ws = MemoryWorkspace()
     starters.seed_starter_into(ws, "testing-policy.md")
     findings = validators.validate_readiness(ws, _stack_with())

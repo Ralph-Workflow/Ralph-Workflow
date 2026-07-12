@@ -148,10 +148,12 @@ def test_starter_machine_lines_are_line_start(name: str) -> None:
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_filled_in_starter_validates_clean(name: str) -> None:
     """The full contract: take a starter, do exactly what the remediation
-    prompt says (resolve placeholders in place, delete the banner, add the
-    completion marker) and the file must pass every per-file validator
-    check. If this fails, the template forces the agent to fight the
-    validator over formatting instead of filling in facts."""
+    prompt says (resolve placeholders in place, delete the banner and every
+    REPLACE-ME comment) and the file must pass every per-file validator
+    check with NO completion marker — completion is the absence of
+    unresolved markers, not a certification comment. If this fails, the
+    template forces the agent to fight the validator over formatting
+    instead of filling in facts."""
     from ralph.project_policy import markers, validators
     from ralph.workspace.memory import MemoryWorkspace
 
@@ -169,7 +171,8 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
         "RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test"
     )
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
-    content += f"\n{markers.COMPLETION_MARKER}\n"
+    # No completion marker is appended: a file is complete exactly when no
+    # banner, REPLACE-ME comment, or placeholder token remains.
 
     ws = MemoryWorkspace()
     path = f"{markers.CANONICAL_DIR}{name}"
@@ -186,7 +189,9 @@ def test_remediation_prompt_owns_the_fill_in_instructions() -> None:
     prompt so the remediating agent still receives them."""
     prompt = remediation._render_prompt([])
     assert "Replace every `RALPH-FACT:` line" in prompt
-    assert "completion marker" in prompt
+    # Completion is the absence of unresolved markers — the prompt must say
+    # so and must NOT instruct adding any completion marker.
+    assert "no completion marker" in prompt.lower()
     assert "INSPECT the project" in prompt
     assert "Remove inapplicable conditional sections" in prompt
     assert "stricter" in prompt

@@ -24,7 +24,7 @@ The capability surfaced by this package:
    instruction block.
 4. Runs a deterministic, versioned machine-checkable validator over every
    canonical policy file (presence, identifier, schema, headings, citations,
-   field markers, completion marker, placeholders, per-language coverage).
+   field markers, placeholders, template banners, per-language coverage).
 5. Caches READY under a content+signature key so a single ready run does not
    pay for validation on every subsequent preflight; edits and deletions to
    any input invalidates the cached READY.

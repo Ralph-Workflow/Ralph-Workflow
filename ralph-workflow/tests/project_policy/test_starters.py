@@ -164,6 +164,10 @@ def test_starter_citations_are_structurally_valid() -> None:
 # advice burns a remediation attempt on an RWP-CMD:unapproved finding.
 # Keys must cover EVERY starter (completeness is asserted) so a new or
 # edited starter is forced to declare its recommendations here.
+# KNOWN LIMITATION: the guard is one-directional — a NEW tool
+# recommendation added to a starter's prose without an inventory entry is
+# not detected automatically (prose scanning is deliberately avoided);
+# reviewers must update this inventory when starter advice changes.
 _RECOMMENDED_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
     "testing-policy.md": (),
     "typechecking-policy.md": ("mypy", "tsc", "cargo check", "go build"),
@@ -300,12 +304,17 @@ def test_starter_has_command_or_inapplicable() -> None:
         assert markers.COMMAND_MARKER in content or markers.INAPPLICABLE_MARKER in content
 
 
-def test_starter_does_not_contain_completion_marker() -> None:
-    """A starter must NEVER ship with the completion marker."""
+def test_starter_never_mentions_a_completion_marker() -> None:
+    """Completion is the ABSENCE of unresolved markers (banner, REPLACE-ME
+    comments, placeholder tokens) — there is no completion certification
+    comment for an agent to add, so no starter may reference one. This is
+    simpler and more honest: a marker asserts more than the deterministic
+    validator can check, while absence-of-markers is exactly what it
+    checks."""
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
-        assert markers.COMPLETION_MARKER not in content, (
-            f"starter {name} shipped with completion marker; that's a defect"
+        assert "ralph-policy-complete" not in content, (
+            f"starter {name} references the retired completion marker"
         )
 
 
@@ -364,17 +373,3 @@ def test_starters_are_free_of_known_content_corruption() -> None:
             )
 
 
-def test_starter_ralph_markers_reference_completion_marker_cleanly() -> None:
-    """Every starter must name the completion marker in prose WITHOUT embedding the literal token.
-
-    Names the marker so validators can find it; the literal ``<!-- ralph-policy-complete -->``
-    comment must stay absent so a freshly seeded starter still validates as INCOMPLETE by design.
-    """
-    for name in starters.iter_starter_names():
-        content = starters.read_starter(name)
-        assert "ralph-policy-complete" in content, (
-            f"starter {name} does not reference the completion marker name"
-        )
-        assert markers.COMPLETION_MARKER not in content, (
-            f"starter {name} embedded the literal completion marker token"
-        )

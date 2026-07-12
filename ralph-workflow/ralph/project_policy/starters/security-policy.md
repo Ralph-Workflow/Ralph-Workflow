@@ -3,9 +3,8 @@
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
 facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
-project's established practice, deletes this banner, and adds the completion
-marker. Readiness stays blocked while this banner or any placeholder token
-remains. -->
+project's established practice, and deletes this banner. Readiness stays
+blocked while this banner or any placeholder token remains. -->
 
 # Security Policy
 
@@ -173,6 +172,11 @@ Run every gate below before claiming a change complies with this policy.
 
 Secret scanning applies to every project:
 
+<!-- REPLACE-ME: set the project's real secret-scan command (e.g. gitleaks
+or detect-secrets; the first token must be an approved gate tool — wrap
+anything else in `make`, `uv run`, or `npx`). Do not declare a hollow
+command. Then delete this comment. -->
+
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 Per-language static security analysis follows this template (one block
@@ -293,5 +297,3 @@ new commands, new structure). Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: security-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` comment; its presence
-  certifies this file passed validation when it was last amended.
