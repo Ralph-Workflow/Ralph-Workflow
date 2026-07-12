@@ -38,6 +38,14 @@ The `RALPH-FACT:` lines below record verified project facts. Agents rely
 on them when enforcing this policy and MUST keep them current as the
 project evolves.
 
+<!-- REPLACE-ME: record one verified, machine-checkable value per fact
+below (commands, paths, names, versions — not adjectives or aspirations).
+If the project is too young for a fact to be settled, record the best
+current answer plus the condition that will settle it, e.g.
+"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
+be able to tell a settled fact from a provisional one at a glance. Then
+delete this comment. -->
+
 RALPH-FACT: linter_per_language: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: rule_set_baseline: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: formatter_responsibility: PROJECT-FACT-UNRESOLVED

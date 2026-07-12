@@ -79,17 +79,42 @@ skipped item in the artifact.
 
 - You MAY conclude that a review missed a concrete issue if you can point to the missed issue in the
   code or verification output.
-- You MAY conclude that verification is still incomplete if you ran the relevant command and it did
-  not establish the required behavior, or if no runnable verification command exists for that claim.
+- You MAY conclude that verification is still incomplete ONLY when a runnable check exists in this
+  session, you ran it yourself, and it did not establish the required behavior.
 - You MUST NOT judge what the agent, developer, or reviewer did or did not do.
 - You MUST NOT rely on agent logs, transcripts, or inferred process history as evaluation evidence.
 - When verification matters, run the relevant command yourself and describe the observed result.
-  If no runnable verification command exists for the claim, say that explicitly instead of guessing
-  about anyone's behavior.
+  If no runnable verification command exists for the claim, say that explicitly, treat the claim as
+  not evaluatable, and do not score it — never guess about anyone's behavior.
 - If you need command-based evidence, run the command yourself and report what you observed.
 
 If a claim depends on behavior you cannot observe in the work product itself, do not make that claim.
-Gather direct evidence yourself or mark the gap strictly in terms of missing observable evidence.
+Gather direct evidence yourself, or treat the item as not evaluatable — never convert missing
+evidence into a gap.
+
+## HARD RULE: NO UNPROVABLE GAPS
+
+**You CANNOT request changes for anything you cannot yourself prove in this session.**
+
+Every entry you put in `what_came_up_short` must pass BOTH tests:
+
+1. **Provable**: you personally observed the defect in this session — in the code, the diff, or
+   the output of a command you ran — and the entry cites that observation.
+2. **Actionable**: the next review pass can close the gap by re-examining this repository and
+   correcting or adding findings, provable with evidence available in a session like this one.
+
+If a claim can only be verified outside this session — a CI pipeline, a deployed environment,
+an external device, a third-party signoff, or any deploy-time-only behavior — it is not evaluatable.
+Not evaluatable is NOT a gap: it never appears in `what_came_up_short` and it NEVER justifies
+`request_changes` or `failed`. Disclose material limits in the summary and move on.
+
+If an unprovable requirement is genuinely important, the strongest action you may take is to note
+it in the summary as an external follow-up owned by humans — for example, an item for manual-testing
+or deployment-verification documentation. Never assume it was done, never assume it was not done,
+and never turn it into a gap. This outlet is the exception, not the rule: most not-evaluatable
+items deserve no mention at all — reserve follow-up notes for the few that genuinely matter.
+
+When every gap you can prove is closed, choose `completed` — even if not-evaluatable items remain.
 
 ---
 
@@ -202,8 +227,10 @@ Evaluate the review output itself, not just the implementation:
 ### 8. VERIFICATION EVIDENCE
 
 If the plan or workflow required verification commands (tests, lint, type checks, build):
-Run the relevant commands yourself now. If the review's verification claims are not established by
-reproducible command output you can observe in this session, that is a gap.
+Run the relevant commands yourself now. A gap exists only when you proved it yourself: a command
+you ran fails or contradicts a claimed behavior, or a concrete code issue you can point to went
+unsurfaced by the review. If no runnable verification command exists for a claim in this session,
+the claim is not evaluatable — do not report it as a gap.
 
 ---
 
@@ -221,7 +248,7 @@ Return a JSON object.
 - Valid submit example:
   `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
 
-- The review has gaps in coverage or quality:
+- The review has gaps in coverage or quality that you proved yourself:
   `{"status":"request_changes","summary":"The review missed a high-severity validation issue.","what_came_up_short":["The review did not check the new error path"],"how_to_fix":["Re-review src/foo.py and tests/test_foo.py, then submit issues if the error path is still uncovered"]}`
 
 - The review found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
@@ -256,6 +283,10 @@ Return a JSON object.
    or related ones, say so. A polished-looking review that missed the real problems is not
    a passing review.
 
+6. **Every entry must be provable and actionable** (see HARD RULE: NO UNPROVABLE GAPS). If you did
+   not personally observe the missed issue or coverage failure in this session, it is not a gap —
+   at most it is a not-evaluatable limit to disclose in the summary.
+
 Example `what_came_up_short`:
 
 ```
@@ -264,8 +295,8 @@ Example `what_came_up_short`:
 - [Review Structure] The SQL injection finding in `db/queries.py` is classified as MEDIUM
   but should be CRITICAL — the query at line 15 concatenates user input directly, enabling
   arbitrary SQL execution. Misclassifying CRITICAL findings as MEDIUM is a review quality failure.
-- [Testing] Running the relevant test suite does not establish a passing result tied to the
-  new code, and no concrete test file or passing command result is surfaced for that risk area.
+- [Testing] I ran the relevant test suite and searched the repository: no test exercises the
+  new error path in `api/auth.py`, a coverage gap the review should have surfaced.
 - [Plan Compliance] `.github/workflows/release-binaries.yml` lacks a Windows matrix leg,
   which is a concrete mismatch with the plan requirement and should have been surfaced by the review.
 - [Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows
@@ -316,14 +347,14 @@ Example `how_to_fix`:
   "what_came_up_short": [
     "[Security] `api/auth.py:23` contains a hardcoded fallback API key — CRITICAL severity, and the review should have surfaced it.",
     "[Review Structure] SQL injection in `db/queries.py:15` is classified as MEDIUM but should be CRITICAL — user input concatenated directly into SQL.",
-    "[Testing] Running the relevant test suite does not establish a passing result tied to the new code, and the review does not surface a concrete passing command result for that risk area.",
+    "[Testing] I ran the relevant test suite and searched the repository: no test exercises the new error path in api/auth.py, a coverage gap the review should have surfaced.",
     "[Plan Compliance] `.github/workflows/release-binaries.yml` lacks the Windows matrix leg required by the PLAN, and the review should have surfaced that mismatch.",
     "[Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows exceptions, and the review should have surfaced that issue."
   ],
   "how_to_fix": [
     "Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL finding for the hardcoded key at line 23. Remediation: load from `os.environ.get('API_TOKEN')`.",
     "Reclassify the SQL injection in `db/queries.py:15` as CRITICAL and update the review summary and severity table accordingly.",
-    "Run the relevant test suite and record whether tests for new code run and pass. If evidence remains unavailable or the tests fail, add a Testing gap finding with the specific command output.",
+    "Run the relevant test suite and record whether tests for new code run and pass. If the tests fail or no test covers the new code, add a Testing gap finding with the specific command output.",
     "Re-examine `.github/workflows/release-binaries.yml` against the PLAN. If the Windows leg is absent, add a Plan Compliance gap.",
     "Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare `except` at line 87. Remediation: catch specific exception types and preserve context."
   ]

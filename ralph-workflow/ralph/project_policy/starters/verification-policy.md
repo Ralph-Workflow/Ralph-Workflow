@@ -35,6 +35,14 @@ The `RALPH-FACT:` lines below record verified project facts. Agents rely
 on them when enforcing this policy and MUST keep them current as the
 project evolves.
 
+<!-- REPLACE-ME: record one verified, machine-checkable value per fact
+below (commands, paths, names, versions — not adjectives or aspirations).
+If the project is too young for a fact to be settled, record the best
+current answer plus the condition that will settle it, e.g.
+"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
+be able to tell a settled fact from a provisional one at a glance. Then
+delete this comment. -->
+
 RALPH-FACT: authoritative_verify_command: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: gate_prerequisites: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: gate_order: PROJECT-FACT-UNRESOLVED
@@ -65,6 +73,14 @@ An agent MUST NOT:
 
 Run every gate below before claiming a change complies with this policy.
 
+<!-- REPLACE-ME: set the project's real gate command. The first token must
+be an approved gate tool (wrap anything else in `make`, `uv run`, or
+`npx`). If the project has no such gate yet, create the smallest real one
+(a make target running the actual check) rather than declaring a hollow
+command; only a gate that truly cannot exist may be recorded as
+inapplicable with a reason and the condition that would create it. Then
+delete this comment. -->
+
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is exit 0 from the authoritative entry
@@ -85,6 +101,12 @@ authoritative verification gate. The bypass-detection rules:
 The bypass-detection command is declared as a `RALPH-COMMAND:` under
 this heading. The audit tooling is project-specific; the project's
 existing audit scripts MUST be wired into the verification gate.
+
+<!-- REPLACE-ME: set the real bypass-audit command (wire the project's
+lint/typecheck bypass checks into one gate; wrap it in `make` if needed).
+If the selected tools cannot express bypass detection yet, record the
+inapplicability reason and the tooling change that would enable it. Then
+delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 

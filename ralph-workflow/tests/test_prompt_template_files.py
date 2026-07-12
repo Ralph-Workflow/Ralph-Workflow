@@ -161,6 +161,22 @@ DEVELOPMENT_ANALYSIS_OBSERVABLE_UNFIXED_GUIDANCE = (
     "the failing test remains unfixed in the current work product"
 )
 ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE = "no runnable verification command exists"
+ANALYSIS_HARD_RULE_HEADING = "## HARD RULE: NO UNPROVABLE GAPS"
+ANALYSIS_UNPROVABLE_GAP_GUIDANCE = (
+    "You CANNOT request changes for anything you cannot yourself prove in this session."
+)
+ANALYSIS_EXTERNAL_NOT_EVALUATABLE_GUIDANCE = (
+    "a CI pipeline, a deployed environment, an external device, a third-party signoff"
+)
+ANALYSIS_NOT_EVALUATABLE_NEVER_JUSTIFIES_GUIDANCE = "NEVER justifies"
+ANALYSIS_COMPLETED_DESPITE_LIMITS_GUIDANCE = "even if not-evaluatable items remain"
+ANALYSIS_PROVEN_GAP_DECISION_GUIDANCE = (
+    "Falls short in any evaluatable dimension, with a gap you proved yourself"
+)
+ANALYSIS_UNRUNNABLE_LICENSE_BANNED = "or if no runnable verification command exists"
+DEVELOPMENT_ANALYSIS_ESCAPE_HATCH_BANNED = (
+    "unless the PLAN requires an observable verification deliverable"
+)
 ANALYSIS_NO_PLUMBING_OVERWEIGHT_GUIDANCE = (
     "Do not fail a plan solely because of Ralph Workflow internal exec or transport quirks"
 )
@@ -507,6 +523,49 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert "New code" not in development_analysis
     assert "required files were not changed" not in development_analysis
     assert re.search(r"\bdiffs?\b", development_analysis, re.IGNORECASE) is None
+
+
+def test_analysis_templates_forbid_unprovable_gaps() -> None:
+    """Analysis agents may only report gaps they proved themselves in-session.
+
+    Regression for a run where development analysis returned request_changes
+    on criteria it could not evaluate (CI-only verification, deploy-time
+    behavior, external signoff). Unevaluatable items must never be gaps.
+    """
+    templates = {
+        name: (TEMPLATES_ROOT / name).read_text(encoding="utf-8")
+        for name in (
+            "development_analysis.jinja",
+            "planning_analysis.jinja",
+            "review_analysis.jinja",
+        )
+    }
+
+    # Prose wraps across lines in the templates, so compare with collapsed whitespace.
+    normalized_templates = {
+        name: re.sub(r"\s+", " ", body) for name, body in templates.items()
+    }
+
+    for name, body in normalized_templates.items():
+        assert ANALYSIS_HARD_RULE_HEADING in body, name
+        assert ANALYSIS_UNPROVABLE_GAP_GUIDANCE in body, name
+        assert ANALYSIS_EXTERNAL_NOT_EVALUATABLE_GUIDANCE in body, name
+        assert ANALYSIS_NOT_EVALUATABLE_NEVER_JUSTIFIES_GUIDANCE in body, name
+        assert ANALYSIS_COMPLETED_DESPITE_LIMITS_GUIDANCE in body, name
+        assert "**Provable**" in body, name
+        assert "**Actionable**" in body, name
+        # The old license that turned "no command to run" into a failing gap.
+        assert ANALYSIS_UNRUNNABLE_LICENSE_BANNED not in body, name
+
+    development_analysis = normalized_templates["development_analysis.jinja"]
+    planning_analysis = normalized_templates["planning_analysis.jinja"]
+    review_analysis = normalized_templates["review_analysis.jinja"]
+
+    assert DEVELOPMENT_ANALYSIS_ESCAPE_HATCH_BANNED not in development_analysis
+    assert "not observable from the current code" not in development_analysis
+    assert ANALYSIS_PROVEN_GAP_DECISION_GUIDANCE in development_analysis
+    assert ANALYSIS_PROVEN_GAP_DECISION_GUIDANCE in planning_analysis
+    assert "gaps in coverage or quality that you proved yourself" in review_analysis
 
 
 def test_planning_fallback_templates_reference_artifact_history_location() -> None:

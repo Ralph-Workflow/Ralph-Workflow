@@ -64,6 +64,13 @@ concrete rules each one carries. Surfaces are added, amended, and
 retired as the project evolves; an out-of-date surface list is a policy
 violation, reviewed under "Maintenance triggers" below.
 
+<!-- REPLACE-ME: evaluate every surface in the catalog below against the
+project's actual stack and code. Record the active surfaces in the fact
+line (each with concrete rules kept in this section), and record every
+inactive surface as inapplicable with the stack change that would
+re-open it. Keep the catalog itself: it is the checklist future agents
+re-run whenever the stack changes. Then delete this comment. -->
+
 RALPH-FACT: active_threat_surfaces: PROJECT-FACT-UNRESOLVED
 
 Each surface in the catalog below is evaluated against the project's
@@ -104,6 +111,14 @@ The `RALPH-FACT:` lines below record verified project facts. Agents rely
 on them when enforcing this policy and MUST keep them current as the
 project evolves. Facts marked (owner-supplied) come from the project
 owner and MUST NOT be inferred from the repository alone.
+
+<!-- REPLACE-ME: record one verified, machine-checkable value per fact
+below (commands, paths, names, versions — not adjectives or aspirations).
+If the project is too young for a fact to be settled, record the best
+current answer plus the condition that will settle it, e.g.
+"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
+be able to tell a settled fact from a provisional one at a glance. Then
+delete this comment. -->
 
 RALPH-FACT: data_sensitivity (owner-supplied): PROJECT-FACT-UNRESOLVED
 RALPH-FACT: deployment_exposure (owner-supplied): PROJECT-FACT-UNRESOLVED

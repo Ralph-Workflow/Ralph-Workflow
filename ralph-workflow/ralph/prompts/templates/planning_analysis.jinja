@@ -97,9 +97,12 @@ need to enumerate every skipped item in the artifact.
 
 - You MAY conclude that a plan is missing required execution detail if the artifact omits exact
   files, commands, or steps needed to execute safely.
-- You MAY conclude that verification is still incomplete if you ran the referenced command and it
-  does not establish the required behavior, or if no runnable verification command exists for that
-  claim.
+- You MAY conclude that verification is still incomplete ONLY when you ran the referenced command
+  yourself and it does not establish the required behavior.
+- If a plan verification step names a command, path, or target that you confirmed does not exist
+  or cannot run, that is a provable plan defect — the fix is a concrete plan edit. If you simply
+  have no way to check a claim in this session, it is not evaluatable: skip it, and do not use it
+  to reject the plan.
 - Do not fail a plan solely because of Ralph Workflow internal exec or transport quirks when the underlying
   verification intent is already clear and would not force the executor to invent a materially
   different check.
@@ -111,12 +114,37 @@ need to enumerate every skipped item in the artifact.
 - You MUST NOT infer correctness from whether the planner seemed confident or detailed.
 - You MUST NOT rely on agent logs, transcripts, or inferred process history as evaluation evidence.
 - When verification matters, run the relevant command yourself and describe the observed result.
-  If no runnable verification command exists for the claim, say that explicitly instead of guessing
-  about anyone's behavior.
+  If no runnable verification command exists for the claim, say that explicitly, treat the claim as
+  not evaluatable, and do not score it — never guess about anyone's behavior.
 
 If a claim depends on behavior you cannot observe in the plan, repository, or command output, do
-not make that claim. Gather direct evidence yourself or mark the gap strictly in terms of missing
-observable evidence.
+not make that claim. Gather direct evidence yourself, or treat the item as not evaluatable — never
+convert missing evidence into a gap.
+
+## HARD RULE: NO UNPROVABLE GAPS
+
+**You CANNOT request changes for anything you cannot yourself prove in this session.**
+
+Every entry you put in `what_came_up_short` must pass BOTH tests:
+
+1. **Provable**: you personally observed the defect in this session — in the plan content, the
+   repository, or the output of a command you ran — and the entry cites that observation.
+2. **Actionable**: the planner can close the gap through the MCP plan-edit tools, and closure is
+   provable from plan content, repository evidence, or runnable commands in a session like this one.
+
+If a claim can only be verified outside this session — a CI pipeline, a deployed environment,
+an external device, a third-party signoff, or any deploy-time-only behavior — it is not evaluatable.
+Not evaluatable is NOT a gap: it never appears in `what_came_up_short` and it NEVER justifies
+`request_changes` or `failed`. Disclose material limits in the summary and move on.
+
+If an unprovable requirement is genuinely important, the strongest action you may take is to note
+it in the summary as an external follow-up owned by humans — for example, an item the plan routes
+into manual-testing or deployment-verification documentation. Never assume it was done, never
+assume it was not done, and never turn it into a gap. This outlet is the exception, not the rule:
+most not-evaluatable items deserve no mention at all — reserve follow-up notes for the few that
+genuinely matter.
+
+When every gap you can prove is closed, choose `completed` — even if not-evaluatable items remain.
 
 ---
 
@@ -230,6 +258,11 @@ Actively look for missing work and internal contradictions:
 - **Expected outcome**: each verification item says what success looks like
 - **Coverage of major claims**: the plan verifies the key promised outcomes, not only low-risk ones
 - **Runnable evidence**: if you run representative commands now, do they appear plausible and valid?
+- **In-session provability**: every verification item the plan uses as gating proof must be provable
+  inside the executor's session (runnable commands, inspectable files). Verification that depends on
+  a CI pipeline, a deployed environment, an external device, or third-party signoff cannot gate
+  downstream phases — the plan must supply an in-session proxy or explicitly mark it as a
+  non-gating external follow-up
 
 ### 7. PARALLELIZATION SAFETY — MEDIUM
 
@@ -283,7 +316,7 @@ Return a JSON object.
 - Valid submit example:
   `{"artifact_type":"planning_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
 
-- Falls short in any dimension:
+- Falls short in any evaluatable dimension, with a gap you proved yourself:
   `{"status":"request_changes","summary":"The plan is missing executor-ready verification.","what_came_up_short":["PA-001 | Dimension: Verification gap | Defect: verification_strategy omits the exact pytest command | Evidence: verification_strategy[0] says run tests | Missing: exact command and expected passing result"],"how_to_fix":["PA-001 | Resubmit verification_strategy with method pytest tests/test_foo.py -q and expected_outcome describing the passing regression test"]}`
 
 - The analysis found major incompleteness or an otherwise unusable result; stronger remediation may
@@ -313,6 +346,11 @@ Return a JSON object.
 
 4. **No vague summaries.** "Needs more detail" or "incomplete" without specifics means the artifact
    is incomplete.
+
+5. **Every entry must be provable and actionable** (see HARD RULE: NO UNPROVABLE GAPS). If you did
+   not personally observe the defect in this session, or the planner cannot close it through the
+   MCP plan-edit tools, it is not a gap — at most it is a not-evaluatable limit to disclose in the
+   summary.
 
 ---
 

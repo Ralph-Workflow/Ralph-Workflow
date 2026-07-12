@@ -249,6 +249,44 @@ def test_replace_me_token_is_a_validator_placeholder() -> None:
     assert "REPLACE-ME" in markers.PLACEHOLDER_TOKENS
 
 
+def _h2_sections(content: str) -> list[tuple[str, str]]:
+    """Split starter content into (heading, body) pairs per H2 section."""
+    sections: list[tuple[str, str]] = []
+    current_heading: str | None = None
+    current_body: list[str] = []
+    for line in content.splitlines():
+        if line.startswith("## "):
+            if current_heading is not None:
+                sections.append((current_heading, "\n".join(current_body)))
+            current_heading = line[3:].strip()
+            current_body = []
+        elif current_heading is not None:
+            current_body.append(line)
+    if current_heading is not None:
+        sections.append((current_heading, "\n".join(current_body)))
+    return sections
+
+
+@pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
+def test_every_unresolved_section_carries_replace_me_guidance(name: str) -> None:
+    """Weaker remediation agents need guidance AT the point of work: every
+    H2 section that still carries unresolved data (PROJECT-FACT-UNRESOLVED)
+    must also carry a `<!-- REPLACE-ME:` comment with in-place instructions
+    — including what to record when the project is too young for the data
+    to exist yet (best current answer plus the condition that settles it).
+    The comment self-destructs: REPLACE-ME is a validator placeholder, so
+    readiness stays blocked until the section is resolved and the comment
+    deleted."""
+    content = starters.read_starter(name)
+    for heading, body in _h2_sections(content):
+        if "PROJECT-FACT-UNRESOLVED" not in body:
+            continue
+        assert "<!-- REPLACE-ME:" in body, (
+            f"{name}: section '{heading}' carries unresolved data but no "
+            "<!-- REPLACE-ME: --> guidance comment for the remediation agent"
+        )
+
+
 def test_starter_has_placeholder_fact_lines() -> None:
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)

@@ -91,8 +91,8 @@ Report a gap only when observable evidence affirmatively shows required behavior
 is absent, defective, or conflicts with the PLAN. Note material evaluation limits in the summary.
 
 - You MAY conclude that a test failed if you ran it and saw the failure.
-- You MAY conclude that verification is still incomplete if you ran the relevant command and it did
-  not establish the required behavior, or if no runnable verification command exists for that claim.
+- You MAY conclude that verification is still incomplete ONLY when a runnable check exists in this
+  session, you ran it yourself, and it did not establish the required behavior.
 - You MAY conclude that code is missing a required behavior if the current implementation conflicts
   with the behavior required by the plan.
 - Draw conclusions about the current work product, not process history.
@@ -102,11 +102,39 @@ is absent, defective, or conflicts with the PLAN. Note material evaluation limit
   test and observe it fail, state that the failing test remains unfixed in the current work product
   and cite the observed failure. Do not make claims about whether anyone ran the test or attempted a fix.
 - When verification matters, run the relevant command yourself and describe the observed result.
-  If no runnable verification command exists for the claim, say that explicitly instead of guessing
-  about anyone's behavior.
+  If no runnable verification command exists for the claim, say that explicitly, mark the claim
+  `not_evaluatable`, and do not score it — never guess about anyone's behavior.
 
 If a claim depends on behavior you cannot observe in the work product itself, do not make that claim.
-Gather direct evidence yourself or mark the gap strictly in terms of missing observable evidence.
+Gather direct evidence yourself, or mark the item `not_evaluatable` — never convert missing evidence
+into a gap.
+
+## HARD RULE: NO UNPROVABLE GAPS
+
+**You CANNOT request changes for anything you cannot yourself prove in this session.**
+
+Every entry you put in `what_came_up_short` must pass BOTH tests:
+
+1. **Provable**: you personally observed the defect in this session — in the current work product
+   or in the output of a command you ran — and the entry cites that observation.
+2. **Actionable**: the next developer iteration can close the gap by editing this repository and
+   prove the fix with evidence available in a session like this one.
+
+If a requirement can only be verified outside this session — a CI pipeline, a deployed environment,
+an external device, a third-party signoff, or any deploy-time-only behavior — it is `not_evaluatable`.
+`not_evaluatable` is NOT a gap: it never appears in `what_came_up_short` and it NEVER justifies
+`request_changes` or `failed`, no matter how strongly the PLAN or any binding document mandates that
+verification. Disclose material limits in the summary and move on.
+
+If an unprovable requirement is genuinely important, the strongest action you may take is to note
+it in the summary as an external follow-up owned by humans — for example, an item for manual-testing
+or deployment-verification documentation. Never assume it was done, never assume it was not done,
+and never turn it into a gap. This outlet is the exception, not the rule: most not-evaluatable
+items deserve no mention at all — reserve follow-up notes for the few that genuinely matter.
+(If the PLAN requires the work product itself to contain such follow-up documentation and you
+confirmed it is absent, that absence is a provable in-repo gap.)
+
+When every gap you can prove is closed, choose `completed` — even if not-evaluatable items remain.
 
 ---
 
@@ -212,8 +240,10 @@ Evaluate every security-relevant file and integration point in the discovered pl
 If the PLAN or this workflow requires specific verification commands (tests, lint, type checks, build),
 run the relevant commands yourself now. A command failure or output that affirmatively conflicts with
 a required behavior is a gap. If no runnable command exists, record the claim as `not_evaluatable`;
-the missing command is not itself a reason to fail unless the PLAN requires an observable verification
-deliverable and the current work product lacks it.
+the missing command is never itself a reason to fail. The only verification-evidence gap you may
+report is one you proved yourself: the PLAN requires an in-repo verification deliverable (a file,
+test, or recorded output that must exist inside the work product), the developer can produce it by
+editing this repository, and you personally confirmed it is absent or wrong.
 
 ---
 
@@ -222,8 +252,10 @@ deliverable and the current work product lacks it.
 Return a JSON object.
 
 - If no observable gap exists across all evaluatable requirements and applicable dimensions:
-  `{"status":"completed","summary":"..."}`. The `summary` MUST cite the key current-work-product evidence
-  and self-run command results supporting the decision, and disclose material `not_evaluatable` limits.
+  `{"status":"completed","summary":"..."}`. This holds even when some requirements remain
+  `not_evaluatable`: once every gap you can prove is closed, the status is `completed`.
+  The `summary` MUST cite the key current-work-product evidence and self-run command results
+  supporting the decision, and disclose material `not_evaluatable` limits.
 
 - After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
   and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
@@ -232,7 +264,7 @@ Return a JSON object.
 - Valid submit example:
   `{"artifact_type":"development_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
 
-- Falls short in any dimension:
+- Falls short in any evaluatable dimension, with a gap you proved yourself:
   `{"status":"request_changes","summary":"The implementation still needs a regression test.","what_came_up_short":["No test covers oversized indexes"],"how_to_fix":["Add tests/test_foo.py::test_clamp_handles_out_of_range_index and rerun pytest tests/test_foo.py -q"]}`
 
 - The analysis found observable major incompleteness or an otherwise unusable current result; stronger remediation may be needed, including possible redo or starting over from the work phase:
@@ -262,6 +294,11 @@ Return a JSON object.
 4. **No vague summaries.** "Needs work" or "incomplete" without specifics means the artifact
    is incomplete.
 
+5. **Every entry must be provable and actionable** (see HARD RULE: NO UNPROVABLE GAPS). If you did
+   not personally observe the defect in this session, or the next developer iteration cannot close
+   it by editing this repository, it is not a gap — at most it is a `not_evaluatable` limit to
+   disclose in the summary.
+
 Example `what_came_up_short`:
 
 ```
@@ -271,8 +308,8 @@ Example `what_came_up_short`:
   from the workflow or release documentation.
 - [Testing] Running `pytest tests/test_pipeline.py::test_runner_error_path -v` now shows
   3 failing assertions, so the current work product fails verification for that path.
-- [Verification Evidence] The required platform archive and checksum results are not
-  observable from the current code or verification commands run in this session.
+- [Verification Evidence] The PLAN requires `docs/release-verification.md` recording the
+  release verification output; I confirmed the file is absent from the repository.
 - [Security] `api/auth.py:23` hardcodes a fallback API key in source — CRITICAL severity.
 ```
 
@@ -318,7 +355,7 @@ Example `how_to_fix`:
     "[Plan Compliance] `.github/workflows/release-binaries.yml` does not build or upload the Windows artifact.",
     "[Plan Compliance] `ralph-workflow/scripts/install.ps1` exists but is not referenced from the workflow or release documentation.",
     "[Testing] Running `pytest tests/test_pipeline.py::test_runner_error_path -v` now shows 3 failing assertions, so the current work product fails verification for that path.",
-    "[Verification Evidence] The required platform archive and checksum results are not observable from the current code or verification commands run in this session.",
+    "[Verification Evidence] The PLAN requires docs/release-verification.md recording the release verification output; I confirmed the file is absent from the repository.",
     "[Security] `api/auth.py:23` hardcodes a fallback API key in source — CRITICAL severity."
   ],
   "how_to_fix": [
