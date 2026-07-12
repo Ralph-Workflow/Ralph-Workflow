@@ -2,12 +2,13 @@
 
 ## Scope
 
-This repository’s maintained implementation is the Python package in `ralph-workflow/`.
+This repository's maintained implementation is the Python package in `ralph-workflow/`.
 Treat older Rust-oriented material elsewhere in the repo as legacy background unless a document explicitly says it was refreshed for Python.
 
 ## Source of truth
 
 Use these first, in this order:
+
 1. `PROMPT.md` (root — the canonical documentation rubric / brief for the project)
 2. `ralph-workflow/CONTRIBUTING.md`
 3. `docs/agents/verification.md`
@@ -21,6 +22,13 @@ Note: the root `PROMPT.md` is the project brief/rubric, while
 your project by `ralph --init` — do not conflate the two.
 
 If instructions conflict, follow the stricter one.
+
+The canonical quality policies — testing, type-checking, linting,
+dependency, verification, agent, clean-code, documentation, and
+security — live under `docs/ralph-workflow-policy/` and are the
+single source of truth for those domains. AI agents reading this
+file MUST consult `docs/ralph-workflow-policy/` before changing
+the project.
 
 ## Priorities
 
@@ -158,10 +166,21 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
 
 ## Absolutely Zero Dead code
 
-Zero tolerance for any type of dead code. This is not negotiable, it is **INFINITELY BETTER** to rewrite dead code if we need to later on 
+Zero tolerance for any type of dead code. This is not negotiable, it is **INFINITELY BETTER** to rewrite dead code if we need to later on
 than it is to leave dead code around. If in doubt, **REMOVE IT**.
 
+<!-- ralph-workflow-policy:begin v1 -->
+Quality policies for testing, type-checking, linting, dependency,
+verification, agent, clean-code, documentation, and security live
+under `docs/ralph-workflow-policy/`. AI agents (Claude, Codex,
+Cursor, opencode, and any other) MUST read and follow those policies
+before changing the project; this file's source-of-truth and
+non-negotiables sections remain authoritative for agent behaviour.
+<!-- ralph-workflow-policy:end -->
+
 ## Verification
+
+<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/verification-policy.md -->
 
 Before completion, run the required checks from `docs/agents/verification.md`:
 

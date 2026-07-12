@@ -1,0 +1,165 @@
+<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-id: clean-code-policy.md -->
+
+# Clean-Code Policy
+
+## Purpose and scope
+
+This policy governs project-specific naming, structure, module-boundary,
+and readability rules. It defines the expectations for function, class,
+module, and file scope and responsibility; the limits on dead code and
+premature extensibility; the error-handling and logging conventions; the
+rules for refactoring code that cannot be tested or understood cleanly;
+and the treatment of generated, vendored, migration, and compatibility
+code.
+
+The maintained implementation is the Python package under
+`ralph-workflow/ralph/`; the conventions below describe Python-first
+practice and adapt to other detected languages (see Verification).
+
+## Default requirements
+
+* The agent MUST follow project-specific naming conventions verified
+  against existing source. Generic style guides do NOT override the
+  project's actual convention.
+* The agent MUST prefer simple, maintainable solutions and existing
+  project patterns over speculative abstractions or duplicated helpers.
+  An abstraction with one implementation and one caller is premature.
+* Dead code, commented-out code, unused compatibility layers, and
+  unused imports MUST be removed. The "we might need it later"
+  rationale does not override the no-dead-code rule.
+* Function, class, module, and file scope MUST follow single
+  responsibility: a function does one thing, a module owns one
+  concept. Functions over `pylint.max-args = 40` (the CLI typer
+  callback floor) MUST be justified inline; the project has narrowed
+  the ruff floor beyond its default for the same reason.
+* Error handling MUST surface actionable context. Bare `except: pass`
+  is forbidden. Errors MUST be logged with enough context to diagnose
+  (`loguru`-based logging in production code, with the structured
+  fields from `ralph/logging_models.py`).
+* Code that cannot be tested cleanly MUST be refactored at the
+  boundary, not patched with white-box tests. Black-box testability is
+  the contract (see testing-policy.md).
+* Generated code, vendored code, migration code, and compatibility
+  code MUST be marked as such (via filename, header, or directory
+  location) and excluded from generic lint/typecheck rules.
+* Mutable collection literals at module level or assigned to `self.X`
+  in `__init__` MUST carry a FIFO/size cap (`deque(maxlen=...)`,
+  `OrderedDict` with a count cap) or a documented
+  `# bounded-accumulator-ok: <reason>` marker. Unbounded accumulators
+  retain heavyweight objects across a long unattended run and are the
+  bug class the resource-lifecycle audit
+  (`ralph.testing.audit_resource_lifecycle`) detects — see
+  `ralph-workflow/docs/agents/memory-lifecycle.md` for the contract.
+
+## Project facts to resolve
+
+The `RALPH-FACT:` lines below record verified project facts. Agents
+rely on them when enforcing this policy and MUST keep them current as
+the project evolves.
+
+RALPH-FACT: naming_convention: PEP 8 snake_case for functions, variables, and module names; PascalCase for classes; SCREAMING_SNAKE_CASE for module-level constants. CLI entry points live under `ralph/cli/` and use Typer / rich-click conventions. Tests live under `ralph-workflow/tests/` and mirror the package layout they exercise. Type aliases use the `T = ...` PEP 613 form only when reused across modules.
+RALPH-FACT: module_boundary_rule: each subpackage under `ralph/` (agents, api, checkpoint, cli, config, contrib, diagnostics, display, executor, exit_pause, files, git, guidelines, interrupt, language_detector, logging, mcp, phases, pipeline, platform, policy, pro_support, process, project_policy, prompts, recovery, runtime, skills, telemetry, testing, timeout, workspace) owns one concept and is the seam for dependency injection. New public subpackages require an `.. automodule::` entry in `docs/sphinx/modules.rst` (enforced by `tests/test_sphinx_modules_coverage.py`). Circular-import avoidance is delegated to lazy `PLC0415` ignores with rationale, not to a global silencer.
+RALPH-FACT: error_handling_convention: raise typed exceptions (custom pydantic-validated models in `ralph/pydantic_validation_errors.py` for canonical subtypes); never `except: pass`. Errors MUST carry actionable context (the affected subject, the failing input, the operator's next step). Subprocess / network failures carry a `timeout=` per the MCP timeout contract. Recovery classifies exceptions via `ralph/recovery/classifier.py:FailureClassifier`; do not classify at the call site.
+RALPH-FACT: logging_convention: `loguru` is the production logger (per `[project].dependencies` in `ralph-workflow/pyproject.toml`). Structured fields follow `ralph/logging_models.py`. Logging configuration is centralized in `ralph/_logging_config.py` and `ralph/_logging_paths.py`; per-module `logging.basicConfig` is forbidden. Verbosity toggle lives at `python -m ralph --verbose`.
+RALPH-FACT: generated_code_marker: autogenerated audit / verifiers under `ralph/testing/audit_*.py` are marked via module-level docstrings; vendored stubs live under `ralph-workflow/stubs/` (registered via `mypy_path` in `ralph-workflow/mypy.ini`). Migration / compatibility shims live under `ralph/pro_support/` and carry the same `# reason: autogenerated code has no type support` marker that satisfies `audit_typecheck_bypass`. The skills mirror output (`ralph-workflow/skills-package/content/`) is regenerated by `npm run prepack` per `ralph/skills/content/` and is gitignored / repacked, not hand-edited.
+RALPH-FACT: vendored_code_marker: vendored first-party type stubs live under `ralph-workflow/stubs/` with a per-stub module docstring declaring the upstream package, the stub scope, and the upstream-version pin. The legacy Rust implementation under `docs/legacy-rust/` is quarantined and carries its own README marking it retired; treat as read-only.
+RALPH-FACT: dead_code_audit_command: `make -C ralph-workflow dead-code` runs `uv run --with vulture python -m vulture --config pyproject.toml`. Vulture's minimum-confidence floor lives at the project default (60%) for quick runs; release runs lift the floor to 80%. Removal rather than annotation is the project default; a `# noqa`-style annotated dead symbol is a defect, not a workaround.
+
+## AI execution instructions
+
+To follow this policy, an agent making any change MUST:
+
+* PREFER existing project utilities and patterns over new abstractions.
+* REMOVE dead code in the same change that obsoletes it.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the naming convention, module boundary rules,
+  or error-handling and logging conventions.
+
+An agent MUST NOT:
+
+* Introduce speculative abstractions ("we might need it later").
+* Add unused compatibility layers.
+* Add an unbounded mutable collection (`list` / `dict` / `set` /
+  `deque` without `maxlen=`) at module level or `self.X` in `__init__`
+  without an inline `# bounded-accumulator-ok: <reason>` marker
+  naming the cap or drain. The resource-lifecycle audit detects this
+  class of leak.
+* Weaken the no-dead-code rule to obtain a passing result.
+
+## Verification
+
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: make -C ralph-workflow dead-code
+
+The expected successful result is a clean Vulture run (exit 0). Any
+finding is reported with file:line and the confidence score; the
+remediation is to remove the symbol, not to annotate it.
+
+The drift audit
+(`ralph/testing/audit_resource_lifecycle`) is part of `make verify`
+and is the binding check for the resource-accumulator rule above.
+
+## Exceptions
+
+A documented exception (e.g. legacy compatibility shim with a removal
+date) requires a documented rationale, scope, owner, and removal or
+review date. The exception lives in this section; the symbol itself
+carries an inline marker cross-referencing the entry.
+
+## Maintenance triggers
+
+This policy MUST be reviewed in the same workflow as any of:
+
+* A new naming convention is introduced.
+* A new module boundary rule is introduced.
+* The error-handling or logging convention changes.
+* A new generated/vendored code category is added.
+
+## Research basis
+
+* publisher: Robert C. Martin ("Uncle Bob")
+  title: "The Clean Code Blog"
+  http: https://blog.cleancoder.com/
+  review date: 2026-07-12
+
+* publisher: Martin Fowler
+  title: "Refactoring: Improving the Design of Existing Code"
+  http: https://martinfowler.com/books/refactoring.html
+  review date: 2026-07-12
+
+* publisher: Google Engineering Practices
+  title: "Code Health: Reduce Nesting, Reduce Complexity"
+  http: https://google.github.io/eng-practices/review/developer/
+  review date: 2026-07-12
+
+* publisher: Sandi Metz
+  title: "Practical Object-Oriented Design in Ruby"
+  http: https://www.poodr.com/
+  review date: 2026-07-12
+
+## Living document contract
+
+This policy is a living document. It MUST evolve as the project grows:
+update the resolved facts, commands, and requirements whenever verified
+project reality changes (new frameworks, new commands, new structure).
+Two guardrails bound every amendment:
+
+* Conflicts between this policy's generic defaults and the project's
+  established practice are resolved in
+  favor of the existing project policy — adapt this file to verified
+  project reality, never the reverse. A looser project practice is
+  NOT such a conflict: keep the stronger requirement unless a
+  documented exception narrows it.
+* An amendment MUST NOT subvert the INTENT of this policy. Weakening,
+  disabling, or deleting a requirement so that a failing change passes is
+  forbidden; evolution clarifies and extends, it does not water down.
+
+## Ralph markers
+
+* Policy id: `<!-- ralph-policy-id: clean-code-policy.md -->`
+* Schema version: `<!-- ralph-policy-schema: v1 -->`
