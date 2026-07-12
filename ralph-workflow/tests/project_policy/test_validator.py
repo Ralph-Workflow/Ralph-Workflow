@@ -494,3 +494,148 @@ def test_managed_block_missing_both_markers_emits_finding() -> None:
     assert (
         f"{markers.ID_MARKER_MISSING}:agents-block:missing" in ids
     ), f"missing missing-block finding; observed: {ids}"
+
+
+def test_canonical_dir_outside_block_emits_finding() -> None:
+    """Regression (analysis feedback #1): a fully compliant workspace whose
+    AGENTS.md has CANONICAL_DIR referenced only OUTSIDE the managed block
+    MUST emit the RWP-MARKER:canonical-dir-ref finding. The validator must
+    NOT silently accept the reference when it does not appear in the block
+    body. The remediation agent should add a reference INSIDE the block.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    # CANONICAL_DIR appears in user-authored prose BEFORE the managed block;
+    # the block itself references nothing about the canonical dir.
+    ws.write(
+        markers.AGENTS_MD,
+        f"# My Project\n\n"
+        f"See {markers.CANONICAL_DIR} for policies.\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"This block does not mention the canonical policy directory.\n"
+        f"{markers.AGENTS_BLOCK_END}\n",
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" in ids
+    ), (
+        f"missing canonical-dir-ref finding when CANONICAL_DIR is only "
+        f"outside the managed block; observed: {ids}"
+    )
+    # Project must NOT be ready.
+    assert any(f.path == markers.AGENTS_MD for f in findings)
+
+
+def test_canonical_dir_inside_block_emits_no_finding() -> None:
+    """Counterpart: when the reference is INSIDE the managed block the gate
+    is satisfied and no canonical-dir-ref finding fires (other than the
+    well-formed managed-block finding, which is absent here).
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    ws.write(
+        markers.AGENTS_MD,
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"All project policy lives under {markers.CANONICAL_DIR}.\n"
+        f"{markers.AGENTS_BLOCK_END}\n",
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert f"{markers.ID_MARKER_MISSING}:canonical-dir-ref" not in ids, (
+        f"unexpected canonical-dir-ref finding when reference is inside "
+        f"the block; observed: {ids}"
+    )
+
+
+def test_verification_bypass_empty_command_emits_finding() -> None:
+    """Regression (analysis feedback #3): an empty ``RALPH-COMMAND:`` line
+    under 'Bypass detection' MUST NOT be accepted as a valid bypass-audit
+    gate. The validator must surface a stable
+    ``RWP-CMD:verification-policy.md:bypass-cmd:empty`` finding so the
+    remediation agent adds a real command.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    # Replace the only valid bypass command with an empty marker.
+    path = f"{markers.CANONICAL_DIR}verification-policy.md"
+    content = ws.read(path)
+    lines = content.splitlines()
+    new_lines: list[str] = []
+    in_bypass = False
+    for line in lines:
+        if line.strip() == "## Bypass detection":
+            in_bypass = True
+            new_lines.append(line)
+            continue
+        # Drop existing RALPH-COMMAND lines inside the bypass block and
+        # the following H2 boundary.
+        if in_bypass and line.startswith("## "):
+            # Append the empty command before the boundary heading.
+            new_lines.append("RALPH-COMMAND:")
+            in_bypass = False
+            new_lines.append(line)
+            continue
+        if in_bypass and line.startswith(markers.COMMAND_MARKER):
+            # Drop the real command; we'll add the empty marker below.
+            continue
+        new_lines.append(line)
+    if in_bypass:
+        new_lines.append("RALPH-COMMAND:")
+    ws.write(path, "\n".join(new_lines) + "\n")
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:empty"
+        in ids
+    ), (
+        f"missing bypass-cmd:empty finding for an empty RALPH-COMMAND "
+        f"under Bypass detection; observed: {ids}"
+    )
+    # Project must NOT be ready.
+    assert any(f.path == path for f in findings)
+
+
+def test_verification_bypass_placeholder_command_emits_finding() -> None:
+    """Regression (analysis feedback #3): a placeholder RALPH-COMMAND
+    under 'Bypass detection' MUST be rejected with the placeholder finding
+    so the user sees actionable evidence for an unusable gate.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}verification-policy.md"
+    content = ws.read(path)
+    lines = content.splitlines()
+    new_lines: list[str] = []
+    in_bypass = False
+    for line in lines:
+        if line.strip() == "## Bypass detection":
+            in_bypass = True
+            new_lines.append(line)
+            continue
+        if in_bypass and line.startswith("## "):
+            new_lines.append("RALPH-COMMAND: TODO real-bypass-command")
+            in_bypass = False
+            new_lines.append(line)
+            continue
+        if in_bypass and line.startswith(markers.COMMAND_MARKER):
+            continue
+        new_lines.append(line)
+    if in_bypass:
+        new_lines.append("RALPH-COMMAND: TODO real-bypass-command")
+    ws.write(path, "\n".join(new_lines) + "\n")
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:placeholder"
+        in ids
+    ), (
+        f"missing bypass-cmd:placeholder finding for a placeholder "
+        f"RALPH-COMMAND under Bypass detection; observed: {ids}"
+    )
+    # Project must NOT be ready.
+    assert any(f.path == path for f in findings)

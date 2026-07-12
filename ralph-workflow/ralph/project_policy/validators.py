@@ -346,17 +346,56 @@ def _check_managed_block_uniqueness(content: str) -> list[PolicyFinding]:
     return findings
 
 
+def _extract_managed_block_body(content: str) -> str | None:
+    """Return the body text strictly between the unique begin/end markers.
+
+    The validator slices AGENTS.md between the validated unique
+    :data:`markers.AGENTS_BLOCK_BEGIN` and
+    :data:`markers.AGENTS_BLOCK_END` markers and returns the body. A
+    :keyword:`None` return means the block is malformed (no unique pair)
+    and the caller has already emitted its own marker finding; this helper
+    is a no-op for malformed blocks so the canonical-dir gate does not
+    produce duplicate or buried findings.
+    """
+    if content.count(markers.AGENTS_BLOCK_BEGIN) != 1:
+        return None
+    if content.count(markers.AGENTS_BLOCK_END) != 1:
+        return None
+    begin_idx = content.find(markers.AGENTS_BLOCK_BEGIN)
+    end_idx = content.find(markers.AGENTS_BLOCK_END)
+    if begin_idx >= end_idx:
+        return None
+    return content[begin_idx + len(markers.AGENTS_BLOCK_BEGIN):end_idx]
+
+
 def _check_managed_block_canonical_dir(content: str) -> list[PolicyFinding]:
-    """Validate the managed block body references the canonical policy dir."""
-    if markers.CANONICAL_DIR in content:
+    """Validate the managed block BODY references the canonical policy dir.
+
+    The check is scoped strictly to the body sliced between the validated
+    unique begin/end markers so a CANONICAL_DIR reference OUTSIDE the
+    managed block (e.g. in user-authored prose before or after the block)
+    cannot satisfy the gate. A malformed block returns no finding here
+    because :func:`_check_managed_block_uniqueness` already surfaces the
+    precise marker finding.
+    """
+    body = _extract_managed_block_body(content)
+    if body is None:
+        return []
+    if markers.CANONICAL_DIR in body:
         return []
     return [
         PolicyFinding(
             requirement_id=f"{markers.ID_MARKER_MISSING}:canonical-dir-ref",
             path=markers.AGENTS_MD,
-            missing_evidence=f"no reference to canonical policy dir {markers.CANONICAL_DIR}",
+            missing_evidence=(
+                f"managed block body does not reference canonical policy "
+                f"dir {markers.CANONICAL_DIR} (reference outside the block "
+                "does not satisfy the gate)"
+            ),
             required_outcome=(
-                f"reference {markers.CANONICAL_DIR} from the managed block"
+                f"add a reference to {markers.CANONICAL_DIR} INSIDE the "
+                f"managed block between {markers.AGENTS_BLOCK_BEGIN} and "
+                f"{markers.AGENTS_BLOCK_END}"
             ),
         )
     ]
@@ -847,7 +886,15 @@ def _find_empty_per_language_inapplicable(content: str) -> set[str]:
 
 
 def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
-    """Validate the verification-policy bypass-detection gate."""
+    """Validate the verification-policy bypass-detection gate.
+
+    The gate requires the 'Bypass detection' heading AND at least one
+    non-empty, placeholder-free RALPH-COMMAND line under it. An empty
+    RALPH-COMMAND: marker (or one whose value contains a placeholder
+    token) is REJECTED with a stable ``RWP-CMD:verification-policy.md:
+    bypass-cmd:empty`` or ``:placeholder-cmd-N`` finding so the user sees
+    an actionable pointer for an unusable bypass-detection gate.
+    """
     path = f"{markers.CANONICAL_DIR}verification-policy.md"
     findings: list[PolicyFinding] = []
     if not workspace.exists(path):
@@ -864,34 +911,85 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
                 ),
                 required_outcome=(
                     "add a 'Bypass detection' heading with at least one "
-                    "RALPH-COMMAND that runs the lint/typecheck bypass audit"
+                    "non-empty, placeholder-free RALPH-COMMAND that runs "
+                    "the lint/typecheck bypass audit"
                 ),
             )
         )
         return findings
-    # The bypass-detection block must include at least one command.
+    # The bypass-detection block must include at least one non-empty,
+    # placeholder-free command. Empty RALPH-COMMAND: markers are NOT
+    # accepted; the value after the marker must contain non-whitespace
+    # text and no placeholder token.
     in_section = False
-    saw_command = False
+    saw_real_command = False
+    saw_empty_command = False
     for line in content.splitlines():
         heading_match = _HEADING_LINE_RE.match(line)
         if heading_match is not None:
             heading_text = str(heading_match.group(1)).strip().lower()
             in_section = heading_text == "bypass detection"
             continue
-        if in_section and line.startswith(markers.COMMAND_MARKER):
-            saw_command = True
-            break
-    if not saw_command:
+        if not in_section:
+            continue
+        if not line.startswith(markers.COMMAND_MARKER):
+            continue
+        value = line[len(markers.COMMAND_MARKER):].strip()
+        if not value:
+            saw_empty_command = True
+            continue
+        if any(token in value for token in markers.PLACEHOLDER_TOKENS):
+            findings.append(
+                PolicyFinding(
+                    requirement_id=(
+                        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:"
+                        f"bypass-cmd:placeholder"
+                    ),
+                    path=path,
+                    missing_evidence=(
+                        "'Bypass detection' RALPH-COMMAND contains a "
+                        "placeholder token"
+                    ),
+                    required_outcome=(
+                        "replace the placeholder in the 'Bypass detection' "
+                        "RALPH-COMMAND with a real runnable bypass-audit command"
+                    ),
+                )
+            )
+            continue
+        saw_real_command = True
+    if saw_empty_command and not saw_real_command:
         findings.append(
             PolicyFinding(
-                requirement_id=f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd",
+                requirement_id=(
+                    f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:"
+                    f"bypass-cmd:empty"
+                ),
+                path=path,
+                missing_evidence=(
+                    "'Bypass detection' section contains only an empty "
+                    "RALPH-COMMAND marker; the gate MUST declare a runnable "
+                    "non-empty command"
+                ),
+                required_outcome=(
+                    "add a non-empty, placeholder-free RALPH-COMMAND under "
+                    "'Bypass detection' that runs the lint/typecheck bypass audit"
+                ),
+            )
+        )
+    if not saw_real_command and not saw_empty_command:
+        findings.append(
+            PolicyFinding(
+                requirement_id=(
+                    f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd"
+                ),
                 path=path,
                 missing_evidence=(
                     "'Bypass detection' section has no RALPH-COMMAND line"
                 ),
                 required_outcome=(
-                    "add a RALPH-COMMAND line under 'Bypass detection' that "
-                    "runs the bypass-detection audit"
+                    "add a non-empty, placeholder-free RALPH-COMMAND under "
+                    "'Bypass detection' that runs the bypass-detection audit"
                 ),
             )
         )

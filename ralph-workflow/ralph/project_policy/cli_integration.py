@@ -263,11 +263,12 @@ def run_project_policy_readiness(
     """Run the project-policy-readiness preflight at run_pipeline startup.
 
     Steps:
-    1. Build the workspace + project stack via the injected seams.
-    2. Call :func:`ralph.project_policy.run_policy_readiness_preflight`.
-    3. Map the result status to a CLI exit code: ``READY`` / ``SKIPPED``
-       continue, ``REMEDIATION_REQUIRED`` triggers an in-process bounded
-       remediation loop, ``BLOCKED`` returns the recoverable
+
+    #. Build the workspace + project stack via the injected seams.
+    #. Call :func:`ralph.project_policy.run_policy_readiness_preflight`.
+    #. Map the result status to a CLI exit code: ``READY`` and ``SKIPPED``
+       continue. ``REMEDIATION_REQUIRED`` triggers an in-process bounded
+       remediation loop. ``BLOCKED`` returns the recoverable
        ``_EXIT_PREFLIGHT`` exit.
 
     Tests can inject ``workspace_factory``, ``emit_factory``, and
