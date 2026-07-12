@@ -86,8 +86,38 @@ def _read(workspace: Workspace, path: str) -> str:
 
 
 def _consulted_signal_files(workspace: Workspace, paths: tuple[str, ...]) -> list[str]:
-    """Return the subset of signal paths that exist on the workspace."""
-    return [p for p in paths if _exists(workspace, p)]
+    """Return the subset of signal paths that exist on the workspace.
+
+    Directory signal paths (``benches/``, ``soak-tests/``) count as
+    existing; this helper is used only to REPORT which signals triggered
+    the requirement, not to READ them. :meth:`Workspace.exists` is
+    supplemented with :meth:`Workspace.is_dir` so the
+    :class:`~ralph.workspace.memory.MemoryWorkspace` contract — where a
+    bare directory is tracked separately from any file inside it —
+    matches the production :class:`~ralph.workspace.fs.FsWorkspace`
+    behavior (``Path.exists`` returns True for both files and dirs).
+    """
+    return [p for p in paths if workspace.exists(p) or workspace.is_dir(p)]
+
+
+def _directory_signature(workspace: Workspace, path: str) -> str:
+    """Return a stable hash for a directory signal path.
+
+    ``PERF_SIGNAL_PATHS`` and ``MEMORY_SIGNAL_PATHS`` include both files
+    (e.g. ``performance-budget.json``) AND directories (e.g. ``benches/``,
+    ``soak-tests/``). The inventory must hash directories without calling
+    :meth:`Workspace.read` (which raises ``IsADirectoryError`` on real
+    filesystems and on the :class:`~ralph.workspace.memory.MemoryWorkspace`
+    contract). The signature is derived from the sorted child names so it
+    changes deterministically when files are added or removed inside the
+    directory.
+    """
+    try:
+        children = workspace.list_dir(path)
+    except (FileNotFoundError, NotADirectoryError):
+        children = []
+    sentinel = "\n".join(sorted(children))
+    return _sha256_hex(f"dir:{path}\n{sentinel}")
 
 
 def _manifest_contains_any(workspace: Workspace, substrings: tuple[str, ...]) -> bool:
@@ -381,17 +411,36 @@ def readiness_evidence(workspace: Workspace, stack: ProjectStack) -> list[Eviden
         if path in seen:
             continue
         seen.add(path)
-        if workspace.exists(path):
-            content = workspace.read(path)
+        # Use either exists() OR is_dir() so a directory signal path
+        # created via ``MemoryWorkspace.create_dir`` (no file inside it)
+        # is still recognized. ``FsWorkspace.exists`` already returns
+        # True for directories, so the OR short-circuits there.
+        is_directory = workspace.is_dir(path)
+        if not workspace.exists(path) and not is_directory:
+            entries.append(EvidenceEntry(rel_path=path, exists=False, content_sha256=None))
+            continue
+        if is_directory:
+            # Directory signal paths (e.g. ``benches/``) must NOT be passed
+            # to ``workspace.read``; both ``FsWorkspace`` and
+            # ``MemoryWorkspace`` raise on a directory read. Hash the
+            # sorted child listing instead so the cache invalidates when
+            # the directory is created, removed, or has files added.
             entries.append(
                 EvidenceEntry(
                     rel_path=path,
                     exists=True,
-                    content_sha256=_sha256_hex(content),
+                    content_sha256=_directory_signature(workspace, path),
                 )
             )
-        else:
-            entries.append(EvidenceEntry(rel_path=path, exists=False, content_sha256=None))
+            continue
+        content = workspace.read(path)
+        entries.append(
+            EvidenceEntry(
+                rel_path=path,
+                exists=True,
+                content_sha256=_sha256_hex(content),
+            )
+        )
     return entries
 
 

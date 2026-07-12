@@ -56,3 +56,37 @@ def test_cache_invalidates_on_stack_change() -> None:
     # Different stack -> different serialized signature -> cache miss.
     other_stack = ProjectStack(primary_language="Python", secondary_languages=["TypeScript"])
     assert cache.read_cached_ready(ws, other_stack) is False
+
+
+def test_cache_invalidates_on_directory_signal_create() -> None:
+    """AC-04: creating a directory signal path (``benches/``) after a
+    cached READY must invalidate the cache so the preflight re-validates
+    and re-detects the now-required performance policy.
+    """
+    ws = MemoryWorkspace()
+    cache.write_cache(ws, _stack(), ReadinessStatus.READY)
+    ws.create_dir("benches")
+    assert cache.read_cached_ready(ws, _stack()) is False
+
+
+def test_cache_invalidates_on_directory_signal_delete() -> None:
+    """AC-04: deleting a directory signal path after a cached READY must
+    invalidate the cache. The presence of the directory changed; the
+    readiness state may have too.
+    """
+    ws = MemoryWorkspace()
+    ws.create_dir("benches")
+    cache.write_cache(ws, _stack(), ReadinessStatus.READY)
+    ws.delete("benches", recursive=True)
+    assert cache.read_cached_ready(ws, _stack()) is False
+
+
+def test_cache_invalidates_on_directory_signal_contents_change() -> None:
+    """AC-04: the cache signature must change when the sorted listing of
+    children inside a directory signal changes (a file is added).
+    """
+    ws = MemoryWorkspace()
+    ws.create_dir("benches")
+    cache.write_cache(ws, _stack(), ReadinessStatus.READY)
+    ws.write("benches/new_bench.txt", "data")
+    assert cache.read_cached_ready(ws, _stack()) is False

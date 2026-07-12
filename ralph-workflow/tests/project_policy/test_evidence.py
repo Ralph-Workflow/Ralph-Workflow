@@ -225,3 +225,64 @@ def test_migration_candidates_resolved_with_migrated_marker() -> None:
     by_path = {c.path: c for c in candidates}
     assert by_path.get("docs/testing.md") is not None
     assert by_path["docs/testing.md"].resolved is True
+
+
+def test_performance_required_for_directory_signal() -> None:
+    """AC-07 + plan step 3: directory signal paths must trigger performance."""
+    ws = MemoryWorkspace()
+    ws.create_dir("benches")
+    assert evidence.performance_required(ws, _stack())[0] is True
+
+
+def test_memory_required_for_directory_signal() -> None:
+    """AC-07 + plan step 3: directory signal paths must trigger memory-usage."""
+    ws = MemoryWorkspace()
+    ws.create_dir("soak-tests")
+    assert evidence.memory_required(ws, _stack())[0] is True
+
+
+def test_readiness_evidence_handles_directory_signal_paths() -> None:
+    """AC-04 + AC-11: a project containing the plan-required ``benches/`` or
+    ``soak-tests/`` directory must not crash readiness_evidence /
+    evidence_signature. The directory is captured as an existing
+    :class:`EvidenceEntry` with a stable sentinel hash, not read.
+    """
+    ws = MemoryWorkspace()
+    ws.create_dir("benches")
+    ws.create_dir("soak-tests")
+    stack = _stack()
+    # The two functions must not raise IsADirectoryError.
+    entries = evidence.readiness_evidence(ws, stack)
+    signature = evidence.evidence_signature(ws, stack)
+    by_path = {entry.rel_path: entry for entry in entries}
+    assert by_path["benches/"].exists is True
+    assert by_path["benches/"].content_sha256 is not None
+    assert by_path["soak-tests/"].exists is True
+    assert by_path["soak-tests/"].content_sha256 is not None
+    assert isinstance(signature, str) and len(signature) == 64
+
+
+def test_readiness_evidence_directory_signal_signature_changes_with_contents() -> None:
+    """AC-04: the readiness-evidence signature must change when files are
+    added/removed inside a directory signal path (e.g. ``benches/``),
+    so a cached READY cannot stay valid across such a change.
+    """
+    ws = MemoryWorkspace()
+    ws.create_dir("benches")
+    before = evidence.evidence_signature(ws, _stack())
+    ws.write("benches/bench_a.txt", "alpha")
+    after = evidence.evidence_signature(ws, _stack())
+    assert before != after
+    ws.write("benches/bench_b.txt", "beta")
+    after_more = evidence.evidence_signature(ws, _stack())
+    assert after != after_more
+
+
+def test_readiness_evidence_directory_signal_signature_changes_on_delete() -> None:
+    """AC-04: deleting a directory signal invalidates a cached READY."""
+    ws = MemoryWorkspace()
+    ws.create_dir("benches")
+    before = evidence.evidence_signature(ws, _stack())
+    ws.delete("benches", recursive=True)
+    after = evidence.evidence_signature(ws, _stack())
+    assert before != after
