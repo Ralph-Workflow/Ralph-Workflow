@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: clean-code-policy.md -->
 
 # Clean-Code Policy

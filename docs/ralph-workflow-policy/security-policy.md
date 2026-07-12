@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: security-policy.md -->
 
 # Security Policy
