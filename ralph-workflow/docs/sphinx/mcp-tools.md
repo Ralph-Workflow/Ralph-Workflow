@@ -81,7 +81,7 @@ See `ralph.mcp.tools.names` for the canonical name constants.
 - `{"command": ["python", "-m", "pytest"]}`
 - `{"argv": ["python", "-m", "pytest"]}`
 
-Quoted arguments inside string forms are preserved, so values containing spaces stay as a single argument. Ralph Workflow still does **not** emulate a shell: control operators such as `|`, `&&`, `;`, `>`, and `<` are rejected instead of being interpreted. If you need file edits, git operations, or structured reads, prefer the dedicated MCP tools.
+Quoted arguments inside string forms are preserved, so values containing spaces stay as a single argument. When a command **string** carries an unquoted control operator (`|`, `&&`, `||`, `;`, `>`, `<`), `exec` runs it through `sh -c` so the pipeline is interpreted normally — but the command blacklist (privilege escalation, destructive system commands, external `curl`/`wget`, network tunnels, container escapes, bulk file operations) is enforced against **every** command in the pipeline first, so a blacklisted command hiding after a separator (`echo hi; sudo rm -rf /`) is still denied. An argv **array** (`{"command": ["ls", "|", "grep", "py"]}`) is always literal argv and is never shell-interpreted. If you need file edits, git operations, or structured reads, prefer the dedicated MCP tools.
 
 `exec` runs inside a private, resettable sandbox pool keyed by the absolute workspace path. The pool keeps the isolation contract strict while avoiding per-run overlay churn:
 
@@ -96,7 +96,7 @@ This pooling behavior is an internal optimization and concurrency contract, not 
 
 ### exec vs unsafe_exec / raw_exec
 
-When shell operators (`&&`, `|`, `||`, `;`) are needed, or when the sandbox pool overhead makes `exec` too slow for trivial commands, prefer `unsafe_exec` or its alias `raw_exec` instead. Both run the command directly in the real workspace directory with no sandbox isolation. Only version control commands (`git`, `hg`, `svn`) are blocked. Use with caution — there is no workspace isolation boundary.
+`exec` interprets shell operators (`&&`, `|`, `||`, `;`, `>`, `<`) in a command string, but keeps its command blacklist enforced against every command in the pipeline. Reach for `unsafe_exec` (or its alias `raw_exec`) only when you need a command the blacklist forbids on the bounded path — those tools run the command directly with **no** blacklist (only version control commands `git`, `hg`, `svn` are blocked) and require the separate `process.exec_unbounded` capability. Use with caution.
 
 ### read_file response shapes
 

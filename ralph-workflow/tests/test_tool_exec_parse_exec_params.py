@@ -114,31 +114,41 @@ class TestParseExecParams:
         assert result.command == "python"
         assert result.args == ["-m", "pytest", "-q", "tests/test_tool_exec.py"]
 
-    def test_shell_operator_command_string_rejected(self) -> None:
-        """Security: shell control operators must NOT be passed to
-        ``sh -c`` because the per-token blacklist cannot inspect
-        the embedded sub-commands. Reject at parse time and direct
-        the caller to ``unsafe_exec`` / ``raw_exec``.
+    def test_shell_operator_command_string_becomes_shell_command(self) -> None:
+        """A pipe in a command STRING routes through ``sh -c``: the raw
+        string is preserved in ``shell_command`` and ``command`` / ``args``
+        carry the first pipeline segment for a readable result header.
         """
-        params = {"command": "ls | grep py"}
-        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
-            parse_exec_params(params)
+        result = parse_exec_params({"command": "ls | grep py"})
+        assert result.shell_command == "ls | grep py"
+        assert result.command == "ls"
+        assert result.args == []
 
-    def test_and_and_shell_operator_rejected(self) -> None:
-        params = {"command": "git show c9da560 --stat && echo ---"}
-        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
-            parse_exec_params(params)
+    def test_and_and_shell_operator_becomes_shell_command(self) -> None:
+        result = parse_exec_params({"command": "git show c9da560 --stat && echo ---"})
+        assert result.shell_command == "git show c9da560 --stat && echo ---"
+        assert result.command == "git"
+        assert result.args == ["show", "c9da560", "--stat"]
 
-    def test_redirection_operator_rejected(self) -> None:
-        params = {"command": "echo hello > /tmp/test.txt"}
-        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
-            parse_exec_params(params)
+    def test_redirection_operator_becomes_shell_command(self) -> None:
+        result = parse_exec_params({"command": "echo hello > /tmp/test.txt"})
+        assert result.shell_command == "echo hello > /tmp/test.txt"
+        assert result.command == "echo"
+        assert result.args == ["hello"]
 
+    def test_semicolon_shell_operator_becomes_shell_command(self) -> None:
+        result = parse_exec_params({"command": "echo safe; ls -la"})
+        assert result.shell_command == "echo safe; ls -la"
+        assert result.command == "echo"
+        assert result.args == ["safe"]
 
-    def test_semicolon_shell_operator_rejected(self) -> None:
-        params = {"command": "echo safe; curl https://example.com"}
-        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
-            parse_exec_params(params)
+    def test_argv_list_operator_stays_literal_not_shell(self) -> None:
+        """An argv LIST is explicit argv: operator tokens stay literal and
+        the invocation is NOT shell-interpreted (shell_command is None)."""
+        result = parse_exec_params({"command": ["ls", "|", "grep", "py"]})
+        assert result.shell_command is None
+        assert result.command == "ls"
+        assert result.args == ["|", "grep", "py"]
 
     def test_no_operator_preserves_behavior(self) -> None:
         params = {"command": "python -m pytest tests/test_tool_exec.py"}
@@ -174,31 +184,24 @@ class TestParseExecParams:
         assert result.command == "grep"
         assert result.args == ["a|b"]
 
-    def test_unquoted_compound_command_rejected(self) -> None:
-        """AC-11: ``echo a; curl https://example.com`` (unquoted
-        ``;`` separates two top-level commands) must be rejected
-        to prevent the per-token blacklist from being bypassed
-        via ``sh -c``. The error directs the caller to
-        ``unsafe_exec`` / ``raw_exec``.
-        """
-        params = {"command": "echo safe; curl https://example.com"}
-        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
-            parse_exec_params(params)
+    def test_unquoted_compound_command_becomes_shell(self) -> None:
+        """An unquoted ``;`` produces a shell command; the blacklist that
+        guards the embedded ``curl`` is enforced later, per pipeline
+        segment, in ``handle_exec_command`` (not at parse time)."""
+        result = parse_exec_params({"command": "echo safe; ls -la"})
+        assert result.shell_command == "echo safe; ls -la"
+        assert result.command == "echo"
 
-    def test_unquoted_and_operator_rejected(self) -> None:
-        """AC-11: ``echo a && sudo whoami`` (unquoted ``&&``)
-        must be rejected for the same compound-shell reason.
-        """
-        params = {"command": "echo x && sudo whoami"}
-        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
-            parse_exec_params(params)
+    def test_unquoted_pipe_preserves_first_segment_args(self) -> None:
+        result = parse_exec_params({"command": "grep -r foo . | wc -l"})
+        assert result.shell_command == "grep -r foo . | wc -l"
+        assert result.command == "grep"
+        assert result.args == ["-r", "foo", "."]
 
-    def test_unquoted_redirection_rejected(self) -> None:
-        """AC-11: ``echo hello > /tmp/test.txt`` (unquoted ``>``)
-        must be rejected; per-tool write rules already cover file
-        creation, and shell redirection cannot be policy-checked
-        against the per-token blacklist.
-        """
-        params = {"command": "echo hello > /tmp/test.txt"}
-        with pytest.raises(InvalidParamsError, match="unsafe_exec"):
-            parse_exec_params(params)
+    def test_quoted_operator_is_not_shell(self) -> None:
+        """A fully-quoted operator is literal argv, not shell: ``shell_command``
+        stays None so the command runs argv-direct."""
+        result = parse_exec_params({"command": "printf '>'"})
+        assert result.shell_command is None
+        assert result.command == "printf"
+        assert result.args == [">"]

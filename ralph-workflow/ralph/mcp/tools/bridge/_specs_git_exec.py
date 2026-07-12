@@ -256,13 +256,14 @@ def git_exec_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=EXEC_TOOL,
                 description=(
-                    "Execute a bounded subprocess in the workspace. Accepts command "
-                    "or argv, plus optional args, timeout_ms, and format ('raw' or "
-                    "'summary', default 'raw'). The command blacklist is the "
-                    "security boundary. format='summary' returns a JSON envelope "
-                    "with a replayable stdout resource id and the spill path. "
-                    "On timeout you get an is_error result, not a retryable "
-                    "protocol error — decide WHY before retrying."
+                    "Execute a bounded command in the workspace. Accepts command or "
+                    "argv, plus optional args, timeout_ms, and format ('raw' or "
+                    "'summary'). Shell operators (|, &&, ;, >, <) in a command STRING "
+                    "run through a shell, but the command blacklist (sudo, rm -rf /, "
+                    "external curl, etc.) is still enforced against every command in "
+                    "the pipeline. format='summary' returns a JSON envelope with a "
+                    "replayable stdout resource id. On timeout you get an is_error "
+                    "result, not a retryable protocol error — decide WHY first."
                 ),
                 input_schema={
                     "type": "object",
@@ -274,9 +275,11 @@ def git_exec_specs() -> list[ToolSpec]:
                             ],
                             "description": (
                                 "Primary command input. This may be a bare executable "
-                                "name, a shell-style command line without shell control "
-                                "operators, or an argv-style string array (example values: "
-                                "'ls', 'python --version', 'python -m pytest "
+                                "name, a shell-style command line (pipes/redirections/"
+                                "&&/; work when passed as a string), or an argv-style "
+                                "string array — array items are always literal argv and "
+                                "are never shell-interpreted (example values: 'ls', "
+                                "'grep -r foo . | wc -l', 'python -m pytest "
                                 "tests/test_tool_exec.py', ['python', '-m', 'pytest'])."
                             ),
                         },

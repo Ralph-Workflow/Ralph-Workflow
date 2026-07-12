@@ -21,12 +21,20 @@ Exported surface:
   capability string and the per-call default timeout (90 000 ms; the
   hard cap is ``EXEC_MAX_TIMEOUT_MS`` in ``ralph.timeout_defaults``).
 
+A plain command runs argv-direct (no shell). A compound shell string —
+one carrying an unquoted ``| & ; < >`` operator — is run through
+``sh -c`` so pipes, redirections, and ``&&``/``;`` sequences work; before
+it runs, the blacklist below is enforced against EVERY command in the
+pipeline (``echo hi; sudo rm -rf /`` is denied on its ``sudo`` segment).
+An argv LIST is always explicit argv and is never shell-interpreted.
+
 Trust boundary: this tool is the only public path that lets a hosted
 agent spawn an arbitrary subprocess. It enforces:
 
 - A mandatory capability check (default-deny if the session does not
   declare ``ProcessExecBounded``).
-- A static blacklist covering privilege escalation (``sudo``, ``su``,
+- A static blacklist (applied per pipeline segment for shell commands)
+  covering privilege escalation (``sudo``, ``su``,
   ``doas``, ``pkexec``, ``runuser``), destructive system commands
   (``shutdown``, ``reboot``, ``halt``, ``poweroff``, ``killall``), network
   tunnel and remote-network tools (``nc``, ``ncat``, ``netcat``,
@@ -107,6 +115,11 @@ _BLACKLIST_DESCRIPTIONS = {
 }
 
 _SHELL_OPERATOR_CHARS = frozenset("|&;<>")
+# A redirection operator (``< > >> <<``) is followed by a filename target, not a
+# new command; a command separator (``| ; & && ||``) introduces one. Segmentation
+# splits on separators and skips redirection targets so a benign ``echo x >
+# reboot`` is not misread as invoking the ``reboot`` command.
+_REDIRECTION_CHARS = frozenset("<>")
 
 _PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
 _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
@@ -127,11 +140,32 @@ class WorkspaceWithRoot(Protocol):
 
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     """Parse and validate exec tool parameters."""
+    timeout_ms = _parse_exec_timeout(params)
+
+    # A command/argv STRING carrying an unquoted shell operator is a compound
+    # shell command (pipe, redirection, ``&&``/``;`` sequence). Route it through
+    # ``sh -c`` so the shell actually interprets it, but first split it into
+    # pipeline segments so ``handle_exec_command`` can enforce the blacklist
+    # against every command the shell would run — see ``_enforce_exec_policy``.
+    shell_source = _shell_command_source(params)
+    if shell_source is not None:
+        segments = _shell_command_segments(shell_source)
+        first = segments[0] if segments else ("", [])
+        return ExecParams(
+            command=first[0],
+            args=first[1],
+            timeout_ms=timeout_ms,
+            shell_command=shell_source,
+        )
+
     command_tokens = _parse_exec_command_tokens(params)
     args = _parse_exec_args(params.get("args"))
     command = command_tokens[0] if command_tokens else ""
     merged_args = [*command_tokens[1:], *args]
+    return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
 
+
+def _parse_exec_timeout(params: Mapping[str, object]) -> int:
     # Require a strictly positive timeout: timeout_ms<=0 (or non-int) falls back to
     # the default. Zero must NOT mean "unbounded" — that would make exec a blocking-
     # forever call on the MCP server thread, an agent-controllable hang vector.
@@ -144,9 +178,29 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     # Cap the per-call override: the MCP client request timeout is derived to exceed
     # EXEC_MAX_TIMEOUT_MS, so a tool call can never outrun the client and re-trigger
     # the -32001 "Request timed out" storm.
-    timeout_ms = min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
+    return min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
 
-    return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
+
+def _shell_command_source(params: Mapping[str, object]) -> str | None:
+    """Return the raw shell string when the caller passed a compound command.
+
+    Only a ``command`` / ``argv`` STRING with an UNQUOTED shell operator is
+    treated as shell: a caller that passes an argv LIST is asking for explicit,
+    non-shell argv, so its operator tokens stay literal (no ``sh -c``). Returns
+    ``None`` for every non-compound invocation.
+    """
+    command_value = params.get("command")
+    argv_value = params.get("argv")
+    if isinstance(command_value, str):
+        source = command_value
+    elif command_value is None and isinstance(argv_value, str):
+        source = argv_value
+    else:
+        return None
+    stripped = source.strip()
+    if stripped and _has_unquoted_shell_operator(stripped):
+        return stripped
+    return None
 
 
 def _has_unquoted_shell_operator(command: str) -> bool:
@@ -184,26 +238,13 @@ def _has_unquoted_shell_operator(command: str) -> bool:
 
 
 def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
+    # A compound shell STRING is handled earlier (see ``_shell_command_source``);
+    # anything reaching here is either a single command string or an explicit
+    # argv list. An argv list is never shell-interpreted, so its operator tokens
+    # stay literal argv content.
     command_value = params.get("command")
     if isinstance(command_value, str):
-        # AC-11: quote-aware shell-operator rejection. ``shlex``
-        # strips quotes during tokenization, so a quote-only check
-        # on the parsed tokens would falsely reject literals such
-        # as ``printf '>'``. The raw-string walker distinguishes
-        # quoted regions so we reject UNQUOTED compound shell only
-        # while accepting legitimate quoted argv content. We never
-        # fall back to ``sh -c``; the per-token blacklist cannot
-        # see embedded sub-commands, and direct callers needing
-        # compound shell work must use ``unsafe_exec`` / ``raw_exec``
-        # per the docs.
-        if _has_unquoted_shell_operator(command_value):
-            raise InvalidParamsError(
-                "Shell control operators (| & ; < >) are not allowed in 'exec'. "
-                "Use 'unsafe_exec' or 'raw_exec' for compound shell commands. "
-                + _EXEC_USAGE_EXAMPLES
-            )
-        tokens = _parse_shell_words(command_value, field_name="command")
-        return tokens
+        return _parse_shell_words(command_value, field_name="command")
     if isinstance(command_value, list):
         return _coerce_argv_tokens(command_value, field_name="command")
     if command_value is not None:
@@ -213,12 +254,6 @@ def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
 
     argv_value = params.get("argv")
     if isinstance(argv_value, str):
-        if _has_unquoted_shell_operator(argv_value):
-            raise InvalidParamsError(
-                "Shell control operators (| & ; < >) are not allowed in 'exec'. "
-                "Use 'unsafe_exec' or 'raw_exec' for compound shell commands. "
-                + _EXEC_USAGE_EXAMPLES
-            )
         return _parse_shell_words(argv_value, field_name="argv")
     if isinstance(argv_value, list):
         return _coerce_argv_tokens(argv_value, field_name="argv")
@@ -474,6 +509,62 @@ def apply_exec_policy(command: str, args: list[str]) -> None:
     raise CapabilityDeniedError(f"Command '{command}' denied by policy: {reason}")
 
 
+def _is_operator_token(token: str) -> bool:
+    return bool(token) and all(char in _SHELL_OPERATOR_CHARS for char in token)
+
+
+def _shell_command_segments(command: str) -> list[tuple[str, list[str]]]:
+    """Split a compound shell string into ``(command, args)`` pipeline segments.
+
+    ``command`` is tokenized with the shell-operator punctuation lexer, so
+    operators surface as standalone tokens. Segments break on command separators
+    (``|``, ``;``, ``&``, ``&&``, ``||``); redirection operators (``<``, ``>``,
+    ``>>``) consume their following token as a filename target rather than
+    starting a new command. Each returned segment head is exactly what the shell
+    would execute, so ``check_command`` can veto a blacklisted command anywhere
+    in the pipeline (``echo hi; sudo rm -rf /`` denies on the ``sudo`` segment).
+
+    Best-effort: shell features that hide a command from a static token walk —
+    command substitution ``$(...)``, backticks, ``eval``, ``xargs sh -c`` — are
+    not decomposed here. The per-segment blacklist is defense-in-depth, not a
+    sandbox; the trust boundary remains the ``ProcessExecBounded`` capability.
+    """
+    tokens = _parse_shell_words(command, field_name="command")
+    segments: list[tuple[str, list[str]]] = []
+    current: list[str] = []
+    skip_next = False
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if _is_operator_token(token):
+            if any(char in _REDIRECTION_CHARS for char in token):
+                skip_next = True
+                continue
+            if current:
+                segments.append((current[0], current[1:]))
+                current = []
+            continue
+        current.append(token)
+    if current:
+        segments.append((current[0], current[1:]))
+    return segments
+
+
+def _enforce_exec_policy(parsed: ExecParams) -> None:
+    """Enforce the blacklist for an exec invocation, shell-aware.
+
+    A compound shell command is checked against every command in the pipeline;
+    a plain command is checked directly. Raises ``CapabilityDeniedError`` on the
+    first blacklisted command.
+    """
+    if parsed.shell_command is None:
+        apply_exec_policy(parsed.command, parsed.args)
+        return
+    for command, args in _shell_command_segments(parsed.shell_command):
+        apply_exec_policy(command, args)
+
+
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
     if isinstance(workspace, Path):
         return workspace
@@ -632,11 +723,12 @@ def format_exec_result(
     stdout = output.stdout.decode("utf-8", errors="replace")
     stderr = output.stderr.decode("utf-8", errors="replace")
     exit_code = output.returncode
+    # Omit the args repr when there are none: the shell-command path passes the
+    # full command line as ``command`` with empty ``args``, and a trailing ``[]``
+    # is noise there (and for any argument-less command).
+    command_line = f"{command} {args!r}" if args else command
     text = (
-        f"Command: {command} {args!r}\n"
-        f"Exit code: {exit_code}\n\n"
-        f"Stdout:\n{stdout}\n\n"
-        f"Stderr:\n{stderr}"
+        f"Command: {command_line}\nExit code: {exit_code}\n\nStdout:\n{stdout}\n\nStderr:\n{stderr}"
     )
     if 0 < timeout_ms < _TIMEOUT_NOTE_THRESHOLD_MS:
         text = f"{text}\n\nNote: This command had a {timeout_ms}ms timeout"
@@ -744,21 +836,23 @@ def handle_exec_command(
     """
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
-    apply_exec_policy(parsed.command, parsed.args)
+    _enforce_exec_policy(parsed)
     effective_deps = _build_effective_deps(session, deps)
     # AC-11: ``format=summary`` requests the bounded JSON envelope with
     # replayable resource handles; the default preserves the legacy
     # text/head-tail shape.
     format_value = params.get("format", "raw") if isinstance(params, Mapping) else "raw"
     if not isinstance(format_value, str) or format_value not in {"raw", "summary"}:
-        raise InvalidParamsError(
-            f"Invalid format: {format_value!r}; expected 'raw' or 'summary'"
-        )
+        raise InvalidParamsError(f"Invalid format: {format_value!r}; expected 'raw' or 'summary'")
     summary = format_value == "summary"
+    # A compound shell command runs through ``sh -c`` (after the per-segment
+    # blacklist above); a plain command runs argv-direct.
+    if parsed.shell_command is not None:
+        run_argv0, run_args = "sh", ["-c", parsed.shell_command]
+    else:
+        run_argv0, run_args = parsed.command, parsed.args
     try:
-        output = run_command(
-            parsed.command, parsed.args, workspace, parsed.timeout_ms, deps=effective_deps
-        )
+        output = run_command(run_argv0, run_args, workspace, parsed.timeout_ms, deps=effective_deps)
     except ExecutionError as exc:
         if not exc.timed_out:
             raise
@@ -769,7 +863,12 @@ def handle_exec_command(
             content=[ToolContent.text_content(str(exc))],
             is_error=True,
         )
-    text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
+    # The result header shows the command the caller actually asked for: the raw
+    # shell string for a pipeline, the argv otherwise.
+    if parsed.shell_command is not None:
+        text = format_exec_result(parsed.shell_command, [], output, parsed.timeout_ms)
+    else:
+        text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
     stdout_text = output.stdout.decode("utf-8", errors="replace")
     stderr_text = output.stderr.decode("utf-8", errors="replace")
     return format_or_spill(
