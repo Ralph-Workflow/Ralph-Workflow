@@ -41,6 +41,15 @@ from ralph.project_policy.models import (
     ReadinessResult,
     ReadinessStatus,
 )
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_registry import (
+    load_partial_templates,
+    packaged_template_root,
+)
+
+#: Packaged Jinja template holding the remediation prompt body. Kept alongside
+#: the pipeline prompt templates so remediation follows the same convention.
+PROMPT_TEMPLATE_NAME: str = "policy_remediation.jinja"
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
@@ -91,162 +100,36 @@ def _serialize_findings(findings: list[PolicyFinding]) -> str:
     )
 
 
+def _load_prompt_template() -> str:
+    """Read the packaged remediation prompt template body."""
+    return (packaged_template_root() / PROMPT_TEMPLATE_NAME).read_text(encoding="utf-8")
+
+
 def _render_prompt(findings: list[PolicyFinding]) -> str:
     """Build the remediation prompt text.
 
     The prompt is a deterministic, versionable task definition: the agent
     sees the exact findings list, the canonical directory, the migration
-    contract, and the rules for completing the work.
+    contract, and the rules for completing the work. The body lives in the
+    packaged Jinja template :data:`PROMPT_TEMPLATE_NAME` (consistent with the
+    pipeline prompt templates); this function supplies the marker-derived
+    variables it interpolates.
     """
-    findings_block = _serialize_findings(findings)
-    approved_tools = ", ".join(sorted(markers.APPROVED_GATE_TOOLS))
-    return f"""# Ralph Workflow Project-Policy Remediation
-
-You are remediating a project's policy documentation so it passes the Ralph Workflow
-project-policy-readiness deterministic validator. The validator is byte-exact and
-machine-checkable; near-miss prose, extra whitespace, or case changes do not satisfy
-any requirement.
-
-This is a DOCUMENTATION task. Your job is to author and complete the
-project's policy documents — resolving facts, declaring gate commands, and
-recording verified project reality. You do NOT fix the project's code,
-tests, types, lint, or tooling, and you never edit source to make a check
-pass. A failing, slow, or missing check is recorded as project reality for
-the team to address later; repairing it is out of scope.
-
-## Findings
-
-{findings_block}
-
-## Required actions
-
-1. INSPECT the project: enumerate languages, frameworks, package managers, test
-   frameworks, dependency manifests, and existing CONTRIBUTING / TESTING /
-   DEVELOPMENT docs. Do not invent commands or tools.
-   Inventory every required policy, then reconcile and verify one policy at a
-   time; do not rewrite the full policy corpus as one undifferentiated context.
-2. COMPLETE every canonical file under {markers.CANONICAL_DIR}:
-   * When a finding reports an older policy schema, the interactive CLI has
-     already offered upgrade or freeze. On the upgrade path, reconcile the newer
-     bundled contract into the customized file while preserving verified facts
-     and stricter project rules. Never replace a customized file wholesale.
-   * Replace every `RALPH-FACT:` line with a verified project fact.
-   * Add at least one runnable `RALPH-COMMAND:` line for each verification
-     gate (testing, typecheck, lint, dependency audit, verification), or an
-     explicit `RALPH-INAPPLICABLE:` line with a reason.
-   * Every `RALPH-COMMAND:` value MUST start with an approved gate tool —
-     the validator checks the FIRST whitespace-separated token against a
-     fixed allowlist and rejects everything else. Approved tools:
-     {approved_tools}.
-   * Use `RALPH-REVIEW: <procedure>; evidence: <record>; owner: <role>` for
-     required human/manual review. Never invent a shell command or claim manual
-     evidence that was not performed; report unavailable review as a blocker.
-     Wrap any other tool in an approved runner (e.g. `make <target>`,
-     `uv run <tool>`, `npx <tool>`).
-   * Sections marked with a `REPLACE-ME` comment carry their own in-place
-     instructions: follow the instruction, then delete the comment. The
-     `REPLACE-ME` token is a validator placeholder, so readiness stays
-     blocked while any such comment remains.
-   * For typecheck and lint policies, declare every applicable language via
-     `RALPH-LANG: <Language>` followed by a RALPH-COMMAND or RALPH-INAPPLICABLE.
-   * Add the citation block under `## Research basis` with publisher, title,
-     URL (http), and review date.
-   * For an inactive conditional domain, record the dated inactive decision
-     and reactivation trigger in the applicability override. Then either remove
-     an uncustomized seeded policy file, or retain a customized policy as an
-     inactive historical record without deleting verified content. Within a
-     required policy, remove only optional clauses proven inapplicable; never
-     leave an empty required heading or mark an applicable requirement complete
-     without evidence.
-   * When deterministic signals are incomplete, record an explicit decision in
-     `{markers.APPLICABILITY_OVERRIDES_PATH}` under `[domains]` as either
-     `domain = "required; reason: ...; review trigger: ..."` or
-     `domain = "inactive; reason: ...; review trigger: ..."`. Never use an
-     override to evade an applicable mandatory policy.
-   * Where an existing project rule is STRICTER than the starter text,
-     preserve the stricter rule — reconcile contradictions by adapting the
-     stricter side, never by weakening the policy.
-   * Delete the `RALPH-STARTER-TEMPLATE` banner comment at the top of each
-     starter once the file holds verified project policy; the validator
-     blocks readiness while the banner remains.
-   * The finished file must read as durable policy: every sentence tells a
-     future agent how to FOLLOW or ENFORCE the policy. Do not leave
-     fill-in instructions, references to starters or placeholders, or
-     validator mechanics in the prose. The required `Ralph markers`
-     section is the one designated home for machine markers — keep it,
-     and keep it minimal.
-   * There is NO completion marker to add. A file is complete exactly when
-     no `RALPH-STARTER-TEMPLATE` banner, no `REPLACE-ME` comment, and no
-     placeholder token remains and every requirement above is satisfied —
-     completion is the absence of unresolved markers.
-3. MIGRATE existing project policy-like content into the matching canonical
-   file and add `{markers.MIGRATED_MARKER_TEMPLATE.format(target="<canonical-filename>")}`
-   at the old location (replacing `<canonical-filename>` with the destination).
-   OR remove the recognized heading so the file is no longer a candidate.
-   For standard community files (SECURITY.md, CONTRIBUTING.md, and similar
-   ecosystem-convention locations) KEEP the file and its heading and use the
-   migrated marker — their location and headings are conventions other tools
-   and humans rely on.
-4. WIRE each declared gate so its command resolves to the real check (for
-   example a `make` target that invokes the actual tool), and confirm the
-   command EXISTS. You MAY run it once to confirm it resolves; you do NOT fix
-   failing checks or make a red gate green. Document any command that cannot
-   be run and the reason.
-5. INTEGRATE the managed block naturally into AGENTS.md — never leave it as
-   a bolted-on section appended after the user's content. The block markers
-   `{markers.AGENTS_BLOCK_BEGIN}` and `{markers.AGENTS_BLOCK_END}` are
-   invisible HTML comments, so you may RELOCATE the block to wherever it
-   reads best in the document (near the top, or inside an existing
-   quality/testing section) and rewrite its body to match the document's
-   tone and structure. Requirements: exactly one block whose BODY
-   references {markers.CANONICAL_DIR} so ANY AI agent reading AGENTS.md
-   (Claude, Codex, Cursor, opencode, ...) can discover and follow the
-   project policies; migrate policy-like sections of AGENTS.md itself into
-   the matching canonical policy file (single source of truth) and resolve
-   the migration finding; preserve user-authored non-policy content; keep
-   AGENTS.md short — replace the bootstrap placeholder instructions with a
-   concise pointer (a few lines), never leaving the long remediation
-   instructions behind.
-6. UPDATE CLAUDE.md (if present) so Claude-compatible agents see the AGENTS.md
-   pointer (a default CLAUDE.md is created on the first preflight if missing).
-7. CONFIRM each declared verification command exists and resolves, and report
-   truthfully what you observed — including any command you could not run and
-   the remaining risk. You are documenting reality, not repairing it: do NOT
-   fix failing tests, type errors, or lint findings, and do NOT run a suite to
-   green. Record a failing or slow check as project reality for the team.
-   Deterministic readiness validates declaration shape and repository evidence;
-   it does NOT execute commands or attest manual review. Your truthful evidence
-   report is therefore mandatory and must never be inferred from a
-   syntactically valid marker.
-8. REPORT changed files, migrated sources, adopted-or-adapted starter rules,
-   research sources, commands run, and unresolved blockers.
-
-## Hard rules
-
-* This is a documentation task: complete the policy files and record verified
-  reality; never edit the project's code, tests, types, lint, or tooling to
-  make a check pass.
-* Do NOT weaken, disable, or skip any deterministic check.
-* Do NOT mark a policy complete while unresolved placeholders, missing
-  per-language coverage, or unresolved migration findings remain.
-* Do NOT add dependencies, abstractions, or numeric targets without
-  demonstrated need from repository evidence.
-* The canonical policies are LIVING DOCUMENTS: they must evolve with the
-  project, so record what you learn (verified facts, commands, structure)
-  in them rather than leaving stale boilerplate.
-* Conflicts between starter boilerplate and the project's established
-  practice are resolved in favor of the existing project policy — adapt
-  the canonical file to the project, never the reverse. A looser project
-  practice is NOT such a conflict: per the stricter-rule requirement
-  above, the stronger requirement wins unless the project documents an
-  explicit exception.
-* Evolution MUST NOT subvert a policy's INTENT: never weaken, dilute, or
-  delete a requirement so that a failing change passes.
-
-After the agent returns, the deterministic validator is re-run. The agent's
-own completion claim is never sufficient evidence; only the validator
-result permits the workflow to continue.
-"""
+    variables = {
+        "findings_block": _serialize_findings(findings),
+        "canonical_dir": markers.CANONICAL_DIR,
+        "approved_tools": ", ".join(sorted(markers.APPROVED_GATE_TOOLS)),
+        "applicability_overrides_path": markers.APPLICABILITY_OVERRIDES_PATH,
+        "migrated_marker": markers.MIGRATED_MARKER_TEMPLATE.format(
+            target="<canonical-filename>"
+        ),
+        "agents_block_begin": markers.AGENTS_BLOCK_BEGIN,
+        "agents_block_end": markers.AGENTS_BLOCK_END,
+    }
+    # Load the packaged shared partials so `{% include 'shared/... %}` in the
+    # template resolves, the same way the pipeline prompt templates do.
+    partials = load_partial_templates((packaged_template_root(),))
+    return render_template(_load_prompt_template(), variables, partials)
 
 
 def _write_prompt(workspace: Workspace, prompt_text: str) -> str:
