@@ -1,4 +1,4 @@
-"""Tracked deferral register for Phases 2-5 of the indexed exploration plan.
+"""Tracked deferral register for Phase 5 of the indexed exploration plan.
 
 Each entry records the phase, its deliverables, a non-empty rationale
 (gated on Phase 1 measurement passing / Phase 2 structure existing /
@@ -97,7 +97,7 @@ _DEFERRED: tuple[DeferredPhase, ...] = (
 
 
 DEFERRED_PHASES: Final[tuple[DeferredPhase, ...]] = _DEFERRED
-"""Immutable Phase 2-5 deferral register, snapshot at module import."""
+"""Immutable Phase 5 deferral register, snapshot at module import."""
 
 
 class DeferredPhaseRegistry:
