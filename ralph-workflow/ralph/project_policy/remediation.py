@@ -52,6 +52,16 @@ DEFAULT_MAX_ATTEMPTS: int = 2
 EmitFn = Callable[[str], None]
 
 
+class RemediationInvocationError(RuntimeError):
+    """The remediation agent could not be launched at all.
+
+    Distinct from an agent that ran and failed: a launch crash is
+    deterministic infrastructure breakage, so retrying it burns the whole
+    attempt budget in milliseconds and floods the display. The driver
+    aborts the loop on the first occurrence instead.
+    """
+
+
 class _InvokeRemediationAgent(Protocol):
     """Callable contract for invoking one remediation agent.
 
@@ -198,7 +208,21 @@ def remediate(
             f"(attempt {attempt_index}/{max_attempts}, "
             f"{len(current_findings)} open findings)"
         )
-        success = bool(invoke_remediation_agent(prompt_path))
+        try:
+            success = bool(invoke_remediation_agent(prompt_path))
+        except RemediationInvocationError as exc:
+            emit(
+                f"project-policy-readiness: remediation agent could not be "
+                f"launched ({exc}); aborting remediation"
+            )
+            return ReadinessResult(
+                status=ReadinessStatus.BLOCKED,
+                findings=current_findings,
+                report_lines=[
+                    "project-policy-readiness: blocked "
+                    f"(remediation agent could not be launched: {exc})",
+                ],
+            )
         # ALWAYS revalidate. Never trust the agent's claim alone.
         current_findings = validators.validate_readiness(workspace, stack)
         if not current_findings:
@@ -250,5 +274,6 @@ def _render_blocked_report(findings: list[PolicyFinding]) -> list[str]:
 
 __all__ = [
     "DEFAULT_MAX_ATTEMPTS",
+    "RemediationInvocationError",
     "remediate",
 ]

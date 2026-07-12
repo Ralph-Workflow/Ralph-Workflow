@@ -331,6 +331,28 @@ def test_project_agents_toml_backfills_policy_remediation(tmp_path: Path) -> Non
     assert agents_policy.agent_drains["policy_remediation"].chain == "policy_remediation"
 
 
+def test_backfilled_policy_remediation_binds_review_drain_chain(tmp_path: Path) -> None:
+    """When the user policy binds a review drain, policy remediation routes
+    through the same chain instead of the bundled default."""
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "review": ["reviewer-agent", "codex"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "review": "review",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    remediation_drain = agents_policy.agent_drains.get("policy_remediation")
+    assert remediation_drain is not None
+    assert remediation_drain.chain == "review"
+    assert agents_policy.agent_chains["review"].agents == ["reviewer-agent", "codex"]
+
+
 def test_user_defined_policy_remediation_chain_is_not_overwritten(tmp_path: Path) -> None:
     config = UnifiedConfig(
         agent_chains={

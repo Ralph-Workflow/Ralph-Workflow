@@ -517,32 +517,41 @@ def _cached_default_agents_policy() -> AgentsPolicy:
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
 
-#: Out-of-graph chains that Ralph invokes internally (outside the pipeline
-#: phase graph). User policies are not required to declare them; any that are
-#: missing are backfilled from the bundled defaults so pre-existing configs
-#: keep working when a new internal chain ships.
-_OUT_OF_GRAPH_CHAINS: tuple[str, ...] = ("policy_remediation",)
-
-
 def _backfill_out_of_graph_chains(agents_policy: AgentsPolicy) -> AgentsPolicy:
-    """Fill missing internal chains/drains from the bundled defaults.
+    """Ensure the internal ``policy_remediation`` drain and chain resolve.
 
-    Only chains listed in :data:`_OUT_OF_GRAPH_CHAINS` are backfilled, and
-    only when the user policy omits them entirely — user-defined overrides
-    always win. Pipeline-graph chains stay strict: omitting one of those is
-    a deliberate routing choice and still fails validation elsewhere.
+    Ralph invokes the ``policy_remediation`` drain internally (outside the
+    pipeline phase graph), so user policies are not required to declare it.
+    A missing drain is bound, in order of preference, to: a user-defined
+    ``policy_remediation`` chain, the chain behind the user's ``review``
+    drain (policy remediation is reviewer-class work), or the bundled
+    default. User-defined entries always win. Pipeline-graph chains stay
+    strict: omitting one of those is a deliberate routing choice and still
+    fails validation elsewhere.
     """
     defaults = _cached_default_agents_policy()
     merged_chains = dict(agents_policy.agent_chains)
     merged_drains = dict(agents_policy.agent_drains)
     changed = False
-    for chain_name in _OUT_OF_GRAPH_CHAINS:
-        if chain_name not in merged_chains and chain_name in defaults.agent_chains:
-            merged_chains[chain_name] = defaults.agent_chains[chain_name]
-            changed = True
-        if chain_name not in merged_drains and chain_name in defaults.agent_drains:
-            merged_drains[chain_name] = defaults.agent_drains[chain_name]
-            changed = True
+    if "policy_remediation" not in merged_drains:
+        review_binding = merged_drains.get("review")
+        if "policy_remediation" in merged_chains:
+            merged_drains["policy_remediation"] = AgentDrainConfig(
+                chain="policy_remediation", drain_class="development"
+            )
+        elif review_binding is not None and review_binding.chain in merged_chains:
+            merged_drains["policy_remediation"] = AgentDrainConfig(
+                chain=review_binding.chain, drain_class="development"
+            )
+        else:
+            merged_drains["policy_remediation"] = defaults.agent_drains[
+                "policy_remediation"
+            ]
+        changed = True
+    bound_chain = merged_drains["policy_remediation"].chain
+    if bound_chain not in merged_chains and bound_chain in defaults.agent_chains:
+        merged_chains[bound_chain] = defaults.agent_chains[bound_chain]
+        changed = True
     if not changed:
         return agents_policy
     return AgentsPolicy(

@@ -39,6 +39,38 @@ def test_remediation_prompt_written_to_workspace_seam() -> None:
     assert not ws.exists(".agent/artifacts/issues.json")
 
 
+def test_invocation_error_aborts_loop_without_burning_budget() -> None:
+    """An infrastructure failure (agent cannot launch) aborts the loop immediately.
+
+    Retrying a deterministic launch crash burns the whole attempt budget in
+    milliseconds and floods the display with one failure panel per attempt.
+    The driver must stop after the first such crash and return BLOCKED.
+    """
+    ws = MemoryWorkspace()
+    finding = _stub_finding()
+    calls: list[str] = []
+    emitted: list[str] = []
+
+    def fake_invoke(prompt_path: str) -> bool:
+        calls.append(prompt_path)
+        raise remediation.RemediationInvocationError(
+            "display_context is required when display is None"
+        )
+
+    result = remediation.remediate(
+        ws,
+        _stack(),
+        [finding],
+        invoke_remediation_agent=fake_invoke,
+        max_attempts=200,
+        emit=emitted.append,
+    )
+    assert result.is_blocked()
+    assert len(calls) == 1
+    assert len(emitted) <= 3
+    assert any("could not be launched" in line for line in emitted)
+
+
 def test_revalidation_gates_completion() -> None:
     """A fake agent that claims success but leaves findings must NOT mark READY."""
     ws = MemoryWorkspace()

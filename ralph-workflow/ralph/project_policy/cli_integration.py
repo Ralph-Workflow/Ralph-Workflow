@@ -52,17 +52,24 @@ EmitFn = Callable[[str], None]
 
 
 def _resolve_remediation_agent_name(load_result: _LoadResult) -> str | None:
-    """Return the configured first agent of the ``policy_remediation`` chain.
+    """Return the first agent of the chain bound to the remediation drain.
 
-    Returns ``None`` when the bundle is missing, the chain is missing, the
-    chain has no agents, or the first agent is not a non-empty string. The
-    helper honours any project-local policy configuration rather than
-    hardcoding ``"claude"``.
+    Resolution goes through the ``policy_remediation`` drain binding (which
+    the loader may alias to the user's review chain) and falls back to a
+    directly-named ``policy_remediation`` chain. Returns ``None`` when the
+    bundle is missing, no chain resolves, the chain has no agents, or the
+    first agent is not a non-empty string. The helper honours any
+    project-local policy configuration rather than hardcoding ``"claude"``.
     """
     bundle = load_result.policy_bundle
     if bundle is None:
         return None
-    chain = bundle.agents.agent_chains.get("policy_remediation")
+    binding = bundle.agents.agent_drains.get("policy_remediation")
+    chain = (
+        bundle.agents.agent_chains.get(binding.chain)
+        if binding is not None
+        else None
+    ) or bundle.agents.agent_chains.get("policy_remediation")
     if chain is None:
         return None
     agents_attr: object = chain.agents
@@ -104,13 +111,16 @@ def _make_production_invoke_remediation_agent(
     pipeline_deps: PipelineDeps | None,
     workspace_scope: WorkspaceScope,
     configured_agent: str | None,
+    display_context: DisplayContext | None,
 ) -> _InvokeRemediationAgent:
     """Build the production ``invoke_remediation_agent`` closure.
 
     The closure constructs an :class:`InvokeAgentEffect` with the
     configured first agent name (NOT the hardcoded ``"claude"``) and
-    routes it through :func:`execute_agent_effect`. The closure returns
-    ``False`` on any failure so the remediation driver exits BLOCKED.
+    routes it through :func:`execute_agent_effect`. An agent that ran and
+    failed returns ``False`` (the driver retries within its budget); a
+    launch crash raises :class:`RemediationInvocationError` so the driver
+    aborts instead of spinning through the budget.
     """
 
     def invoke_remediation_agent(prompt_path: str) -> bool:
@@ -131,10 +141,11 @@ def _make_production_invoke_remediation_agent(
                 workspace_scope,
                 run_id=load_result.run_id,
                 policy_bundle=load_result.policy_bundle,
+                display_context=display_context,
             )
         except Exception as exc:
             logger.warning("Remediation agent invocation failed: {}", exc)
-            return False
+            raise policy_remediation.RemediationInvocationError(str(exc)) from exc
         return event == PipelineEvent.AGENT_SUCCESS
 
     typed: _InvokeRemediationAgent = invoke_remediation_agent
@@ -142,17 +153,15 @@ def _make_production_invoke_remediation_agent(
 
 
 def _resolve_max_attempts(load_result: _LoadResult) -> int:
-    """Return the remediation retry budget from the recovery policy.
+    """Return the remediation attempt budget.
 
-    Defaults to 2 when the bundle is missing or the field is absent.
+    Always the remediation driver's own small budget. The global recovery
+    ``cycle_cap`` (default 200) governs pipeline recovery cycles and must
+    NOT leak in here: 200 synchronous (agent, revalidate) rounds at startup
+    is a display flood, not a remediation strategy.
     """
-    if load_result.policy_bundle is None:
-        return 2
-    recovery = load_result.policy_bundle.pipeline.recovery
-    raw_attempts: object = recovery.cycle_cap
-    if isinstance(raw_attempts, int) and raw_attempts > 0:
-        return raw_attempts
-    return 2
+    del load_result
+    return policy_remediation.DEFAULT_MAX_ATTEMPTS
 
 
 def _build_workspace(
@@ -232,6 +241,7 @@ def _dispatch_preflight_result(
             pipeline_deps,
             workspace_scope,
             configured_agent,
+            display_context,
         )
 
     max_attempts = _resolve_max_attempts(load_result)
