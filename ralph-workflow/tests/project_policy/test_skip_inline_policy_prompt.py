@@ -10,6 +10,8 @@ no real stdin.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from ralph.cli.commands._load_result import _LoadResult
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -45,8 +47,8 @@ def _run(
     ws: MemoryWorkspace,
     emit_messages: list[str],
     *,
-    confirm: object,
-    is_tty: object,
+    confirm: Callable[[str], bool],
+    is_tty: Callable[[], bool],
 ) -> int:
     return cli_integration.run_project_policy_readiness(
         load_result=_stub_load_result(),
@@ -54,8 +56,8 @@ def _run(
         workspace_factory=lambda: ws,
         emit_factory=emit_messages.append,
         invoke_remediation_agent_factory=lambda _w: (lambda _p: False),
-        confirm_factory=confirm,  # type: ignore[arg-type]
-        is_tty=is_tty,  # type: ignore[arg-type]
+        confirm_factory=confirm,
+        is_tty=is_tty,
     )
 
 

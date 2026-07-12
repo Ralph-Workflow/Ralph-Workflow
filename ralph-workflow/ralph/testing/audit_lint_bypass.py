@@ -166,6 +166,21 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # early-skip block AND the WARNING block; the AST walk is inherently
     # branchy and refactoring it would obscure the placement check.
     ("audit_skill_auto_commit", "PLR0912"),
+    # wt-034 indexed-exploration: scoped_auto_commit.py wraps its
+    # GitPython import (git.Repo / GitCommandError /
+    # InvalidGitRepositoryError) inside a try/except so a non-git
+    # workspace can import the module without GitPython installed; the
+    # same lazy-import rationale already covers commit_cleanup,
+    # runner, and _auto_commit in this allowlist.
+    ("scoped_auto_commit", "PLC0415"),
+    # project_policy/cli_integration.py: lazy imports of
+    # ralph.display.status_bar.StatusBarModel and
+    # ralph.git.operations.create_commit are wrapped in try/except so
+    # a non-tty / non-git environment can run the readiness preflight
+    # without dragging the display / git subsystems into the module's
+    # top-level import graph; mirrors the supervising / canonical_submit
+    # lazy-import precedent.
+    ("cli_integration", "PLC0415"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).
