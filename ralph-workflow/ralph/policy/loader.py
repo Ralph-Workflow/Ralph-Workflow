@@ -526,22 +526,27 @@ def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolic
     written before those chains existed.
 
     Before the merge, an undeclared ``policy_remediation`` drain is aliased
-    to the chain behind the user's ``review`` drain when one exists (policy
-    remediation is reviewer-class work); a user-defined ``policy_remediation``
-    chain takes precedence over that aliasing.
+    to the chain behind the user's ``development`` drain when one exists.
+    The shipped pipeline has NO review drain (see
+    :mod:`ralph.project_policy.remediation`), so a legacy ``review`` drain
+    in a user config must never capture remediation. A user-defined
+    ``policy_remediation`` chain takes precedence over the aliasing.
     """
     defaults = _cached_default_agents_policy()
     user_chains = dict(user_policy.agent_chains)
     user_drains = dict(user_policy.agent_drains)
     if "policy_remediation" not in user_drains:
-        review_binding = user_drains.get("review")
+        development_binding = user_drains.get("development")
         if "policy_remediation" in user_chains:
             user_drains["policy_remediation"] = AgentDrainConfig(
                 chain="policy_remediation", drain_class="development"
             )
-        elif review_binding is not None and review_binding.chain in user_chains:
+        elif (
+            development_binding is not None
+            and development_binding.chain in user_chains
+        ):
             user_drains["policy_remediation"] = AgentDrainConfig(
-                chain=review_binding.chain, drain_class="development"
+                chain=development_binding.chain, drain_class="development"
             )
     return AgentsPolicy(
         agent_chains={**defaults.agent_chains, **user_chains},

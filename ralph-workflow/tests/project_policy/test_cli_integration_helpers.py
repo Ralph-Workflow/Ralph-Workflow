@@ -3,7 +3,7 @@
 Covers the seams that the run-integration tests mock away:
 
 * ``_resolve_remediation_agent_name`` resolves through the
-  ``policy_remediation`` drain binding (so a reviewer-drain alias works).
+  ``policy_remediation`` drain binding (so a development-drain alias works).
 * ``_resolve_max_attempts`` uses the remediation driver's own small budget,
   never the global recovery ``cycle_cap``.
 * The production invocation closure forwards ``display_context`` to
@@ -32,18 +32,18 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 
-def _bundle_with_review_bound_remediation() -> PolicyBundle:
+def _bundle_with_development_bound_remediation() -> PolicyBundle:
     """Default bundle rewired: no policy_remediation chain; the drain binds
-    to a review chain, mirroring the loader's reviewer-drain backfill."""
+    to a development chain, mirroring the loader's development-drain backfill."""
     bundle = load_policy(default_dir())
     chains = dict(bundle.agents.agent_chains)
     del chains["policy_remediation"]
-    chains["review"] = AgentChainConfig(
-        agents=["reviewer-agent", "codex"], max_retries=2, retry_delay_ms=1000
+    chains["development"] = AgentChainConfig(
+        agents=["dev-agent", "codex"], max_retries=2, retry_delay_ms=1000
     )
     drains = dict(bundle.agents.agent_drains)
     drains["policy_remediation"] = AgentDrainConfig(
-        chain="review", drain_class="development"
+        chain="development", drain_class="development"
     )
     agents = bundle.agents.model_copy(
         update={"agent_chains": chains, "agent_drains": drains}
@@ -66,9 +66,9 @@ def _load_result(bundle: PolicyBundle | None) -> _LoadResult:
 def test_chain_agents_resolve_through_drain_binding() -> None:
     """Resolution reuses the pipeline's strict drain->chain lookup and
     returns the FULL fallback chain, not just the first agent."""
-    load_result = _load_result(_bundle_with_review_bound_remediation())
+    load_result = _load_result(_bundle_with_development_bound_remediation())
     assert cli_integration._resolve_remediation_chain_agents(load_result) == [
-        "reviewer-agent",
+        "dev-agent",
         "codex",
     ]
 

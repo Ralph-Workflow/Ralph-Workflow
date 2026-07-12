@@ -279,8 +279,9 @@ def test_config_synthesized_agents_policy_backfills_policy_remediation(
     """A user config predating the policy_remediation chain must not block runs.
 
     When the unified config defines its own agent_chains/agent_drains, the
-    out-of-graph policy_remediation chain and drain are backfilled from the
-    bundled defaults instead of silently disappearing.
+    out-of-graph policy_remediation chain is backfilled from the bundled
+    defaults instead of silently disappearing, and the drain aliases to the
+    chain behind the user's development drain when one exists.
     """
     config = UnifiedConfig(
         agent_chains={
@@ -304,7 +305,7 @@ def test_config_synthesized_agents_policy_backfills_policy_remediation(
     assert remediation_chain.agents == ["claude"]
     remediation_drain = agents_policy.agent_drains.get("policy_remediation")
     assert remediation_drain is not None
-    assert remediation_drain.chain == "policy_remediation"
+    assert remediation_drain.chain == "development"
     assert agents_policy.agent_chains["planning"].agents == ["codex"]
 
 
@@ -373,9 +374,37 @@ def test_config_synthesized_policy_keeps_default_chains_not_overridden(
     assert agents_policy.agent_drains["development"].chain == "development"
 
 
-def test_backfilled_policy_remediation_binds_review_drain_chain(tmp_path: Path) -> None:
-    """When the user policy binds a review drain, policy remediation routes
-    through the same chain instead of the bundled default."""
+def test_backfilled_policy_remediation_binds_development_drain_chain(
+    tmp_path: Path,
+) -> None:
+    """When the user policy binds a development drain, policy remediation
+    routes through the same chain instead of the bundled default. The shipped
+    pipeline has no review drain, so the development chain is the alias
+    target."""
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "development": ["dev-agent", "codex"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "development": "development",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    remediation_drain = agents_policy.agent_drains.get("policy_remediation")
+    assert remediation_drain is not None
+    assert remediation_drain.chain == "development"
+    assert agents_policy.agent_chains["development"].agents == ["dev-agent", "codex"]
+
+
+def test_backfilled_policy_remediation_ignores_review_drain(tmp_path: Path) -> None:
+    """A legacy review drain must NOT capture policy remediation: the shipped
+    pipeline has no review drain, so aliasing to it routes remediation into a
+    chain the pipeline never runs. Without a development drain the bundled
+    default binding survives."""
     config = UnifiedConfig(
         agent_chains={
             "planning": ["codex"],
@@ -391,8 +420,7 @@ def test_backfilled_policy_remediation_binds_review_drain_chain(tmp_path: Path) 
 
     remediation_drain = agents_policy.agent_drains.get("policy_remediation")
     assert remediation_drain is not None
-    assert remediation_drain.chain == "review"
-    assert agents_policy.agent_chains["review"].agents == ["reviewer-agent", "codex"]
+    assert remediation_drain.chain == "policy_remediation"
 
 
 def test_user_defined_policy_remediation_chain_is_not_overwritten(tmp_path: Path) -> None:

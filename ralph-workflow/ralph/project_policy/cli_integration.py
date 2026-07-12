@@ -61,7 +61,7 @@ def _resolve_remediation_chain_agents(load_result: _LoadResult) -> list[str]:
     Resolution reuses :class:`ralph.agents.chain.ChainManager` — the exact
     strict drain->chain lookup the pipeline uses — so the out-of-graph
     remediation path cannot drift from pipeline routing. The loader may
-    alias the ``policy_remediation`` drain to the user's review chain.
+    alias the ``policy_remediation`` drain to the user's development chain.
     Returns an empty list when the bundle is missing or the drain does not
     resolve to a non-empty chain.
     """
