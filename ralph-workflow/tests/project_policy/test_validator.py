@@ -639,3 +639,86 @@ def test_verification_bypass_placeholder_command_emits_finding() -> None:
     )
     # Project must NOT be ready.
     assert any(f.path == path for f in findings)
+
+
+def test_unapproved_command_at_normal_policy_scope_emits_finding() -> None:
+    """Regression (analysis feedback): a non-empty, placeholder-free
+    RALPH-COMMAND whose first whitespace-separated token is NOT on the
+    :data:`markers.APPROVED_GATE_TOOLS` allowlist MUST be rejected by the
+    validator at normal policy scope (i.e. ANY RALPH-COMMAND line in ANY
+    policy file). The previously buggy check accepted arbitrary text such
+    as ``definitely-not-a-command`` and produced ``[]`` findings for an
+    ostensibly-ready project, violating the executor-gate contract. The
+    validator must now emit a stable
+    ``RWP-CMD:<filename-with-no-allowlist-cmd>:unapproved-cmd-N`` finding.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    content = ws.read(path)
+    # Replace the runnable ``echo ok`` command with a non-empty,
+    # placeholder-free, but NOT-on-allowlist string. The ``definitely-not-a-command``
+    # string is the exact reproducer from the analysis feedback.
+    lines = content.splitlines()
+    new_lines = [
+        line if not line.startswith(markers.COMMAND_MARKER) else f"{markers.COMMAND_MARKER} definitely-not-a-command"
+        for line in lines
+    ]
+    ws.write(path, "\n".join(new_lines) + "\n")
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert any(
+        i == f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:unapproved-cmd-1" for i in ids
+    ), (
+        f"missing unapproved-cmd-1 finding at normal policy scope for "
+        f"'definitely-not-a-command'; observed: {sorted(ids)}"
+    )
+    # Project must NOT be ready.
+    assert any(f.path == path for f in findings)
+
+
+def test_verification_bypass_unapproved_command_emits_finding() -> None:
+    """Regression (analysis feedback): a non-empty, placeholder-free
+    RALPH-COMMAND whose first whitespace-separated token is NOT on the
+    :data:`markers.APPROVED_GATE_TOOLS` allowlist MUST be rejected by the
+    validator under 'Bypass detection' (verification-policy.md). The
+    previously buggy code accepted any such text inside the bypass-detection
+    block; the new logic mirrors the per-policy command gate and emits a
+    stable ``RWP-CMD:verification-policy.md:bypass-cmd:unapproved`` finding.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}verification-policy.md"
+    content = ws.read(path)
+    lines = content.splitlines()
+    new_lines: list[str] = []
+    in_bypass = False
+    for line in lines:
+        if line.strip() == "## Bypass detection":
+            in_bypass = True
+            new_lines.append(line)
+            continue
+        if in_bypass and line.startswith("## "):
+            new_lines.append(f"{markers.COMMAND_MARKER} definitely-not-a-command")
+            in_bypass = False
+            new_lines.append(line)
+            continue
+        if in_bypass and line.startswith(markers.COMMAND_MARKER):
+            continue
+        new_lines.append(line)
+    if in_bypass:
+        new_lines.append(f"{markers.COMMAND_MARKER} definitely-not-a-command")
+    ws.write(path, "\n".join(new_lines) + "\n")
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:bypass-cmd:unapproved"
+        in ids
+    ), (
+        f"missing bypass-cmd:unapproved finding for a non-allowlist "
+        f"RALPH-COMMAND under Bypass detection; observed: {sorted(ids)}"
+    )
+    # Project must NOT be ready.
+    assert any(f.path == path for f in findings)

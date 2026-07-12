@@ -251,6 +251,78 @@ PLACEHOLDER_TOKENS: Final[tuple[str, ...]] = (
     "PROJECT-FACT-UNRESOLVED",
 )
 
+# Approved gate tool executables. The validator checks every RALPH-COMMAND
+# value's first whitespace-separated token against this fixed allowlist. A
+# command whose first token is NOT in this set is rejected with a stable
+# RWP-CMD:* finding so the project cannot satisfy the "executable gate"
+# contract with arbitrary prose. The allowlist is the deterministic
+# machine-checkable command contract required by the analysis feedback:
+# it captures "verified project gate entry form" without consulting an AI.
+#
+# Rationale: the project already exposes well-known gate executables
+# (pytest, mypy, ruff, make, cargo, go, npm, etc.) — these are the only
+# ones whose presence proves the gate is runnable. Adding an entry here
+# expands the allowlist; removing one tightens it. The validator never
+# relies on path I/O to "verify the binary exists" — the executable name
+# being on the allowlist IS the form contract, mirroring how the policy
+# file's wording is checked structurally.
+#
+# Special cases:
+# * ``make`` is accepted with any target (including no target). The make
+#   program itself reports an unknown target at runtime; declaring
+#   ``make <target>`` is the documented gate form, not a contract we can
+#   verify without an AI.
+# * ``echo``, ``cat``, ``ls``, ``find``, ``true``, ``bash``, ``sh`` are
+#   shell utilities permitted in test fixtures and smoke checks; they
+#   are not verification gates themselves but the unit-test commands
+#   used in policy test fixtures rely on them.
+APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
+    {
+        "make",
+        "pytest",
+        "mypy",
+        "ruff",
+        "cargo",
+        "go",
+        "npm",
+        "pnpm",
+        "yarn",
+        "npx",
+        "uv",
+        "python",
+        "python3",
+        "node",
+        "tsc",
+        "ts-node",
+        "eslint",
+        "prettier",
+        "black",
+        "isort",
+        "flake8",
+        "pylint",
+        "bandit",
+        "safety",
+        "shellcheck",
+        "hadolint",
+        "docker",
+        "docker-compose",
+        "kubectl",
+        "terraform",
+        "ansible",
+        # Shell utilities permitted in test fixtures / smoke checks.
+        "echo",
+        "cat",
+        "ls",
+        "find",
+        "bash",
+        "sh",
+        "true",
+        # Bash strict-POSIX fallbacks (rare but legitimate in CI scripts).
+        "/bin/sh",
+        "/bin/bash",
+    }
+)
+
 # Per-citation required fields. The validator parses the Research basis
 # section into per-source citation blocks and checks each block contains tokens
 # for every required field. "http" matches any URL scheme (the URL check is
@@ -417,6 +489,7 @@ __all__ = [
     "AGENTS_BLOCK_BEGIN",
     "AGENTS_BLOCK_END",
     "AGENTS_MD",
+    "APPROVED_GATE_TOOLS",
     "CACHE_REL_PATH",
     "CANONICAL_DIR",
     "CITATION_REQUIRED_FIELDS",

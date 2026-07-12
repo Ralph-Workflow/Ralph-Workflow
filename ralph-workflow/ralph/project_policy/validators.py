@@ -723,10 +723,56 @@ def _check_individual_inapplicables(
     return findings
 
 
+def _command_first_token(value: str) -> str:
+    """Return the first whitespace-separated token of a command value.
+
+    Splits on ASCII whitespace; an all-whitespace value returns an empty
+    string. The validator uses this to look up the executable against the
+    fixed :data:`markers.APPROVED_GATE_TOOLS` allowlist so a non-empty
+    value like ``definitely-not-a-command`` (analysis-feedback repro) is
+    rejected deterministically without consulting an AI.
+    """
+    stripped = value.strip()
+    if not stripped:
+        return ""
+    return stripped.split(None, 1)[0]
+
+
+def _command_is_approved(value: str) -> bool:
+    """Return True when the command's first token is on the approved allowlist.
+
+    The allowlist is the deterministic, machine-checkable command contract
+    required by the analysis feedback: a declared gate is "usable" iff its
+    first whitespace-separated token names a known gate executable. This
+    closure replaces the previous "non-empty and placeholder-free" check
+    that accepted arbitrary text such as ``definitely-not-a-command``.
+    """
+    first = _command_first_token(value)
+    if not first:
+        return False
+    return first in markers.APPROVED_GATE_TOOLS
+
+
 def _check_individual_commands(
     command_values: list[str], path: str, filename: str
 ) -> list[PolicyFinding]:
-    """Validate every RALPH-COMMAND value is non-empty and placeholder-free."""
+    """Validate every RALPH-COMMAND value is non-empty, placeholder-free, and approved.
+
+    The check enforces three independent gates:
+
+    1. The value is non-empty (an empty ``RALPH-COMMAND:`` line is not a
+       valid gate).
+    2. The value contains no placeholder token (template copy is not a
+       valid gate).
+    3. The value's first whitespace-separated token is on the fixed
+       :data:`markers.APPROVED_GATE_TOOLS` allowlist (analysis feedback:
+       arbitrary non-empty text such as ``definitely-not-a-command`` does
+       NOT satisfy the executable-gate contract; the validator must
+       reject it with a stable ``RWP-CMD:*:unapproved-cmd-N`` finding).
+
+    A failing gate produces a stable ``RWP-CMD:filename:<kind>-N``
+    finding so the user sees a precise pointer at the offending line.
+    """
     findings: list[PolicyFinding] = []
     for index, value in enumerate(command_values, start=1):
         if not value:
@@ -758,6 +804,38 @@ def _check_individual_commands(
                     )
                 )
                 break
+        else:
+            # Only run the approved-tools check when neither empty nor
+            # placeholder fired (the per-line ``else`` belongs to the
+            # ``for`` loop and runs when no ``break`` was taken, i.e. no
+            # placeholder matched). This keeps the findings list minimal:
+            # a placeholder command gets the placeholder finding, not an
+            # additional unapproved-tools finding on top of it.
+            if not _command_is_approved(value):
+                first_token = _command_first_token(value)
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=(
+                            f"{markers.ID_CMD_UNUSABLE}:{filename}:unapproved-cmd-{index}"
+                        ),
+                        path=path,
+                        missing_evidence=(
+                            f"RALPH-COMMAND line {index} starts with "
+                            f"'{first_token}', which is not in the "
+                            "approved gate-tools allowlist; declared "
+                            "gates MUST be executable verification "
+                            "commands (analysis feedback regression)"
+                        ),
+                        required_outcome=(
+                            "replace the command with one whose first "
+                            "token is on the approved gate-tools "
+                            "allowlist (e.g. `make <target>`, `pytest`, "
+                            "`mypy`, `ruff`, `cargo`, `go`, `npm`, `pnpm`, "
+                            "`yarn`, `uv run`, ...) or declare the gate "
+                            "inapplicable via a `RALPH-INAPPLICABLE:` line"
+                        ),
+                    )
+                )
     return findings
 
 
@@ -889,11 +967,19 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
     """Validate the verification-policy bypass-detection gate.
 
     The gate requires the 'Bypass detection' heading AND at least one
-    non-empty, placeholder-free RALPH-COMMAND line under it. An empty
-    RALPH-COMMAND: marker (or one whose value contains a placeholder
-    token) is REJECTED with a stable ``RWP-CMD:verification-policy.md:
-    bypass-cmd:empty`` or ``:placeholder-cmd-N`` finding so the user sees
-    an actionable pointer for an unusable bypass-detection gate.
+    non-empty, placeholder-free, approved-tools RALPH-COMMAND line under
+    it. The check is identical to the per-policy command gate except the
+    finding id is namespaced under ``:bypass-cmd:<kind>`` so the user
+    sees a precise pointer for an unusable bypass-detection gate:
+
+    * ``:bypass-cmd:empty`` — the only command in the section is empty.
+    * ``:bypass-cmd:placeholder`` — the value contains a placeholder
+      token.
+    * ``:bypass-cmd:unapproved`` — the value's first token is not on the
+      fixed :data:`markers.APPROVED_GATE_TOOLS` allowlist (analysis
+      feedback regression: arbitrary text such as ``definitely-not-a-command``
+      must NOT satisfy the bypass-detection contract).
+    * ``:bypass-cmd`` — no ``RALPH-COMMAND:`` line at all.
     """
     path = f"{markers.CANONICAL_DIR}verification-policy.md"
     findings: list[PolicyFinding] = []
@@ -918,9 +1004,10 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
         )
         return findings
     # The bypass-detection block must include at least one non-empty,
-    # placeholder-free command. Empty RALPH-COMMAND: markers are NOT
-    # accepted; the value after the marker must contain non-whitespace
-    # text and no placeholder token.
+    # placeholder-free, approved-tools command. Empty RALPH-COMMAND:
+    # markers are NOT accepted; the value after the marker must contain
+    # non-whitespace text, no placeholder token, and a first token on the
+    # approved allowlist.
     in_section = False
     saw_real_command = False
     saw_empty_command = False
@@ -953,6 +1040,32 @@ def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
                     required_outcome=(
                         "replace the placeholder in the 'Bypass detection' "
                         "RALPH-COMMAND with a real runnable bypass-audit command"
+                    ),
+                )
+            )
+            continue
+        if not _command_is_approved(value):
+            first_token = _command_first_token(value)
+            findings.append(
+                PolicyFinding(
+                    requirement_id=(
+                        f"{markers.ID_CMD_UNUSABLE}:verification-policy.md:"
+                        f"bypass-cmd:unapproved"
+                    ),
+                    path=path,
+                    missing_evidence=(
+                        f"'Bypass detection' RALPH-COMMAND starts with "
+                        f"'{first_token}', which is not in the approved "
+                        "gate-tools allowlist; the bypass-audit gate MUST "
+                        "be a runnable verification command (analysis "
+                        "feedback regression)"
+                    ),
+                    required_outcome=(
+                        "replace the command with one whose first token "
+                        "is on the approved gate-tools allowlist (e.g. "
+                        "`make <target>`, `pytest`, `mypy`, `ruff`, "
+                        "`cargo`, `go`, `npm`, `pnpm`, `yarn`, `uv run`, "
+                        "...)"
                     ),
                 )
             )
