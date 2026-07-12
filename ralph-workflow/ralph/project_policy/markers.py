@@ -32,6 +32,14 @@ POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v1 -->"
 # is treated as a non-match so accidental prose cannot disable the capability.
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
 
+# Significance heuristic for a pre-existing, marker-free AGENTS.md. The run
+# preflight offers the interactive "skip inline policy" choice only when the
+# file is significant: it contains at least one markdown heading line (a line
+# starting with the prefix below) OR at least the threshold count of
+# non-empty lines. Deterministic line checks only — no NLP, no fuzzy match.
+SIGNIFICANT_HEADING_PREFIX: Final[str] = "#"
+SIGNIFICANT_NONEMPTY_LINE_THRESHOLD: Final[int] = 10
+
 # Managed instruction block in AGENTS.md. The block is bracketed by these two
 # markers so repeated preflights can detect a pre-existing block without
 # re-appending it (idempotent bootstrap).
@@ -534,6 +542,8 @@ __all__ = [
     "POLICY_SCHEMA_MARKER",
     "REQUIRED_HEADINGS",
     "SCHEMA_VERSION",
+    "SIGNIFICANT_HEADING_PREFIX",
+    "SIGNIFICANT_NONEMPTY_LINE_THRESHOLD",
     "UI_FRAMEWORK_SIGNALS",
     "UX_APP_FRAMEWORKS",
     "UX_ROUTER_DEP_SIGNALS",

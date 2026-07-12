@@ -14,9 +14,11 @@ call site reads as one line.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
+import typer
 from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
@@ -53,6 +55,88 @@ _EXIT_PREFLIGHT: int = 2
 
 
 EmitFn = Callable[[str], None]
+
+#: Explanation shown (via the info panel) before the skip-inline-policy
+#: question. The wording is a contract: the user must understand that the
+#: repo may already have its own policy, that Ralph's managed policy is a
+#: good default if they are not confident in the existing setup, and what
+#: each answer does to AGENTS.md.
+_SKIP_PROMPT_EXPLANATION: str = (
+    "AGENTS.md already contains project instructions — this repo may "
+    "already have its own agent policy.\n\n"
+    "  • Keep your existing policy: Ralph won't touch AGENTS.md and will "
+    "skip policy enforcement (writes an opt-out marker).\n"
+    "  • Use Ralph's managed policy: a good default if you're not "
+    "confident in the existing setup — appends a managed block; your "
+    "content is preserved byte-for-byte."
+)
+
+#: The yes/no question. Yes (default) appends the managed block, keeping
+#: today's behavior; No writes the opt-out marker.
+_SKIP_PROMPT_QUESTION: str = "Add Ralph's managed policy block to AGENTS.md?"
+
+
+def _default_is_tty() -> bool:
+    """Return True only when both stdin and stdout are real TTYs."""
+    try:
+        stdin_tty: bool = sys.stdin.isatty()
+        stdout_tty: bool = sys.stdout.isatty()
+    except Exception:  # pragma: no cover - defensive
+        return False
+    return stdin_tty and stdout_tty
+
+
+def _default_confirm(question: str) -> bool:
+    """Production confirm: typer prompt defaulting to Yes (append block)."""
+    return bool(typer.confirm(question, default=True))
+
+
+def _maybe_offer_inline_policy_skip(
+    workspace: Workspace,
+    emit: EmitFn,
+    *,
+    confirm: Callable[[str], bool] | None,
+    is_tty: Callable[[], bool] | None,
+) -> None:
+    """Offer to skip the inline policy when AGENTS.md is significant.
+
+    Fires only on first contact: a marker-free AGENTS.md with significant
+    user content (see
+    :func:`ralph.project_policy.agents_md.has_significant_unmanaged_content`)
+    AND an interactive terminal. Declining persists the byte-exact opt-out
+    marker so the preflight takes its SKIPPED path now and on every future
+    run; accepting changes nothing (the bootstrap appends the managed block
+    as before). Either answer therefore makes the offer one-time.
+
+    A crashing prompt (EOF despite isatty, broken pipe) is swallowed and
+    the run proceeds with today's default behavior — interactivity must
+    never block or crash a run.
+    """
+    tty_check = is_tty if is_tty is not None else _default_is_tty
+    if not tty_check():
+        # Cheap check first: unattended runs (the common case) skip the
+        # AGENTS.md read entirely.
+        return
+    if not policy_agents_md.has_significant_unmanaged_content(workspace):
+        return
+    confirm_fn = confirm if confirm is not None else _default_confirm
+    emit(_SKIP_PROMPT_EXPLANATION)
+    try:
+        add_block = confirm_fn(_SKIP_PROMPT_QUESTION)
+    except Exception as exc:
+        logger.debug("skip-inline-policy prompt failed (non-fatal): {}", exc)
+        emit(
+            "Prompt unavailable — proceeding with the default: Ralph's "
+            "managed policy block will be added to AGENTS.md."
+        )
+        return
+    if add_block:
+        return
+    policy_agents_md.write_opt_out(workspace)
+    emit(
+        "Keeping the existing AGENTS.md policy — wrote the opt-out marker; "
+        "Ralph policy enforcement is disabled for this repository."
+    )
 
 
 def _resolve_remediation_chain_agents(load_result: _LoadResult) -> list[str]:
@@ -335,21 +419,28 @@ def run_project_policy_readiness(
     emit_factory: Callable[[str], None] | None = None,
     invoke_remediation_agent_factory: Callable[[Workspace], Callable[[str], bool]]
     | None = None,
+    confirm_factory: Callable[[str], bool] | None = None,
+    is_tty: Callable[[], bool] | None = None,
 ) -> int:
     """Run the project-policy-readiness preflight at run_pipeline startup.
 
     Steps:
 
     #. Build the workspace + project stack via the injected seams.
+    #. On first contact with a significant, marker-free AGENTS.md and an
+       interactive terminal, offer to keep the existing policy instead of
+       adding Ralph's managed block (see
+       :func:`_maybe_offer_inline_policy_skip`).
     #. Call :func:`ralph.project_policy.run_policy_readiness_preflight`.
     #. Map the result status to a CLI exit code: ``READY`` and ``SKIPPED``
        continue. ``REMEDIATION_REQUIRED`` triggers an in-process bounded
        remediation loop. ``BLOCKED`` returns the recoverable
        ``_EXIT_PREFLIGHT`` exit.
 
-    Tests can inject ``workspace_factory``, ``emit_factory``, and
-    ``invoke_remediation_agent_factory`` to exercise the preflight without
-    real filesystem I/O or real agent invocation.
+    Tests can inject ``workspace_factory``, ``emit_factory``,
+    ``invoke_remediation_agent_factory``, ``confirm_factory``, and ``is_tty`` to
+    exercise the preflight without real filesystem I/O, agent invocation,
+    or a real terminal.
     """
     workspace_scope = load_result.workspace_scope
     if workspace_scope is None:
@@ -357,6 +448,9 @@ def run_project_policy_readiness(
 
     emit = _build_emit(display_context, emit_factory)
     workspace = _build_workspace(load_result, workspace_factory)
+    _maybe_offer_inline_policy_skip(
+        workspace, emit, confirm=confirm_factory, is_tty=is_tty
+    )
     stack = get_project_stack(workspace)
     result = run_policy_readiness_preflight(workspace, stack, emit=emit)
 

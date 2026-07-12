@@ -124,6 +124,55 @@ def is_opted_out(workspace: Workspace) -> bool:
     return markers.OPT_OUT_MARKER in content
 
 
+def has_significant_unmanaged_content(workspace: Workspace) -> bool:
+    """Return True iff AGENTS.md is marker-free and holds significant content.
+
+    Significant means at least one markdown heading line (starting with
+    :data:`markers.SIGNIFICANT_HEADING_PREFIX`) or at least
+    :data:`markers.SIGNIFICANT_NONEMPTY_LINE_THRESHOLD` non-empty lines.
+    Any Ralph marker (managed block or opt-out) means the repository has
+    already been bootstrapped or already decided, so the interactive
+    skip-inline-policy offer must not fire.
+    """
+    if not workspace.exists(markers.AGENTS_MD):
+        return False
+    content = workspace.read(markers.AGENTS_MD)
+    if _has_any_managed_marker(content) or markers.OPT_OUT_MARKER in content:
+        return False
+    nonempty_lines = [line for line in content.splitlines() if line.strip()]
+    if any(
+        line.lstrip().startswith(markers.SIGNIFICANT_HEADING_PREFIX)
+        for line in nonempty_lines
+    ):
+        return True
+    return len(nonempty_lines) >= markers.SIGNIFICANT_NONEMPTY_LINE_THRESHOLD
+
+
+def write_opt_out(workspace: Workspace) -> list[str]:
+    """Append the byte-exact opt-out marker to AGENTS.md.
+
+    Persists the user's "keep my existing policy" choice from the run
+    preflight prompt. Prior bytes are preserved; a file already carrying
+    the marker is left untouched. Returns the changed-file list
+    (``[markers.AGENTS_MD]`` or ``[]``), mirroring :func:`bootstrap`.
+    """
+    content = (
+        workspace.read(markers.AGENTS_MD)
+        if workspace.exists(markers.AGENTS_MD)
+        else ""
+    )
+    if markers.OPT_OUT_MARKER in content:
+        return []
+    if content and not content.endswith("\n"):
+        content += "\n"
+    separator = "\n" if content else ""
+    workspace.write(
+        markers.AGENTS_MD,
+        content + separator + markers.OPT_OUT_MARKER + "\n",
+    )
+    return [markers.AGENTS_MD]
+
+
 def _managed_block() -> str:
     """Return the managed AGENTS.md instruction block content."""
     return _AGENTS_PLACEHOLDER_TEMPLATE.format(
@@ -269,5 +318,7 @@ def bootstrap(workspace: Workspace) -> list[str]:
 __all__ = [
     "bootstrap",
     "condense_placeholder_block",
+    "has_significant_unmanaged_content",
     "is_opted_out",
+    "write_opt_out",
 ]

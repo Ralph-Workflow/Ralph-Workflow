@@ -244,3 +244,75 @@ def test_condense_is_idempotent() -> None:
     condensed = ws.read(markers.AGENTS_MD)
     assert agents_md.condense_placeholder_block(ws) == []
     assert ws.read(markers.AGENTS_MD) == condensed
+
+
+def test_significant_content_false_when_agents_md_missing() -> None:
+    ws = MemoryWorkspace()
+    assert agents_md.has_significant_unmanaged_content(ws) is False
+
+
+def test_significant_content_false_when_managed_block_present() -> None:
+    ws = MemoryWorkspace()
+    ws.write(
+        markers.AGENTS_MD,
+        "# Big existing policy\n\n"
+        + "rule line\n" * 20
+        + f"{markers.AGENTS_BLOCK_BEGIN}\nbody\n{markers.AGENTS_BLOCK_END}\n",
+    )
+    assert agents_md.has_significant_unmanaged_content(ws) is False
+
+
+def test_significant_content_false_when_opt_out_marker_present() -> None:
+    ws = MemoryWorkspace()
+    ws.write(
+        markers.AGENTS_MD,
+        "# Big existing policy\n\n"
+        + "rule line\n" * 20
+        + markers.OPT_OUT_MARKER
+        + "\n",
+    )
+    assert agents_md.has_significant_unmanaged_content(ws) is False
+
+
+def test_significant_content_false_below_line_threshold_without_heading() -> None:
+    ws = MemoryWorkspace()
+    nonempty = markers.SIGNIFICANT_NONEMPTY_LINE_THRESHOLD - 1
+    ws.write(markers.AGENTS_MD, "just a plain line\n" * nonempty + "\n\n")
+    assert agents_md.has_significant_unmanaged_content(ws) is False
+
+
+def test_significant_content_true_with_single_heading() -> None:
+    ws = MemoryWorkspace()
+    ws.write(markers.AGENTS_MD, "# Our agent rules\n")
+    assert agents_md.has_significant_unmanaged_content(ws) is True
+
+
+def test_significant_content_true_at_line_threshold_without_heading() -> None:
+    ws = MemoryWorkspace()
+    ws.write(
+        markers.AGENTS_MD,
+        "plain rule line\n" * markers.SIGNIFICANT_NONEMPTY_LINE_THRESHOLD,
+    )
+    assert agents_md.has_significant_unmanaged_content(ws) is True
+
+
+def test_write_opt_out_appends_marker_preserving_content() -> None:
+    ws = MemoryWorkspace()
+    original = "# Our agent rules\n\nDo the right thing.\n"
+    ws.write(markers.AGENTS_MD, original)
+
+    assert agents_md.write_opt_out(ws) == [markers.AGENTS_MD]
+
+    content = ws.read(markers.AGENTS_MD)
+    assert content.startswith(original)
+    assert markers.OPT_OUT_MARKER in content
+    assert agents_md.is_opted_out(ws) is True
+
+
+def test_write_opt_out_second_call_does_not_duplicate_marker() -> None:
+    ws = MemoryWorkspace()
+    ws.write(markers.AGENTS_MD, "# Our agent rules\n")
+    agents_md.write_opt_out(ws)
+    once = ws.read(markers.AGENTS_MD)
+    assert agents_md.write_opt_out(ws) == []
+    assert ws.read(markers.AGENTS_MD) == once
