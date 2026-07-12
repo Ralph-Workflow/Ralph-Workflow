@@ -131,11 +131,21 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    OR remove the recognized heading so the file is no longer a candidate.
 4. CONFIGURE executable gates so every declared command actually runs in the
    environment. Document any command that cannot be run and the reason.
-5. UPDATE CLAUDE.md (if present) so Claude-compatible agents see the AGENTS.md
+5. ENSURE AGENTS.md is consistent and makes the policies discoverable:
+   exactly one managed block between `{markers.AGENTS_BLOCK_BEGIN}` and
+   `{markers.AGENTS_BLOCK_END}`, whose BODY references {markers.CANONICAL_DIR}
+   so ANY AI agent reading AGENTS.md (Claude, Codex, Cursor, opencode, ...)
+   can discover and follow the project policies. Preserve user-authored
+   content outside the block, and keep AGENTS.md short: once the policies
+   are complete, replace the bootstrap placeholder instructions inside the
+   managed block with a concise pointer (a few lines) to
+   {markers.CANONICAL_DIR} — never leave the long remediation instructions
+   behind.
+6. UPDATE CLAUDE.md (if present) so Claude-compatible agents see the AGENTS.md
    pointer (a default CLAUDE.md is created on the first preflight if missing).
-6. RUN every declared verification command and report the outcome, including
+7. RUN every declared verification command and report the outcome, including
    any command you could not run and the remaining risk.
-7. REPORT changed files, migrated sources, adopted-or-adapted starter rules,
+8. REPORT changed files, migrated sources, adopted-or-adapted starter rules,
    research sources, commands run, and unresolved blockers.
 
 ## Hard rules

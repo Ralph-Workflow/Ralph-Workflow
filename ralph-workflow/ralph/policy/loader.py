@@ -517,47 +517,36 @@ def _cached_default_agents_policy() -> AgentsPolicy:
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
 
-def _backfill_out_of_graph_chains(agents_policy: AgentsPolicy) -> AgentsPolicy:
-    """Ensure the internal ``policy_remediation`` drain and chain resolve.
+def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolicy:
+    """Merge a user agents policy onto the bundled defaults.
 
-    Ralph invokes the ``policy_remediation`` drain internally (outside the
-    pipeline phase graph), so user policies are not required to declare it.
-    A missing drain is bound, in order of preference, to: a user-defined
-    ``policy_remediation`` chain, the chain behind the user's ``review``
-    drain (policy remediation is reviewer-class work), or the bundled
-    default. User-defined entries always win. Pipeline-graph chains stay
-    strict: omitting one of those is a deliberate routing choice and still
-    fails validation elsewhere.
+    Mirrors the pipeline/artifacts layering: user entries win per chain and
+    drain name; anything not overridden keeps its bundled default. This is
+    what makes internal chains (``policy_remediation``) survive user configs
+    written before those chains existed.
+
+    Before the merge, an undeclared ``policy_remediation`` drain is aliased
+    to the chain behind the user's ``review`` drain when one exists (policy
+    remediation is reviewer-class work); a user-defined ``policy_remediation``
+    chain takes precedence over that aliasing.
     """
     defaults = _cached_default_agents_policy()
-    merged_chains = dict(agents_policy.agent_chains)
-    merged_drains = dict(agents_policy.agent_drains)
-    changed = False
-    if "policy_remediation" not in merged_drains:
-        review_binding = merged_drains.get("review")
-        if "policy_remediation" in merged_chains:
-            merged_drains["policy_remediation"] = AgentDrainConfig(
+    user_chains = dict(user_policy.agent_chains)
+    user_drains = dict(user_policy.agent_drains)
+    if "policy_remediation" not in user_drains:
+        review_binding = user_drains.get("review")
+        if "policy_remediation" in user_chains:
+            user_drains["policy_remediation"] = AgentDrainConfig(
                 chain="policy_remediation", drain_class="development"
             )
-        elif review_binding is not None and review_binding.chain in merged_chains:
-            merged_drains["policy_remediation"] = AgentDrainConfig(
+        elif review_binding is not None and review_binding.chain in user_chains:
+            user_drains["policy_remediation"] = AgentDrainConfig(
                 chain=review_binding.chain, drain_class="development"
             )
-        else:
-            merged_drains["policy_remediation"] = defaults.agent_drains[
-                "policy_remediation"
-            ]
-        changed = True
-    bound_chain = merged_drains["policy_remediation"].chain
-    if bound_chain not in merged_chains and bound_chain in defaults.agent_chains:
-        merged_chains[bound_chain] = defaults.agent_chains[bound_chain]
-        changed = True
-    if not changed:
-        return agents_policy
     return AgentsPolicy(
-        agent_chains=merged_chains,
-        agent_drains=merged_drains,
-        forbid_sibling_drain_inference=agents_policy.forbid_sibling_drain_inference,
+        agent_chains={**defaults.agent_chains, **user_chains},
+        agent_drains={**defaults.agent_drains, **user_drains},
+        forbid_sibling_drain_inference=user_policy.forbid_sibling_drain_inference,
     )
 
 
@@ -571,7 +560,7 @@ def _load_agents_policy_from_path(
         else None
     )
     if agents_policy is not None:
-        return _backfill_out_of_graph_chains(agents_policy)
+        return _merge_agents_policy_onto_defaults(agents_policy)
 
     if not agents_path.exists():
         return _cached_default_agents_policy()
@@ -579,7 +568,7 @@ def _load_agents_policy_from_path(
     agents_data = _load_toml(agents_path)
     if not agents_data:
         return _cached_default_agents_policy()
-    return _backfill_out_of_graph_chains(_validate_agents(agents_data))
+    return _merge_agents_policy_onto_defaults(_validate_agents(agents_data))
 
 
 def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:

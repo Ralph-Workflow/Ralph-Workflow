@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
 from git import Repo
+
+if TYPE_CHECKING:
+    import pytest
 
 import ralph.config.loader as loader_module
 import ralph.policy
@@ -20,9 +23,6 @@ from ralph.config.bootstrap import (
     ensure_local_configs,
     regenerate_all,
     resolve_global_config_dir,
-)
-from ralph.policy.loader import (
-    PolicyValidationError as LoaderPolicyValidationError,
 )
 from ralph.policy.loader import (
     load_policy,
@@ -502,9 +502,15 @@ def test_generated_local_template_validates_against_bundled_policy(
         )
 
 
-def test_generated_local_template_missing_required_drain_fails_policy_validation(
+def test_generated_local_template_missing_drain_heals_from_bundled_defaults(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A drain line lost from the generated template no longer breaks startup.
+
+    Agents policy layers onto bundled defaults (like pipeline/artifacts), so
+    a template that drifts and drops ``development_commit`` gets the bundled
+    binding back instead of failing policy validation on day zero.
+    """
     defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
@@ -525,8 +531,8 @@ def test_generated_local_template_missing_required_drain_fails_policy_validation
 
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
     config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
-    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
-        load_policy(agent_dir, config=config)
+    bundle = load_policy(agent_dir, config=config)
+    assert bundle.agents.agent_drains["development_commit"].chain == "development_commit"
 
 
 def test_ensure_local_configs_adds_default_gitignore_entries(tmp_path: Path) -> None:
@@ -773,15 +779,15 @@ def test_global_template_bootstraps_first_run_policy_without_local_override(
     )
 
 
-def test_global_template_missing_active_drain_breaks_first_run_startup(
+def test_global_template_missing_active_drain_heals_on_first_run_startup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Protect the exact startup regression users see when global drain bindings drift.
+    """Global drain-binding drift no longer bricks first-run startup.
 
-    The failure mode is severe: Ralph rejects startup during policy loading, before any
-    planning or development can begin. This test documents the contract by simulating the
-    broken fresh-install config and asserting the runtime surfaces the same unbound-drain
-    class of failure the user would see on day zero.
+    This used to be a severe day-zero failure: Ralph rejected startup during
+    policy loading. Agents policy now layers onto the bundled defaults, so a
+    fresh-install config that lost ``development_commit`` gets the bundled
+    binding back and startup proceeds.
     """
     global_dir = tmp_path / "global"
     global_dir.mkdir()
@@ -797,8 +803,8 @@ def test_global_template_missing_active_drain_breaks_first_run_startup(
     project_root.mkdir()
 
     config = loader_module.load_config(workspace_scope=WorkspaceScope(project_root))
-    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
-        load_policy(project_root / ".agent", config=config)
+    bundle = load_policy(project_root / ".agent", config=config)
+    assert bundle.agents.agent_drains["development_commit"].chain == "development_commit"
 
 
 # ---------------------------------------------------------------------------

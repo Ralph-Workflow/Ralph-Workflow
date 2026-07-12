@@ -331,6 +331,48 @@ def test_project_agents_toml_backfills_policy_remediation(tmp_path: Path) -> Non
     assert agents_policy.agent_drains["policy_remediation"].chain == "policy_remediation"
 
 
+def test_project_agents_toml_merges_onto_defaults_like_other_policies(
+    tmp_path: Path,
+) -> None:
+    """agents.toml layers onto bundled defaults exactly like pipeline.toml
+    and artifacts.toml: user entries win per name, everything else keeps
+    its bundled default."""
+    (tmp_path / "agents.toml").write_text(
+        dedent(
+            """
+            [agent_chains.development]
+            agents = ["custom-dev"]
+
+            [agent_drains.development]
+            chain = "development"
+            drain_class = "development"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path)
+
+    assert agents_policy.agent_chains["development"].agents == ["custom-dev"]
+    assert agents_policy.agent_chains["planning"].agents == ["claude"]
+    assert agents_policy.agent_drains["commit"].chain == "commit"
+
+
+def test_config_synthesized_policy_keeps_default_chains_not_overridden(
+    tmp_path: Path,
+) -> None:
+    config = UnifiedConfig(
+        agent_chains={"planning": ["codex"]},
+        agent_drains={"planning": "planning"},
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    assert agents_policy.agent_chains["planning"].agents == ["codex"]
+    assert agents_policy.agent_chains["development"].agents == ["claude", "opencode"]
+    assert agents_policy.agent_drains["development"].chain == "development"
+
+
 def test_backfilled_policy_remediation_binds_review_drain_chain(tmp_path: Path) -> None:
     """When the user policy binds a review drain, policy remediation routes
     through the same chain instead of the bundled default."""
@@ -682,8 +724,10 @@ def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -> None:
-    """After removing sibling-drain inference, a pipeline drain missing from
-    agent_drains must cause a cross-policy validation failure at load time.
+    """A pipeline drain that neither the user config nor the bundled
+    defaults bind must cause a cross-policy validation failure at load
+    time — no sibling inference. Drains the user omits but the defaults
+    define are satisfied by the bundled binding (standard layering).
     """
     config_dir = tmp_path / ".agent"
     config_dir.mkdir(parents=True)
@@ -691,7 +735,54 @@ def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -
     config = UnifiedConfig(
         agent_chains={"dev_chain": ["claude"]},
         agent_drains={"development": "dev_chain"},
-        # development_analysis drain intentionally absent — no sibling inference
+        # custom_analysis drain intentionally absent everywhere — no inference
+    )
+    (config_dir / "pipeline.toml").write_text(
+        dedent(
+            """
+            entry_phase = "development"
+            terminal_phase = "complete"
+
+            [phases.development]
+            drain = "development"
+            role = "execution"
+            [phases.development.transitions]
+            on_success = "custom_analysis"
+
+            [phases.custom_analysis]
+            drain = "custom_analysis"
+            role = "execution"
+            [phases.custom_analysis.transitions]
+            on_success = "complete"
+
+            [phases.complete]
+            drain = "complete"
+            role = "terminal"
+            terminal_outcome = "success"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
+        load_policy(config_dir, config=config)
+
+
+def test_drain_omitted_by_user_is_satisfied_by_bundled_default_binding(
+    tmp_path: Path,
+) -> None:
+    """A pipeline drain the user omits but the bundled defaults bind loads
+    cleanly — agents policy layers onto defaults like pipeline/artifacts."""
+    config_dir = tmp_path / ".agent"
+    config_dir.mkdir(parents=True)
+
+    config = UnifiedConfig(
+        agent_chains={"dev_chain": ["claude"]},
+        agent_drains={"development": "dev_chain"},
+        # development_analysis omitted: bound by the bundled default.
     )
     (config_dir / "pipeline.toml").write_text(
         dedent(
@@ -718,13 +809,18 @@ def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -
             [phases.complete.transitions]
             on_success = "complete"
             on_loopback = "complete"
+
+            [recovery]
+            failed_route = "complete"
             """
         ),
         encoding="utf-8",
     )
 
-    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
-        load_policy(config_dir, config=config)
+    bundle = load_policy(config_dir, config=config)
+
+    assert bundle.agents.agent_drains["development"].chain == "dev_chain"
+    assert bundle.agents.agent_drains["development_analysis"].chain == "development_analysis"
 
 
 def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:

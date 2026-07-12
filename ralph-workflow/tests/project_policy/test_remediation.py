@@ -39,6 +39,22 @@ def test_remediation_prompt_written_to_workspace_seam() -> None:
     assert not ws.exists(".agent/artifacts/issues.json")
 
 
+def test_prompt_instructs_holistic_agents_md_discoverability() -> None:
+    """The remediation prompt instructs the full discoverability chain, not
+    just the individual findings: a consistent AGENTS.md managed block that
+    routes AI agents to the canonical policy dir, plus the CLAUDE.md pointer."""
+    prompt = remediation._render_prompt([_stub_finding()])
+    assert markers.AGENTS_BLOCK_BEGIN in prompt
+    assert markers.AGENTS_BLOCK_END in prompt
+    assert markers.CANONICAL_DIR in prompt
+    assert "AGENTS.md" in prompt
+    assert "discover" in prompt.lower()
+    # AGENTS.md must stay short: the bootstrap placeholder instructions are
+    # replaced with a concise pointer once remediation completes.
+    assert "concise" in prompt.lower()
+    assert "short" in prompt.lower()
+
+
 def test_invocation_error_aborts_loop_without_burning_budget() -> None:
     """An infrastructure failure (agent cannot launch) aborts the loop immediately.
 

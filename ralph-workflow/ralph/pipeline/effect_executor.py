@@ -105,6 +105,11 @@ def execute_agent_effect(
     pipeline_deps: PipelineDeps,
     workspace_scope: WorkspaceScope,
     *,
+    display_context: DisplayContext | None,
+    display: ParallelDisplay | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
+    policy_bundle: PolicyBundle | None = None,
     bridge: RestartAwareMcpBridge | None = None,
     raw_output_sink: deque[str] | None = None,
     rendered_output_sink: deque[str] | None = None,
@@ -116,12 +121,12 @@ def execute_agent_effect(
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
     **opts: object,
 ) -> PipelineEvent:
-    """Execute an agent-invocation effect end-to-end, including MCP server lifecycle."""
-    display = cast("ParallelDisplay | None", opts.get("display"))
-    display_context = cast("DisplayContext | None", opts.get("display_context"))
-    verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
-    state = cast("PipelineState | None", opts.get("state"))
-    policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
+    """Execute an agent-invocation effect end-to-end, including MCP server lifecycle.
+
+    ``display_context`` is a required keyword so a call site cannot silently
+    omit the display dependency: at least one of ``display_context`` /
+    ``display`` must be non-None or :func:`get_display_context` raises.
+    """
     resolved_display_context = get_display_context(display, display_context)
     registry = _registry_from_pipeline_deps(pipeline_deps, config)
     agent_config = cast("AgentConfig | None", registry.get(effect.agent_name))

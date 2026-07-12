@@ -1106,6 +1106,13 @@ ralph.git.commit_cleanup
    :members:
    :show-inheritance:
 
+ralph.git.scoped_auto_commit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.scoped_auto_commit
+   :members:
+   :show-inheritance:
+
 ----
 
 Phases

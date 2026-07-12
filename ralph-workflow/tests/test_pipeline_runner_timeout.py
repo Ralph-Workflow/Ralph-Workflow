@@ -618,6 +618,7 @@ def test_record_mcp_restart_forwarded_to_subscriber(
         config,
         deps,
         WorkspaceScope(tmp_path),
+        display_context=None,
         display=cast("ParallelDisplay", _FakeDisplay()),
     )
 

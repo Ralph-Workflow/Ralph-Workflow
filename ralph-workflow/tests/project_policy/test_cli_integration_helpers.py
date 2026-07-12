@@ -63,12 +63,18 @@ def _load_result(bundle: PolicyBundle | None) -> _LoadResult:
     )
 
 
-def test_agent_name_resolves_through_drain_binding() -> None:
+def test_chain_agents_resolve_through_drain_binding() -> None:
+    """Resolution reuses the pipeline's strict drain->chain lookup and
+    returns the FULL fallback chain, not just the first agent."""
     load_result = _load_result(_bundle_with_review_bound_remediation())
-    assert (
-        cli_integration._resolve_remediation_agent_name(load_result)
-        == "reviewer-agent"
-    )
+    assert cli_integration._resolve_remediation_chain_agents(load_result) == [
+        "reviewer-agent",
+        "codex",
+    ]
+
+
+def test_chain_agents_empty_when_bundle_missing() -> None:
+    assert cli_integration._resolve_remediation_chain_agents(_load_result(None)) == []
 
 
 def test_max_attempts_ignores_global_recovery_cycle_cap() -> None:
@@ -108,12 +114,87 @@ def test_production_closure_forwards_display_context(
         load_result,
         cast("object", object()),  # non-None pipeline deps sentinel
         load_result.workspace_scope,
-        "claude",
+        ["claude"],
         display_context,
     )
     assert invoke("prompt.md") is True
     assert observed_opts, "execute_agent_effect must be invoked"
     assert observed_opts[0].get("display_context") is display_context
+
+
+def test_production_closure_falls_back_across_chain_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing first agent falls back to the next agent in the chain,
+    mirroring drain fallback semantics in the pipeline proper."""
+    bundle = load_policy(default_dir())
+    load_result = _load_result(bundle)
+    invoked_agents: list[str] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        from ralph.pipeline.events import PipelineEvent
+
+        agent_name = cast("str", getattr(effect, "agent_name", ""))
+        invoked_agents.append(agent_name)
+        if agent_name == "first-agent":
+            return PipelineEvent.AGENT_FAILURE
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    invoke = cli_integration._make_production_invoke_remediation_agent(
+        load_result,
+        cast("object", object()),
+        load_result.workspace_scope,
+        ["first-agent", "second-agent"],
+        make_display_context(),
+    )
+    assert invoke("prompt.md") is True
+    assert invoked_agents == ["first-agent", "second-agent"]
+
+
+def test_ready_preflight_triggers_policy_auto_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A READY preflight auto-commits the policy surfaces (wt-025 mirror)."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import _auto_commit as policy_auto_commit_module
+    from ralph.workspace.memory import MemoryWorkspace
+    from tests.project_policy.test_validator import (
+        _seed_agents_md,
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+
+    committed_roots: list[object] = []
+    monkeypatch.setattr(
+        policy_auto_commit_module,
+        "commit_policy_updates",
+        lambda repo_root, _create_commit_fn: committed_roots.append(repo_root),
+    )
+
+    load_result = _load_result(load_policy(default_dir()))
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=load_result,
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda _m: None,
+    )
+
+    assert rc == 0
+    assert committed_roots == [load_result.workspace_scope.root]
 
 
 def test_production_closure_raises_on_launch_crash(
@@ -134,7 +215,7 @@ def test_production_closure_raises_on_launch_crash(
         load_result,
         cast("object", object()),
         load_result.workspace_scope,
-        "claude",
+        ["claude"],
         make_display_context(),
     )
     with pytest.raises(remediation.RemediationInvocationError):

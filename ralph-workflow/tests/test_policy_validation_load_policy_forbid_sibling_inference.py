@@ -30,11 +30,12 @@ class TestLoadPolicyForbidSiblingInference:
     """Tests that load_policy enforces forbid_sibling_drain_inference."""
 
     def test_load_policy_rejects_missing_drains(self, tmp_path: Path) -> None:
-        """load_policy rejects a pipeline where a used drain is not bound in agents.toml.
+        """load_policy rejects a pipeline drain bound nowhere — no inference.
 
-        When forbid_sibling_drain_inference=True, pipeline-used drains must be explicitly
-        bound. A pipeline with a development_analysis phase but no development_analysis
-        drain binding is rejected at load time.
+        When forbid_sibling_drain_inference=True, pipeline-used drains must be
+        explicitly bound. Drains the user omits but the bundled defaults bind
+        are satisfied by layering; a drain unknown to BOTH the user policy and
+        the bundled defaults is rejected at load time.
         """
         config_dir = tmp_path / ".agent"
         config_dir.mkdir(parents=True)
@@ -48,7 +49,8 @@ class TestLoadPolicyForbidSiblingInference:
 
             [agent_drains.planning]
             chain = "planning"
-            # development_analysis drain intentionally absent
+            drain_class = "planning"
+            # custom_analysis drain intentionally absent everywhere
             """
         )
         (config_dir / "agents.toml").write_text(agents_toml)
@@ -59,12 +61,12 @@ class TestLoadPolicyForbidSiblingInference:
             drain = "planning"
             role = "execution"
             [phases.planning.transitions]
-            on_success = "development_analysis"
+            on_success = "custom_analysis"
 
-            [phases.development_analysis]
-            drain = "development_analysis"
+            [phases.custom_analysis]
+            drain = "custom_analysis"
             role = "execution"
-            [phases.development_analysis.transitions]
+            [phases.custom_analysis.transitions]
             on_success = "complete"
 
             [phases.complete]
