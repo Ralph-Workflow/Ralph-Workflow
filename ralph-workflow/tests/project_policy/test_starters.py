@@ -213,6 +213,42 @@ def test_starter_recommended_gate_tools_are_validator_approved(name: str) -> Non
         )
 
 
+@pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
+def test_multi_language_template_blocks_carry_replace_me_marker(name: str) -> None:
+    """A starter file can have MULTIPLE sections that are templates to adapt,
+    not just the top-of-file banner. Every per-language template block (a
+    starter shipping more than one RALPH-LANG block cannot match any single
+    real project) must be preceded by a `<!-- REPLACE-ME:` comment carrying
+    its own in-place instruction. `REPLACE-ME` is a validator placeholder
+    token, so the marker is machine-enforced: readiness stays blocked until
+    the section is adapted and the comment deleted — instructions live at
+    the section instead of bloating the remediation prompt."""
+    content = starters.read_starter(name)
+    lines = content.splitlines()
+    lang_lines = [
+        idx for idx, line in enumerate(lines) if line.startswith(markers.LANG_MARKER)
+    ]
+    if len(lang_lines) <= 1:
+        return  # single/no language block: nothing speculative to adapt.
+    marker_lines = [
+        idx for idx, line in enumerate(lines) if line.startswith("<!-- REPLACE-ME:")
+    ]
+    assert marker_lines, (
+        f"{name} ships {len(lang_lines)} RALPH-LANG template blocks but no "
+        "<!-- REPLACE-ME: --> section marker"
+    )
+    assert min(marker_lines) < min(lang_lines), (
+        f"{name}: the REPLACE-ME section marker must precede the first "
+        "RALPH-LANG template block it governs"
+    )
+
+
+def test_replace_me_token_is_a_validator_placeholder() -> None:
+    """The section marker is only trustworthy if the validator enforces its
+    deletion: REPLACE-ME must be a placeholder token."""
+    assert "REPLACE-ME" in markers.PLACEHOLDER_TOKENS
+
+
 def test_starter_has_placeholder_fact_lines() -> None:
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)

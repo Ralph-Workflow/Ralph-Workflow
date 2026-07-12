@@ -99,6 +99,7 @@ def _render_prompt(findings: list[PolicyFinding]) -> str:
     contract, and the rules for completing the work.
     """
     findings_block = _serialize_findings(findings)
+    approved_tools = ", ".join(sorted(markers.APPROVED_GATE_TOOLS))
     return f"""# Ralph Workflow Project-Policy Remediation
 
 You are remediating a project so it passes the Ralph Workflow project-policy-readiness
@@ -119,6 +120,16 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    * Add at least one runnable `RALPH-COMMAND:` line for each verification
      gate (testing, typecheck, lint, dependency audit, verification), or an
      explicit `RALPH-INAPPLICABLE:` line with a reason.
+   * Every `RALPH-COMMAND:` value MUST start with an approved gate tool —
+     the validator checks the FIRST whitespace-separated token against a
+     fixed allowlist and rejects everything else. Approved tools:
+     {approved_tools}.
+     Wrap any other tool in an approved runner (e.g. `make <target>`,
+     `uv run <tool>`, `npx <tool>`).
+   * Sections marked with a `REPLACE-ME` comment carry their own in-place
+     instructions: follow the instruction, then delete the comment. The
+     `REPLACE-ME` token is a validator placeholder, so readiness stays
+     blocked while any such comment remains.
    * For typecheck and lint policies, declare every applicable language via
      `RALPH-LANG: <Language>` followed by a RALPH-COMMAND or RALPH-INAPPLICABLE.
    * Add the citation block under `## Research basis` with publisher, title,
@@ -143,6 +154,10 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    file and add `{markers.MIGRATED_MARKER_TEMPLATE.format(target="<canonical-filename>")}`
    at the old location (replacing `<canonical-filename>` with the destination).
    OR remove the recognized heading so the file is no longer a candidate.
+   For standard community files (SECURITY.md, CONTRIBUTING.md, and similar
+   ecosystem-convention locations) KEEP the file and its heading and use the
+   migrated marker — their location and headings are conventions other tools
+   and humans rely on.
 4. CONFIGURE executable gates so every declared command actually runs in the
    environment. Document any command that cannot be run and the reason.
 5. INTEGRATE the managed block naturally into AGENTS.md — never leave it as

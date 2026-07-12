@@ -156,11 +156,13 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
     from ralph.workspace.memory import MemoryWorkspace
 
     content = starters.read_starter(name)
-    # Delete the banner comment block.
-    start = content.find("<!-- RALPH-STARTER-TEMPLATE")
-    assert start != -1
-    end = content.find("-->", start) + len("-->")
-    content = content[:start] + content[end:].lstrip("\n")
+    # Delete the banner comment block, then every REPLACE-ME section-marker
+    # comment (the remediation prompt instructs deleting each one after
+    # following its in-place instruction — a file can carry several).
+    for comment_prefix in ("<!-- RALPH-STARTER-TEMPLATE", "<!-- REPLACE-ME"):
+        while (start := content.find(comment_prefix)) != -1:
+            end = content.find("-->", start) + len("-->")
+            content = content[:start] + content[end:].lstrip("\n")
     # Resolve every command placeholder with an allowlisted tool, then every
     # remaining fact placeholder with a plain verified value.
     content = content.replace(

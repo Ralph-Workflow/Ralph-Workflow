@@ -59,6 +59,33 @@ def test_prompt_instructs_holistic_agents_md_discoverability() -> None:
     assert "invisible" in prompt.lower()
 
 
+def test_prompt_names_the_approved_gate_tool_allowlist() -> None:
+    """The validator rejects any RALPH-COMMAND whose first token is not in
+    APPROVED_GATE_TOOLS. The prompt must tell the agent this constraint and
+    list the approved tools UP FRONT — otherwise the agent only discovers
+    the allowlist by failing validation, burning one of the (default two)
+    remediation attempts on a formatting rule it could not have known."""
+    prompt = remediation._render_prompt([_stub_finding()])
+    lowered = prompt.lower()
+    assert "first" in lowered and "token" in lowered
+    # The full allowlist is rendered so the agent can pick a compliant tool
+    # without a failed round-trip.
+    for tool in sorted(markers.APPROVED_GATE_TOOLS):
+        assert tool in prompt, f"approved gate tool {tool!r} missing from prompt"
+
+
+def test_prompt_steers_standard_community_files_to_migrated_marker() -> None:
+    """Migration offers two resolutions: add the migrated marker, or remove
+    the recognized heading. For standard community files (SECURITY.md,
+    CONTRIBUTING.md) heading removal is the wrong choice — the file's
+    location and heading are ecosystem conventions. The prompt must steer
+    the agent to keep such files and use the marker."""
+    prompt = remediation._render_prompt([_stub_finding()])
+    assert "SECURITY.md" in prompt
+    assert "CONTRIBUTING.md" in prompt
+    assert "keep" in prompt.lower()
+
+
 def test_invocation_error_aborts_loop_without_burning_budget() -> None:
     """An infrastructure failure (agent cannot launch) aborts the loop immediately.
 

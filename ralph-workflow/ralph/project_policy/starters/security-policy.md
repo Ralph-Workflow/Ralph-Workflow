@@ -164,6 +164,13 @@ Per-language static security analysis follows this template (one block
 per project language, or an explicit inapplicability record with a
 reason):
 
+<!-- REPLACE-ME: per-language template. Keep one block per project language
+with the real scanner command (first token must be an approved gate tool;
+wrap others in `make`, `uv run`, or `npx`), add blocks for detected
+languages missing below, drop blocks for languages the project does not
+use, and record genuinely unscanned languages as inapplicable with a
+reason. Then delete this comment. -->
+
 RALPH-LANG: Python
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 

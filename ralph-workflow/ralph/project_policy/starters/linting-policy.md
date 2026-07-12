@@ -71,6 +71,13 @@ An agent MUST NOT:
 
 Run every gate below before claiming a change complies with this policy.
 
+<!-- REPLACE-ME: per-language template. Keep one block per project language
+with the real linter command (first token must be an approved gate tool;
+wrap others in `make`, `uv run`, or `npx`), add blocks for detected
+languages missing below, drop blocks for languages the project does not
+use, and record genuinely unlinted languages as inapplicable with a
+reason. Then delete this comment. -->
+
 RALPH-LANG: Python
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
