@@ -12,7 +12,12 @@ from ralph.project_policy import evidence, markers
 from ralph.workspace.memory import MemoryWorkspace
 
 
-def _stack(*, primary="Python", secondary=(), frameworks=()):
+def _stack(
+    *,
+    primary: str = "Python",
+    secondary: list[str] | tuple[str, ...] = (),
+    frameworks: list[str] | tuple[str, ...] = (),
+) -> ProjectStack:
     return ProjectStack(
         primary_language=primary,
         secondary_languages=list(secondary),
@@ -57,6 +62,37 @@ def test_design_system_required_without_ux() -> None:
     assert evidence.ux_required(ws, stack)[0] is False
 
 
+def test_router_only_project_requires_both_design_system_and_ux() -> None:
+    """AC-07: a project whose only UX signal is a router dependency must
+    require BOTH design-system AND ux (UX implies design-system).
+    """
+    ws = MemoryWorkspace()
+    package_json: dict[str, dict[str, str]] = {
+        "dependencies": {"react-router-dom": "^6.0.0"}
+    }
+    ws.write("package.json", json.dumps(package_json))
+    stack = _stack(primary="JavaScript", secondary=["TypeScript"], frameworks=[])
+    ds_required, ds_triggered = evidence.design_system_required(ws, stack)
+    ux_required, _ = evidence.ux_required(ws, stack)
+    assert ux_required is True
+    assert ds_required is True, (
+        f"design-system must be required when UX is required; triggered={ds_triggered}"
+    )
+    assert any("ux_implies_design_system" in t for t in ds_triggered)
+
+
+def test_design_system_required_does_not_imply_ux() -> None:
+    """AC-07 symmetry: design-system can stand on its own without UX.
+    A project with CSS but no UX signals triggers ONLY design-system.
+    """
+    ws = MemoryWorkspace()
+    stack = _stack(secondary=["CSS"])
+    ds_required, _ = evidence.design_system_required(ws, stack)
+    ux_required, _ = evidence.ux_required(ws, stack)
+    assert ds_required is True
+    assert ux_required is False
+
+
 def test_ux_required_for_app_framework() -> None:
     ws = MemoryWorkspace()
     stack = _stack(frameworks=["Angular"])
@@ -65,10 +101,10 @@ def test_ux_required_for_app_framework() -> None:
 
 def test_ux_required_for_router_dependency() -> None:
     ws = MemoryWorkspace()
-    ws.write(
-        "package.json",
-        json.dumps({"dependencies": {"react-router-dom": "^6.0.0"}}),
-    )
+    package_json: dict[str, dict[str, str]] = {
+        "dependencies": {"react-router-dom": "^6.0.0"}
+    }
+    ws.write("package.json", json.dumps(package_json))
     stack = _stack(primary="JavaScript", secondary=["TypeScript"])
     assert evidence.ux_required(ws, stack)[0] is True
 
@@ -82,10 +118,10 @@ def test_performance_required_for_signal_file() -> None:
 
 def test_performance_required_for_dep_substring() -> None:
     ws = MemoryWorkspace()
-    ws.write(
-        "package.json",
-        json.dumps({"devDependencies": {"k6": "^1.0.0"}}),
-    )
+    package_json: dict[str, dict[str, str]] = {
+        "devDependencies": {"k6": "^1.0.0"}
+    }
+    ws.write("package.json", json.dumps(package_json))
     stack = _stack()
     assert evidence.performance_required(ws, stack)[0] is True
 
@@ -105,10 +141,10 @@ def test_memory_required_for_signal_file() -> None:
 
 def test_memory_required_for_dep_substring() -> None:
     ws = MemoryWorkspace()
-    ws.write(
-        "package.json",
-        json.dumps({"devDependencies": {"memlab": "^1.0.0"}}),
-    )
+    package_json: dict[str, dict[str, str]] = {
+        "devDependencies": {"memlab": "^1.0.0"}
+    }
+    ws.write("package.json", json.dumps(package_json))
     stack = _stack()
     assert evidence.memory_required(ws, stack)[0] is True
 

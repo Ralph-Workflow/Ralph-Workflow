@@ -56,6 +56,91 @@ def test_candidate_with_migrated_marker_is_resolved() -> None:
     assert by_path["CONTRIBUTING.md"].resolved is True
 
 
+def test_candidate_with_malformed_marker_is_unresolved() -> None:
+    """AC-12: a marker that is NOT byte-equal to MIGRATED_MARKER_TEMPLATE must
+    NOT silence the unresolved-migration finding.
+    """
+    ws = MemoryWorkspace()
+    ws.write(f"{markers.CANONICAL_DIR}testing-policy.md", "# target")
+    # Trailing text after the marker is malformed; the contract forbids it.
+    ws.write(
+        "CONTRIBUTING.md",
+        "# Contributing\n\n## Testing\n\n"
+        + markers.MIGRATED_MARKER_TEMPLATE.format(target="testing-policy.md")
+        + " see also other policies\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    by_path = {c.path: c for c in candidates}
+    assert by_path["CONTRIBUTING.md"].resolved is False
+
+
+def test_candidate_with_suffixed_marker_is_unresolved() -> None:
+    """AC-12: an extra token appended to the canonical marker must NOT silence
+    the unresolved-migration finding.
+    """
+    ws = MemoryWorkspace()
+    ws.write(f"{markers.CANONICAL_DIR}testing-policy.md", "# target")
+    ws.write(
+        "CONTRIBUTING.md",
+        "# Contributing\n\n## Testing\n\n"
+        + markers.MIGRATED_MARKER_TEMPLATE.format(target="testing-policy.md")
+        + " extra\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    by_path = {c.path: c for c in candidates}
+    assert by_path["CONTRIBUTING.md"].resolved is False
+
+
+def test_candidate_with_arbitrary_target_marker_is_unresolved() -> None:
+    """AC-12: a marker pointing at a non-canonical filename (not in the
+    declared CORE/CONDITIONAL policy set) must NOT silence the finding.
+    """
+    ws = MemoryWorkspace()
+    # No canonical target file exists for the arbitrary name.
+    ws.write(
+        "CONTRIBUTING.md",
+        "# Contributing\n\n## Testing\n\n"
+        + markers.MIGRATED_MARKER_TEMPLATE.format(target="custom-policy.md")
+        + "\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    by_path = {c.path: c for c in candidates}
+    assert by_path["CONTRIBUTING.md"].resolved is False
+
+
+def test_candidate_with_partial_marker_text_is_unresolved() -> None:
+    """AC-12: a comment that contains a substring of the migrated marker
+    (e.g. just 'migrated ->') must NOT silence the finding.
+    """
+    ws = MemoryWorkspace()
+    ws.write(f"{markers.CANONICAL_DIR}testing-policy.md", "# target")
+    ws.write(
+        "CONTRIBUTING.md",
+        "# Contributing\n\n## Testing\n\n"
+        + "<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/ -->\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    by_path = {c.path: c for c in candidates}
+    assert by_path["CONTRIBUTING.md"].resolved is False
+
+
+def test_candidate_with_conditional_marker_is_resolved() -> None:
+    """AC-12: a marker pointing at a CONDITIONAL canonical file (e.g.
+    design-system-policy.md) must silence the finding.
+    """
+    ws = MemoryWorkspace()
+    ws.write(f"{markers.CANONICAL_DIR}design-system-policy.md", "# target")
+    ws.write(
+        "CONTRIBUTING.md",
+        "# Contributing\n\n## Testing\n\n"
+        + markers.MIGRATED_MARKER_TEMPLATE.format(target="design-system-policy.md")
+        + "\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    by_path = {c.path: c for c in candidates}
+    assert by_path["CONTRIBUTING.md"].resolved is True
+
+
 def test_candidate_without_target_is_unresolved() -> None:
     ws = MemoryWorkspace()
     ws.write(

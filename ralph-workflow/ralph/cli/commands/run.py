@@ -58,14 +58,22 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.language_detector.models import ProjectStack
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.project_policy.models import ReadinessResult
+    from ralph.project_policy.remediation import _InvokeRemediationAgent
+    from ralph.workspace.protocol import Workspace
+    from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
 
@@ -546,98 +554,76 @@ def _print_project_skill_conflict_hint(failures: list[str]) -> None:
     display.emit_skill_failure_warning(failures)
 
 
-def _run_project_policy_readiness(
-    *,
+def _resolve_remediation_agent_name(load_result: _LoadResult) -> str | None:
+    """Return the configured first agent of the ``policy_remediation`` chain.
+
+    Returns ``None`` when the bundle is missing, the chain is missing, the
+    chain has no agents, or the first agent is not a non-empty string. The
+    helper honours any project-local policy configuration rather than
+    hardcoding ``"claude"``.
+    """
+    bundle = load_result.policy_bundle
+    if bundle is None:
+        return None
+    chain = bundle.agents.agent_chains.get("policy_remediation")
+    if chain is None:
+        return None
+    agents_attr: object = chain.agents
+    if not isinstance(agents_attr, list) or not agents_attr:
+        return None
+    first_obj: object = agents_attr[0]
+    if not isinstance(first_obj, str) or not first_obj.strip():
+        return None
+    return first_obj.strip()
+
+
+def _build_pipeline_deps_for_remediation(
     load_result: _LoadResult,
     display_context: DisplayContext,
-) -> int:
-    """Run the project-policy-readiness preflight at run_pipeline startup.
+) -> PipelineDeps | None:
+    """Build ``PipelineDeps`` for the synchronous remediation driver.
 
-    Steps:
-    1. Build the workspace + project stack via the injected seams.
-    2. Call :func:`ralph.project_policy.run_policy_readiness_preflight`.
-    3. Map the result status to a CLI exit code: ``READY`` / ``SKIPPED``
-       continue, ``REMEDIATION_REQUIRED`` triggers an in-process bounded
-       remediation loop, ``BLOCKED`` returns the recoverable
-       ``_EXIT_PREFLIGHT`` exit.
-
-    The preflight runs ONLY when ``load_result.workspace_scope`` is set and
-    the request is not an inline prompt or a parallel-worker manifest
-    (those short-circuit earlier in the flow).
+    Returns ``None`` when the bundle is missing or factory construction
+    fails (defensive: a missing deps block simply prevents the production
+    agent invocation from running, but tests inject a fake and pass).
     """
-    from ralph.language_detector import get_project_stack
-    from ralph.project_policy import remediation as policy_remediation
-    from ralph.project_policy import (
-        run_policy_readiness_preflight as run_preflight,
-    )
-    from ralph.workspace.fs import FsWorkspace
-
-    workspace_scope = load_result.workspace_scope
-    if workspace_scope is None:
-        return _EXIT_SUCCESS
-
-    def emit(message: str) -> None:
-        display = resolve_active_display(None, display_context)
-        display.emit_info_panel(
-            title="Project-Policy Readiness",
-            content=message,
+    if load_result.policy_bundle is None:
+        return None
+    try:
+        return DefaultPipelineFactory().build(
+            load_result.config,
+            display_context,
+            model_identity=None,
+            policy_bundle=load_result.policy_bundle,
+            pro_hooks=None,
         )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Could not build pipeline deps for remediation: {}", exc)
+        return None
 
-    workspace = FsWorkspace(workspace_scope.root, allowed_roots=workspace_scope.allowed_roots)
-    stack = get_project_stack(workspace)
-    result = run_preflight(workspace, stack, emit=emit)
 
-    if result.is_skipped():
-        emit("Project opted out of policy management; continuing the run.")
-        return _EXIT_SUCCESS
+def _make_production_invoke_remediation_agent(
+    load_result: _LoadResult,
+    pipeline_deps: PipelineDeps | None,
+    workspace_scope: WorkspaceScope,
+    configured_agent: str | None,
+) -> _InvokeRemediationAgent:
+    """Build the production ``invoke_remediation_agent`` closure.
 
-    if result.is_ready():
-        return _EXIT_SUCCESS
-
-    if not result.requires_remediation() and not result.is_blocked():
-        # Defensive: any non-REMEDIATION_REQUIRED non-READY non-SKIPPED status
-        # is treated as a blocked state.
-        return _EXIT_PREFLIGHT
-
-    # Resolve remediation max attempts from recovery budget.
-    max_attempts: int = 2
-    if load_result.policy_bundle is not None:
-        recovery = load_result.policy_bundle.pipeline.recovery
-        raw_attempts: object = getattr(recovery, "cycle_cap", None)
-        if isinstance(raw_attempts, int) and raw_attempts > 0:
-            max_attempts = raw_attempts
-
-    # Build the production invoke_remediation_agent closure. The synchronous
-    # remediation driver invokes the agent via execute_agent_effect bound to
-    # the policy_remediation chain/drain. We construct the closure here so
-    # remediation.py stays free of pipeline plumbing.
+    The closure constructs an :class:`InvokeAgentEffect` with the
+    configured first agent name (NOT the hardcoded ``"claude"``) and
+    routes it through :func:`execute_agent_effect`. The closure returns
+    ``False`` on any failure so the remediation driver exits BLOCKED.
+    """
     from ralph.pipeline.effect_executor import execute_agent_effect
     from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.events import PipelineEvent
-    from ralph.pipeline.factory import PipelineDeps
-
-    def _build_pipeline_deps() -> PipelineDeps | None:
-        if load_result.policy_bundle is None:
-            return None
-        try:
-            return DefaultPipelineFactory().build(
-                load_result.config,
-                display_context,
-                model_identity=None,
-                policy_bundle=load_result.policy_bundle,
-                pro_hooks=None,
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Could not build pipeline deps for remediation: {}", exc)
-            return None
-
-    pipeline_deps: PipelineDeps | None = _build_pipeline_deps()
 
     def invoke_remediation_agent(prompt_path: str) -> bool:
         if pipeline_deps is None or load_result.policy_bundle is None:
             return False
         effect = InvokeAgentEffect(
-            agent_name="claude",
+            agent_name=configured_agent or "claude",
             phase="policy_remediation",
             prompt_file=prompt_path,
             drain="policy_remediation",
@@ -657,6 +643,196 @@ def _run_project_policy_readiness(
             return False
         return event == PipelineEvent.AGENT_SUCCESS
 
+    typed: _InvokeRemediationAgent = invoke_remediation_agent
+    return typed
+
+
+def _resolve_max_attempts(load_result: _LoadResult) -> int:
+    """Return the remediation retry budget from the recovery policy.
+
+    Defaults to 2 when the bundle is missing or the field is absent.
+    """
+    if load_result.policy_bundle is None:
+        return 2
+    recovery = load_result.policy_bundle.pipeline.recovery
+    raw_attempts: object = recovery.cycle_cap
+    if isinstance(raw_attempts, int) and raw_attempts > 0:
+        return raw_attempts
+    return 2
+
+
+def _build_workspace(
+    load_result: _LoadResult,
+    workspace_factory: Callable[[], Workspace] | None,
+) -> Workspace:
+    """Return the workspace, using the injected factory when available.
+
+    Production callers omit ``workspace_factory`` and we build the real
+    :class:`FsWorkspace`. Tests inject ``MemoryWorkspace`` via the factory
+    so no real filesystem I/O occurs.
+
+    The caller is expected to have already verified that
+    ``load_result.workspace_scope`` is not None; this helper raises if
+    that invariant is violated so a missing scope never silently degrades
+    into a real ``Path.cwd()`` lookup.
+    """
+    if workspace_factory is not None:
+        return workspace_factory()
+    scope = load_result.workspace_scope
+    if scope is None:
+        msg = "_build_workspace called with a missing workspace_scope"
+        raise RuntimeError(msg)
+    from ralph.workspace.fs import FsWorkspace
+
+    return FsWorkspace(scope.root, allowed_roots=scope.allowed_roots)
+
+
+def _build_emit(
+    display_context: DisplayContext,
+    emit_factory: Callable[[str], None] | None,
+) -> Callable[[str], None]:
+    """Return the display emit, using the injected callback when available."""
+    if emit_factory is not None:
+        return emit_factory
+
+    def emit(message: str) -> None:
+        display = resolve_active_display(None, display_context)
+        display.emit_info_panel(
+            title="Project-Policy Readiness",
+            content=message,
+        )
+
+    return emit
+
+
+def _run_project_policy_readiness(
+    *,
+    load_result: _LoadResult,
+    display_context: DisplayContext,
+    workspace_factory: Callable[[], Workspace] | None = None,
+    emit_factory: Callable[[str], None] | None = None,
+    invoke_remediation_agent_factory: Callable[[Workspace], Callable[[str], bool]]
+    | None = None,
+) -> int:
+    """Run the project-policy-readiness preflight at run_pipeline startup.
+
+    Steps:
+    1. Build the workspace + project stack via the injected seams.
+    2. Call :func:`ralph.project_policy.run_policy_readiness_preflight`.
+    3. Map the result status to a CLI exit code: ``READY`` / ``SKIPPED``
+       continue, ``REMEDIATION_REQUIRED`` triggers an in-process bounded
+       remediation loop, ``BLOCKED`` returns the recoverable
+       ``_EXIT_PREFLIGHT`` exit.
+
+    The preflight runs ONLY when ``load_result.workspace_scope`` is set and
+    the request is not an inline prompt or a parallel-worker manifest
+    (those short-circuit earlier in the flow).
+
+    Tests can inject ``workspace_factory``, ``emit_factory``, and
+    ``invoke_remediation_agent_factory`` to exercise the preflight without
+    real filesystem I/O or real agent invocation.
+    """
+    from ralph.language_detector import get_project_stack
+    from ralph.project_policy import (
+        run_policy_readiness_preflight as run_preflight,
+    )
+
+    workspace_scope = load_result.workspace_scope
+    if workspace_scope is None:
+        return _EXIT_SUCCESS
+
+    emit = _build_emit(display_context, emit_factory)
+    workspace = _build_workspace(load_result, workspace_factory)
+    stack = get_project_stack(workspace)
+    result = run_preflight(workspace, stack, emit=emit)
+
+    # SKIPPED and READY are terminal-OK states (AC-14: exactly one brief
+    # line each) — emit the line here then return success without going
+    # through the remediation dispatch.
+    if result.is_skipped():
+        # One brief line, owned here (AC-14: preflight does NOT emit for
+        # SKIPPED so the user sees exactly one message).
+        emit("project-policy-readiness: skipped (opt-out marker present)")
+        return _EXIT_SUCCESS
+
+    if result.is_ready():
+        emit(
+            f"project-policy-readiness: ready "
+            f"({len(result.changed_files)} files updated)"
+        )
+        return _EXIT_SUCCESS
+
+    return _dispatch_preflight_result(
+        load_result=load_result,
+        display_context=display_context,
+        result=result,
+        workspace_scope=workspace_scope,
+        workspace=workspace,
+        stack=stack,
+        emit=emit,
+        invoke_remediation_agent_factory=invoke_remediation_agent_factory,
+    )
+
+
+def _dispatch_preflight_result(
+    *,
+    load_result: _LoadResult,
+    display_context: DisplayContext,
+    result: ReadinessResult,
+    workspace_scope: WorkspaceScope,
+    workspace: Workspace,
+    stack: ProjectStack,
+    emit: Callable[[str], None],
+    invoke_remediation_agent_factory: Callable[[Workspace], Callable[[str], bool]]
+    | None,
+) -> int:
+    """Map a :class:`ReadinessResult` to a CLI exit code.
+
+    Extracted from :func:`_run_project_policy_readiness` so the orchestrator
+    stays under PLR0911 while the dispatch logic keeps its explicit
+    state-machine branches.
+    """
+    from ralph.project_policy import remediation as policy_remediation
+
+    if not result.requires_remediation() and not result.is_blocked():
+        # Defensive: any non-REMEDIATION_REQUIRED non-READY non-SKIPPED
+        # status is treated as a blocked state.
+        return _EXIT_PREFLIGHT
+
+    configured_agent = _resolve_remediation_agent_name(load_result)
+    if configured_agent is None and invoke_remediation_agent_factory is None:
+        # Production fail-closed path: a bundle without a usable
+        # configured agent blocks the run. Tests inject a closure and
+        # bypass this branch entirely.
+        logger.warning(
+            "policy_remediation chain has no usable configured agent; "
+            "blocking the run."
+        )
+        emit(
+            "Project-policy-readiness: BLOCKED — policy_remediation chain "
+            "has no configured agent."
+        )
+        return _EXIT_PREFLIGHT
+
+    pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
+    if invoke_remediation_agent_factory is not None:
+        # Tests inject the invoke closure so we never reach
+        # execute_agent_effect in real (un-faked) runs. The test
+        # closure is structurally compatible with the Protocol; cast
+        # bridges the type so the orchestrator stays type-safe.
+        invoke_remediation_agent: _InvokeRemediationAgent = cast(
+            "_InvokeRemediationAgent",
+            invoke_remediation_agent_factory(workspace),
+        )
+    else:
+        invoke_remediation_agent = _make_production_invoke_remediation_agent(
+            load_result,
+            pipeline_deps,
+            workspace_scope,
+            configured_agent,
+        )
+
+    max_attempts = _resolve_max_attempts(load_result)
     final = policy_remediation.remediate(
         workspace,
         stack,

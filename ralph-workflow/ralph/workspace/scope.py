@@ -114,6 +114,7 @@ class WorkspaceScope:
     local_config_path: Path
     propagated_config_paths: tuple[Path, ...]
 
+
     def __init__(
         self,
         root: Path | str,

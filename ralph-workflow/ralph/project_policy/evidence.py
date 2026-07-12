@@ -102,13 +102,20 @@ def _manifest_contains_any(workspace: Workspace, substrings: tuple[str, ...]) ->
 def design_system_required(workspace: Workspace, stack: ProjectStack) -> tuple[bool, list[str]]:
     """Determine whether a design-system policy is required.
 
-    Required when:
-    * ``stack.frameworks`` intersects ``markers.UI_FRAMEWORK_SIGNALS``, OR
-    * ``stack.secondary_languages`` intersects ``markers.CSS_LANGUAGE_SIGNALS``.
+    Required when ANY of these conditions holds:
 
-    The consulted-signal list reports every signal file/framework that
-    triggered the requirement so the orchestrator can produce a transparent
-    report.
+    * ``stack.frameworks`` intersects ``markers.UI_FRAMEWORK_SIGNALS``, OR
+    * ``stack.secondary_languages`` intersects ``markers.CSS_LANGUAGE_SIGNALS``, OR
+    * ``ux_required(workspace, stack)`` returns True (a UX-substantial project
+      also needs design-system coverage; the requirement is symmetric — UX
+      implies both design-system AND ux, while design-system can stand on
+      its own).
+
+    The third condition is computed by calling :func:`ux_required` so the
+    signal set is shared with the UX detector — there is no separate,
+    hand-maintained signal list that could drift. The consultation list
+    reports every signal file/framework that triggered the requirement so
+    the orchestrator can produce a transparent report.
     """
     triggered: list[str] = []
     ui_hit = stack.frameworks and set(stack.frameworks) & markers.UI_FRAMEWORK_SIGNALS
@@ -117,6 +124,13 @@ def design_system_required(workspace: Workspace, stack: ProjectStack) -> tuple[b
     css_hit = set(stack.secondary_languages) & markers.CSS_LANGUAGE_SIGNALS
     if css_hit:
         triggered.extend(sorted(css_hit))
+    # UX always implies design-system. Compute the UX signal list separately
+    # so we can fold its triggers into the design-system report without
+    # reporting a UX policy here (the orchestrator decides).
+    ux_triggered, ux_consulted = ux_required(workspace, stack)
+    if ux_triggered:
+        triggered.append("ux_implies_design_system")
+        triggered.extend(f"ux:{signal}" for signal in ux_consulted)
     if triggered:
         # Signal files exist only when a CSS/SCSS file is present; we still
         # report UI framework names because they triggered the requirement.
@@ -234,18 +248,37 @@ def _doc_recognized(content: str) -> str | None:
 
 
 def _doc_has_migrated_marker(content: str) -> str | None:
-    """Return the migration target filename if the doc carries a migrated marker."""
+    """Return the migration target filename iff the doc carries an EXACT migrated marker.
+
+    Closure rule (exact marker contract):
+
+    * The doc must contain a stripped line that is BYTE-EQUAL to one of the
+      allowed ``markers.MIGRATED_MARKER_TEMPLATE.format(target=T)`` strings
+      where ``T`` is one of the declared canonical filenames (core or
+      conditional). No partial matches, no arbitrary targets, no extra text
+      inside the marker, no malformed prefix.
+    * Malformed markers (extra text, wrong target, missing closing ``-->``)
+      are NEVER accepted. They do NOT silence the unresolved-migration
+      finding; the doc keeps generating one until a valid marker exists.
+
+    Returns the canonical target filename on success, ``None`` otherwise.
+    """
+    allowed_targets = set(markers.CORE_POLICY_FILES) | set(
+        markers.CONDITIONAL_POLICY_FILES.values()
+    )
+    expected_markers = {
+        markers.MIGRATED_MARKER_TEMPLATE.format(target=target).strip()
+        for target in allowed_targets
+    }
     for raw_line in content.splitlines():
         line = raw_line.strip()
-        if not line.startswith("<!--"):
-            continue
-        if "ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/" not in line:
-            continue
-        # Extract the target filename from the marker.
-        prefix = "ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/"
-        after = line.split(prefix, 1)[1]
-        target = after.split(" ", 1)[0].rstrip(">")
-        return target
+        if line in expected_markers:
+            for target in allowed_targets:
+                if (
+                    markers.MIGRATED_MARKER_TEMPLATE.format(target=target).strip()
+                    == line
+                ):
+                    return target
     return None
 
 

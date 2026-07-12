@@ -7,7 +7,11 @@ from ralph.project_policy import markers, starters, validators
 from ralph.workspace.memory import MemoryWorkspace
 
 
-def _stack_with(primary="Python", secondary=(), frameworks=()):
+def _stack_with(
+    primary: str = "Python",
+    secondary: list[str] | tuple[str, ...] = (),
+    frameworks: list[str] | tuple[str, ...] = (),
+) -> ProjectStack:
     return ProjectStack(
         primary_language=primary,
         secondary_languages=list(secondary),

@@ -85,7 +85,42 @@ def test_emit_callback_receives_status_line() -> None:
     ws = MemoryWorkspace()
     messages: list[str] = []
     preflight.run_policy_readiness_preflight(ws, _stack(), emit=messages.append)
-    assert any("remediation-required" in m or "ready" in m for m in messages)
+    # REMEDIATION_REQUIRED emits one line so the run-loop can log the count.
+    # READY/SKIPPED do NOT emit (the run-loop owns those brief lines to avoid
+    # the duplicate-emission bug fixed for AC-14).
+    assert any("remediation-required" in m for m in messages)
+    assert not any("skipped" in m or "ready" in m for m in messages)
+
+
+def test_opt_out_does_not_emit_when_skipped() -> None:
+    """AC-14: SKIPPED does not emit from preflight; run-loop owns the line."""
+    ws = MemoryWorkspace()
+    ws.write(
+        markers.AGENTS_MD,
+        f"# AGENTS.md\n\n{markers.OPT_OUT_MARKER}\n\nOpted out.\n",
+    )
+    messages: list[str] = []
+    result = preflight.run_policy_readiness_preflight(ws, _stack(), emit=messages.append)
+    assert result.is_skipped()
+    assert messages == []
+
+
+def test_ready_does_not_emit_when_cached() -> None:
+    """AC-14: READY (cached or freshly-validated) does not emit from preflight."""
+    from tests.project_policy.test_validator import (
+        _seed_agents_md,
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack())
+    messages: list[str] = []
+    result = preflight.run_policy_readiness_preflight(ws, _stack(), emit=messages.append)
+    assert result.is_ready()
+    assert messages == []
 
 
 def test_unconditional_domain_not_required_emits_no_finding() -> None:

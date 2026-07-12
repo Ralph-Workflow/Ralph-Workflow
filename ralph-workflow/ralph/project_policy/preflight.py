@@ -74,14 +74,16 @@ def run_policy_readiness_preflight(
           carry the actionable detail.
     """
     if agents_md.is_opted_out(workspace):
-        emit("project-policy-readiness: skipped (opt-out marker present)")
+        # SKIPPED: do NOT emit here. The run-loop owns the single brief status
+        # line for ready/skipped states so the user sees exactly one message
+        # per preflight outcome (per the AC-14 reporting contract).
         return ReadinessResult(
             status=ReadinessStatus.SKIPPED,
             report_lines=["project explicitly opted out"],
         )
 
     if cache.read_cached_ready(workspace, stack):
-        emit("project-policy-readiness: ready (cached)")
+        # READY (cached): no emit here either; run-loop owns the brief line.
         return ReadinessResult(
             status=ReadinessStatus.READY,
             report_lines=["project-policy-readiness: ready (cached)"],
@@ -96,7 +98,7 @@ def run_policy_readiness_preflight(
 
     if not findings:
         cache.write_cache(workspace, stack, ReadinessStatus.READY)
-        emit(f"project-policy-readiness: ready ({len(changed_files)} files updated)")
+        # READY (after work): run-loop owns the single brief line.
         return ReadinessResult(
             status=ReadinessStatus.READY,
             changed_files=changed_files,
@@ -107,6 +109,8 @@ def run_policy_readiness_preflight(
             ],
         )
 
+    # REMEDIATION_REQUIRED: emit here because remediation follows and the
+    # run-loop needs to know the count.
     emit(
         f"project-policy-readiness: remediation-required ({len(findings)} findings)"
     )
