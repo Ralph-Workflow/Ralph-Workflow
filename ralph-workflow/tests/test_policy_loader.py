@@ -273,6 +273,81 @@ def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_pat
     assert bundle.agents.agent_drains["planning"].chain == "planning"
 
 
+def test_config_synthesized_agents_policy_backfills_policy_remediation(
+    tmp_path: Path,
+) -> None:
+    """A user config predating the policy_remediation chain must not block runs.
+
+    When the unified config defines its own agent_chains/agent_drains, the
+    out-of-graph policy_remediation chain and drain are backfilled from the
+    bundled defaults instead of silently disappearing.
+    """
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "development": ["codex"],
+            "analysis": ["codex"],
+            "commit": ["codex"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "development": "development",
+            "development_analysis": "analysis",
+            "development_commit": "commit",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    remediation_chain = agents_policy.agent_chains.get("policy_remediation")
+    assert remediation_chain is not None
+    assert remediation_chain.agents == ["claude"]
+    remediation_drain = agents_policy.agent_drains.get("policy_remediation")
+    assert remediation_drain is not None
+    assert remediation_drain.chain == "policy_remediation"
+    assert agents_policy.agent_chains["planning"].agents == ["codex"]
+
+
+def test_project_agents_toml_backfills_policy_remediation(tmp_path: Path) -> None:
+    (tmp_path / "agents.toml").write_text(
+        dedent(
+            """
+            [agent_chains.planning]
+            agents = ["codex"]
+
+            [agent_drains.planning]
+            chain = "planning"
+            drain_class = "planning"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path)
+
+    remediation_chain = agents_policy.agent_chains.get("policy_remediation")
+    assert remediation_chain is not None
+    assert remediation_chain.agents == ["claude"]
+    assert agents_policy.agent_drains["policy_remediation"].chain == "policy_remediation"
+
+
+def test_user_defined_policy_remediation_chain_is_not_overwritten(tmp_path: Path) -> None:
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "policy_remediation": ["opencode"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "policy_remediation": "policy_remediation",
+        },
+    )
+
+    agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
+
+    assert agents_policy.agent_chains["policy_remediation"].agents == ["opencode"]
+
+
 def test_load_policy_rejects_artifact_required_in_artifacts_toml(tmp_path: Path) -> None:
     _copy_default_policy_files(tmp_path)
     (tmp_path / "artifacts.toml").write_text(

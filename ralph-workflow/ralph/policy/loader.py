@@ -517,6 +517,41 @@ def _cached_default_agents_policy() -> AgentsPolicy:
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
 
+#: Out-of-graph chains that Ralph invokes internally (outside the pipeline
+#: phase graph). User policies are not required to declare them; any that are
+#: missing are backfilled from the bundled defaults so pre-existing configs
+#: keep working when a new internal chain ships.
+_OUT_OF_GRAPH_CHAINS: tuple[str, ...] = ("policy_remediation",)
+
+
+def _backfill_out_of_graph_chains(agents_policy: AgentsPolicy) -> AgentsPolicy:
+    """Fill missing internal chains/drains from the bundled defaults.
+
+    Only chains listed in :data:`_OUT_OF_GRAPH_CHAINS` are backfilled, and
+    only when the user policy omits them entirely — user-defined overrides
+    always win. Pipeline-graph chains stay strict: omitting one of those is
+    a deliberate routing choice and still fails validation elsewhere.
+    """
+    defaults = _cached_default_agents_policy()
+    merged_chains = dict(agents_policy.agent_chains)
+    merged_drains = dict(agents_policy.agent_drains)
+    changed = False
+    for chain_name in _OUT_OF_GRAPH_CHAINS:
+        if chain_name not in merged_chains and chain_name in defaults.agent_chains:
+            merged_chains[chain_name] = defaults.agent_chains[chain_name]
+            changed = True
+        if chain_name not in merged_drains and chain_name in defaults.agent_drains:
+            merged_drains[chain_name] = defaults.agent_drains[chain_name]
+            changed = True
+    if not changed:
+        return agents_policy
+    return AgentsPolicy(
+        agent_chains=merged_chains,
+        agent_drains=merged_drains,
+        forbid_sibling_drain_inference=agents_policy.forbid_sibling_drain_inference,
+    )
+
+
 def _load_agents_policy_from_path(
     agents_path: Path,
     config: UnifiedConfig | None = None,
@@ -527,7 +562,7 @@ def _load_agents_policy_from_path(
         else None
     )
     if agents_policy is not None:
-        return agents_policy
+        return _backfill_out_of_graph_chains(agents_policy)
 
     if not agents_path.exists():
         return _cached_default_agents_policy()
@@ -535,7 +570,7 @@ def _load_agents_policy_from_path(
     agents_data = _load_toml(agents_path)
     if not agents_data:
         return _cached_default_agents_policy()
-    return _validate_agents(agents_data)
+    return _backfill_out_of_graph_chains(_validate_agents(agents_data))
 
 
 def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:
