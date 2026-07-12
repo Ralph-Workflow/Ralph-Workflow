@@ -43,7 +43,7 @@ and open a fresh `[Unreleased]`.
 
 ### Fixed
 
-- **fix(policy): repair corrupted completion-marker text in all 12 bundled project-policy starter files** — the 'Ralph markers' section named a garbled token instead of `ralph-policy-complete`; regression-guarded by `tests/project_policy/test_starters.py`.
+- **fix(policy): repair corrupted completion-marker text in all 12 bundled project-policy starter files** — commit `b538b9dea`. The 'Ralph markers' section named a garbled token instead of `ralph-policy-complete`; regression-guarded by `tests/project_policy/test_starters.py`.
 
 - **fix(recovery): route missing plan handoff back to entry phase from any non-planning phase** (development, planning_analysis, review, etc.) by dropping the `failed_route` guard in `ralph/pipeline/runner.py:_handle_inline_effect`. Locks behavior in `tests/pipeline/test_runner_missing_plan_handoff_recovery.py`.
 
