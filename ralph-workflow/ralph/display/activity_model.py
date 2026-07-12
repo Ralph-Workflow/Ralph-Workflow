@@ -13,6 +13,7 @@ from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_visibility_hint import ActivityVisibilityHint
 from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.event_options import EventOptions
+from ralph.display.line_sanitizer import strip_terminal_control
 
 _module_sequence_lock = threading.Lock()
 
@@ -88,11 +89,20 @@ def render_event_line(
     *,
     timestamp: str | None = None,
 ) -> str:
-    """Format a single activity event as a rich-markup string for terminal display."""
+    """Format a single activity event as a rich-markup string for terminal display.
+
+    The activity_router pipeline feeds raw agent activity strings here, so
+    ``content`` is sanitized through :func:`strip_terminal_control`
+    BEFORE the cell-width truncation (so an escape sequence can never be
+    split in half) and BEFORE rich ``escape`` (so rich markup like
+    ``[red]...[/red]`` is still neutralised to ``\\[red]...\\[/red]``).
+    """
     icon = _ICON_BY_KIND.get(kind, "?")
     raw_timestamp = timestamp or datetime.now(UTC).isoformat()
     parsed_timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
-    escaped_content = escape(_truncate_to_cells(content or ""))
+    safe_content = strip_terminal_control(content or "")
+    truncated_content = _truncate_to_cells(safe_content)
+    escaped_content = escape(truncated_content)
     return f"{icon} [theme.text.muted]{parsed_timestamp:%H:%M:%S}[/] {escaped_content}"
 
 

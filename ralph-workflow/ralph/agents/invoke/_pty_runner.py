@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import contextlib
-import sys
 from collections import deque
-from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
-
-from tqdm import tqdm
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
@@ -132,41 +129,26 @@ def run_pty_and_read_lines(
         explicit_completion_seen = False
         captured_session_id: str | None = None
         try:
-            if ctx.show_progress:
-                agent_name = _agent_command_name(ctx.config)
-                progress_iter = cast(
-                    "Iterator[str]",
-                    tqdm(
-                        lines_iter,
-                        desc=f"[{agent_name}]",
-                        unit="line",
-                        leave=False,
-                        file=sys.stdout,
-                    ),
+            # The two former branches (show_progress: tqdm-wrapped /
+            # no-progress: bare iterator) had byte-for-byte identical
+            # loop bodies; the only difference was the tqdm wrapper.
+            # tqdm wrote carriage-return / cursor-control sequences
+            # directly to Ralph's real sys.stdout, racing the rich Live
+            # status bar -- this is independent of the escape-leak
+            # class. Interactive agents are background processes whose
+            # activity is streamed by the display layer; a second
+            # painter on the same terminal is never correct here.
+            for line in lines_iter:
+                stripped_line = line.rstrip()
+                parsed_output.append(stripped_line)
+                explicit_completion_seen = explicit_completion_seen or (
+                    _EXPLICIT_COMPLETION_MARKER in stripped_line
+                    or _EXPLICIT_COMPLETION_MARKER in _visible_tui_text(stripped_line)
                 )
-                for line in progress_iter:
-                    stripped_line = line.rstrip()
-                    parsed_output.append(stripped_line)
-                    explicit_completion_seen = explicit_completion_seen or (
-                        _EXPLICIT_COMPLETION_MARKER in stripped_line
-                        or _EXPLICIT_COMPLETION_MARKER in _visible_tui_text(stripped_line)
-                    )
-                    session_id = extract_transport_session_id_with_visible_tui(stripped_line)
-                    if session_id is not None:
-                        captured_session_id = session_id
-                    yield line
-            else:
-                for line in lines_iter:
-                    stripped_line = line.rstrip()
-                    parsed_output.append(stripped_line)
-                    explicit_completion_seen = explicit_completion_seen or (
-                        _EXPLICIT_COMPLETION_MARKER in stripped_line
-                        or _EXPLICIT_COMPLETION_MARKER in _visible_tui_text(stripped_line)
-                    )
-                    session_id = extract_transport_session_id_with_visible_tui(stripped_line)
-                    if session_id is not None:
-                        captured_session_id = session_id
-                    yield line
+                session_id = extract_transport_session_id_with_visible_tui(stripped_line)
+                if session_id is not None:
+                    captured_session_id = session_id
+                yield line
 
             if captured_session_id is None:
                 captured_session_id = expected_session_id

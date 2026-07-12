@@ -190,6 +190,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="public docstring audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
+                returncode=0,
+                stdout="terminal escape containment audit ok\n",
+            ),
         }
     )
 
@@ -217,6 +223,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -237,6 +244,7 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[16][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[17][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[18][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[19][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -449,6 +457,12 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="public docstring audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
+                returncode=0,
+                stdout="terminal escape containment audit ok\n",
+            ),
         }
     )
 
@@ -468,6 +482,8 @@ def test_run_verify_single_step_within_budget(
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -765,6 +781,12 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="public docstring audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
+                returncode=0,
+                stdout="terminal escape containment audit ok\n",
+            ),
         }
     )
 
@@ -813,6 +835,10 @@ def test_run_verify_non_test_steps_not_counted(
         1900.0,
         2000.0,
         2000.0,
+        2100.0,
+        2100.0,
+        2200.0,
+        2200.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

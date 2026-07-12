@@ -14,10 +14,11 @@ kept out of scope.
 
 from __future__ import annotations
 
-import re
 from typing import Final
 
 from rich.text import Text
+
+from ralph.display.line_sanitizer import strip_terminal_control
 
 LEVELS: Final[dict[str, str]] = {
     "execution": "MILESTONE",
@@ -153,8 +154,6 @@ _STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str, str]]] = {
     "thinking": ("thinking-start", "thinking-continue", "thinking-end"),
 }
 
-_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
-
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
 
@@ -166,5 +165,12 @@ def _strip_markup(text: str) -> str:
 
 
 def _sanitize(text: str) -> str:
-    """Strip both Rich markup and ANSI escapes for copy-paste safety."""
-    return _ANSI_ESCAPE.sub("", _strip_markup(text))
+    """Strip both Rich markup and full terminal control sequences for copy-paste safety.
+
+    Applies ``_strip_markup`` first (so rich markup like ``[green]x[/green]``
+    becomes ``"x"``) and then :func:`strip_terminal_control` so every hostile
+    CSI/OSC/C0 sequence (``ESC[?1049h`` alternate screen, ``ESC[2J`` erase
+    display, ``ESC[>0c`` device attributes reply, ``ESC[<35;1;2M`` SGR mouse
+    report, SGR colour, OSC title, C0 controls) is removed.
+    """
+    return strip_terminal_control(_strip_markup(text))

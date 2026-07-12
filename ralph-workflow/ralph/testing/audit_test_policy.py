@@ -93,6 +93,17 @@ _IO_ALLOWLIST: set[str] = {
     "test_doc_adding_a_new_agent",
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
+    # Agent spawn site guard that drives the (sync) invoke reader and
+    # the (async) SubprocessAgentExecutor.run() paths RUNTIME via
+    # recording sync/async fake factories on a real ``ProcessManager``.
+    # The factories use ``FakePopen`` /
+    # ``FakeControllableAsyncProcess`` from ``ralph.testing.fake_process``
+    # so no real OS process is created and no ``subprocess.run`` /
+    # ``Popen`` / ``create_subprocess_exec`` is invoked. Listed here
+    # so the audit does not flag the ``ProcessManager`` /
+    # ``FakePopen`` / ``FakeControllableAsyncProcess`` imports as
+    # test policy violations; the runtime seam itself does no real I/O.
+    "test_agent_spawn_detaches_tty",
     # Artifact-submission prompt audits that read the packaged Jinja
     # templates (production source) to enforce that every single-shot
     # template embeds the shared ``_artifact_submission.j2`` macro with

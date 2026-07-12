@@ -279,6 +279,27 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # AST + literal-string audit that pins the terminal-escape
+        # containment contract documented in
+        # docs/agents/verification.md §'Terminal escape containment'.
+        # Enforces eight literal-string invariants across
+        # display/line_sanitizer.py, display/_plain_constants.py,
+        # display/parallel_display.py, display/activity_model.py,
+        # agents/invoke/_pty_runner.py, agents/invoke/_process_reader.py,
+        # agents/subprocess_executor.py, and agents/invoke/_pty_line_reader.py
+        # so the hosti's full CSI+OSC containment (alternate screen,
+        # erase display, private-parameter CSI, OSC, SGR) survives
+        # future refactors of those files. Appended LAST so the
+        # index-based timeout assertions in tests/test_verify.py are
+        # not shifted; NOT a budget-tracked step (it does NOT count
+        # against _TOTAL_TEST_BUDGET_SECONDS -- the immutable
+        # 60-second combined budget is preserved).
+        "terminal escape containment audit (audit_terminal_escape_containment)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

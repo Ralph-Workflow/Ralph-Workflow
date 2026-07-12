@@ -114,7 +114,6 @@ from ralph.display._phase_close_counters import _PhaseCloseCounters
 from ralph.display._phase_close_options import PhaseCloseOptions
 from ralph.display._phase_counters import PhaseCounters as _PhaseCounters
 from ralph.display._plain_constants import (
-    _ANSI_ESCAPE,
     _CAT_THEME_KEYS,
     _EMPTY_PLAN_SIGNATURE,
     _KIND_TO_LEVEL,
@@ -137,6 +136,7 @@ from ralph.display.artifact_reader import (
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
+from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.long_content_summary import (
     build_ai_summary,
     build_headline_or_placeholder,
@@ -568,8 +568,14 @@ class ParallelDisplay:
 
     @classmethod
     def strip_markup(cls, line: str) -> str:
-        """Strip Rich markup and ANSI escapes from a line, returning plain text."""
-        return _ANSI_ESCAPE.sub("", _strip_markup(line))
+        """Strip Rich markup and full terminal control sequences from a line, returning plain text.
+
+        Delegates the escape strip to :func:`strip_terminal_control` so every
+        CSI / OSC / C0 sequence (alternate screen, erase display, private
+        parameter forms like ``ESC[>0c`` and ``ESC[<35;1;2M``, OSC titles) is
+        removed in addition to rich markup.
+        """
+        return strip_terminal_control(_strip_markup(line))
 
     # -- Structured log emit (inlined from PlainLogRenderer) ---------------
 
@@ -2501,13 +2507,22 @@ class ParallelDisplay:
         return ParallelDisplay._read_markdown_handoff(workspace_root, artifact_type)
 
     def _render_titled_lines(self, title: str, style_phase: str, lines: list[str]) -> None:
-        """Render a title rule, the body lines, and a closing rule."""
+        """Render a title rule, the body lines, and a closing rule.
+
+        Body lines are sanitized through :func:`strip_terminal_control`
+        so a hostile escape sequence in a handoff body cannot paint the
+        real terminal -- but the literal ``[``/``]`` characters common in
+        markdown bodies (``[title](url)``) are preserved because that
+        sink already uses ``markup=False``.
+        """
         self._console.print()
         self._console.print(
             Rule(title, style=_phase_style(style_phase)), markup=False, highlight=False
         )
         for line in lines:
-            self._console.print(line, markup=False, highlight=False)
+            self._console.print(
+                strip_terminal_control(line), markup=False, highlight=False
+            )
         self._console.print(Rule(style=_phase_style(style_phase)), markup=False, highlight=False)
 
     def _render_text_block(
@@ -3077,9 +3092,13 @@ def emit_activity_line(
             return
         console = display_context.console
         if unit_id is None:
-            console.print(line)
+            console.print(_sanitize(line), markup=False, highlight=False)
             return
-        console.print(f"[{_render_unit_id(unit_id)}] {line}")
+        console.print(
+            f"[{_render_unit_id(unit_id)}] {_sanitize(line)}",
+            markup=False,
+            highlight=False,
+        )
         return
     display.emit(unit_id, line)
 
