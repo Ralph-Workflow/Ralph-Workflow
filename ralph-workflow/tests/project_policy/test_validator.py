@@ -399,3 +399,98 @@ def test_empty_per_language_inapplicable_emits_finding() -> None:
         )
         for i in ids
     ), f"missing per-language empty-inapplicable finding; observed: {ids}"
+
+
+def test_duplicate_complete_managed_block_emits_finding() -> None:
+    """Regression: a fully compliant workspace whose AGENTS.md has TWO
+    complete managed blocks appended MUST NOT validate as ready. The
+    validator must surface a stable RWP-MARKER:agents-block:duplicate
+    finding so the remediation agent reconciles the file.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    block = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"See {markers.CANONICAL_DIR}.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, block + block)
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_MARKER_MISSING}:agents-block:duplicate" in ids
+    ), f"missing duplicate managed-block finding; observed: {ids}"
+    # Project must NOT be ready.
+    assert any(f.path == markers.AGENTS_MD for f in findings)
+
+
+def test_unmatched_begin_only_emits_finding() -> None:
+    """A pre-existing AGENTS.md with a begin marker but no end marker
+    MUST emit a stable RWP-MARKER:agents-block:unmatched finding.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    ws.write(
+        markers.AGENTS_MD,
+        f"# Original\n\n{markers.AGENTS_BLOCK_BEGIN}\nincomplete\n",
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_MARKER_MISSING}:agents-block:unmatched" in ids
+    ), f"missing unmatched managed-block finding; observed: {ids}"
+
+
+def test_unmatched_end_only_emits_finding() -> None:
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    ws.write(
+        markers.AGENTS_MD,
+        f"# Original\n\ntrailing\n{markers.AGENTS_BLOCK_END}\n",
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_MARKER_MISSING}:agents-block:unmatched" in ids
+    ), f"missing unmatched managed-block finding; observed: {ids}"
+
+
+def test_misordered_markers_emit_finding() -> None:
+    """An AGENTS.md whose end marker appears before its begin marker MUST
+    emit a stable RWP-MARKER:agents-block:misordered finding.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    ws.write(
+        markers.AGENTS_MD,
+        f"{markers.AGENTS_BLOCK_END}\n{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"See {markers.CANONICAL_DIR}.\n",
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_MARKER_MISSING}:agents-block:misordered" in ids
+    ), f"missing misordered managed-block finding; observed: {ids}"
+
+
+def test_managed_block_missing_both_markers_emits_finding() -> None:
+    """An AGENTS.md without any managed block marker at all (but still
+    referencing CANONICAL_DIR) MUST emit the RWP-MARKER:agents-block:missing
+    finding so remediation installs a managed block.
+    """
+    ws = MemoryWorkspace()
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    ws.write(
+        markers.AGENTS_MD,
+        f"# AGENTS.md\n\nSee {markers.CANONICAL_DIR} for policies.\n",
+    )
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert (
+        f"{markers.ID_MARKER_MISSING}:agents-block:missing" in ids
+    ), f"missing missing-block finding; observed: {ids}"

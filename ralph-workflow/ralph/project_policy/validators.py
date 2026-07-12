@@ -229,7 +229,16 @@ def _citation_blocks(content: str) -> list[str]:
 
 
 def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
-    """Validate the AGENTS.md contract (managed block + canonical-dir reference)."""
+    """Validate the AGENTS.md contract (managed block + canonical-dir reference).
+
+    The managed block contract is unique-count: exactly one
+    :data:`markers.AGENTS_BLOCK_BEGIN` AND exactly one
+    :data:`markers.AGENTS_BLOCK_END` must appear, the begin must precede the
+    end, and the block body must reference :data:`markers.CANONICAL_DIR`. A
+    duplicate begin/end, mismatched counts, or a begin-after-end pairing is
+    rejected with a stable ``RWP-MARKER:agents-block-*`` finding so the
+    remediation agent must reconcile the file before development can begin.
+    """
     findings: list[PolicyFinding] = []
     if not workspace.exists(markers.AGENTS_MD):
         return [
@@ -241,25 +250,116 @@ def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
             )
         ]
     content = workspace.read(markers.AGENTS_MD)
-    if markers.AGENTS_BLOCK_BEGIN not in content or markers.AGENTS_BLOCK_END not in content:
+    findings.extend(_check_managed_block_uniqueness(content))
+    if not findings:
+        # Only check the canonical-dir reference when the managed block is
+        # structurally valid (unique begin/end + begin before end). A
+        # malformed block already emits its own finding; adding a
+        # canonical-dir-ref finding on top of multiple marker findings would
+        # bury the actionable defect.
+        findings.extend(_check_managed_block_canonical_dir(content))
+    return findings
+
+
+def _check_managed_block_uniqueness(content: str) -> list[PolicyFinding]:
+    """Validate the managed block has exactly one begin AND exactly one end.
+
+    Emits a stable RWP-MARKER:agents-block-* finding for every malformed
+    case so the user sees precise pointers for duplicates, missing halves,
+    or begin-after-end pairing.
+    """
+    findings: list[PolicyFinding] = []
+    begin_count = content.count(markers.AGENTS_BLOCK_BEGIN)
+    end_count = content.count(markers.AGENTS_BLOCK_END)
+    begin_idx = content.find(markers.AGENTS_BLOCK_BEGIN)
+    end_idx = content.find(markers.AGENTS_BLOCK_END)
+    if begin_count == 0 and end_count == 0:
         findings.append(
             PolicyFinding(
-                requirement_id=f"{markers.ID_MARKER_MISSING}:agents-block",
+                requirement_id=f"{markers.ID_MARKER_MISSING}:agents-block:missing",
                 path=markers.AGENTS_MD,
-                missing_evidence=f"missing managed block markers {markers.AGENTS_BLOCK_BEGIN} / {markers.AGENTS_BLOCK_END}",
-                required_outcome="append the managed Ralph Workflow block (preserve all existing content)",
+                missing_evidence=(
+                    f"missing managed block markers {markers.AGENTS_BLOCK_BEGIN} "
+                    f"/ {markers.AGENTS_BLOCK_END}"
+                ),
+                required_outcome=(
+                    "append exactly one managed Ralph Workflow block "
+                    "(preserve all existing content)"
+                ),
             )
         )
-    if markers.CANONICAL_DIR not in content:
+        return findings
+    if begin_count == 0 or end_count == 0:
         findings.append(
             PolicyFinding(
-                requirement_id=f"{markers.ID_MARKER_MISSING}:canonical-dir-ref",
+                requirement_id=f"{markers.ID_MARKER_MISSING}:agents-block:unmatched",
                 path=markers.AGENTS_MD,
-                missing_evidence=f"no reference to canonical policy dir {markers.CANONICAL_DIR}",
-                required_outcome=f"reference {markers.CANONICAL_DIR} from the managed block",
+                missing_evidence=(
+                    f"unmatched managed block markers "
+                    f"(begin={begin_count}, end={end_count}); "
+                    "expected exactly one of each"
+                ),
+                required_outcome=(
+                    "remove the partial managed block and append exactly one "
+                    f"complete pair ({markers.AGENTS_BLOCK_BEGIN} ... "
+                    f"{markers.AGENTS_BLOCK_END}) preserving user content"
+                ),
+            )
+        )
+        return findings
+    if begin_count > 1 or end_count > 1:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MARKER_MISSING}:agents-block:duplicate",
+                path=markers.AGENTS_MD,
+                missing_evidence=(
+                    f"duplicate managed block markers "
+                    f"(begin={begin_count}, end={end_count}); expected "
+                    "exactly one of each"
+                ),
+                required_outcome=(
+                    "consolidate to exactly one managed block: remove all "
+                    "duplicate Ralph-managed begin/end markers while "
+                    "preserving any user-authored content outside the "
+                    "managed block"
+                ),
+            )
+        )
+        return findings
+    if begin_idx > end_idx:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_MARKER_MISSING}:agents-block:misordered",
+                path=markers.AGENTS_MD,
+                missing_evidence=(
+                    f"managed block end marker appears before begin marker; "
+                    f"expected {markers.AGENTS_BLOCK_BEGIN} to precede "
+                    f"{markers.AGENTS_BLOCK_END}"
+                ),
+                required_outcome=(
+                    "restore the managed block order so the begin marker "
+                    "precedes the end marker; remove any duplicate or "
+                    "out-of-order Ralph-managed markers"
+                ),
             )
         )
     return findings
+
+
+def _check_managed_block_canonical_dir(content: str) -> list[PolicyFinding]:
+    """Validate the managed block body references the canonical policy dir."""
+    if markers.CANONICAL_DIR in content:
+        return []
+    return [
+        PolicyFinding(
+            requirement_id=f"{markers.ID_MARKER_MISSING}:canonical-dir-ref",
+            path=markers.AGENTS_MD,
+            missing_evidence=f"no reference to canonical policy dir {markers.CANONICAL_DIR}",
+            required_outcome=(
+                f"reference {markers.CANONICAL_DIR} from the managed block"
+            ),
+        )
+    ]
 
 
 def _check_claude_md(workspace: Workspace) -> list[PolicyFinding]:

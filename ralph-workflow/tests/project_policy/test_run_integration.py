@@ -28,8 +28,6 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 from ralph.cli.commands import run as run_module
-from ralph.cli.commands._load_result import _LoadResult
-from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.events import PipelineEvent
@@ -45,6 +43,10 @@ if TYPE_CHECKING:
 # Sentinel for tests that need a PipelineEvent-shaped return without
 # importing the untyped MCP bridge. Compared by ``==`` at call sites.
 _agent_success_sentinel: PipelineEvent = PipelineEvent.AGENT_SUCCESS
+
+# Shorthand: tests construct fake _LoadResult values via the module
+# attribute (no private import).
+_LoadResult = run_module._LoadResult
 
 
 def _stub_load_result(workspace_root: str) -> _LoadResult:
@@ -70,7 +72,7 @@ def _stub_load_result(workspace_root: str) -> _LoadResult:
 
 def _ensure_run_func_state_unset() -> None:
     """Reset ``_state.run_func`` to ``_RUN_FUNC_UNSET`` before each test."""
-    run_module._state.run_func = _RUN_FUNC_UNSET
+    run_module._state.run_func = run_module._RUN_FUNC_UNSET
 
 
 def test_unprepared_project_blocks_before_planning() -> None:

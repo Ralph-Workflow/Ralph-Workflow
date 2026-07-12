@@ -3286,6 +3286,13 @@ ralph.project_policy.remediation
    :members:
    :show-inheritance:
 
+ralph.project_policy.cli_integration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.cli_integration
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.starters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

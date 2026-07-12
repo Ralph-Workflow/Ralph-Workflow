@@ -121,3 +121,73 @@ def test_bootstrap_appends_pointer_to_claude_md_when_missing_ref() -> None:
     content = ws.read(markers.CLAUDE_MD)
     assert "No reference here." in content
     assert "AGENTS.md" in content
+
+
+def test_bootstrap_does_not_append_when_partial_begin_only() -> None:
+    """A pre-existing AGENTS.md with begin but no end marker MUST NOT be
+    silently appended-to: doing so creates a second begin marker that
+    the validator would then flag and bootstrap cannot clear. The
+    remediation agent must reconcile the partial state in one change.
+    """
+    ws = MemoryWorkspace()
+    original = (
+        "# Original\n\n"
+        "User content.\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        "incomplete\n"
+    )
+    ws.write(markers.AGENTS_MD, original)
+    changed = agents_md.bootstrap(ws)
+    # Bootstrap is a no-op for AGENTS.md on malformed state.
+    assert markers.AGENTS_MD not in changed
+    # Content is preserved byte-for-byte (no duplicate begin appended).
+    assert ws.read(markers.AGENTS_MD) == original
+
+
+def test_bootstrap_does_not_append_when_partial_end_only() -> None:
+    ws = MemoryWorkspace()
+    original = (
+        "# Original\n\n"
+        "User content.\n\n"
+        "trailing\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, original)
+    changed = agents_md.bootstrap(ws)
+    assert markers.AGENTS_MD not in changed
+    assert ws.read(markers.AGENTS_MD) == original
+
+
+def test_bootstrap_does_not_append_when_duplicate_complete_block() -> None:
+    """A pre-existing AGENTS.md with two complete managed blocks MUST NOT
+    have a third block appended; that would push the duplicate count
+    higher and the validator would still flag the file.
+    """
+    ws = MemoryWorkspace()
+    block = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"See {markers.CANONICAL_DIR}.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, block + block)
+    original = ws.read(markers.AGENTS_MD)
+    changed = agents_md.bootstrap(ws)
+    assert markers.AGENTS_MD not in changed
+    assert ws.read(markers.AGENTS_MD) == original
+
+
+def test_bootstrap_does_not_append_when_misordered_markers() -> None:
+    """A managed block with the end marker appearing before the begin
+    marker is structurally malformed. Bootstrap must NOT append another
+    block that would compound the defect.
+    """
+    ws = MemoryWorkspace()
+    original = (
+        f"{markers.AGENTS_BLOCK_END}\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"See {markers.CANONICAL_DIR}.\n"
+    )
+    ws.write(markers.AGENTS_MD, original)
+    changed = agents_md.bootstrap(ws)
+    assert markers.AGENTS_MD not in changed
+    assert ws.read(markers.AGENTS_MD) == original

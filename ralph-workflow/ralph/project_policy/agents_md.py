@@ -112,19 +112,54 @@ def _managed_block() -> str:
     )
 
 
-def _has_managed_block(content: str) -> bool:
-    """Return True when ``content`` already contains the managed block."""
-    return markers.AGENTS_BLOCK_BEGIN in content and markers.AGENTS_BLOCK_END in content
+def _has_well_formed_managed_block(content: str) -> bool:
+    """Return True only when the managed block is structurally complete.
+
+    A well-formed block has exactly one :data:`markers.AGENTS_BLOCK_BEGIN`
+    AND exactly one :data:`markers.AGENTS_BLOCK_END`, with the begin
+    preceding the end. Partial or duplicate blocks (the malformed states
+    the validator rejects) leave the file for deterministic remediation:
+    bootstrap MUST NOT append a second begin marker, which would otherwise
+    create a duplicate state the validator flags but cannot auto-repair.
+    """
+    begin_count = content.count(markers.AGENTS_BLOCK_BEGIN)
+    end_count = content.count(markers.AGENTS_BLOCK_END)
+    if begin_count != 1 or end_count != 1:
+        return False
+    return content.find(markers.AGENTS_BLOCK_BEGIN) < content.find(
+        markers.AGENTS_BLOCK_END
+    )
 
 
 def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
-    """Create or update AGENTS.md; return the changed-file list."""
+    """Create or update AGENTS.md; return the changed-file list.
+
+    Bootstrap is intentionally conservative on malformed AGENTS.md state:
+    partial managed-block markers (begin without end, end without begin),
+    duplicate markers, or begin-after-end pairing are left for the
+    deterministic remediation agent rather than silently appended-to,
+    because appending to those states would create a second begin marker
+    the validator would then flag and a Ralph bootstrap would never be
+    able to clear. A clean (marker-free) pre-existing AGENTS.md still
+    receives an appended managed block, which is the original bootstrap
+    contract for first-time projects.
+    """
     if not workspace.exists(markers.AGENTS_MD):
         workspace.write(markers.AGENTS_MD, _managed_block().rstrip() + "\n")
         return [markers.AGENTS_MD]
     content = workspace.read(markers.AGENTS_MD)
-    if _has_managed_block(content):
+    if _has_well_formed_managed_block(content):
         return []  # idempotent: block already present, no-op.
+    if _has_any_managed_marker(content):
+        # Partial/duplicate/misordered managed-block state: do NOT append
+        # another block. The deterministic validator emits a stable
+        # RWP-MARKER:agents-block-* finding and the remediation agent
+        # repairs the file in one change. Appending here would create a
+        # second begin marker the validator would also flag, leaving the
+        # file in an unfixable state until the agent deletes the duplicate.
+        return []
+    # Clean AGENTS.md (no managed markers at all): append one managed block
+    # so the project enters Ralph's policy-readiness contract.
     if not content.endswith("\n"):
         content = content + "\n"
     workspace.write(
@@ -132,6 +167,21 @@ def _bootstrap_agents_md(workspace: Workspace) -> list[str]:
         content + "\n" + _managed_block(),
     )
     return [markers.AGENTS_MD]
+
+
+def _has_any_managed_marker(content: str) -> bool:
+    """Return True if the content contains ANY managed block marker.
+
+    A clean (marker-free) AGENTS.md returns False; a file with at least
+    one begin or end marker (whether well-formed, partial, duplicate, or
+    misordered) returns True. Bootstrap uses this to decide between
+    "append one managed block" (clean state) and "leave for remediation"
+    (any malformed state).
+    """
+    return (
+        markers.AGENTS_BLOCK_BEGIN in content
+        or markers.AGENTS_BLOCK_END in content
+    )
 
 
 def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
