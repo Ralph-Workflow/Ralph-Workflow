@@ -27,6 +27,8 @@ from contextlib import suppress
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -47,6 +49,48 @@ _agent_success_sentinel: PipelineEvent = PipelineEvent.AGENT_SUCCESS
 # Shorthand: tests construct fake _LoadResult values via the module
 # attribute (no private import).
 _LoadResult = run_module._LoadResult
+
+# Module attributes that some tests in this file mutate via direct
+# assignment (the helpers ``_patch_run_pipeline_collaborators`` and
+# ``fake_run`` install fakes by overwriting these names). Without
+# per-test restoration, subsequent tests in the same worker process
+# observe the fakes and silently short-circuit (e.g., a faked
+# ``_execute_pipeline`` that returns 0 hides real preflight/policy
+# failures and trips sibling tests in other files). The autouse
+# fixture below captures the original values at module import time
+# and restores them after every test, so a single worker can run
+# this file plus others without state bleed.
+_PATCHED_RUN_MODULE_ATTRS: tuple[str, ...] = (
+    "_load_configuration",
+    "_run_preflight_checks",
+    "_sync_shipped_skills_on_pipeline_run",
+    "_warn_if_capabilities_degraded",
+    "_run_project_policy_readiness",
+    "print_dry_run",
+    "_execute_pipeline",
+    "run_parallel_worker_from_manifest",
+)
+_ORIGINAL_RUN_MODULE_ATTRS: dict[str, object] = {
+    name: getattr(run_module, name) for name in _PATCHED_RUN_MODULE_ATTRS
+}
+
+
+@pytest.fixture(autouse=True)
+def _restore_run_module_collaborators() -> None:
+    """Restore ``run_module`` collaborators and ``_state.run_func`` after each test.
+
+    Several tests in this file overwrite ``run_module`` attributes such as
+    ``_execute_pipeline`` and ``_state.run_func`` with fakes and never
+    restore them. Within a single pytest worker (including the ``-n 1``
+    path used by some of the budget-tracking tests), that leftover state
+    turns subsequent tests' assertions against the real ``run_pipeline``
+    into silent short-circuits. This fixture ensures every test starts
+    from the canonical module state captured at import time.
+    """
+    yield
+    for name in _PATCHED_RUN_MODULE_ATTRS:
+        setattr(run_module, name, _ORIGINAL_RUN_MODULE_ATTRS[name])
+    run_module._state.run_func = run_module._RUN_FUNC_UNSET
 
 
 def _stub_load_result(workspace_root: str) -> _LoadResult:
@@ -291,14 +335,10 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
 
     # Build a bundle with a custom first agent on policy_remediation.
     default_bundle = load_policy(default_dir())
-    custom_chain = AgentChainConfig(
-        agents=["custom-agent"], max_retries=2, retry_delay_ms=1000
-    )
+    custom_chain = AgentChainConfig(agents=["custom-agent"], max_retries=2, retry_delay_ms=1000)
     new_chains = dict(default_bundle.agents.agent_chains)
     new_chains["policy_remediation"] = custom_chain
-    new_agents = default_bundle.agents.model_copy(
-        update={"agent_chains": new_chains}
-    )
+    new_agents = default_bundle.agents.model_copy(update={"agent_chains": new_chains})
     fake_bundle = default_bundle.model_copy(update={"agents": new_agents})
 
     ws = MemoryWorkspace()
@@ -349,9 +389,7 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
 
     load_result = _LoadResult(
         config=UnifiedConfig(),
-        workspace_scope=WorkspaceScope(
-            root="/test/project", allowed_roots=["/test/project"]
-        ),
+        workspace_scope=WorkspaceScope(root="/test/project", allowed_roots=["/test/project"]),
         initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
         policy_bundle=fake_bundle,
         run_id="test-run-id",
@@ -375,8 +413,7 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
     first_effect: object = observed_effects[0]
     agent_name_attr: object = getattr(first_effect, "agent_name", None)
     assert agent_name_attr == "custom-agent", (
-        f"agent_name was {agent_name_attr!r}; "
-        f"expected 'custom-agent' from the configured chain"
+        f"agent_name was {agent_name_attr!r}; expected 'custom-agent' from the configured chain"
     )
 
 
