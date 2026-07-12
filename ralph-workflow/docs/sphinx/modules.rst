@@ -3526,6 +3526,13 @@ ralph.testing.audit_resource_lifecycle
    :members:
    :show-inheritance:
 
+ralph.testing.audit_terminal_escape_containment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_terminal_escape_containment
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_watchdog_drift
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

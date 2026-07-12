@@ -7,6 +7,7 @@ import contextlib
 import os
 import time
 from pathlib import Path
+from subprocess import DEVNULL as _DEVNULL
 from subprocess import PIPE as _PIPE
 from subprocess import STDOUT as _STDOUT
 from typing import TYPE_CHECKING
@@ -143,6 +144,7 @@ class SubprocessAgentExecutor:
                 SpawnOptions(
                     cwd=str(self._cwd) if self._cwd is not None else None,
                     env=env,
+                    stdin=_DEVNULL,
                     stdout=_PIPE,
                     stderr=_STDOUT,
                     start_new_session=True,

@@ -886,7 +886,7 @@ def _run_subprocess_and_read_lines(
         SpawnOptions(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            stdin=None,
+            stdin=subprocess.DEVNULL,
             cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
             env=_subprocess_env(ctx.extra_env),
             start_new_session=True,
