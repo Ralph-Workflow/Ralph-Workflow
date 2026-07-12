@@ -144,7 +144,6 @@ Citations supporting the requirements above.
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: `the the project-policy-complete comment identifier comment` (added ONLY when
+* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
   every requirement above is satisfied and every placeholder is
-  resolved).laceholder is
   resolved).

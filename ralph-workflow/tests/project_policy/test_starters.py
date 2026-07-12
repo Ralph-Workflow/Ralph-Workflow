@@ -62,10 +62,7 @@ def test_starter_has_placeholder_fact_lines() -> None:
 def test_starter_has_command_or_inapplicable() -> None:
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
-        assert (
-            markers.COMMAND_MARKER in content
-            or markers.INAPPLICABLE_MARKER in content
-        )
+        assert markers.COMMAND_MARKER in content or markers.INAPPLICABLE_MARKER in content
 
 
 def test_starter_does_not_contain_completion_marker() -> None:
@@ -111,3 +108,38 @@ def test_seed_starter_into_raises_for_unknown_name() -> None:
     ws = MemoryWorkspace()
     with pytest.raises(ValueError):
         starters.seed_starter_into(ws, "not-a-starter.md")
+
+
+def test_starters_are_free_of_known_content_corruption() -> None:
+    """Regression guard: bundled starters must not ship with corrupted completion-marker text.
+
+    Asserts only on exact corruption fragments so legitimate required prose
+    (e.g. the word ``placeholder`` or ``the theme``) is permitted.
+    """
+    corruption_fragments = (
+        "comment identifier comment",  # garbled marker paraphrase
+        "resolved).laceholder is",  # exact malformed tail in testing-policy.md
+        "the the ",  # doubled-word corruption (trailing space excludes 'the theme')
+    )
+    for name in starters.iter_starter_names():
+        content = starters.read_starter(name)
+        for fragment in corruption_fragments:
+            assert fragment not in content, (
+                f"starter {name} contains known corruption fragment {fragment!r}"
+            )
+
+
+def test_starter_ralph_markers_reference_completion_marker_cleanly() -> None:
+    """Every starter must name the completion marker in prose WITHOUT embedding the literal token.
+
+    Names the marker so validators can find it; the literal ``<!-- ralph-policy-complete -->``
+    comment must stay absent so a freshly seeded starter still validates as INCOMPLETE by design.
+    """
+    for name in starters.iter_starter_names():
+        content = starters.read_starter(name)
+        assert "ralph-policy-complete" in content, (
+            f"starter {name} does not reference the completion marker name"
+        )
+        assert markers.COMPLETION_MARKER not in content, (
+            f"starter {name} embedded the literal completion marker token"
+        )

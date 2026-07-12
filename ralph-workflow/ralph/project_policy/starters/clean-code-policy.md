@@ -111,6 +111,6 @@ This policy MUST be reviewed in the same workflow as any of:
 
 * Policy id: `<!-- ralph-policy-id: clean-code-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: `the the project-policy-complete comment identifier comment` (added ONLY when
+* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
   every requirement above is satisfied and every placeholder is
   resolved).
