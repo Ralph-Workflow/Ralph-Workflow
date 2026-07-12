@@ -72,6 +72,9 @@ To follow this policy, an agent making any change MUST:
 
 * PREFER existing project utilities and patterns over new abstractions.
 * REMOVE dead code in the same change that obsoletes it.
+* RECORD the clean-code review evidence appropriate to the change,
+  covering the judgment a dead-code audit cannot: naming, cohesion,
+  interface clarity, and abstraction justification.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never
   report a command that was not run.
@@ -89,18 +92,22 @@ An agent MUST NOT:
 
 Run every gate below before claiming a change complies with this policy.
 
-<!-- REPLACE-ME: set the project's real gate command. The first token must
-be an approved gate tool (wrap anything else in `make`, `uv run`, or
-`npx`). If the project has no such gate yet, create the smallest real one
-(a make target running the actual check) rather than declaring a hollow
-command; only a gate that truly cannot exist may be recorded as
-inapplicable with a reason and the condition that would create it. Then
-delete this comment. -->
+<!-- REPLACE-ME: the RALPH-COMMAND gate covers only the mechanically
+checkable slice — the dead-code / unused-import audit named in
+`dead_code_audit_command`. Its first token must be an approved gate tool
+(wrap anything else in `make`, `uv run`, or `npx`); if no such audit exists
+yet, create the smallest real one rather than a hollow command, or record a
+technically justified RALPH-INAPPLICABLE line. Naming, cohesion, interface
+clarity, and abstraction judgment are not script-checkable — they are carried
+by the separate RALPH-REVIEW line, which you must always resolve. Then delete
+this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-REVIEW: review naming, cohesion, interface clarity, abstraction justification, and error/logging conventions against verified project convention; evidence: dated clean-code review or explicit not-performed blocker; owner: code quality owner
 
-The expected successful result is a clean dead-code audit. Report any
-audit findings.
+The command gate's expected successful result is a clean dead-code audit;
+report any audit findings. The review gate certifies the judgment the audit
+cannot.
 
 ## Exceptions
 

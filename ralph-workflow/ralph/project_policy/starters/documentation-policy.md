@@ -71,6 +71,10 @@ To follow this policy, an agent making any change MUST:
 * EXECUTE example commands when safe and feasible. Otherwise perform syntax
   or static validation and record dated review evidence, prerequisites, and
   the reason execution was unsafe or unavailable.
+* RECORD the documentation review evidence appropriate to the change,
+  covering the judgment execution cannot: accuracy against current behavior,
+  absence of fabricated or unsupported claims, and authoritative-location
+  reconciliation.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never
   report a command that was not run.
@@ -89,19 +93,23 @@ An agent MUST NOT:
 
 Run every gate below before claiming a change complies with this policy.
 
-<!-- REPLACE-ME: set the project's real gate command. The first token must
-be an approved gate tool (wrap anything else in `make`, `uv run`, or
-`npx`). If the project has no such gate yet, create the smallest real one
-(a make target running the actual check) rather than declaring a hollow
-command; only a gate that truly cannot exist may be recorded as
-inapplicable with a reason and the condition that would create it. Then
-delete this comment. -->
+<!-- REPLACE-ME: the RALPH-COMMAND gate covers only the mechanically
+checkable slice — executing safe example commands and link/syntax
+validation. Its first token must be an approved gate tool (wrap anything else
+in `make`, `uv run`, or `npx`); if no such check exists yet, create the
+smallest real one rather than a hollow command, or record a technically
+justified RALPH-INAPPLICABLE line. Whether documentation is accurate,
+non-fabricated, and free of obvious-code restatement is not script-checkable
+— it is carried by the separate RALPH-REVIEW line, which you must always
+resolve. Then delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-REVIEW: review documentation for accuracy against current behavior, absence of fabricated or unsupported claims, and reconciliation of authoritative locations; evidence: dated documentation review or explicit not-performed blocker; owner: documentation owner
 
-Success means every safe runnable example passes; every non-runnable example
-has declared syntax/static validation or dated review evidence, with its
-prerequisites, limitations, and reason for not executing documented.
+Command-gate success means every safe runnable example passes; every
+non-runnable example has declared syntax/static validation or dated review
+evidence, with its prerequisites, limitations, and reason for not executing
+documented. The review gate certifies accuracy and non-fabrication.
 
 ## Exceptions
 

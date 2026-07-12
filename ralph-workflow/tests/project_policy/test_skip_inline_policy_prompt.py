@@ -206,6 +206,74 @@ def test_declining_schema_upgrade_freezes_existing_policy() -> None:
     assert any("froze" in message.lower() for message in messages)
 
 
+def test_schema_upgrade_asks_once_for_all_files() -> None:
+    """Multiple outdated files must produce exactly ONE prompt, not one per
+    file. Accepting upgrades every file (no freeze markers written)."""
+    ws = MemoryWorkspace()
+    paths = [
+        f"{markers.CANONICAL_DIR}testing-policy.md",
+        f"{markers.CANONICAL_DIR}linting-policy.md",
+        f"{markers.CANONICAL_DIR}security-policy.md",
+    ]
+    for path in paths:
+        ws.write(path, "<!-- ralph-policy-schema: v1 -->\n# Customized\n")
+    messages: list[str] = []
+    questions: list[str] = []
+
+    def accept(question: str) -> bool:
+        questions.append(question)
+        return True
+
+    resolved = cli_integration._maybe_resolve_schema_upgrade(
+        ws,
+        messages.append,
+        confirm=accept,
+        is_tty=lambda: True,
+    )
+
+    assert resolved is True
+    assert len(questions) == 1
+    # Upgrading all leaves the files untouched (remediation upgrades later).
+    for path in paths:
+        assert "freeze" not in ws.read(path)
+
+
+def test_declining_schema_upgrade_freezes_all_and_shows_undo() -> None:
+    """Declining the single prompt freezes EVERY outdated file at once and
+    tells the user where to remove the skip if they change their mind."""
+    ws = MemoryWorkspace()
+    paths = [
+        f"{markers.CANONICAL_DIR}testing-policy.md",
+        f"{markers.CANONICAL_DIR}linting-policy.md",
+    ]
+    for path in paths:
+        ws.write(path, "<!-- ralph-policy-schema: v1 -->\n# Customized\n")
+    messages: list[str] = []
+    questions: list[str] = []
+
+    def decline(question: str) -> bool:
+        questions.append(question)
+        return False
+
+    resolved = cli_integration._maybe_resolve_schema_upgrade(
+        ws,
+        messages.append,
+        confirm=decline,
+        is_tty=lambda: True,
+    )
+
+    assert resolved is True
+    assert len(questions) == 1
+    for path in paths:
+        assert ws.read(path).startswith("<!-- ralph-policy-schema: freeze v1 -->")
+    undo = "\n".join(messages)
+    # The freeze message must name every frozen file and explain the undo.
+    for path in paths:
+        assert path in undo
+    assert "freeze" in undo
+    assert "rerun" in undo.lower()
+
+
 def test_future_schema_freeze_fails_closed() -> None:
     ws = MemoryWorkspace()
     path = f"{markers.CANONICAL_DIR}testing-policy.md"

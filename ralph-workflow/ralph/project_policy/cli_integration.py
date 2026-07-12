@@ -150,7 +150,17 @@ def _maybe_resolve_schema_upgrade(
     confirm: Callable[[str], bool] | None,
     is_tty: Callable[[], bool] | None,
 ) -> bool:
-    """Offer one explicit upgrade-or-freeze choice for older policy copies."""
+    """Offer a single all-or-nothing upgrade-or-freeze choice for older copies.
+
+    When one or more customized policy files carry an older (but valid)
+    schema marker, the user is asked exactly ONCE — not once per file.
+    Accepting upgrades every listed file through the remediation agent;
+    declining freezes every file at its current schema (writing a
+    ``freeze vN`` marker) and emits guidance on how to remove the skip
+    later. Non-interactive runs return ``False`` (the run is blocked until
+    the choice is made interactively) and a malformed / future schema
+    marker fails closed.
+    """
     paths = [
         f"{policy_markers.CANONICAL_DIR}{name}"
         for name in (
@@ -200,31 +210,54 @@ def _maybe_resolve_schema_upgrade(
         return True
     tty_check = is_tty if is_tty is not None else _default_is_tty
     if not tty_check():
-        emit("Policy schema choice required; rerun interactively to upgrade or freeze each file.")
+        emit(
+            "Policy schema choice required; rerun interactively to upgrade "
+            "or freeze the customized policy file(s)."
+        )
         return False
+    file_list = "\n".join(f"  • {path}" for path, _marker, _v in outdated)
     emit(
         f"A newer Ralph policy schema ({policy_markers.SCHEMA_VERSION}) is available "
-        f"for {len(outdated)} customized policy file(s)."
+        f"for {len(outdated)} customized policy file(s):\n{file_list}"
     )
     confirm_fn = confirm if confirm is not None else _default_confirm
+    frozen: list[str] = []
     try:
-        for path, marker, installed_version in outdated:
-            if confirm_fn(f"Upgrade {path} through the remediation agent?"):
-                continue
-            content = workspace.read(path)
-            workspace.write(
-                path,
-                content.replace(
-                    marker,
-                    f"<!-- ralph-policy-schema: freeze v{installed_version} -->",
-                    1,
-                ),
-            )
-            emit(f"Froze {path} at schema v{installed_version}.")
+        # One all-or-nothing choice, never one prompt per file: Yes upgrades
+        # every listed file through the remediation agent; No freezes every
+        # file at its current schema so none is touched.
+        upgrade_all = confirm_fn(
+            f"Upgrade all {len(outdated)} file(s) to {policy_markers.SCHEMA_VERSION} "
+            "through the remediation agent? (Declining freezes every file at "
+            "its current schema.)"
+        )
+        if not upgrade_all:
+            for path, marker, installed_version in outdated:
+                content = workspace.read(path)
+                workspace.write(
+                    path,
+                    content.replace(
+                        marker,
+                        f"<!-- ralph-policy-schema: freeze v{installed_version} -->",
+                        1,
+                    ),
+                )
+                frozen.append(path)
     except Exception as exc:
         logger.debug("policy-schema prompt failed: {}", exc)
         emit("Policy schema choice could not be completed; no implicit upgrade was applied.")
         return False
+    if upgrade_all:
+        return True
+    frozen_list = "\n".join(f"  • {path}" for path in frozen)
+    emit(
+        f"Froze {len(frozen)} policy file(s) at their current schema — Ralph "
+        f"will not upgrade them:\n{frozen_list}\n\n"
+        "Changed your mind? Remove the skip: delete the "
+        "`<!-- ralph-policy-schema: freeze vN -->` line at the top of the file "
+        "(or change `freeze vN` back to `vN`) and rerun — Ralph will offer the "
+        "upgrade again."
+    )
     return True
 
 
