@@ -88,8 +88,8 @@ This policy MUST be reviewed in the same workflow as any of:
 ## Research basis
 
 * publisher: Robert C. Martin ("Uncle Bob")
-  title: "Clean Code: A Handbook of Agile Software Craftsmanship"
-  http: https://www.oreilly.com/library/view/clean-code-a/9780132350884/
+  title: "The Clean Code Blog"
+  http: https://blog.cleancoder.com/
   review date: 2026-07-11
 
 * publisher: Martin Fowler

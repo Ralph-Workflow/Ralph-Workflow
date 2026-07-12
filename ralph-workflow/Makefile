@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -377,6 +377,14 @@ docs-linkcheck:
 
 route-linkcheck:
 	cd .. && python3 scripts/check_route_page_links.py README.md START_HERE.md docs/README.md ralph-workflow/docs/README.md
+
+# Verify that every research-citation URL in the bundled project-policy
+# starters resolves (HTTP < 400), satisfying the PROMPT's
+# 'verify that every cited URL resolves' link-verification requirement.
+# On-demand maintenance gate; not wired into 'make verify' because it
+# requires network I/O.
+policy-citation-linkcheck:
+	cd .. && python3 scripts/check_route_page_links.py ralph-workflow/ralph/project_policy/starters/*.md
 
 serve-docs: docs
 	@echo "Serving docs at http://localhost:8080"

@@ -113,13 +113,13 @@ This policy MUST be reviewed in the same workflow as any of:
   review date: 2026-07-11
 
 * publisher: The Rust Project
-  title: "The Rust Reference: Type Checking"
-  http: https://doc.rust-lang.org/reference/type-checking.html
+  title: "The Rust Reference: Types"
+  http: https://doc.rust-lang.org/reference/types.html
   review date: 2026-07-11
 
-* publisher: Google Engineering Practices
-  title: "Type Checking Python at Scale"
-  http: https://github.com/google/eng-practices/blob/master/review/developer/cl.md
+* publisher: mypy (Python typing project)
+  title: "Using mypy with an existing codebase"
+  http: https://mypy.readthedocs.io/en/stable/existing_code.html
   review date: 2026-07-11
 
 ## Ralph markers

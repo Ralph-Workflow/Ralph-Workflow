@@ -106,8 +106,8 @@ This policy MUST be reviewed in the same workflow as any of:
   review date: 2026-07-11
 
 * publisher: Google Engineering Practices
-  title: "Code Health: Comment Style and Lint"
-  http: https://google.github.io/eng-practices/review/developer/cl.html
+  title: "The CL Author's Guide to Getting Through Code Review"
+  http: https://google.github.io/eng-practices/review/developer/
   review date: 2026-07-11
 
 ## Ralph markers

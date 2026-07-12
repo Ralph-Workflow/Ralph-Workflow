@@ -102,9 +102,9 @@ This policy MUST be reviewed in the same workflow as any of:
   http: https://www.basicbooks.com/titles/don-norman/the-design-of-everyday-things/9780465050659/
   review date: 2026-07-11
 
-* publisher: NN/g
-  title: "User Experience Design"
-  http: https://www.nngroup.com/ux-design/
+* publisher: Nielsen Norman Group (NN/g)
+  title: "Usability 101: Introduction to Usability"
+  http: https://www.nngroup.com/articles/usability-101-introduction-to-usability/
   review date: 2026-07-11
 
 ## Ralph markers

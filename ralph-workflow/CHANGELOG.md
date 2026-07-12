@@ -43,6 +43,8 @@ and open a fresh `[Unreleased]`.
 
 ### Fixed
 
+- **fix(policy): repair dead/stale research-citation URLs in bundled project-policy starters and add the policy-citation-linkcheck gate + offline citation-structure guard** -- pinned by `tests/project_policy/test_starters.py::test_starter_citations_are_structurally_valid`. Replaces 11 non-resolving URLs across 8 starter files (clean-code-policy.md, dependency-policy.md x2, linting-policy.md, memory-usage-policy.md x2, testing-policy.md, typechecking-policy.md x2, ux-policy.md, verification-policy.md) with primary sources verified to return HTTP 200 directly; adds `make policy-citation-linkcheck` (on-demand gate reusing `scripts/check_route_page_links.py`) and an offline pytest guard that asserts every citation block carries publisher/title/review-date fields, an https URL with a non-empty host, and an ISO `YYYY-MM-DD` review date.
+
 - **fix(policy): repair corrupted completion-marker text in all 12 bundled project-policy starter files** — commit `b538b9dea`. The 'Ralph markers' section named a garbled token instead of `ralph-policy-complete`; regression-guarded by `tests/project_policy/test_starters.py`.
 
 - **fix(recovery): route missing plan handoff back to entry phase from any non-planning phase** (development, planning_analysis, review, etc.) by dropping the `failed_route` guard in `ralph/pipeline/runner.py:_handle_inline_effect`. Locks behavior in `tests/pipeline/test_runner_missing_plan_handoff_recovery.py`.

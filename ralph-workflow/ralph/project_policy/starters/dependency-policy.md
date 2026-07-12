@@ -83,7 +83,7 @@ This policy MUST be reviewed in the same workflow as any of:
 
 * publisher: OpenSSF (Linux Foundation)
   title: "Concise Guide for Evaluating Open Source Software"
-  http: https://openssf.org/resources/guides/evaluating-open-source-software/
+  http: https://best.openssf.org/Concise-Guide-for-Evaluating-Open-Source-Software
   review date: 2026-07-11
 
 * publisher: The Twelve-Factor App
@@ -92,8 +92,8 @@ This policy MUST be reviewed in the same workflow as any of:
   review date: 2026-07-11
 
 * publisher: PyPA
-  title: "Python Packaging User Guide: Dependency Management"
-  http: https://packaging.python.org/en/latest/discussions/dependency-management/
+  title: "Python Packaging User Guide: Managing Application Dependencies"
+  http: https://packaging.python.org/en/latest/tutorials/managing-dependencies/
   review date: 2026-07-11
 
 * publisher: OWASP Foundation

@@ -88,9 +88,9 @@ This policy MUST be reviewed in the same workflow as any of:
 
 ## Research basis
 
-* publisher: Google SRE Book
-  title: "Reliability and the Big Picture"
-  http: https://sre.google/sre-book/reliability-and-the-big-picture/
+* publisher: The Go Authors
+  title: "A Guide to the Go Garbage Collector"
+  http: https://go.dev/doc/gc-guide
   review date: 2026-07-11
 
 * publisher: Brendan Gregg
@@ -103,9 +103,9 @@ This policy MUST be reviewed in the same workflow as any of:
   http: https://mechanical-sympathy.blogspot.com/
   review date: 2026-07-11
 
-* publisher: ACM Queue
-  title: "Urban Performance Myths, Revisited"
-  http: https://queue.acm.org/detail.cfm?id=2510089
+* publisher: Python Software Foundation
+  title: "Memory Management (Python/C API)"
+  http: https://docs.python.org/3/c-api/memory.html
   review date: 2026-07-11
 
 ## Ralph markers

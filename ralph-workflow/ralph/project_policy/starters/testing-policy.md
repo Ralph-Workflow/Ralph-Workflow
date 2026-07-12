@@ -135,9 +135,9 @@ Citations supporting the requirements above.
   http: https://martinfowler.com/bliki/TestPyramid.html
   review date: 2026-07-11
 
-* publisher: xUnit Test Patterns (Meszaros)
-  title: "Goals of Test Automation"
-  http: https://xunitpatterns.com/Goals%20of%20Test%20Automation.html
+* publisher: Google Testing Blog
+  title: "Just Say No to More End-to-End Tests"
+  http: https://testing.googleblog.com/2015/04/just-say-no-to-more-end-to-end-tests.html
   review date: 2026-07-11
 
 ## Ralph markers

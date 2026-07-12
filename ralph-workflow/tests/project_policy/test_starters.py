@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from urllib.parse import urlparse
+
 import pytest
 
 from ralph.project_policy import markers, starters
@@ -50,6 +53,98 @@ def test_starter_has_at_least_one_research_citation() -> None:
         assert "title:" in content
         assert "http:" in content
         assert "review date:" in content
+
+
+# Regex for an ISO review date (YYYY-MM-DD) -- the format every starter
+# citation block uses and the canonical validator checks for.
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _extract_research_basis_section(content: str) -> str:
+    """Return the body of the '## Research basis' section, or '' if absent."""
+    lines = content.splitlines()
+    start_idx = -1
+    for idx, line in enumerate(lines):
+        if line.strip() == "## Research basis":
+            start_idx = idx + 1
+            break
+    if start_idx < 0:
+        return ""
+    end_idx = len(lines)
+    for idx in range(start_idx, len(lines)):
+        if lines[idx].startswith("## "):
+            end_idx = idx
+            break
+    return "\n".join(lines[start_idx:end_idx])
+
+
+def _extract_citation_blocks(research_basis_body: str) -> list[str]:
+    """Split a '## Research basis' body on blank lines, keep blocks containing 'http:'."""
+    blocks: list[str] = []
+    for raw_block in research_basis_body.split("\n\n"):
+        block = raw_block.strip()
+        if not block:
+            continue
+        if "http:" in block:
+            blocks.append(block)
+    return blocks
+
+
+def test_starter_citations_are_structurally_valid() -> None:
+    """Offline deterministic guard: every Research basis citation is structurally valid.
+
+    The on-demand ``make policy-citation-linkcheck`` target verifies that every
+    cited URL actually resolves (HTTP < 400); this offline test guards the
+    SHAPE of each citation block so silent rot -- a missing field, a non-https
+    URL, a malformed date -- fails fast inside the timed 60s suite instead of
+    only on a manual network gate.
+
+    For each starter: slice the '## Research basis' section, split into
+    citation blocks on blank lines, keep blocks containing 'http:', and
+    assert every such block carries every required field plus an https URL
+    with a non-empty host and an ISO ``YYYY-MM-DD`` review date.
+    """
+    for name in starters.iter_starter_names():
+        content = starters.read_starter(name)
+        research_basis = _extract_research_basis_section(content)
+        assert research_basis, f"{name} is missing the '## Research basis' section"
+
+        blocks = _extract_citation_blocks(research_basis)
+        assert blocks, f"{name} has no citation blocks in '## Research basis'"
+
+        for block in blocks:
+            for field in markers.CITATION_REQUIRED_FIELDS:
+                assert field in block, (
+                    f"{name} citation block is missing required field {field!r}:\n{block}"
+                )
+
+            http_line = next(
+                (line.strip() for line in block.splitlines() if line.strip().startswith("http:")),
+                None,
+            )
+            assert http_line is not None, f"{name} citation block has no http: line:\n{block}"
+            url = http_line.split("http:", 1)[1].strip()
+            parsed = urlparse(url)
+            assert parsed.scheme == "https", (
+                f"{name} citation URL must use https: {url!r}"
+            )
+            assert parsed.netloc, f"{name} citation URL must have a non-empty host: {url!r}"
+
+            review_line = next(
+                (
+                    line.strip()
+                    for line in block.splitlines()
+                    if line.strip().startswith("review date:")
+                ),
+                None,
+            )
+            assert review_line is not None, (
+                f"{name} citation block has no review date: line:\n{block}"
+            )
+            review_value = review_line.split("review date:", 1)[1].strip()
+            assert _ISO_DATE_RE.match(review_value), (
+                f"{name} citation review date must be ISO YYYY-MM-DD, got {review_value!r}"
+            )
 
 
 def test_starter_has_placeholder_fact_lines() -> None:

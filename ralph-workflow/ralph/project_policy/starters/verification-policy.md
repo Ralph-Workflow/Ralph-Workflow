@@ -108,9 +108,9 @@ This policy MUST be reviewed in the same workflow as any of:
   http: https://sre.google/sre-book/monitoring-distributed-systems/
   review date: 2026-07-11
 
-* publisher: CI/CD Best Practices (Continuous Delivery Foundation)
-  title: "Pipeline Best Practices"
-  http: https://cd.foundation/blog/2020/06/03/best-practices-for-ci-cd-pipelines/
+* publisher: Martin Fowler
+  title: "Continuous Integration"
+  http: https://martinfowler.com/articles/continuousIntegration.html
   review date: 2026-07-11
 
 ## Ralph markers
