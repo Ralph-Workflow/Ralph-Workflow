@@ -129,7 +129,7 @@ To follow this policy, an agent making any change MUST:
   Exceptions — never a bare suppression comment.
 * PREFER the ecosystem's established scanners (e.g. `bandit` or
   `semgrep` for Python, `gitleaks` or `detect-secrets` for secrets,
-  `gosec` for Go, `cargo-geiger` for unsafe-Rust auditing) over novel
+  `gosec` for Go, `cargo geiger` for unsafe-Rust auditing) over novel
   tooling; adding a new scanner requires a documented rationale.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never

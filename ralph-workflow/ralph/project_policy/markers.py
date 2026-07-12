@@ -336,6 +336,13 @@ APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
         "pylint",
         "bandit",
         "safety",
+        # Security scanners the security-policy and linting-policy starters
+        # recommend: the validator must accept the starters' own advice.
+        "semgrep",
+        "gitleaks",
+        "detect-secrets",
+        "gosec",
+        "golangci-lint",
         "shellcheck",
         "hadolint",
         "docker",

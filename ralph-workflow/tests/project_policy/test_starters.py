@@ -158,6 +158,61 @@ def test_starter_citations_are_structurally_valid() -> None:
             )
 
 
+# Gate tools each starter's prose recommends to the remediation agent. A
+# faithful agent copies these into RALPH-COMMAND lines, so every entry MUST
+# pass the validator's first-token allowlist — otherwise the starter's own
+# advice burns a remediation attempt on an RWP-CMD:unapproved finding.
+# Keys must cover EVERY starter (completeness is asserted) so a new or
+# edited starter is forced to declare its recommendations here.
+_RECOMMENDED_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
+    "testing-policy.md": (),
+    "typechecking-policy.md": ("mypy", "tsc", "cargo check", "go build"),
+    "linting-policy.md": ("ruff", "eslint", "golangci-lint"),
+    "dependency-policy.md": (),
+    "verification-policy.md": ("make verify",),
+    "agent-policy.md": (),
+    "clean-code-policy.md": (),
+    "documentation-policy.md": (),
+    "security-policy.md": (
+        "bandit",
+        "semgrep",
+        "gitleaks",
+        "detect-secrets",
+        "gosec",
+        "cargo geiger",
+    ),
+    "design-system-policy.md": (),
+    "ux-policy.md": (),
+    "performance-policy.md": (),
+    "memory-usage-policy.md": (),
+}
+
+
+def test_recommended_gate_tools_inventory_covers_every_starter() -> None:
+    """The starter-advice-vs-allowlist check must run for EVERY policy
+    document: a starter absent from the inventory silently escapes it."""
+    assert set(_RECOMMENDED_GATE_COMMANDS) == set(starters.iter_starter_names())
+
+
+@pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
+def test_starter_recommended_gate_tools_are_validator_approved(name: str) -> None:
+    """Every gate tool a starter recommends must clear the validator's
+    APPROVED_GATE_TOOLS first-token allowlist, and must actually appear in
+    the starter text (staleness guard for this inventory)."""
+    content = starters.read_starter(name)
+    for command in _RECOMMENDED_GATE_COMMANDS[name]:
+        assert command in content, (
+            f"{name}: inventory entry {command!r} no longer appears in the "
+            "starter; update _RECOMMENDED_GATE_COMMANDS"
+        )
+        first_token = command.split(None, 1)[0]
+        assert first_token in markers.APPROVED_GATE_TOOLS, (
+            f"{name} recommends {command!r} but {first_token!r} is not in "
+            "markers.APPROVED_GATE_TOOLS; a remediation agent following the "
+            "starter's advice would be rejected with RWP-CMD:unapproved-cmd"
+        )
+
+
 def test_starter_has_placeholder_fact_lines() -> None:
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
