@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: verification-policy.md -->
 
 # Verification Policy
@@ -45,6 +45,7 @@ RALPH-FACT: gate_order: [1] `make docs` (Sphinx HTML build with `-W --keep-going
 RALPH-FACT: bypass_detection_lint_audit: `ralph.testing.audit_lint_bypass` walks the project tree to detect `per-file-ignores`, `extend-per-file-ignores`, blanket `# noqa` without a specific ruff error code, and weakens to the documented allowlist. Wired into `make verify` as the audit_lint_bypass step.
 RALPH-FACT: bypass_detection_typecheck_audit: `ralph.testing.audit_typecheck_bypass` walks the project tree to detect `ignore_missing_imports`, `follow_imports = silent`, `ignore_errors`, `disable_error_code`, blanket `# type: ignore` without a specific mypy error code, `# type: ignore` inside test files, and `disallow_untyped_defs = false`. The acceptance bar is documented in `ralph-workflow/docs/agents/type-ignore-policy.md`; violations fail verify.
 RALPH-FACT: ci_integration_command: both Codeberg (Woodpecker) and GitHub Actions run `make verify` on every PR; the social-proof gate under `python3 ../scripts/verify_social_proof.py` is part of the same suite. The opt-in subprocess E2E suite (`make test-subprocess-e2e`) and live AGY suite (`make test-live-agy`) are NOT in `make verify` and have their own budgets.
+RALPH-FACT: required_verification_profiles: three named profiles are declared so a caller picks the right surface for the work at hand. (1) `default` profile = `make -C ralph-workflow verify` (the 22-step `_VERIFY_STEPS` chain in ralph/verify.py, including ruff + mypy + make test + 17 audits + social-proof, the 60 s combined budget tracker, the docs prerequisite). (2) `pre-commit` profile = `make -C ralph-workflow pre-commit` (a one-shot ruff + format-check + dead-code sweep a developer runs before push; not a CI gate). (3) `subprocess-e2e` profile = `make -C ralph-workflow test-subprocess-e2e` (the subprocess-reality suite, excluded from the default 60 s budget via the `subprocess_e2e` marker, run on demand before release; per-suite timeout lives in ralph-workflow/Makefile as PYTEST_SUITE_TIMEOUT_SECONDS). (4) `live-agy` profile = `make -C ralph-workflow test-live-agy` (a network-backed AGY lifecycle test, excluded from the default budget via the `live_agy` marker and sized via LIVE_AGY_SUITE_TIMEOUT_SECONDS). A profile is selected by its Make target; a missing profile is a build-time blocker, not a runtime fallback.
 
 ## AI execution instructions
 
