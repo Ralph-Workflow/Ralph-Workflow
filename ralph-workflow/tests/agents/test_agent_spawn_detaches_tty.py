@@ -6,164 +6,203 @@ Ralph feeds agents via a prompt FILE / argv, never via stdin, so the
 two agent-spawn sites must request ``stdin=subprocess.DEVNULL`` and
 keep ``start_new_session=True``.
 
-The actual ``SpawnOptions(...)`` block at each call site is small
-(about 8 kwargs) and deterministic. We pin it with two complementary
-tests per site:
+These tests drive the spawn sites RUNTIME via recording fake factories
+on a real ``ProcessManager`` and assert on the captured ``SpawnOptions``.
+No real subprocess is spawned and no production-source ``ast.parse``
+is used -- the assertions run against the live code paths so a
+runtime refactor that changes the actual spawn options (while keeping
+equivalent-looking source text elsewhere) cannot slip through.
 
-  1. **AST inspection** of the spawn block -- confirms the file
-     contains a ``SpawnOptions(...)`` call whose keyword arguments
-     include ``stdin`` set to a non-None value and ``start_new_session``
-     set to ``True``. This is structural and survives whatever happens
-     to the rest of the runtime.
+There are two distinct seams:
 
-  2. **Source-text guard** for the specific kwargs the plan pins:
-     ``stdin=subprocess.DEVNULL`` (or the file-level alias
-     ``stdin=_DEVNULL``) is present; ``stdin=None`` is absent;
-     ``start_new_session=True`` is present.
+  1. **PTY-less invoke reader** -- ``ralph.agents.invoke._process_reader
+     ._run_subprocess_and_read_lines`` calls the module-level SINGLETON
+     ``get_process_manager()`` (imported at module load time). The
+     factory is sync with signature ``(Sequence[str], SpawnOptions) ->
+     _SyncProcessLike``. We monkeypatch the bound name on the reader
+     module so the production code's ``get_process_manager()`` call
+     resolves to our injected ``ProcessManager`` and the recording
+     factory captures the ``SpawnOptions`` it would have spawned.
 
-Both test layers are needed: the AST test proves the SpawnOptions
-block shape is correct at parse-time (catches e.g. accidentally
-re-introducing ``stdin=None`` because of a refactor that drops the
-``stdin=`` kwarg entirely), and the source-text test pins the
-exact literal strings the audit will look for.
+  2. **Fan-out executor** -- ``ralph.agents.subprocess_executor
+     .SubprocessAgentExecutor`` accepts an injected ``ProcessManager``
+     via the underscore keyword ``_pm=`` (constructor line ~72). The
+     factory is async with signature ``(command, *, cwd, env, stdin,
+     stdout, stderr, start_new_session) -> _AsyncProcessLike``. The
+     keyword args are destructured from the captured ``SpawnOptions``
+     at ``ProcessManager.spawn_async`` (ralph/process/manager/
+     _process_manager.py:629-635); we record the ``stdin`` and
+     ``start_new_session`` kwargs at the factory boundary.
+
+Both fake factories use ``FakePopen`` /
+``FakeControllableAsyncProcess`` from ``ralph/testing/fake_process.py``
+so no real OS process is created. ``audit_test_policy.py:331-348``
+forbids ``subprocess.run`` / ``Popen`` / ``create_subprocess_exec`` in
+tests; we comply by injecting the seam instead of executing it.
 """
 
 from __future__ import annotations
 
-import ast
-import pathlib
+import asyncio
+import contextlib
+import subprocess
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-from ralph.agents import subprocess_executor as _executor_module
+from ralph.agents.idle_watchdog.timeout_policy import TimeoutPolicy
 from ralph.agents.invoke import _process_reader
+from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+from ralph.agents.subprocess_executor import SubprocessAgentExecutor
+from ralph.config.models import AgentConfig
+from ralph.pipeline.work_units import WorkUnit
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.testing._fake_popen import FakePopen
+from ralph.testing._process_state import ProcessState
+from ralph.testing.fake_process import FakeControllableAsyncProcess, FakePsutil
+
+if TYPE_CHECKING:
+    from ralph.process.manager._spawn_options import SpawnOptions
 
 
-def _find_spawn_options_calls(tree: ast.AST) -> list[ast.Call]:
-    """Return every ``SpawnOptions(...)`` call in ``tree``."""
-    return [n for n in ast.walk(tree) if isinstance(n, ast.Call) and _is_spawn_options(n)]
+def _make_invoke_ctx() -> _AgentRunCtx:
+    """Build a minimal ``_AgentRunCtx`` that lets the reader reach spawn."""
+    return _AgentRunCtx(
+        config=AgentConfig(cmd="fake-binary"),
+        show_progress=False,
+        extra_env=None,
+        workspace_path=None,
+        policy=TimeoutPolicy(idle_timeout_seconds=1800.0),
+    )
 
 
-def _is_spawn_options(node: ast.Call) -> bool:
-    func = node.func
-    # Bare ``SpawnOptions(...)`` (the test targets).
-    return isinstance(func, ast.Name) and func.id == "SpawnOptions"
+def test_invoke_reader_spawn_passes_devnull_at_runtime(
+    monkeypatch: object,
+) -> None:
+    """``_run_subprocess_and_read_lines`` requests ``DEVNULL`` stdin at spawn time.
 
-
-def _kwargs(call: ast.Call) -> dict[str, ast.AST]:
-    """Return the keyword arguments of a Call node, keyed by name."""
-    return {kw.arg: kw.value for kw in call.keywords if kw.arg is not None}
-
-
-def test_invoke_reader_spawn_options_block_passes_non_none_stdin() -> None:
-    """``SpawnOptions(...)`` at the invoke reader carries a non-None stdin value.
-
-    Without this, the subprocess inherits Ralph's controlling-terminal
-    stdin and can put the shared TTY into raw mode.
+    The sync recording factory captures the actual ``SpawnOptions``
+    passed to ``ProcessManager.spawn`` -- not the source text. A
+    refactor that drops the ``stdin=`` kwarg entirely, or sets it to
+    ``None`` (INHERIT) or ``PIPE``, fails this test.
     """
-    src_path = _process_reader.__file__
-    assert src_path is not None
-    text = pathlib.Path(src_path).read_text(encoding="utf-8")
-    tree = ast.parse(text)
+    captured: list[SpawnOptions] = []
 
-    # Find the SpawnOptions block inside ``_run_subprocess_and_read_lines``.
-    target = next(
-        (
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name == "_run_subprocess_and_read_lines"
+    def sync_factory(command: Sequence[str], opts: SpawnOptions) -> FakePopen:
+        del command
+        captured.append(opts)
+        return FakePopen(pid=1, state=ProcessState(returncode=0))
+
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            enable_zombie_reaper=False,
+            log_events=False,
         ),
-        None,
-    )
-    assert target is not None, "_run_subprocess_and_read_lines not found"
-
-    spawn_calls = _find_spawn_options_calls(target)
-    assert spawn_calls, "no SpawnOptions(...) call found in _run_subprocess_and_read_lines"
-
-    kwargs = _kwargs(spawn_calls[0])
-    stdin_value = kwargs.get("stdin")
-    assert stdin_value is not None, (
-        "SpawnOptions.stdin must be set (not None -- None means INHERIT the "
-        "controlling terminal); found no stdin= kwarg"
-    )
-    assert not (isinstance(stdin_value, ast.Constant) and stdin_value.value is None), (
-        "SpawnOptions.stdin must NOT be None (INHERIT would let the agent "
-        "steal raw-mode from Ralph's terminal)"
-    )
-    sns = kwargs.get("start_new_session")
-    assert sns is not None, "SpawnOptions.start_new_session must be set"
-    assert isinstance(sns, ast.Constant) and sns.value is True, (
-        f"SpawnOptions.start_new_session must be True; got {ast.dump(sns)!r}"
+        sync_process_factory=sync_factory,
     )
 
+    # The reader module imports ``get_process_manager`` at line 75 and
+    # calls it as a module-level singleton at lines 884 and 259. Rebind
+    # the name on the reader module so the production code resolves
+    # ``get_process_manager()`` to our injected manager.
+    monkeypatch.setattr(_process_reader, "get_process_manager", lambda: pm)
 
-def test_invoke_reader_source_carries_devnull_literal() -> None:
-    """Source-pin: ``stdin=subprocess.DEVNULL`` appears; ``stdin=None,`` absent."""
-    src_path = _process_reader.__file__
-    assert src_path is not None
-    text = pathlib.Path(src_path).read_text(encoding="utf-8")
+    ctx = _make_invoke_ctx()
+    with contextlib.suppress(Exception):
+        # ``FakePopen.stdout`` defaults to None; the reader raises after
+        # spawn (expected and harmless -- the assertion is on the
+        # captured SpawnOptions, not on consumed lines).
+        for _line in _process_reader._run_subprocess_and_read_lines(
+            ["/bin/true"],
+            ctx,
+        ):
+            pass
 
-    assert "stdin=subprocess.DEVNULL" in text, (
-        f"invoke reader source must pin stdin=subprocess.DEVNULL; file={src_path!r}"
+    assert len(captured) == 1, (
+        f"sync factory must be invoked exactly once; got {len(captured)} calls"
     )
-    # ``stdin=None,`` with a trailing comma is the leak pattern; the literal
-    # is unique enough to grep (no other code in the reader uses it).
-    assert "stdin=None," not in text, (
-        f"invoke reader source must not carry stdin=None, (INHERIT = leaks TTY); "
-        f"file={src_path!r}"
+    opts = captured[0]
+    assert opts.stdin is subprocess.DEVNULL, (
+        f"invoke reader must request stdin=subprocess.DEVNULL "
+        f"(INHERIT would leak Ralph's controlling-terminal stdin); "
+        f"got stdin={opts.stdin!r}"
+    )
+    assert opts.start_new_session is True, (
+        f"invoke reader must keep start_new_session=True "
+        f"(gives the child its own session, no controlling TTY); "
+        f"got start_new_session={opts.start_new_session!r}"
     )
 
 
-def test_subprocess_executor_spawn_options_block_passes_non_none_stdin() -> None:
-    """``SpawnOptions(...)`` at the executor carries a non-None stdin value."""
-    src_path = _executor_module.__file__
-    assert src_path is not None
-    text = pathlib.Path(src_path).read_text(encoding="utf-8")
-    tree = ast.parse(text)
+def test_subprocess_executor_spawn_passes_devnull_at_runtime() -> None:
+    """``SubprocessAgentExecutor.run`` requests ``DEVNULL`` stdin at spawn time.
 
-    # The executor's SpawnOptions block lives inside ``SubprocessAgentExecutor.run``.
-    cls = next(
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.ClassDef) and n.name == "SubprocessAgentExecutor"
-    )
-    run_method = next(
-        n
-        for n in cls.body
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "run"
-    )
-    spawn_calls = _find_spawn_options_calls(run_method)
-    assert spawn_calls, (
-        "no SpawnOptions(...) call found in SubprocessAgentExecutor.run"
+    ``ProcessManager.spawn_async`` destructures ``SpawnOptions`` into
+    keyword arguments before calling the async factory (ralph/process/
+    manager/_process_manager.py:629-635), so we record the kwargs at
+    the factory boundary. A refactor that drops ``stdin=`` from the
+    ``SpawnOptions(...)`` block, or sets it to ``None`` / ``PIPE``,
+    fails this test.
+    """
+
+    captured: list[dict[str, object]] = []
+
+    async def async_factory(
+        command: Sequence[str],
+        *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+    ) -> FakeControllableAsyncProcess:
+        del command, cwd, env, stdout, stderr
+        captured.append(
+            {
+                "stdin": stdin,
+                "start_new_session": start_new_session,
+            }
+        )
+        # Pre-completed event so the executor's drain_output + wait
+        # gather exits cleanly without the test waiting on real time.
+        event = asyncio.Event()
+        event.set()
+        return FakeControllableAsyncProcess(pid=1, completion_event=event)
+
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            enable_zombie_reaper=False,
+            log_events=False,
+        ),
+        async_process_factory=async_factory,
+        psutil=FakePsutil(),
     )
 
-    kwargs = _kwargs(spawn_calls[0])
-    stdin_value = kwargs.get("stdin")
-    assert stdin_value is not None, (
-        "SpawnOptions.stdin must be set (not None -- INHERIT = leaks TTY)"
+    executor = SubprocessAgentExecutor(
+        command=["/bin/true"],
+        _pm=pm,
     )
-    assert not (isinstance(stdin_value, ast.Constant) and stdin_value.value is None), (
-        "SpawnOptions.stdin must NOT be None"
-    )
-    sns = kwargs.get("start_new_session")
-    assert sns is not None, "SpawnOptions.start_new_session must be set"
-    assert isinstance(sns, ast.Constant) and sns.value is True, (
-        f"SpawnOptions.start_new_session must be True; got {ast.dump(sns)!r}"
+    unit = WorkUnit(unit_id="unit-runtime-1", description="runtime spawn test")
+
+    asyncio.run(
+        executor.run(
+            unit,
+            on_output=lambda _line: None,
+            on_status=lambda _status: None,
+        )
     )
 
-
-def test_subprocess_executor_source_carries_devnull_literal() -> None:
-    """Source-pin: ``stdin=_DEVNULL`` (the file's local alias) appears; ``start_new_session=True`` kept."""
-    src_path = _executor_module.__file__
-    assert src_path is not None
-    text = pathlib.Path(src_path).read_text(encoding="utf-8")
-
-    assert "stdin=_DEVNULL" in text, (
-        f"subprocess_executor source must pin stdin=_DEVNULL; file={src_path!r}"
+    assert len(captured) == 1, (
+        f"async factory must be invoked exactly once; got {len(captured)} calls"
     )
-    assert "start_new_session=True" in text, (
-        f"subprocess_executor source must keep start_new_session=True; "
-        f"file={src_path!r}"
+    kwargs = captured[0]
+    assert kwargs["stdin"] is subprocess.DEVNULL, (
+        f"SubprocessAgentExecutor.run must request stdin=subprocess.DEVNULL "
+        f"(INHERIT would leak Ralph's controlling-terminal stdin); "
+        f"got stdin={kwargs['stdin']!r}"
     )
-    assert "from subprocess import DEVNULL as _DEVNULL" in text, (
-        f"subprocess_executor source must alias DEVNULL as _DEVNULL "
-        f"(matching the PIPE / STDOUT aliases); file={src_path!r}"
+    assert kwargs["start_new_session"] is True, (
+        f"SubprocessAgentExecutor.run must keep start_new_session=True "
+        f"(gives the child its own session, no controlling TTY); "
+        f"got start_new_session={kwargs['start_new_session']!r}"
     )
