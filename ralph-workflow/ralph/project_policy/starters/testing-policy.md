@@ -1,5 +1,11 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: testing-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Testing Policy
 
@@ -38,43 +44,36 @@ checks performed by humans, or third-party hosted service reliability.
 
 ## Project facts to resolve
 
-The agent MUST resolve every `RALPH-FACT:` line below with a value
-verified against repository evidence (commands actually run during this
-preflight, manifest files actually present in the project tree, etc.).
-Placeholder tokens in the `RALPH-FACT:` values are forbidden — the
-validator will reject any policy that still contains them.
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
 
-* RALPH-FACT: test_command: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: test_command_prerequisites: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: primary_test_framework: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: secondary_test_frameworks: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: test_isolation_strategy: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: flake_policy: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: regression_test_convention: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: test_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: test_command_prerequisites: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: primary_test_framework: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: secondary_test_frameworks: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: test_isolation_strategy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: flake_policy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: regression_test_convention: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT the project to identify the test framework, test command, and
-  test isolation strategy before editing. List the evidence used.
-* PRESERVE stricter existing testing requirements. Reconcile any
-  contradiction by adapting the stricter rule, not weakening the policy.
-* REPLACE every starter placeholder above with a verified project fact.
-* REMOVE inapplicable conditional sections rather than marking them
-  complete.
+* WRITE the test before the production change when fixing a bug or
+  adding behaviour; watch it fail for the expected reason first.
 * PREFER existing test helpers, fixtures, and utilities. Do not add a
   new testing dependency when the existing stack can express the case.
 * AVOID adding a dependency, abstraction, or numeric target without
   demonstrated need from a failing test or observed behaviour.
-* RUN every declared `RALPH-COMMAND:` gate and report the outcome. Do
-  not report commands that were not actually run.
-* UPDATE this policy and the related docs in the same workflow that
-  changes the test command or test isolation strategy.
-* REFUSE to add the completion marker comment
-  while any placeholder, contradiction, or unverified command remains.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the test command, framework, or isolation
+  strategy.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Default to white-box tests that couple to private internals.
 * Weaken the testing gate to obtain a passing result (no skipping tests,
@@ -84,17 +83,15 @@ The agent MUST NOT:
 
 ## Verification
 
-The agent MUST declare at least one `RALPH-COMMAND:` line below. A line
-that is empty, contains a placeholder token, or names a non-runnable
-command is rejected by the validator.
+Run every gate below before claiming a change complies with this policy.
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is a deterministic test suite that
-finishes within the project's documented budget. On failure, the agent
-MUST report the failing test names and the failure category (assertion
-failure, collection error, timeout, environmental). The agent MUST NOT
-ignore failures or skip them to obtain green.
+finishes within the project's documented budget. On failure, report the
+failing test names and the failure category (assertion failure,
+collection error, timeout, environmental). Never ignore or skip a
+failure to obtain green.
 
 ## Exceptions
 
@@ -118,8 +115,6 @@ This policy MUST be reviewed in the same workflow as any of:
 
 ## Research basis
 
-Citations supporting the requirements above.
-
 * publisher: Google Testing Blog / Google Engineering Practices
   title: "Just Say No to More End-to-End Tests"
   http: https://testing.googleblog.com/2015/04/just-say-no-to-more-end-to-end-tests.html
@@ -133,11 +128,6 @@ Citations supporting the requirements above.
 * publisher: Martin Fowler
   title: "Test Pyramid"
   http: https://martinfowler.com/bliki/TestPyramid.html
-  review date: 2026-07-11
-
-* publisher: Google Testing Blog
-  title: "Just Say No to More End-to-End Tests"
-  http: https://testing.googleblog.com/2015/04/just-say-no-to-more-end-to-end-tests.html
   review date: 2026-07-11
 
 ## Living document contract
@@ -158,6 +148,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

@@ -1,13 +1,18 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: performance-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Performance Policy
 
-> This file is REQUIRED only when the validator detects explicit
-> performance signals (any of the paths in `markers.PERF_SIGNAL_PATHS`
-> exists OR any manifest contains a perf-dep substring). When the
-> domain is not present, REMOVE this file or document its inapplicability
-> explicitly under "Exceptions".
+This policy applies while the project declares performance budgets
+or benchmarking tooling. If the project permanently drops them,
+remove this policy file in the same workflow or record the change
+under Exceptions.
 
 ## Purpose and scope
 
@@ -33,39 +38,47 @@ and preservation of correctness, readability, and maintainability.
 
 ## Project facts to resolve
 
-* RALPH-FACT: performance_objectives: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: performance_budget: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: representative_workload: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: environment_specification: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: benchmark_command: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: profiling_command: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: regression_threshold: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: ci_benchmark_integration: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: performance_objectives: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: performance_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: representative_workload: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: environment_specification: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: benchmark_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: profiling_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: regression_threshold: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: ci_benchmark_integration: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT existing benchmarks, budgets, and profiling tools before any
-  performance change.
-* PRESERVE stricter existing performance rules; adapt rather than weaken.
-* REPLACE every starter placeholder with a verified value.
 * JUSTIFY optimization work with measurement.
 * PRESERVE correctness, readability, and maintainability during
   optimization.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes a benchmark, a budget, a profiling tool, or the
+  representative workload.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Invent numerical targets where none exist in repository evidence.
 * Optimize at the cost of correctness, readability, or maintainability.
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is a clean benchmark / profiling run
-within the documented budget. On regression, the agent MUST report the
-affected code path, the regression magnitude, and the cause.
+within the documented budget. On regression, report the affected code
+path, the regression magnitude, and the cause.
 
 ## Exceptions
 
@@ -120,6 +133,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: performance-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

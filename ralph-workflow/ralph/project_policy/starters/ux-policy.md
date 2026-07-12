@@ -1,14 +1,20 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: ux-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # UX Policy
 
-> REMOVE this file when the project does not have substantial UI (the
-> validator detects the domain via stricter signals: app framework names
-> in `stack.frameworks` OR router-dep substrings in
-> `package.json` / `pyproject.toml`). Design-system alone does NOT
-> trigger UX; UX implies design-system. A single incidental control or
-> a minimal admin page does NOT require this file.
+This policy applies while the project ships substantial UI (an app
+framework or client-side routing). UX obligations imply the
+design-system policy; a single incidental control or a minimal
+admin page is out of scope. If the project permanently stops
+shipping substantial UI, remove this policy file in the same
+workflow.
 
 ## Purpose and scope
 
@@ -39,37 +45,45 @@ interaction behaviour, or usability.
 
 ## Project facts to resolve
 
-* RALPH-FACT: target_users: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: primary_tasks: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: interaction_principles: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: navigation_pattern: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: state_pattern_reference: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: form_pattern_reference: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: destructive_action_pattern: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: ux_review_process: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: target_users: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: primary_tasks: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: interaction_principles: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: navigation_pattern: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: state_pattern_reference: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: form_pattern_reference: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: destructive_action_pattern: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: ux_review_process: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT the existing UX patterns, navigation, and state conventions
-  before any UX change.
-* PRESERVE stricter existing UX rules; adapt rather than weaken.
-* REPLACE every starter placeholder with a verified value.
 * PREFER existing UX patterns over new patterns.
 * RECORD the UX review evidence appropriate to the change.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the navigation, form, state, or
+  destructive-action pattern.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Introduce inconsistent terminology or destructive-action patterns.
 * Skip the empty / error / loading state implementation.
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is exit 0 from the UX review / audit.
-On failure, the agent MUST report the affected screen and the gap.
+On failure, report the affected screen and the gap.
 
 ## Exceptions
 
@@ -125,6 +139,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: ux-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

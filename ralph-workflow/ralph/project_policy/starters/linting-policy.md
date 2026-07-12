@@ -1,5 +1,11 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: linting-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Linting Policy
 
@@ -28,28 +34,33 @@ configuration overrides.
 
 ## Project facts to resolve
 
-* RALPH-FACT: linter_per_language: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: rule_set_baseline: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: formatter_responsibility: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: excluded_paths: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: suppression_rationale_policy: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: linter_per_language: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: rule_set_baseline: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: formatter_responsibility: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: excluded_paths: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: suppression_rationale_policy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT the project to enumerate every language and any existing
-  lint configuration before declaring coverage.
-* PRESERVE stricter existing lint rules; adapt them rather than weaken.
-* REPLACE every starter placeholder with a verified value.
 * DECLARE one `RALPH-LANG:` block per language with the exact linter
   command.
 * PREFER existing tooling. Adding a new linter requires a documented
   rationale.
-* RUN every declared `RALPH-COMMAND:` and report the outcome.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the linter, rule set, formatter, or
+  suppression policy.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Add `per-file-ignores`, `extend-per-file-ignores`, or any other
   global rule silencing without a per-file rationale.
@@ -58,17 +69,19 @@ The agent MUST NOT:
 
 ## Verification
 
-* RALPH-LANG: Python
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
 
-* RALPH-LANG: TypeScript
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-LANG: Python
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-* RALPH-LANG: Rust
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-LANG: TypeScript
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-* RALPH-LANG: Go
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-LANG: Rust
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+
+RALPH-LANG: Go
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is a clean lint run (exit 0). Lint
 failures MUST be addressed at the source, not by adding suppressions.
@@ -128,6 +141,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: linting-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

@@ -1,13 +1,18 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: memory-usage-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Memory-Usage Policy
 
-> This file is REQUIRED only when the validator detects explicit
-> memory signals (any of the paths in `markers.MEMORY_SIGNAL_PATHS`
-> exists OR any manifest contains a memory-dep substring). When the
-> domain is not present, REMOVE this file or document its
-> inapplicability explicitly under "Exceptions".
+This policy applies while the project declares memory budgets or
+soak/leak tooling. If the project permanently drops them, remove
+this policy file in the same workflow or record the change under
+Exceptions.
 
 ## Purpose and scope
 
@@ -36,28 +41,34 @@ allocation-sensitive paths.
 
 ## Project facts to resolve
 
-* RALPH-FACT: peak_memory_baseline: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: steady_state_memory_baseline: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: cache_lifecycle_policy: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: bounded_accumulator_policy: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: leak_detection_command: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: soak_test_command: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: large_input_handling_pattern: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: ci_soak_integration: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: peak_memory_baseline: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: steady_state_memory_baseline: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: cache_lifecycle_policy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: bounded_accumulator_policy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: leak_detection_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: soak_test_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: large_input_handling_pattern: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: ci_soak_integration: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT existing memory audits, soak tests, and lifecycle patterns
-  before any change that can affect memory.
-* PRESERVE stricter existing memory rules; adapt rather than weaken.
-* REPLACE every starter placeholder with a verified value.
 * DISTINGUISH peak memory, steady-state memory, and unbounded growth
   in every change.
 * PREFER existing lifecycle patterns over new collections.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes a cache, an accumulator cap, a soak test, or a
+  leak detector.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Add an unbounded collection (list / dict / set / deque without
   maxlen) to module-level scope or to instance attributes in
@@ -67,11 +78,13 @@ The agent MUST NOT:
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is exit 0 from the leak / soak audit.
-On regression, the agent MUST report the affected code path, the
-regression magnitude, and the cause.
+On regression, report the affected code path, the regression magnitude,
+and the cause.
 
 ## Exceptions
 
@@ -126,6 +139,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: memory-usage-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

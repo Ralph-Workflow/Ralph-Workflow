@@ -155,7 +155,7 @@ def test_memory_not_required_without_signals() -> None:
     assert evidence.memory_required(ws, stack)[0] is False
 
 
-def test_readiness_evidence_includes_all_twelve_policy_paths() -> None:
+def test_readiness_evidence_includes_all_policy_paths() -> None:
     ws = MemoryWorkspace()
     stack = _stack()
     entries = evidence.readiness_evidence(ws, stack)

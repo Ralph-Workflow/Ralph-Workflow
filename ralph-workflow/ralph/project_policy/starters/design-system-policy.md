@@ -1,14 +1,18 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: design-system-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Design-System Policy
 
-> REMOVE this file when the project has no GUI, visual component
-> library, theme, or other meaningful visual interface. The validator
-> detects the domain via deterministic signals (UI framework names in
-> `stack.frameworks` OR CSS-family languages in
-> `stack.secondary_languages`) and requires this file only when the
-> domain is present.
+This policy applies while the project ships a visual interface
+(UI framework, component library, theme, or CSS-family styling).
+If the project permanently stops shipping a visual interface,
+remove this policy file in the same workflow.
 
 ## Purpose and scope
 
@@ -37,43 +41,49 @@ surface.
 
 ## Project facts to resolve
 
-* RALPH-FACT: design_system_name: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: component_library_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: theme_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: tokens_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: styling_architecture: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: raw_css_policy: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: accessibility_standard: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: visual_regression_command: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: design_system_name: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: component_library_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: theme_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: tokens_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: styling_architecture: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: raw_css_policy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: accessibility_standard: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: visual_regression_command: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT the existing design system, component library, theme, and
-  tokens before any visual change.
-* PRESERVE stricter existing design-system rules; adapt rather than
-  weaken.
-* REPLACE every starter placeholder with a verified value.
 * PREFER existing components, variants, tokens, utilities, and theming
   APIs over new visual primitives.
 * ADD new reusable patterns to the design system, not across screens.
-* RUN every declared `RALPH-COMMAND:` and report the outcome.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the design system, theme, tokens, or styling
+  architecture.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Introduce a new framework, replace a functioning theme, or invent
-  design tokens merely to fill this template.
+  design tokens the project does not need.
 * Introduce raw CSS where the project's theming or styling system can
   express the requirement.
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is a clean visual-regression audit (or
-its project equivalent). On failure, the agent MUST report the affected
-component and the regression.
+its project equivalent). On failure, report the affected component and
+the regression.
 
 ## Exceptions
 
@@ -129,6 +139,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: design-system-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

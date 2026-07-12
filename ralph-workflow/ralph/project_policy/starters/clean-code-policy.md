@@ -1,5 +1,11 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: clean-code-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Clean-Code Policy
 
@@ -37,27 +43,32 @@ code.
 
 ## Project facts to resolve
 
-* RALPH-FACT: naming_convention: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: module_boundary_rule: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: error_handling_convention: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: logging_convention: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: generated_code_marker: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: vendored_code_marker: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: dead_code_audit_command: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: naming_convention: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: module_boundary_rule: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: error_handling_convention: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: logging_convention: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: generated_code_marker: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: vendored_code_marker: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: dead_code_audit_command: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT existing source for the actual convention before naming new
-  identifiers.
-* PRESERVE stricter existing clean-code rules; adapt rather than weaken.
-* REPLACE every starter placeholder with a verified value.
 * PREFER existing project utilities and patterns over new abstractions.
 * REMOVE dead code in the same change that obsoletes it.
-* RUN every declared `RALPH-COMMAND:` and report the outcome.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the naming convention, module boundary rules,
+  or error-handling and logging conventions.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Introduce speculative abstractions ("we might need it later").
 * Add unused compatibility layers.
@@ -65,10 +76,12 @@ The agent MUST NOT:
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
 
-The expected successful result is a clean dead-code audit. The agent
-MUST report any audit findings.
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+
+The expected successful result is a clean dead-code audit. Report any
+audit findings.
 
 ## Exceptions
 
@@ -125,6 +138,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: clean-code-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

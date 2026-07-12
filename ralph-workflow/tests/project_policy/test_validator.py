@@ -47,6 +47,10 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         lines.append("## Bypass detection")
         lines.append("Real content.")
         lines.append("RALPH-COMMAND: echo bypass-audit")
+    if filename == "security-policy.md":
+        lines.append("")
+        lines.append("## Threat surfaces")
+        lines.append("Real content.")
     lines.append("")
     lines.append("## Exceptions")
     lines.append("Real content.")

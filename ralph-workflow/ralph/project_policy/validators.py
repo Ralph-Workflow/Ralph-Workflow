@@ -462,7 +462,38 @@ def _validate_existing_policy_file(
     findings.extend(_check_placeholders(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_completion_marker(content, path, filename))
+    findings.extend(_check_template_banner(content, path, filename))
     return findings
+
+
+def _check_template_banner(
+    content: str, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Reject a policy file that still carries the starter template banner.
+
+    Whole-file scan (unlike PLACEHOLDER_TOKENS, which are scoped to
+    machine-checkable value lines): the banner marks the file as an
+    unfilled template, so its presence anywhere blocks readiness until the
+    remediation agent deletes it.
+    """
+    if markers.STARTER_TEMPLATE_TOKEN not in content:
+        return []
+    return [
+        PolicyFinding(
+            requirement_id=(
+                f"{markers.ID_PLACEHOLDER}:{filename}:starter-template-banner"
+            ),
+            path=path,
+            missing_evidence=(
+                f"file still contains the {markers.STARTER_TEMPLATE_TOKEN} "
+                "banner comment"
+            ),
+            required_outcome=(
+                "rewrite the file into verified project policy and delete "
+                "the starter template banner comment"
+            ),
+        )
+    ]
 
 
 def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding]:

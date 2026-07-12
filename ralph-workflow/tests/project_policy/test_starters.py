@@ -10,9 +10,20 @@ import pytest
 from ralph.project_policy import markers, starters
 
 
-def test_iter_starter_names_returns_twelve() -> None:
+def test_iter_starter_names_returns_thirteen() -> None:
     names = list(starters.iter_starter_names())
-    assert len(names) == 12
+    assert len(names) == 13
+
+
+def test_security_policy_is_a_core_starter_with_threat_surfaces() -> None:
+    """Security applies to every project (secrets, untrusted input), so the
+    security policy ships as a CORE starter. Its content is app-type-specific
+    (strcpy bans vs CSRF defenses), so the 'Threat surfaces' section that
+    carries the project-specific rules is a REQUIRED heading: it must survive
+    every future amendment of the project's customized policy."""
+    assert "security-policy.md" in markers.CORE_POLICY_FILES
+    assert "security-policy.md" in set(starters.iter_starter_names())
+    assert "Threat surfaces" in markers.REQUIRED_HEADINGS["security-policy.md"]
 
 
 def test_iter_starter_names_covers_all_core_and_conditional() -> None:

@@ -1,5 +1,11 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: documentation-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Documentation Policy
 
@@ -34,33 +40,37 @@ of documentation belongs.
 
 ## Project facts to resolve
 
-* RALPH-FACT: user_docs_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: operator_docs_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: contributor_docs_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: api_reference_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: architecture_docs_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: release_notes_path: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: docstring_convention: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: example_verification_command: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: user_docs_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: operator_docs_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: contributor_docs_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: api_reference_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: architecture_docs_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: release_notes_path: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: docstring_convention: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: example_verification_command: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT the project's documentation tree to identify authoritative
-  locations before editing.
-* PRESERVE stricter existing documentation rules; adapt rather than
-  weaken.
-* REPLACE every starter placeholder with a verified value.
 * UPDATE affected documentation in the same change that alters
   behaviour.
 * REMOVE duplicated or contradictory documentation; do not silently
   duplicate.
 * VERIFY that every example command actually runs and produces the
   documented output.
-* RUN every declared `RALPH-COMMAND:` and report the outcome.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes a documentation location, the docstring
+  convention, or the example verification command.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Fabricate capabilities, dependencies, adoption claims, or unsupported
   technical statements.
@@ -69,7 +79,9 @@ The agent MUST NOT:
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is that every documented command
 actually runs and produces the documented output.
@@ -128,6 +140,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: documentation-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

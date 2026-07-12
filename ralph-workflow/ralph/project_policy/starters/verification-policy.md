@@ -1,5 +1,11 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: verification-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Verification Policy
 
@@ -25,27 +31,31 @@ bypass-detection rules.
 
 ## Project facts to resolve
 
-* RALPH-FACT: authoritative_verify_command: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: gate_prerequisites: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: gate_order: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: bypass_detection_lint_audit: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: bypass_detection_typecheck_audit: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: ci_integration_command: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: authoritative_verify_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: gate_prerequisites: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: gate_order: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: bypass_detection_lint_audit: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: bypass_detection_typecheck_audit: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: ci_integration_command: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT the project to identify the authoritative entry point (CI
-  workflow file, Makefile target, etc.) before declaring gates.
-* PRESERVE stricter existing verification rules; adapt rather than
-  weaken.
-* REPLACE every starter placeholder with a verified value.
 * ENSURE every gate listed here is actually runnable in the
   environment. Document any gate that cannot run and the reason.
-* RUN every declared `RALPH-COMMAND:` and report the outcome.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the authoritative entry point, gate order, or
+  bypass-detection audit.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Add a "verification" command that does not exercise every gate.
 * Weaken a gate to obtain a passing result.
@@ -53,11 +63,12 @@ The agent MUST NOT:
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is exit 0 from the authoritative entry
-point. On failure, the agent MUST report the failing gate and the
-failure category.
+point. On failure, report the failing gate and the failure category.
 
 ## Bypass detection
 
@@ -71,16 +82,15 @@ authoritative verification gate. The bypass-detection rules:
 * Commands that claim to verify the project while omitting required
   paths are detected and reported.
 
-The bypass-detection command MUST be declared as a `RALPH-COMMAND:`
-under this heading. The audit tooling is project-specific; the agent
-MUST wire the existing audit scripts into the verification gate.
+The bypass-detection command is declared as a `RALPH-COMMAND:` under
+this heading. The audit tooling is project-specific; the project's
+existing audit scripts MUST be wired into the verification gate.
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is exit 0 (no bypass detected). On
-failure, the agent MUST report the affected file, line, and bypass
-category. Approved documented exceptions MUST be listed under
-"Exceptions" below.
+failure, report the affected file, line, and bypass category. Approved
+documented exceptions MUST be listed under "Exceptions" below.
 
 ## Exceptions
 
@@ -131,6 +141,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

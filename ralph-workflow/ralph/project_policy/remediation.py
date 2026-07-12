@@ -123,6 +123,18 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
      `RALPH-LANG: <Language>` followed by a RALPH-COMMAND or RALPH-INAPPLICABLE.
    * Add the citation block under `## Research basis` with publisher, title,
      URL (http), and review date.
+   * Remove inapplicable conditional sections instead of marking them
+     complete; keep the required headings.
+   * Where an existing project rule is STRICTER than the starter text,
+     preserve the stricter rule — reconcile contradictions by adapting the
+     stricter side, never by weakening the policy.
+   * Delete the `RALPH-STARTER-TEMPLATE` banner comment at the top of each
+     starter once the file holds verified project policy; the validator
+     blocks readiness while the banner remains.
+   * The finished file must read as durable policy: every sentence tells a
+     future agent how to FOLLOW or ENFORCE the policy. Do not leave
+     fill-in instructions, references to starters or placeholders, or
+     validator mechanics in the file.
    * Add the completion marker `{markers.COMPLETION_MARKER}` ONLY when every
      other requirement is satisfied.
 3. MIGRATE existing project policy-like content into the matching canonical

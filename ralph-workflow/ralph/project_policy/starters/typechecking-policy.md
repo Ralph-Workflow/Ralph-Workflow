@@ -1,5 +1,11 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: typechecking-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Type-Checking Policy
 
@@ -31,34 +37,33 @@ suppressions, ignores, casts, generated code, and untyped dependencies.
 
 ## Project facts to resolve
 
-Resolve every `RALPH-FACT:` line below with a verified project fact.
-Placeholder tokens are rejected.
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
 
-* RALPH-FACT: typechecker_per_language: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: strictness_level: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: excluded_paths: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: stubbed_dependencies: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: suppression_rationale_policy: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: typechecker_per_language: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: strictness_level: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: excluded_paths: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: stubbed_dependencies: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: suppression_rationale_policy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT the project to enumerate every language, framework, and
-  dependency manifest before declaring language coverage. Use the
-  project's actual language detector output as evidence.
-* PRESERVE stricter existing type-checking rules; adapt them rather than
-  weaken them.
-* REPLACE every starter placeholder with a verified value.
 * DECLARE one `RALPH-LANG:` block per language with the exact checker
   command. Do not invent languages; do not omit detected languages.
-* REMOVE inapplicable conditional sections rather than falsely marking
-  them complete.
 * PREFER existing tooling and configuration. Adding a new type checker
   requires a documented rationale and a benchmarked benefit.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) in the same
+  workflow that changes the type checker, strictness level, or
+  exclusion patterns.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Add `ignore_missing_imports`, `follow_imports = silent`, or similar
   global silencers without a per-dependency rationale.
@@ -67,23 +72,22 @@ The agent MUST NOT:
 
 ## Verification
 
-The agent MUST declare at least one `RALPH-COMMAND:` line per detected
-language. Per-language declarations follow this template:
+Run every gate below before claiming a change complies with this policy.
 
-* RALPH-LANG: Python
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-LANG: Python
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-* RALPH-LANG: TypeScript
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-LANG: TypeScript
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-* RALPH-LANG: Rust
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-LANG: Rust
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-* RALPH-LANG: Go
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-LANG: Go
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is a clean type check (exit 0) on the
-current code base. The agent MUST NOT mask type errors with silencers.
+current code base. Never mask type errors with silencers.
 
 ## Exceptions
 
@@ -140,6 +144,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: typechecking-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.

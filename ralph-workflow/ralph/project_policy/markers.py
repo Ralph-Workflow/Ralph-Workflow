@@ -53,7 +53,7 @@ CANONICAL_DIR: Final[str] = "docs/ralph-workflow-policy/"
 AGENTS_MD: Final[str] = "AGENTS.md"
 CLAUDE_MD: Final[str] = "CLAUDE.md"
 
-# Core policy files (the eight always-required for any software project).
+# Core policy files (the nine always-required for any software project).
 CORE_POLICY_FILES: Final[tuple[str, ...]] = (
     "testing-policy.md",
     "typechecking-policy.md",
@@ -63,6 +63,7 @@ CORE_POLICY_FILES: Final[tuple[str, ...]] = (
     "agent-policy.md",
     "clean-code-policy.md",
     "documentation-policy.md",
+    "security-policy.md",
 )
 
 # Conditional policy files keyed by their domain. Each conditional domain is
@@ -79,7 +80,10 @@ CONDITIONAL_POLICY_FILES: Final[dict[str, str]] = {
 # policy must include the listed headings (case-insensitive match against H1/H2
 # lines). The verification policy additionally requires a "Bypass detection"
 # heading because lint/typecheck bypass detection is mandatory when the
-# selected tools permit such checks.
+# selected tools permit such checks. The security policy additionally requires
+# a "Threat surfaces" heading because security requirements are app-type
+# specific (memory safety vs CSRF vs subprocess hygiene): the section that
+# enumerates the project's own surfaces must survive every amendment.
 REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "testing-policy.md": (
         "Purpose and scope",
@@ -162,6 +166,18 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "documentation-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
+    ),
+    "security-policy.md": (
+        "Purpose and scope",
+        "Default requirements",
+        "Threat surfaces",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -258,6 +274,15 @@ PLACEHOLDER_TOKENS: Final[tuple[str, ...]] = (
     "REPLACE-ME",
     "PROJECT-FACT-UNRESOLVED",
 )
+
+# Every starter opens with a RALPH-STARTER-TEMPLATE banner comment that marks
+# the file as an unfilled template. Unlike PLACEHOLDER_TOKENS (which are only
+# checked inside RALPH-FACT / RALPH-COMMAND / RALPH-INAPPLICABLE values so
+# ordinary prose like "no TODO comments" cannot false-positive), this token
+# is checked against the WHOLE file: the validator blocks readiness until the
+# remediation agent deletes the banner, so a finished policy file reads as
+# durable policy with no template scaffolding left behind.
+STARTER_TEMPLATE_TOKEN: Final[str] = "RALPH-STARTER-TEMPLATE"
 
 # Approved gate tool executables. The validator checks every RALPH-COMMAND
 # value's first whitespace-separated token against this fixed allowlist. A
@@ -544,6 +569,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "SIGNIFICANT_HEADING_PREFIX",
     "SIGNIFICANT_NONEMPTY_LINE_THRESHOLD",
+    "STARTER_TEMPLATE_TOKEN",
     "UI_FRAMEWORK_SIGNALS",
     "UX_APP_FRAMEWORKS",
     "UX_ROUTER_DEP_SIGNALS",

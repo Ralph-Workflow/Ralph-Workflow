@@ -1,5 +1,11 @@
 <!-- ralph-policy-schema: v1 -->
 <!-- ralph-policy-id: agent-policy.md -->
+<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
+project's policy. A remediation agent rewrites it with verified project
+facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
+project's established practice, deletes this banner, and adds the completion
+marker. Readiness stays blocked while this banner or any placeholder token
+remains. -->
 
 # Agent Policy
 
@@ -31,25 +37,28 @@ the truthfulness obligations, and the documentation update obligations.
 
 ## Project facts to resolve
 
-* RALPH-FACT: supported_agents: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: agent_dispatch_command: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: agent_review_process: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: failure_reporting_contract: PROJECT-FACT-UNRESOLVED
-* RALPH-FACT: documentation_update_obligation: PROJECT-FACT-UNRESOLVED
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: supported_agents: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: agent_dispatch_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: agent_review_process: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: failure_reporting_contract: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: documentation_update_obligation: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
-The agent MUST:
+To follow this policy, an agent making any change MUST:
 
-* INSPECT `AGENTS.md` and the canonical policy directory before any
-  change. List the evidence used.
-* PRESERVE stricter existing agent rules; adapt rather than weaken.
-* REPLACE every starter placeholder with a verified value.
-* RUN the authoritative verification gate and report the actual
-  outcome.
-* UPDATE affected policies and documentation in the same change.
+* RUN every `RALPH-COMMAND:` gate declared under Verification before
+  claiming the change complies, and report the actual outcome. Never
+  report a command that was not run.
+* UPDATE this policy (facts, commands, requirements) and affected
+  documentation in the same workflow that changes the supported agents,
+  dispatch command, or review process.
 
-The agent MUST NOT:
+An agent MUST NOT:
 
 * Claim a passing gate that was not actually run.
 * Weaken a check to obtain a passing result.
@@ -58,10 +67,12 @@ The agent MUST NOT:
 
 ## Verification
 
-* RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+Run every gate below before claiming a change complies with this policy.
+
+RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
 The expected successful result is exit 0 from the authoritative
-verification gate. The agent MUST report the actual command output.
+verification gate. Report the actual command output.
 
 ## Exceptions
 
@@ -112,6 +123,5 @@ Two guardrails bound every amendment:
 
 * Policy id: `<!-- ralph-policy-id: agent-policy.md -->`
 * Schema version: `<!-- ralph-policy-schema: v1 -->`
-* Completion marker: the `ralph-policy-complete` completion comment (added ONLY when
-  every requirement above is satisfied and every placeholder is
-  resolved).
+* Completion marker: the `ralph-policy-complete` comment; its presence
+  certifies this file passed validation when it was last amended.
