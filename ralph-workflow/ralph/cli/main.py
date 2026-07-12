@@ -990,6 +990,11 @@ def main(
     if ctx.invoked_subcommand:
         return
 
+    # Best-effort nag if a newer release is available; never blocks the run.
+    from ralph.update_check import maybe_render_update_nag
+
+    maybe_render_update_nag(_cli_ctx)
+
     # Run the main pipeline
     exit_code = invoke_pipeline(
         config,

@@ -16,12 +16,16 @@ updater: it never mutates anything, it only informs.
 
 ## Behavior summary
 
-- On **every** `ralph` run, if the cached state says a newer version is
-  available and the check is not opted out, print one prominent line at run
+- On **every** interactive `ralph` run, if the cached state says a newer version
+  is available and the check is not opted out, print one prominent line at run
   start with the current -> latest versions and the upgrade command for the
-  detected environment.
+  detected environment. The nag (and its background refresh) is skipped when
+  stdout is not a terminal (pipes, CI, the test suite), where a nag would be
+  noise and a background network call is undesirable.
 - Under `ralph --diagnose`, print a fuller version block (current version,
-  latest known, detected install method, upgrade command).
+  latest known, detected install method, upgrade command). A synchronous,
+  time-boxed refresh runs only when diagnose is attached to a terminal;
+  otherwise the block is computed from cache alone.
 - The network refresh against PyPI is throttled to at most once per 24h and
   runs in a background daemon thread, so run start is never delayed. The nag
   itself is driven by the cache, so the first sighting of a new release may lag
@@ -105,17 +109,18 @@ internal helper module.
 ### `__init__.py` (public surface)
 
 - `maybe_render_update_nag(display_context, *, deps=...) -> None`
-  - Returns immediately (no output, no network) if
-    `is_update_check_disabled(...)`.
+  - Returns immediately (no output, no network) when stdout is not a terminal
+    or when `is_update_check_disabled(...)`.
   - Kicks off the background refresh thread if a refresh is due.
   - Reads the cache; if `is_newer(current, cached_latest)`, renders the
     one-line nag via the display context.
-- `update_status(*, deps=...) -> UpdateStatus`
-  - Synchronous-friendly summary for `--diagnose`: current version, latest
-    known (from cache), whether an update is available, detected install kind,
-    and the upgrade command. Does not spawn a thread; `--diagnose` may trigger a
-    direct (still time-boxed, still best-effort) refresh so the diagnostic
-    output reflects current state.
+- `update_status(*, allow_network=True, deps=...) -> UpdateStatus`
+  - Synchronous summary for `--diagnose`: current version, latest known (from
+    cache), whether an update is available, detected install kind, and the
+    upgrade command. Does not spawn a thread. When `allow_network` is True and
+    the cache is stale it does one direct, time-boxed refresh; callers pass
+    `allow_network=False` for non-interactive contexts so the status is
+    cache-only. The diagnose command passes `ctx.console.is_terminal`.
 
 ## Wiring
 

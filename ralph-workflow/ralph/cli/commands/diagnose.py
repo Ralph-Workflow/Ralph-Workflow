@@ -99,6 +99,7 @@ def diagnose_command(
 
     workspace_scope = resolve_workspace_scope()
 
+    _check_version(display=display, allow_network=ctx.console.is_terminal)
     config_ok = _check_git_repo(display=display)
     config_ok &= _check_configuration(config_path, cli_overrides, display=display)
     agent_missing = _check_agents_impl(cli_overrides, display=display)
@@ -382,6 +383,47 @@ def _run_preflight_validation(
         rows.append(("Pre-flight", _status_text("Error", str(e), "theme.status.error"), "", "", ""))
         _emit_simple_table(display, "Pre-flight Validation", rows)
         return False
+
+
+def _check_version(*, display: object, allow_network: bool) -> None:
+    """Report the installed version, latest known release, and how to upgrade."""
+    from ralph.update_check import update_status
+
+    rows: list[tuple[object, ...]] = []
+    try:
+        status = update_status(allow_network=allow_network)
+    except Exception:
+        return
+
+    rows.append(("Installed version", status.current_version, "", "", ""))
+    if status.disabled:
+        rows.append(("Update check", Text("disabled", style="theme.text.muted"), "", "", ""))
+        _emit_simple_table(display, "Version", rows)
+        return
+
+    if status.latest_version is None:
+        rows.append(
+            ("Latest release", Text("unknown (offline?)", style="theme.text.muted"), "", "", "")
+        )
+    elif status.update_available:
+        rows.append(
+            (
+                "Latest release",
+                _status_text("Update available", status.latest_version, "theme.status.warning"),
+                "",
+                "",
+                "",
+            )
+        )
+        rows.append(
+            ("Detected install", status.install.kind.value, "", "", ""),
+        )
+        rows.append(("Upgrade with", status.install.upgrade_command, "", "", ""))
+    else:
+        rows.append(
+            ("Latest release", Text("up to date", style="theme.status.success"), "", "", "")
+        )
+    _emit_simple_table(display, "Version", rows)
 
 
 def _check_git_repo(*, display: object) -> bool:

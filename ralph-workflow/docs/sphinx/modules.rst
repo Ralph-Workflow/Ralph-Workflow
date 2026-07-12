@@ -104,6 +104,48 @@ ralph.contrib.cla
    :members:
    :show-inheritance:
 
+ralph.update_check
+~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check
+   :members:
+   :show-inheritance:
+
+ralph.update_check.compare
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.compare
+   :members:
+   :show-inheritance:
+
+ralph.update_check.environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.environment
+   :members:
+   :show-inheritance:
+
+ralph.update_check.gating
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.gating
+   :members:
+   :show-inheritance:
+
+ralph.update_check.pypi
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.pypi
+   :members:
+   :show-inheritance:
+
+ralph.update_check.state
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.update_check.state
+   :members:
+   :show-inheritance:
+
 ralph.verify
 ~~~~~~~~~~~~
 
