@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: typechecking-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -10,29 +10,48 @@ blocked while this banner or any placeholder token remains. -->
 
 ## Purpose and scope
 
-This policy governs every project language for which static type checking
+This policy governs every maintained first-party language for which static type checking
 applies. It defines the selected type checker, the exact commands, the
 source categories included, the strictness level, and the rules around
 suppressions, ignores, casts, generated code, and untyped dependencies.
 
 ## Default requirements
 
-* The agent MUST declare a `RALPH-LANG:` block for EVERY language
-  detected in the project stack, followed by a `RALPH-COMMAND:` or an
+A maintained first-party language includes interpreted or compiled production
+and test source owned by the project. Generated/vendored code, embedded
+snippets, and template/IDL/SQL/shell sources are classified explicitly in
+`first_party_languages` and `excluded_language_evidence` according to whether
+the project maintains and can statically check them.
+
+* The agent MUST declare a `RALPH-LANG:` block for EVERY language used for
+  maintained first-party executable or compiled source, followed by a `RALPH-COMMAND:` or an
   explicit `RALPH-INAPPLICABLE:` line with a reason.
-* The selected type checker MUST match the language ecosystem best
-  practice (mypy for Python, tsc for TypeScript, cargo check for Rust,
-  go build for Go, etc.). A non-standard checker is permitted only
-  with a documented rationale.
-* Suppressions (`# type: ignore`, `@ts-ignore`, `#[allow(...)]`) MUST
-  carry a specific error code AND a documented rationale. Blanket
-  suppressions are forbidden.
-* Generated code, vendored code, and migration code MUST be excluded
-  from type checking via configuration (not by inline suppression). The
-  exclusion pattern MUST be listed in this policy.
-* Untyped third-party dependencies MUST be stubbed at the project's
-  type boundary, NOT silenced globally. A blanket `ignore_missing_imports`
-  is forbidden.
+* When a maintained first-party language supports a suitable maintained type checker,
+  compiler check, or equivalent static type-analysis tool, the project
+  MUST select and run one. Missing configuration, migration effort,
+  existing findings, or team preference do not make checking inapplicable.
+* Selection MUST consider active maintenance, security responsiveness,
+  compatibility, first-party source coverage, diagnostic quality, and CI
+  suitability. No product is universally preferred by this policy.
+* Suppressions MUST carry the narrowest tool-supported diagnostic identifier
+  and a documented rationale. Blanket suppressions are forbidden.
+* A suppression is a last resort after fixing the type, narrowing the dynamic
+  boundary, adding validation, or improving a local adapter/stub has been tried.
+  Every new suppression MUST name the tool limitation or external boundary,
+  owner, and removal/review trigger. Suppression count MUST NOT increase
+  without a documented exception; legacy debt uses a ratcheted checked
+  baseline that rejects new unchecked scope.
+* Unused, unreachable, impossible, or obsolete-path diagnostics MUST be
+  investigated under the linting policy's zero-tolerance section. Verified
+  dead code MUST be removed. A proven live reflection/plugin/FFI/platform or
+  external entry point MAY use only the linting policy's evidence-backed,
+  narrow live-entry annotation; this is not a dead-code exception.
+* Generated and vendored code MAY be excluded with a documented reason.
+  First-party migrations, compatibility code, and tests MUST NOT be
+  excluded merely because of their category.
+* Untyped third-party values MUST be contained by typed adapters, protocols,
+  validation, or stubs sufficient to prevent unchecked values escaping into
+  checked first-party code. Blanket global silencing is forbidden.
 
 ## Project facts to resolve
 
@@ -53,16 +72,25 @@ RALPH-FACT: strictness_level: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: excluded_paths: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: stubbed_dependencies: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: suppression_rationale_policy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: suppression_inventory_and_baseline: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: maintenance_evidence: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: first_party_languages: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: excluded_language_evidence: PROJECT-FACT-UNRESOLVED
+
+For each language, `maintenance_evidence` records tool and version range,
+official maintenance source, compatibility and first-party coverage evidence,
+selection date, and recheck trigger. Recheck on major language/tool changes,
+incompatibility, abandonment, or a relevant security signal.
 
 ## AI execution instructions
 
 To follow this policy, an agent making any change MUST:
 
 * DECLARE one `RALPH-LANG:` block per language with the exact checker
-  command. Do not invent languages; do not omit detected languages.
-* PREFER existing tooling and configuration. Adding a new type checker
-  requires a documented rationale and a benchmarked benefit.
+  command. Do not invent languages; do not omit maintained first-party languages.
+* PREFER an established project checker when it remains maintained and
+  suitable. Record selection evidence when adopting or replacing one.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never
   report a command that was not run.
@@ -74,14 +102,19 @@ An agent MUST NOT:
 
 * Add `ignore_missing_imports`, `follow_imports = silent`, or similar
   global silencers without a per-dependency rationale.
-* Use `# type: ignore` without a specific error code.
+* Use a blanket suppression. Require the narrowest tool-supported identifier
+  plus rationale; when no identifier exists, use the narrowest scope and
+  document that tool limitation.
+* Add a suppression merely to make the checker pass, silence first-party
+  design errors globally, or expand the established unchecked baseline.
+* Suppress verified dead code or annotate a speculative/unverified consumer.
 * Weaken the strictness level to obtain a passing result.
 
 ## Verification
 
 Run every gate below before claiming a change complies with this policy.
 
-<!-- REPLACE-ME: per-language template. Keep one block per project language
+<!-- REPLACE-ME: per-language template. Keep one block per maintained first-party language
 with the real checker command (first token must be an approved gate tool;
 wrap others in `make`, `uv run`, or `npx`), add blocks for detected
 languages missing below, drop blocks for languages the project does not
@@ -105,9 +138,15 @@ current code base. Never mask type errors with silencers.
 
 ## Exceptions
 
-A project that genuinely does not apply type checking to a detected
-language MUST mark that language with `RALPH-INAPPLICABLE:` and a
-documented reason. The reason is reviewed at the next policy update.
+A maintained first-party language may use `RALPH-INAPPLICABLE:` only for one
+of two exceptional cases: documented research proves no suitable maintained
+checker exists, or a technically non-checkable first-party surface was
+misclassified as a checkable language. Preference, inconvenience, legacy
+errors, migration cost, and absent setup are invalid. The exact declaration
+MUST start with `exceptional case: no suitable maintained checker exists;` or
+`exceptional case: technically non-checkable first-party surface;` and include
+`evidence:`, `owner:`, `expiry:`, `warning:`, and `review trigger:`. The visible
+warning remains until the exception is removed.
 
 ## Maintenance triggers
 
@@ -160,4 +199,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: typechecking-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

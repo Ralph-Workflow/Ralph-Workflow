@@ -134,7 +134,7 @@ def test_starter_machine_lines_are_line_start(name: str) -> None:
         for line in content.splitlines()
         if any(
             f"RALPH-{kind}:" in line
-            for kind in ("FACT", "COMMAND", "LANG", "INAPPLICABLE")
+            for kind in ("FACT", "COMMAND", "REVIEW", "LANG", "INAPPLICABLE")
         )
         and line.lstrip().startswith(("*", "-"))
         and line.lstrip("*- ").startswith("RALPH-")
@@ -193,6 +193,6 @@ def test_remediation_prompt_owns_the_fill_in_instructions() -> None:
     # so and must NOT instruct adding any completion marker.
     assert "no completion marker" in prompt.lower()
     assert "INSPECT the project" in prompt
-    assert "Remove inapplicable conditional sections" in prompt
+    assert "inactive conditional domain" in prompt
     assert "stricter" in prompt
     assert "RALPH-STARTER-TEMPLATE" in prompt

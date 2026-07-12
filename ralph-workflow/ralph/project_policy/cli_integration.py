@@ -14,6 +14,7 @@ call site reads as one line.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
@@ -23,6 +24,8 @@ from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
 from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
+from ralph.display.status_bar import StatusBarModel
+from ralph.git.operations import create_commit
 from ralph.language_detector import get_project_stack
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -30,6 +33,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.project_policy import _auto_commit as policy_auto_commit
 from ralph.project_policy import agents_md as policy_agents_md
+from ralph.project_policy import markers as policy_markers
 from ralph.project_policy import remediation as policy_remediation
 from ralph.project_policy.preflight import run_policy_readiness_preflight
 from ralph.workspace.fs import FsWorkspace
@@ -137,6 +141,91 @@ def _maybe_offer_inline_policy_skip(
         "Keeping the existing AGENTS.md policy — wrote the opt-out marker; "
         "Ralph policy enforcement is disabled for this repository."
     )
+
+
+def _maybe_resolve_schema_upgrade(
+    workspace: Workspace,
+    emit: EmitFn,
+    *,
+    confirm: Callable[[str], bool] | None,
+    is_tty: Callable[[], bool] | None,
+) -> bool:
+    """Offer one explicit upgrade-or-freeze choice for older policy copies."""
+    paths = [
+        f"{policy_markers.CANONICAL_DIR}{name}"
+        for name in (
+            *policy_markers.CORE_POLICY_FILES,
+            *policy_markers.CONDITIONAL_POLICY_FILES.values(),
+        )
+        if workspace.exists(f"{policy_markers.CANONICAL_DIR}{name}")
+    ]
+    outdated: list[tuple[str, str, int]] = []
+    invalid_schema = False
+    current_version = int(policy_markers.SCHEMA_VERSION.removeprefix("v"))
+    for path in paths:
+        lines = workspace.read(path).splitlines()
+        first_line = next((line for line in lines if line.strip()), "")
+        if first_line == policy_markers.POLICY_SCHEMA_MARKER:
+            continue
+        freeze_match = re.fullmatch(
+            r"<!-- ralph-policy-schema: freeze v([0-9]+) -->", first_line
+        )
+        if freeze_match is not None:
+            frozen_version = int(freeze_match.group(1))
+            if frozen_version < current_version:
+                continue
+            emit(
+                f"Policy {path} has invalid freeze schema v{frozen_version}; "
+                f"a freeze must be older than {policy_markers.SCHEMA_VERSION}."
+            )
+            invalid_schema = True
+            break
+        match = re.fullmatch(r"<!-- ralph-policy-schema: v([0-9]+) -->", first_line)
+        if match is None:
+            emit(f"Policy schema marker is missing or malformed in {path}.")
+            invalid_schema = True
+            break
+        installed_version = int(match.group(1))
+        if installed_version > current_version:
+            emit(
+                f"Policy {path} uses future schema v{installed_version}; "
+                f"this Ralph version supports {policy_markers.SCHEMA_VERSION}."
+            )
+            invalid_schema = True
+            break
+        outdated.append((path, first_line, installed_version))
+    if invalid_schema:
+        return False
+    if not outdated:
+        return True
+    tty_check = is_tty if is_tty is not None else _default_is_tty
+    if not tty_check():
+        emit("Policy schema choice required; rerun interactively to upgrade or freeze each file.")
+        return False
+    emit(
+        f"A newer Ralph policy schema ({policy_markers.SCHEMA_VERSION}) is available "
+        f"for {len(outdated)} customized policy file(s)."
+    )
+    confirm_fn = confirm if confirm is not None else _default_confirm
+    try:
+        for path, marker, installed_version in outdated:
+            if confirm_fn(f"Upgrade {path} through the remediation agent?"):
+                continue
+            content = workspace.read(path)
+            workspace.write(
+                path,
+                content.replace(
+                    marker,
+                    f"<!-- ralph-policy-schema: freeze v{installed_version} -->",
+                    1,
+                ),
+            )
+            emit(f"Froze {path} at schema v{installed_version}.")
+    except Exception as exc:
+        logger.debug("policy-schema prompt failed: {}", exc)
+        emit("Policy schema choice could not be completed; no implicit upgrade was applied.")
+        return False
+    return True
 
 
 def _resolve_remediation_chain_agents(load_result: _LoadResult) -> list[str]:
@@ -274,8 +363,6 @@ def _push_remediation_status_bar(
     block remediation.
     """
     try:
-        from ralph.display.status_bar import StatusBarModel  # noqa: PLC0415
-
         model = StatusBarModel(
             workspace_root=str(workspace_scope.root),
             phase_label="Policy Remediation",
@@ -311,8 +398,6 @@ def _auto_commit_policy_changes(workspace_scope: WorkspaceScope) -> None:
     logged and swallowed — a broken git state must not block the run.
     """
     try:
-        from ralph.git.operations import create_commit  # noqa: PLC0415
-
         sha = policy_auto_commit.commit_policy_updates(workspace_scope.root, create_commit)
         if sha is not None:
             logger.debug("project-policy auto-commit created: {}", sha)
@@ -451,6 +536,10 @@ def run_project_policy_readiness(
     _maybe_offer_inline_policy_skip(
         workspace, emit, confirm=confirm_factory, is_tty=is_tty
     )
+    if not _maybe_resolve_schema_upgrade(
+        workspace, emit, confirm=confirm_factory, is_tty=is_tty
+    ):
+        return _EXIT_PREFLIGHT
     stack = get_project_stack(workspace)
     result = run_policy_readiness_preflight(workspace, stack, emit=emit)
 

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: security-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -30,10 +30,10 @@ policy, or the security posture of third-party hosted services.
 
 These requirements hold regardless of application type:
 
-* Secrets (API keys, tokens, passwords, private keys, connection
-  strings) MUST NEVER appear in source code, committed configuration,
-  logs, error messages, commit messages, or test fixtures. Secrets are
-  injected at runtime through the environment or a secret manager.
+* Live or sensitive secrets MUST NEVER appear in source, committed
+  configuration, logs, errors, or commit messages. Credentials MUST use the
+  approved runtime mechanism, such as workload identity, an OS credential
+  store, environment injection, or a secret manager.
 * All input crossing a trust boundary (network payloads, CLI arguments,
   file contents, environment variables, inter-process messages) MUST be
   treated as untrusted and validated before use. Validation prefers
@@ -45,12 +45,13 @@ These requirements hold regardless of application type:
   annotations, `nosec`-style comments) MUST carry the specific finding
   identifier AND a documented rationale. Blanket suppressions are
   forbidden.
-* Facts that cannot be verified from the repository (data sensitivity,
-  deployment exposure, threat model) MUST be recorded from the project
-  owner's input — never guessed. When owner input is unavailable, the
-  fail-safe default applies: record the most conservative plausible
-  value (data is sensitive, the deployment is exposed), explicitly
-  labeled as an assumption pending owner confirmation.
+* Facts that cannot be verified from the repository MUST come from the
+  project owner and MUST NOT be guessed. When owner input is unavailable,
+  record the fact as pending owner confirmation, apply a separate fail-safe
+  operating assumption, and block only decisions whose safety depends on it.
+  Use the value form `pending owner confirmation; operating assumption: <safe
+  behavior>; blocks: <decisions or none>; review trigger: owner response` so
+  an assumption cannot be mistaken for a verified fact.
 * Supply-chain security (dependency CVE audits, lockfile
   reproducibility, license checks) is governed by dependency-policy.md;
   this policy governs the code the project itself writes.
@@ -133,18 +134,16 @@ To follow this policy, an agent making any change MUST:
 * CHECK every change that touches a declared threat surface against
   that surface's rules before claiming the change complies, and say
   which surfaces the change touched.
-* RECORD owner-supplied facts (data sensitivity, deployment exposure,
-  threat model) from the project owner's input; never guess them. When
-  owner input is unavailable, record the fail-safe conservative value
-  labeled as an assumption pending owner confirmation, and raise the
-  open confirmation at the next policy review.
+* RECORD owner-supplied facts from the project owner's input; never guess
+  them. When unavailable, report the pending owner decision, use a separate
+  conservative operating assumption, and block safety-dependent work.
 * TREAT scanner findings by fixing the cause. A waiver requires the
   finding identifier, a rationale, an owner, and a review date under
   Exceptions — never a bare suppression comment.
-* PREFER the ecosystem's established scanners (e.g. `bandit` or
-  `semgrep` for Python, `gitleaks` or `detect-secrets` for secrets,
-  `gosec` for Go, `cargo geiger` for unsafe-Rust auditing) over novel
-  tooling; adding a new scanner requires a documented rationale.
+* PREFER maintained ecosystem security and secret scanners that support the
+  project's language/version and produce actionable findings. Product names
+  in research or remediation guidance are non-normative examples, not
+  interchangeable requirements.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never
   report a command that was not run.
@@ -154,8 +153,10 @@ To follow this policy, an agent making any change MUST:
 
 An agent MUST NOT:
 
-* Commit, log, or print a secret — including realistic-looking test or
-  placeholder credentials.
+* Commit, log, or print a live or sensitive secret. Syntactically valid test
+  credentials or published test vectors MUST be unmistakably non-production,
+  isolated, non-reusable outside the test system, documented, and narrowly
+  suppressed when a secret scanner flags them.
 * Suppress or waive a scanner finding without an identifier, rationale,
   owner, and review date.
 * Weaken, disable, or bypass any security control to obtain a passing
@@ -296,4 +297,4 @@ new commands, new structure). Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: security-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

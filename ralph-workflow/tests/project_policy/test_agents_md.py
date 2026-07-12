@@ -64,6 +64,8 @@ def test_bootstrap_creates_agents_md_when_missing() -> None:
     assert markers.AGENTS_BLOCK_BEGIN in content
     assert markers.AGENTS_BLOCK_END in content
     assert markers.CANONICAL_DIR in content
+    assert "Dead code is prohibited" in content
+    assert "rewriting later is better" in content
 
 
 def test_bootstrap_preserves_existing_agents_md_content() -> None:
@@ -210,6 +212,8 @@ def test_condense_replaces_untouched_placeholder_with_concise_block() -> None:
     assert content.count(markers.AGENTS_BLOCK_END) == 1
     assert "The remediation agent MUST" not in content
     assert markers.CANONICAL_DIR in content
+    assert "Dead code is prohibited" in content
+    assert "rewriting later is better" in content
     begin = content.find(markers.AGENTS_BLOCK_BEGIN)
     end = content.find(markers.AGENTS_BLOCK_END)
     block_lines = content[begin:end].splitlines()

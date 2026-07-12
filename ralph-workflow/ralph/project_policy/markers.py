@@ -24,8 +24,9 @@ from __future__ import annotations
 from typing import Final
 
 # Schema versioning
-SCHEMA_VERSION: Final[str] = "v1"
-POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v1 -->"
+SCHEMA_VERSION: Final[str] = "v2"
+POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v2 -->"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-07-12.2"
 
 # Opt-out: byte-exact. The opt-out only fires on this exact substring of
 # AGENTS.md; near-miss prose, additional words, or any whitespace/case change
@@ -48,12 +49,15 @@ AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 
 # Canonical policy directory (relative to the workspace root).
 CANONICAL_DIR: Final[str] = "docs/ralph-workflow-policy/"
+APPLICABILITY_OVERRIDES_PATH: Final[str] = (
+    "docs/ralph-workflow-policy/applicability.toml"
+)
 
 # Required agent instruction files in the project.
 AGENTS_MD: Final[str] = "AGENTS.md"
 CLAUDE_MD: Final[str] = "CLAUDE.md"
 
-# Core policy files (the nine always-required for any software project).
+# Core policy files (the ten always-required for any software project).
 CORE_POLICY_FILES: Final[tuple[str, ...]] = (
     "testing-policy.md",
     "typechecking-policy.md",
@@ -64,6 +68,7 @@ CORE_POLICY_FILES: Final[tuple[str, ...]] = (
     "clean-code-policy.md",
     "documentation-policy.md",
     "security-policy.md",
+    "architecture-policy.md",
 )
 
 # Conditional policy files keyed by their domain. Each conditional domain is
@@ -74,6 +79,45 @@ CONDITIONAL_POLICY_FILES: Final[dict[str, str]] = {
     "ux": "ux-policy.md",
     "performance": "performance-policy.md",
     "memory-usage": "memory-usage-policy.md",
+    "accessibility": "accessibility-policy.md",
+    "api-compatibility": "api-compatibility-policy.md",
+    "data-storage": "data-storage-policy.md",
+    "reliability-observability": "reliability-observability-policy.md",
+    "privacy": "privacy-policy.md",
+    "release-deployment": "release-deployment-policy.md",
+}
+
+CONDITIONAL_SIGNAL_PATHS: Final[dict[str, tuple[str, ...]]] = {
+    "api-compatibility": (
+        "openapi.json",
+        "openapi.yaml",
+        "openapi.yml",
+        "docs/api.md",
+        "docs/public-api.md",
+    ),
+    "data-storage": (
+        "migrations/",
+        "db/migrate/",
+        "db/migrations/",
+        "alembic/",
+        "prisma/schema.prisma",
+    ),
+    "reliability-observability": (
+        "k8s/",
+        "deploy/",
+        "docs/operations.md",
+    ),
+    "privacy": (
+        "PRIVACY.md",
+        "docs/privacy.md",
+        "docs/data-classification.md",
+    ),
+    "release-deployment": (
+        ".github/workflows/release.yml",
+        ".github/workflows/release.yaml",
+        "RELEASING.md",
+        "docs/releasing.md",
+    ),
 }
 
 # Required headings per policy file. Every starter AND every project-customized
@@ -110,6 +154,7 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
     "linting-policy.md": (
         "Purpose and scope",
         "Default requirements",
+        "Dead code — zero tolerance",
         "Project facts to resolve",
         "AI execution instructions",
         "Verification",
@@ -186,6 +231,17 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Research basis",
         "Ralph markers",
     ),
+    "architecture-policy.md": (
+        "Purpose and scope",
+        "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
+    ),
     "design-system-policy.md": (
         "Purpose and scope",
         "Default requirements",
@@ -230,6 +286,36 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Research basis",
         "Ralph markers",
     ),
+    "accessibility-policy.md": (
+        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
+        "AI execution instructions", "Verification", "Exceptions",
+        "Maintenance triggers", "Research basis", "Ralph markers",
+    ),
+    "api-compatibility-policy.md": (
+        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
+        "AI execution instructions", "Verification", "Exceptions",
+        "Maintenance triggers", "Research basis", "Ralph markers",
+    ),
+    "data-storage-policy.md": (
+        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
+        "AI execution instructions", "Verification", "Exceptions",
+        "Maintenance triggers", "Research basis", "Ralph markers",
+    ),
+    "reliability-observability-policy.md": (
+        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
+        "AI execution instructions", "Verification", "Exceptions",
+        "Maintenance triggers", "Research basis", "Ralph markers",
+    ),
+    "privacy-policy.md": (
+        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
+        "AI execution instructions", "Verification", "Exceptions",
+        "Maintenance triggers", "Research basis", "Ralph markers",
+    ),
+    "release-deployment-policy.md": (
+        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
+        "AI execution instructions", "Verification", "Exceptions",
+        "Maintenance triggers", "Research basis", "Ralph markers",
+    ),
 }
 
 # Per-policy identifier prefix. Each canonical file must contain a
@@ -260,6 +346,7 @@ POLICY_ID_PREFIX: Final[str] = "<!-- ralph-policy-id:"
 FACT_MARKER: Final[str] = "RALPH-FACT:"
 COMMAND_MARKER: Final[str] = "RALPH-COMMAND:"
 INAPPLICABLE_MARKER: Final[str] = "RALPH-INAPPLICABLE:"
+REVIEW_MARKER: Final[str] = "RALPH-REVIEW:"
 LANG_MARKER: Final[str] = "RALPH-LANG:"
 
 # Tokens that mark a policy line or fact value as unresolved. The validator
@@ -353,6 +440,15 @@ APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
         "kubectl",
         "terraform",
         "ansible",
+        "bundle",
+        "bun",
+        "composer",
+        "dotnet",
+        "gradle",
+        "mvn",
+        "php",
+        "swift",
+        "mix",
     }
 )
 
@@ -421,7 +517,7 @@ CSS_LANGUAGE_SIGNALS: Final[frozenset[str]] = frozenset(
 # framework does a UX policy become required. Design-system can be required
 # without UX; UX always implies design-system.
 UX_APP_FRAMEWORKS: Final[frozenset[str]] = frozenset(
-    {"Angular", "Next.js", "Nuxt", "Gatsby"}
+    {"React", "Vue", "Angular", "Svelte", "Next.js", "Nuxt", "Gatsby"}
 )
 
 # UX router dependency substrings: scanned inside package.json content. A
@@ -507,19 +603,16 @@ MIGRATION_DOCS_GLOB_DIR: Final[str] = "docs"
 # lowercase) and looks for a recognizable phrase as a substring. Unrelated
 # mixed-purpose docs (no recognized heading) are never candidates.
 MIGRATION_HEADING_RECOGNIZERS: Final[tuple[str, ...]] = (
-    "testing",
     "test policy",
-    "linting",
-    "type check",
-    "typechecking",
-    "dependencies",
+    "testing policy",
+    "linting policy",
+    "type checking policy",
     "dependency policy",
-    "verification",
+    "verification policy",
     "agent policy",
-    "code style",
-    "clean code",
+    "clean code policy",
     "documentation policy",
-    "security",
+    "security policy",
     "threat model",
 )
 
@@ -557,6 +650,7 @@ __all__ = [
     "AGENTS_BLOCK_BEGIN",
     "AGENTS_BLOCK_END",
     "AGENTS_MD",
+    "APPLICABILITY_OVERRIDES_PATH",
     "APPROVED_GATE_TOOLS",
     "CACHE_REL_PATH",
     "CANONICAL_DIR",
@@ -564,6 +658,7 @@ __all__ = [
     "CLAUDE_MD",
     "COMMAND_MARKER",
     "CONDITIONAL_POLICY_FILES",
+    "CONDITIONAL_SIGNAL_PATHS",
     "CORE_POLICY_FILES",
     "CSS_LANGUAGE_SIGNALS",
     "FACT_MARKER",
@@ -591,9 +686,11 @@ __all__ = [
     "PERF_DEP_SIGNALS",
     "PERF_SIGNAL_PATHS",
     "PLACEHOLDER_TOKENS",
+    "POLICY_CONTRACT_VERSION",
     "POLICY_ID_PREFIX",
     "POLICY_SCHEMA_MARKER",
     "REQUIRED_HEADINGS",
+    "REVIEW_MARKER",
     "SCHEMA_VERSION",
     "SIGNIFICANT_HEADING_PREFIX",
     "SIGNIFICANT_NONEMPTY_LINE_THRESHOLD",

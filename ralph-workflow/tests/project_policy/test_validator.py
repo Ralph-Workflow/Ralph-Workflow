@@ -35,6 +35,11 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         "",
         "## Project facts to resolve",
         "Real content.",
+        *[
+            line.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+            for line in starters.read_starter(filename).splitlines()
+            if line.startswith(markers.FACT_MARKER)
+        ],
         "",
         "## AI execution instructions",
         "Real content.",
@@ -46,7 +51,11 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         lines.append("")
         lines.append("## Bypass detection")
         lines.append("Real content.")
-        lines.append("RALPH-COMMAND: echo bypass-audit")
+        lines.append("RALPH-COMMAND: make bypass-audit")
+    if filename == "linting-policy.md":
+        lines.append("")
+        lines.append("## Dead code — zero tolerance")
+        lines.append("Dead code is prohibited and removed.")
     if filename == "security-policy.md":
         lines.append("")
         lines.append("## Threat surfaces")
@@ -76,10 +85,85 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
     lines.append("")
     if lang is not None:
         lines.append(f"RALPH-LANG: {lang}")
-        lines.append("RALPH-COMMAND: echo ok")
+        lines.append("RALPH-COMMAND: make test")
     else:
-        lines.append("RALPH-COMMAND: echo ok")
+        lines.append("RALPH-COMMAND: make test")
     return "\n".join(lines)
+
+
+def test_frozen_older_schema_is_an_explicit_valid_choice() -> None:
+    content = "\n".join(
+        (
+            "<!-- ralph-policy-schema: freeze v0 -->",
+            "<!-- ralph-policy-id: testing-policy.md -->",
+        )
+    )
+    findings = validators._check_markers(
+        content,
+        "docs/ralph-workflow-policy/testing-policy.md",
+        "testing-policy.md",
+    )
+    assert findings == []
+
+
+def test_malformed_schema_freeze_does_not_skip_upgrade() -> None:
+    findings = validators._check_markers(
+        "<!-- ralph-policy-schema: freeze version-old -->\n"
+        "<!-- ralph-policy-id: testing-policy.md -->",
+        "docs/ralph-workflow-policy/testing-policy.md",
+        "testing-policy.md",
+    )
+    assert any("schema-testing-policy.md" in finding.requirement_id for finding in findings)
+
+
+def test_typechecking_exception_requires_enumerated_case_and_warning_fields() -> None:
+    generic = validators._check_individual_inapplicables(
+        ["legacy errors; review trigger: later"],
+        "docs/ralph-workflow-policy/typechecking-policy.md",
+        "typechecking-policy.md",
+    )
+    assert generic
+
+    exceptional = validators._check_individual_inapplicables(
+        [
+            "exceptional case: no suitable maintained checker exists; "
+            "evidence: docs/tool-review.md; owner: maintainer; expiry: 2027-01-01; "
+            "warning: type checking unavailable; review trigger: language release"
+        ],
+        "docs/ralph-workflow-policy/typechecking-policy.md",
+        "typechecking-policy.md",
+    )
+    assert exceptional == []
+
+
+def test_linting_exception_requires_enumerated_case_and_warning_fields() -> None:
+    generic = validators._check_individual_inapplicables(
+        ["not configured; review trigger: later"],
+        "docs/ralph-workflow-policy/linting-policy.md",
+        "linting-policy.md",
+    )
+    assert generic
+
+    exceptional = validators._check_individual_inapplicables(
+        [
+            "exceptional case: no suitable maintained linter exists; "
+            "evidence: docs/tool-review.md; owner: maintainer; expiry: 2027-01-01; "
+            "warning: linting unavailable; review trigger: language release"
+        ],
+        "docs/ralph-workflow-policy/linting-policy.md",
+        "linting-policy.md",
+    )
+    assert exceptional == []
+
+
+def test_applicability_override_rejects_whitespace_reason_and_trigger() -> None:
+    ws = MemoryWorkspace()
+    ws.write(
+        markers.APPLICABILITY_OVERRIDES_PATH,
+        '[domains]\nprivacy = "inactive; reason:   ; review trigger:   "\n',
+    )
+    findings = validators._check_applicability_overrides(ws)
+    assert any("override-empty" in finding.requirement_id for finding in findings)
 
 
 def _seed_all_core_complete(workspace: MemoryWorkspace, stack: ProjectStack) -> None:

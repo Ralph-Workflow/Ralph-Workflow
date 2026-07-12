@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: documentation-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -29,9 +29,9 @@ of documentation belongs.
   obsolete documentation MUST be removed or reconciled.
 * Examples and commands in documentation MUST match actual behaviour
   and MUST be verified where practical.
-* Public APIs MUST have accurate docstrings covering: purpose,
-  parameters, return value, raised exceptions, and a minimal usage
-  example.
+* Externally supported APIs MUST follow the declared documentation convention
+  for purpose, parameters, return value, and relevant exceptions. Usage
+  examples are required for non-obvious contracts, not trivial accessors.
 * Configuration documentation MUST list every option with its
   default, valid range, and effect.
 * Release notes MUST enumerate user-visible changes and required
@@ -68,8 +68,9 @@ To follow this policy, an agent making any change MUST:
   behaviour.
 * REMOVE duplicated or contradictory documentation; do not silently
   duplicate.
-* VERIFY that every example command actually runs and produces the
-  documented output.
+* EXECUTE example commands when safe and feasible. Otherwise perform syntax
+  or static validation and record dated review evidence, prerequisites, and
+  the reason execution was unsafe or unavailable.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never
   report a command that was not run.
@@ -98,8 +99,9 @@ delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-The expected successful result is that every documented command
-actually runs and produces the documented output.
+Success means every safe runnable example passes; every non-runnable example
+has declared syntax/static validation or dated review evidence, with its
+prerequisites, limitations, and reason for not executing documented.
 
 ## Exceptions
 
@@ -157,4 +159,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: documentation-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

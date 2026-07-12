@@ -9,8 +9,8 @@ the wheel installed.
 
 Public API:
 
-* :func:`iter_starter_names` — return every bundled starter name (13
-  entries: 9 core + 4 conditional).
+* :func:`iter_starter_names` — return every bundled starter name (20
+  entries: 10 core + 10 conditional).
 * :func:`read_starter` — return the content of one bundled starter.
 * :func:`seed_starter_into` — copy a bundled starter into the canonical
   policy directory via the workspace seam, but ONLY when the target is
@@ -47,15 +47,22 @@ STARTER_NAMES: tuple[str, ...] = (
     "clean-code-policy.md",
     "documentation-policy.md",
     "security-policy.md",
+    "architecture-policy.md",
     "design-system-policy.md",
     "ux-policy.md",
     "performance-policy.md",
     "memory-usage-policy.md",
+    "accessibility-policy.md",
+    "api-compatibility-policy.md",
+    "data-storage-policy.md",
+    "reliability-observability-policy.md",
+    "privacy-policy.md",
+    "release-deployment-policy.md",
 )
 
 
 def iter_starter_names() -> Iterator[str]:
-    """Yield every bundled starter name (9 core + 4 conditional)."""
+    """Yield every bundled starter name (10 core + 10 conditional)."""
     yield from STARTER_NAMES
 
 

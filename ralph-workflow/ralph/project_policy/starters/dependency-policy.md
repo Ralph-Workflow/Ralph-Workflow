@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: dependency-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -19,21 +19,23 @@ lockfile.
 ## Default requirements
 
 * The agent MUST prefer dependencies with maintained, usable type
-  information. Untyped dependencies must be stubbed at the type boundary
-  (see the typechecking-policy.md).
+  information. When unavailable, unchecked values MUST be contained at a
+  typed or validated boundary using adapters, protocols, validation, stubs,
+  or another checker-supported mechanism; blanket silencing is forbidden.
 * A small local implementation is preferred over a poorly maintained,
   untypeable, incompatible, or disproportionately large dependency. The
   "roll our own" decision MUST be justified by size, risk, or
   compatibility — never as a default.
-* Lockfile-based reproducibility is mandatory. CI MUST install from
-  the lockfile, never from a regenerated manifest.
+* Deployable applications and artifacts MUST use reproducible dependency
+  resolution. Published libraries MUST document how CI verifies supported
+  dependency ranges and whether lockfiles govern development, release, or both.
 * Security advisories MUST be tracked for every runtime dependency. A
   known critical CVE blocks the release unless explicitly waived in this
   policy.
 * License compatibility MUST be verified against the project's
   distribution license. Incompatible licenses block the merge.
-* Every dependency addition MUST be paired with a verification command
-  declared in this policy.
+* Every dependency addition MUST be covered by the declared install, build,
+  test, license, and security gates that apply to its risk and project role.
 
 ## Project facts to resolve
 
@@ -55,6 +57,8 @@ RALPH-FACT: license_allowlist: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: security_audit_command: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: type_info_policy: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_install_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: dependency_evaluation_record: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: transitive_dependency_policy: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
@@ -72,8 +76,10 @@ To follow this policy, an agent making any change MUST:
 
 An agent MUST NOT:
 
-* Add a dependency that lacks a maintainer, license, or recent release.
-* Skip the lockfile update.
+* Add a dependency without assessing maintenance, provenance, license,
+  vulnerabilities, compatibility, and footprint. Release recency alone is
+  neither proof of health nor a reason to reject a stable dependency.
+* Skip the required resolution or compatibility update for the project type.
 * Override the security audit command without a documented exception.
 
 ## Verification
@@ -96,9 +102,13 @@ the failure category.
 
 ## Exceptions
 
-A dependency with an incompatible license, unmaintained status, or
-known critical CVE may be accepted with a documented rationale, scope
-of the exception, owner of the exception, and a removal or review date.
+An unmaintained dependency or known critical vulnerability requires explicit,
+time-bounded risk acceptance, mitigation, qualified owner, and removal/review
+date. A license incompatibility cannot be waived as an engineering exception:
+it remains blocked unless qualified legal/license review establishes and
+records a compliant distribution path, reviewing authority, and compliance
+basis, such as permission, relicensing, replacement, or a changed distribution
+model.
 
 ## Maintenance triggers
 
@@ -151,4 +161,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: dependency-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

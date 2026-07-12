@@ -138,25 +138,10 @@ def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[st
         for name in markers.CORE_POLICY_FILES
         if starters.seed_starter_into(workspace, name)
     ]
-    ds_required, _ = evidence.design_system_required(workspace, stack)
-    ux_required, _ = evidence.ux_required(workspace, stack)
-    perf_required, _ = evidence.performance_required(workspace, stack)
-    mem_required, _ = evidence.memory_required(workspace, stack)
-    if ds_required:
-        name = markers.CONDITIONAL_POLICY_FILES["design-system"]
-        if starters.seed_starter_into(workspace, name):
-            seeded.append(f"{markers.CANONICAL_DIR}{name}")
-    if ux_required:
-        name = markers.CONDITIONAL_POLICY_FILES["ux"]
-        if starters.seed_starter_into(workspace, name):
-            seeded.append(f"{markers.CANONICAL_DIR}{name}")
-    if perf_required:
-        name = markers.CONDITIONAL_POLICY_FILES["performance"]
-        if starters.seed_starter_into(workspace, name):
-            seeded.append(f"{markers.CANONICAL_DIR}{name}")
-    if mem_required:
-        name = markers.CONDITIONAL_POLICY_FILES["memory-usage"]
-        if starters.seed_starter_into(workspace, name):
+    requirements = evidence.conditional_domain_requirements(workspace, stack)
+    for domain, name in markers.CONDITIONAL_POLICY_FILES.items():
+        required, _ = requirements[domain]
+        if required and starters.seed_starter_into(workspace, name):
             seeded.append(f"{markers.CANONICAL_DIR}{name}")
     return seeded
 

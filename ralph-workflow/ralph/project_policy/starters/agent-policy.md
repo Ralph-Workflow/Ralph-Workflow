@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: agent-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -17,8 +17,10 @@ the truthfulness obligations, and the documentation update obligations.
 
 ## Default requirements
 
-* Every AI agent MUST read `AGENTS.md` and the canonical policy files
-  under `docs/ralph-workflow-policy/` before changing the project.
+* Every AI agent MUST read `AGENTS.md`, `agent-policy.md`, and
+  `verification-policy.md`, then the canonical policies mapped to the files
+  and surfaces it will touch. Policy remediation MUST inventory the full set,
+  then reconcile one policy at a time with the shared remediation contract.
 * Every AI agent MUST follow the policies applicable to the files it
   touches (testing policy for tests, type-checking policy for typed
   code, etc.).
@@ -27,12 +29,22 @@ the truthfulness obligations, and the documentation update obligations.
   outcome; "I think it works" is not evidence.
 * Every AI agent MUST report failures accurately. Weakening a check
   to obtain a passing result is forbidden.
-* Every AI agent MUST update affected policies and documentation in
-  the same workflow that changes the underlying behaviour.
+* Every AI agent MUST update a policy when a resolved fact, command,
+  applicability decision, or stated requirement becomes inaccurate. User
+  documentation MUST change when its described behavior changes.
 * Every AI agent MUST avoid unsupported claims about tools, commands,
   or dependency quality.
 * Every AI agent MUST preserve the canonical policy directory as the
   single source of truth for project quality policy.
+* Dead code is prohibited. Agents MUST remove unused, unreachable, obsolete,
+  superseded, commented-out, and speculative code in the same change that
+  makes it unnecessary. Version control preserves history; rewriting later is
+  preferable to retaining dead code.
+* Policy ownership MUST remain distinct: architecture identifies boundaries;
+  API compatibility owns consumer contracts; accessibility owns functional
+  conformance; design system owns reusable visual primitives; UX owns flows;
+  dependency owns third-party supply chain; release owns artifacts and
+  promotion; documentation owns content accuracy; verification composes gates.
 
 ## Project facts to resolve
 
@@ -53,6 +65,7 @@ RALPH-FACT: agent_dispatch_command: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: agent_review_process: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: failure_reporting_contract: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: documentation_update_obligation: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: policy_applicability_index: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
@@ -91,9 +104,10 @@ verification gate. Report the actual command output.
 
 ## Exceptions
 
-A specific agent (e.g. an automation bot) MAY be exempted from
-certain obligations with a documented rationale, scope, owner, and
-review date.
+Truthful reporting, non-fabrication, applicable verification, and the ban on
+weakening checks are never exemptible. A specific automation may omit only a
+named gate that is technically irrelevant to its bounded scope, with rationale,
+owner, and review date.
 
 ## Maintenance triggers
 
@@ -140,4 +154,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: agent-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import cache, markers
 from ralph.project_policy.models import ReadinessStatus
 from ralph.workspace.memory import MemoryWorkspace
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _stack() -> ProjectStack:
@@ -56,6 +61,15 @@ def test_cache_invalidates_on_stack_change() -> None:
     # Different stack -> different serialized signature -> cache miss.
     other_stack = ProjectStack(primary_language="Python", secondary_languages=["TypeScript"])
     assert cache.read_cached_ready(ws, other_stack) is False
+
+
+def test_cache_invalidates_when_bundled_policy_contract_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws = MemoryWorkspace()
+    cache.write_cache(ws, _stack(), ReadinessStatus.READY)
+    monkeypatch.setattr(markers, "POLICY_CONTRACT_VERSION", "future-contract")
+    assert cache.read_cached_ready(ws, _stack()) is False
 
 
 def test_cache_invalidates_on_directory_signal_create() -> None:

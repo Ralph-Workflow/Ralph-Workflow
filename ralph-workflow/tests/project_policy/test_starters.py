@@ -10,9 +10,14 @@ import pytest
 from ralph.project_policy import markers, starters
 
 
-def test_iter_starter_names_returns_thirteen() -> None:
+def test_iter_starter_names_returns_twenty() -> None:
     names = list(starters.iter_starter_names())
-    assert len(names) == 13
+    assert len(names) == 20
+
+
+def test_architecture_policy_is_a_core_starter() -> None:
+    assert "architecture-policy.md" in markers.CORE_POLICY_FILES
+    assert "architecture-policy.md" in set(starters.iter_starter_names())
 
 
 def test_security_policy_is_a_core_starter_with_threat_surfaces() -> None:
@@ -170,26 +175,72 @@ def test_starter_citations_are_structurally_valid() -> None:
 # reviewers must update this inventory when starter advice changes.
 _RECOMMENDED_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
     "testing-policy.md": (),
-    "typechecking-policy.md": ("mypy", "tsc", "cargo check", "go build"),
-    "linting-policy.md": ("ruff", "eslint", "golangci-lint"),
+    "typechecking-policy.md": (),
+    "linting-policy.md": (),
     "dependency-policy.md": (),
-    "verification-policy.md": ("make verify",),
+    "verification-policy.md": (),
     "agent-policy.md": (),
     "clean-code-policy.md": (),
     "documentation-policy.md": (),
-    "security-policy.md": (
-        "bandit",
-        "semgrep",
-        "gitleaks",
-        "detect-secrets",
-        "gosec",
-        "cargo geiger",
-    ),
+    "security-policy.md": (),
+    "architecture-policy.md": (),
     "design-system-policy.md": (),
     "ux-policy.md": (),
+    "accessibility-policy.md": (),
+    "api-compatibility-policy.md": (),
+    "data-storage-policy.md": (),
+    "reliability-observability-policy.md": (),
+    "privacy-policy.md": (),
+    "release-deployment-policy.md": (),
     "performance-policy.md": (),
     "memory-usage-policy.md": (),
 }
+
+
+def test_standard_quality_gates_are_mandatory_when_supported() -> None:
+    testing = starters.read_starter("testing-policy.md")
+    typechecking = starters.read_starter("typechecking-policy.md")
+    linting = starters.read_starter("linting-policy.md")
+    verification = starters.read_starter("verification-policy.md")
+
+    assert "Automated testing is mandatory" in testing
+    assert "supports a suitable maintained" in typechecking
+    assert "MUST select and run one" in typechecking
+    assert "supports a suitable maintained" in linting
+    assert "MUST select and run one" in linting
+    assert "formatting" in linting.lower()
+    assert "preference" in verification.lower()
+    assert "does not make a supported gate inapplicable" in verification
+
+
+def test_typechecking_policy_does_not_prescribe_products_or_exclude_first_party_code() -> None:
+    content = starters.read_starter("typechecking-policy.md")
+    defaults = content.split("## Default requirements", 1)[1].split(
+        "## Project facts to resolve", 1
+    )[0]
+
+    for product in ("mypy", "pyright", "tsc", "cargo check", "go build"):
+        assert product not in defaults
+    assert "migration code MUST be excluded" not in content
+    assert "compatibility code MUST be excluded" not in content
+
+
+def test_linting_policy_has_zero_tolerance_for_dead_code() -> None:
+    content = starters.read_starter("linting-policy.md")
+    normalized = " ".join(content.split())
+    assert "## Dead code — zero tolerance" in content
+    assert "Dead code is prohibited" in content
+    assert "better to delete obsolete code and implement it again" in normalized
+    assert "fake references" in content
+    assert "MUST be removed" in content
+
+
+def test_typechecking_dead_code_findings_cannot_be_suppressed() -> None:
+    content = starters.read_starter("typechecking-policy.md")
+    normalized = " ".join(content.split())
+    assert "Verified dead code MUST be removed" in normalized
+    assert "evidence-backed" in normalized
+    assert "not a dead-code exception" in normalized
 
 
 def test_recommended_gate_tools_inventory_covers_every_starter() -> None:
@@ -301,7 +352,11 @@ def test_starter_has_placeholder_fact_lines() -> None:
 def test_starter_has_command_or_inapplicable() -> None:
     for name in starters.iter_starter_names():
         content = starters.read_starter(name)
-        assert markers.COMMAND_MARKER in content or markers.INAPPLICABLE_MARKER in content
+        assert (
+            markers.COMMAND_MARKER in content
+            or markers.REVIEW_MARKER in content
+            or markers.INAPPLICABLE_MARKER in content
+        )
 
 
 def test_starter_never_mentions_a_completion_marker() -> None:
@@ -371,5 +426,3 @@ def test_starters_are_free_of_known_content_corruption() -> None:
             assert fragment not in content, (
                 f"starter {name} contains known corruption fragment {fragment!r}"
             )
-
-

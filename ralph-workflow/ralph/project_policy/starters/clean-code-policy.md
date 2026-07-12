@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: clean-code-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -25,20 +25,24 @@ code.
   project's actual convention.
 * The agent MUST prefer simple, maintainable solutions and existing
   project patterns over speculative abstractions or duplicated helpers.
-  An abstraction with one implementation and one caller is premature.
+  New abstractions require demonstrated boundary, volatility, testing, or
+  reuse value; implementation count alone neither requires nor forbids one.
 * Dead code, commented-out code, unused compatibility layers, and
   unused imports MUST be removed. The "we might need it later"
   rationale does not override the no-dead-code rule.
-* Function, class, module, and file scope MUST follow single
-  responsibility: a function does one thing, a module owns one
-  concept.
-* Error handling MUST surface actionable context. Bare `except: pass`
-  is forbidden. Errors MUST be logged with enough context to diagnose.
-* Code that cannot be tested cleanly MUST be refactored at the
-  boundary, not patched with white-box tests.
-* Generated code, vendored code, migration code, and compatibility
-  code MUST be marked as such (via filename, header, or directory
-  location) and excluded from generic lint/typecheck rules.
+* Functions, classes, modules, and files MUST remain cohesive, expose
+  understandable interfaces, and have bounded reasons to change.
+* Error handling MUST surface actionable context. Bare `except: pass` is
+  forbidden. Handle or propagate errors according to project convention;
+  log once at the owning handling boundary and redact sensitive context.
+* Test friction MUST prompt investigation. Refactor only when it reveals a
+  real cohesion, dependency, or I/O-seam problem; do not create an artificial
+  public seam solely for a test.
+* Generated and vendored code MUST be identifiable and MAY be excluded from
+  generic checks with a documented reason. First-party migration and
+  compatibility code remain subject to applicable quality gates.
+* Cross-component dependency direction, state ownership, and external I/O
+  boundaries are governed by `architecture-policy.md`.
 
 ## Project facts to resolve
 
@@ -135,6 +139,11 @@ This policy MUST be reviewed in the same workflow as any of:
   http: https://www.poodr.com/
   review date: 2026-07-11
 
+* publisher: Microsoft Press / Steve McConnell
+  title: "Code Complete: A Practical Handbook of Software Construction"
+  http: https://www.microsoftpressstore.com/articles/article.aspx?p=2222451
+  review date: 2026-07-12
+
 ## Living document contract
 
 This policy is a living document. It MUST evolve as the project grows:
@@ -155,4 +164,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: clean-code-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

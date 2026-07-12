@@ -25,12 +25,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from git import Repo
 
 # ``git status --porcelain`` lines start with a 2-char status code followed
 # by a single space -- so a valid line has at least 4 characters of prefix
@@ -135,8 +135,6 @@ def commit_scoped_updates(
     workspace, clean scope, or any ``OSError`` / ``GitCommandError``).
     """
     try:
-        from git import GitCommandError, InvalidGitRepositoryError, Repo  # noqa: PLC0415
-
         repo_root_path = Path(repo_root)
         try:
             repo = Repo(repo_root_path)

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: ux-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -35,8 +35,9 @@ interaction behaviour, or usability.
   states MUST follow the established pattern.
 * Forms MUST follow the established pattern: labels, validation
   feedback, focus management, keyboard interaction, and accessibility.
-* Destructive operations MUST require explicit confirmation and MUST
-  follow the established destructive-action pattern.
+* Destructive operations MUST use a risk-appropriate safeguard such as
+  confirmation, undo, soft deletion, version history, delayed execution,
+  or an explicit non-interactive override, following the established pattern.
 * Terminology, actions, and confirmations MUST be consistent across the
   application.
 * UX changes MUST be evaluated against existing patterns and user
@@ -81,7 +82,8 @@ To follow this policy, an agent making any change MUST:
 An agent MUST NOT:
 
 * Introduce inconsistent terminology or destructive-action patterns.
-* Skip the empty / error / loading state implementation.
+* Skip a relevant empty, error, loading, validation, permission, or success
+  state. An unreachable state may be recorded as inapplicable with a reason.
 
 ## Verification
 
@@ -96,6 +98,7 @@ inapplicable with a reason and the condition that would create it. Then
 delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-REVIEW: exercise affected flows and relevant states with representative users or proxies; evidence: dated UX review or explicit not-performed blocker; owner: product UX owner
 
 The expected successful result is exit 0 from the UX review / audit.
 On failure, report the affected screen and the gap.
@@ -156,4 +159,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: ux-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

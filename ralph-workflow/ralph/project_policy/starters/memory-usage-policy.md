@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: memory-usage-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -25,8 +25,8 @@ allocation-sensitive paths.
 
 ## Default requirements
 
-* Memory limits, growth expectations, and representative workloads MUST
-  be documented when known.
+* Changes affecting allocation, retention, lifecycle, or volume-driven state
+  MUST respect documented memory limits, growth expectations, and workloads.
 * Ownership and lifecycle rules for caches, buffers, queues,
   collections, subscriptions, and handles MUST be documented.
 * Bounds, eviction, backpressure, cleanup, and shutdown expectations
@@ -65,8 +65,8 @@ RALPH-FACT: ci_soak_integration: PROJECT-FACT-UNRESOLVED
 
 To follow this policy, an agent making any change MUST:
 
-* DISTINGUISH peak memory, steady-state memory, and unbounded growth
-  in every change.
+* DISTINGUISH peak memory, steady-state memory, and unbounded growth for
+  changes affecting allocation, retention, lifecycle, or volume-driven state.
 * PREFER existing lifecycle patterns over new collections.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never
@@ -77,9 +77,8 @@ To follow this policy, an agent making any change MUST:
 
 An agent MUST NOT:
 
-* Add an unbounded collection (list / dict / set / deque without
-  maxlen) to module-level scope or to instance attributes in
-  `__init__` without a documented cap.
+* Add a long-lived or externally/volume-driven unbounded collection without
+  a documented cap, eviction policy, backpressure rule, or cleanup path.
 * Fabricate a fixed memory budget when the project has not established
   one.
 
@@ -156,4 +155,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: memory-usage-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

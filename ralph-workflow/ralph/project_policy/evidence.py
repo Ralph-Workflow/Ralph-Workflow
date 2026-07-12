@@ -251,6 +251,53 @@ def memory_required(
     return (bool(triggered), triggered)
 
 
+def conditional_domain_requirements(
+    workspace: Workspace, stack: ProjectStack
+) -> dict[str, tuple[bool, list[str]]]:
+    """Return every conditional domain's requirement and exact evidence.
+
+    This is the shared dispatch surface for preflight and validation. New
+    domains cannot be seeded without also being validated from the same result.
+    """
+    design_system = design_system_required(workspace, stack)
+    path_domains = {
+        domain: (
+            bool(paths := _consulted_signal_files(workspace, signal_paths)),
+            paths,
+        )
+        for domain, signal_paths in markers.CONDITIONAL_SIGNAL_PATHS.items()
+    }
+    requirements = {
+        "design-system": design_system,
+        "ux": ux_required(workspace, stack),
+        "performance": performance_required(workspace, stack),
+        "memory-usage": memory_required(workspace, stack),
+        # Every detected graphical/web component surface needs functional
+        # accessibility policy; this intentionally shares the conservative
+        # design-system evidence rather than adding a fuzzy detector.
+        "accessibility": design_system,
+        **path_domains,
+    }
+    if workspace.exists(markers.APPLICABILITY_OVERRIDES_PATH):
+        for line in workspace.read(markers.APPLICABILITY_OVERRIDES_PATH).splitlines():
+            match = re.fullmatch(
+                r'([a-z][a-z-]+)\s*=\s*"(required|inactive); reason: ([^;]+); review trigger: ([^"]+)"',
+                line.strip(),
+            )
+            if match is None:
+                continue
+            domain, decision = str(match.group(1)), str(match.group(2))
+            if domain not in requirements:
+                continue
+            if not str(match.group(3)).strip() or not str(match.group(4)).strip():
+                continue
+            if decision == "required":
+                requirements[domain] = (True, [f"explicit:{domain}"])
+            else:
+                requirements[domain] = (False, [f"explicit-inactive:{domain}"])
+    return requirements
+
+
 # Pre-compile the heading normalizer once at import time.
 _HEADING_NORMALIZE_RE = re.compile(r"^\s*#{1,2}\s*")
 
@@ -265,14 +312,23 @@ def _normalize_heading(line: str) -> str:
     return stripped.strip().lower()
 
 
-def _doc_recognized(content: str) -> str | None:
+def _doc_recognized(content: str, path: str = "") -> str | None:
     """Return the first recognized heading phrase in ``content`` or None."""
+    conventional: dict[str, frozenset[str]] = {
+        "TESTING.md": frozenset({"testing", "test policy", "testing policy"}),
+        "SECURITY.md": frozenset({"security", "security considerations", "security policy"}),
+        ".github/SECURITY.md": frozenset(
+            {"security", "security considerations", "security policy"}
+        ),
+    }
     for line in content.splitlines():
         if not line.lstrip().startswith("#"):
             continue
         normalized = _normalize_heading(line)
+        if normalized in conventional.get(path, frozenset()):
+            return normalized
         for phrase in markers.MIGRATION_HEADING_RECOGNIZERS:
-            if phrase in normalized:
+            if phrase == normalized:
                 return phrase
     return None
 
@@ -338,7 +394,7 @@ def migration_candidates(workspace: Workspace) -> list[MigrationCandidate]:
         content = _read(workspace, path)
         if not content:
             continue
-        phrase = _doc_recognized(content)
+        phrase = _doc_recognized(content, path)
         if phrase is None:
             continue
         resolved = _is_migration_resolved(workspace, path, content)
@@ -360,7 +416,7 @@ def migration_candidates(workspace: Workspace) -> list[MigrationCandidate]:
         content = _read(workspace, path)
         if not content:
             continue
-        phrase = _doc_recognized(content)
+        phrase = _doc_recognized(content, path)
         if phrase is None:
             continue
         resolved = _is_migration_resolved(workspace, path, content)
@@ -375,7 +431,7 @@ def _is_migration_resolved(workspace: Workspace, path: str, content: str) -> boo
     if target and _exists(workspace, f"{markers.CANONICAL_DIR}{target}"):
         return True
     # Recognized headings removed -> doc no longer policy-like.
-    return _doc_recognized(content) is None
+    return _doc_recognized(content, path) is None
 
 
 def readiness_evidence(workspace: Workspace, stack: ProjectStack) -> list[EvidenceEntry]:
@@ -391,6 +447,7 @@ def readiness_evidence(workspace: Workspace, stack: ProjectStack) -> list[Eviden
     paths: list[str] = [
         markers.AGENTS_MD,
         markers.CLAUDE_MD,
+        markers.APPLICABILITY_OVERRIDES_PATH,
     ]
     paths.extend(f"{markers.CANONICAL_DIR}{filename}" for filename in markers.CORE_POLICY_FILES)
     paths.extend(
@@ -400,6 +457,8 @@ def readiness_evidence(workspace: Workspace, stack: ProjectStack) -> list[Eviden
     # Conditional-domain signal files.
     paths.extend(markers.PERF_SIGNAL_PATHS)
     paths.extend(markers.MEMORY_SIGNAL_PATHS)
+    for signal_paths in markers.CONDITIONAL_SIGNAL_PATHS.values():
+        paths.extend(signal_paths)
     # Manifests scanned for dep substrings.
     paths.extend(_MANIFEST_FILES)
     # Migration candidates (paths are already workspace-relative).
@@ -472,6 +531,8 @@ def evidence_signature(workspace: Workspace, stack: ProjectStack) -> str:
     """
     entries = readiness_evidence(workspace, stack)
     payload = {
+        "policy_contract_version": markers.POLICY_CONTRACT_VERSION,
+        "policy_schema_version": markers.SCHEMA_VERSION,
         "stack": _serialize_stack(stack),
         "evidence": [
             {
@@ -487,6 +548,7 @@ def evidence_signature(workspace: Workspace, stack: ProjectStack) -> str:
 
 
 __all__ = [
+    "conditional_domain_requirements",
     "design_system_required",
     "evidence_signature",
     "memory_required",

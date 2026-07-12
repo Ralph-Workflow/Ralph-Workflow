@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: testing-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -18,28 +18,30 @@ checks performed by humans, or third-party hosted service reliability.
 
 ## Default requirements
 
-* The test suite MUST be black-box by default: tests assert observable
-  behaviour through the project's public surface (CLI entry points, MCP
-  tool handlers, library exports, HTTP endpoints, CLI outputs). White-box
-  tests that reach into private internals are permitted only when no
-  observable surface can express the regression.
-* When a behaviour cannot be expressed through the public surface
-  cleanly, the agent MUST refactor the production boundary (extract an
-  interface, add a seam, return a typed value) so a black-box test is
-  possible. Defaulting to white-box coupling is a design defect.
+* Tests SHOULD assert stable observable contracts at the narrowest useful
+  boundary. Public-surface, contract, package, and internal unit tests are
+  all valid when they express behavior cheaply without coupling to incidental
+  implementation details.
+* Test friction SHOULD trigger a production-boundary refactor only when it
+  reveals a real cohesion, dependency, or I/O-seam problem. Do not create an
+  artificial public API solely to accommodate a test.
 * Narrower unit tests are appropriate for pure functions, parsers,
   validators, and decision tables where every branch is reachable from
   the function's signature alone.
-* Tests MUST be deterministic: no real time, real filesystem, real
-  network, real subprocess, or global singleton mutation. Inject
-  dependencies through constructors or fixtures; use fakes and doubles
-  for clocks, filesystems, and processes.
+* Automated testing is mandatory for first-party software behavior. A
+  missing framework or code that is difficult to test requires a real test
+  seam and gate; it does not make testing inapplicable.
+* Tests MUST be deterministic and bounded. Unit tests isolate real time,
+  filesystem, network, subprocess, and global singleton mutation. Integration,
+  contract, system, and end-to-end tests MAY use controlled real resources
+  when that interaction is the behavior under test; those resources MUST be
+  isolated, reproducible, time-bounded, and cleaned up.
 * Every bug fix MUST add a regression test that fails on the bug and
   passes on the fix. The test name SHOULD encode the regression so
   future readers understand the contract.
-* Every new behaviour MUST add at least one positive test (the behaviour
-  works as documented) and one negative test (the behaviour rejects
-  invalid input).
+* Every new behaviour MUST add positive coverage. Negative coverage is
+  mandatory when rejection, failure, permission, boundary, or recovery
+  behavior exists.
 
 ## Project facts to resolve
 
@@ -67,8 +69,10 @@ RALPH-FACT: regression_test_convention: PROJECT-FACT-UNRESOLVED
 
 To follow this policy, an agent making any change MUST:
 
-* WRITE the test before the production change when fixing a bug or
-  adding behaviour; watch it fail for the expected reason first.
+* WRITE the test before the production change and report the observed red
+  result. If it unexpectedly passes, confirm existing behavior and refine the
+  missing contract. If characterization or generated/declarative work has no
+  meaningful red phase, record why and never manufacture a failure.
 * PREFER existing test helpers, fixtures, and utilities. Do not add a
   new testing dependency when the existing stack can express the case.
 * AVOID adding a dependency, abstraction, or numeric target without
@@ -85,8 +89,9 @@ An agent MUST NOT:
 * Default to white-box tests that couple to private internals.
 * Weaken the testing gate to obtain a passing result (no skipping tests,
   no lowering coverage thresholds, no `--continue-on-collection-errors`).
-* Introduce real `time.sleep()`, real filesystem I/O, or real network
-  I/O in tests. Use fakes and dependency injection.
+* Introduce wall-clock sleeps or uncontrolled external I/O. Use fakes for
+  unit tests and isolated bounded resources only at test layers intended to
+  exercise those integrations.
 
 ## Verification
 
@@ -145,6 +150,11 @@ This policy MUST be reviewed in the same workflow as any of:
   http: https://martinfowler.com/bliki/TestPyramid.html
   review date: 2026-07-11
 
+* publisher: Pearson / Kent Beck
+  title: "Test-Driven Development: By Example"
+  http: https://www.pearson.com/en-us/subject-catalog/p/test-driven-development-by-example/P200000009421/9780321146533
+  review date: 2026-07-12
+
 ## Living document contract
 
 This policy is a living document. It MUST evolve as the project grows:
@@ -165,4 +175,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

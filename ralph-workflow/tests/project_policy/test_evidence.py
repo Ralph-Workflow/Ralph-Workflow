@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import evidence, markers
 from ralph.workspace.memory import MemoryWorkspace
@@ -155,6 +157,38 @@ def test_memory_not_required_without_signals() -> None:
     assert evidence.memory_required(ws, stack)[0] is False
 
 
+@pytest.mark.parametrize(
+    ("domain", "signal_path"),
+    (
+        ("api-compatibility", "openapi.yaml"),
+        ("data-storage", "db/migrate/"),
+        ("reliability-observability", "docs/operations.md"),
+        ("privacy", "docs/data-classification.md"),
+        ("release-deployment", ".github/workflows/release.yml"),
+    ),
+)
+def test_conditional_domain_requires_exact_repository_signal(
+    domain: str, signal_path: str
+) -> None:
+    ws = MemoryWorkspace()
+    if signal_path.endswith("/"):
+        ws.mkdirs(signal_path.rstrip("/"))
+    else:
+        ws.write(signal_path, "verified signal")
+    requirements = evidence.conditional_domain_requirements(ws, _stack())
+    required, triggers = requirements[domain]
+    assert required is True
+    assert signal_path in triggers
+
+
+def test_specialized_conditional_domains_remain_optional_without_exact_signals() -> None:
+    requirements = evidence.conditional_domain_requirements(
+        MemoryWorkspace(), _stack()
+    )
+    for domain in markers.CONDITIONAL_SIGNAL_PATHS:
+        assert requirements[domain] == (False, [])
+
+
 def test_readiness_evidence_includes_all_policy_paths() -> None:
     ws = MemoryWorkspace()
     stack = _stack()
@@ -232,7 +266,7 @@ def test_migration_candidates_flags_docs_security_heading() -> None:
     ws = MemoryWorkspace()
     ws.write(
         "docs/security.md",
-        "## Security considerations\n\nNever log tokens or credentials.\n",
+        "## Security policy\n\nNever log tokens or credentials.\n",
     )
     candidates = evidence.migration_candidates(ws)
     paths = [c.path for c in candidates]

@@ -39,8 +39,11 @@ def test_every_starter_declares_living_document_contract() -> None:
         assert "## Living document contract" in content, path.name
         lowered = content.lower()
         assert "living document" in lowered, path.name
-        assert "favor of the existing project policy" in lowered, path.name
-        assert "intent" in lowered, path.name
+        assert (
+            "favor of the existing project policy" in lowered
+            or "mandatory outcomes remain" in lowered
+        ), path.name
+        assert "intent" in lowered or "mandatory outcomes remain" in lowered, path.name
 
 
 def test_remediation_prompt_states_living_document_rules() -> None:

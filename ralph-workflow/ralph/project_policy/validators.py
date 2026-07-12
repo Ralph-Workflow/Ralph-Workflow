@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
-from ralph.project_policy import evidence, markers
+from ralph.project_policy import evidence, markers, starters
 from ralph.project_policy.models import PolicyFinding
 
 if TYPE_CHECKING:
@@ -41,6 +42,8 @@ _COMMAND_LINE_RE = re.compile(r"^RALPH-COMMAND:.*$")
 _COMMAND_VALUE_RE = re.compile(r"^RALPH-COMMAND:\s*\S+.*$")
 _INAPPLICABLE_LINE_RE = re.compile(r"^RALPH-INAPPLICABLE:.*$")
 _INAPPLICABLE_VALUE_RE = re.compile(r"^RALPH-INAPPLICABLE:\s*\S+.*$")
+_REVIEW_LINE_RE = re.compile(r"^RALPH-REVIEW:.*$")
+_REVIEW_VALUE_RE = re.compile(r"^RALPH-REVIEW:\s*\S+.*$")
 _LANG_LINE_RE = re.compile(r"^RALPH-LANG:\s*(\S.*?)\s*$")
 _HEADING_LINE_RE = re.compile(r"^\s*#{1,2}\s+(.+?)\s*$")
 _POLICY_ID_LINE_RE = re.compile(r"<!--\s*ralph-policy-id:\s*([^>\s]+)\s*-->")
@@ -457,11 +460,53 @@ def _validate_existing_policy_file(
     """Validate every check that operates on an existing policy file's content."""
     findings: list[PolicyFinding] = []
     findings.extend(_check_markers(content, path, filename))
-    findings.extend(_check_required_headings(content, path, filename))
+    if _frozen_schema_version(content) is None:
+        findings.extend(_check_required_headings(content, path, filename))
     findings.extend(_check_research_basis(content, path, filename))
     findings.extend(_check_placeholders(content, path, filename))
+    if _frozen_schema_version(content) is None:
+        findings.extend(_check_required_fact_keys(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
+    return findings
+
+
+def _fact_key(line: str) -> str | None:
+    match = re.fullmatch(r"RALPH-FACT:\s*([^:]+):\s*\S.*", line)
+    return str(match.group(1)).strip() if match else None
+
+
+def _check_required_fact_keys(
+    content: str, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Require every fact key declared by the bundled contract exactly once."""
+    required = {
+        key
+        for line in starters.read_starter(filename).splitlines()
+        if (key := _fact_key(line)) is not None
+    }
+    present_keys = [
+        key
+        for line in content.splitlines()
+        if (key := _fact_key(line)) is not None
+    ]
+    findings: list[PolicyFinding] = []
+    for key in sorted(required):
+        count = present_keys.count(key)
+        if count == 1:
+            continue
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_PLACEHOLDER}:{filename}:fact-{key}",
+                path=path,
+                missing_evidence=(
+                    f"required RALPH-FACT key {key!r} occurs {count} times; expected once"
+                ),
+                required_outcome=(
+                    f"record exactly one verified `RALPH-FACT: {key}: <value>` line"
+                ),
+            )
+        )
     return findings
 
 
@@ -498,17 +543,26 @@ def _check_template_banner(
 def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding]:
     """Validate the schema + policy-id markers."""
     findings: list[PolicyFinding] = []
-    if markers.POLICY_SCHEMA_MARKER not in content:
+    lines = content.splitlines()
+    first_line = next((line for line in lines if line.strip()), "")
+    frozen_version = _frozen_schema_version(content)
+    current_version = int(markers.SCHEMA_VERSION.removeprefix("v"))
+    frozen_schema = frozen_version is not None and frozen_version < current_version
+    if first_line != markers.POLICY_SCHEMA_MARKER and not frozen_schema:
         findings.append(
             PolicyFinding(
                 requirement_id=f"{markers.ID_MARKER_MISSING}:schema-{filename}",
                 path=path,
                 missing_evidence=f"missing schema marker {markers.POLICY_SCHEMA_MARKER}",
-                required_outcome="add the schema marker comment at the top of the file",
+                required_outcome=(
+                    "choose whether to upgrade this policy to the bundled schema "
+                    "or freeze its current schema in place, then add the selected "
+                    "schema marker at the top of the file"
+                ),
             )
         )
     expected_id = f"{markers.POLICY_ID_PREFIX} {filename} -->"
-    if expected_id not in content:
+    if lines.count(expected_id) != 1:
         findings.append(
             PolicyFinding(
                 requirement_id=f"{markers.ID_MARKER_MISSING}:id-{filename}",
@@ -520,6 +574,13 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
             )
         )
     return findings
+
+
+def _frozen_schema_version(content: str) -> int | None:
+    """Return an explicitly frozen older schema version, if well formed."""
+    first_line = next((line for line in content.splitlines() if line.strip()), "")
+    match = re.fullmatch(r"<!-- ralph-policy-schema: freeze v([0-9]+) -->", first_line)
+    return int(match.group(1)) if match else None
 
 
 def _check_required_headings(content: str, path: str, filename: str) -> list[PolicyFinding]:
@@ -579,19 +640,27 @@ def _check_individual_citations(
     """Validate every citation block contains the required fields."""
     findings: list[PolicyFinding] = []
     for index, block in enumerate(blocks, start=1):
-        missing = [
-            field
-            for field in markers.CITATION_REQUIRED_FIELDS
-            if field.lower() not in block.lower()
-        ]
-        if not missing:
+        lines = [line.strip().lstrip("*- ") for line in block.splitlines()]
+        fields = {
+            key: value.strip()
+            for line in lines
+            if ":" in line
+            for key, value in [line.split(":", 1)]
+        }
+        missing = [field for field in markers.CITATION_REQUIRED_FIELDS if not fields.get(field)]
+        url = fields.get("http", "")
+        parsed = urlparse(url)
+        valid_url = parsed.scheme == "https" and bool(parsed.netloc)
+        valid_date = bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields.get("review date", "")))
+        if not missing and valid_url and valid_date:
             continue
         findings.append(
             PolicyFinding(
                 requirement_id=f"{markers.ID_CITATION_MISSING}:{filename}:block-{index}",
                 path=path,
                 missing_evidence=(
-                    f"Research basis citation {index} missing field(s): {missing}"
+                    f"Research basis citation {index} has missing/invalid fields: "
+                    f"missing={missing}, https_url={valid_url}, iso_date={valid_date}"
                 ),
                 required_outcome=(
                     f"add missing fields {missing} to citation {index} "
@@ -676,14 +745,31 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
     inapplicable_raw_values = _inapplicable_raw_lines(content)
     has_command = bool(command_values)
     has_inapplicable = bool(inapplicable_values)
-    if not has_command and not has_inapplicable:
+    review_values = [
+        line[len(markers.REVIEW_MARKER):].strip()
+        for line in content.splitlines()
+        if _REVIEW_VALUE_RE.match(line)
+    ]
+    review_raw_values = [
+        line[len(markers.REVIEW_MARKER):].strip()
+        for line in content.splitlines()
+        if _REVIEW_LINE_RE.match(line)
+    ]
+    command_required = filename in {
+        "testing-policy.md",
+        "verification-policy.md",
+    }
+    if (command_required and not has_command) or (
+        not command_required and not has_command and not has_inapplicable and not review_values
+    ):
         findings.append(
             PolicyFinding(
                 requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:missing",
                 path=path,
                 missing_evidence=(
-                    "file contains neither a non-empty RALPH-COMMAND nor a "
-                    "non-empty RALPH-INAPPLICABLE line"
+                    "file lacks the required runnable RALPH-COMMAND gate"
+                    if command_required
+                    else "file contains no non-empty RALPH-COMMAND, RALPH-REVIEW, or RALPH-INAPPLICABLE line"
                 ),
                 required_outcome=(
                     "add at least one RALPH-COMMAND line with a real runnable "
@@ -695,6 +781,19 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
     findings.extend(
         _check_individual_inapplicables(inapplicable_raw_values, path, filename)
     )
+    for index, value in enumerate(review_raw_values, start=1):
+        lowered = value.lower()
+        if not value or "evidence:" not in lowered or "owner:" not in lowered:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:review-{index}",
+                    path=path,
+                    missing_evidence="RALPH-REVIEW lacks a procedure, evidence, or owner",
+                    required_outcome=(
+                        "declare `RALPH-REVIEW: <procedure>; evidence: <record>; owner: <role>`"
+                    ),
+                )
+            )
     return findings
 
 
@@ -750,6 +849,97 @@ def _check_individual_inapplicables(
                     )
                 )
                 break
+        lowered = value.lower()
+        if filename == "testing-policy.md":
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:mandatory-{index}",
+                    path=path,
+                    missing_evidence="automated testing is mandatory for behavior-bearing software",
+                    required_outcome="replace RALPH-INAPPLICABLE with a real testing gate",
+                )
+            )
+        elif filename == "typechecking-policy.md" and not (
+            lowered.startswith(
+                "exceptional case: no suitable maintained checker exists;"
+            )
+            or lowered.startswith(
+                "exceptional case: technically non-checkable first-party surface;"
+            )
+        ):
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:unsupported-reason-{index}",
+                    path=path,
+                    missing_evidence="type-checking exception is not an enumerated exceptional case",
+                    required_outcome=(
+                        "use a maintained checker or an exact exceptional-case declaration"
+                    ),
+                )
+            )
+        elif filename == "typechecking-policy.md" and not all(
+            field in lowered
+            for field in (
+                "evidence:",
+                "owner:",
+                "expiry:",
+                "warning:",
+                "review trigger:",
+            )
+        ):
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:incomplete-exception-{index}",
+                    path=path,
+                    missing_evidence=(
+                        "type-checking exception lacks evidence, owner, expiry, warning, or review trigger"
+                    ),
+                    required_outcome=(
+                        "record every required exception field and keep the warning visible"
+                    ),
+                )
+            )
+        elif filename == "linting-policy.md" and not (
+            lowered.startswith("exceptional case: no suitable maintained linter exists;")
+            or lowered.startswith(
+                "exceptional case: technically non-lintable first-party surface;"
+            )
+        ):
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:unsupported-reason-{index}",
+                    path=path,
+                    missing_evidence=(
+                        "inapplicability lacks technical non-support evidence and a review trigger"
+                    ),
+                    required_outcome=(
+                        "use a maintained gate, or state that no suitable maintained tool exists "
+                        "or checking is technically inapplicable, with a review trigger"
+                    ),
+                )
+            )
+        elif filename == "linting-policy.md" and not all(
+            field in lowered
+            for field in (
+                "evidence:",
+                "owner:",
+                "expiry:",
+                "warning:",
+                "review trigger:",
+            )
+        ):
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:incomplete-exception-{index}",
+                    path=path,
+                    missing_evidence=(
+                        "lint/format exception lacks evidence, owner, expiry, warning, or review trigger"
+                    ),
+                    required_outcome=(
+                        "record every required exception field and keep the warning visible"
+                    ),
+                )
+            )
     return findings
 
 
@@ -765,7 +955,12 @@ def _command_first_token(value: str) -> str:
     stripped = value.strip()
     if not stripped:
         return ""
-    return stripped.split(None, 1)[0]
+    tokens = stripped.split()
+    for token in tokens:
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
+            continue
+        return token
+    return ""
 
 
 def _command_is_approved(value: str) -> bool:
@@ -780,10 +975,7 @@ def _command_is_approved(value: str) -> bool:
     first = _command_first_token(value)
     if not first:
         return False
-    return (
-        first in markers.APPROVED_GATE_TOOLS
-        or first in markers.FIXTURE_GATE_UTILITIES
-    )
+    return first in markers.APPROVED_GATE_TOOLS or first.startswith(("./", "bin/"))
 
 
 def _check_individual_commands(
@@ -1129,10 +1321,11 @@ def _check_conditional_domain(
     filename: str,
     required: bool,
 ) -> list[PolicyFinding]:
-    """Validate one conditional policy file when its domain is required."""
-    if not required:
+    """Validate a required or already-present conditional policy file."""
+    path = f"{markers.CANONICAL_DIR}{filename}"
+    if not required and not workspace.exists(path):
         return []
-    return _check_policy_file(workspace, f"{markers.CANONICAL_DIR}{filename}", filename)
+    return _check_policy_file(workspace, path, filename)
 
 
 def _check_migration(workspace: Workspace) -> list[PolicyFinding]:
@@ -1152,12 +1345,72 @@ def _check_migration(workspace: Workspace) -> list[PolicyFinding]:
                 required_outcome=(
                     "consolidate the policy into the matching canonical file "
                     f"under {markers.CANONICAL_DIR} and add the "
-                    "ralph-workflow-policy:migrated -> marker at this location, "
-                    "OR remove the recognized heading so this doc is no longer "
-                    "flagged as a candidate"
+                    "ralph-workflow-policy:migrated -> marker at this location; "
+                    "preserve conventional community headings and unrelated content"
                 ),
             )
         )
+    return findings
+
+
+def _check_applicability_overrides(workspace: Workspace) -> list[PolicyFinding]:
+    """Validate explicit conditional-domain decisions without silent fallback."""
+    path = markers.APPLICABILITY_OVERRIDES_PATH
+    if not workspace.exists(path):
+        return []
+    findings: list[PolicyFinding] = []
+    seen: set[str] = set()
+    pattern = re.compile(
+        r'([a-z][a-z-]+)\s*=\s*"(required|inactive); reason: ([^;]+); review trigger: ([^"]+)"'
+    )
+    for index, raw_line in enumerate(workspace.read(path).splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line == "[domains]":
+            continue
+        match = pattern.fullmatch(line)
+        if match is None:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_DOMAIN}:override-line-{index}",
+                    path=path,
+                    missing_evidence="malformed applicability decision",
+                    required_outcome=(
+                        'use `domain = "required|inactive; reason: ...; review trigger: ..."`'
+                    ),
+                )
+            )
+            continue
+        domain = str(match.group(1))
+        reason = str(match.group(3)).strip()
+        review_trigger = str(match.group(4)).strip()
+        if not reason or not review_trigger:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_DOMAIN}:override-empty-{index}",
+                    path=path,
+                    missing_evidence="applicability reason or review trigger is empty",
+                    required_outcome="record non-whitespace evidence and a concrete review trigger",
+                )
+            )
+        if domain not in markers.CONDITIONAL_POLICY_FILES:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_DOMAIN}:override-unknown-{index}",
+                    path=path,
+                    missing_evidence=f"unknown conditional domain {domain!r}",
+                    required_outcome="use a domain declared by CONDITIONAL_POLICY_FILES",
+                )
+            )
+        if domain in seen:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_DOMAIN}:override-duplicate-{domain}",
+                    path=path,
+                    missing_evidence=f"duplicate decision for {domain}",
+                    required_outcome="keep exactly one evidence-backed decision per domain",
+                )
+            )
+        seen.add(domain)
     return findings
 
 
@@ -1179,38 +1432,14 @@ def validate_readiness(
 
     findings.extend(_check_per_language_coverage(workspace, stack))
     findings.extend(_check_verification_bypass(workspace))
+    findings.extend(_check_applicability_overrides(workspace))
 
-    ds_required, _ = evidence.design_system_required(workspace, stack)
-    ux_required, _ = evidence.ux_required(workspace, stack)
-    perf_required, _ = evidence.performance_required(workspace, stack)
-    mem_required, _ = evidence.memory_required(workspace, stack)
-
-    findings.extend(
-        _check_conditional_domain(
-            workspace, "design-system", markers.CONDITIONAL_POLICY_FILES["design-system"], ds_required
+    requirements = evidence.conditional_domain_requirements(workspace, stack)
+    for domain, filename in markers.CONDITIONAL_POLICY_FILES.items():
+        required, _ = requirements[domain]
+        findings.extend(
+            _check_conditional_domain(workspace, domain, filename, required)
         )
-    )
-    findings.extend(
-        _check_conditional_domain(
-            workspace, "ux", markers.CONDITIONAL_POLICY_FILES["ux"], ux_required
-        )
-    )
-    findings.extend(
-        _check_conditional_domain(
-            workspace,
-            "performance",
-            markers.CONDITIONAL_POLICY_FILES["performance"],
-            perf_required,
-        )
-    )
-    findings.extend(
-        _check_conditional_domain(
-            workspace,
-            "memory-usage",
-            markers.CONDITIONAL_POLICY_FILES["memory-usage"],
-            mem_required,
-        )
-    )
 
     findings.extend(_check_migration(workspace))
     return findings

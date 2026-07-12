@@ -115,7 +115,13 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
 1. INSPECT the project: enumerate languages, frameworks, package managers, test
    frameworks, dependency manifests, and existing CONTRIBUTING / TESTING /
    DEVELOPMENT docs. Do not invent commands or tools.
+   Inventory every required policy, then reconcile and verify one policy at a
+   time; do not rewrite the full policy corpus as one undifferentiated context.
 2. COMPLETE every canonical file under {markers.CANONICAL_DIR}:
+   * When a finding reports an older policy schema, the interactive CLI has
+     already offered upgrade or freeze. On the upgrade path, reconcile the newer
+     bundled contract into the customized file while preserving verified facts
+     and stricter project rules. Never replace a customized file wholesale.
    * Replace every `RALPH-FACT:` line with a verified project fact.
    * Add at least one runnable `RALPH-COMMAND:` line for each verification
      gate (testing, typecheck, lint, dependency audit, verification), or an
@@ -124,6 +130,9 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
      the validator checks the FIRST whitespace-separated token against a
      fixed allowlist and rejects everything else. Approved tools:
      {approved_tools}.
+   * Use `RALPH-REVIEW: <procedure>; evidence: <record>; owner: <role>` for
+     required human/manual review. Never invent a shell command or claim manual
+     evidence that was not performed; report unavailable review as a blocker.
      Wrap any other tool in an approved runner (e.g. `make <target>`,
      `uv run <tool>`, `npx <tool>`).
    * Sections marked with a `REPLACE-ME` comment carry their own in-place
@@ -134,8 +143,18 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
      `RALPH-LANG: <Language>` followed by a RALPH-COMMAND or RALPH-INAPPLICABLE.
    * Add the citation block under `## Research basis` with publisher, title,
      URL (http), and review date.
-   * Remove inapplicable conditional sections instead of marking them
-     complete; keep the required headings.
+   * For an inactive conditional domain, record the dated inactive decision
+     and reactivation trigger in the applicability override. Then either remove
+     an uncustomized seeded policy file, or retain a customized policy as an
+     inactive historical record without deleting verified content. Within a
+     required policy, remove only optional clauses proven inapplicable; never
+     leave an empty required heading or mark an applicable requirement complete
+     without evidence.
+   * When deterministic signals are incomplete, record an explicit decision in
+     `{markers.APPLICABILITY_OVERRIDES_PATH}` under `[domains]` as either
+     `domain = "required; reason: ...; review trigger: ..."` or
+     `domain = "inactive; reason: ...; review trigger: ..."`. Never use an
+     override to evade an applicable mandatory policy.
    * Where an existing project rule is STRICTER than the starter text,
      preserve the stricter rule — reconcile contradictions by adapting the
      stricter side, never by weakening the policy.
@@ -181,6 +200,10 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    pointer (a default CLAUDE.md is created on the first preflight if missing).
 7. RUN every declared verification command and report the outcome, including
    any command you could not run and the remaining risk.
+   Deterministic readiness validates declaration shape and repository evidence;
+   it does NOT execute commands or attest manual review. Your truthful execution
+   and evidence report is therefore mandatory and must never be inferred from a
+   syntactically valid marker.
 8. REPORT changed files, migrated sources, adopted-or-adapted starter rules,
    research sources, commands run, and unresolved blockers.
 

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: verification-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -17,16 +17,21 @@ bypass-detection rules.
 
 ## Default requirements
 
-* A single authoritative verification entry point MUST exist (Makefile
-  target, CI workflow, or `make verify` equivalent) that runs every
-  declared gate in the documented order.
+* A single authoritative pre-merge verification entry point MUST exist.
+  Expensive platform, device, release, security, and scheduled gates MAY use
+  named profiles when this policy states when each profile is mandatory.
 * Gates MUST include, as applicable to the project: tests, type
   checking, linting, formatting checks, policy enforcement scripts, and
   any other mandatory project gate.
+* Testing is mandatory for behavior-bearing software. Every language's
+  maintained type-checking, linting, and formatting gates are mandatory
+  when suitable tools exist. Preference, inconvenience, legacy findings,
+  or missing setup does not make a supported gate inapplicable.
 * A gate documented here but not actually runnable is non-compliant.
   Documented impossibility MUST be reported as an active blocker.
-* Bypass detection (lint/typecheck bypasses) MUST be enforced when the
-  selected tools permit such checks. See "Bypass detection" below.
+* Bypass detection MUST use native or existing checks when available.
+  Custom tooling is required only when repository risk justifies it; a
+  project MUST NOT create a hollow gate solely to satisfy this policy.
 
 ## Project facts to resolve
 
@@ -48,6 +53,7 @@ RALPH-FACT: gate_order: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: bypass_detection_lint_audit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: bypass_detection_typecheck_audit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_integration_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: required_verification_profiles: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
@@ -97,16 +103,13 @@ authoritative verification gate. The bypass-detection rules:
 * Commands that claim to verify the project while omitting required
   paths are detected and reported.
 
-The bypass-detection command is declared as a `RALPH-COMMAND:` under
-this heading. The audit tooling is project-specific; the project's
-existing audit scripts MUST be wired into the verification gate.
+Declare a bypass-detection `RALPH-COMMAND:` when native/existing tooling or
+demonstrated risk supports one. Otherwise declare `RALPH-INAPPLICABLE:` with
+the tool limitation and the condition that would require an audit.
 
-<!-- REPLACE-ME: set the real bypass-audit command (wire the project's
-lint/typecheck bypass checks into one gate; wrap it in `make` if needed).
-This gate always requires a RALPH-COMMAND line: if the selected tools
-cannot express bypass detection, create the smallest real audit instead
-(e.g. a make target that greps for new suppression comments and weakened
-config). Then delete this comment. -->
+<!-- REPLACE-ME: set the real bypass-audit command when existing tooling or
+demonstrated risk supports one; otherwise replace the line with a technically
+justified RALPH-INAPPLICABLE declaration. Then delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
@@ -165,4 +168,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

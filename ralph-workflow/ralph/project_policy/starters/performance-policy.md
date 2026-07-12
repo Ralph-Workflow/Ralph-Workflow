@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: performance-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -30,7 +30,9 @@ and preservation of correctness, readability, and maintainability.
   conditions MUST be documented so benchmarks are reproducible.
 * Baselines and any enforceable budgets or thresholds MUST be documented
   with measurement methodology.
-* Optimization work MUST be justified by measurement, not by intuition.
+* Optimization work MUST be justified by measurement, not intuition.
+  Benchmarks run for affected paths or their declared CI profile; profiling is
+  diagnostic evidence and need not be a universal pass/fail gate.
   "We could make this faster" without a benchmark is not a justification.
 * Optimization MUST preserve correctness, readability, and
   maintainability. The "fast and broken" outcome is forbidden.
@@ -91,9 +93,9 @@ delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-The expected successful result is a clean benchmark / profiling run
-within the documented budget. On regression, report the affected code
-path, the regression magnitude, and the cause.
+The expected successful result is a clean declared benchmark/regression gate
+within budget. Profiling is diagnostic evidence; when used, record its
+environment and findings without treating the profile itself as pass/fail.
 
 ## Exceptions
 
@@ -150,4 +152,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: performance-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

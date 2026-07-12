@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: design-system-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -25,8 +25,9 @@ surface.
 
 * The agent MUST reuse the project's existing components, variants,
   tokens, utilities, and theming APIs before introducing any new visual
-  primitive. A new primitive MUST be added to the design system, not
-  copied across screens.
+  primitive. A reusable or system-level primitive MUST be added to the
+  design system; a domain-local component MAY remain local when its scope
+  does not justify promotion.
 * The agent MUST prefer the project's established theming or styling
   system over raw CSS when the system can express the requirement.
 * When raw CSS is permitted, it MUST consume existing tokens or
@@ -95,6 +96,7 @@ inapplicable with a reason and the condition that would create it. Then
 delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-REVIEW: proportionately review material visual changes across affected states, breakpoints, themes, semantics, and contrast; evidence: dated visual review, with automation as supporting evidence; owner: design-system owner
 
 The expected successful result is a clean visual-regression audit (or
 its project equivalent). On failure, report the affected component and
@@ -156,4 +158,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: design-system-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

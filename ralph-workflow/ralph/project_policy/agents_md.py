@@ -75,6 +75,8 @@ The remediation agent MUST, in order:
    AGENTS.md.
 7. Run every declared verification gate and report the outcome.
 
+Dead code is prohibited; remove it — rewriting later is better than retaining it.
+
 The remediation agent MUST NOT mark any policy complete while any RALPH-FACT
 placeholder token, RALPH-COMMAND without a real value, or unresolved
 RALPH-LANG coverage remains.
@@ -102,6 +104,7 @@ change, AI agents MUST read and follow the canonical policy files under
 {canonical_dir} and run the RALPH-COMMAND verification gates declared there.
 The policies are living documents: keep their facts current as the project
 evolves, but never amend one against its stated intent.
+Dead code is prohibited; remove it — rewriting later is better than retaining it.
 {end}
 """
 

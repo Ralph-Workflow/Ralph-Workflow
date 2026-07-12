@@ -10,6 +10,8 @@ no real stdin.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from ralph.cli.commands._load_result import _LoadResult
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -45,8 +47,8 @@ def _run(
     ws: MemoryWorkspace,
     emit_messages: list[str],
     *,
-    confirm: object,
-    is_tty: object,
+    confirm: Callable[[str], bool],
+    is_tty: Callable[[], bool],
 ) -> int:
     return cli_integration.run_project_policy_readiness(
         load_result=_stub_load_result(),
@@ -54,8 +56,8 @@ def _run(
         workspace_factory=lambda: ws,
         emit_factory=emit_messages.append,
         invoke_remediation_agent_factory=lambda _w: (lambda _p: False),
-        confirm_factory=confirm,  # type: ignore[arg-type]
-        is_tty=is_tty,  # type: ignore[arg-type]
+        confirm_factory=confirm,
+        is_tty=is_tty,
     )
 
 
@@ -185,3 +187,37 @@ def test_prompt_explains_both_choices_clearly() -> None:
     assert "already contains project instructions" in explanation
     assert "good default" in explanation
     assert "opt-out marker" in explanation
+
+
+def test_declining_schema_upgrade_freezes_existing_policy() -> None:
+    ws = MemoryWorkspace()
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    ws.write(path, "<!-- ralph-policy-schema: v1 -->\n# Customized\n")
+    messages: list[str] = []
+
+    cli_integration._maybe_resolve_schema_upgrade(
+        ws,
+        messages.append,
+        confirm=lambda _question: False,
+        is_tty=lambda: True,
+    )
+
+    assert ws.read(path).startswith("<!-- ralph-policy-schema: freeze v1 -->")
+    assert any("froze" in message.lower() for message in messages)
+
+
+def test_future_schema_freeze_fails_closed() -> None:
+    ws = MemoryWorkspace()
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    ws.write(path, "<!-- ralph-policy-schema: freeze v999 -->\n# Customized\n")
+    messages: list[str] = []
+
+    resolved = cli_integration._maybe_resolve_schema_upgrade(
+        ws,
+        messages.append,
+        confirm=lambda _question: True,
+        is_tty=lambda: True,
+    )
+
+    assert resolved is False
+    assert any("invalid freeze" in message for message in messages)

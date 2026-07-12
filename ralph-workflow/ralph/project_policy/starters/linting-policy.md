@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v1 -->
+<!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: linting-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -17,19 +17,54 @@ configuration overrides.
 
 ## Default requirements
 
-* The selected linter MUST match the language ecosystem best practice
-  (ruff for Python, eslint for JavaScript/TypeScript, clippy for Rust,
-  golangci-lint for Go, etc.). A minimal configuration chosen only to
-  pass existing code is forbidden; the baseline MUST be the
-  established best-practice rule set for the language.
-* Per-language `RALPH-LANG:` declarations are required for every
-  detected language, each followed by a `RALPH-COMMAND:` line or an
+A maintained first-party language includes interpreted or compiled production
+and test source owned by the project. Generated/vendored code, embedded
+snippets, and template/IDL/SQL/shell sources are classified explicitly in
+`first_party_languages` and `excluded_language_evidence` according to whether
+the project maintains and can lint them.
+
+* When a maintained first-party language supports a suitable maintained linter or
+  equivalent static quality tool, the project MUST select and run one.
+  Missing configuration, legacy findings, or team preference do not make
+  linting inapplicable.
+* Selection MUST consider active maintenance, compatibility, useful
+  diagnostics, configurability, and CI suitability. No product is
+  universally preferred by this policy.
+* Formatting MUST be enforced by a maintained formatter or by the linter
+  when it provides an equivalent deterministic formatting check. Competing
+  tools MUST NOT own the same formatting rules.
+* Per-language `RALPH-LANG:` declarations are required for every maintained
+  first-party code language, each followed by a `RALPH-COMMAND:` line or an
   explicit `RALPH-INAPPLICABLE:` line.
-* Inline suppressions (`# noqa`, `// eslint-disable`, `#[allow(...)]`)
-  MUST carry a specific error code AND a documented rationale. Blanket
-  suppressions are forbidden.
-* File-level disables and per-file-ignores MUST be listed in this
-  policy with the affected path and the rationale.
+* Inline suppressions MUST carry the narrowest tool-supported diagnostic
+  identifier and a documented rationale. Blanket suppressions are forbidden.
+* The authoritative configuration or suppression inventory MUST identify
+  file-level disables and broad exclusions with their rationale; duplicating
+  every entry in this policy is not required.
+
+## Dead code — zero tolerance
+
+Dead code is prohibited. It is better to delete obsolete code and implement it
+again if demonstrated need returns than to retain unowned paths indefinitely.
+
+* Unused, unreachable, obsolete, superseded, commented-out, and speculative
+  code MUST be removed in the same change that makes it unnecessary.
+* “Might be needed later,” compatibility without a verified consumer, and
+  incomplete future plans are never exceptions; version control preserves
+  history.
+* Dead-code findings MUST be fixed at the source, never hidden with ignores,
+  exported-name tricks, fake references, coverage exclusions, or disabled rules.
+  A proven live path reached through reflection, a framework/plugin registry,
+  FFI callback, dynamic dispatch, conditional platform build, or external
+  consumer MAY use the narrowest tool-supported live-entry annotation. This is
+  not a dead-code exception: it requires observable consumer/entry-point
+  evidence, rationale, owner, and review trigger; speculative consumers do not qualify.
+* Generated or vendored code is governed at its source boundary. A retained
+  first-party compatibility path requires a verified consumer, owner, removal
+  condition, and expiry/review date.
+* Every ecosystem-supported unused/dead-code check MUST run in the declared
+  lint or verification gate. When no suitable maintained automated check
+  exists, code review MUST still enforce deletion.
 
 ## Project facts to resolve
 
@@ -51,6 +86,17 @@ RALPH-FACT: formatter_responsibility: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: excluded_paths: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: suppression_rationale_policy: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: maintenance_evidence: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: first_party_languages: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: excluded_language_evidence: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: dead_code_detection_per_language: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: retained_compatibility_inventory: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: live_entry_point_annotation_inventory: PROJECT-FACT-UNRESOLVED
+
+For each language, `maintenance_evidence` records tool and version range,
+official maintenance source, compatibility and first-party coverage evidence,
+selection date, and recheck trigger. Recheck on major language/tool changes,
+incompatibility, abandonment, or a relevant security signal.
 
 ## AI execution instructions
 
@@ -71,14 +117,18 @@ An agent MUST NOT:
 
 * Add `per-file-ignores`, `extend-per-file-ignores`, or any other
   global rule silencing without a per-file rationale.
-* Use bare `# noqa` without a specific error code.
+* Use an inline suppression without the narrowest tool-supported identifier,
+  when supported, and an adjacent rationale. Blanket or file-wide suppression
+  requires a documented exception.
 * Lower the lint strictness level to obtain a passing result.
+* Retain verified dead code, suppress it, or add a fake use solely to make a
+  linter pass. A verified live-entry annotation follows the evidence contract above.
 
 ## Verification
 
 Run every gate below before claiming a change complies with this policy.
 
-<!-- REPLACE-ME: per-language template. Keep one block per project language
+<!-- REPLACE-ME: per-language template. Keep one block per maintained first-party language
 with the real linter command (first token must be an approved gate tool;
 wrap others in `make`, `uv run`, or `npx`), add blocks for detected
 languages missing below, drop blocks for languages the project does not
@@ -102,9 +152,14 @@ failures MUST be addressed at the source, not by adding suppressions.
 
 ## Exceptions
 
-A project that genuinely does not apply linting to a detected language
-MUST mark that language with `RALPH-INAPPLICABLE:` and a documented
-reason.
+A maintained first-party language may use `RALPH-INAPPLICABLE:` only when
+documented research proves no suitable maintained linter/formatter exists or
+the surface is technically non-lintable. Preference, inconvenience, legacy
+findings, migration cost, and absent setup are invalid. The declaration MUST
+start with `exceptional case: no suitable maintained linter exists;` or
+`exceptional case: technically non-lintable first-party surface;` and include
+`evidence:`, `owner:`, `expiry:`, `warning:`, and `review trigger:`. The visible
+warning remains until the exception is removed.
 
 ## Maintenance triggers
 
@@ -114,6 +169,7 @@ This policy MUST be reviewed in the same workflow as any of:
 * The linter, version, or rule set changes.
 * A new lint dependency is added.
 * The suppression policy changes.
+* The dead-code detector, compatibility inventory, or generated-code boundary changes.
 
 ## Research basis
 
@@ -157,4 +213,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: linting-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`
