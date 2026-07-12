@@ -131,16 +131,21 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    OR remove the recognized heading so the file is no longer a candidate.
 4. CONFIGURE executable gates so every declared command actually runs in the
    environment. Document any command that cannot be run and the reason.
-5. ENSURE AGENTS.md is consistent and makes the policies discoverable:
-   exactly one managed block between `{markers.AGENTS_BLOCK_BEGIN}` and
-   `{markers.AGENTS_BLOCK_END}`, whose BODY references {markers.CANONICAL_DIR}
-   so ANY AI agent reading AGENTS.md (Claude, Codex, Cursor, opencode, ...)
-   can discover and follow the project policies. Preserve user-authored
-   content outside the block, and keep AGENTS.md short: once the policies
-   are complete, replace the bootstrap placeholder instructions inside the
-   managed block with a concise pointer (a few lines) to
-   {markers.CANONICAL_DIR} — never leave the long remediation instructions
-   behind.
+5. INTEGRATE the managed block naturally into AGENTS.md — never leave it as
+   a bolted-on section appended after the user's content. The block markers
+   `{markers.AGENTS_BLOCK_BEGIN}` and `{markers.AGENTS_BLOCK_END}` are
+   invisible HTML comments, so you may RELOCATE the block to wherever it
+   reads best in the document (near the top, or inside an existing
+   quality/testing section) and rewrite its body to match the document's
+   tone and structure. Requirements: exactly one block whose BODY
+   references {markers.CANONICAL_DIR} so ANY AI agent reading AGENTS.md
+   (Claude, Codex, Cursor, opencode, ...) can discover and follow the
+   project policies; migrate policy-like sections of AGENTS.md itself into
+   the matching canonical policy file (single source of truth) and resolve
+   the migration finding; preserve user-authored non-policy content; keep
+   AGENTS.md short — replace the bootstrap placeholder instructions with a
+   concise pointer (a few lines), never leaving the long remediation
+   instructions behind.
 6. UPDATE CLAUDE.md (if present) so Claude-compatible agents see the AGENTS.md
    pointer (a default CLAUDE.md is created on the first preflight if missing).
 7. RUN every declared verification command and report the outcome, including
@@ -155,6 +160,14 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
   per-language coverage, or unresolved migration findings remain.
 * Do NOT add dependencies, abstractions, or numeric targets without
   demonstrated need from repository evidence.
+* The canonical policies are LIVING DOCUMENTS: they must evolve with the
+  project, so record what you learn (verified facts, commands, structure)
+  in them rather than leaving stale boilerplate.
+* Conflicts between starter boilerplate and the project's established
+  practice are resolved in favor of the existing project policy — adapt
+  the canonical file to the project, never the reverse.
+* Evolution MUST NOT subvert a policy's INTENT: never weaken, dilute, or
+  delete a requirement so that a failing change passes.
 
 After the agent returns, the deterministic validator is re-run. The agent's
 own completion claim is never sufficient evidence; only the validator

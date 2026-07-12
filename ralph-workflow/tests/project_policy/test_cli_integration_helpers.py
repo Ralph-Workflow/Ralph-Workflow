@@ -115,6 +115,7 @@ def test_production_closure_forwards_display_context(
         cast("object", object()),  # non-None pipeline deps sentinel
         load_result.workspace_scope,
         ["claude"],
+        None,
         display_context,
     )
     assert invoke("prompt.md") is True
@@ -154,6 +155,7 @@ def test_production_closure_falls_back_across_chain_agents(
         cast("object", object()),
         load_result.workspace_scope,
         ["first-agent", "second-agent"],
+        None,
         make_display_context(),
     )
     assert invoke("prompt.md") is True
@@ -197,6 +199,126 @@ def test_ready_preflight_triggers_policy_auto_commit(
     assert committed_roots == [load_result.workspace_scope.root]
 
 
+def test_ready_preflight_condenses_placeholder_agents_md_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After READY, an untouched bootstrap placeholder block in AGENTS.md is
+    condensed to the short pointer form (the placeholder is temporary)."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import _auto_commit as policy_auto_commit_module
+    from ralph.project_policy import agents_md, markers
+    from ralph.workspace.memory import MemoryWorkspace
+    from tests.project_policy.test_validator import (
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)  # writes the long placeholder block
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+    assert "The remediation agent MUST" in ws.read(markers.AGENTS_MD)
+
+    monkeypatch.setattr(
+        policy_auto_commit_module,
+        "commit_policy_updates",
+        lambda _repo_root, _create_commit_fn: None,
+    )
+
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=_load_result(load_policy(default_dir())),
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda _m: None,
+    )
+
+    assert rc == 0
+    content = ws.read(markers.AGENTS_MD)
+    assert "The remediation agent MUST" not in content
+    assert markers.CANONICAL_DIR in content
+
+
+class _FakeDisplay:
+    """Records the lifecycle the remediation loop must drive."""
+
+    def __init__(self) -> None:
+        self.entered = 0
+        self.exited = 0
+        self.status_models: list[object] = []
+
+    def __enter__(self) -> _FakeDisplay:
+        self.entered += 1
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.exited += 1
+
+    def update_status_bar(self, model: object) -> None:
+        self.status_models.append(model)
+
+
+def test_remediation_runs_inside_started_display_with_status_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The remediation loop drives the SAME display lifecycle as the pipeline
+    proper: display started (status bar live), a status-bar model pushed for
+    the remediation phase, and the display forwarded to execute_agent_effect
+    so agent activity renders consistently."""
+    from ralph.language_detector.models import ProjectStack
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.workspace.memory import MemoryWorkspace
+    from tests.project_policy.test_validator import (
+        _seed_agents_md,
+        _seed_all_core_complete,
+        _seed_claude_md,
+    )
+
+    ws = MemoryWorkspace()  # unseeded -> remediation required
+    fake_display = _FakeDisplay()
+    monkeypatch.setattr(
+        cli_integration, "resolve_active_display", lambda *_a, **_k: fake_display
+    )
+
+    observed_opts: list[dict[str, object]] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        observed_opts.append(dict(opts))
+        _seed_agents_md(ws)
+        _seed_claude_md(ws)
+        _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    from ralph.project_policy import _auto_commit as policy_auto_commit_module
+
+    monkeypatch.setattr(
+        policy_auto_commit_module,
+        "commit_policy_updates",
+        lambda _root, _fn: None,
+    )
+
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=_load_result(load_policy(default_dir())),
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda _m: None,
+    )
+
+    assert rc == 0
+    assert fake_display.entered == 1
+    assert fake_display.exited == 1
+    assert fake_display.status_models, "a status-bar model must be pushed"
+    assert observed_opts and observed_opts[0].get("display") is fake_display
+
+
 def test_production_closure_raises_on_launch_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -216,6 +338,7 @@ def test_production_closure_raises_on_launch_crash(
         cast("object", object()),
         load_result.workspace_scope,
         ["claude"],
+        None,
         make_display_context(),
     )
     with pytest.raises(remediation.RemediationInvocationError):

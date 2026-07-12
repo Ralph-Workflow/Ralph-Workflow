@@ -43,6 +43,14 @@ _POLICY_COMMIT_SCOPES: tuple[str, ...] = (
 #: The stable prefix of the migrated marker (target-independent).
 _MIGRATED_MARKER_PREFIX: str = markers.MIGRATED_MARKER_TEMPLATE.split("{target}")[0]
 
+#: Migration candidates whose commit is content-conditional. AGENTS.md and
+#: CLAUDE.md are always Ralph-owned surfaces (committed unconditionally);
+#: every other candidate is only committed once it carries the migrated
+#: marker, so unrelated user edits are never swept into the chore commit.
+_CONDITIONAL_MIGRATION_SCOPES: frozenset[str] = frozenset(
+    markers.MIGRATION_CANDIDATE_PATHS
+) - {markers.AGENTS_MD, markers.CLAUDE_MD}
+
 
 def _migrated_only(repo_root: Path) -> Callable[[str], bool]:
     """Filter: commit a migration candidate only when it carries the marker.
@@ -54,7 +62,7 @@ def _migrated_only(repo_root: Path) -> Callable[[str], bool]:
     """
 
     def check(path: str) -> bool:
-        if path not in markers.MIGRATION_CANDIDATE_PATHS:
+        if path not in _CONDITIONAL_MIGRATION_SCOPES:
             return True
         try:
             content = (repo_root / path).read_text(encoding="utf-8")

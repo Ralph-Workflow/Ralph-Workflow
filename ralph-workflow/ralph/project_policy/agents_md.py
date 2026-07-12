@@ -84,6 +84,27 @@ whitespace, or case changes do not satisfy any requirement.
 {end}
 """
 
+# Distinctive phrase present ONLY in the bootstrap placeholder body. Used to
+# recognize an untouched placeholder so it can be condensed after READY; an
+# agent- or user-rewritten block never contains it and is preserved.
+_PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
+
+# Concise managed block written once the project is READY. The bootstrap
+# placeholder above is TEMPORARY scaffolding for the first remediation agent;
+# leaving its long instruction list in AGENTS.md forever would bury the
+# user's own content. The condensed block keeps only what every future AI
+# agent needs: the pointer to the canonical policy dir and the obligation to
+# follow it (which also keeps the validator's canonical-dir-in-block gate
+# satisfied).
+_AGENTS_READY_TEMPLATE = """{begin}
+This project follows Ralph Workflow quality policies. Before making any
+change, AI agents MUST read and follow the canonical policy files under
+{canonical_dir} and run the RALPH-COMMAND verification gates declared there.
+The policies are living documents: keep their facts current as the project
+evolves, but never amend one against its stated intent.
+{end}
+"""
+
 # CLAUDE.md minimal content. Point Claude-compatible agents at AGENTS.md
 # without overriding any of its directives.
 _CLAUDE_MINIMAL_CONTENT = (
@@ -198,6 +219,41 @@ def _bootstrap_claude_md(workspace: Workspace) -> list[str]:
     return [markers.CLAUDE_MD]
 
 
+def condense_placeholder_block(workspace: Workspace) -> list[str]:
+    """Replace an untouched bootstrap placeholder block with the concise form.
+
+    Called after the project reaches READY. The bootstrap placeholder is
+    temporary scaffolding for the first remediation agent; once the
+    policies exist and validate, only the short pointer block remains. A
+    block whose body was rewritten (no placeholder sentinel), a missing
+    AGENTS.md, or a malformed block is left untouched — user- and
+    agent-authored content is never clobbered.
+
+    Returns the changed-file list (``[markers.AGENTS_MD]`` or ``[]``).
+    """
+    if not workspace.exists(markers.AGENTS_MD):
+        return []
+    content = workspace.read(markers.AGENTS_MD)
+    if not _has_well_formed_managed_block(content):
+        return []
+    begin_idx = content.find(markers.AGENTS_BLOCK_BEGIN)
+    end_idx = content.find(markers.AGENTS_BLOCK_END)
+    body = content[begin_idx + len(markers.AGENTS_BLOCK_BEGIN) : end_idx]
+    if _PLACEHOLDER_SENTINEL not in body:
+        return []
+    ready_block = _AGENTS_READY_TEMPLATE.format(
+        begin=markers.AGENTS_BLOCK_BEGIN,
+        end=markers.AGENTS_BLOCK_END,
+        canonical_dir=markers.CANONICAL_DIR,
+    ).strip()
+    block_end = end_idx + len(markers.AGENTS_BLOCK_END)
+    workspace.write(
+        markers.AGENTS_MD,
+        content[:begin_idx] + ready_block + content[block_end:],
+    )
+    return [markers.AGENTS_MD]
+
+
 def bootstrap(workspace: Workspace) -> list[str]:
     """Idempotently bootstrap AGENTS.md and CLAUDE.md.
 
@@ -212,5 +268,6 @@ def bootstrap(workspace: Workspace) -> list[str]:
 
 __all__ = [
     "bootstrap",
+    "condense_placeholder_block",
     "is_opted_out",
 ]

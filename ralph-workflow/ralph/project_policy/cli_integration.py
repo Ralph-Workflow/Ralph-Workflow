@@ -20,13 +20,14 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
-from ralph.display.parallel_display import resolve_active_display
+from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
 from ralph.language_detector import get_project_stack
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.project_policy import _auto_commit as policy_auto_commit
+from ralph.project_policy import agents_md as policy_agents_md
 from ralph.project_policy import remediation as policy_remediation
 from ralph.project_policy.preflight import run_policy_readiness_preflight
 from ralph.workspace.fs import FsWorkspace
@@ -34,6 +35,7 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from ralph.cli.commands._load_result import _LoadResult
     from ralph.display.context import DisplayContext
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
     from ralph.pipeline.factory import PipelineDeps
     from ralph.project_policy.models import ReadinessResult
@@ -103,6 +105,7 @@ def _make_production_invoke_remediation_agent(
     pipeline_deps: PipelineDeps | None,
     workspace_scope: WorkspaceScope,
     chain_agents: list[str],
+    display: ParallelDisplay | None,
     display_context: DisplayContext | None,
 ) -> _InvokeRemediationAgent:
     """Build the production ``invoke_remediation_agent`` closure.
@@ -134,6 +137,7 @@ def _make_production_invoke_remediation_agent(
                     workspace_scope,
                     run_id=load_result.run_id,
                     policy_bundle=load_result.policy_bundle,
+                    display=display,
                     display_context=display_context,
                 )
             except Exception as exc:
@@ -171,6 +175,48 @@ def _build_workspace(
         msg = "_build_workspace called with a missing workspace_scope"
         raise RuntimeError(msg)
     return FsWorkspace(scope.root, allowed_roots=scope.allowed_roots)
+
+
+def _push_remediation_status_bar(
+    display: object,
+    workspace_scope: WorkspaceScope,
+    max_attempts: int,
+) -> None:
+    """Seed the persistent status bar for the remediation phase.
+
+    Mirrors the run loop's phase push so the footer shows the working
+    directory and the active phase during remediation instead of nothing.
+    Defensive: any display failure is swallowed — presentation must never
+    block remediation.
+    """
+    try:
+        from ralph.display.status_bar import StatusBarModel  # noqa: PLC0415
+
+        model = StatusBarModel(
+            workspace_root=str(workspace_scope.root),
+            phase_label="Policy Remediation",
+            phase_style=phase_style_for_phase("policy_remediation"),
+            outer_dev_iteration=1,
+            outer_dev_cap=max_attempts,
+        )
+        update = cast(
+            "Callable[[object], None] | None",
+            getattr(display, "update_status_bar", None),
+        )
+        if update is not None:
+            update(model)
+    except Exception as exc:
+        logger.debug("remediation status-bar push failed (non-fatal): {}", exc)
+
+
+def _finalize_ready_state(workspace: Workspace, workspace_scope: WorkspaceScope) -> None:
+    """Post-READY housekeeping: condense the temporary AGENTS.md placeholder
+    block to its concise form, then auto-commit the policy surfaces."""
+    try:
+        policy_agents_md.condense_placeholder_block(workspace)
+    except Exception as exc:
+        logger.debug("AGENTS.md placeholder condense failed (non-fatal): {}", exc)
+    _auto_commit_policy_changes(workspace_scope)
 
 
 def _auto_commit_policy_changes(workspace_scope: WorkspaceScope) -> None:
@@ -242,6 +288,7 @@ def _dispatch_preflight_result(
         return _EXIT_PREFLIGHT
 
     pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
+    display = resolve_active_display(None, display_context)
     if invoke_remediation_agent_factory is not None:
         invoke_remediation_agent: _InvokeRemediationAgent = cast(
             "_InvokeRemediationAgent",
@@ -253,20 +300,26 @@ def _dispatch_preflight_result(
             pipeline_deps,
             workspace_scope,
             chain_agents,
+            display,
             display_context,
         )
 
     max_attempts = _resolve_max_attempts(load_result)
-    final = policy_remediation.remediate(
-        workspace,
-        stack,
-        result.findings,
-        invoke_remediation_agent=invoke_remediation_agent,
-        max_attempts=max_attempts,
-        emit=emit,
-    )
+    # Drive the SAME display lifecycle the pipeline run loop uses: a
+    # started display (live status bar) for the duration of the agent
+    # work, with a status-bar model naming the remediation phase.
+    with display:
+        _push_remediation_status_bar(display, workspace_scope, max_attempts)
+        final = policy_remediation.remediate(
+            workspace,
+            stack,
+            result.findings,
+            invoke_remediation_agent=invoke_remediation_agent,
+            max_attempts=max_attempts,
+            emit=emit,
+        )
     if final.is_ready():
-        _auto_commit_policy_changes(workspace_scope)
+        _finalize_ready_state(workspace, workspace_scope)
         return _EXIT_SUCCESS
     report_lines = ["Project-policy-readiness: BLOCKED"]
     report_lines.extend(final.report_lines)
@@ -316,7 +369,7 @@ def run_project_policy_readiness(
             f"project-policy-readiness: ready "
             f"({len(result.changed_files)} files updated)"
         )
-        _auto_commit_policy_changes(workspace_scope)
+        _finalize_ready_state(workspace, workspace_scope)
         return _EXIT_SUCCESS
 
     return _dispatch_preflight_result(

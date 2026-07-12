@@ -122,6 +122,20 @@ This policy MUST be reviewed in the same workflow as any of:
   http: https://mypy.readthedocs.io/en/stable/existing_code.html
   review date: 2026-07-11
 
+## Living document contract
+
+This policy is a living document. It MUST evolve as the project grows:
+update the resolved facts, commands, and requirements whenever verified
+project reality changes (new frameworks, new commands, new structure).
+Two guardrails bound every amendment:
+
+* Conflicts between starter boilerplate and the project's established
+  practice are resolved in favor of the existing project policy — adapt
+  this file to the project, never the reverse.
+* An amendment MUST NOT subvert the INTENT of this policy. Weakening,
+  disabling, or deleting a requirement so that a failing change passes is
+  forbidden; evolution clarifies and extends, it does not water down.
+
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: typechecking-policy.md -->`

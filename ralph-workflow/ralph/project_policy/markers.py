@@ -420,6 +420,12 @@ MEMORY_DEP_SIGNALS: Final[tuple[str, ...]] = (
 # on the workspace seam (NOT raw Path I/O). Adding a path here means "scan
 # this file for migration candidates on every preflight".
 MIGRATION_CANDIDATE_PATHS: Final[tuple[str, ...]] = (
+    # AGENTS.md itself: user-authored policy-like sections in it must be
+    # INTEGRATED into the canonical dir (single source of truth), not left
+    # as a parallel rulebook next to the managed block. The managed block
+    # (placeholder or condensed) contains no headings, so bootstrap output
+    # alone never makes AGENTS.md a candidate.
+    "AGENTS.md",
     "CONTRIBUTING.md",
     "CONTRIBUTING.rst",
     "TESTING.md",

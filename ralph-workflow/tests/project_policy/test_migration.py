@@ -173,3 +173,28 @@ def test_doc_already_under_canonical_dir_is_skipped() -> None:
     assert all(
         c.path != f"{markers.CANONICAL_DIR}misc.md" for c in candidates
     )
+
+
+def test_agents_md_policy_sections_are_migration_candidates() -> None:
+    """Policy-like sections inside AGENTS.md itself must be reconciled into
+    the canonical dir — integration, not a bolted-on parallel source of truth."""
+    ws = MemoryWorkspace()
+    ws.write(
+        markers.AGENTS_MD,
+        "# Agents\n\n## Testing\n\nAlways run pytest before committing.\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    agents_candidates = [c for c in candidates if c.path == markers.AGENTS_MD]
+    assert agents_candidates, "AGENTS.md with a policy heading must be a candidate"
+    assert not agents_candidates[0].resolved
+
+
+def test_bootstrap_placeholder_block_does_not_make_agents_md_a_candidate() -> None:
+    """The managed block (placeholder or condensed) has no policy headings,
+    so bootstrap output alone never generates a migration finding."""
+    from ralph.project_policy import agents_md
+
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+    candidates = evidence.migration_candidates(ws)
+    assert all(c.path != markers.AGENTS_MD for c in candidates)

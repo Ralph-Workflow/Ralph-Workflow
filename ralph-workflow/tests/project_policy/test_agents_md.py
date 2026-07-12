@@ -191,3 +191,56 @@ def test_bootstrap_does_not_append_when_misordered_markers() -> None:
     changed = agents_md.bootstrap(ws)
     assert markers.AGENTS_MD not in changed
     assert ws.read(markers.AGENTS_MD) == original
+
+
+def test_condense_replaces_untouched_placeholder_with_concise_block() -> None:
+    """The bootstrap placeholder is TEMPORARY: once the project is READY it
+    is condensed to a short pointer block. User content outside the block
+    is preserved byte-for-byte."""
+    ws = MemoryWorkspace()
+    ws.write(markers.AGENTS_MD, "# My project\n\nUser-authored intro.\n")
+    agents_md.bootstrap(ws)
+
+    changed = agents_md.condense_placeholder_block(ws)
+
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert content.startswith("# My project\n\nUser-authored intro.\n")
+    assert content.count(markers.AGENTS_BLOCK_BEGIN) == 1
+    assert content.count(markers.AGENTS_BLOCK_END) == 1
+    assert "The remediation agent MUST" not in content
+    assert markers.CANONICAL_DIR in content
+    begin = content.find(markers.AGENTS_BLOCK_BEGIN)
+    end = content.find(markers.AGENTS_BLOCK_END)
+    block_lines = content[begin:end].splitlines()
+    assert len(block_lines) <= 10, "condensed block must stay short"
+
+
+def test_condense_preserves_rewritten_block() -> None:
+    """A block the agent or user rewrote is NOT the placeholder; leave it."""
+    ws = MemoryWorkspace()
+    custom = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"Read the policies under {markers.CANONICAL_DIR} first.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, custom)
+
+    assert agents_md.condense_placeholder_block(ws) == []
+    assert ws.read(markers.AGENTS_MD) == custom
+
+
+def test_condense_is_noop_on_missing_or_malformed_agents_md() -> None:
+    ws = MemoryWorkspace()
+    assert agents_md.condense_placeholder_block(ws) == []
+    ws.write(markers.AGENTS_MD, f"{markers.AGENTS_BLOCK_BEGIN}\nno end marker\n")
+    assert agents_md.condense_placeholder_block(ws) == []
+
+
+def test_condense_is_idempotent() -> None:
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+    assert agents_md.condense_placeholder_block(ws) == [markers.AGENTS_MD]
+    condensed = ws.read(markers.AGENTS_MD)
+    assert agents_md.condense_placeholder_block(ws) == []
+    assert ws.read(markers.AGENTS_MD) == condensed

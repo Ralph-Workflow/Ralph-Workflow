@@ -53,6 +53,10 @@ def test_prompt_instructs_holistic_agents_md_discoverability() -> None:
     # replaced with a concise pointer once remediation completes.
     assert "concise" in prompt.lower()
     assert "short" in prompt.lower()
+    # The block is INTEGRATED into the existing document, never left as a
+    # bolted-on appended section.
+    assert "integrate" in prompt.lower()
+    assert "invisible" in prompt.lower()
 
 
 def test_invocation_error_aborts_loop_without_burning_budget() -> None:
