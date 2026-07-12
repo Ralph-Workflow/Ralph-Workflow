@@ -74,10 +74,10 @@ project evolves.
 
 <!-- REPLACE-ME: record one verified, machine-checkable value per fact
 below (commands, paths, names, versions — not adjectives or aspirations).
-If the project is too young for a fact to be settled, record the best
-current answer plus the condition that will settle it, e.g.
-"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
-be able to tell a settled fact from a provisional one at a glance. Then
+If a fact cannot be resolved yet (project too young, tool not chosen, value
+not knowable), defer it with the RALPH-PENDING form "RALPH-PENDING (assumed
+<date>); review trigger: <trigger>" — it reaches readiness and a dev-cycle
+agent resolves it when its trigger fires. Then
 delete this comment. -->
 
 RALPH-FACT: linter_per_language: PROJECT-FACT-UNRESOLVED

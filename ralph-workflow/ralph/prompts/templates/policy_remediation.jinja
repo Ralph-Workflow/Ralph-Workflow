@@ -53,6 +53,34 @@ must be real.
 
 ### 2. COMPLETE each canonical file under {{ canonical_dir }}
 
+**Marker states — the vocabulary you author with**
+
+Every machine-checkable line is exactly one of these states. Pick the one that
+matches reality; the validator checks each line's SHAPE, not your intent:
+
+- `RALPH-FACT: <key>: <value>` — a RESOLVED, verified project fact (a command,
+  path, name, version — never an adjective or aspiration).
+- `RALPH-FACT: <key>: RALPH-PENDING (assumed <date>); review trigger: <cond>` —
+  a DEFERRED fact: it applies but cannot be resolved yet. It reaches readiness,
+  and a dev cycle resolves it when the trigger fires.
+- `RALPH-COMMAND: <approved-tool …>` — a runnable verification gate. The first
+  token must be an approved gate tool. The validator does NOT execute it, so a
+  correctly-named but not-yet-installed tool is a valid declaration.
+- `RALPH-INAPPLICABLE: <reason>` — the gate NEVER applies to this project (for
+  example, no graphical surface to test). This is "never", not "not yet".
+- `RALPH-PENDING: <approved-tool …> (assumed <date>); review trigger: <cond>` —
+  a DEFERRED gate: it applies but is not wired yet (tool not installed, scanner
+  not chosen). It reaches readiness, and a dev cycle wires it when the trigger
+  fires. Accepted on EVERY policy, including the testing and verification gates.
+- `RALPH-REVIEW: <procedure>; evidence: <record>; owner: <role>` — a required
+  human/manual review that no command can replace.
+
+The distinction agents most often get wrong is deferral vs never-applies:
+"we will have this, just not yet" is ALWAYS `RALPH-PENDING`, never
+`RALPH-INAPPLICABLE`. Every `RALPH-PENDING` needs a real intended tool (gate
+form), an `(assumed <YYYY-MM-DD>)` stamp with a real date, and a concrete
+`review trigger:`; it is a debt a future dev cycle must repay.
+
 **Facts and schema**
 
 - When a finding reports an older policy schema, the interactive CLI has
@@ -65,7 +93,9 @@ must be real.
 
 - Add at least one runnable `RALPH-COMMAND:` line for each verification gate
   (testing, typecheck, lint, dependency audit, verification), or an explicit
-  `RALPH-INAPPLICABLE:` line with a reason.
+  `RALPH-INAPPLICABLE:` line with a reason (the gate never applies), or a
+  `RALPH-PENDING:` deferral (the gate applies but is not wired yet — see
+  step 4).
 - Every `RALPH-COMMAND:` value MUST start with an approved gate tool: the
   validator checks the FIRST whitespace-separated token against a fixed
   allowlist and rejects everything else. Approved tools: {{ approved_tools }}.
@@ -75,7 +105,8 @@ must be real.
   required human/manual review. Never invent a shell command or claim manual
   evidence that was not performed; report unavailable review as a blocker.
 - For typecheck and lint policies, declare every applicable language via
-  `RALPH-LANG: <Language>` followed by a RALPH-COMMAND or RALPH-INAPPLICABLE.
+  `RALPH-LANG: <Language>` followed by a RALPH-COMMAND, RALPH-INAPPLICABLE, or
+  RALPH-PENDING line.
 
 **Placeholders and citations**
 
@@ -131,15 +162,32 @@ a `make` target that invokes the actual tool), and confirm the command EXISTS.
 You MAY run it once to confirm it resolves; you do NOT fix failing checks or
 make a red gate green. Document any command that cannot be run and the reason.
 
-If wiring a real gate would need a non-trivial script or setup, or a
-requirement is not applicable at this stage of the codebase, do NOT build it
-now — and do NOT leave a bare `TODO` (readiness treats `TODO` as an unresolved
-placeholder and blocks on it). Track the deferred work instead with a
-`RALPH-INAPPLICABLE:` line carrying the reason and the `review trigger:` (the
-condition that will make it applicable), or a provisional fact
-(`none yet (assumed <date>; revisit when <trigger>)`). Either way the item is
-recorded with the trigger that resurfaces it, so it is not lost when it becomes
-applicable.
+If a gate or fact genuinely cannot be resolved yet — the tool is not installed,
+the scanner is not chosen, the fact is too young — do NOT build it now and do
+NOT leave a bare `TODO` (readiness treats `TODO` as an unresolved placeholder
+and blocks on it). Record it as a **deferral** with `RALPH-PENDING`, the
+first-class "applies but not resolvable yet" state. It reaches readiness (a new
+project is never blocked on it) and is resolved by ordinary dev-cycle agents
+when its trigger fires — never by re-running this remediation. Every
+`RALPH-PENDING` line carries an `(assumed <YYYY-MM-DD>)` stamp with a real date
+and a `review trigger: <condition>` clause:
+
+- Gate form (may replace a `RALPH-COMMAND` / `RALPH-INAPPLICABLE`, including
+  inside a `RALPH-LANG:` block). The first token MUST be an approved gate tool
+  so the eventual gate is real:
+  `RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed`
+- Fact form (the `RALPH-PENDING` sentinel leads the fact value):
+  `RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); review trigger: once a scanner is chosen`
+
+`RALPH-PENDING` is accepted on EVERY policy, including the testing and
+verification gates — a new project whose test runner is not installed may defer
+it (`RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps
+are installed`), trusting a dev-cycle agent to wire it when the trigger fires.
+Prefer a real `RALPH-COMMAND` when the gate can be declared now (the validator
+never executes it, so an uninstalled-but-named tool is fine), and reserve
+`RALPH-INAPPLICABLE` for a gate that genuinely NEVER applies (not merely
+"not yet"). Every RALPH-PENDING you write is a debt a future dev cycle must
+repay, so name the real intended tool and a concrete review trigger.
 
 ### 5. INTEGRATE the pointer into AGENTS.md
 

@@ -69,3 +69,21 @@ def test_condensed_agents_block_mentions_policies_evolve() -> None:
     begin = content.find(markers.AGENTS_BLOCK_BEGIN)
     end = content.find(markers.AGENTS_BLOCK_END)
     assert len(content[begin:end].splitlines()) <= 10, "block must stay short"
+
+
+def test_condensed_agents_block_carries_pending_resolution_mandate() -> None:
+    """The ready block is the ONLY dev-cycle-facing surface that makes resolving
+    RALPH-PENDING deferrals an ongoing obligation. Because RALPH-PENDING is
+    accepted by the validator on every policy, this instruction is the sole
+    compensating control that keeps a deferral from living forever — it MUST
+    not be silently droppable. Guard the load-bearing phrases explicitly.
+    """
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+    assert agents_md.condense_placeholder_block(ws) == [markers.AGENTS_MD]
+    lowered = ws.read(markers.AGENTS_MD).lower()
+    assert "ralph-pending" in lowered, "ready block must name the deferral state"
+    assert "review trigger" in lowered, "must tie resolution to the review trigger"
+    assert "violation" in lowered, (
+        "leaving a resolvable pending item must be framed as a violation"
+    )

@@ -47,6 +47,45 @@ _REVIEW_VALUE_RE = re.compile(r"^RALPH-REVIEW:\s*\S+.*$")
 _LANG_LINE_RE = re.compile(r"^RALPH-LANG:\s*(\S.*?)\s*$")
 _HEADING_LINE_RE = re.compile(r"^\s*#{1,2}\s+(.+?)\s*$")
 _POLICY_ID_LINE_RE = re.compile(r"<!--\s*ralph-policy-id:\s*([^>\s]+)\s*-->")
+_PENDING_LINE_RE = re.compile(r"^RALPH-PENDING:.*$")
+_PENDING_VALUE_RE = re.compile(r"^RALPH-PENDING:\s*\S+.*$")
+_FACT_KEY_VALUE_RE = re.compile(r"^RALPH-FACT:\s*([^:]+):\s*(\S.*?)\s*$")
+# A RALPH-PENDING value must carry an ``(assumed <ISO-date>)`` stamp and a
+# ``review trigger: <condition>`` clause, so every deferral is visibly
+# provisional and names the condition that resurfaces it during normal dev.
+_ASSUMED_DATE_RE = re.compile(r"\(assumed \d{4}-\d{2}-\d{2}\)")
+_REVIEW_TRIGGER_RE = re.compile(r"review trigger:\s*\S")
+
+# The gates whose presence is satisfied ONLY by a runnable RALPH-COMMAND or a
+# RALPH-PENDING deferral — never by RALPH-INAPPLICABLE or RALPH-REVIEW. Testing
+# and verification always apply to behavior-bearing software, so they cannot be
+# marked "never applies"; they CAN be deferred with RALPH-PENDING (e.g. a new
+# project whose test runner is not installed yet), which a dev-cycle agent
+# resolves when the trigger fires.
+_MANDATORY_GATE_FILES: frozenset[str] = frozenset(
+    {"testing-policy.md", "verification-policy.md"}
+)
+
+# Per-kind remediation guidance for a malformed gate-form RALPH-PENDING line.
+_PENDING_KIND_OUTCOME: dict[str, str] = {
+    "unapproved": (
+        "start the RALPH-PENDING line with the intended approved gate tool "
+        "(e.g. `pytest`, `mypy`, `ruff`, `make <target>`) so the eventual "
+        "gate is real"
+    ),
+    "undated": (
+        "add an `(assumed <YYYY-MM-DD>)` stamp with a real date so the "
+        "deferral is visibly provisional"
+    ),
+    "no-trigger": (
+        "add a `review trigger: <condition>` clause naming what resolves the "
+        "deferral during normal development"
+    ),
+    "placeholder": (
+        "replace the placeholder token in the RALPH-PENDING line with real "
+        "values"
+    ),
+}
 
 
 def _has_any(content: str, substrings: tuple[str, ...]) -> str | None:
@@ -126,6 +165,134 @@ def _inapplicable_present(content: str) -> bool:
     return bool(_inapplicable_lines(content))
 
 
+def _pending_values(content: str) -> list[str]:
+    """Return the trimmed values of every *valid* gate-form RALPH-PENDING line.
+
+    A valid pending line has a non-whitespace value (regex
+    :data:`_PENDING_VALUE_RE`). Empty pending lines are surfaced separately
+    by :func:`_check_individual_pendings` so the user sees a precise finding.
+    """
+    return [
+        line[len(markers.PENDING_MARKER):].strip()
+        for line in content.splitlines()
+        if _PENDING_VALUE_RE.match(line)
+    ]
+
+
+def _pending_raw_lines(content: str) -> list[str]:
+    """Return every gate-form ``RALPH-PENDING:`` line (including empty ones)."""
+    return [
+        line[len(markers.PENDING_MARKER):].strip()
+        for line in content.splitlines()
+        if _PENDING_LINE_RE.match(line)
+    ]
+
+
+def _pending_shape_kinds(value: str, *, require_tool: bool) -> list[str]:
+    """Return the malformed-shape kinds of a RALPH-PENDING value (empty == ok).
+
+    A placeholder token short-circuits every other check (mirroring the
+    command/inapplicable helpers' minimal-findings behavior): the user must
+    substitute real values before the date/trigger/tool checks are useful.
+    ``require_tool`` is True for the gate form (first token must be an
+    approved gate tool) and False for the fact form (no tool token).
+    """
+    if _has_any(value, markers.PLACEHOLDER_TOKENS) is not None:
+        return ["placeholder"]
+    kinds: list[str] = []
+    if require_tool and not _command_is_approved(value):
+        kinds.append("unapproved")
+    if _ASSUMED_DATE_RE.search(value) is None:
+        kinds.append("undated")
+    if _REVIEW_TRIGGER_RE.search(value) is None:
+        kinds.append("no-trigger")
+    return kinds
+
+
+def _check_individual_pendings(
+    pending_values: list[str], path: str, filename: str
+) -> list[PolicyFinding]:
+    """Validate every gate-form RALPH-PENDING line.
+
+    RALPH-PENDING is accepted on EVERY policy (including the testing and
+    verification gates): a deferral is trusted to be resolved by a dev-cycle
+    agent when its review trigger fires, never by re-running remediation. Two
+    cases produce a stable ``RWP-PENDING:<file>:<kind>-<n>`` finding:
+
+    * an empty ``RALPH-PENDING:`` line (``empty``);
+    * a malformed shape (``unapproved`` / ``undated`` / ``no-trigger`` /
+      ``placeholder``).
+    """
+    findings: list[PolicyFinding] = []
+    for index, value in enumerate(pending_values, start=1):
+        if not value:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=f"{markers.ID_PENDING}:{filename}:empty-{index}",
+                    path=path,
+                    missing_evidence=f"RALPH-PENDING line {index} is empty",
+                    required_outcome=(
+                        "declare the deferred gate as `RALPH-PENDING: "
+                        "<approved-tool> (assumed <YYYY-MM-DD>); review "
+                        "trigger: <condition>` or remove the line"
+                    ),
+                )
+            )
+            continue
+        findings.extend(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_PENDING}:{filename}:{kind}-{index}",
+                path=path,
+                missing_evidence=(
+                    f"RALPH-PENDING line {index} is malformed ({kind})"
+                ),
+                required_outcome=_PENDING_KIND_OUTCOME[kind],
+            )
+            for kind in _pending_shape_kinds(value, require_tool=True)
+        )
+    return findings
+
+
+def _check_pending_facts(
+    content: str, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Validate every fact-form RALPH-PENDING value's shape.
+
+    A ``RALPH-FACT`` whose value leads with the RALPH-PENDING sentinel is a
+    deferred fact. The placeholder kind is intentionally NOT re-reported here
+    (the per-fact-line placeholder scan in :func:`_check_placeholders` already
+    owns it); this helper adds the ``undated`` / ``no-trigger`` shape findings
+    specific to the deferral form.
+    """
+    findings: list[PolicyFinding] = []
+    index = 0
+    for line in content.splitlines():
+        match = _FACT_KEY_VALUE_RE.match(line)
+        if match is None:
+            continue
+        value = str(match.group(2)).strip()
+        if not value.startswith(markers.PENDING_SENTINEL):
+            continue
+        index += 1
+        for kind in _pending_shape_kinds(value, require_tool=False):
+            if kind == "placeholder":
+                continue
+            findings.append(
+                PolicyFinding(
+                    requirement_id=(
+                        f"{markers.ID_PENDING}:{filename}:fact-{kind}-{index}"
+                    ),
+                    path=path,
+                    missing_evidence=(
+                        f"deferred RALPH-FACT (RALPH-PENDING) {index} is "
+                        f"malformed ({kind})"
+                    ),
+                    required_outcome=_PENDING_KIND_OUTCOME[kind],
+                )
+            )
+    return findings
+
+
 def _inapplicable_lines_for_lang_block(block_lines: list[str]) -> list[str]:
     """Return the trimmed RALPH-INAPPLICABLE values inside one per-language block.
 
@@ -152,14 +319,16 @@ def _fact_lines(content: str) -> list[str]:
     return out
 
 
-def _lang_blocks(content: str) -> dict[str, tuple[bool, bool]]:
-    """Return a mapping of language name -> (has_command, has_inapplicable).
+def _lang_blocks(content: str) -> dict[str, tuple[bool, bool, bool]]:
+    """Return language name -> (has_command, has_inapplicable, has_pending).
 
     The validator slices the file into per-language blocks delimited by
     ``RALPH-LANG:`` lines. Each block ends at the next RALPH-LANG line OR
     the end of the file. A block must contain at least one non-empty
-    RALPH-COMMAND or RALPH-INAPPLICABLE line to satisfy per-language
-    coverage — empty marker lines are NOT counted as a declaration.
+    RALPH-COMMAND, RALPH-INAPPLICABLE, or RALPH-PENDING line to satisfy
+    per-language coverage — empty marker lines are NOT counted as a
+    declaration. Gate-form RALPH-PENDING shape is validated at file scope by
+    :func:`_check_individual_pendings`; this helper only counts presence.
     """
     blocks: dict[str, list[str]] = {}
     current_lang: str | None = None
@@ -173,11 +342,13 @@ def _lang_blocks(content: str) -> dict[str, tuple[bool, bool]]:
             continue
         if current_lang is not None:
             blocks[current_lang].append(line)
-    out: dict[str, tuple[bool, bool]] = {}
+    out: dict[str, tuple[bool, bool, bool]] = {}
     for lang, lines in blocks.items():
+        joined = "\n".join(lines)
         out[lang] = (
-            bool(_command_values("\n".join(lines))),
+            bool(_command_values(joined)),
             bool(_inapplicable_lines_for_lang_block(lines)),
+            bool(_pending_values(joined)),
         )
     return out
 
@@ -464,6 +635,7 @@ def _validate_existing_policy_file(
         findings.extend(_check_required_headings(content, path, filename))
     findings.extend(_check_research_basis(content, path, filename))
     findings.extend(_check_placeholders(content, path, filename))
+    findings.extend(_check_pending_facts(content, path, filename))
     if _frozen_schema_version(content) is None:
         findings.extend(_check_required_fact_keys(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
@@ -743,8 +915,10 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
     command_raw_values = _command_raw_lines(content)
     inapplicable_values = _inapplicable_lines(content)
     inapplicable_raw_values = _inapplicable_raw_lines(content)
+    pending_raw_values = _pending_raw_lines(content)
     has_command = bool(command_values)
     has_inapplicable = bool(inapplicable_values)
+    has_pending = bool(_pending_values(content))
     review_values = [
         line[len(markers.REVIEW_MARKER):].strip()
         for line in content.splitlines()
@@ -755,31 +929,37 @@ def _check_commands(content: str, path: str, filename: str) -> list[PolicyFindin
         for line in content.splitlines()
         if _REVIEW_LINE_RE.match(line)
     ]
-    command_required = filename in {
-        "testing-policy.md",
-        "verification-policy.md",
-    }
-    if (command_required and not has_command) or (
-        not command_required and not has_command and not has_inapplicable and not review_values
+    command_required = filename in _MANDATORY_GATE_FILES
+    if (command_required and not has_command and not has_pending) or (
+        not command_required
+        and not has_command
+        and not has_inapplicable
+        and not review_values
+        and not has_pending
     ):
         findings.append(
             PolicyFinding(
                 requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:missing",
                 path=path,
                 missing_evidence=(
-                    "file lacks the required runnable RALPH-COMMAND gate"
+                    "file lacks a runnable RALPH-COMMAND gate or a "
+                    "RALPH-PENDING deferral"
                     if command_required
-                    else "file contains no non-empty RALPH-COMMAND, RALPH-REVIEW, or RALPH-INAPPLICABLE line"
+                    else "file contains no non-empty RALPH-COMMAND, RALPH-REVIEW, RALPH-INAPPLICABLE, or RALPH-PENDING line"
                 ),
                 required_outcome=(
                     "add at least one RALPH-COMMAND line with a real runnable "
-                    "verification command (or RALPH-INAPPLICABLE with a reason)"
+                    "verification command (or RALPH-INAPPLICABLE with a "
+                    "reason, or RALPH-PENDING for a gate not wired yet)"
                 ),
             )
         )
     findings.extend(_check_individual_commands(command_raw_values, path, filename))
     findings.extend(
         _check_individual_inapplicables(inapplicable_raw_values, path, filename)
+    )
+    findings.extend(
+        _check_individual_pendings(pending_raw_values, path, filename)
     )
     for index, value in enumerate(review_raw_values, start=1):
         lowered = value.lower()
@@ -1099,25 +1279,27 @@ def _check_per_language_coverage(
                         ),
                         required_outcome=(
                             f"add `RALPH-LANG: {language}` followed by a "
-                            "RALPH-COMMAND or RALPH-INAPPLICABLE line for this language"
+                            "RALPH-COMMAND, RALPH-INAPPLICABLE, or "
+                            "RALPH-PENDING line for this language"
                         ),
                     )
                 )
                 continue
-            has_command, has_inapplicable = blocks[language]
-            if not has_command and not has_inapplicable:
+            has_command, has_inapplicable, has_pending = blocks[language]
+            if not has_command and not has_inapplicable and not has_pending:
                 findings.append(
                     PolicyFinding(
                         requirement_id=f"{markers.ID_LANG_COVERAGE}:{filename}:{language}:empty",
                         path=path,
                         missing_evidence=(
-                            f"RALPH-LANG block for '{language}' has neither "
-                            "a non-empty RALPH-COMMAND nor a non-empty "
-                            "RALPH-INAPPLICABLE"
+                            f"RALPH-LANG block for '{language}' has no "
+                            "non-empty RALPH-COMMAND, RALPH-INAPPLICABLE, or "
+                            "RALPH-PENDING"
                         ),
                         required_outcome=(
-                            f"add a non-empty RALPH-COMMAND or "
-                            f"RALPH-INAPPLICABLE line after `RALPH-LANG: {language}`"
+                            f"add a non-empty RALPH-COMMAND, "
+                            f"RALPH-INAPPLICABLE, or RALPH-PENDING line after "
+                            f"`RALPH-LANG: {language}`"
                         ),
                     )
                 )

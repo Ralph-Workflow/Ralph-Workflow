@@ -114,10 +114,10 @@ owner and MUST NOT be inferred from the repository alone.
 
 <!-- REPLACE-ME: record one verified, machine-checkable value per fact
 below (commands, paths, names, versions — not adjectives or aspirations).
-If the project is too young for a fact to be settled, record the best
-current answer plus the condition that will settle it, e.g.
-"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
-be able to tell a settled fact from a provisional one at a glance. Then
+If a fact cannot be resolved yet (project too young, tool not chosen, value
+not knowable), defer it with the RALPH-PENDING form "RALPH-PENDING (assumed
+<date>); review trigger: <trigger>" — it reaches readiness and a dev-cycle
+agent resolves it when its trigger fires. Then
 delete this comment. -->
 
 RALPH-FACT: data_sensitivity (owner-supplied): PROJECT-FACT-UNRESOLVED
@@ -176,7 +176,11 @@ Secret scanning applies to every project:
 <!-- REPLACE-ME: set the project's real secret-scan command (e.g. gitleaks
 or detect-secrets; the first token must be an approved gate tool — wrap
 anything else in `make`, `uv run`, or `npx`). Do not declare a hollow
-command. Then delete this comment. -->
+command. If no scanner is installed or chosen yet, defer with a
+RALPH-PENDING line naming the intended tool
+(`RALPH-PENDING: gitleaks (assumed <date>); review trigger: <trigger>`)
+rather than a hollow command — it reaches readiness and a later dev cycle
+wires it. Then delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
@@ -188,8 +192,10 @@ reason):
 with the real scanner command (first token must be an approved gate tool;
 wrap others in `make`, `uv run`, or `npx`), add blocks for detected
 languages missing below, drop blocks for languages the project does not
-use, and record genuinely unscanned languages as inapplicable with a
-reason. Then delete this comment. -->
+use, record genuinely unscannable languages as inapplicable with a
+reason, and defer a scanner that applies but is not installed yet with a
+RALPH-PENDING line (approved tool + `(assumed <date>)` + `review
+trigger:`). Then delete this comment. -->
 
 RALPH-LANG: Python
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED

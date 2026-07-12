@@ -41,10 +41,10 @@ project evolves.
 
 <!-- REPLACE-ME: record one verified, machine-checkable value per fact
 below (commands, paths, names, versions — not adjectives or aspirations).
-If the project is too young for a fact to be settled, record the best
-current answer plus the condition that will settle it, e.g.
-"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
-be able to tell a settled fact from a provisional one at a glance. Then
+If a fact cannot be resolved yet (project too young, tool not chosen, value
+not knowable), defer it with the RALPH-PENDING form "RALPH-PENDING (assumed
+<date>); review trigger: <trigger>" — it reaches readiness and a dev-cycle
+agent resolves it when its trigger fires. Then
 delete this comment. -->
 
 RALPH-FACT: authoritative_verify_command: PROJECT-FACT-UNRESOLVED
@@ -82,7 +82,11 @@ Run every gate below before claiming a change complies with this policy.
 be an approved gate tool (wrap anything else in `make`, `uv run`, or
 `npx`). If the project has no such gate yet, create the smallest real one
 (a make target running the actual check) rather than declaring a hollow
-command; only a gate that truly cannot exist may be recorded as
+command; a gate that applies but is not wired yet (for example the tool is
+not installed on a new project) is recorded as a RALPH-PENDING deferral —
+`RALPH-PENDING: <approved-tool> (assumed <date>); review trigger: <trigger>`
+— which reaches readiness and is resolved by a later dev cycle when its
+trigger fires; only a gate that truly cannot EVER exist is recorded as
 inapplicable with a reason and the condition that would create it.
 You are FILLING OUT THIS FORM, not fixing the project: record the real
 command and confirm it EXISTS (you MAY run it once as a bounded probe to

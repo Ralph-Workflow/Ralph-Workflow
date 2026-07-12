@@ -26,7 +26,7 @@ from typing import Final
 # Schema versioning
 SCHEMA_VERSION: Final[str] = "v2"
 POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v2 -->"
-POLICY_CONTRACT_VERSION: Final[str] = "2026-07-12.2"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-07-12.3"
 
 # Opt-out: byte-exact. The opt-out only fires on this exact substring of
 # AGENTS.md; near-miss prose, additional words, or any whitespace/case change
@@ -339,15 +339,39 @@ POLICY_ID_PREFIX: Final[str] = "<!-- ralph-policy-id:"
 #   RALPH-INAPPLICABLE: <reason>        Explicit declaration that a check
 #                                       does not apply to this project; an
 #                                       alternative to RALPH-COMMAND.
+#   RALPH-PENDING: <target> (assumed    A DEFERRAL: the gate or fact applies
+#     <date>); review trigger: <cond>   but cannot be resolved yet (e.g. the
+#                                       tool is not installed, the scanner is
+#                                       not chosen, the fact is too young).
+#                                       Unlike RALPH-INAPPLICABLE (never
+#                                       applies) it reaches readiness so a
+#                                       new project is not blocked, and is
+#                                       resolved by dev-cycle agents when its
+#                                       review trigger fires — NEVER by
+#                                       re-running remediation. As a gate the
+#                                       first token must be an approved tool;
+#                                       as a fact value the RALPH-PENDING
+#                                       sentinel leads. Accepted on EVERY
+#                                       policy, including the mandatory
+#                                       testing/verification gates.
 #   RALPH-LANG: <Language>              Marks a per-language declaration in
 #                                       typecheck/lint starters; the line
 #                                       that follows must include a
-#                                       RALPH-COMMAND or RALPH-INAPPLICABLE.
+#                                       RALPH-COMMAND, RALPH-INAPPLICABLE, or
+#                                       RALPH-PENDING.
 FACT_MARKER: Final[str] = "RALPH-FACT:"
 COMMAND_MARKER: Final[str] = "RALPH-COMMAND:"
 INAPPLICABLE_MARKER: Final[str] = "RALPH-INAPPLICABLE:"
 REVIEW_MARKER: Final[str] = "RALPH-REVIEW:"
 LANG_MARKER: Final[str] = "RALPH-LANG:"
+# Deferral marker. The line prefix (``PENDING_MARKER``) introduces a gate-form
+# deferral; the same token without the colon (``PENDING_SENTINEL``) leads a
+# deferred RALPH-FACT value. Deliberately NOT in ``PLACEHOLDER_TOKENS``: a
+# RALPH-PENDING line is a resolved deferral, not an unfilled placeholder, and
+# has its own shape checks (approved tool for the gate form, an ``(assumed
+# <ISO-date>)`` stamp, and a ``review trigger:`` clause).
+PENDING_MARKER: Final[str] = "RALPH-PENDING:"
+PENDING_SENTINEL: Final[str] = "RALPH-PENDING"
 
 # Tokens that mark a policy line or fact value as unresolved. The validator
 # rejects any policy containing any of these substrings. They are also embedded
@@ -362,8 +386,8 @@ PLACEHOLDER_TOKENS: Final[tuple[str, ...]] = (
     "{{",
     "REPLACE-ME",
     "PROJECT-FACT-UNRESOLVED",
-    # The REPLACE-ME guidance comments show the provisional-fact convention
-    # "(assumed <date>; revisit when <trigger>)"; agents that copy the
+    # The REPLACE-ME guidance comments show the RALPH-PENDING deferral form
+    # "(assumed <date>); review trigger: <trigger>"; agents that copy the
     # example literally must stay blocked until they substitute real values.
     "<date>",
     "<trigger>",
@@ -640,6 +664,7 @@ ID_CITATION_MISSING: Final[str] = "RWP-CITATION"
 ID_HEADING_MISSING: Final[str] = "RWP-HEADING"
 ID_PLACEHOLDER: Final[str] = "RWP-PLACEHOLDER"
 ID_MARKER_MISSING: Final[str] = "RWP-MARKER"
+ID_PENDING: Final[str] = "RWP-PENDING"
 ID_AGENTS_MD_MISSING: Final[str] = "RWP-AGENTS-MD"
 ID_CLAUDE_MD_MISSING: Final[str] = "RWP-CLAUDE-MD"
 ID_DOMAIN: Final[str] = "RWP-DOMAIN"
@@ -673,6 +698,7 @@ __all__ = [
     "ID_LANG_COVERAGE",
     "ID_MARKER_MISSING",
     "ID_MIGRATE",
+    "ID_PENDING",
     "ID_PLACEHOLDER",
     "INAPPLICABLE_MARKER",
     "LANG_MARKER",
@@ -683,6 +709,8 @@ __all__ = [
     "MIGRATION_DOCS_GLOB_DIR",
     "MIGRATION_HEADING_RECOGNIZERS",
     "OPT_OUT_MARKER",
+    "PENDING_MARKER",
+    "PENDING_SENTINEL",
     "PERF_DEP_SIGNALS",
     "PERF_SIGNAL_PATHS",
     "PLACEHOLDER_TOKENS",
