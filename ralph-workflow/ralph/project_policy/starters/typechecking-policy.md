@@ -13,9 +13,77 @@ blocked while this banner or any placeholder token remains. -->
 This policy governs every maintained first-party language for which static type checking
 applies. It defines the selected type checker, the exact commands, the
 source categories included, the strictness level, and the rules around
-suppressions, ignores, casts, generated code, and untyped dependencies.
+suppressions, ignores, casts, generated code, and untyped dependencies. It
+also defines how first-party code MUST be written and structured so the
+checker can prove as much as possible: richer types, total functions,
+isolated side effects, and no dynamic constructs that create unchecked holes.
 
 ## Default requirements
+
+Every maintained first-party language MUST be statically type-checked (the
+tooling and enforcement rules follow), AND first-party code MUST be written to
+be maximally checkable. The discipline below applies to each language to the
+extent its checker can express and enforce it; where a language cannot enforce
+a rule statically, the intent still binds and is met by the nearest available
+construct.
+
+### Type-checkability discipline
+
+**Make illegal states unrepresentable.**
+
+* MUST model a closed set of values as an enum, literal-union, or sealed type
+  — never a bare string or magic number for a known, finite domain.
+* MUST keep dynamic-type escapes (`Any`, widening `unknown`, `interface{}`,
+  bare `object`, `Dict[str, Any]`, and equivalents) out of checked
+  first-party code, except at a boundary that is IMMEDIATELY narrowed to a
+  precise type.
+* SHOULD represent alternatives and absence with sum types (tagged unions,
+  `Result`/`Option`-style types) instead of nullable-everything, sentinel
+  values, or a boolean flag paired with optional fields. Model "or" as a sum
+  type and "and" as a product type.
+* SHOULD give domain primitives distinct types (newtype, branded type,
+  `NewType`, or a wrapper struct) — identifiers, quantities, units — so values
+  of different meaning cannot be transposed.
+
+**Prefer total functions.**
+
+* MUST make every match/switch over a closed type exhaustive, compiler-
+  enforced where the language supports it; do not add a catch-all default that
+  silently swallows new variants.
+* SHOULD represent "may fail" or "may be absent" in the return type
+  (`Result`/`Option`) rather than exceptions-as-control-flow, `null`, or
+  unchecked index / first-element / dictionary access.
+
+**Isolate side effects so the core stays pure and checkable.**
+
+* SHOULD keep a pure functional core and push side effects — I/O, mutation,
+  clock, randomness, global state — to a thin shell at the edges. The bulk of
+  logic SHOULD be pure functions of their inputs, which the checker and tests
+  can verify in isolation.
+* SHOULD treat data as immutable by default (frozen/readonly/const, enforced
+  where the language supports it) and pass dependencies explicitly rather than
+  reaching through globals, singletons, or module-level mutable state.
+
+**Structure code for static analysis, not runtime dynamism.**
+
+* MUST avoid reflection, monkeypatching, dynamic attribute get/set
+  (`getattr`/`setattr`/`__getattr__` and equivalents), `eval`/`exec`,
+  string-keyed dynamic dispatch, and runtime metaprogramming that hides types
+  from the checker, in checked first-party code. Use explicit
+  interfaces/protocols/traits, typed dispatch tables, enums, and plain data
+  instead.
+* MUST give a structural or duck-typed expectation an explicit typed contract
+  (protocol, interface, or trait) so the checker verifies the expected shape
+  rather than trusting it at runtime.
+
+A genuinely required dynamic or effectful boundary — a serialization library,
+plugin loader, FFI surface, or framework hook — is NOT an open exception to
+the rules above: contain it behind a typed adapter, record it in
+`sanctioned_dynamic_boundaries`, and annotate it per the suppression and
+live-entry rules below. That set of boundaries is ratcheted; it MUST NOT grow
+without a documented justification.
+
+### Tooling, suppressions, and enforcement
 
 A maintained first-party language includes interpreted or compiled production
 and test source owned by the project. Generated/vendored code, embedded
@@ -77,6 +145,8 @@ RALPH-FACT: ci_gate_integration: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: maintenance_evidence: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: first_party_languages: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: excluded_language_evidence: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: type_modeling_conventions: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: sanctioned_dynamic_boundaries: PROJECT-FACT-UNRESOLVED
 
 For each language, `maintenance_evidence` records tool and version range,
 official maintenance source, compatibility and first-party coverage evidence,
@@ -89,6 +159,9 @@ To follow this policy, an agent making any change MUST:
 
 * DECLARE one `RALPH-LANG:` block per language with the exact checker
   command. Do not invent languages; do not omit maintained first-party languages.
+* MODEL closed value sets, alternatives, and domain primitives with precise
+  types (enums, sum types, newtypes) before reaching for strings, flags, or
+  broad containers, and keep side effects at the edges so the core stays pure.
 * PREFER an established project checker when it remains maintained and
   suitable. Record selection evidence when adopting or replacing one.
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
@@ -108,6 +181,12 @@ An agent MUST NOT:
 * Add a suppression merely to make the checker pass, silence first-party
   design errors globally, or expand the established unchecked baseline.
 * Suppress verified dead code or annotate a speculative/unverified consumer.
+* Introduce reflection, monkeypatching, dynamic attribute access,
+  `eval`/`exec`, or string-keyed dynamic dispatch into checked first-party
+  code to avoid writing an explicit typed contract.
+* Reach for a bare string, boolean flag, or broad container (`Any`,
+  `object`, `interface{}`, `Dict[str, Any]`) where an enum, sum type, or
+  precise type expresses the value.
 * Weaken the strictness level to obtain a passing result.
 
 ## Verification
@@ -119,7 +198,15 @@ with the real checker command (first token must be an approved gate tool;
 wrap others in `make`, `uv run`, or `npx`), add blocks for detected
 languages missing below, drop blocks for languages the project does not
 use, and record genuinely unchecked languages as inapplicable with a
-reason. Then delete this comment. -->
+reason.
+You are FILLING OUT THIS FORM, not fixing the project: record the real
+command and confirm it EXISTS (you MAY run it once as a bounded probe to
+check that it resolves). Do NOT fix failing checks — type errors, failing
+tests, lint findings, audit failures — and do NOT run a suite to green; a
+failing or slow gate is the project's problem to address later, not a
+form-filling blocker. Run only the commands you declare here, and if you
+write a helper script to wire a gate, cover it with a unit test. Then
+delete this comment. -->
 
 RALPH-LANG: Python
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
@@ -156,6 +243,7 @@ This policy MUST be reviewed in the same workflow as any of:
 * The type checker, version, or strictness level changes.
 * A new dependency is added that ships without types.
 * The suppression policy changes.
+* The sanctioned dynamic boundaries or type-modeling conventions change.
 
 ## Research basis
 
@@ -178,6 +266,16 @@ This policy MUST be reviewed in the same workflow as any of:
   title: "Using mypy with an existing codebase"
   http: https://mypy.readthedocs.io/en/stable/existing_code.html
   review date: 2026-07-11
+
+* publisher: Alexis King
+  title: "Parse, don't validate"
+  http: https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/
+  review date: 2026-07-12
+
+* publisher: Scott Wlaschin (F# for fun and profit)
+  title: "Designing with types: Making illegal states unrepresentable"
+  http: https://fsharpforfunandprofit.com/posts/designing-with-types-making-illegal-states-unrepresentable/
+  review date: 2026-07-12
 
 ## Living document contract
 

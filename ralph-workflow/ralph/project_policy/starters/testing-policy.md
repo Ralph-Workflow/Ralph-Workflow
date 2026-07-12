@@ -18,30 +18,64 @@ checks performed by humans, or third-party hosted service reliability.
 
 ## Default requirements
 
-* Tests SHOULD assert stable observable contracts at the narrowest useful
-  boundary. Public-surface, contract, package, and internal unit tests are
-  all valid when they express behavior cheaply without coupling to incidental
-  implementation details.
-* Test friction SHOULD trigger a production-boundary refactor only when it
-  reveals a real cohesion, dependency, or I/O-seam problem. Do not create an
-  artificial public API solely to accommodate a test.
-* Narrower unit tests are appropriate for pure functions, parsers,
-  validators, and decision tables where every branch is reachable from
-  the function's signature alone.
-* Automated testing is mandatory for first-party software behavior. A
-  missing framework or code that is difficult to test requires a real test
-  seam and gate; it does not make testing inapplicable.
-* Tests MUST be deterministic and bounded. Unit tests isolate real time,
-  filesystem, network, subprocess, and global singleton mutation. Integration,
-  contract, system, and end-to-end tests MAY use controlled real resources
-  when that interaction is the behavior under test; those resources MUST be
-  isolated, reproducible, time-bounded, and cleaned up.
-* Every bug fix MUST add a regression test that fails on the bug and
-  passes on the fix. The test name SHOULD encode the regression so
-  future readers understand the contract.
-* Every new behaviour MUST add positive coverage. Negative coverage is
-  mandatory when rejection, failure, permission, boundary, or recovery
-  behavior exists.
+The numbered rules below are the concrete, enforceable obligations of this
+policy. Each is MANDATORY unless it says SHOULD. They are co-equal: a change
+that satisfies one rule by breaking another — fast tests with no coverage,
+thorough tests with no time limit — does NOT comply.
+
+1. Assert stable observable contracts at the narrowest useful boundary.
+   Public-surface, contract, package, and internal unit tests are all valid
+   when they express behavior cheaply without coupling to incidental
+   implementation details.
+2. Prefer narrow unit tests for pure functions, parsers, validators, and
+   decision tables where every branch is reachable from the function's
+   signature alone.
+3. Refactor the production boundary only when a test reveals a real
+   cohesion, dependency, or I/O-seam problem. Do NOT invent a public API
+   solely to accommodate a test.
+4. Automated testing is mandatory for first-party software behavior. A
+   missing framework or code that is difficult to test requires a real test
+   seam and gate; it does not make testing inapplicable.
+5. Tests MUST be deterministic. A test that can pass or fail without a
+   change in behavior is a defect: fix or remove it, never retry it until
+   it goes green.
+6. Unit tests MUST isolate real time, filesystem, network, subprocess, and
+   global singleton mutation behind in-memory fakes. Integration, contract,
+   system, and end-to-end tests MAY use controlled real resources when that
+   interaction is the behavior under test; those resources MUST be isolated,
+   reproducible, bounded, and cleaned up.
+7. Mock real I/O by default. Real I/O is the dominant source of slow, flaky
+   tests, so mocking, faking, or stubbing filesystem, network/HTTP,
+   database, subprocess, and clock access is STRONGLY PREFERRED. Touching a
+   real external resource is the EXCEPTION, permitted only at the
+   integration, contract, system, or end-to-end layers where that specific
+   interaction is the behavior under test.
+8. Every test suite MUST enforce a bounded execution time limit, and the
+   suite in the main verification pipeline MUST enforce one. This is NOT
+   OPTIONAL: a suite with no enforced limit is itself a policy violation,
+   not a slow-but-tolerable suite. The limit MUST be enforced by the test
+   runner — a per-test and/or whole-suite timeout that FAILS the gate when
+   exceeded — never by convention or reviewer vigilance. AI agents block on
+   this pipeline, so one unbounded test can hang an entire run indefinitely.
+9. A timeout is a HARD failure, never a shortcut to green — but the two
+   limits evolve differently:
+   - The per-test timeout catches one slow or hanging test. Raising it is
+     almost always the wrong fix; repair the test instead (usually by
+     mocking its I/O per rule 7).
+   - The whole-suite budget scales with the number of tests and is EXPECTED
+     to grow as the project grows — a 200k-LOC suite cannot live under a
+     small project's budget. Growing it is legitimate ONLY as a deliberate,
+     reviewed maintenance change (see Maintenance triggers) that tracks more
+     genuinely-fast tests, NEVER a quiet bump to hide a slow one.
+   When it can, the gate SHOULD surface these time-limit and performance
+   rules on an over-budget failure, so the developer's reflex is to fix the
+   tests, not to raise the budget.
+10. Every bug fix MUST add a regression test that fails on the bug and
+    passes on the fix. The test name SHOULD encode the regression so future
+    readers understand the contract.
+11. Every new behaviour MUST add positive coverage. Negative coverage is
+    mandatory when rejection, failure, permission, boundary, or recovery
+    behavior exists.
 
 ## Project facts to resolve
 
@@ -62,6 +96,10 @@ RALPH-FACT: test_command_prerequisites: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: primary_test_framework: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: secondary_test_frameworks: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: test_isolation_strategy: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: io_mocking_approach: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: suite_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: per_test_timeout: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: timeout_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: flake_policy: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: regression_test_convention: PROJECT-FACT-UNRESOLVED
 
@@ -73,6 +111,10 @@ To follow this policy, an agent making any change MUST:
   result. If it unexpectedly passes, confirm existing behavior and refine the
   missing contract. If characterization or generated/declarative work has no
   meaningful red phase, record why and never manufacture a failure.
+* MOCK real I/O by default. Reach for an in-memory fake for filesystem,
+  network, database, subprocess, and clock before writing any test that
+  touches the real resource; use a real resource only at the integration
+  layers named above, and justify it.
 * PREFER existing test helpers, fixtures, and utilities. Do not add a
   new testing dependency when the existing stack can express the case.
 * AVOID adding a dependency, abstraction, or numeric target without
@@ -80,15 +122,16 @@ To follow this policy, an agent making any change MUST:
 * RUN every `RALPH-COMMAND:` gate declared under Verification before
   claiming the change complies, and report the actual outcome. Never
   report a command that was not run.
-* UPDATE this policy (facts, commands, requirements) in the same
-  workflow that changes the test command, framework, or isolation
-  strategy.
+* UPDATE this policy (facts, commands, requirements) in the same workflow
+  that changes the test command, framework, isolation strategy, mocking
+  approach, or time budget.
 
 An agent MUST NOT:
 
 * Default to white-box tests that couple to private internals.
-* Weaken the testing gate to obtain a passing result (no skipping tests,
-  no lowering coverage thresholds, no `--continue-on-collection-errors`).
+* Weaken the testing gate to obtain a passing result: no skipping tests,
+  no lowering coverage thresholds, no raising/disabling/deleting the suite
+  or per-test time limit, no `--continue-on-collection-errors`.
 * Introduce wall-clock sleeps or uncontrolled external I/O. Use fakes for
   unit tests and isolated bounded resources only at test layers intended to
   exercise those integrations.
@@ -102,16 +145,33 @@ be an approved gate tool (wrap anything else in `make`, `uv run`, or
 `npx`). If the project has no such gate yet, create the smallest real one
 (a make target running the actual check) rather than declaring a hollow
 command; only a gate that truly cannot exist may be recorded as
-inapplicable with a reason and the condition that would create it. Then
-delete this comment. -->
+inapplicable with a reason and the condition that would create it. The gate
+MUST enforce the suite time limit recorded in the RALPH-FACT lines above
+(via the runner's timeout, not a manual stopwatch).
+You are FILLING OUT THIS FORM, not fixing the project: record the real gate
+command and confirm it EXISTS and enforces a timeout (you MAY run it once as
+a bounded probe, capped at ~10s, to check that it resolves). Do NOT fix
+failing tests or run the suite to green — a failing or slow suite is the
+project's problem to address later, not a form-filling blocker. Run only the
+commands you declare here, and if you write a helper script to wire a gate,
+cover it with a unit test. Then delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
 
-The expected successful result is a deterministic test suite that
-finishes within the project's documented budget. On failure, report the
-failing test names and the failure category (assertion failure,
-collection error, timeout, environmental). Never ignore or skip a
-failure to obtain green.
+The expected successful result is a deterministic test suite that finishes
+within its enforced time budget (see the `suite_time_budget` and
+`per_test_timeout` facts above). On failure, report the failing test names
+and the failure category (assertion failure, collection error, timeout,
+environmental).
+
+A `timeout` category is a HARD failure meaning the suite exceeded its
+enforced limit. Fix the slow test (usually by mocking its I/O per rule 7);
+do not raise the per-test timeout or quietly bump the suite budget to pass.
+The suite budget grows only as a deliberate, reviewed change that tracks a
+larger test count (rule 9), never to hide a slow test. When it can, the gate
+SHOULD print or link this policy's time-limit and performance rules (8, 9,
+7) on an over-budget failure, so the developer is reminded to fix the tests
+rather than the budget. Never ignore or skip a failure to obtain green.
 
 ## Exceptions
 
@@ -128,7 +188,10 @@ This policy MUST be reviewed in the same workflow as any of:
 * The test framework, test runner, or test command changes.
 * A new test layer (unit / integration / end-to-end / contract) is
   introduced.
-* The test isolation strategy or fake-injection pattern changes.
+* The test isolation strategy, mocking approach, or fake-injection pattern
+  changes.
+* The suite time budget, per-test timeout, or timeout enforcement
+  mechanism changes.
 * Coverage thresholds, mutation testing, or other quality bars are
   changed.
 * A new test dependency is added or an existing one is replaced.

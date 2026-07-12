@@ -102,9 +102,17 @@ def _render_prompt(findings: list[PolicyFinding]) -> str:
     approved_tools = ", ".join(sorted(markers.APPROVED_GATE_TOOLS))
     return f"""# Ralph Workflow Project-Policy Remediation
 
-You are remediating a project so it passes the Ralph Workflow project-policy-readiness
-deterministic validator. The validator is byte-exact and machine-checkable; near-miss
-prose, extra whitespace, or case changes do not satisfy any requirement.
+You are remediating a project's policy documentation so it passes the Ralph Workflow
+project-policy-readiness deterministic validator. The validator is byte-exact and
+machine-checkable; near-miss prose, extra whitespace, or case changes do not satisfy
+any requirement.
+
+This is a DOCUMENTATION task. Your job is to author and complete the
+project's policy documents — resolving facts, declaring gate commands, and
+recording verified project reality. You do NOT fix the project's code,
+tests, types, lint, or tooling, and you never edit source to make a check
+pass. A failing, slow, or missing check is recorded as project reality for
+the team to address later; repairing it is out of scope.
 
 ## Findings
 
@@ -179,8 +187,11 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    ecosystem-convention locations) KEEP the file and its heading and use the
    migrated marker — their location and headings are conventions other tools
    and humans rely on.
-4. CONFIGURE executable gates so every declared command actually runs in the
-   environment. Document any command that cannot be run and the reason.
+4. WIRE each declared gate so its command resolves to the real check (for
+   example a `make` target that invokes the actual tool), and confirm the
+   command EXISTS. You MAY run it once to confirm it resolves; you do NOT fix
+   failing checks or make a red gate green. Document any command that cannot
+   be run and the reason.
 5. INTEGRATE the managed block naturally into AGENTS.md — never leave it as
    a bolted-on section appended after the user's content. The block markers
    `{markers.AGENTS_BLOCK_BEGIN}` and `{markers.AGENTS_BLOCK_END}` are
@@ -198,17 +209,23 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    instructions behind.
 6. UPDATE CLAUDE.md (if present) so Claude-compatible agents see the AGENTS.md
    pointer (a default CLAUDE.md is created on the first preflight if missing).
-7. RUN every declared verification command and report the outcome, including
-   any command you could not run and the remaining risk.
+7. CONFIRM each declared verification command exists and resolves, and report
+   truthfully what you observed — including any command you could not run and
+   the remaining risk. You are documenting reality, not repairing it: do NOT
+   fix failing tests, type errors, or lint findings, and do NOT run a suite to
+   green. Record a failing or slow check as project reality for the team.
    Deterministic readiness validates declaration shape and repository evidence;
-   it does NOT execute commands or attest manual review. Your truthful execution
-   and evidence report is therefore mandatory and must never be inferred from a
+   it does NOT execute commands or attest manual review. Your truthful evidence
+   report is therefore mandatory and must never be inferred from a
    syntactically valid marker.
 8. REPORT changed files, migrated sources, adopted-or-adapted starter rules,
    research sources, commands run, and unresolved blockers.
 
 ## Hard rules
 
+* This is a documentation task: complete the policy files and record verified
+  reality; never edit the project's code, tests, types, lint, or tooling to
+  make a check pass.
 * Do NOT weaken, disable, or skip any deterministic check.
 * Do NOT mark a policy complete while unresolved placeholders, missing
   per-language coverage, or unresolved migration findings remain.

@@ -133,7 +133,15 @@ with the real linter command (first token must be an approved gate tool;
 wrap others in `make`, `uv run`, or `npx`), add blocks for detected
 languages missing below, drop blocks for languages the project does not
 use, and record genuinely unlinted languages as inapplicable with a
-reason. Then delete this comment. -->
+reason.
+You are FILLING OUT THIS FORM, not fixing the project: record the real
+command and confirm it EXISTS (you MAY run it once as a bounded probe to
+check that it resolves). Do NOT fix failing checks — type errors, failing
+tests, lint findings, audit failures — and do NOT run a suite to green; a
+failing or slow gate is the project's problem to address later, not a
+form-filling blocker. Run only the commands you declare here, and if you
+write a helper script to wire a gate, cover it with a unit test. Then
+delete this comment. -->
 
 RALPH-LANG: Python
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED

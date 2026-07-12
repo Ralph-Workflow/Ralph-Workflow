@@ -83,7 +83,14 @@ be an approved gate tool (wrap anything else in `make`, `uv run`, or
 `npx`). If the project has no such gate yet, create the smallest real one
 (a make target running the actual check) rather than declaring a hollow
 command; only a gate that truly cannot exist may be recorded as
-inapplicable with a reason and the condition that would create it. Then
+inapplicable with a reason and the condition that would create it.
+You are FILLING OUT THIS FORM, not fixing the project: record the real
+command and confirm it EXISTS (you MAY run it once as a bounded probe to
+check that it resolves). Do NOT fix failing checks — type errors, failing
+tests, lint findings, audit failures — and do NOT run a suite to green; a
+failing or slow gate is the project's problem to address later, not a
+form-filling blocker. Run only the commands you declare here, and if you
+write a helper script to wire a gate, cover it with a unit test. Then
 delete this comment. -->
 
 RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
