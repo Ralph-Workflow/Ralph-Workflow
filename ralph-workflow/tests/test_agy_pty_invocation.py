@@ -405,6 +405,7 @@ def test_ansi_wrapped_completion_marker_detected(
         waiting_listener=None,
         monitor=None,
         required_artifact=None,
+        requires_completion_evidence=True,
         evaluate_completion_fn=lambda *args, **kwargs: None,
     )
 
@@ -482,6 +483,7 @@ def test_run_pty_tears_down_live_process_when_iterator_is_closed(
         waiting_listener=None,
         monitor=None,
         required_artifact=None,
+        requires_completion_evidence=True,
         evaluate_completion_fn=lambda *args, **kwargs: None,
     )
 

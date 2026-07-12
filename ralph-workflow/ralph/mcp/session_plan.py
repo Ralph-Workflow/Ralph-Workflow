@@ -44,6 +44,20 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
     "commit": frozenset({"run.report_progress", "workspace.write_ephemeral"}),
 }
 
+#: Capabilities withheld from named drains AFTER their class grant, keyed by
+#: drain name. A drain class describes the drain's write surface; it cannot
+#: express "this drain produces no artifact at all", which is exactly the
+#: out-of-graph ``policy_remediation`` drain: it takes its task from a
+#: materialized prompt and is judged solely by the deterministic validator
+#: that re-runs after it exits, so its prompt never asks the agent to submit
+#: an artifact, read a plan draft, or declare completion. Granting those
+#: capabilities would advertise the matching MCP tools in ``tools/list`` (and
+#: in the Claude ``--allowedTools`` allowlist discovered from it) with nothing
+#: on the other end to read what the agent submitted.
+_DRAIN_CAPABILITY_DENIALS: dict[str, frozenset[str]] = {
+    "policy_remediation": frozenset({"artifact.submit", "artifact.plan_read"}),
+}
+
 if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy
 
@@ -236,6 +250,8 @@ def build_session_mcp_plan(
         mcp_config_enabled_media=mcp_config.media.enabled,
         has_upstreams=bool(upstreams),
     )
+
+    capabilities -= _DRAIN_CAPABILITY_DENIALS.get(drain, frozenset())
 
     _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
     if _model_opts.model_identity is not None:

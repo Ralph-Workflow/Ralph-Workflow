@@ -489,6 +489,7 @@ def invoke_agent(
             pre_output_listener=opts.pre_output_listener,
             monitor=monitor,
             required_artifact=opts.required_artifact,
+            requires_completion_evidence=opts.requires_completion_evidence,
             clock=_clock,
             evaluate_completion_fn=evaluate_completion,
             connectivity_state_provider=opts.connectivity_state_provider,

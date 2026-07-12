@@ -36,6 +36,7 @@ class InvokeRuntimeOptions:
     pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
+    requires_completion_evidence: bool = True
     # Live pipeline signals that the watchdog consults on every
     # evaluate() call so the StuckClassifier gate can return
     # DUPLICATE_KILL (when the pipeline is already in a wait state)
@@ -65,6 +66,7 @@ def build_invoke_options_from_config(
         pre_output_listener=rt.pre_output_listener,
         permission_prompt_listener=rt.permission_prompt_listener,
         required_artifact=rt.required_artifact,
+        requires_completion_evidence=rt.requires_completion_evidence,
         idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,
         max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,

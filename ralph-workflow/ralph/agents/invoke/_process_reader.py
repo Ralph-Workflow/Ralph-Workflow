@@ -1004,6 +1004,7 @@ def _run_subprocess_and_read_lines(
                 liveness_probe=probe,
                 policy=ctx.policy,
                 required_artifact=ctx.required_artifact,
+                requires_completion_evidence=ctx.requires_completion_evidence,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
                 completion_run_id=completion_run_id_from_extra_env(ctx.extra_env),

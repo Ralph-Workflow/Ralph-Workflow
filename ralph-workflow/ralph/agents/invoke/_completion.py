@@ -169,6 +169,12 @@ class _CompletionCheckOptions:
     liveness_probe: LivenessProbe | None = None
     policy: TimeoutPolicy = field(default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None))
     required_artifact: RequiredArtifact | None = None
+    #: False only for a session that can leave no completion evidence: it has
+    #: no artifact contract AND is not granted ``artifact.submit``, so
+    #: ``declare_complete`` is not in its tool surface. Demanding evidence
+    #: there would fail every clean exit on the completion-enforcing
+    #: transports. See ``InvokeAgentEffect.requires_completion_evidence``.
+    requires_completion_evidence: bool = True
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
     completion_run_id: str | None = None
@@ -391,6 +397,10 @@ def _check_process_result(
     waits up to policy.descendant_wait_timeout_seconds for the tree to quiesce
     before re-evaluating completion signals.
 
+    A session that opts out via ``requires_completion_evidence=False`` skips both
+    checks: it holds neither an artifact contract nor the ``artifact.submit``
+    capability behind ``declare_complete``, so a clean exit is terminal.
+
     Args:
         handle: Completed managed process.
         agent_name: Name of the agent.
@@ -425,6 +435,10 @@ def _check_process_result(
         raise exc
 
     opts = check_options
+    if opts is not None and not opts.requires_completion_evidence:
+        # The session had no way to leave completion evidence and no caller
+        # waiting to read it: a clean exit is the whole signal.
+        return
     if (
         opts is not None
         and opts.execution_strategy is not None

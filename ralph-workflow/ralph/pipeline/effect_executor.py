@@ -570,6 +570,7 @@ def _build_attempt_invoke_options(
             pre_output_listener=_emit_pre_output_progress,
             permission_prompt_listener=_make_permission_prompt_listener(ctx),
             required_artifact=required_artifact,
+            requires_completion_evidence=ctx.effect.requires_completion_evidence,
             pure=ctx.agent_config.transport == AgentTransport.OPENCODE,
             connectivity_state_provider=pipeline_deps.connectivity_state_provider,
             is_waiting_state_provider=pipeline_deps.is_waiting_state_provider,

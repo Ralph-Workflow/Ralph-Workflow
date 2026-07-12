@@ -79,6 +79,7 @@ class InvokeOptions:
     pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
+    requires_completion_evidence: bool = True
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
     initial_session_id: str | None = None

@@ -334,6 +334,14 @@ def _make_production_invoke_remediation_agent(
                 prompt_file=prompt_path,
                 drain="policy_remediation",
                 chain_name="policy_remediation",
+                # The remediation session is denied artifact.submit (so
+                # declare_complete is not in its tool surface) and has no
+                # artifact contract, leaving it no way to produce completion
+                # evidence. Demanding it would fail every clean exit on the
+                # completion-enforcing transports. The driver revalidates
+                # deterministically after this returns, which is the only
+                # evidence that ever counted.
+                requires_completion_evidence=False,
             )
             try:
                 event = _effect_executor_module.execute_agent_effect(

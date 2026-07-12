@@ -45,6 +45,7 @@ class _AgentRunCtx:
     pre_output_listener: Callable[[], None] | None = None
     monitor: WorkspaceMonitor | None = None
     required_artifact: RequiredArtifact | None = None
+    requires_completion_evidence: bool = True
     clock: Clock | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
     expected_session_id: str | None = None
