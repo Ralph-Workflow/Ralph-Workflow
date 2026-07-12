@@ -283,14 +283,14 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         # AST + literal-string audit that pins the terminal-escape
         # containment contract documented in
         # docs/agents/verification.md §'Terminal escape containment'.
-        # Enforces eight literal-string invariants across
-        # display/line_sanitizer.py, display/_plain_constants.py,
-        # display/parallel_display.py, display/activity_model.py,
-        # agents/invoke/_pty_runner.py, agents/invoke/_process_reader.py,
-        # agents/subprocess_executor.py, and agents/invoke/_pty_line_reader.py
-        # so the hosti's full CSI+OSC containment (alternate screen,
-        # erase display, private-parameter CSI, OSC, SGR) survives
-        # future refactors of those files. Appended LAST so the
+        # Enforces literal-string + AST-scoped invariants across
+        # the display sinks, the SpawnOptions dataclass + every call
+        # site anywhere under ralph/, both loguru logging
+        # configurators, the DisplayContext sink, and the PTY
+        # child-spawn path so that the hosti's full CSI+OSC
+        # containment (alternate screen, erase display,
+        # private-parameter CSI, OSC, SGR) survives future
+        # refactors of those files. Appended LAST so the
         # index-based timeout assertions in tests/test_verify.py are
         # not shifted; NOT a budget-tracked step (it does NOT count
         # against _TOTAL_TEST_BUDGET_SECONDS -- the immutable

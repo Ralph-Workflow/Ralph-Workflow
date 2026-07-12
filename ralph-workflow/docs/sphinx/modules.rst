@@ -2963,6 +2963,13 @@ ralph.display.line_sanitizer
    :members:
    :show-inheritance:
 
+ralph.display.log_sink
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.log_sink
+   :members:
+   :show-inheritance:
+
 ralph.display.vt_normalizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

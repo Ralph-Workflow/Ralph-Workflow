@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path as RuntimePath
@@ -51,6 +52,7 @@ from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
+from ralph.display.log_sink import make_sanitizing_log_sink, make_stderr_log_sink
 from ralph.display.parallel_display import resolve_active_display
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
@@ -899,8 +901,11 @@ def main(
     _init_telemetry()
     _record_cli_command(ctx)
 
-    # Set up logging based on verbosity
-    configure_logging(verbosity)
+    # Set up logging based on verbosity. Wire the Console-backed sanitizing
+    # sink so log records are printed through the same DisplayContext Console
+    # that owns the rich Live status bar; the logger is no longer an
+    # independent painter that Live's cursor-relative erases can wipe out.
+    configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))
 
     _validate_prompt_flags(prompt, quick)
 
@@ -1273,22 +1278,37 @@ def _run_pipeline(
         return 1
 
 
-def _configure_logging(verbosity: Verbosity) -> None:
-    """Configure logging based on verbosity level."""
+def _configure_logging(verbosity: Verbosity, *, console_sink: Callable[[str], None] | None = None) -> None:
+    """Configure logging based on verbosity level.
+
+    Args:
+        verbosity: CLI verbosity branch. Each branch maps to a
+            loguru level / format pair.
+        console_sink: Optional callable that replaces the raw
+            terminal sink. When ``None`` (default) the
+            library/worker fallback ``make_stderr_log_sink`` is used,
+            which strips terminal-control constructs before writing
+            to the process error stream. The CLI's ``main()`` call
+            site passes ``make_sanitizing_log_sink(_cli_ctx)`` so
+            the rich Live status bar is the single painter of the
+            terminal.
+    """
     # Remove default handler
     logger.remove()
 
+    sink = console_sink if console_sink is not None else make_stderr_log_sink()
+
     if verbosity == Verbosity.QUIET:
-        logger.add(sys.stderr, level="ERROR")
+        logger.add(sink, level="ERROR")
     elif verbosity == Verbosity.NORMAL:
-        logger.add(sys.stderr, level="INFO")
+        logger.add(sink, level="INFO")
     elif verbosity == Verbosity.VERBOSE:
-        logger.add(sys.stderr, level="DEBUG")
+        logger.add(sink, level="DEBUG")
     elif verbosity == Verbosity.FULL:
-        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} {level} {message}")
+        logger.add(sink, level="DEBUG", format="{time:HH:mm:ss} {level} {message}")
     else:  # DEBUG
         logger.add(
-            sys.stderr,
+            sink,
             level="TRACE",
             format="{time:HH:mm:ss} {level} {name}:{function}:{line} {message}",
         )

@@ -83,6 +83,26 @@ make test-subprocess-e2e
 
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md`.
 
+## Terminal escape containment
+
+The terminal-escape containment contract keeps interactive agents (Claude Code, Cursor, etc.) from blanking Ralph's screen or overwriting live log lines. It is enforced by `ralph/testing/audit_terminal_escape_containment.py` (a `make verify` step) and consists of three pinning rules plus one exception:
+
+- **Single-stripper rule.** `ralph/display/line_sanitizer.py::strip_terminal_control` is the canonical terminal-control remover. The full CSI parameter-byte range `[0-?]` matches every valid sequence (alternate screen `ESC[?1049h`, erase display `ESC[2J`, private-parameter CSI `ESC[>0c` and `ESC[<35;1;2M`, OSC titles, two-character ESC). No other module may define a second, narrower regex — the audit rejects any file that reintroduces the SGR-only `[0-9;]*m` form or the digit-only `[0-9;?]` class. Defence-in-depth: `ralph/agents/invoke/_pty_line_reader.py` must keep yielding raw VT text (its `yield queued_line` line is an audit invariant) because interactive permission auto-approval parses that raw stream — sanitizing at the source would silently break it.
+
+- **Single-painter rule.** Every loguru terminal log record goes through `ralph.display.log_sink` (either `make_sanitizing_log_sink` for the DisplayContext Console, or `make_stderr_log_sink` for the library/worker fallback), never through a raw `logger.add(sys.stderr, ...)`. The CLI (`ralph/cli/main.py::_configure_logging`) takes an injected `console_sink` keyword; `ralph/cli/main.py::main` wires the Console-backed sink at the call site so the rich `Live` status bar is the only painter of Ralph's terminal. Sanitization happens through `strip_terminal_control`; the sink prints via `ctx.console.print(text, markup=False, highlight=False)` so bracketed paths and `[bold]` tokens survive verbatim. Module construction of `rich.console.Console` outside `ralph/display/theme.py` is forbidden by `tests/display/test_di_invariants.py`; the audit enforces the same rule on `ralph.display.log_sink` itself.
+
+- **Background-spawn rule.** `SpawnOptions.stdin` defaults to `subprocess.DEVNULL` (the dataclass field in `ralph/process/manager/_spawn_options.py`) so no child inherits Ralph's controlling-terminal stdin by construction. Callers that genuinely need stdio (`ralph/mcp/protocol/transport.py:270` for the stdio MCP transport and `ralph/mcp/upstream/_stdio_upstream_client.py:122` for the stdio upstream client) already pass `subprocess.PIPE` explicitly. The audit additionally enforces that NO `SpawnOptions(...)` call site anywhere under `ralph/` may pass `stdin=None` (the package-wide `PackageWideCallSiteInvariant` walks every `*.py` file and rejects the INHERIT literal). PTY children get their own session: `ralph/process/pty.py::spawn_pty_process` calls `os.setsid()` plus `fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)` inside the child branch — removing either fails the audit.
+
+- **Exception: keep the source reader raw.** `ralph/agents/invoke/_pty_line_reader.py` and `ralph/agents/invoke/_process_reader.py` keep yielding raw bytes / queued lines so the stream that auto-approves Claude Code's permission prompts is unchanged. Sanitization must happen ONLY at the display boundary (`display/parallel_display.py`, `display/activity_model.py`, the new `display/log_sink.py`) — never at the source.
+
+Enforcing command:
+
+```bash
+uv run python -m ralph.testing.audit_terminal_escape_containment
+```
+
+This audit is the LAST entry in `ralph/verify.py::_VERIFY_STEPS`; it is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
+
 ## Cross-links
 
 - `ralph/verify.py` — budget tracker, `_VERIFY_STEPS`, invariant checks

@@ -24,6 +24,7 @@ from ralph.testing.audit_terminal_escape_containment import (
     CallSiteInvariant,
     FunctionBodyInvariant,
     Invariant,
+    PackageWideCallSiteInvariant,
 )
 from ralph.testing.audit_terminal_escape_containment import main as audit_main
 
@@ -43,7 +44,7 @@ def test_audit_module_path() -> None:
 
 def test_audit_invariant_count_matches_table() -> None:
     """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
-    expected = 12
+    expected = 21
     assert len(audit_module._INVARIANTS) == expected
 
 
@@ -405,4 +406,296 @@ def test_call_site_invariant_reports_missing_callee() -> None:
     violations = inv.violations()
     assert any("not found" in v or "no SpawnOptions" in v.lower() or "call site" in v for v in violations), (
         violations
+    )
+
+
+# ---------------------------------------------------------------------------
+# Adversarial cases for the new invariants added in the wt-036 rework:
+#   * SpawnOptions.devnull default restored to None
+#   * SpawnOptions(stdin=None) injected anywhere under ralph/
+#   * ralph.logging.configure_logging reintroduces sys.stderr or colorize=True
+#   * ralph.cli.main._configure_logging reintroduces sys.stderr
+#   * ralph.cli.main.main drops make_sanitizing_log_sink
+#   * ralph.display.log_sink.make_sanitizing_log_sink drops the stripper
+#   * ralph.display.log_sink.make_stderr_log_sink drops the stripper
+#   * ralph.display.log_sink constructs a Console inline
+#   * ralph.process.pty.spawn_pty_process drops os.setsid() / TIOCSCTTY
+# Each adversarial case below mirrors the pattern of the existing ones:
+# monkeypatch the source via _patch_rel (or _read), run the audit, assert
+# it exits 1 and prints the relevant violation banner.
+# ---------------------------------------------------------------------------
+
+
+def test_audit_blocks_regression_when_spawn_options_devnull_default_reverted(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert SpawnOptions.stdin default to None."""
+    path = "process/manager/_spawn_options.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "stdin: int | None = subprocess.DEVNULL",
+            "stdin: int | None = None",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    # Either the file-level invariant or the FunctionBody invariant can fire;
+    # we also assert the literal specifically.
+    assert "subprocess.DEVNULL" in captured.out or "stdin=None" in captured.out
+
+
+def test_audit_blocks_regression_when_a_new_spawn_options_call_passes_stdin_none(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: inject ``SpawnOptions(stdin=None)`` into a brand-new file.
+
+    Drives :class:`PackageWideCallSiteInvariant`: the audit must
+    catch the INHERIT leak anywhere under ``ralph/`` regardless
+    of which file re-introduces it.
+    """
+    path = "agents/invoke/_process_reader.py"
+
+    def _transform(src: str) -> str:
+        # The file already has ``stdin=subprocess.DEVNULL``; add a SECOND
+        # call site that re-opts into INHERIT.
+        return src + "\nSpawnOptions(stdin=None,)\n"
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    # The package-wide invariant emits 'stdin=None' on the offending call.
+    assert "stdin=None" in captured.out
+
+
+def test_audit_blocks_regression_when_logging_configure_logging_drops_console_sink(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert ralph.logging.configure_logging to raw ``sys.stderr`` + colorize=True."""
+    path = "logging.py"
+
+    def _transform(src: str) -> str:
+        # Replace the injected sink block with a raw sys.stderr + colorize=True
+        # restore -- the function body's \"sink = console_sink...\" line is
+        # the load-bearing seam, so removing it triggers BOTH the missing-
+        # required-literal and the forbidden-literal checks.
+        return src.replace(
+            "sink = console_sink if console_sink is not None else make_stderr_log_sink()",
+            "sink = sys.stderr",
+        ).replace(
+            "colorize=False,",
+            "colorize=True,",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    assert "configure_logging" in captured.out
+    assert "sys.stderr" in captured.out
+
+
+def test_audit_blocks_regression_when_cli_configure_logging_drops_sink(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert ralph.cli.main._configure_logging to raw ``sys.stderr``."""
+    path = "cli/main.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "sink = console_sink if console_sink is not None else make_stderr_log_sink()",
+            "sink = None  # pretend we forgot to wire it",
+        ).replace(
+            "logger.add(sink, level=\"ERROR\")",
+            "logger.add(sys.stderr, level=\"ERROR\")",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    assert "_configure_logging" in captured.out
+    assert "sys.stderr" in captured.out
+
+
+def test_audit_blocks_regression_when_cli_main_drops_sanitizing_log_sink(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: the CLI call site drops ``make_sanitizing_log_sink``."""
+    path = "cli/main.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))",
+            "configure_logging(verbosity)",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert "main" in captured.out
+    assert "make_sanitizing_log_sink" in captured.out
+
+
+def test_audit_blocks_regression_when_sanitizing_log_sink_drops_stripper(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: ``make_sanitizing_log_sink`` skips ``strip_terminal_control``."""
+    path = "display/log_sink.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "cleaned = strip_terminal_control(message.rstrip(\"\\n\"))",
+            "cleaned = message.rstrip(\"\\n\")",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    assert "make_sanitizing_log_sink" in captured.out
+
+
+def test_audit_blocks_regression_when_stderr_log_sink_drops_stripper(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: ``make_stderr_log_sink`` skips ``strip_terminal_control``."""
+    path = "display/log_sink.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "cleaned = strip_terminal_control(message.rstrip(\"\\n\"))",
+            "cleaned = message.rstrip(\"\\n\")",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    assert "make_stderr_log_sink" in captured.out
+
+
+def test_audit_blocks_regression_when_log_sink_constructs_console_inline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: ``ralph.display.log_sink`` constructs a Console inline.
+
+    Tests/display/test_di_invariants.py also enforces this, but the
+    audit is the load-bearing \"machines never speak unless asked\"
+    layer so the regression must surface here too.
+    """
+    path = "display/log_sink.py"
+
+    def _transform(src: str) -> str:
+        return src + "\n_console = Console(file=sys.stderr)\n"
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    assert "Console(" in captured.out
+
+
+def test_audit_blocks_regression_when_pty_spawn_drops_setsid_or_tiocsctty(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: remove either ``os.setsid()`` or ``TIOCSCTTY`` from the PTY spawn."""
+    path = "process/pty.py"
+
+    def _transform(src: str) -> str:
+        return src.replace("os.setsid()", "_ = None  # nosetsid")
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    assert "spawn_pty_process" in captured.out
+    assert "os.setsid()" in captured.out
+
+
+def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PackageWideCallSiteInvariant can be driven directly with a fake source.
+
+    Pins the contract in isolation -- even without a call site
+    already present in the package, the invariant must report a
+    forbidden ``stdin=None`` when one is injected.
+    """
+    fake_source = "SpawnOptions(stdin=None,)\n"
+    inv = PackageWideCallSiteInvariant(
+        callee_name="SpawnOptions",
+        absent=("stdin=None",),
+    )
+
+    # Use the audit's _read so the invariant reads our fake source everywhere;
+    # the package file list (cached) still drives which rel_paths are scanned.
+    monkeypatch.setattr(audit_module, "_read", lambda rel_path: fake_source)
+    audit_module.PackageWideCallSiteInvariant.reset_cache()
+
+    violations = inv.violations()
+    # We don't assert on the absolute number (depends on file count), only
+    # that AT LEAST ONE violation names the offending literal.
+    assert any("stdin=None" in v for v in violations), (
+        f"PackageWideCallSiteInvariant must flag stdin=None violations; got {violations!r}"
+    )
+
+    # Reset the cache so other tests see the real source again.
+    audit_module.PackageWideCallSiteInvariant.reset_cache()
+
+
+def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PackageWideCallSiteInvariant returns no violations when the package is clean."""
+    inv = PackageWideCallSiteInvariant(
+        callee_name="SpawnOptions",
+        absent=("stdin=None",),
+    )
+
+    # No-op read: every file looks empty, so no SpawnOptions call is found at all.
+    monkeypatch.setattr(audit_module, "_read", lambda rel_path: "")
+    violations = inv.violations()
+    assert violations == [], (
+        f"PackageWideCallSiteInvariant must return no violations on an empty "
+        f"package; got {violations!r}"
     )

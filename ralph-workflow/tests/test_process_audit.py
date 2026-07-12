@@ -86,6 +86,12 @@ TESTS_ALLOWLIST: set[str] = {
     # PTY slave becomes its controlling terminal. Both required to reproduce
     # the production-path entry point end-to-end with no production-code
     # equivalent under ralph/process/manager
+    "test_audit_terminal_escape_containment.py",
+    # contains ``os.setsid()`` and ``Console(`` as audit-invariant
+    # string literals (these are pattern-pinching needles, not real
+    # subprocess calls -- the audit is exercised through monkeypatched
+    # sources). Mirrors the existing allowlist pattern for audit
+    # test files that maintain POS|CO process-marker literals.
 }
 
 _MCP_FIXTURE_FILES = {

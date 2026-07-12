@@ -66,6 +66,58 @@ The escape containment contract:
     future fix that sanitizes at the source and silently breaks
     interactive permission auto-approval).
 
+  - ``ralph/process/manager/_spawn_options.py`` MUST default
+    ``SpawnOptions.stdin`` to ``subprocess.DEVNULL`` (so no
+    child inherits Ralph's controlling-terminal stdin by
+    construction). The dataclass field must NOT be reverted to
+    ``None``.
+
+  - No ``SpawnOptions(...)`` call site anywhere under the
+    ``ralph/`` package may pass ``stdin=None`` (package-wide
+    AST scan via :class:`PackageWideCallSiteInvariant` -- the
+    helper exists in three flavors: ``Invariant`` (whole-file),
+    ``FunctionBodyInvariant`` (function/method) and
+    ``CallSiteInvariant`` (single file callee). The new variant
+    extends coverage to a callee-in-any-file).
+
+  - ``ralph/logging.py::configure_logging`` MUST NOT hand
+    ``sys.stderr`` to ``logger.add`` (the public library
+    configurator accepts an injected ``console_sink`` keyword)
+    and MUST NOT enable ``colorize=True`` (the stripper removes
+    the SGR codes that colorizer emits). Sanitization happens
+    through :func:`strip_terminal_control` via the injected
+    ``console_sink``.
+
+  - ``ralph/cli/main.py::_configure_logging`` MUST NOT hand
+    ``sys.stderr`` to ``logger.add`` for ANY of the five
+    verbosity branches. Every branch routes through an injected
+    ``console_sink`` (or the library/worker fallback
+    ``make_stderr_log_sink``).
+
+  - ``ralph/cli/main.py::main`` MUST wire the Console-backed
+    sink by passing ``make_sanitizing_log_sink(_cli_ctx)`` to
+    ``configure_logging`` (the CLI call site). Without this
+    wiring, loguru emits records via raw ``sys.stderr`` and the
+    rich ``Live`` status bar races the logger for the terminal.
+
+  - ``ralph/display/log_sink.py::make_sanitizing_log_sink``
+    MUST call ``strip_terminal_control`` and print through the
+    injected Console with ``markup=False`` / ``highlight=False``.
+
+  - ``ralph/display/log_sink.py::make_stderr_log_sink`` MUST
+    call ``strip_terminal_control`` before writing the line.
+
+  - ``ralph/display/log_sink.py`` MUST NOT construct a
+    ``rich.Console`` itself (DI invariant: the single source
+    of truth for ``Console`` construction is
+    ``ralph.display.theme``).
+
+  - ``ralph/process/pty.py::spawn_pty_process`` MUST keep
+    ``os.setsid()`` (new session) and ``TIOCSCTTY`` (controlling
+    terminal = slave pty) inside the child branch. Without this
+    pair a PTY child could claim the foreground process group
+    of Ralph's controlling TTY.
+
 Every literal was grep-verified against the current tree at
 implementation time. Restoring any forbidden literal, removing
 a required call from the wired sink, or narrowing the CSI
@@ -298,7 +350,106 @@ class CallSiteInvariant:
         return problems
 
 
-_INVARIANTS: tuple[Invariant | FunctionBodyInvariant | CallSiteInvariant, ...] = (
+class PackageWideCallSiteInvariant:
+    """AST-scoped check: a callee call anywhere under the package MUST avoid a literal.
+
+    Use ``PackageWideCallSiteInvariant`` when a contract must
+    hold for a constructor at every call site in the entire
+    package -- the dataclass default alone is not enough
+    because an explicit re-opt-in (e.g.
+    ``SpawnOptions(stdin=None)``) silently re-opens the leak.
+    Walks every ``*.py`` file under :data:`_PACKAGE_ROOT`,
+    collects the source segment of every ``callee_name(...)``
+    call, and rejects any segment that carries a forbidden
+    literal. Exposes the same ``violations() -> list[str]``
+    interface as :class:`Invariant` /
+    :class:`FunctionBodyInvariant` / :class:`CallSiteInvariant`
+    so ``main()``'s loop is unchanged.
+
+    The class uses ``_read`` (the same monkeypatchable source
+    fetcher the other invariants use) so adversarial tests can
+    inject a custom source per file via :func:`_patch_rel`. The
+    package file list is cached for a single audit run to keep
+    the wall-clock cost off the 60s combined budget.
+    """
+
+    _PACKAGE_FILE_LIST_CACHE: list[str] | None = None
+
+    def __init__(
+        self,
+        *,
+        callee_name: str,
+        absent: tuple[str, ...] = (),
+        present: tuple[str, ...] = (),
+    ) -> None:
+        self.callee_name = callee_name
+        self.absent = absent
+        self.present = present
+
+    @classmethod
+    def _package_files(cls) -> list[str]:
+        """Return the package-relative path of every ``*.py`` file (cached)."""
+        if cls._PACKAGE_FILE_LIST_CACHE is None:
+            cls._PACKAGE_FILE_LIST_CACHE = sorted(
+                str(p.relative_to(_PACKAGE_ROOT).as_posix())
+                for p in _PACKAGE_ROOT.rglob("*.py")
+            )
+        return cls._PACKAGE_FILE_LIST_CACHE
+
+    @classmethod
+    def reset_cache(cls) -> None:
+        """Clear the package file list cache (test helper)."""
+        cls._PACKAGE_FILE_LIST_CACHE = None
+
+    def violations(self) -> list[str]:
+        problems: list[str] = []
+        # Fast-path text filter: skip files that don't even mention the callee
+        # name. This keeps the wall-clock cost off the 60s combined budget by
+        # avoiding AST.parse on the ~99% of files that don't contain the call.
+        callee_token = self.callee_name
+        for rel_path in self._package_files():
+            try:
+                source = _read(rel_path)
+            except OSError:
+                continue
+            if callee_token not in source:
+                continue
+            try:
+                tree = ast.parse(source, filename=rel_path)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                match = (
+                    (isinstance(func, ast.Name) and func.id == self.callee_name)
+                    or (isinstance(func, ast.Attribute) and func.attr == self.callee_name)
+                )
+                if not match:
+                    continue
+                segment = ast.get_source_segment(source, node)
+                if segment is None:
+                    continue
+                snippet = segment.replace("\n", " ")
+                problems.extend(
+                    f"{rel_path}:{node.lineno}: {self.callee_name}() call "
+                    f"carries forbidden literal {needle!r}: {snippet}"
+                    for needle in self.absent
+                    if needle in segment
+                )
+                problems.extend(
+                    f"{rel_path}:{node.lineno}: {self.callee_name}() call "
+                    f"missing required literal {needle!r}: {snippet}"
+                    for needle in self.present
+                    if needle not in segment
+                )
+        return problems
+
+
+_INVARIANTS: tuple[
+    Invariant | FunctionBodyInvariant | CallSiteInvariant | PackageWideCallSiteInvariant, ...
+] = (
     # line_sanitizer.py: the canonical stripper exists, uses the FULL
     # [0-?] CSI parameter-byte class (NOT the narrower [0-9;?] form).
     Invariant(
@@ -405,6 +556,81 @@ _INVARIANTS: tuple[Invariant | FunctionBodyInvariant | CallSiteInvariant, ...] =
         rel_path="agents/invoke/_pty_line_reader.py",
         present=("yield queued_line",),
     ),
+    # _spawn_options.py: SpawnOptions.stdin MUST default to subprocess.DEVNULL
+    # so no child inherits Ralph's controlling-terminal stdin by construction.
+    Invariant(
+        rel_path="process/manager/_spawn_options.py",
+        present=("import subprocess", "stdin: int | None = subprocess.DEVNULL"),
+        absent=("stdin: int | None = None",),
+    ),
+    # Package-wide SpawnOptions() call sites MUST NOT pass stdin=None
+    # (the INHERIT leak). The class-wide scan lives in
+    # PackageWideCallSiteInvariant -- this is the only place a regression
+    # can be caught for any future SpawnOptions call site.
+    PackageWideCallSiteInvariant(
+        callee_name="SpawnOptions",
+        absent=("stdin=None",),
+    ),
+    # logging.py: configure_logging MUST NOT hand sys.stderr to logger.add
+    # (the stripper cannot remove what the parent process has already
+    # painted). It MUST accept console_sink (sanitizing fallback), call
+    # make_stderr_log_sink (single source of sanitization), and use
+    # colorize=False (loguru's colorizer emits SGR the stripper deletes).
+    FunctionBodyInvariant(
+        rel_path="logging.py",
+        qualname="configure_logging",
+        present=("console_sink", "make_stderr_log_sink"),
+        absent=("sys.stderr", "colorize=True"),
+    ),
+    # cli/main.py::_configure_logging: the sink the CLI actually calls.
+    # ALL five verbosity branches route through the injected console_sink
+    # (or the library/worker fallback make_stderr_log_sink).
+    FunctionBodyInvariant(
+        rel_path="cli/main.py",
+        qualname="_configure_logging",
+        present=("console_sink", "make_stderr_log_sink"),
+        absent=("sys.stderr",),
+    ),
+    # cli/main.py::main: the call site MUST wire the Console-backed sink
+    # so loguru prints through the same DisplayContext Console the rich
+    # Live status bar owns. Without this wiring the logger is a second
+    # independent painter of the terminal.
+    FunctionBodyInvariant(
+        rel_path="cli/main.py",
+        qualname="main",
+        present=("make_sanitizing_log_sink",),
+    ),
+    # display/log_sink.py::make_sanitizing_log_sink: must sanitize and
+    # print via the injected Console with markup=False / highlight=False
+    # (rich would otherwise re-evaluate bracketed paths and [bold] tokens).
+    FunctionBodyInvariant(
+        rel_path="display/log_sink.py",
+        qualname="make_sanitizing_log_sink",
+        present=("strip_terminal_control", "markup=False", "highlight=False"),
+    ),
+    # display/log_sink.py::make_stderr_log_sink: must sanitize before
+    # writing to stderr. Two entries (function-body + whole-file) so a
+    # silent removal of the stripper from the fallback fails the audit.
+    FunctionBodyInvariant(
+        rel_path="display/log_sink.py",
+        qualname="make_stderr_log_sink",
+        present=("strip_terminal_control",),
+    ),
+    Invariant(
+        rel_path="display/log_sink.py",
+        # Concatenated so ``test_no_anti_drift_regression.py`` (which
+        # line-scans ralph/ for an inline console-constructor outside
+        # theme.py) does not flag this audit's own needle string.
+        absent=("Console" + "(",),
+    ),
+    # process/pty.py::spawn_pty_process: must call os.setsid() and
+    # fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0) inside the child branch
+    # so a PTY child cannot claim the foreground of Ralph's controlling TTY.
+    FunctionBodyInvariant(
+        rel_path="process/pty.py",
+        qualname="spawn_pty_process",
+        present=("os.setsid()", "TIOCSCTTY"),
+    ),
 )
 
 
@@ -412,11 +638,13 @@ def main(argv: list[str] | None = None) -> int:
     """Run the terminal-escape containment audit and return the process exit code.
 
     Iterates the literal-string and AST-scoped invariants in
-    ``_INVARIANTS`` and aggregates every violation across the eight
-    files the containment contract touches. Prints a one-line
-    summary on success or a labeled, line-broken failure banner
-    on violation. Has no side effects beyond stdout output and
-    ``sys.exit`` semantics.
+    ``_INVARIANTS`` and aggregates every violation across every
+    file the containment contract touches (display modules, the
+    two logging configurators, the SpawnOptions dataclass, the
+    ProcessManager seams, and the PTY spawn path). Prints a
+    one-line summary on success or a labeled, line-broken failure
+    banner on violation. Has no side effects beyond stdout output
+    and ``sys.exit`` semantics.
 
     Args:
         argv: Unused positional argument list (kept for CLI symmetry with
@@ -458,7 +686,15 @@ def main(argv: list[str] | None = None) -> int:
         "dropped tqdm + file=sys.stdout; _process_reader and "
         "subprocess_executor pass stdin=DEVNULL to their SpawnOptions call "
         "sites (no stdin=None INHERIT); _pty_line_reader still yields raw "
-        "VT text."
+        "VT text. SpawnOptions.stdin defaults to subprocess.DEVNULL and no "
+        "SpawnOptions call anywhere under ralph/ passes stdin=None. "
+        "ralph.logging.configure_logging AND ralph.cli.main._configure_logging "
+        "route through an injected console_sink (no raw sys.stderr, "
+        "colorize=False); the CLI call site wires make_sanitizing_log_sink "
+        "for the DisplayContext Console. Both log_sink factories call "
+        "strip_terminal_control with markup=False / highlight=False and "
+        "no raw Console construction. ralph.process.pty.spawn_pty_process "
+        "still calls os.setsid() + TIOCSCTTY."
     )
     return 0
 

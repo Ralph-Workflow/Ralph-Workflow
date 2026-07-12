@@ -17,13 +17,16 @@ Custom levels registered on first configure_logging() call::
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.display.log_sink import make_stderr_log_sink
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from loguru import Logger
 
 from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
@@ -59,6 +62,7 @@ def configure_logging(
     run_id: str | None = None,
     structured: bool = False,
     rotation: str | int | None = "10 MB",
+    console_sink: Callable[[str], None] | None = None,
 ) -> LoggingSession:
     """Configure loguru for Ralph Workflow CLI output.
 
@@ -72,6 +76,15 @@ def configure_logging(
         run_id: Optional run identifier for per-run log directories.
         structured: Whether to emit JSON structured logs.
         rotation: Optional loguru rotation policy for file handlers.
+        console_sink: Optional callable that replaces the terminal
+            ``logger.add`` sink. When ``None`` (default) the
+            library/worker fallback ``make_stderr_log_sink`` is used,
+            which strips terminal-control constructs before writing
+            to the process error stream. Pass
+            ``make_sanitizing_log_sink(ctx)`` from the CLI to route
+            through the rich ``DisplayContext`` ``Console`` instead
+            (so the rich Live status bar is the single painter of
+            the terminal).
 
     Returns:
         Logging session with resolved paths and bound logger helpers.
@@ -97,11 +110,12 @@ def configure_logging(
         "<level>{message}</level>"
     )
 
+    sink = console_sink if console_sink is not None else make_stderr_log_sink()
     logger.add(
-        sys.stderr,
+        sink,
         level=level,
         format=standard_format,
-        colorize=True,
+        colorize=False,
         backtrace=True,
         diagnose=False,
     )
