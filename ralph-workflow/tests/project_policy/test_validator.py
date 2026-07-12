@@ -64,6 +64,12 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
     lines.append("## Ralph markers")
     lines.append("Real content.")
     lines.append("")
+    # Every complete policy must declare at least one resolved project
+    # fact so the validator's no-fact gate cannot be silently satisfied by
+    # the surrounding structural completeness.
+    lines.append(f"RALPH-FACT: {filename}: path = docs/ralph-workflow-policy/{filename}")
+    lines.append("RALPH-FACT: owner = test-owner")
+    lines.append("")
     lines.append(markers.COMPLETION_MARKER)
     lines.append("")
     if lang is not None:
@@ -300,3 +306,96 @@ def test_starter_content_fails_validation_until_customized() -> None:
     findings = validators.validate_readiness(ws, _stack_with())
     paths = [f.path for f in findings]
     assert f"{markers.CANONICAL_DIR}testing-policy.md" in paths
+
+
+def test_removed_fact_lines_emits_no_fact_finding_per_policy() -> None:
+    """AC-05/AC-08: removing every RALPH-FACT line from a complete policy MUST
+    surface a stable :data:`RWP-PLACEHOLDER:<filename>:no-fact` finding and
+    the project MUST NOT reach READY. This is the regression for the
+    analyzer-found defect where a fully-structured file with no
+    machine-checkable project facts still validated as complete.
+    """
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    # Strip every RALPH-FACT line from every core policy.
+    stripped_paths: list[str] = []
+    for filename in markers.CORE_POLICY_FILES:
+        path = f"{markers.CANONICAL_DIR}{filename}"
+        content = ws.read(path)
+        lines = [
+            line
+            for line in content.splitlines()
+            if not line.startswith(markers.FACT_MARKER)
+        ]
+        ws.write(path, "\n".join(lines) + "\n")
+        stripped_paths.append(path)
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids_by_path = {(f.path, f.requirement_id) for f in findings}
+    for path in stripped_paths:
+        # Stable id suffix ``:no-fact`` so the user can grep for it; the
+        # analyzer's repro produced exactly this missing finding for each
+        # affected policy.
+        assert (path, f"{markers.ID_PLACEHOLDER}:{path.split('/')[-1]}:no-fact") in ids_by_path, (
+            f"missing RWP-PLACEHOLDER:no-fact finding for {path}; "
+            f"observed ids: {[i for p, i in ids_by_path if p == path]}"
+        )
+
+
+def test_empty_general_inapplicable_emits_finding() -> None:
+    """AC-06: an empty ``RALPH-INAPPLICABLE:`` line at file scope MUST be
+    rejected by the validator and emit a stable unusable-command finding
+    (id suffix ``:empty-inapplicable-N``).
+    """
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    content = ws.read(path)
+    # Replace the runnable command with an empty inapplicable marker so the
+    # file no longer declares a runnable command and the empty inapplicable
+    # marker should fail the empty-inapplicable check.
+    lines = [line for line in content.splitlines() if not line.startswith(markers.COMMAND_MARKER)]
+    lines.append("RALPH-INAPPLICABLE:")
+    ws.write(path, "\n".join(lines) + "\n")
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    # Stable id suffix marks the offending empty-inapplicable line.
+    assert any(
+        i.startswith(f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:empty-inapplicable-")
+        for i in ids
+    ), f"missing empty-inapplicable finding; observed: {ids}"
+    # The file also lost its RALPH-COMMAND; the missing-command finding
+    # must still fire so the user sees the dual defect.
+    assert any(
+        i == f"{markers.ID_CMD_UNUSABLE}:testing-policy.md:missing" for i in ids
+    )
+
+
+def test_empty_per_language_inapplicable_emits_finding() -> None:
+    """AC-06: an empty ``RALPH-INAPPLICABLE:`` line inside a per-language
+    block of typecheck/lint policies MUST be rejected with a stable
+    ``:empty-inapplicable`` language-coverage finding, regardless of
+    whether the same block also declares a real command.
+    """
+    ws = MemoryWorkspace()
+    _seed_agents_md(ws)
+    _seed_claude_md(ws)
+    _seed_all_core_complete(ws, _stack_with())
+    # Append an empty inapplicable declaration to the existing Python block
+    # in typechecking-policy.md. The block already has a real command, so
+    # only the empty-inapplicable gate is expected to fire (no
+    # :empty-language finding, which is the *absence* gate).
+    path = f"{markers.CANONICAL_DIR}typechecking-policy.md"
+    content = ws.read(path)
+    ws.write(path, content + "\nRALPH-INAPPLICABLE:\n")
+    findings = validators.validate_readiness(ws, _stack_with())
+    ids = {f.requirement_id for f in findings}
+    assert any(
+        i.startswith(
+            f"{markers.ID_LANG_COVERAGE}:typechecking-policy.md:Python:empty-inapplicable"
+        )
+        for i in ids
+    ), f"missing per-language empty-inapplicable finding; observed: {ids}"

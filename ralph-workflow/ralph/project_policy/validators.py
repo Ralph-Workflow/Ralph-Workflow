@@ -30,9 +30,17 @@ if TYPE_CHECKING:
 
 # Regex helpers: line-prefixed field markers. The validator slices content
 # into lines and looks at the start of each line; this avoids prose NLP.
+# The command/inapplicable regexes MATCH empty values too so the validator
+# can surface a stable finding for the offending line; a separate ``*_VALUE``
+# regex (requires ``\S+``) gates whether the value is treated as a real
+# declaration. An empty marker is a documented acceptance violation that
+# must emit a finding — it is NOT silently accepted.
 _FACT_LINE_RE = re.compile(r"^RALPH-FACT:\s*\S+")
-_COMMAND_LINE_RE = re.compile(r"^RALPH-COMMAND:\s*(.*\S)?\s*$")
-_INAPPLICABLE_LINE_RE = re.compile(r"^RALPH-INAPPLICABLE:\s*(.*\S)?\s*$")
+_FACT_VALUE_RE = re.compile(r"^RALPH-FACT:\s*\S.*?\S\s*$")
+_COMMAND_LINE_RE = re.compile(r"^RALPH-COMMAND:.*$")
+_COMMAND_VALUE_RE = re.compile(r"^RALPH-COMMAND:\s*\S+.*$")
+_INAPPLICABLE_LINE_RE = re.compile(r"^RALPH-INAPPLICABLE:.*$")
+_INAPPLICABLE_VALUE_RE = re.compile(r"^RALPH-INAPPLICABLE:\s*\S+.*$")
 _LANG_LINE_RE = re.compile(r"^RALPH-LANG:\s*(\S.*?)\s*$")
 _HEADING_LINE_RE = re.compile(r"^\s*#{1,2}\s+(.+?)\s*$")
 _POLICY_ID_LINE_RE = re.compile(r"<!--\s*ralph-policy-id:\s*([^>\s]+)\s*-->")
@@ -52,18 +60,93 @@ def _contains_placeholder(content: str) -> str | None:
 
 
 def _command_values(content: str) -> list[str]:
-    """Return the trimmed command values from every RALPH-COMMAND line."""
+    """Return the trimmed command values from every *valid* RALPH-COMMAND line.
+
+    A "valid" command line is one with a non-whitespace value (regex
+    :data:`_COMMAND_VALUE_RE`). Empty command lines are still parsed by
+    :func:`_check_individual_commands` so the user sees a precise finding
+    with the offending line number.
+    """
     values: list[str] = []
     for line in content.splitlines():
-        match = _COMMAND_LINE_RE.match(line)
+        match = _COMMAND_VALUE_RE.match(line)
         if match is not None:
-            values.append(match.group(1) or "")
+            value = line[len(markers.COMMAND_MARKER):].strip()
+            values.append(value)
     return values
 
 
+def _command_raw_lines(content: str) -> list[str]:
+    """Return every ``RALPH-COMMAND:`` line (including empty-value lines).
+
+    Used by :func:`_check_individual_commands` to surface findings for
+    empty-value command lines. The list preserves the original ordering so
+    the user sees the offending line at a stable index.
+    """
+    return [
+        line[len(markers.COMMAND_MARKER):].strip()
+        for line in content.splitlines()
+        if _COMMAND_LINE_RE.match(line)
+    ]
+
+
+def _inapplicable_lines(content: str) -> list[str]:
+    """Return the trimmed values of every *valid* RALPH-INAPPLICABLE line.
+
+    A "valid" inapplicable line is one with a non-whitespace value (regex
+    :data:`_INAPPLICABLE_VALUE_RE`). Empty inapplicable lines are still
+    parsed by :func:`_check_individual_inapplicables` so the user sees a
+    precise finding with the offending line number.
+    """
+    return [
+        line[len(markers.INAPPLICABLE_MARKER):].strip()
+        for line in content.splitlines()
+        if _INAPPLICABLE_VALUE_RE.match(line)
+    ]
+
+
+def _inapplicable_raw_lines(content: str) -> list[str]:
+    """Return every ``RALPH-INAPPLICABLE:`` line (including empty-value lines).
+
+    Used by :func:`_check_individual_inapplicables` to surface findings
+    for empty-value inapplicable lines.
+    """
+    return [
+        line[len(markers.INAPPLICABLE_MARKER):].strip()
+        for line in content.splitlines()
+        if _INAPPLICABLE_LINE_RE.match(line)
+    ]
+
+
 def _inapplicable_present(content: str) -> bool:
-    """Return True when at least one RALPH-INAPPLICABLE line exists."""
-    return any(_INAPPLICABLE_LINE_RE.match(line) for line in content.splitlines())
+    """Return True when at least one non-empty RALPH-INAPPLICABLE line exists."""
+    return bool(_inapplicable_lines(content))
+
+
+def _inapplicable_lines_for_lang_block(block_lines: list[str]) -> list[str]:
+    """Return the trimmed RALPH-INAPPLICABLE values inside one per-language block.
+
+    Empty ``RALPH-INAPPLICABLE:`` lines inside a per-language block are
+    excluded here; they are flagged separately in
+    :func:`_check_per_language_coverage`.
+    """
+    joined = "\n".join(block_lines)
+    return _inapplicable_lines(joined)
+
+
+def _fact_lines(content: str) -> list[str]:
+    """Return the trimmed RALPH-FACT lines (without the marker).
+
+    Empty ``RALPH-FACT:`` lines (only the marker + whitespace) are excluded
+    here so :func:`_check_placeholders` can distinguish a missing-fact file
+    from a file that contains only structurally-empty markers.
+    """
+    out: list[str] = []
+    for line in content.splitlines():
+        if not _FACT_VALUE_RE.match(line):
+            continue
+        out.append(line[len(markers.FACT_MARKER):].strip())
+    return out
 
 
 def _lang_blocks(content: str) -> dict[str, tuple[bool, bool]]:
@@ -71,9 +154,9 @@ def _lang_blocks(content: str) -> dict[str, tuple[bool, bool]]:
 
     The validator slices the file into per-language blocks delimited by
     ``RALPH-LANG:`` lines. Each block ends at the next RALPH-LANG line OR
-    the end of the file. A block must contain at least one
+    the end of the file. A block must contain at least one non-empty
     RALPH-COMMAND or RALPH-INAPPLICABLE line to satisfy per-language
-    coverage.
+    coverage — empty marker lines are NOT counted as a declaration.
     """
     blocks: dict[str, list[str]] = {}
     current_lang: str | None = None
@@ -89,10 +172,9 @@ def _lang_blocks(content: str) -> dict[str, tuple[bool, bool]]:
             blocks[current_lang].append(line)
     out: dict[str, tuple[bool, bool]] = {}
     for lang, lines in blocks.items():
-        joined = "\n".join(lines)
         out[lang] = (
-            bool(_COMMAND_LINE_RE.search(joined)),
-            bool(_INAPPLICABLE_LINE_RE.search(joined)),
+            bool(_command_values("\n".join(lines))),
+            bool(_inapplicable_lines_for_lang_block(lines)),
         )
     return out
 
@@ -352,7 +434,14 @@ def _check_individual_citations(
 
 
 def _check_placeholders(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate the file is free of placeholder tokens and unresolved FACT lines."""
+    """Validate every RALPH-FACT line is resolved and at least one exists.
+
+    A complete policy must declare at least one resolved ``RALPH-FACT:``
+    line — the validator rejects generic prose that is missing machine-
+    checkable project facts. Placeholder tokens anywhere in the file are
+    rejected (the contract is project-specific content, not template
+    copy).
+    """
     findings: list[PolicyFinding] = []
     placeholder = _contains_placeholder(content)
     if placeholder is not None:
@@ -362,6 +451,26 @@ def _check_placeholders(content: str, path: str, filename: str) -> list[PolicyFi
                 path=path,
                 missing_evidence=f"unresolved placeholder token: {placeholder}",
                 required_outcome=f"replace '{placeholder}' with verified project fact",
+            )
+        )
+    fact_lines = _fact_lines(content)
+    if not fact_lines:
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_PLACEHOLDER}:{filename}:no-fact",
+                path=path,
+                missing_evidence=(
+                    "policy file declares no resolved RALPH-FACT line; every "
+                    "project-specific policy must enumerate its machine-"
+                    "checkable project facts (test commands, paths, "
+                    "owners, budgets, supported platforms, etc.) as "
+                    "`RALPH-FACT: <key>: <value>` lines"
+                ),
+                required_outcome=(
+                    "add at least one resolved `RALPH-FACT:` line naming a "
+                    "verified project-specific fact; replace any starter "
+                    "placeholder with a real value before removing this finding"
+                ),
             )
         )
     for line in content.splitlines():
@@ -384,23 +493,94 @@ def _check_placeholders(content: str, path: str, filename: str) -> list[PolicyFi
 
 
 def _check_commands(content: str, path: str, filename: str) -> list[PolicyFinding]:
-    """Validate at least one command OR inapplicable marker exists, and commands are usable."""
+    """Validate at least one non-empty command OR inapplicable marker exists.
+
+    Empty ``RALPH-COMMAND:`` and ``RALPH-INAPPLICABLE:`` lines are explicitly
+    rejected so a policy cannot exempt itself from the gate with an empty
+    marker. The general inapplicability value must name a reason (e.g. why
+    the verification step does not apply to this project).
+    """
     findings: list[PolicyFinding] = []
     command_values = _command_values(content)
-    has_command = any(value for value in command_values)
-    if not has_command and not _inapplicable_present(content):
+    command_raw_values = _command_raw_lines(content)
+    inapplicable_values = _inapplicable_lines(content)
+    inapplicable_raw_values = _inapplicable_raw_lines(content)
+    has_command = bool(command_values)
+    has_inapplicable = bool(inapplicable_values)
+    if not has_command and not has_inapplicable:
         findings.append(
             PolicyFinding(
                 requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:missing",
                 path=path,
-                missing_evidence="file contains neither RALPH-COMMAND nor RALPH-INAPPLICABLE",
+                missing_evidence=(
+                    "file contains neither a non-empty RALPH-COMMAND nor a "
+                    "non-empty RALPH-INAPPLICABLE line"
+                ),
                 required_outcome=(
                     "add at least one RALPH-COMMAND line with a real runnable "
                     "verification command (or RALPH-INAPPLICABLE with a reason)"
                 ),
             )
         )
-    findings.extend(_check_individual_commands(command_values, path, filename))
+    findings.extend(_check_individual_commands(command_raw_values, path, filename))
+    findings.extend(
+        _check_individual_inapplicables(inapplicable_raw_values, path, filename)
+    )
+    return findings
+
+
+def _check_individual_inapplicables(
+    inapplicable_values: list[str], path: str, filename: str
+) -> list[PolicyFinding]:
+    """Validate every RALPH-INAPPLICABLE value is non-empty and placeholder-free.
+
+    The parser filters empty lines before reaching this helper, but
+    ``_fact_lines``/``_inapplicable_lines`` also enforce the
+    non-whitespace-value contract via regex. A no-op marker (the bare
+    ``RALPH-INAPPLICABLE:`` token with only whitespace after the colon)
+    MUST produce a stable RWP-CMD unusable finding so the user sees a
+    precise pointer at the offending line.
+    """
+    findings: list[PolicyFinding] = []
+    for index, value in enumerate(inapplicable_values, start=1):
+        if not value:
+            findings.append(
+                PolicyFinding(
+                    requirement_id=(
+                        f"{markers.ID_CMD_UNUSABLE}:{filename}:empty-inapplicable-{index}"
+                    ),
+                    path=path,
+                    missing_evidence=(
+                        f"RALPH-INAPPLICABLE line {index} is empty; the marker "
+                        "must declare a reason or remove the line"
+                    ),
+                    required_outcome=(
+                        "add the reason the gate does not apply "
+                        "(e.g. 'no graphical surface in CI') or replace the "
+                        "line with a real RALPH-COMMAND"
+                    ),
+                )
+            )
+            continue
+        for placeholder_token in markers.PLACEHOLDER_TOKENS:
+            if placeholder_token in value:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=(
+                            f"{markers.ID_CMD_UNUSABLE}:{filename}:placeholder-inapplicable-{index}"
+                        ),
+                        path=path,
+                        missing_evidence=(
+                            f"RALPH-INAPPLICABLE line {index} contains placeholder "
+                            f"token '{placeholder_token}'"
+                        ),
+                        required_outcome=(
+                            "replace the placeholder in RALPH-INAPPLICABLE with "
+                            "the real reason the gate does not apply"
+                        ),
+                    )
+                )
+                break
     return findings
 
 
@@ -464,7 +644,14 @@ def _check_completion_marker(content: str, path: str, filename: str) -> list[Pol
 def _check_per_language_coverage(
     workspace: Workspace, stack: ProjectStack
 ) -> list[PolicyFinding]:
-    """Validate per-language RALPH-LANG coverage in typecheck and lint policies."""
+    """Validate per-language RALPH-LANG coverage in typecheck and lint policies.
+
+    Per-language blocks must contain a non-empty ``RALPH-COMMAND`` or
+    ``RALPH-INAPPLICABLE`` line. An empty inapplicable marker is treated
+    as a missing declaration and produces a stable
+    ``RWP-LANG`` finding; a no-op exemption cannot silently disable a
+    per-language gate.
+    """
     required_langs = evidence.required_languages(stack)
     if not required_langs:
         return []
@@ -475,6 +662,9 @@ def _check_per_language_coverage(
             continue  # core-file presence check already emitted a finding.
         content = workspace.read(path)
         blocks = _lang_blocks(content)
+        # Detect empty ``RALPH-INAPPLICABLE:`` lines inside per-language
+        # blocks (the parser strips them from the boolean count above).
+        empty_lang_inapplicable = _find_empty_per_language_inapplicable(content)
         for language in sorted(required_langs):
             if language not in blocks:
                 findings.append(
@@ -499,15 +689,61 @@ def _check_per_language_coverage(
                         path=path,
                         missing_evidence=(
                             f"RALPH-LANG block for '{language}' has neither "
-                            "RALPH-COMMAND nor RALPH-INAPPLICABLE"
+                            "a non-empty RALPH-COMMAND nor a non-empty "
+                            "RALPH-INAPPLICABLE"
                         ),
                         required_outcome=(
-                            f"add a RALPH-COMMAND or RALPH-INAPPLICABLE line "
-                            f"after `RALPH-LANG: {language}`"
+                            f"add a non-empty RALPH-COMMAND or "
+                            f"RALPH-INAPPLICABLE line after `RALPH-LANG: {language}`"
+                        ),
+                    )
+                )
+            if language in empty_lang_inapplicable:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=(
+                            f"{markers.ID_LANG_COVERAGE}:{filename}:{language}:"
+                            f"empty-inapplicable"
+                        ),
+                        path=path,
+                        missing_evidence=(
+                            f"RALPH-LANG block for '{language}' contains an "
+                            "empty RALPH-INAPPLICABLE line; the marker must "
+                            "declare a reason or be replaced by RALPH-COMMAND"
+                        ),
+                        required_outcome=(
+                            f"add a real reason after `RALPH-INAPPLICABLE:` in "
+                            f"the `{language}` block, or remove the empty "
+                            "marker and add a runnable RALPH-COMMAND instead"
                         ),
                     )
                 )
     return findings
+
+
+def _find_empty_per_language_inapplicable(content: str) -> set[str]:
+    """Return the set of language names whose block contains an empty
+    ``RALPH-INAPPLICABLE:`` line.
+
+    An empty inapplicable marker is a structural defect: it claims
+    inapplicability without justification, so it MUST produce a finding
+    even when the language block also contains a usable command.
+    """
+    out: set[str] = set()
+    current_lang: str | None = None
+    for line in content.splitlines():
+        lang_match = _LANG_LINE_RE.match(line)
+        if lang_match is not None:
+            current_lang = str(lang_match.group(1)).strip()
+            continue
+        if current_lang is None:
+            continue
+        stripped = line[len(markers.INAPPLICABLE_MARKER):].strip() if line.startswith(
+            markers.INAPPLICABLE_MARKER
+        ) else None
+        if line.startswith(markers.INAPPLICABLE_MARKER) and not stripped:
+            out.add(current_lang)
+    return out
 
 
 def _check_verification_bypass(workspace: Workspace) -> list[PolicyFinding]:
