@@ -1,11 +1,18 @@
 """Tests for ``ralph.testing.audit_terminal_escape_containment``.
 
-The audit enforces literal-string invariants that keep the terminal-escape
-containment contract wired across the seven files the wt-036 rework
-touches. Each test mirrors ``tests/test_audit_parallelization_dormant.py``
-in structure: clean-tree assertions, regression-flavor assertions with
-monkey-patched sources, and a violation case for the most important
-invariant (the ``[0-9;?]`` narrowing regression).
+The audit enforces literal-string AND AST-scoped invariants that
+keep the terminal-escape containment contract wired across the
+seven files the wt-036 rework touches. Each test mirrors
+``tests/test_audit_parallelization_dormant.py`` in structure:
+clean-tree assertions, regression-flavor assertions with
+monkey-patched sources, and a violation case for the most
+important invariants (the ``[0-9;?]`` narrowing regression and
+each per-sink adversarial mutation).
+
+The AST-scoped invariants use ``FunctionBodyInvariant`` and
+``CallSiteInvariant`` so the audit cannot be satisfied by a
+helper name appearing anywhere in the file -- the strip call
+must actually live inside the wired sink.
 """
 
 from __future__ import annotations
@@ -13,7 +20,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import ralph.testing.audit_terminal_escape_containment as audit_module
-from ralph.testing.audit_terminal_escape_containment import Invariant
+from ralph.testing.audit_terminal_escape_containment import (
+    CallSiteInvariant,
+    FunctionBodyInvariant,
+    Invariant,
+)
 from ralph.testing.audit_terminal_escape_containment import main as audit_main
 
 if TYPE_CHECKING:
@@ -30,9 +41,10 @@ def test_audit_module_path() -> None:
     assert hasattr(audit_module, "main")
 
 
-def test_audit_invariant_count_is_eight() -> None:
-    """Eight files carry one invariant each (one per touched surface)."""
-    assert len(audit_module._INVARIANTS) == 8
+def test_audit_invariant_count_matches_table() -> None:
+    """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
+    expected = 12
+    assert len(audit_module._INVARIANTS) == expected
 
 
 def test_audit_line_sanitizer_invariant_pins_full_csi_class() -> None:
@@ -190,3 +202,207 @@ def test_audit_blocks_regression_when_stdin_none_returns_to_process_reader(
     assert rc == 1
     assert path in captured.out
     assert "stdin=None," in captured.out
+
+
+# ---------------------------------------------------------------------------
+# AST-scoped invariants: prove the audit inspects FUNCTION BODIES, not just
+# whether the helper name appears anywhere in the file. Each test below
+# strips the call from the wired sink and keeps the helper name present
+# elsewhere (docstring, import, etc.) -- a whole-file literal check would
+# still pass, the AST check must fail.
+# ---------------------------------------------------------------------------
+
+
+def _patch_rel(monkeypatch: pytest.MonkeyPatch, rel_path: str, transform) -> None:
+    real_read = audit_module._read
+
+    def _read(rel_path_arg: str) -> str:
+        content = real_read(rel_path_arg)
+        if rel_path_arg == rel_path:
+            return transform(content)
+        return content
+
+    monkeypatch.setattr(audit_module, "_read", _read)
+
+
+def test_audit_blocks_regression_when_activity_model_render_event_line_drops_strip(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: keep the helper name (in import + docstring) but remove the strip from ``render_event_line``.
+
+    A naive whole-file check would still see ``strip_terminal_control`` in
+    the import line and pass. The FunctionBodyInvariant on
+    ``render_event_line`` must catch the regression.
+    """
+    path = "display/activity_model.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "safe_content = strip_terminal_control(content or \"\")",
+            "safe_content = content or \"\"",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1, (
+        "audit must exit 1 when activity_model.render_event_line body drops strip_terminal_control"
+    )
+    assert "render_event_line body missing required literal" in captured.out
+    assert path in captured.out
+
+
+def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_strip(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert ``ParallelDisplay.strip_markup`` to the pre-fix ``_strip_markup``-only form."""
+    path = "display/parallel_display.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "return strip_terminal_control(_strip_markup(line))",
+            "return _strip_markup(line)",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert "ParallelDisplay.strip_markup body missing required literal" in captured.out
+
+
+def test_audit_blocks_regression_when_module_level_emit_activity_line_drops_sanitize(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert ``emit_activity_line`` unit_id-is-None branch to unsanitized print."""
+    path = "display/parallel_display.py"
+
+    def _transform(src: str) -> str:
+        # The pre-fix branch had ``console.print(line)`` -- this matches
+        # the whole-file forbidden literal AND removes the _sanitize call
+        # from emit_activity_line's body.
+        return src.replace(
+            "console.print(_sanitize(line), markup=False, highlight=False)",
+            "console.print(line)",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    # The function-body invariant MUST fire (in addition to the file-level
+    # forbidden literal). The audit pins ``_sanitize(line)`` with min_count=2
+    # so reverting ONE branch is caught even if the other still sanitizes.
+    assert "minimum required is 2" in captured.out
+    assert "emit_activity_line body has 1 occurrence" in captured.out
+
+
+def test_audit_blocks_regression_when_render_titled_lines_drops_strip(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert ``_render_titled_lines`` to print raw lines."""
+    path = "display/parallel_display.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "strip_terminal_control(line), markup=False, highlight=False",
+            "line, markup=False, highlight=False",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert "_render_titled_lines body missing required literal" in captured.out
+
+
+def test_audit_blocks_regression_when_spawn_options_drops_devnull(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert SpawnOptions ``stdin=subprocess.DEVNULL`` back to ``stdin=None``.
+
+    This is the critical regression -- re-introducing INHERIT means the
+    agent child can take over Ralph's TTY. Both the file-level invariant
+    and the SpawnOptions call-site invariant must fire.
+    """
+    path = "agents/invoke/_process_reader.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "stdin=subprocess.DEVNULL,",
+            "stdin=None,",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    # The call-site invariant must fire.
+    assert "no SpawnOptions call passes" in captured.out
+
+
+def test_audit_blocks_regression_when_subprocess_executor_drops_devnull(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial: revert SpawnOptions ``stdin=_DEVNULL`` back to ``stdin=None``."""
+    path = "agents/subprocess_executor.py"
+
+    def _transform(src: str) -> str:
+        return src.replace(
+            "stdin=_DEVNULL,",
+            "stdin=None,",
+        )
+
+    _patch_rel(monkeypatch, path, _transform)
+
+    rc = audit_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert path in captured.out
+    assert "no SpawnOptions call passes" in captured.out
+
+
+def test_function_body_invariant_returns_violations_for_missing_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FunctionBodyInvariant reports the missing target as a violation."""
+    inv = FunctionBodyInvariant(
+        rel_path="display/parallel_display.py",
+        qualname="ParallelDisplay.does_not_exist",
+        present=("strip_terminal_control",),
+    )
+    monkeypatch.setattr(audit_module, "_read", lambda rel_path: "")
+    violations = inv.violations()
+    assert any("not found" in v for v in violations), violations
+
+
+def test_call_site_invariant_reports_missing_callee() -> None:
+    """CallSiteInvariant reports no callee as a violation."""
+    inv = CallSiteInvariant(
+        rel_path="agents/invoke/_process_reader.py",
+        callee_name="NoSuchCallable",
+        present=("stdin=DEVNULL",),
+    )
+    violations = inv.violations()
+    assert any("not found" in v or "no SpawnOptions" in v.lower() or "call site" in v for v in violations), (
+        violations
+    )
