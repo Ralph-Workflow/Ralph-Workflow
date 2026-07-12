@@ -211,6 +211,34 @@ def test_migration_candidates_flags_recognized_heading() -> None:
     assert "docs/testing.md" in paths
 
 
+def test_migration_candidates_flags_root_security_md() -> None:
+    """A project's existing SECURITY.md (standard GitHub convention) must be
+    pulled into the canonical security policy during remediation — otherwise
+    a parallel security rulebook survives outside the canonical directory."""
+    ws = MemoryWorkspace()
+    ws.write(
+        "SECURITY.md",
+        "# Security Policy\n\nReport vulnerabilities to security@example.com.\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    by_path = {c.path: c for c in candidates}
+    assert by_path.get("SECURITY.md") is not None
+    assert by_path["SECURITY.md"].resolved is False
+
+
+def test_migration_candidates_flags_docs_security_heading() -> None:
+    """A docs/security.md with a security heading is policy-like content and
+    must be flagged for migration into security-policy.md."""
+    ws = MemoryWorkspace()
+    ws.write(
+        "docs/security.md",
+        "## Security considerations\n\nNever log tokens or credentials.\n",
+    )
+    candidates = evidence.migration_candidates(ws)
+    paths = [c.path for c in candidates]
+    assert "docs/security.md" in paths
+
+
 def test_migration_candidates_resolved_with_migrated_marker() -> None:
     ws = MemoryWorkspace()
     ws.write(f"{markers.CANONICAL_DIR}testing-policy.md", "# target\n")

@@ -37,6 +37,9 @@ _REMEDIATION_ERA_PHRASES: tuple[str, ...] = (
     # validator-signal explanations are never true in a seeded file.
     "REMOVE this file",
     "validator detects",
+    # Self-references to the template era: after remediation the file IS
+    # the project policy, so durable prose must not mention starters.
+    "starter boilerplate",
 )
 
 
@@ -56,8 +59,17 @@ def test_starter_contains_no_remediation_era_prose(name: str) -> None:
 @pytest.mark.parametrize("name", sorted(starters.iter_starter_names()))
 def test_starter_facts_section_reads_as_a_record(name: str) -> None:
     """The facts section must present RALPH-FACT lines as a durable record
-    agents rely on and keep current — not as a to-do list to 'resolve'."""
+    agents rely on and keep current — not as a to-do list to 'resolve'.
+
+    The template banner also mentions "verified project facts", so it is
+    stripped before asserting: the durable body itself must carry the
+    record framing.
+    """
     content = starters.read_starter(name)
+    start = content.find("<!-- RALPH-STARTER-TEMPLATE")
+    if start != -1:
+        end = content.find("-->", start) + len("-->")
+        content = content[:start] + content[end:]
     assert "verified project facts" in content.lower(), (
         f"starter {name}: the facts section must frame RALPH-FACT lines as "
         "a record of verified project facts"

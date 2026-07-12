@@ -123,9 +123,12 @@ update the resolved facts, commands, and requirements whenever verified
 project reality changes (new frameworks, new commands, new structure).
 Two guardrails bound every amendment:
 
-* Conflicts between starter boilerplate and the project's established
-  practice are resolved in favor of the existing project policy — adapt
-  this file to the project, never the reverse.
+* Conflicts between this policy's generic defaults and the project's
+  established practice are resolved in
+  favor of the existing project policy — adapt this file to verified
+  project reality, never the reverse. A looser project practice is
+  NOT such a conflict: keep the stronger requirement unless a
+  documented exception narrows it.
 * An amendment MUST NOT subvert the INTENT of this policy. Weakening,
   disabling, or deleting a requirement so that a failing change passes is
   forbidden; evolution clarifies and extends, it does not water down.

@@ -276,12 +276,13 @@ PLACEHOLDER_TOKENS: Final[tuple[str, ...]] = (
 )
 
 # Every starter opens with a RALPH-STARTER-TEMPLATE banner comment that marks
-# the file as an unfilled template. Unlike PLACEHOLDER_TOKENS (which are only
-# checked inside RALPH-FACT / RALPH-COMMAND / RALPH-INAPPLICABLE values so
-# ordinary prose like "no TODO comments" cannot false-positive), this token
-# is checked against the WHOLE file: the validator blocks readiness until the
-# remediation agent deletes the banner, so a finished policy file reads as
-# durable policy with no template scaffolding left behind.
+# the file as an unfilled template. The token is deliberately NOT in
+# PLACEHOLDER_TOKENS: the whole-file placeholder scan reports only the FIRST
+# token it finds, so the banner would be shadowed by PROJECT-FACT-UNRESOLVED
+# in a fresh starter. The dedicated validator check gives the banner its own
+# stable finding id and an actionable required_outcome, so the remediation
+# agent always sees "delete the banner" as an explicit step and a finished
+# policy file carries no template scaffolding.
 STARTER_TEMPLATE_TOKEN: Final[str] = "RALPH-STARTER-TEMPLATE"
 
 # Approved gate tool executables. The validator checks every RALPH-COMMAND
@@ -463,9 +464,15 @@ MIGRATION_CANDIDATE_PATHS: Final[tuple[str, ...]] = (
     "CONTRIBUTING.rst",
     "TESTING.md",
     "DEVELOPMENT.md",
+    # SECURITY.md is the standard GitHub security-policy location; its
+    # content belongs in the canonical security-policy.md so the project
+    # never keeps a parallel security rulebook outside the canonical dir.
+    "SECURITY.md",
+    ".github/SECURITY.md",
     "docs/testing.md",
     "docs/development.md",
     "docs/contributing.md",
+    "docs/security.md",
     ".github/CONTRIBUTING.md",
 )
 
@@ -491,6 +498,8 @@ MIGRATION_HEADING_RECOGNIZERS: Final[tuple[str, ...]] = (
     "code style",
     "clean code",
     "documentation policy",
+    "security",
+    "threat model",
 )
 
 # Exact marker a migrated file embeds to declare itself resolved. The token

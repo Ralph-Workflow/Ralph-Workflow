@@ -471,10 +471,10 @@ def _check_template_banner(
 ) -> list[PolicyFinding]:
     """Reject a policy file that still carries the starter template banner.
 
-    Whole-file scan (unlike PLACEHOLDER_TOKENS, which are scoped to
-    machine-checkable value lines): the banner marks the file as an
-    unfilled template, so its presence anywhere blocks readiness until the
-    remediation agent deletes it.
+    Separate from the PLACEHOLDER_TOKENS scan (which also covers the whole
+    file but reports only the first token found) so the banner always gets
+    its own stable finding id and an explicit delete-the-banner outcome
+    instead of being shadowed by an unresolved fact placeholder.
     """
     if markers.STARTER_TEMPLATE_TOKEN not in content:
         return []

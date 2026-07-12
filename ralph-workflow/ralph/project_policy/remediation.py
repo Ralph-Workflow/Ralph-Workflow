@@ -134,7 +134,9 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
    * The finished file must read as durable policy: every sentence tells a
      future agent how to FOLLOW or ENFORCE the policy. Do not leave
      fill-in instructions, references to starters or placeholders, or
-     validator mechanics in the file.
+     validator mechanics in the prose. The required `Ralph markers`
+     section is the one designated home for machine markers — keep it,
+     and keep it minimal.
    * Add the completion marker `{markers.COMPLETION_MARKER}` ONLY when every
      other requirement is satisfied.
 3. MIGRATE existing project policy-like content into the matching canonical
@@ -177,7 +179,10 @@ prose, extra whitespace, or case changes do not satisfy any requirement.
   in them rather than leaving stale boilerplate.
 * Conflicts between starter boilerplate and the project's established
   practice are resolved in favor of the existing project policy — adapt
-  the canonical file to the project, never the reverse.
+  the canonical file to the project, never the reverse. A looser project
+  practice is NOT such a conflict: per the stricter-rule requirement
+  above, the stronger requirement wins unless the project documents an
+  explicit exception.
 * Evolution MUST NOT subvert a policy's INTENT: never weaken, dilute, or
   delete a requirement so that a failing change passes.
 

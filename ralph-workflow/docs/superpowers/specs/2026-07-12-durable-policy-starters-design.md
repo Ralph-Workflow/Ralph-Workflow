@@ -86,6 +86,16 @@ token in addition to PROJECT-FACT-UNRESOLVED — same remediation flow,
 one more deterministic reason the file cannot be marked complete while
 still template-shaped.
 
+## Known v1 limitations (accepted)
+
+* The required heading "Project facts to resolve" reads like a to-do even
+  in a finished file; the section body reframes it as a record, but the
+  heading itself is schema-locked. Renaming it is queued for a schema v2
+  bump with migration.
+* The required "Ralph markers" section is machine bookkeeping by design;
+  the remediation prompt designates it as the sole home for markers so
+  agents neither delete it (breaking the heading check) nor grow it.
+
 ## Out of scope
 
 * Renaming headings (schema v2 territory).
