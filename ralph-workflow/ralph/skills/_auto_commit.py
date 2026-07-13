@@ -51,6 +51,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.git.operations import stage_files
 from ralph.git.scoped_auto_commit import commit_scoped_updates
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 
@@ -155,8 +156,6 @@ def commit_skill_updates(
         ``GitCommandError``).
     """
     if stage_fn is None:
-        from ralph.git.operations import stage_files  # noqa: PLC0415
-
         stage_fn = stage_files
     return commit_scoped_updates(
         repo_root,

@@ -8,27 +8,16 @@ each install branch can be unit-tested without touching the real filesystem.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ralph.update_check._install_kind import InstallKind
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
 PACKAGE_NAME = "ralph-workflow"
 PYPI_PROJECT_URL = "https://pypi.org/project/ralph-workflow/"
-
-
-class InstallKind(StrEnum):
-    """How the running ``ralph`` was installed."""
-
-    SOURCE = "source"
-    PIPX = "pipx"
-    UV_TOOL = "uv-tool"
-    DOCKER = "docker"
-    FROZEN = "frozen"
-    PIP = "pip"
-    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)

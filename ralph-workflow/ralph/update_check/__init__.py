@@ -16,7 +16,6 @@ import os
 import sys
 import threading
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -26,12 +25,15 @@ from ralph import __version__
 from ralph.update_check import gating as _gating
 from ralph.update_check import pypi as _pypi
 from ralph.update_check import state as _state
+from ralph.update_check._deps import UpdateCheckDeps
+from ralph.update_check._install_kind import InstallKind
+from ralph.update_check._status import UpdateStatus
 from ralph.update_check.compare import is_newer
-from ralph.update_check.environment import InstallInfo, InstallKind, detect_install
+from ralph.update_check.environment import InstallInfo, detect_install
 from ralph.update_check.state import VersionCheckState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     from ralph.display.context import DisplayContext
 
@@ -44,35 +46,6 @@ __all__ = [
     "maybe_render_update_nag",
     "update_status",
 ]
-
-
-@dataclass(frozen=True)
-class UpdateStatus:
-    """Diagnose-friendly snapshot of the update situation."""
-
-    current_version: str
-    latest_version: str | None
-    update_available: bool
-    install: InstallInfo
-    disabled: bool
-
-
-@dataclass(frozen=True)
-class UpdateCheckDeps:
-    """Injected collaborators for the update-check flow (real impls in :func:`default_deps`)."""
-
-    current_version: str
-    environ: Mapping[str, str]
-    now: Callable[[], float]
-    is_disabled: Callable[[Mapping[str, str]], bool]
-    cache_path: Callable[[Mapping[str, str]], Path]
-    load_state: Callable[[Path], VersionCheckState | None]
-    save_state: Callable[[Path, VersionCheckState], None]
-    is_refresh_due: Callable[[VersionCheckState | None, float], bool]
-    is_newer: Callable[[str, str], bool]
-    detect_install: Callable[[], InstallInfo]
-    fetch_latest: Callable[[], str | None]
-    spawn: Callable[[Callable[[], None]], None]
 
 
 def _real_detect_install() -> InstallInfo:

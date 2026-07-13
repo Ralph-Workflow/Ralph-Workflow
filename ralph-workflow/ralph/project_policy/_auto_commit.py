@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.git.operations import stage_files
 from ralph.git.scoped_auto_commit import commit_scoped_updates
 from ralph.project_policy import markers
 
@@ -92,8 +93,6 @@ def commit_policy_updates(
     (best-effort, never blocks the run).
     """
     if stage_fn is None:
-        from ralph.git.operations import stage_files  # noqa: PLC0415
-
         stage_fn = stage_files
     return commit_scoped_updates(
         repo_root,

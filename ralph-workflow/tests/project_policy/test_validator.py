@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ralph.language_detector.models import ProjectStack
-from ralph.project_policy import markers, starters, validators
+from ralph.project_policy import _content_checks, markers, starters, validators
 from ralph.workspace.memory import MemoryWorkspace
 
 
@@ -117,14 +117,14 @@ def test_malformed_schema_freeze_does_not_skip_upgrade() -> None:
 
 
 def test_typechecking_exception_requires_enumerated_case_and_warning_fields() -> None:
-    generic = validators._check_individual_inapplicables(
+    generic = _content_checks._check_individual_inapplicables(
         ["legacy errors; review trigger: later"],
         "docs/ralph-workflow-policy/typechecking-policy.md",
         "typechecking-policy.md",
     )
     assert generic
 
-    exceptional = validators._check_individual_inapplicables(
+    exceptional = _content_checks._check_individual_inapplicables(
         [
             "exceptional case: no suitable maintained checker exists; "
             "evidence: docs/tool-review.md; owner: maintainer; expiry: 2027-01-01; "
@@ -137,14 +137,14 @@ def test_typechecking_exception_requires_enumerated_case_and_warning_fields() ->
 
 
 def test_linting_exception_requires_enumerated_case_and_warning_fields() -> None:
-    generic = validators._check_individual_inapplicables(
+    generic = _content_checks._check_individual_inapplicables(
         ["not configured; review trigger: later"],
         "docs/ralph-workflow-policy/linting-policy.md",
         "linting-policy.md",
     )
     assert generic
 
-    exceptional = validators._check_individual_inapplicables(
+    exceptional = _content_checks._check_individual_inapplicables(
         [
             "exceptional case: no suitable maintained linter exists; "
             "evidence: docs/tool-review.md; owner: maintainer; expiry: 2027-01-01; "

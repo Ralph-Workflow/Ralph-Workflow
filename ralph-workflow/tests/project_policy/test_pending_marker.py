@@ -13,7 +13,7 @@ clause.
 from __future__ import annotations
 
 from ralph.language_detector.models import ProjectStack
-from ralph.project_policy import markers, validators
+from ralph.project_policy import _scanners, markers, validators
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.test_validator import (
     _complete_policy_body,
@@ -28,7 +28,7 @@ _TEST_PATH = f"{markers.CANONICAL_DIR}testing-policy.md"
 
 def _pendings(values: list[str], filename: str) -> list[str]:
     """Return the requirement ids for a gate-form pending check."""
-    findings = validators._check_individual_pendings(
+    findings = _scanners._check_individual_pendings(
         values, f"{markers.CANONICAL_DIR}{filename}", filename
     )
     return [f.requirement_id for f in findings]
