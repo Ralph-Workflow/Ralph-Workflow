@@ -175,6 +175,7 @@ _TYPED_ARTIFACT_TYPES = frozenset(
         "development_analysis_decision",
         "planning_analysis_decision",
         "review_analysis_decision",
+        "policy_remediation_analysis_decision",
         SMOKE_TEST_RESULT_ARTIFACT_TYPE,
         PRODUCT_SPEC_ARTIFACT_TYPE,
     }
@@ -218,6 +219,7 @@ _PLANNING_DECISION_ARTIFACT_TYPES: frozenset[str] = frozenset(
         "development_analysis_decision",
         "planning_analysis_decision",
         "review_analysis_decision",
+        "policy_remediation_analysis_decision",
     }
 )
 

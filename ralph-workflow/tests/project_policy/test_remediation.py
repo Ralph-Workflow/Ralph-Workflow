@@ -1,11 +1,29 @@
-"""Tests for the synchronous remediation driver."""
+"""Tests for the remediation PHASE.
+
+The LOOP that drives this phase (the budget, the analysis routing, the
+exhausted-analysis bypass) moved to ralph.project_policy.pipeline_driver and is
+tested in test_pipeline_driver.py. What remains here is the phase itself: the
+prompt it materializes, and its one hard rule -- it ALWAYS revalidates, and
+never reports the agent's own claim as the result.
+"""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+import pytest
+
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import markers, preflight, remediation
-from ralph.project_policy.models import PolicyFinding, ReadinessStatus
+from ralph.project_policy.analysis_decision import AnalysisDecision
+from ralph.project_policy.models import PolicyFinding
 from ralph.workspace.memory import MemoryWorkspace
+from tests.project_policy.policy_corpus import seed_complete_corpus
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.project_policy.analysis import InvokePolicyAgent
 
 
 def _stack() -> ProjectStack:
@@ -21,17 +39,24 @@ def _stub_finding() -> PolicyFinding:
     )
 
 
+def _agent(fix: Callable[[], None] | None = None) -> InvokePolicyAgent:
+    """A fake remediation agent chain with the production keyword signature."""
+
+    def invoke(*, phase: str, prompt_path: str) -> bool:
+        del phase, prompt_path
+        if fix is not None:
+            fix()
+        return True
+
+    return invoke
+
+
 def test_remediation_prompt_written_to_workspace_seam() -> None:
     """The remediation prompt is materialized via workspace.write (no .agent/artifacts write)."""
     ws = MemoryWorkspace()
-    finding = _stub_finding()
 
-    def fake_invoke(prompt_path: str) -> bool:
-        # The agent does not fix anything.
-        return False
-
-    remediation.remediate(
-        ws, _stack(), [finding], invoke_remediation_agent=fake_invoke, max_attempts=1
+    remediation.run_remediation_phase(
+        ws, _stack(), [_stub_finding()], invoke_agent=_agent()
     )
     # Prompt is at the documented rel-path.
     assert ws.exists(preflight.REMEDIATION_PROMPT_REL_PATH)
@@ -105,206 +130,126 @@ def test_prompt_steers_standard_community_files_to_migrated_marker() -> None:
     assert "keep" in prompt.lower()
 
 
-def test_invocation_error_aborts_loop_without_burning_budget() -> None:
-    """An infrastructure failure (agent cannot launch) aborts the loop immediately.
-
-    Retrying a deterministic launch crash burns the whole attempt budget in
-    milliseconds and floods the display with one failure panel per attempt.
-    The driver must stop after the first such crash and return BLOCKED.
-    """
+def test_launch_failure_propagates_to_the_driver() -> None:
+    """A launch crash is infrastructure breakage, not a policy shortfall. The
+    phase surfaces it; the DRIVER decides what to do (stop looping, and let the
+    run continue anyway -- see test_policy_never_blocks_the_run.py)."""
     ws = MemoryWorkspace()
-    finding = _stub_finding()
-    calls: list[str] = []
-    emitted: list[str] = []
 
-    def fake_invoke(prompt_path: str) -> bool:
-        calls.append(prompt_path)
-        raise remediation.RemediationInvocationError(
-            "display_context is required when display is None"
+    def invoke(*, phase: str, prompt_path: str) -> bool:
+        del phase, prompt_path
+        raise remediation.RemediationInvocationError("agent binary not found")
+
+    with pytest.raises(remediation.RemediationInvocationError):
+        remediation.run_remediation_phase(
+            ws, _stack(), [_stub_finding()], invoke_agent=invoke
         )
 
-    result = remediation.remediate(
+
+def test_the_phase_always_revalidates_and_never_trusts_the_agent() -> None:
+    """THE RULE OF THIS MODULE. An agent that claims success but fixed nothing
+    gets the same answer as an agent that gave up: the findings the DETERMINISTIC
+    VALIDATOR reports afterward. The agent's own claim is never the return value."""
+    ws = MemoryWorkspace()
+
+    remaining = remediation.run_remediation_phase(
+        ws, _stack(), [_stub_finding()], invoke_agent=_agent()
+    )
+
+    assert remaining, "a lying agent cannot produce an empty finding list"
+    assert any("RWP-" in f.requirement_id for f in remaining)
+
+
+def test_an_agent_that_really_fixes_the_project_yields_no_findings() -> None:
+    ws = MemoryWorkspace()
+
+    remaining = remediation.run_remediation_phase(
         ws,
         _stack(),
-        [finding],
-        invoke_remediation_agent=fake_invoke,
-        max_attempts=200,
-        emit=emitted.append,
+        [_stub_finding()],
+        invoke_agent=_agent(lambda: seed_complete_corpus(ws)),
     )
-    assert result.is_blocked()
-    assert len(calls) == 1
-    assert len(emitted) <= 3
-    assert any("could not be launched" in line for line in emitted)
+
+    assert remaining == []
 
 
-def test_revalidation_gates_completion() -> None:
-    """A fake agent that claims success but leaves findings must NOT mark READY."""
+def test_the_phase_returns_the_still_open_findings_not_the_ones_it_was_given() -> None:
+    """A partial fix must narrow the finding list, so the next prompt carries only
+    what is still open rather than re-asking for work already done."""
     ws = MemoryWorkspace()
-    finding = _stub_finding()
-    invoked_paths: list[str] = []
 
-    def fake_invoke(prompt_path: str) -> bool:
-        invoked_paths.append(prompt_path)
-        return True
-
-    result = remediation.remediate(
-        ws,
-        _stack(),
-        [finding],
-        invoke_remediation_agent=fake_invoke,
-        max_attempts=2,
-    )
-    # Agent was invoked exactly once per attempt.
-    assert len(invoked_paths) == 2
-    # Revalidation gated completion: agent claim of success cannot mark READY.
-    assert result.is_blocked()
-    # Findings are preserved with stable id/path/evidence/outcome.
-    assert any(f.requirement_id == finding.requirement_id for f in result.findings)
-
-
-def test_agent_that_fixes_findings_yields_ready() -> None:
-    """A fake agent that satisfies every validator requirement -> revalidation passes."""
-    from tests.project_policy.test_validator import (
-        _seed_all_core_complete,
-    )
-
-    ws = MemoryWorkspace()
-    finding = _stub_finding()
-
-    def fake_invoke(prompt_path: str) -> bool:
-        # The "agent" satisfies every validator requirement on its first call.
+    def fix_agents_md_only() -> None:
         ws.write(
             markers.AGENTS_MD,
-            f"{markers.AGENTS_BLOCK_BEGIN}\nSee {markers.CANONICAL_DIR}.\n{markers.AGENTS_BLOCK_END}\n",
+            f"{markers.AGENTS_BLOCK_BEGIN}\n{markers.CANONICAL_DIR}\n"
+            f"{markers.AGENTS_BLOCK_END}\n",
         )
-        ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee AGENTS.md for project policy.\n")
-        _seed_all_core_complete(ws, _stack())
-        return True
 
-    result = remediation.remediate(
+    remaining = remediation.run_remediation_phase(
         ws,
         _stack(),
-        [finding],
-        invoke_remediation_agent=fake_invoke,
-        max_attempts=1,
+        [_stub_finding()],
+        invoke_agent=_agent(fix_agents_md_only),
     )
-    assert result.is_ready()
+
+    ids = {f.requirement_id for f in remaining}
+    assert "RWP-AGENTS-MD:missing" not in ids, "a closed finding must drop out"
+    assert ids, "the still-open findings remain"
 
 
-def test_no_write_to_artifacts_issues_json() -> None:
-    """The non-artifact handoff contract: no .agent/artifacts/issues.json write."""
+def test_no_write_to_canonical_artifact_paths() -> None:
+    """The non-artifact handoff contract: the remediation drain is denied
+    artifact.submit, so it must never leave an artifact JSON behind."""
     ws = MemoryWorkspace()
 
-    def fake_invoke(prompt_path: str) -> bool:
-        return False
-
-    remediation.remediate(
-        ws, _stack(), [_stub_finding()], invoke_remediation_agent=fake_invoke, max_attempts=1
+    remediation.run_remediation_phase(
+        ws, _stack(), [_stub_finding()], invoke_agent=_agent()
     )
+
     assert not ws.exists(".agent/artifacts/issues.json")
     assert not ws.exists(".agent/artifacts/commit_message.json")
     assert not ws.exists(".agent/artifacts/development_result.json")
 
 
-def test_remediation_with_zero_max_attempts_returns_blocked() -> None:
+def test_analysis_feedback_reaches_the_prompt() -> None:
+    """The reviewer's findings become the next author's task list."""
     ws = MemoryWorkspace()
+    seen: list[str] = []
 
-    def fake_invoke(prompt_path: str) -> bool:  # pragma: no cover - unreachable
-        raise AssertionError("invoke must not be called when max_attempts=0")
-
-    result = remediation.remediate(
-        ws,
-        _stack(),
-        [_stub_finding()],
-        invoke_remediation_agent=fake_invoke,
-        max_attempts=0,
-    )
-    assert result.status == ReadinessStatus.BLOCKED
-
-
-def test_remediation_emits_one_line_per_attempt() -> None:
-    ws = MemoryWorkspace()
-    messages: list[str] = []
-
-    def fake_invoke(prompt_path: str) -> bool:
-        return False
-
-    remediation.remediate(
-        ws,
-        _stack(),
-        [_stub_finding()],
-        invoke_remediation_agent=fake_invoke,
-        max_attempts=2,
-        emit=messages.append,
-    )
-    # At least one message per attempt plus a final message.
-    assert any("attempt 1/2" in m for m in messages)
-    assert any("attempt 2/2" in m for m in messages)
-
-
-def test_remediation_uses_serde_findings_after_each_revalidation() -> None:
-    """After each attempt, the loop re-serializes the CURRENT findings."""
-    ws = MemoryWorkspace()
-    seen_in_prompts: list[str] = []
-
-    def fake_invoke(prompt_path: str) -> bool:
-        # Capture the findings block from the prompt.
-        content = ws.read(prompt_path)
-        seen_in_prompts.append(content)
-        return False
-
-    remediation.remediate(
-        ws,
-        _stack(),
-        [_stub_finding()],
-        invoke_remediation_agent=fake_invoke,
-        max_attempts=2,
-    )
-    # The first prompt references the original finding.
-    assert "RWP-AGENTS-MD:missing" in seen_in_prompts[0]
-
-
-def test_remediation_reserializes_still_open_findings() -> None:
-    """When the agent partially fixes (some findings closed, others remain), the
-    second prompt carries only the still-open findings."""
-    ws = MemoryWorkspace()
-    seen_in_prompts: list[str] = []
-
-    def fake_invoke(prompt_path: str) -> bool:
-        seen_in_prompts.append(ws.read(prompt_path))
-        # On the second attempt, also create AGENTS.md (closes one finding) but
-        # leave the others open.
-        if len(seen_in_prompts) == 1:
-            ws.write(
-                markers.AGENTS_MD,
-                f"{markers.AGENTS_BLOCK_BEGIN}\n{markers.CANONICAL_DIR}\n{markers.AGENTS_BLOCK_END}\n",
-            )
+    def invoke(*, phase: str, prompt_path: str) -> bool:
+        del phase
+        seen.append(ws.read(prompt_path))
         return True
 
-    # Provide two findings; the first is closed by the agent, the second remains.
-    finding_agents = PolicyFinding(
-        requirement_id="RWP-AGENTS-MD:missing",
-        path=markers.AGENTS_MD,
-        missing_evidence="missing AGENTS.md",
-        required_outcome="create AGENTS.md",
-    )
-    finding_other = PolicyFinding(
-        requirement_id="RWP-CLAUDE-MD:missing",
-        path=markers.CLAUDE_MD,
-        missing_evidence="missing CLAUDE.md",
-        required_outcome="create CLAUDE.md",
-    )
-    result = remediation.remediate(
+    remediation.run_remediation_phase(
         ws,
         _stack(),
-        [finding_agents, finding_other],
-        invoke_remediation_agent=fake_invoke,
-        max_attempts=2,
+        [_stub_finding()],
+        invoke_agent=invoke,
+        analysis_feedback=AnalysisDecision(
+            status="request_changes",
+            summary="the declared gate does not exist",
+            what_came_up_short=["make verify is not a real target"],
+            how_to_fix=["declare the real entry point"],
+        ),
     )
-    # Second prompt must reference the still-open finding (CLAUDE.md) but not
-    # the closed one (AGENTS.md).
-    assert "RWP-CLAUDE-MD:missing" in seen_in_prompts[1]
-    assert "RWP-AGENTS-MD:missing" not in seen_in_prompts[1]
-    # Status is BLOCKED because the CLAUDE.md finding still remains.
-    assert result.is_blocked()
-    assert any(f.requirement_id == "RWP-CLAUDE-MD:missing" for f in result.findings)
+
+    assert "make verify is not a real target" in seen[0]
+    assert "declare the real entry point" in seen[0]
+    assert "the declared gate does not exist" in seen[0]
+
+
+def test_prompt_carries_the_original_findings() -> None:
+    ws = MemoryWorkspace()
+    seen: list[str] = []
+
+    def invoke(*, phase: str, prompt_path: str) -> bool:
+        del phase
+        seen.append(ws.read(prompt_path))
+        return False
+
+    remediation.run_remediation_phase(
+        ws, _stack(), [_stub_finding()], invoke_agent=invoke
+    )
+
+    assert "RWP-AGENTS-MD:missing" in seen[0]

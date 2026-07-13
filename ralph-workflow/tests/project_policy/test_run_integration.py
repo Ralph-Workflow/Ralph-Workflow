@@ -8,12 +8,14 @@ pipeline execution.
 
 What the tests prove:
 
-* An unprepared project is BLOCKED by the readiness preflight; the faked
-  pipeline runner is NOT invoked.
-* A fake remediation agent that does NOT fix the project keeps the run
-  blocked and the runner is never called.
-* A fake remediation agent that DOES fix the project allows execution to
-  proceed (the faked runner is then invoked).
+* An unprepared project STILL PROCEEDS to planning. Policy is documentation
+  ABOUT the project, not a precondition for working ON it, so no policy outcome
+  may abort the development run. (See test_policy_never_blocks_the_run.py for the
+  full contract, including crash tolerance.)
+* A fake remediation agent that does NOT fix the project leaves the policy
+  unready -- and the run continues anyway, loudly.
+* A fake remediation agent that DOES fix the project, followed by an approving
+  analysis review, reaches READY.
 * The configured ``policy_remediation`` chain's first agent (not the
   hard-coded ``"claude"``) drives the remediation InvokeAgentEffect.
 * An opt-out AGENTS.md yields SKIPPED without any policy writes and emits
@@ -22,6 +24,7 @@ What the tests prove:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from contextlib import suppress
 from types import ModuleType
@@ -34,7 +37,9 @@ from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
+from ralph.project_policy import analysis as policy_analysis
 from ralph.project_policy import markers
+from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -119,15 +124,36 @@ def _ensure_run_func_state_unset() -> None:
     run_module._state.run_func = run_module._RUN_FUNC_UNSET
 
 
-def test_unprepared_project_blocks_before_planning() -> None:
-    """AC-14/15: An unprepared project is BLOCKED; the faked runner is NOT invoked.
+def _approve_policy(ws: MemoryWorkspace) -> None:
+    """Submit a 'completed' analysis decision, as the MCP submit path would.
 
-    The test runs the real ``_run_project_policy_readiness`` with an
-    injected ``MemoryWorkspace`` factory and a faked remediation agent
-    closure that claims success but does NOT mutate the workspace. The
-    deterministic revalidation therefore fails on every retry, the helper
-    returns ``_EXIT_PREFLIGHT`` (2), and the faked pipeline runner is never
-    reached.
+    READY requires BOTH halves of the gate: a clean deterministic validator AND
+    an approving review. A fake agent that only fixes the files is not enough.
+    """
+    ws.mkdirs(".agent/artifacts")
+    ws.write(
+        policy_analysis.ANALYSIS_ARTIFACT_REL_PATH,
+        json.dumps(
+            {
+                "type": policy_analysis.ANALYSIS_ARTIFACT_TYPE,
+                "content": {"status": "completed", "summary": "policy is sound"},
+            }
+        ),
+    )
+
+
+def test_unprepared_project_still_proceeds_to_planning() -> None:
+    """A project whose policy cannot be made ready runs anyway.
+
+    This replaces an earlier test that asserted the opposite. The old contract --
+    an unready policy returns _EXIT_PREFLIGHT and the run dies before planning --
+    meant a stale RALPH-LANG block for a language nobody used could cost a user
+    their entire session. Policy is documentation ABOUT the project; it is not a
+    precondition for working ON it.
+
+    The faked agent claims success but writes nothing, so the deterministic
+    validator fails on every iteration and the analysis budget is exhausted with
+    findings still open. The helper must STILL return _EXIT_SUCCESS.
     """
     _ensure_run_func_state_unset()
 
@@ -144,34 +170,28 @@ def test_unprepared_project_blocks_before_planning() -> None:
 
     invoke_calls: list[str] = []
 
-    def fake_invoke(prompt_path: str) -> bool:
-        # The agent claims success but does NOT write any files. The
-        # deterministic revalidation that follows MUST therefore fail
-        # and the run must remain BLOCKED.
+    def fake_invoke(*, phase: str, prompt_path: str) -> bool:
+        # Claims success but does NOT write any files, so the deterministic
+        # revalidation that follows fails every time.
+        del phase
         invoke_calls.append(prompt_path)
         return True
 
     emit_messages: list[str] = []
 
-    def fake_emit(message: str) -> None:
-        emit_messages.append(message)
-
     rc = run_module._run_project_policy_readiness(
         load_result=load_result,
         display_context=make_display_context(),
         workspace_factory=lambda: ws,
-        emit_factory=fake_emit,
+        emit_factory=emit_messages.append,
         invoke_remediation_agent_factory=lambda _w: fake_invoke,
     )
 
-    assert rc == 2  # _EXIT_PREFLIGHT (blocked, recoverable)
-    # The fake remediation agent WAS invoked at least once.
-    assert invoke_calls, "remediation agent must be invoked"
-    # The pipeline runner was NEVER invoked.
-    assert runner_invocations == []
-    # Emit messages reflect remediation_required + BLOCKED report.
+    assert rc == 0, "policy must NEVER block the development run"
+    assert invoke_calls, "remediation agent must still be invoked"
+    # The user is told what happened -- proceeding is not the same as hiding it.
     assert any("remediation-required" in m for m in emit_messages)
-    assert any("BLOCKED" in m for m in emit_messages)
+    assert any("NOT READY" in m or "could not" in m for m in emit_messages)
 
 
 def test_remediation_agent_that_fixes_project_proceeds() -> None:
@@ -197,14 +217,21 @@ def test_remediation_agent_that_fixes_project_proceeds() -> None:
         _seed_claude_md,
     )
 
-    def fake_invoke(prompt_path: str) -> bool:
-        # Materialize every required canonical file so revalidation passes.
-        _seed_agents_md(ws)
-        _seed_claude_md(ws)
-        from ralph.language_detector.models import ProjectStack
+    def fake_invoke(*, phase: str, prompt_path: str) -> bool:
+        del prompt_path
+        if phase == PHASE_REMEDIATION:
+            # Materialize every required canonical file so revalidation passes.
+            _seed_agents_md(ws)
+            _seed_claude_md(ws)
+            from ralph.language_detector.models import ProjectStack
 
-        stack = ProjectStack(primary_language="Python")
-        _seed_all_core_complete(ws, stack)
+            stack = ProjectStack(primary_language="Python")
+            _seed_all_core_complete(ws, stack)
+            return True
+        # The analysis phase then approves what remediation wrote, which is the
+        # second half of the gate: READY needs BOTH a clean validator AND a
+        # 'completed' review.
+        _approve_policy(ws)
         return True
 
     emit_messages: list[str] = []
@@ -602,11 +629,14 @@ def test_run_pipeline_invokes_readiness_before_execution() -> None:
     assert runners.calls == expected
 
 
-def test_run_pipeline_nonzero_readiness_blocks_dry_run_and_execute() -> None:
-    """AC-14: a nonzero readiness result MUST prevent both
-    ``print_dry_run`` and ``_execute_pipeline`` from being reached. The
-    orchestrator returns ``_EXIT_PREFLIGHT`` and the pipeline runner never
-    sees the request.
+def test_run_pipeline_nonzero_readiness_still_reaches_dry_run_and_execute() -> None:
+    """Defence in depth for the never-block rule.
+
+    The orchestrator is a fault boundary and should already return 0 for every
+    policy outcome in a normal run. But if it ever returned nonzero anyway -- a
+    future bug, a path nobody anticipated -- run_pipeline must STILL proceed. The
+    rule is enforced twice, on purpose: policy failure and development work are
+    entirely separate concerns.
     """
     _ensure_run_func_state_unset()
     runners = _RecordingRunners()
@@ -636,19 +666,20 @@ def test_run_pipeline_nonzero_readiness_blocks_dry_run_and_execute() -> None:
         display_context=make_display_context(),
     )
 
-    # Orchestrator returns the preflight exit code.
-    assert rc == 2
-    # Readiness fires BEFORE dry-run and execution.
-    assert runners.calls == [
+    # The run does NOT inherit the policy exit code.
+    assert rc != 2, "a policy failure must not become the run's exit code"
+    # Readiness still fires BEFORE dry-run, in the same order as always...
+    assert runners.calls[:5] == [
         "load_configuration",
         "run_preflight_checks",
         "sync_shipped_skills",
         "warn_capabilities",
         "run_project_policy_readiness",
     ]
-    # Dry-run and execute are NEVER invoked when readiness blocks.
-    assert "print_dry_run" not in runners.calls
-    assert "execute_pipeline" not in runners.calls
+    # ...but the run CONTINUES past it regardless.
+    assert "print_dry_run" in runners.calls, (
+        "an unready policy must not prevent the run from proceeding"
+    )
 
 
 def test_run_pipeline_dry_run_invokes_printer_after_ready() -> None:

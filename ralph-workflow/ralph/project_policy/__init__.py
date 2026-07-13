@@ -37,8 +37,8 @@ Public API:
   bootstrap → validate → cache/return).
 * :func:`validate_readiness` — deterministic validator (also exposed for
   tests).
-* :func:`remediate` — bounded synchronous remediation driver (also exposed
-  for tests).
+* :func:`ralph.project_policy.pipeline_driver.run_policy_pipeline` — the
+  two-phase remediation/analysis pipeline the preflight hands off to.
 """
 
 from __future__ import annotations

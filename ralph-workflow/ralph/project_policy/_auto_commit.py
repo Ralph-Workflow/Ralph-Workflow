@@ -18,7 +18,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.git.operations import stage_files
-from ralph.git.scoped_auto_commit import commit_scoped_updates
+from ralph.git.scoped_auto_commit import (
+    commit_scoped_updates,
+    path_in_scope,
+)
 from ralph.project_policy import markers
 
 if TYPE_CHECKING:
@@ -85,24 +88,96 @@ def commit_policy_updates(
     create_commit_fn: Callable[[Path | str, str], str],
     *,
     stage_fn: Callable[[Path | str, list[str]], None] | None = None,
+    pre_run_dirty: frozenset[str] | None = None,
+    authored_paths: frozenset[str] | None = None,
 ) -> str | None:
     """Create the deterministic policy-readiness auto-commit.
 
-    Returns the commit SHA, or ``None`` when nothing inside the policy
-    scopes is dirty, the workspace is not a git repo, or git errored
-    (best-effort, never blocks the run).
+    Commits two things:
+
+    #. The policy surfaces themselves (``_POLICY_COMMIT_SCOPES``).
+    #. ``authored_paths`` -- files the REMEDIATION agent wrote outside the
+       canonical directory, most importantly the GATE SCRIPTS backing a declared
+       gate (``scripts/``, a ``Makefile``, a CI workflow). Left uncommitted these
+       dirty the working tree for the next agent and trip commit-cleanup.
+
+    TWO SEPARATE SAFETY RULES, because they guard different mistakes:
+
+    ``pre_run_dirty`` -- the paths already dirty BEFORE the policy pipeline ran --
+    is subtracted from EVERYTHING, in-scope included. A user mid-edit on
+    ``AGENTS.md`` or on a policy file has an uncommitted change to a Ralph-owned
+    file; that makes it in-scope, but it does NOT make their work ours to commit.
+
+    ``authored_paths`` must be attributed to the REMEDIATION phase specifically,
+    not to "whatever became dirty during the run". The ANALYSIS phase executes
+    every declared gate as a probe, and a probe drops build detritus (``.coverage``,
+    ``coverage.xml``, ``*.tsbuildinfo``) into the tree. Those are side effects of
+    reading the project, not authored content, and must never be committed. The
+    caller computes this set by snapshotting around each remediation invocation --
+    see :func:`ralph.project_policy.cli_integration._track_authored_paths`.
+
+    Both default to ``None``, which disables the extension entirely and restores
+    the original scoped behavior -- the conservative default.
+
+    Deterministic: no commit agent is involved. The subject and body are fixed.
+
+    Returns the commit SHA, or ``None`` when nothing is dirty, the workspace is
+    not a git repo, or git errored (best-effort, never blocks the run).
     """
     if stage_fn is None:
         stage_fn = stage_files
+    scopes = _POLICY_COMMIT_SCOPES
+    path_filter = _migrated_only(Path(repo_root))
+    authored = _committable_authored_paths(authored_paths)
+    if authored:
+        # Exact-file scopes for what the remediation agent authored. Combined with
+        # the filter, only these exact paths can be committed from outside the
+        # policy scopes.
+        scopes = (*scopes, *sorted(authored))
+        path_filter = _in_scope_or_authored(Path(repo_root), authored)
     return commit_scoped_updates(
         repo_root,
-        scopes=_POLICY_COMMIT_SCOPES,
+        scopes=scopes,
         subject=POLICY_AUTO_COMMIT_SUBJECT,
         body_builder=_build_body,
         create_commit_fn=create_commit_fn,
         stage_fn=stage_fn,
-        path_filter=_migrated_only(Path(repo_root)),
+        path_filter=path_filter,
+        exclude=pre_run_dirty or frozenset(),
     )
+
+
+def _committable_authored_paths(
+    authored_paths: frozenset[str] | None,
+) -> frozenset[str]:
+    """Narrow the remediation agent's authored set to what may be committed.
+
+    Drops anything already covered by the policy scopes (committed anyway) and
+    anything under ``.agent/``, which is engine-owned scratch -- prompts,
+    artifacts, caches -- and is never committed.
+    """
+    if not authored_paths:
+        return frozenset()
+    return frozenset(
+        path
+        for path in authored_paths
+        if not path_in_scope(path, _POLICY_COMMIT_SCOPES)
+        and not path.startswith(".agent/")
+    )
+
+
+def _in_scope_or_authored(
+    repo_root: Path, authored: frozenset[str]
+) -> Callable[[str], bool]:
+    """Filter: the normal policy-scope rules, plus the authored paths."""
+    migrated = _migrated_only(repo_root)
+
+    def check(path: str) -> bool:
+        if path in authored:
+            return True
+        return migrated(path)
+
+    return check
 
 
 __all__ = [

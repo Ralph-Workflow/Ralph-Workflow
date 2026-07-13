@@ -25,6 +25,7 @@ from ralph.agents.chain import ChainManager, DrainNotBoundError
 from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
 from ralph.display.status_bar import StatusBarModel
 from ralph.git.operations import create_commit
+from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -36,7 +37,15 @@ from ralph.project_policy import agents_md as policy_agents_md
 from ralph.project_policy import evidence as policy_evidence
 from ralph.project_policy import markers as policy_markers
 from ralph.project_policy import remediation as policy_remediation
+from ralph.project_policy.pipeline_driver import run_policy_pipeline
+from ralph.project_policy.pipeline_graph import (
+    DEFAULT_ANALYSIS_CAP,
+    PHASE_ANALYSIS,
+    PHASE_REMEDIATION,
+)
+from ralph.project_policy.policy_mode import PolicyMode
 from ralph.project_policy.preflight import run_policy_readiness_preflight
+from ralph.project_policy.reset import reset_policy_state
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -45,8 +54,8 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.models import ReadinessResult
-    from ralph.project_policy.remediation import _InvokeRemediationAgent
     from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
 
@@ -445,21 +454,20 @@ def _freeze_policy_files(
     )
 
 
-def _resolve_remediation_chain_agents(load_result: _LoadResult) -> list[str]:
-    """Return the fallback agents of the chain bound to the remediation drain.
+def _resolve_chain_agents(load_result: _LoadResult, drain: str) -> list[str]:
+    """Return the fallback agents of the chain bound to ``drain``.
 
     Resolution reuses :class:`ralph.agents.chain.ChainManager` — the exact
-    strict drain->chain lookup the pipeline uses — so the out-of-graph
-    remediation path cannot drift from pipeline routing. The loader may
-    alias the ``policy_remediation`` drain to the user's development chain.
-    Returns an empty list when the bundle is missing or the drain does not
-    resolve to a non-empty chain.
+    strict drain->chain lookup the pipeline uses — so the out-of-graph policy
+    phases cannot drift from pipeline routing. The loader may alias either policy
+    drain to the user's corresponding chain. Returns an empty list when the
+    bundle is missing or the drain does not resolve to a non-empty chain.
     """
     bundle = load_result.policy_bundle
     if bundle is None:
         return []
     try:
-        chain = ChainManager(bundle.agents).chain_for_drain("policy_remediation")
+        chain = ChainManager(bundle.agents).chain_for_drain(drain)
     except (DrainNotBoundError, ValueError):
         return []
     return [agent.strip() for agent in chain.agents if agent.strip()]
@@ -490,42 +498,50 @@ def _build_pipeline_deps_for_remediation(
         return None
 
 
-def _make_production_invoke_remediation_agent(
+def _make_production_invoke_agent(
     load_result: _LoadResult,
     pipeline_deps: PipelineDeps | None,
     workspace_scope: WorkspaceScope,
-    chain_agents: list[str],
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
-) -> _InvokeRemediationAgent:
-    """Build the production ``invoke_remediation_agent`` closure.
+) -> InvokePolicyAgent:
+    """Build the production ``invoke_agent`` closure for BOTH policy phases.
 
-    One call walks the resolved fallback chain in order — the same
-    semantics a pipeline drain gets — invoking each agent through
-    :func:`execute_agent_effect` until one succeeds. A chain that ran and
-    failed returns ``False`` (the driver retries within its budget); a
-    launch crash raises :class:`RemediationInvocationError` so the driver
-    aborts instead of spinning through the budget.
+    One call walks the resolved fallback chain of the phase's drain in order —
+    the same semantics a pipeline drain gets — invoking each agent through
+    :func:`execute_agent_effect` until one succeeds. A chain that ran and failed
+    returns ``False`` (the driver loops within its budget); a launch crash raises
+    :class:`RemediationInvocationError` so the driver stops looping rather than
+    spinning through the budget in milliseconds.
+
+    Both policy phases are named identically to their drains, so the phase name
+    IS the drain name — there is no mapping table to keep in sync.
     """
 
-    def invoke_remediation_agent(prompt_path: str) -> bool:
+    def invoke_agent(*, phase: str, prompt_path: str) -> bool:
         if pipeline_deps is None or load_result.policy_bundle is None:
             return False
+        chain_agents = _resolve_chain_agents(load_result, phase)
+        last_error: Exception | None = None
         for agent_name in chain_agents:
             effect = InvokeAgentEffect(
                 agent_name=agent_name,
-                phase="policy_remediation",
+                phase=phase,
                 prompt_file=prompt_path,
-                drain="policy_remediation",
-                chain_name="policy_remediation",
-                # The remediation session is denied artifact.submit (so
+                drain=phase,
+                chain_name=phase,
+                # The REMEDIATION session is denied artifact.submit (so
                 # declare_complete is not in its tool surface) and has no
                 # artifact contract, leaving it no way to produce completion
-                # evidence. Demanding it would fail every clean exit on the
-                # completion-enforcing transports. The driver revalidates
-                # deterministically after this returns, which is the only
-                # evidence that ever counted.
-                requires_completion_evidence=False,
+                # evidence; demanding it would fail every clean exit on the
+                # completion-enforcing transports. It is judged by the
+                # deterministic validator that re-runs after it exits, which is
+                # the only evidence that ever counted.
+                #
+                # The ANALYSIS session is the opposite: returning a decision
+                # artifact is its entire purpose, so it has a real contract and
+                # its completion evidence is required.
+                requires_completion_evidence=(phase == PHASE_ANALYSIS),
             )
             try:
                 event = _effect_executor_module.execute_agent_effect(
@@ -539,26 +555,25 @@ def _make_production_invoke_remediation_agent(
                     display_context=display_context,
                 )
             except Exception as exc:
-                logger.warning("Remediation agent invocation failed: {}", exc)
-                raise policy_remediation.RemediationInvocationError(str(exc)) from exc
+                # A crash launching ONE agent is not a failure of the chain: try
+                # the next fallback, exactly as a pipeline drain would. Only when
+                # every agent in the chain has crashed is this real infrastructure
+                # breakage worth reporting to the driver.
+                logger.warning(
+                    "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
+                )
+                last_error = exc
+                continue
             if event == PipelineEvent.AGENT_SUCCESS:
                 return True
+        if last_error is not None:
+            raise policy_remediation.RemediationInvocationError(
+                str(last_error)
+            ) from last_error
         return False
 
-    typed: _InvokeRemediationAgent = invoke_remediation_agent
+    typed: InvokePolicyAgent = invoke_agent
     return typed
-
-
-def _resolve_max_attempts(load_result: _LoadResult) -> int:
-    """Return the remediation attempt budget.
-
-    Always the remediation driver's own small budget. The global recovery
-    ``cycle_cap`` (default 200) governs pipeline recovery cycles and must
-    NOT leak in here: 200 synchronous (agent, revalidate) rounds at startup
-    is a display flood, not a remediation strategy.
-    """
-    del load_result
-    return policy_remediation.DEFAULT_MAX_ATTEMPTS
 
 
 def _build_workspace(
@@ -605,25 +620,86 @@ def _push_remediation_status_bar(
         logger.debug("remediation status-bar push failed (non-fatal): {}", exc)
 
 
-def _finalize_ready_state(workspace: Workspace, workspace_scope: WorkspaceScope) -> None:
+def _snapshot_working_tree(workspace_scope: WorkspaceScope) -> frozenset[str]:
+    """Capture the currently-dirty paths. Never raises."""
+    try:
+        return list_dirty_paths(workspace_scope.root)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("working-tree snapshot failed (non-fatal): {}", exc)
+        return frozenset()
+
+
+def _track_authored_paths(
+    invoke_agent: InvokePolicyAgent,
+    workspace_scope: WorkspaceScope,
+    authored: set[str],
+) -> InvokePolicyAgent:
+    """Wrap ``invoke_agent`` so it records what the REMEDIATION agent authored.
+
+    Snapshots the working tree immediately before and after each REMEDIATION
+    invocation and accumulates the difference. That difference is the gate scripts
+    (and any other out-of-directory file) the agent wrote, which the deterministic
+    auto-commit then picks up.
+
+    The ANALYSIS phase is deliberately NOT tracked. It executes every declared gate
+    as a probe, and probes drop build detritus into the tree -- ``.coverage``,
+    ``coverage.xml``, ``*.tsbuildinfo``, stray caches. Those are side effects of
+    READING the project, not authored content, and committing them would be wrong.
+    Only the phase that can actually write is attributed.
+    """
+
+    def tracked(*, phase: str, prompt_path: str) -> bool:
+        if phase != PHASE_REMEDIATION:
+            return invoke_agent(phase=phase, prompt_path=prompt_path)
+        before = _snapshot_working_tree(workspace_scope)
+        try:
+            return invoke_agent(phase=phase, prompt_path=prompt_path)
+        finally:
+            authored.update(_snapshot_working_tree(workspace_scope) - before)
+
+    typed: InvokePolicyAgent = tracked
+    return typed
+
+
+def _finalize_ready_state(
+    workspace: Workspace,
+    workspace_scope: WorkspaceScope,
+    pre_run_dirty: frozenset[str] | None = None,
+    authored_paths: frozenset[str] | None = None,
+) -> None:
     """Post-READY housekeeping: condense the temporary AGENTS.md placeholder
     block to its concise form, then auto-commit the policy surfaces."""
     try:
         policy_agents_md.condense_placeholder_block(workspace)
     except Exception as exc:
         logger.debug("AGENTS.md placeholder condense failed (non-fatal): {}", exc)
-    _auto_commit_policy_changes(workspace_scope)
+    _auto_commit_policy_changes(workspace_scope, pre_run_dirty, authored_paths)
 
 
-def _auto_commit_policy_changes(workspace_scope: WorkspaceScope) -> None:
-    """Best-effort auto-commit of the policy surfaces after READY.
+def _auto_commit_policy_changes(
+    workspace_scope: WorkspaceScope,
+    pre_run_dirty: frozenset[str] | None = None,
+    authored_paths: frozenset[str] | None = None,
+) -> None:
+    """Best-effort deterministic auto-commit of everything the policy run wrote.
 
-    Mirrors the wt-025 skill auto-commit so the next run's development
-    agent never sees readiness drift in its working tree. Failures are
-    logged and swallowed — a broken git state must not block the run.
+    Covers the policy surfaces AND any gate script the remediation agent authored
+    to wire up a declared gate -- a gate script left uncommitted would dirty the
+    working tree for the next agent and trip the commit-cleanup phase.
+
+    No commit agent is involved: the subject and body are fixed, and the file set
+    is computed deterministically. ``pre_run_dirty`` is subtracted from everything
+    so the user's in-progress edits are never swept in; ``authored_paths`` is what
+    the remediation agent actually wrote. Failures are logged and swallowed -- a
+    broken git state must not block the run.
     """
     try:
-        sha = policy_auto_commit.commit_policy_updates(workspace_scope.root, create_commit)
+        sha = policy_auto_commit.commit_policy_updates(
+            workspace_scope.root,
+            create_commit,
+            pre_run_dirty=pre_run_dirty,
+            authored_paths=authored_paths,
+        )
         if sha is not None:
             logger.debug("project-policy auto-commit created: {}", sha)
     except Exception as exc:
@@ -656,101 +732,189 @@ def _dispatch_preflight_result(
     workspace_scope: WorkspaceScope,
     workspace: Workspace,
     stack: ProjectStack,
+    mode: PolicyMode,
     emit: Callable[[str], None],
-    invoke_remediation_agent_factory: Callable[[Workspace], Callable[[str], bool]]
-    | None,
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
 ) -> int:
-    """Map a :class:`ReadinessResult` to a CLI exit code.
+    """Run the policy pipeline and map its result to an exit code.
 
-    Extracted from :func:`run_project_policy_readiness` so the
-    orchestrator stays under PLR0911 while the dispatch logic keeps its
-    explicit state-machine branches.
+    NOTE the exit codes: this function returns ``_EXIT_SUCCESS`` for every policy
+    outcome unless the mode is an ``_ONLY`` mode. A policy that could not be made
+    ready is a warning, not a failure of the run. See
+    :func:`_exit_code_for_not_ready`.
     """
-    if not result.requires_remediation() and not result.is_blocked():
-        return _EXIT_PREFLIGHT
-
-    chain_agents = _resolve_remediation_chain_agents(load_result)
+    chain_agents = _resolve_chain_agents(load_result, PHASE_REMEDIATION)
     if not chain_agents and invoke_remediation_agent_factory is None:
         logger.warning(
             "policy_remediation chain has no usable configured agent; "
-            "blocking the run."
+            "skipping policy and continuing the run."
         )
         emit(
-            "Project-policy-readiness: BLOCKED \u2014 policy_remediation chain "
-            "has no configured agent."
+            "project-policy-readiness: the policy_remediation chain has no "
+            "configured agent; continuing without a ready policy."
         )
-        return _EXIT_PREFLIGHT
+        return _exit_code_for_not_ready(mode)
+
+    # Snapshot BEFORE any agent runs. The post-run difference is what attributes
+    # a newly-written gate script to the policy agents rather than to the user.
+    pre_run_dirty = _snapshot_working_tree(workspace_scope)
 
     pipeline_deps = _build_pipeline_deps_for_remediation(load_result, display_context)
     display = resolve_active_display(None, display_context)
     if invoke_remediation_agent_factory is not None:
-        invoke_remediation_agent: _InvokeRemediationAgent = cast(
-            "_InvokeRemediationAgent",
-            invoke_remediation_agent_factory(workspace),
-        )
+        invoke_agent = invoke_remediation_agent_factory(workspace)
     else:
-        invoke_remediation_agent = _make_production_invoke_remediation_agent(
+        invoke_agent = _make_production_invoke_agent(
             load_result,
             pipeline_deps,
             workspace_scope,
-            chain_agents,
             display,
             display_context,
         )
 
-    max_attempts = _resolve_max_attempts(load_result)
-    # Drive the SAME display lifecycle the pipeline run loop uses: a
-    # started display (live status bar) for the duration of the agent
-    # work, with a status-bar model naming the remediation phase.
+    # Record what the REMEDIATION agent writes outside the canonical directory
+    # (its gate scripts), so the deterministic auto-commit can pick them up.
+    authored: set[str] = set()
+    invoke_agent = _track_authored_paths(invoke_agent, workspace_scope, authored)
+
+    # Drive the SAME display lifecycle the pipeline run loop uses: a started
+    # display (live status bar) for the duration of the agent work.
     with display:
-        _push_remediation_status_bar(display, workspace_scope, max_attempts)
-        final = policy_remediation.remediate(
+        _push_remediation_status_bar(display, workspace_scope, DEFAULT_ANALYSIS_CAP)
+        final = run_policy_pipeline(
             workspace,
             stack,
             result.findings,
-            invoke_remediation_agent=invoke_remediation_agent,
-            max_attempts=max_attempts,
+            invoke_agent=invoke_agent,
+            entry_phase=mode.entry_phase(),
+            analysis_cap=DEFAULT_ANALYSIS_CAP,
             emit=emit,
         )
     if final.is_ready():
-        _finalize_ready_state(workspace, workspace_scope)
+        _finalize_ready_state(
+            workspace, workspace_scope, pre_run_dirty, frozenset(authored)
+        )
         return _EXIT_SUCCESS
-    report_lines = ["Project-policy-readiness: BLOCKED"]
-    report_lines.extend(final.report_lines)
-    emit("\n".join(report_lines))
-    return _EXIT_PREFLIGHT
+    emit("\n".join(final.report_lines))
+    return _exit_code_for_not_ready(mode)
+
+
+def _exit_code_for_not_ready(mode: PolicyMode) -> int:
+    """Return the exit code for a policy that could not be made ready.
+
+    THE RULE: a normal run NEVER exits non-zero because of policy. Policy is
+    documentation about the project; a project with imperfect documentation is
+    still a project you can do work on, and coupling the two means a stale
+    RALPH-LANG block for a language nobody uses can stop all development.
+
+    The ``_ONLY`` modes are the sole exception, and only because they have no
+    development run to proceed to -- their exit code is the only signal they can
+    give a CI job.
+    """
+    if mode.exits_after():
+        return _EXIT_PREFLIGHT
+    return _EXIT_SUCCESS
 
 
 def run_project_policy_readiness(
     *,
     load_result: _LoadResult,
     display_context: DisplayContext,
+    mode: PolicyMode = PolicyMode.NORMAL,
     workspace_factory: Callable[[], Workspace] | None = None,
     emit_factory: Callable[[str], None] | None = None,
-    invoke_remediation_agent_factory: Callable[[Workspace], Callable[[str], bool]]
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent]
     | None = None,
     select_factory: _prompt_ui.SelectFn | None = None,
     is_tty: Callable[[], bool] | None = None,
 ) -> int:
-    """Run the project-policy-readiness preflight at run_pipeline startup.
+    """Run the project-policy preflight at run_pipeline startup. NEVER blocks.
+
+    THIS FUNCTION IS A FAULT BOUNDARY. It catches every exception the policy
+    subsystem can raise -- including bugs: an ``AttributeError`` from a bad
+    refactor, a ``KeyError`` from a malformed policy file, an ``OSError`` from a
+    broken filesystem, a template that fails to render. Whatever happens, the
+    development run proceeds as if the policy pipeline had never existed.
+
+    That is not defensive paranoia, it is the requirement. Project policy is
+    documentation ABOUT the project; it is not a precondition for working on the
+    project. A crash in the documentation subsystem must never cost a user their
+    development run. The catch is deliberately broad (``Exception``) and
+    deliberately not broader (``BaseException`` is NOT caught, so Ctrl-C and
+    ``SystemExit`` still work).
+
+    The one exception to "never blocks" is an ``_ONLY`` mode, which has no
+    development run to proceed to and so reports failure through its exit code.
+
+    Tests can inject ``workspace_factory``, ``emit_factory``,
+    ``invoke_remediation_agent_factory``, ``select_factory``, and ``is_tty`` to
+    exercise the preflight without real filesystem I/O, agent invocation, or a
+    real terminal.
+    """
+    try:
+        return _run_policy_readiness(
+            load_result=load_result,
+            display_context=display_context,
+            mode=mode,
+            workspace_factory=workspace_factory,
+            emit_factory=emit_factory,
+            invoke_remediation_agent_factory=invoke_remediation_agent_factory,
+            select_factory=select_factory,
+            is_tty=is_tty,
+        )
+    except Exception as exc:
+        logger.opt(exception=True).warning(
+            "project-policy preflight crashed ({}); continuing to the "
+            "development run without a ready policy.",
+            exc,
+        )
+        _emit_safely(
+            display_context,
+            emit_factory,
+            "project-policy-readiness: the policy preflight failed unexpectedly "
+            f"({type(exc).__name__}: {exc}). Continuing to the development run.",
+        )
+        return _exit_code_for_not_ready(mode)
+
+
+def _emit_safely(
+    display_context: DisplayContext,
+    emit_factory: Callable[[str], None] | None,
+    message: str,
+) -> None:
+    """Emit a message, swallowing any failure of the display itself.
+
+    Called from the fault boundary, where the display may be exactly what broke.
+    A crash in the crash handler would defeat the entire point.
+    """
+    try:
+        _build_emit(display_context, emit_factory)(message)
+    except Exception as exc:  # pragma: no cover - the display is already broken
+        logger.debug("policy failure could not be displayed: {}", exc)
+
+
+def _run_policy_readiness(
+    *,
+    load_result: _LoadResult,
+    display_context: DisplayContext,
+    mode: PolicyMode,
+    workspace_factory: Callable[[], Workspace] | None,
+    emit_factory: Callable[[str], None] | None,
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
+    select_factory: _prompt_ui.SelectFn | None,
+    is_tty: Callable[[], bool] | None,
+) -> int:
+    """The preflight body. Every exit path here is wrapped by the fault boundary.
 
     Steps:
 
     #. Build the workspace + project stack via the injected seams.
+    #. For an explicit mode, reset the policy (``--redo-policy``) and/or bypass
+       the READY cache and the opt-out marker.
     #. On first contact with a significant, marker-free AGENTS.md and an
-       interactive terminal, offer to keep the existing policy instead of
-       adding Ralph Workflow's managed block (see
-       :func:`_maybe_offer_inline_policy_skip`).
-    #. Call :func:`ralph.project_policy.run_policy_readiness_preflight`.
-    #. Map the result status to a CLI exit code: ``READY`` and ``SKIPPED``
-       continue. ``REMEDIATION_REQUIRED`` triggers an in-process bounded
-       remediation loop. ``BLOCKED`` returns the recoverable
-       ``_EXIT_PREFLIGHT`` exit.
-
-    Tests can inject ``workspace_factory``, ``emit_factory``,
-    ``invoke_remediation_agent_factory``, ``select_factory``, and ``is_tty`` to
-    exercise the preflight without real filesystem I/O, agent invocation,
-    or a real terminal.
+       interactive terminal, offer to keep the existing policy instead of adding
+       Ralph Workflow's managed block.
+    #. Run the deterministic preflight, then the policy pipeline.
     """
     workspace_scope = load_result.workspace_scope
     if workspace_scope is None:
@@ -758,21 +922,35 @@ def run_project_policy_readiness(
 
     emit = _build_emit(display_context, emit_factory)
     workspace = _build_workspace(load_result, workspace_factory)
-    _maybe_offer_inline_policy_skip(
-        workspace, emit, select=select_factory, is_tty=is_tty
-    )
-    if not _maybe_resolve_schema_upgrade(
-        workspace, emit, select=select_factory, is_tty=is_tty
-    ):
-        return _EXIT_PREFLIGHT
+
+    if mode.resets_policy():
+        changed = reset_policy_state(workspace)
+        emit(
+            f"project-policy-readiness: reset {len(changed)} policy path(s); "
+            "regenerating from scratch"
+        )
+
+    if not mode.is_explicit():
+        _maybe_offer_inline_policy_skip(
+            workspace, emit, select=select_factory, is_tty=is_tty
+        )
+        if not _maybe_resolve_schema_upgrade(
+            workspace, emit, select=select_factory, is_tty=is_tty
+        ):
+            # The user declined a schema upgrade. Not a failure of the run.
+            return _EXIT_SUCCESS
+
     stack = get_project_stack(workspace)
     result = run_policy_readiness_preflight(workspace, stack, emit=emit)
 
-    if result.is_skipped():
+    if result.is_skipped() and not mode.is_explicit():
         emit("project-policy-readiness: skipped (opt-out marker present)")
         return _EXIT_SUCCESS
 
-    if result.is_ready():
+    # An explicit mode bypasses the READY cache: a --run-policy-agents that
+    # no-ops on a ready project would be useless, since auditing a policy that
+    # LOOKS ready is the entire point of the flag.
+    if result.is_ready() and not mode.is_explicit():
         emit(
             f"project-policy-readiness: ready "
             f"({len(result.changed_files)} files updated)"
@@ -787,6 +965,7 @@ def run_project_policy_readiness(
         workspace_scope=workspace_scope,
         workspace=workspace,
         stack=stack,
+        mode=mode,
         emit=emit,
         invoke_remediation_agent_factory=invoke_remediation_agent_factory,
     )
@@ -796,5 +975,6 @@ __all__ = [
     "_EXIT_PREFLIGHT",
     "_EXIT_SUCCESS",
     "EmitFn",
+    "PolicyMode",
     "run_project_policy_readiness",
 ]

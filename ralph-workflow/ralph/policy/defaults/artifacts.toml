@@ -83,3 +83,25 @@ artifact_type = "commit_cleanup"
 decision_vocabulary = []
 prompt_template = "commit_cleanup.jinja"
 artifact_json_path = ".agent/artifacts/commit_cleanup.json"
+
+# ---------------------------------------------------------------------------
+# Policy-remediation analysis decision (out-of-graph)
+# ---------------------------------------------------------------------------
+#
+# The decision surface of the hardcoded policy pipeline. Its drain is bound to
+# no pipeline phase; the contract exists so the analysis agent has a real,
+# schema-validated way to return its routing decision, and so the driver in
+# ralph/project_policy/pipeline_driver.py can read that decision back from the
+# artifact JSON -- exactly as ralph/phases/analysis.py does for the in-graph
+# analysis phases.
+
+[artifacts.policy_remediation_analysis_decision]
+drain = "policy_remediation_analysis"
+artifact_type = "policy_remediation_analysis_decision"
+decision_vocabulary = [
+    "completed",
+    "request_changes",
+    "failed",
+]
+prompt_template = "policy_remediation_analysis.jinja"
+markdown_summary_path = ".agent/POLICY_REMEDIATION_ANALYSIS_DECISION.md"

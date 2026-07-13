@@ -76,7 +76,9 @@ def _run(
         display_context=make_display_context(),
         workspace_factory=lambda: ws,
         emit_factory=emit_messages.append,
-        invoke_remediation_agent_factory=lambda _w: (lambda _p: False),
+        invoke_remediation_agent_factory=lambda _w: (
+            lambda *, phase, prompt_path: False
+        ),
         select_factory=select,
         is_tty=is_tty,
     )
@@ -112,8 +114,10 @@ def test_adopt_appends_managed_block_and_proceeds() -> None:
 
     rc = _run(ws, emit_messages, select=selector, is_tty=lambda: True)
 
-    # The fake remediation agent never fixes anything: blocked, not skipped.
-    assert rc == 2
+    # The fake remediation agent never fixes anything, so the policy never
+    # reaches READY. That is NOT a failure of the run: policy never blocks
+    # development work, so the exit code stays 0 and the run proceeds.
+    assert rc == 0
     assert len(selector.questions) == 1
     content = ws.read(markers.AGENTS_MD)
     assert markers.OPT_OUT_MARKER not in content
@@ -165,7 +169,7 @@ def test_no_tty_never_prompts_and_keeps_current_behavior() -> None:
 
     rc = _run(ws, emit_messages, select=must_not_be_called, is_tty=lambda: False)
 
-    assert rc == 2
+    assert rc == 0
     content = ws.read(markers.AGENTS_MD)
     assert markers.AGENTS_BLOCK_BEGIN in content
     assert markers.OPT_OUT_MARKER not in content
@@ -185,7 +189,7 @@ def test_insignificant_content_never_prompts() -> None:
 
     rc = _run(ws, emit_messages, select=must_not_be_called, is_tty=lambda: True)
 
-    assert rc == 2
+    assert rc == 0
     assert markers.AGENTS_BLOCK_BEGIN in ws.read(markers.AGENTS_MD)
 
 
@@ -225,7 +229,7 @@ def test_prompt_failure_falls_back_to_current_behavior() -> None:
 
     rc = _run(ws, emit_messages, select=broken, is_tty=lambda: True)
 
-    assert rc == 2
+    assert rc == 0
     content = ws.read(markers.AGENTS_MD)
     assert markers.AGENTS_BLOCK_BEGIN in content
     assert markers.OPT_OUT_MARKER not in content

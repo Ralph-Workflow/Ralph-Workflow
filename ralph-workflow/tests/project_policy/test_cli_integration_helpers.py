@@ -26,6 +26,7 @@ from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models._agent_chain_config import AgentChainConfig
 from ralph.policy.models._agent_drain_config import AgentDrainConfig
 from ralph.project_policy import cli_integration, remediation
+from ralph.project_policy.pipeline_graph import DEFAULT_ANALYSIS_CAP, PHASE_REMEDIATION
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -67,24 +68,23 @@ def test_chain_agents_resolve_through_drain_binding() -> None:
     """Resolution reuses the pipeline's strict drain->chain lookup and
     returns the FULL fallback chain, not just the first agent."""
     load_result = _load_result(_bundle_with_development_bound_remediation())
-    assert cli_integration._resolve_remediation_chain_agents(load_result) == [
+    assert cli_integration._resolve_chain_agents(load_result, PHASE_REMEDIATION) == [
         "dev-agent",
         "codex",
     ]
 
 
 def test_chain_agents_empty_when_bundle_missing() -> None:
-    assert cli_integration._resolve_remediation_chain_agents(_load_result(None)) == []
+    assert cli_integration._resolve_chain_agents(_load_result(None), PHASE_REMEDIATION) == []
 
 
-def test_max_attempts_ignores_global_recovery_cycle_cap() -> None:
+def test_analysis_cap_ignores_global_recovery_cycle_cap() -> None:
+    """The policy loop uses its own small budget. The global recovery cycle_cap
+    (200) governs pipeline recovery cycles and must NOT leak in here: 200
+    synchronous agent rounds at startup is a display flood, not a strategy."""
     bundle = load_policy(default_dir())
     assert bundle.pipeline.recovery.cycle_cap == 200
-    load_result = _load_result(bundle)
-    assert (
-        cli_integration._resolve_max_attempts(load_result)
-        == remediation.DEFAULT_MAX_ATTEMPTS
-    )
+    assert DEFAULT_ANALYSIS_CAP == 3
 
 
 def test_production_closure_forwards_display_context(
@@ -110,15 +110,14 @@ def test_production_closure_forwards_display_context(
     monkeypatch.setattr(
         effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
     )
-    invoke = cli_integration._make_production_invoke_remediation_agent(
+    invoke = cli_integration._make_production_invoke_agent(
         load_result,
         cast("object", object()),  # non-None pipeline deps sentinel
         load_result.workspace_scope,
-        ["claude"],
         None,
         display_context,
     )
-    assert invoke("prompt.md") is True
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
     assert observed_opts, "execute_agent_effect must be invoked"
     assert observed_opts[0].get("display_context") is display_context
 
@@ -128,8 +127,7 @@ def test_production_closure_falls_back_across_chain_agents(
 ) -> None:
     """A failing first agent falls back to the next agent in the chain,
     mirroring drain fallback semantics in the pipeline proper."""
-    bundle = load_policy(default_dir())
-    load_result = _load_result(bundle)
+    load_result = _load_result(_bundle_with_development_bound_remediation())
     invoked_agents: list[str] = []
 
     def fake_execute_agent_effect(
@@ -143,23 +141,22 @@ def test_production_closure_falls_back_across_chain_agents(
 
         agent_name = cast("str", getattr(effect, "agent_name", ""))
         invoked_agents.append(agent_name)
-        if agent_name == "first-agent":
+        if agent_name == "dev-agent":
             return PipelineEvent.AGENT_FAILURE
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
         effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
     )
-    invoke = cli_integration._make_production_invoke_remediation_agent(
+    invoke = cli_integration._make_production_invoke_agent(
         load_result,
         cast("object", object()),
         load_result.workspace_scope,
-        ["first-agent", "second-agent"],
         None,
         make_display_context(),
     )
-    assert invoke("prompt.md") is True
-    assert invoked_agents == ["first-agent", "second-agent"]
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    assert invoked_agents == ["dev-agent", "codex"]
 
 
 def test_ready_preflight_triggers_policy_auto_commit(
@@ -181,10 +178,19 @@ def test_ready_preflight_triggers_policy_auto_commit(
     _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
 
     committed_roots: list[object] = []
+
+    def fake_commit(
+        repo_root: object,
+        _create_commit_fn: object,
+        *,
+        pre_run_dirty: frozenset[str] | None = None,
+        authored_paths: frozenset[str] | None = None,
+    ) -> None:
+        del pre_run_dirty, authored_paths
+        committed_roots.append(repo_root)
+
     monkeypatch.setattr(
-        policy_auto_commit_module,
-        "commit_policy_updates",
-        lambda repo_root, _create_commit_fn: committed_roots.append(repo_root),
+        policy_auto_commit_module, "commit_policy_updates", fake_commit
     )
 
     load_result = _load_result(load_policy(default_dir()))
@@ -333,13 +339,76 @@ def test_production_closure_raises_on_launch_crash(
         "execute_agent_effect",
         crashing_execute_agent_effect,
     )
-    invoke = cli_integration._make_production_invoke_remediation_agent(
+    invoke = cli_integration._make_production_invoke_agent(
         load_result,
         cast("object", object()),
         load_result.workspace_scope,
-        ["claude"],
         None,
         make_display_context(),
     )
     with pytest.raises(remediation.RemediationInvocationError):
-        invoke("prompt.md")
+        invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
+
+
+def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REGRESSION (found by review). An exception from the FIRST agent raised
+    straight out of the loop, so agents 2..N were never tried -- contradicting the
+    documented "invoke each agent until one succeeds" fallback semantics. Only a
+    False return fell through. A crash must fall through too."""
+    load_result = _load_result(_bundle_with_development_bound_remediation())
+    invoked: list[str] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: object,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **opts: object,
+    ) -> object:
+        from ralph.pipeline.events import PipelineEvent
+
+        agent_name = cast("str", getattr(effect, "agent_name", ""))
+        invoked.append(agent_name)
+        if agent_name == "dev-agent":
+            raise RuntimeError("this agent's binary is missing")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        cast("object", object()),
+        load_result.workspace_scope,
+        None,
+        make_display_context(),
+    )
+
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
+    assert invoked == ["dev-agent", "codex"], "the crash must not abort the chain"
+
+
+def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only when the WHOLE chain has crashed is this real infrastructure breakage."""
+    load_result = _load_result(_bundle_with_development_bound_remediation())
+
+    def always_crash(*_args: object, **_opts: object) -> object:
+        raise RuntimeError("no agent binaries at all")
+
+    monkeypatch.setattr(
+        effect_executor_module, "execute_agent_effect", always_crash
+    )
+    invoke = cli_integration._make_production_invoke_agent(
+        load_result,
+        cast("object", object()),
+        load_result.workspace_scope,
+        None,
+        make_display_context(),
+    )
+
+    with pytest.raises(remediation.RemediationInvocationError):
+        invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")

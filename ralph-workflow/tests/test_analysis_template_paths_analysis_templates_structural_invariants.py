@@ -34,6 +34,15 @@ _MINIMAL_DEV_RESULT = json.dumps(
 _TEMPLATES_DIR = Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
 _MIN_EXPECTED_ANALYSIS_TEMPLATES = 2
 
+#: Templates matching ``*_analysis.jinja`` that are NOT in-graph analysis phases
+#: and therefore receive no PROMPT and no PLAN payload. See
+#: ``_analysis_templates`` for the full rationale, and
+#: ``test_out_of_graph_policy_template_has_no_payloads`` for the compensating
+#: control that keeps this exclusion honest.
+_OUT_OF_GRAPH_ANALYSIS_TEMPLATES: frozenset[str] = frozenset(
+    {"policy_remediation_analysis.jinja"}
+)
+
 
 def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
     workspace.write(
@@ -78,7 +87,27 @@ class TestAnalysisTemplatesStructuralInvariants:
     """
 
     def _analysis_templates(self) -> list[Path]:
-        return sorted(_TEMPLATES_DIR.glob("*_analysis.jinja"))
+        """The IN-GRAPH analysis templates the payload-path invariant governs.
+
+        The invariant below exists because an in-graph analysis phase is handed
+        the user's PROMPT and the execution PLAN, both of which can be arbitrarily
+        large; inlining them into the rendered prompt blows the context window, so
+        they must be passed BY PATH.
+
+        ``policy_remediation_analysis.jinja`` is excluded because it is not an
+        in-graph analysis phase and has neither payload to pass. It runs
+        out-of-graph in the startup policy preflight, reviewing the project's
+        policy documents; it never receives the user's PROMPT, and its drain is
+        explicitly DENIED ``artifact.plan_read`` in ``ralph/mcp/session_plan.py``,
+        so there is no PLAN for it to render by any means. The exclusion is
+        compensated by ``test_out_of_graph_policy_template_has_no_payloads``
+        below, which proves it does not inline what it is not given.
+        """
+        return sorted(
+            path
+            for path in _TEMPLATES_DIR.glob("*_analysis.jinja")
+            if path.name not in _OUT_OF_GRAPH_ANALYSIS_TEMPLATES
+        )
 
     def test_at_least_two_analysis_templates_exist(self) -> None:
         templates = self._analysis_templates()
@@ -87,6 +116,23 @@ class TestAnalysisTemplatesStructuralInvariants:
             f"Expected >={_MIN_EXPECTED_ANALYSIS_TEMPLATES} *_analysis.jinja templates,"
             f" found: {templates}"
         )
+
+    def test_out_of_graph_policy_template_has_no_payloads(self) -> None:
+        """The excluded template must genuinely have no PROMPT/PLAN payload.
+
+        This is the compensating control for the exclusion above: if the policy
+        analysis template ever starts consuming a payload, it must come back under
+        the payload-path invariant rather than silently inlining it.
+        """
+        for name in _OUT_OF_GRAPH_ANALYSIS_TEMPLATES:
+            source = (_TEMPLATES_DIR / name).read_text(encoding="utf-8")
+            assert "render_payload_section" not in source, (
+                f"{name}: must never inline a payload"
+            )
+            assert "render_payload_path" not in source, (
+                f"{name}: is out-of-graph and receives no PROMPT/PLAN payload; "
+                "if that changed, remove it from _OUT_OF_GRAPH_ANALYSIS_TEMPLATES"
+            )
 
     def test_prompt_uses_render_payload_path_not_section(self) -> None:
         for template in self._analysis_templates():

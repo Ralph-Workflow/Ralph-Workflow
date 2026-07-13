@@ -48,6 +48,7 @@ from ralph.policy.validation import (
     validate_required_inputs,
 )
 from ralph.pro_support.prompt import resolve_effective_prompt_path
+from ralph.project_policy.policy_mode import PolicyMode
 from ralph.skills._installer import (
     _project_skills_need_install,
     install_project_baseline_skills,
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.workspace.protocol import Workspace
 
 if TYPE_CHECKING:
@@ -165,6 +167,7 @@ class RunPipelineRequest(NamedTuple):
     parallel_worker_manifest: Path | None = None
     pro_hooks: ProPipelineHooks | None = None
     model_identity: MultimodalModelIdentity | None = None
+    policy_mode: PolicyMode = PolicyMode.NORMAL
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
@@ -636,9 +639,10 @@ def _run_project_policy_readiness(
     *,
     load_result: _LoadResult,
     display_context: DisplayContext,
+    mode: PolicyMode = PolicyMode.NORMAL,
     workspace_factory: Callable[[], Workspace] | None = None,
     emit_factory: Callable[[str], None] | None = None,
-    invoke_remediation_agent_factory: Callable[[Workspace], Callable[[str], bool]]
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent]
     | None = None,
 ) -> int:
     """Run the project-policy-readiness preflight at run_pipeline startup.
@@ -647,18 +651,34 @@ def _run_project_policy_readiness(
     :mod:`ralph.project_policy.cli_integration`. Exists at this layer so
     tests can monkey-patch ``run_module._run_project_policy_readiness``
     to stub the preflight without invoking the real orchestrator.
-    """
-    from ralph.project_policy.cli_integration import (
-        run_project_policy_readiness as _orchestrator,
-    )
 
-    return _orchestrator(
-        load_result=load_result,
-        display_context=display_context,
-        workspace_factory=workspace_factory,
-        emit_factory=emit_factory,
-        invoke_remediation_agent_factory=invoke_remediation_agent_factory,
-    )
+    The IMPORT itself is inside the try: the orchestrator is a fault boundary, but
+    it cannot catch a failure that happens while importing the module that defines
+    it. A broken optional dependency somewhere under ``ralph.project_policy``
+    would otherwise take down the whole run -- which is exactly what the boundary
+    exists to prevent. Policy never blocks the run, including when policy cannot
+    even be loaded.
+    """
+    try:
+        from ralph.project_policy.cli_integration import (
+            run_project_policy_readiness as _orchestrator,
+        )
+
+        return _orchestrator(
+            load_result=load_result,
+            display_context=display_context,
+            mode=mode,
+            workspace_factory=workspace_factory,
+            emit_factory=emit_factory,
+            invoke_remediation_agent_factory=invoke_remediation_agent_factory,
+        )
+    except Exception:
+        logger.opt(exception=True).warning(
+            "project-policy preflight could not run; continuing the development run"
+        )
+        # An --*-only invocation has no development run to fall through to, so it
+        # must still report the failure through its exit code.
+        return _EXIT_PREFLIGHT if mode.exits_after() else _EXIT_SUCCESS
 
 
 def _detail_text(label: str, detail: str) -> Text:
@@ -779,10 +799,18 @@ def run_pipeline(
         )
         _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
 
-    # Phase 2c: project-policy-readiness preflight (deterministic, opt-out
-    # honored, change-aware cache, bounded synchronous remediation). Runs
-    # only for non-inline, non-parallel-worker startup invocations so
-    # parallel-worker sub-runs never reach this code path.
+    # Phase 2c: project-policy preflight (deterministic validator, opt-out
+    # honored, change-aware cache, then the bounded remediation/analysis
+    # pipeline). Runs only for non-inline, non-parallel-worker startup
+    # invocations so parallel-worker sub-runs never reach this code path.
+    #
+    # POLICY NEVER BLOCKS THE RUN. The orchestrator is a fault boundary that
+    # swallows every failure -- including its own bugs -- and returns
+    # _EXIT_SUCCESS, so a policy problem cannot cost the user their development
+    # run. The ONLY non-zero it can return is for an --*-only mode, which has no
+    # development run to proceed to. That is what this branch checks: we return
+    # early because the user asked for policy work ONLY, not because policy
+    # failed.
     if (
         load_result.workspace_scope is not None
         and effective_request.inline_prompt is None
@@ -790,9 +818,17 @@ def run_pipeline(
         policy_readiness_result = _run_project_policy_readiness(
             load_result=load_result,
             display_context=ctx,
+            mode=effective_request.policy_mode,
         )
-        if policy_readiness_result != _EXIT_SUCCESS:
+        if effective_request.policy_mode.exits_after():
             return policy_readiness_result
+        # Defence in depth: a normal run continues regardless of what the
+        # preflight returned. Nothing about policy may abort the pipeline.
+        if policy_readiness_result != _EXIT_SUCCESS:
+            logger.warning(
+                "project-policy preflight returned {}; continuing the run anyway",
+                policy_readiness_result,
+            )
 
     # Phase 3: Handle dry-run
     if effective_request.dry_run:

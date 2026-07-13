@@ -100,13 +100,13 @@ _PLACEHOLDER_SENTINEL = "The remediation agent MUST, in order:"
 # satisfied).
 _AGENTS_READY_TEMPLATE = """{begin}
 This project follows Ralph Workflow quality policies. Before any change, AI
-agents MUST read and follow the canonical policy files under {canonical_dir}
-and run the declared RALPH-COMMAND gates. These are living documents: keep
-facts current and record newly-discovered ones, never amending a policy
-against its intent. On every change, scan {canonical_dir} for EVERY
-RALPH-PENDING line and resolve each whose `review trigger:` is now met — wire
-the real gate or record the real fact. Leaving a resolvable RALPH-PENDING is a
-violation; pending items are fixed in normal dev, never by re-running remediation.
+agents MUST read the canonical policy files under {canonical_dir} and run the
+declared RALPH-COMMAND gates. Touching the build, a gate, a gate script, or CI?
+Read {canonical_dir}gate-script-policy.md FIRST. These are living documents:
+keep facts current, never amending a policy against its intent. On every
+change, scan {canonical_dir} for EVERY RALPH-PENDING line and resolve each
+whose `review trigger:` is now met. Leaving a resolvable RALPH-PENDING is a
+violation; fix them in normal dev, never by re-running remediation.
 Dead code is prohibited; remove it — rewriting later is better than retaining it.
 {end}
 """

@@ -1,13 +1,17 @@
-"""Synchronous, out-of-graph policy-remediation driver.
+"""The policy-remediation PHASE: write and fix the canonical policy files.
 
-The shipped default pipeline (``ralph/policy/defaults/pipeline.toml``) has
-NO review or fix drain, and ``ralph/phases/review.py`` is dormant. The
-prior plan to inject an existing review drain is therefore unimplementable.
-This driver runs remediation OUT-OF-GRAPH: it invokes one remediation agent
-through :func:`ralph.pipeline.effect_executor.execute_agent_effect` (which
-is self-managed, self-contained, and returns a ``PipelineEvent``) and
-ALWAYS re-runs the deterministic validator afterward. An agent's completion
-claim alone is never sufficient evidence that the project is policy-ready.
+This module owns ONE phase, not the loop. It invokes a remediation agent through
+:func:`ralph.pipeline.effect_executor.execute_agent_effect` and ALWAYS re-runs
+the deterministic validator afterward -- an agent's completion claim alone is
+never sufficient evidence that the project is policy-ready. The loop, the
+analysis phase, and the routing between them live in
+:mod:`ralph.project_policy.pipeline_driver` and
+:mod:`ralph.project_policy.pipeline_graph`.
+
+The remediation phase runs OUT-OF-GRAPH: the shipped default pipeline
+(``ralph/policy/defaults/pipeline.toml``) has no phase bound to the
+``policy_remediation`` drain, because policy readiness is a startup preflight
+concern rather than a step of the development pipeline.
 
 Handoff contract (NON-ARTIFACT):
 
@@ -17,30 +21,21 @@ This is a justified non-artifact handoff because:
 
 * ``.agent/artifacts/<type>.json`` writes are forbidden and AST-audited by
   ``ralph/testing/audit_artifact_submission_canonical_path.py``.
-* No artifact backend is available at startup.
+* The remediation drain is deliberately DENIED ``artifact.submit`` in
+  ``ralph/mcp/session_plan.py``: it is judged by the deterministic validator
+  that re-runs after it exits, so it has no verdict of its own to submit.
+  (Its ANALYSIS counterpart is granted ``artifact.submit`` -- returning a
+  routing decision is that phase's entire purpose.)
 * The prompt is the agent's task definition, not a structured artifact.
-
-The agent may still submit structured artifacts through the normal MCP
-path during its run; this driver never depends on that.
-
-Remediation is BUDGET-BOUNDED. ``max_attempts`` caps the loop. On budget
-exhaustion the driver returns a :class:`ReadinessResult` with
-:attr:`ReadinessStatus.BLOCKED` and the still-open findings preserved with
-stable id/path/evidence/outcome so a future retry can pick up where the
-driver left off.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
-from ralph.project_policy import cache, markers, preflight, validators
-from ralph.project_policy.models import (
-    PolicyFinding,
-    ReadinessResult,
-    ReadinessStatus,
-)
+from ralph.project_policy import markers, preflight, validators
+from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_registry import (
     load_partial_templates,
@@ -53,10 +48,10 @@ PROMPT_TEMPLATE_NAME: str = "policy_remediation.jinja"
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy.analysis import InvokePolicyAgent
+    from ralph.project_policy.analysis_decision import AnalysisDecision
+    from ralph.project_policy.models import PolicyFinding
     from ralph.workspace.protocol import Workspace
-
-# Default budget for synchronous remediation attempts.
-DEFAULT_MAX_ATTEMPTS: int = 2
 
 EmitFn = Callable[[str], None]
 
@@ -64,23 +59,13 @@ EmitFn = Callable[[str], None]
 class RemediationInvocationError(RuntimeError):
     """The remediation agent could not be launched at all.
 
-    Distinct from an agent that ran and failed: a launch crash is
-    deterministic infrastructure breakage, so retrying it burns the whole
-    attempt budget in milliseconds and floods the display. The driver
-    aborts the loop on the first occurrence instead.
+    Distinct from an agent that ran and failed: a launch crash is deterministic
+    infrastructure breakage, so retrying it burns the whole loop budget in
+    milliseconds and floods the display. The driver stops looping on the first
+    occurrence -- and then lets the RUN CONTINUE anyway. A broken agent
+    subprocess is not a reason to refuse to do development work; see
+    :mod:`ralph.project_policy.pipeline_driver`.
     """
-
-
-class _InvokeRemediationAgent(Protocol):
-    """Callable contract for invoking one remediation agent.
-
-    The production implementation (supplied by ``ralph.cli.commands.run``)
-    constructs an ``InvokeAgentEffect`` for the ``policy_remediation`` chain
-    and calls ``ralph.pipeline.effect_executor.execute_agent_effect``.
-    Returns True when the agent reported success, False otherwise.
-    """
-
-    def __call__(self, prompt_path: str) -> bool: ...
 
 
 def _noop_emit(message: str) -> None:
@@ -105,19 +90,35 @@ def _load_prompt_template() -> str:
     return (packaged_template_root() / PROMPT_TEMPLATE_NAME).read_text(encoding="utf-8")
 
 
-def _render_prompt(findings: list[PolicyFinding]) -> str:
+def _render_prompt(
+    findings: list[PolicyFinding],
+    analysis_feedback: AnalysisDecision | None = None,
+) -> str:
     """Build the remediation prompt text.
 
-    The prompt is a deterministic, versionable task definition: the agent
-    sees the exact findings list, the canonical directory, the migration
-    contract, and the rules for completing the work. The body lives in the
-    packaged Jinja template :data:`PROMPT_TEMPLATE_NAME` (consistent with the
-    pipeline prompt templates); this function supplies the marker-derived
-    variables it interpolates.
+    The prompt is a deterministic, versionable task definition: the agent sees
+    the exact findings list, the canonical directory, the migration contract, and
+    the rules for completing the work. The body lives in the packaged Jinja
+    template :data:`PROMPT_TEMPLATE_NAME` (consistent with the pipeline prompt
+    templates); this function supplies the marker-derived variables it
+    interpolates.
+
+    ``analysis_feedback`` carries what the ANALYSIS phase said came up short on
+    the previous iteration. It is what makes the loop converge rather than
+    repeat: without it the remediation agent would re-derive the same policy from
+    the same findings and produce the same output.
     """
+    feedback_lines = (
+        analysis_feedback.feedback_lines() if analysis_feedback is not None else []
+    )
     variables = {
         "findings_block": _serialize_findings(findings),
+        "analysis_feedback_block": "\n".join(feedback_lines),
+        "analysis_feedback_summary": (
+            analysis_feedback.summary if analysis_feedback is not None else ""
+        ),
         "canonical_dir": markers.CANONICAL_DIR,
+        "gate_script_policy_path": f"{markers.CANONICAL_DIR}gate-script-policy.md",
         "approved_tools": ", ".join(sorted(markers.APPROVED_GATE_TOOLS)),
         "applicability_overrides_path": markers.APPLICABILITY_OVERRIDES_PATH,
         "migrated_marker": markers.MIGRATED_MARKER_TEMPLATE.format(
@@ -142,105 +143,84 @@ def _write_prompt(workspace: Workspace, prompt_text: str) -> str:
     return path
 
 
-def remediate(
+def run_remediation_phase(
     workspace: Workspace,
     stack: ProjectStack,
     findings: list[PolicyFinding],
     *,
-    invoke_remediation_agent: _InvokeRemediationAgent,
-    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    invoke_agent: InvokePolicyAgent,
+    analysis_feedback: AnalysisDecision | None = None,
     emit: EmitFn = _noop_emit,
-) -> ReadinessResult:
-    """Drive one bounded remediation loop and revalidate after every attempt.
+) -> list[PolicyFinding]:
+    """Run ONE remediation phase and return the REVALIDATED findings.
+
+    Materializes the prompt (the open findings, plus whatever the analysis phase
+    said came up short last round), invokes the agent chain, and then ALWAYS
+    re-runs the deterministic validator. The agent's own success/failure report
+    is deliberately NOT the return value: an agent that swears it fixed
+    everything and an agent that gives up are treated identically, because the
+    only evidence that ever counted is what the validator says afterward.
 
     Args:
         workspace: Injected workspace seam.
         stack: Detected project stack.
-        findings: Initial findings from the orchestrator (non-empty).
-        invoke_remediation_agent: Callable that runs one remediation agent
-            with the materialized prompt and returns True on success.
-            Injected so tests can substitute a fake drain.
-        max_attempts: Maximum number of (agent, revalidate) cycles.
-        emit: Display callback. One short line per attempt.
+        findings: The findings currently open against the project.
+        invoke_agent: Callable that runs the remediation agent chain with the
+            materialized prompt. Injected so tests can substitute a fake drain.
+        analysis_feedback: The previous analysis decision, when looping back.
+        emit: Display callback.
 
     Returns:
-        * :attr:`ReadinessStatus.READY` when revalidation passes; the cache
-          is updated to the current evidence signature.
-        * :attr:`ReadinessStatus.BLOCKED` when ``max_attempts`` is
-          exhausted with findings still open. The remaining findings are
-          preserved with stable id/path/evidence/outcome.
+        The findings still open AFTER the agent ran -- empty when the project now
+        passes the deterministic validator.
+
+    Raises:
+        RemediationInvocationError: When the agent could not be launched at all.
+            Propagated to the driver, which stops looping but still lets the run
+            continue.
     """
-    if max_attempts <= 0:
-        return ReadinessResult(
-            status=ReadinessStatus.BLOCKED,
-            findings=findings,
-            report_lines=[
-                f"project-policy-readiness: blocked (max_attempts={max_attempts})",
-            ],
-        )
-
-    current_findings = list(findings)
-    for attempt_index in range(1, max_attempts + 1):
-        prompt_text = _render_prompt(current_findings)
-        prompt_path = _write_prompt(workspace, prompt_text)
-        emit(
-            f"project-policy-readiness: invoking remediation agent "
-            f"(attempt {attempt_index}/{max_attempts}, "
-            f"{len(current_findings)} open findings)"
-        )
-        try:
-            success = bool(invoke_remediation_agent(prompt_path))
-        except RemediationInvocationError as exc:
-            emit(
-                f"project-policy-readiness: remediation agent could not be "
-                f"launched ({exc}); aborting remediation"
-            )
-            return ReadinessResult(
-                status=ReadinessStatus.BLOCKED,
-                findings=current_findings,
-                report_lines=[
-                    "project-policy-readiness: blocked "
-                    f"(remediation agent could not be launched: {exc})",
-                ],
-            )
-        # ALWAYS revalidate. Never trust the agent's claim alone.
-        current_findings = validators.validate_readiness(workspace, stack)
-        if not current_findings:
-            cache.write_cache(workspace, stack, ReadinessStatus.READY)
-            emit("project-policy-readiness: ready (post-remediation revalidation passed)")
-            return ReadinessResult(
-                status=ReadinessStatus.READY,
-                report_lines=[
-                    "project-policy-readiness: ready (post-remediation)",
-                ],
-            )
-        if not success:
-            emit(
-                f"project-policy-readiness: agent reported failure "
-                f"({len(current_findings)} findings remaining)"
-            )
-        else:
-            emit(
-                f"project-policy-readiness: agent reported success but "
-                f"{len(current_findings)} findings remain"
-            )
-
-    return ReadinessResult(
-        status=ReadinessStatus.BLOCKED,
-        findings=current_findings,
-        report_lines=_render_blocked_report(current_findings),
+    prompt_text = _render_prompt(findings, analysis_feedback)
+    prompt_path = _write_prompt(workspace, prompt_text)
+    emit(
+        f"project-policy-readiness: invoking remediation agent "
+        f"({len(findings)} open findings)"
     )
+    success = bool(invoke_agent(phase=PHASE_REMEDIATION, prompt_path=prompt_path))
+
+    # ALWAYS revalidate. Never trust the agent's claim alone.
+    remaining = validators.validate_readiness(workspace, stack)
+    if remaining and success:
+        emit(
+            f"project-policy-readiness: agent reported success but "
+            f"{len(remaining)} findings remain"
+        )
+    elif remaining:
+        emit(
+            f"project-policy-readiness: agent reported failure "
+            f"({len(remaining)} findings remaining)"
+        )
+    return remaining
+
+
+def render_blocked_report(findings: list[PolicyFinding]) -> list[str]:
+    """Render the report for a policy that could not be made ready.
+
+    Each line carries the stable requirement id, path, missing evidence, and
+    required outcome so the operator can address each item without re-running the
+    validator -- and so the NEXT run picks up exactly where this one left off.
+    """
+    return _render_blocked_report(findings)
 
 
 def _render_blocked_report(findings: list[PolicyFinding]) -> list[str]:
-    """Render the BLOCKED-state report.
+    """Render the not-ready report.
 
     Each line carries the stable requirement id, path, missing evidence,
     and required outcome so the operator can address each item without
     re-running the validator.
     """
     return [
-        "project-policy-readiness: blocked",
+        "project-policy-readiness: NOT READY (proceeding anyway)",
         *(
             (
                 f"  - {finding.requirement_id}  path={finding.path}\n"
@@ -253,7 +233,8 @@ def _render_blocked_report(findings: list[PolicyFinding]) -> list[str]:
 
 
 __all__ = [
-    "DEFAULT_MAX_ATTEMPTS",
+    "PROMPT_TEMPLATE_NAME",
     "RemediationInvocationError",
-    "remediate",
+    "render_blocked_report",
+    "run_remediation_phase",
 ]

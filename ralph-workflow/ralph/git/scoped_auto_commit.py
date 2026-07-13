@@ -71,6 +71,32 @@ def _list_dirty_paths(repo: Repo, scope: str) -> list[str]:
     return sorted(set(dirty))
 
 
+def list_dirty_paths(repo_root: Path | str) -> frozenset[str]:
+    """Return every dirty repo-relative path in the working tree.
+
+    Used to snapshot the working tree BEFORE an agent runs, so a later call can
+    attribute the newly-dirty paths to that agent and commit only those. A path
+    the user had already modified is never swept into an automated commit.
+
+    Returns an empty set for a non-git workspace or on any git error: a failure
+    to read the tree must degrade to "attribute nothing", never to "attribute
+    everything".
+    """
+    try:
+        repo = Repo(Path(repo_root), search_parent_directories=False)
+        raw = cast(
+            "str", repo.git.status("--porcelain", "--untracked-files=all")
+        )
+    except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
+        logger.debug("could not snapshot the working tree ({}); assuming clean", exc)
+        return frozenset()
+    return frozenset(
+        line[_GIT_PORCELAIN_PREFIX_LEN - 1 :].strip()
+        for line in raw.splitlines()
+        if len(line) >= _GIT_PORCELAIN_PREFIX_LEN
+    )
+
+
 def _snapshot_pre_staged_index_entries(
     repo: Repo, paths: list[str]
 ) -> dict[str, tuple[str, str]]:
@@ -123,6 +149,7 @@ def commit_scoped_updates(
     create_commit_fn: Callable[[Path | str, str], str],
     stage_fn: Callable[[Path | str, list[str]], None],
     path_filter: Callable[[str], bool] | None = None,
+    exclude: frozenset[str] = frozenset(),
 ) -> str | None:
     """Create one deterministic chore commit for dirty paths inside ``scopes``.
 
@@ -130,6 +157,13 @@ def commit_scoped_updates(
     path is committed only when the filter returns True. Callers use it for
     content-conditional scopes (e.g. commit a migration candidate only when
     it carries the migrated marker).
+
+    ``exclude`` is subtracted from the dirty set BEFORE anything else. Callers
+    pass the paths that were already dirty before the automated work began, so a
+    file the user was mid-edit on is never swept into an automated commit — even
+    when it sits inside one of the ``scopes``. Being Ralph-owned (``AGENTS.md``,
+    the canonical policy dir) makes a file in-scope; it does NOT make the user's
+    uncommitted edit to it ours to commit.
 
     Returns the commit SHA, or ``None`` when no commit was created (non-git
     workspace, clean scope, or any ``OSError`` / ``GitCommandError``).
@@ -150,9 +184,14 @@ def commit_scoped_updates(
             for scope in sorted(scopes):
                 all_dirty.extend(_list_dirty_paths(repo, scope))
             # Defensive re-filter: drop anything outside the scopes even if
-            # ``git status -- <scope>`` somehow returned it.
+            # ``git status -- <scope>`` somehow returned it. Then drop everything
+            # that was already dirty before we started -- that is the user's work.
             all_dirty = sorted(
-                {path for path in all_dirty if path_in_scope(path, scopes)}
+                {
+                    path
+                    for path in all_dirty
+                    if path_in_scope(path, scopes) and path not in exclude
+                }
             )
             if path_filter is not None:
                 all_dirty = [path for path in all_dirty if path_filter(path)]

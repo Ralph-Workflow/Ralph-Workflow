@@ -10,9 +10,9 @@ import pytest
 from ralph.project_policy import markers, starters
 
 
-def test_iter_starter_names_returns_twenty() -> None:
+def test_iter_starter_names_returns_twenty_one() -> None:
     names = list(starters.iter_starter_names())
-    assert len(names) == 20
+    assert len(names) == 21
 
 
 def test_architecture_policy_is_a_core_starter() -> None:
@@ -179,6 +179,11 @@ _RECOMMENDED_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
     "linting-policy.md": (),
     "dependency-policy.md": (),
     "verification-policy.md": (),
+    # The gate-script policy is the one starter that names a concrete tool in
+    # its own guidance: it points the remediator at shellcheck as the standard
+    # POSIX-shell script linter, so that recommendation must clear the
+    # validator's approved-tools allowlist like any other.
+    "gate-script-policy.md": ("shellcheck",),
     "agent-policy.md": (),
     "clean-code-policy.md": (),
     "documentation-policy.md": (),

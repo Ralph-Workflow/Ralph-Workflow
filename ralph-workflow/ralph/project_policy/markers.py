@@ -26,7 +26,7 @@ from typing import Final
 # Schema versioning
 SCHEMA_VERSION: Final[str] = "v2"
 POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v2 -->"
-POLICY_CONTRACT_VERSION: Final[str] = "2026-07-12.3"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-07-13.1"
 
 # Opt-out: byte-exact. The opt-out only fires on this exact substring of
 # AGENTS.md; near-miss prose, additional words, or any whitespace/case change
@@ -57,13 +57,20 @@ APPLICABILITY_OVERRIDES_PATH: Final[str] = (
 AGENTS_MD: Final[str] = "AGENTS.md"
 CLAUDE_MD: Final[str] = "CLAUDE.md"
 
-# Core policy files (the ten always-required for any software project).
+# Core policy files (the eleven always-required for any software project).
+#
+# ``gate-script-policy.md`` is the odd one out: its requirement sections ship
+# COMPLETE as normative standard text rather than as a template to rewrite.
+# The remediation agent READS it and OBEYS it when it writes a gate script,
+# and resolves only its three facts and its one command. See the starter's
+# banner.
 CORE_POLICY_FILES: Final[tuple[str, ...]] = (
     "testing-policy.md",
     "typechecking-policy.md",
     "linting-policy.md",
     "dependency-policy.md",
     "verification-policy.md",
+    "gate-script-policy.md",
     "agent-policy.md",
     "clean-code-policy.md",
     "documentation-policy.md",
@@ -181,6 +188,25 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "AI execution instructions",
         "Verification",
         "Bypass detection",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
+    ),
+    # The gate-script policy additionally requires "Security" and
+    # "Cross-platform" headings: a gate script is an execution surface (secrets,
+    # remote code, temp files) and a portability surface (a bash-only gate on a
+    # Windows-supporting project is a broken gate). Both sections must survive
+    # every amendment.
+    "gate-script-policy.md": (
+        "Purpose and scope",
+        "Default requirements",
+        "Failure output",
+        "Security",
+        "Cross-platform",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
         "Exceptions",
         "Maintenance triggers",
         "Research basis",
@@ -648,6 +674,12 @@ MIGRATED_MARKER_TEMPLATE: Final[str] = (
     "<!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/{target} -->"
 )
 
+# The target-independent prefix of the migrated marker. `--redo-policy` strips
+# every line carrying it: the marker points at a canonical file the reset has
+# just deleted, so left in place it would tell the next remediation agent that a
+# legacy document was already reconciled into a file that no longer exists.
+MIGRATED_MARKER_PREFIX: Final[str] = "<!-- ralph-workflow-policy:migrated ->"
+
 # Cache file path for the change-aware READY cache. Stored under .agent/tmp
 # so it travels with the workspace but stays out of source control.
 CACHE_REL_PATH: Final[str] = ".agent/tmp/policy_readiness_cache.json"
@@ -704,6 +736,7 @@ __all__ = [
     "LANG_MARKER",
     "MEMORY_DEP_SIGNALS",
     "MEMORY_SIGNAL_PATHS",
+    "MIGRATED_MARKER_PREFIX",
     "MIGRATED_MARKER_TEMPLATE",
     "MIGRATION_CANDIDATE_PATHS",
     "MIGRATION_DOCS_GLOB_DIR",

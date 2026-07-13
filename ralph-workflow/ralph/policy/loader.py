@@ -517,37 +517,68 @@ def _cached_default_agents_policy() -> AgentsPolicy:
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
 
+def _alias_out_of_graph_drain(
+    user_chains: dict[str, AgentChainConfig],
+    user_drains: dict[str, AgentDrainConfig],
+    *,
+    drain: str,
+    drain_class: str,
+    fallback_drain: str,
+) -> None:
+    """Bind an undeclared out-of-graph ``drain`` to a user chain, in place.
+
+    A user's own chain of the same name wins. Otherwise the drain follows the
+    chain behind ``fallback_drain`` -- the in-graph drain of the same class --
+    so a user who redirected their whole pipeline to a different agent gets
+    that agent for the out-of-graph policy phases too.
+
+    ``fallback_drain`` is always same-class on purpose. The shipped pipeline
+    has NO review drain (see :mod:`ralph.project_policy.remediation`), so a
+    legacy ``review`` drain in a user config must never capture either policy
+    phase.
+    """
+    if drain in user_drains:
+        return
+    if drain in user_chains:
+        user_drains[drain] = AgentDrainConfig(chain=drain, drain_class=drain_class)
+        return
+    fallback_binding = user_drains.get(fallback_drain)
+    if fallback_binding is not None and fallback_binding.chain in user_chains:
+        user_drains[drain] = AgentDrainConfig(
+            chain=fallback_binding.chain, drain_class=drain_class
+        )
+
+
 def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolicy:
     """Merge a user agents policy onto the bundled defaults.
 
     Mirrors the pipeline/artifacts layering: user entries win per chain and
     drain name; anything not overridden keeps its bundled default. This is
-    what makes internal chains (``policy_remediation``) survive user configs
-    written before those chains existed.
+    what makes internal chains (``policy_remediation``,
+    ``policy_remediation_analysis``) survive user configs written before those
+    chains existed.
 
-    Before the merge, an undeclared ``policy_remediation`` drain is aliased
-    to the chain behind the user's ``development`` drain when one exists.
-    The shipped pipeline has NO review drain (see
-    :mod:`ralph.project_policy.remediation`), so a legacy ``review`` drain
-    in a user config must never capture remediation. A user-defined
-    ``policy_remediation`` chain takes precedence over the aliasing.
+    Before the merge, each undeclared out-of-graph policy drain is aliased to
+    the chain behind the user's same-class in-graph drain. See
+    :func:`_alias_out_of_graph_drain`.
     """
     defaults = _cached_default_agents_policy()
     user_chains = dict(user_policy.agent_chains)
     user_drains = dict(user_policy.agent_drains)
-    if "policy_remediation" not in user_drains:
-        development_binding = user_drains.get("development")
-        if "policy_remediation" in user_chains:
-            user_drains["policy_remediation"] = AgentDrainConfig(
-                chain="policy_remediation", drain_class="development"
-            )
-        elif (
-            development_binding is not None
-            and development_binding.chain in user_chains
-        ):
-            user_drains["policy_remediation"] = AgentDrainConfig(
-                chain=development_binding.chain, drain_class="development"
-            )
+    _alias_out_of_graph_drain(
+        user_chains,
+        user_drains,
+        drain="policy_remediation",
+        drain_class="development",
+        fallback_drain="development",
+    )
+    _alias_out_of_graph_drain(
+        user_chains,
+        user_drains,
+        drain="policy_remediation_analysis",
+        drain_class="analysis",
+        fallback_drain="development_analysis",
+    )
     return AgentsPolicy(
         agent_chains={**defaults.agent_chains, **user_chains},
         agent_drains={**defaults.agent_drains, **user_drains},

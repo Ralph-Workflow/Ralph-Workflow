@@ -3342,6 +3342,62 @@ ralph.project_policy.remediation
    :members:
    :show-inheritance:
 
+ralph.project_policy.analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.analysis
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.analysis_decision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.analysis_decision
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_route
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_route
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_phase
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_phase
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_graph
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_graph
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.pipeline_driver
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.pipeline_driver
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.policy_mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.policy_mode
+   :members:
+   :show-inheritance:
+
+ralph.project_policy.reset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.reset
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.cli_integration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

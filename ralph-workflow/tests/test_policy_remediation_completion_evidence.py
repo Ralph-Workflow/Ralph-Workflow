@@ -94,6 +94,7 @@ def test_remediation_effect_opts_out_of_completion_evidence(
     from ralph.pipeline.state import PipelineState
     from ralph.policy.loader import default_dir, load_policy
     from ralph.project_policy import cli_integration
+    from ralph.project_policy.pipeline_graph import PHASE_ANALYSIS, PHASE_REMEDIATION
     from ralph.workspace.scope import WorkspaceScope
 
     observed: list[InvokeAgentEffect] = []
@@ -121,14 +122,19 @@ def test_remediation_effect_opts_out_of_completion_evidence(
         policy_bundle=load_policy(default_dir()),
         run_id="test-run-id",
     )
-    invoke = cli_integration._make_production_invoke_remediation_agent(
+    invoke = cli_integration._make_production_invoke_agent(
         load_result,
         cast("object", object()),
         load_result.workspace_scope,
-        ["claude"],
         None,
         make_display_context(),
     )
 
-    assert invoke("prompt.md") is True
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
     assert observed and observed[0].requires_completion_evidence is False
+
+    # The ANALYSIS phase is the mirror image: returning a decision artifact is
+    # its entire purpose, so its completion evidence IS required.
+    observed.clear()
+    assert invoke(phase=PHASE_ANALYSIS, prompt_path="prompt.md") is True
+    assert observed and observed[0].requires_completion_evidence is True

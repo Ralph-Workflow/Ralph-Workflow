@@ -54,8 +54,20 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
 #: capabilities would advertise the matching MCP tools in ``tools/list`` (and
 #: in the Claude ``--allowedTools`` allowlist discovered from it) with nothing
 #: on the other end to read what the agent submitted.
+#:
+#: Its analysis counterpart is denied ``artifact.plan_read`` only. It DOES
+#: submit an artifact -- its routing decision is the whole point of the phase,
+#: and the driver reads it back from the artifact JSON -- but there is no plan
+#: at startup preflight for it to read. Note what the ``analysis`` class does NOT
+#: grant: any workspace-write tool. It does grant ``process.exec_bounded`` (the
+#: reviewer must RUN the declared gates to check they resolve), and a shell can
+#: redirect -- so the no-write property is a strong default here, not a sandbox.
+#: What actually guarantees a review cannot approve its way past a failing
+#: validator is the deterministic re-validation in
+#: ``ralph.project_policy.pipeline_driver._finish``.
 _DRAIN_CAPABILITY_DENIALS: dict[str, frozenset[str]] = {
     "policy_remediation": frozenset({"artifact.submit", "artifact.plan_read"}),
+    "policy_remediation_analysis": frozenset({"artifact.plan_read"}),
 }
 
 if TYPE_CHECKING:

@@ -56,6 +56,7 @@ from ralph.display.log_sink import make_sanitizing_log_sink, make_stderr_log_sin
 from ralph.display.parallel_display import resolve_active_display
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
+from ralph.project_policy.policy_mode import PolicyMode
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -765,6 +766,37 @@ def main(
             help="Validate the active policy and print a summary, then exit",
         ),
     ] = False,
+    redo_policy: Annotated[
+        bool,
+        typer.Option(
+            "--redo-policy",
+            help=(
+                "Delete the project's quality-policy documents and regenerate "
+                "them from scratch. Combine with --policy-only to exit afterwards"
+            ),
+        ),
+    ] = False,
+    run_policy_agents: Annotated[
+        bool,
+        typer.Option(
+            "--run-policy-agents",
+            help=(
+                "Audit the EXISTING policy with the policy agents; nothing is "
+                "overwritten unless the review rejects it. Combine with "
+                "--policy-only to exit afterwards"
+            ),
+        ),
+    ] = False,
+    policy_only: Annotated[
+        bool,
+        typer.Option(
+            "--policy-only",
+            help=(
+                "Exit once the policy work is done instead of continuing into "
+                "the development run. Modifies --redo-policy / --run-policy-agents"
+            ),
+        ),
+    ] = False,
     prompt_helper: Annotated[
         bool,
         typer.Option(
@@ -892,6 +924,11 @@ def main(
     )
 
     _validate_mode_flags(quick=quick, thorough=thorough, resume=resume, no_resume=no_resume)
+    policy_mode = _resolve_policy_mode(
+        redo_policy=redo_policy,
+        run_policy_agents=run_policy_agents,
+        policy_only=policy_only,
+    )
 
     verbosity = resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
@@ -1012,6 +1049,7 @@ def main(
             counter_overrides=counter_overrides,
             inline_prompt=prompt,
             parallel_worker_manifest=_config_path(parallel_worker_manifest),
+            policy_mode=policy_mode,
         ),
         display_context=_cli_ctx,
     )
@@ -1093,6 +1131,46 @@ def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume
         )
     if quick and thorough:
         raise click.UsageError("--quick/-Q and --thorough/-T cannot be used together")
+
+
+#: (redo_policy, run_policy_agents, policy_only) -> the selected policy mode.
+#: ``--policy-only`` is a MODIFIER, not a mode: it says "exit after the policy
+#: work" and composes with either action flag.
+_POLICY_MODES: dict[tuple[bool, bool], PolicyMode] = {
+    (True, False): PolicyMode.REDO,
+    (True, True): PolicyMode.REDO_ONLY,
+    (False, False): PolicyMode.RUN_AGENTS,
+    (False, True): PolicyMode.RUN_AGENTS_ONLY,
+}
+
+
+def _resolve_policy_mode(
+    *,
+    redo_policy: bool,
+    run_policy_agents: bool,
+    policy_only: bool,
+) -> PolicyMode:
+    """Map the policy flags onto a single :class:`PolicyMode`.
+
+    ``--redo-policy`` (wipe and regenerate) and ``--run-policy-agents`` (audit in
+    place) are mutually exclusive ACTIONS -- one destroys the existing policy and
+    the other preserves it, so asking for both is a contradiction.
+    ``--policy-only`` is a MODIFIER that composes with either.
+    """
+    if redo_policy and run_policy_agents:
+        raise click.UsageError(
+            "Conflicting flags: --redo-policy and --run-policy-agents cannot be "
+            "used together (--redo-policy wipes the policy, --run-policy-agents "
+            "audits it in place)"
+        )
+    if not redo_policy and not run_policy_agents:
+        if policy_only:
+            raise click.UsageError(
+                "--policy-only modifies --redo-policy or --run-policy-agents; "
+                "it does nothing on its own"
+            )
+        return PolicyMode.NORMAL
+    return _POLICY_MODES[(redo_policy, policy_only)]
 
 
 def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
@@ -1218,6 +1296,7 @@ class _RunPipelineOpts:
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
     parallel_worker_manifest: RuntimePath | None = None
+    policy_mode: PolicyMode = PolicyMode.NORMAL
 
 
 def _run_pipeline(
@@ -1257,6 +1336,7 @@ def _run_pipeline(
             counter_overrides=opts.counter_overrides or {},
             inline_prompt=opts.inline_prompt,
             parallel_worker_manifest=opts.parallel_worker_manifest,
+            policy_mode=opts.policy_mode,
         )
         exit_code = run_pipeline(request, display_context=display_context)
         _set_outcome("success" if exit_code == 0 else "failure")

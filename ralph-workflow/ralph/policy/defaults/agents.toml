@@ -64,6 +64,17 @@ agents = ["claude"]
 max_retries = 2
 retry_delay_ms = 1000
 
+# Out-of-graph policy-remediation ANALYSIS chain. The second phase of the
+# hardcoded policy pipeline (ralph/project_policy/pipeline_graph.py): it
+# reviews what the remediation agent wrote -- are the RALPH-FACTs true, do the
+# declared gates actually resolve, do the gate scripts obey
+# gate-script-policy.md -- and routes back to remediation or to done. Like the
+# remediation chain it is bound to no pipeline phase.
+[agent_chains.policy_remediation_analysis]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 1000
+
 # ---------------------------------------------------------------------------
 # Drain bindings
 # ---------------------------------------------------------------------------
@@ -103,3 +114,14 @@ drain_class = "commit"
 [agent_drains.policy_remediation]
 chain = "policy_remediation"
 drain_class = "development"
+
+# Out-of-graph policy-remediation analysis drain. drain_class = "analysis"
+# deliberately grants a READ-ONLY tool surface: the analysis agent gets
+# artifact.submit (to return its decision) and process.exec_bounded (to probe
+# that each declared gate command actually resolves), but NO workspace write.
+# It structurally CANNOT fix what it reviews -- it can only observe and route
+# back to the remediation phase. Exercised by
+# ralph/project_policy/pipeline_driver.py.
+[agent_drains.policy_remediation_analysis]
+chain = "policy_remediation_analysis"
+drain_class = "analysis"

@@ -43,6 +43,7 @@ STARTER_NAMES: tuple[str, ...] = (
     "linting-policy.md",
     "dependency-policy.md",
     "verification-policy.md",
+    "gate-script-policy.md",
     "agent-policy.md",
     "clean-code-policy.md",
     "documentation-policy.md",
@@ -62,7 +63,7 @@ STARTER_NAMES: tuple[str, ...] = (
 
 
 def iter_starter_names() -> Iterator[str]:
-    """Yield every bundled starter name (10 core + 10 conditional)."""
+    """Yield every bundled starter name (11 core + 10 conditional)."""
     yield from STARTER_NAMES
 
 
