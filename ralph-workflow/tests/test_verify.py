@@ -196,6 +196,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="terminal escape containment audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_repo_structure"),
+                returncode=0,
+                stdout="repo structure audit ok\n",
+            ),
         }
     )
 
@@ -224,6 +230,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -463,6 +470,12 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="terminal escape containment audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_repo_structure"),
+                returncode=0,
+                stdout="repo structure audit ok\n",
+            ),
         }
     )
 
@@ -482,6 +495,8 @@ def test_run_verify_single_step_within_budget(
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -786,6 +801,12 @@ def test_run_verify_non_test_steps_not_counted(
                 args=("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
                 returncode=0,
                 stdout="terminal escape containment audit ok\n",
+            ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_repo_structure"),
+                returncode=0,
+                stdout="repo structure audit ok\n",
             ),
         }
     )

@@ -300,6 +300,21 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # Repo-structure policy: file size, one public class per module,
+        # no private ralph imports in tests, no unallowlisted bypass
+        # comments. This lived ONLY in a subprocess_e2e test that `make
+        # test` excludes, so it rotted silently while the gate stayed
+        # green. Wired here so ANY structural regression fails verify on
+        # every run, regardless of who introduced it. Appended LAST so
+        # the index-based timeout assertions in tests/test_verify.py are
+        # not shifted; NOT budget-tracked (does not count against the
+        # immutable 60-second combined test budget).
+        "repo structure audit (audit_repo_structure)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_repo_structure"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
