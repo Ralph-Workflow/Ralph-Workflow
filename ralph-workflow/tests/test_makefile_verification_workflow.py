@@ -104,7 +104,7 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     assert e2e_body == [
         "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        "python -m pytest tests/ -q -n 1 -m "
+        "python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "
         '"subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"'
     ]
 
