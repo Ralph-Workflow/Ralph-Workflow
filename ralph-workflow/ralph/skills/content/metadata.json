@@ -11,7 +11,7 @@
     "https://github.com/anthropics/skills",
     "https://github.com/ibelick/ui-skills"
   ],
-  "mirrored_at": "2026-05-28T12:07:04.697Z",
+  "mirrored_at": "2026-07-13T12:09:32.170Z",
   "skills": [
     "using-superpowers",
     "brainstorming",
@@ -323,9 +323,9 @@
       "catalog_repo": null,
       "catalog_ref": null,
       "catalog_path": null,
-      "repo": "https://github.com/anomalyco/opencode",
-      "ref": "internal",
-      "path": "skills/submit-plan-artifact/SKILL.md"
+      "repo": null,
+      "ref": null,
+      "path": "ralph/skills/content/submit-plan-artifact.md"
     },
     "submit-plan-step-edits": {
       "bundle": "core-workflow",
@@ -333,9 +333,9 @@
       "catalog_repo": null,
       "catalog_ref": null,
       "catalog_path": null,
-      "repo": "https://github.com/anomalyco/opencode",
-      "ref": "internal",
-      "path": "skills/submit-plan-step-edits/SKILL.md"
+      "repo": null,
+      "ref": null,
+      "path": "ralph/skills/content/submit-plan-step-edits.md"
     },
     "submit-artifact": {
       "bundle": "core-workflow",
@@ -343,9 +343,9 @@
       "catalog_repo": null,
       "catalog_ref": null,
       "catalog_path": null,
-      "repo": "https://github.com/anomalyco/opencode",
-      "ref": "internal",
-      "path": "skills/submit-artifact/SKILL.md"
+      "repo": null,
+      "ref": null,
+      "path": "ralph/skills/content/submit-artifact.md"
     },
     "submit-commit-message-artifact": {
       "bundle": "core-workflow",
@@ -353,9 +353,9 @@
       "catalog_repo": null,
       "catalog_ref": null,
       "catalog_path": null,
-      "repo": "https://github.com/anomalyco/opencode",
-      "ref": "internal",
-      "path": "skills/submit-commit-message-artifact/SKILL.md"
+      "repo": null,
+      "ref": null,
+      "path": "ralph/skills/content/submit-commit-message-artifact.md"
     },
     "submit-development-result-artifact": {
       "bundle": "core-workflow",
@@ -363,9 +363,9 @@
       "catalog_repo": null,
       "catalog_ref": null,
       "catalog_path": null,
-      "repo": "https://github.com/anomalyco/opencode",
-      "ref": "internal",
-      "path": "skills/submit-development-result-artifact/SKILL.md"
+      "repo": null,
+      "ref": null,
+      "path": "ralph/skills/content/submit-development-result-artifact.md"
     },
     "submit-commit-cleanup-artifact": {
       "bundle": "core-workflow",
@@ -373,9 +373,9 @@
       "catalog_repo": null,
       "catalog_ref": null,
       "catalog_path": null,
-      "repo": "https://github.com/anomalyco/opencode",
-      "ref": "internal",
-      "path": "skills/submit-commit-cleanup-artifact/SKILL.md"
+      "repo": null,
+      "ref": null,
+      "path": "ralph/skills/content/submit-commit-cleanup-artifact.md"
     }
   }
 }

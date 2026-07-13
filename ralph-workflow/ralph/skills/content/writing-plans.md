@@ -33,9 +33,14 @@ Before defining tasks, map out which files will be created or modified and what 
 
 This structure informs the task decomposition. Each task should produce self-contained changes that make sense independently.
 
-When planning changes to the plan-artifact package (`ralph/mcp/artifacts/plan/`), remember that the public surface is a thin re-export over a seven-submodule module family (`_section_models`, `_section_registry`, `_validation`, `_step_edit`, `_renderers`, `_draft_io`, `_step_contract`, `_noop`); consult the `## MODULE FAMILY` section of `planning.jinja` before deciding which submodule a new helper should live in.
+## Task Right-Sizing
 
-The plan artifact defaults step_type to "action"; for file modifications, set step_type="file_change" and provide targets.
+A task is the smallest unit that carries its own test cycle and is worth a
+fresh reviewer's gate. When drawing task boundaries: fold setup,
+configuration, scaffolding, and documentation steps into the task whose
+deliverable needs them; split only where a reviewer could meaningfully
+reject one task while approving its neighbor. Each task ends with an
+independently testable deliverable.
 
 ## Bite-Sized Task Granularity
 
@@ -61,6 +66,13 @@ The plan artifact defaults step_type to "action"; for file modifications, set st
 
 **Tech Stack:** [Key technologies/libraries]
 
+## Global Constraints
+
+[The spec's project-wide requirements — version floors, dependency limits,
+naming and copy rules, platform requirements — one line each, with exact
+values copied verbatim from the spec. Every task's requirements implicitly
+include this section.]
+
 ---
 ```
 
@@ -73,6 +85,12 @@ The plan artifact defaults step_type to "action"; for file modifications, set st
 - Create: `exact/path/to/file.py`
 - Modify: `exact/path/to/existing.py:123-145`
 - Test: `tests/exact/path/to/test.py`
+
+**Interfaces:**
+- Consumes: [what this task uses from earlier tasks — exact signatures]
+- Produces: [what later tasks rely on — exact function names, parameter
+  and return types. A task's implementer sees only their own task; this
+  block is how they learn the names and types neighboring tasks use.]
 
 - [ ] **Step 1: Write the failing test**
 
