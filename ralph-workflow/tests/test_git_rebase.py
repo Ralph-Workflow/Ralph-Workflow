@@ -46,7 +46,15 @@ from ralph.process.manager import ProcessStatus, get_process_manager, reset_proc
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-pytestmark = pytest.mark.subprocess_e2e
+# File-level markers. ``subprocess_e2e`` excludes this file from ``make test``
+# (the budget-tracked 60 s step) because several tests here drive a real ``git``
+# subprocess, which cannot reliably finish inside the default 1 s per-test
+# budget once the suite runs in parallel. ``timeout_seconds(5)`` sizes the budget
+# for a real process spawn, matching the convention in
+# tests/test_audit_artifact_submission_canonical_path.py. This does not weaken
+# any cap: the file stays out of the 60 s combined budget and inside the 60 s
+# per-suite cap on ``make test-subprocess-e2e``.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
 class FakeProcessExecutor(ProcessExecutor):

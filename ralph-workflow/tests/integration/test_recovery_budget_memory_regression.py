@@ -51,6 +51,25 @@ _BLOB_SIZE_BYTES = 8 * 1024
 _RETAINED_DELTA_LIMIT = 256 * 1024
 
 
+def _traced_bytes_from_this_module() -> int:
+    """Bytes currently traced to allocations made by THIS module.
+
+    ``tracemalloc.get_traced_memory()`` reports process-wide totals, which is
+    not what these tests mean: a daemon thread that is alive for unrelated
+    reasons (the ProcessManager reaper, the MCP supervisor) allocates during the
+    measurement window and lands in the delta, so the assertion flakes once the
+    suite runs in parallel. Scope the measurement to the module that allocates
+    the payloads instead — every ``blob`` is created in
+    :func:`_make_classified_failure` below, so a leaked ``BudgetState.failures``
+    tuple keeps those blobs traced to this file and a fixed one does not. That
+    is exactly the signal under test, and it is immune to other threads.
+    """
+    snapshot = tracemalloc.take_snapshot().filter_traces(
+        (tracemalloc.Filter(inclusive=True, filename_pattern=__file__),)
+    )
+    return sum(stat.size for stat in snapshot.statistics("filename"))
+
+
 def _make_classified_failure(index: int) -> ClassifiedFailure:
     """Build a ClassifiedFailure carrying a UNIQUE ``bytes`` blob in
     ``original_exception.args``.
@@ -99,8 +118,7 @@ def test_agent_budget_registry_failures_do_not_grow() -> None:
     """
     gc.collect()
     tracemalloc.start()
-    baseline_current, _ = tracemalloc.get_traced_memory()
-    tracemalloc.reset_peak()
+    baseline_bytes = _traced_bytes_from_this_module()
 
     registry: AgentBudgetRegistry = AgentBudgetRegistry().set_budget(
         "development", "claude", max_retries=_ITERATION_COUNT + 1
@@ -114,12 +132,15 @@ def test_agent_budget_registry_failures_do_not_grow() -> None:
     final_registry = registry
     assert final_registry is not None
 
+    # Sampled before the collect: if the failures tuple leaks, every blob is
+    # still reachable here, so this is the peak retention.
+    peak_bytes = _traced_bytes_from_this_module()
     gc.collect()
-    final_current, peak_current = tracemalloc.get_traced_memory()
+    retained_bytes = _traced_bytes_from_this_module()
     tracemalloc.stop()
 
-    retained_delta_bytes = final_current - baseline_current
-    peak_delta_bytes = peak_current - baseline_current
+    retained_delta_bytes = retained_bytes - baseline_bytes
+    peak_delta_bytes = peak_bytes - baseline_bytes
 
     assert retained_delta_bytes <= _RETAINED_DELTA_LIMIT, (
         f"AgentBudgetRegistry failure retention regression: retained delta "
@@ -146,8 +167,7 @@ def test_failure_budget_failures_do_not_grow() -> None:
     """
     gc.collect()
     tracemalloc.start()
-    baseline_current, _ = tracemalloc.get_traced_memory()
-    tracemalloc.reset_peak()
+    baseline_bytes = _traced_bytes_from_this_module()
 
     state = BudgetState(max_retries=_ITERATION_COUNT + 1)
     budget: FailureBudget = FailureBudget(state=state)
@@ -157,12 +177,13 @@ def test_failure_budget_failures_do_not_grow() -> None:
     final_budget = budget
     assert final_budget is not None
 
+    peak_bytes = _traced_bytes_from_this_module()
     gc.collect()
-    final_current, peak_current = tracemalloc.get_traced_memory()
+    retained_bytes = _traced_bytes_from_this_module()
     tracemalloc.stop()
 
-    retained_delta_bytes = final_current - baseline_current
-    peak_delta_bytes = peak_current - baseline_current
+    retained_delta_bytes = retained_bytes - baseline_bytes
+    peak_delta_bytes = peak_bytes - baseline_bytes
 
     assert retained_delta_bytes <= _RETAINED_DELTA_LIMIT, (
         f"FailureBudget failure retention regression: retained delta "
