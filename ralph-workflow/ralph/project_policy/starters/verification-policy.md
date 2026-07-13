@@ -32,6 +32,47 @@ bypass-detection rules.
 * Bypass detection MUST use native or existing checks when available.
   Custom tooling is required only when repository risk justifies it; a
   project MUST NOT create a hollow gate solely to satisfy this policy.
+* Verification MUST pass in full, with NO exemption for a failure the
+  current change did not cause. "It was already broken", "that failure
+  is unrelated to my change", and "someone else introduced it" are NOT
+  acceptable outcomes: a red gate is a red gate, and whoever next
+  observes it owns fixing it. Preventing regressions outranks
+  completing the task in hand — if the two conflict, fix the
+  regression first and finish the task after.
+* Do NOT spend effort establishing WHO caused a failure. Stashing your
+  changes, bisecting, or re-running against a clean tree to prove a
+  failure is "pre-existing" is almost NEVER useful work: the answer does
+  not change what you must do next, which is fix it. Provenance is only
+  worth investigating when it is genuinely diagnostic — when knowing the
+  triggering change tells you what the bug IS — never to decide whether
+  the failure is yours to own. It is always yours to own. Read the
+  failure, find the root cause, repair it.
+* Every gate MUST be wired into the authoritative entry point. A check
+  that runs only in an opt-in suite the default gate excludes will rot
+  unnoticed: either wire it in, or delete it.
+* Verification MUST complete in a time proportional to the codebase, and
+  the limit MUST be enforced by the gate itself (fail on exceed), never
+  by convention. Record it as `verification_time_budget`. Sizing:
+
+  - **Guide (small/medium projects):** roughly **1 second per 1k LOC**.
+  - **HARD CAP: 2 minutes**, whatever the size. A verification gate that
+    takes longer than ~1-2 minutes destroys the edit/verify loop that
+    both humans and AI agents depend on, so the cap — not the per-LOC
+    rate — is the binding constraint for any project past ~120k LOC.
+  - **Ratchet:** the budget may shrink freely; it may only GROW as a
+    deliberate, reviewed change that tracks genuinely-fast new checks.
+    A project already comfortably under budget MUST NOT relax up toward
+    the guide — the guide is a ceiling, never an entitlement.
+
+* A slow gate is a DEFECT, not a cost of doing business. Verification
+  time that grows superlinearly, or a step that hangs, is a HARD
+  indicator of a real problem — most often an architectural one:
+  production code that cannot be exercised without real I/O, real
+  subprocesses, real sleeps, or real network. That is the signature of
+  tests coupled to internals rather than driving the system as a black
+  box through its seams. Treat a performance regression in the gate with
+  the same seriousness as a failing test: diagnose the coupling and fix
+  the design. NEVER raise the budget to make a slow gate fit.
 
 ## Project facts to resolve
 
@@ -54,6 +95,8 @@ RALPH-FACT: bypass_detection_lint_audit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: bypass_detection_typecheck_audit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_integration_command: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: required_verification_profiles: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: verification_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: verification_time_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
 
 ## AI execution instructions
 
@@ -73,6 +116,13 @@ An agent MUST NOT:
 * Add a "verification" command that does not exercise every gate.
 * Weaken a gate to obtain a passing result.
 * Hide bypasses via file-level disables or blanket silencers.
+* Dismiss, defer, or excuse a failing gate on the grounds that the
+  failure is pre-existing, unrelated to the current change, or someone
+  else's regression. Fix it, or stop and report it as an active
+  blocker — never report work as verified while any gate is red.
+* Stash, bisect, or re-run against a clean tree merely to establish that
+  a failure is pre-existing. The verdict is the same either way — fix
+  it. Spend that effort on the root cause instead.
 
 ## Verification
 

@@ -39,6 +39,41 @@ the project.
 
 ## Non-negotiables
 
+### ═══ NO UNRELATED-FAILURE EXEMPTION — YOU FIND IT, YOU FIX IT ═══
+
+`make verify` MUST pass **in full**. There is NO exemption for a failure your
+change did not cause.
+
+These are NOT acceptable outcomes, and NOT acceptable things to say:
+
+- "It was already failing on `main`."
+- "That failure is unrelated to my change."
+- "That gate isn't run by `make test`, so it doesn't count."
+- "I didn't touch that code."
+
+A red gate is a red gate. **Whoever next observes it owns fixing it.**
+
+**Do not investigate WHO caused it.** Stashing your changes, bisecting, or
+re-running against a clean tree to prove a failure is "pre-existing" is almost
+NEVER useful work — the answer does not change what you must do next, which is
+fix it. Provenance is worth chasing ONLY when it is genuinely diagnostic (the
+triggering change tells you what the bug IS), never to decide whether the
+failure is yours to own. It is always yours to own. Read the failure, find the
+root cause, repair it.
+
+**Preventing regressions outranks completing the task in hand.** If a
+pre-existing failure blocks you, fix the failure FIRST and finish your original
+task afterwards. Never report your own work as verified while any gate is red.
+If a repair is genuinely out of scope, STOP and surface it as an active
+blocker — do not route around it, do not weaken the gate, do not proceed.
+
+**Corollary — every check MUST be wired into `make verify`.** A check that runs
+only in an opt-in suite the default gate excludes WILL rot unnoticed: either
+wire it into `_VERIFY_STEPS`, or delete it. `ralph/testing/audit_repo_structure.py`
+exists because its rules previously lived only in a `subprocess_e2e`-marked test
+that `make verify` never ran — the repo-structure policy decayed silently while
+the gate stayed green.
+
 ### ═══ FABRICATION GUARD (ABSOLUTE — 3 levels, zero bypass) ═══
 
 The D91 incident (commit 58a1d25e9, 2026-06-21) fabricated an entire entry

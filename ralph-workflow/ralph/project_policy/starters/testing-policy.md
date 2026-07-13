@@ -62,18 +62,38 @@ thorough tests with no time limit — does NOT comply.
    - The per-test timeout catches one slow or hanging test. Raising it is
      almost always the wrong fix; repair the test instead (usually by
      mocking its I/O per rule 7).
-   - The whole-suite budget scales with the number of tests and is EXPECTED
-     to grow as the project grows — a 200k-LOC suite cannot live under a
-     small project's budget. Growing it is legitimate ONLY as a deliberate,
-     reviewed maintenance change (see Maintenance triggers) that tracks more
-     genuinely-fast tests, NEVER a quiet bump to hide a slow one.
+   - The whole-suite budget scales with the number of tests, within a HARD
+     CAP. Sizing guide: roughly 1 second per 1k LOC, capped at 1-2 minutes
+     no matter how large the project gets. Past roughly 120k LOC the cap —
+     not the per-LOC rate — is the binding constraint, and it does not
+     move. Growing the budget below the cap is legitimate ONLY as a
+     deliberate, reviewed maintenance change (see Maintenance triggers)
+     that tracks more genuinely-fast tests, NEVER a quiet bump to hide a
+     slow one. A suite already well under budget MUST NOT relax up toward
+     the guide: it is a ceiling, never an entitlement.
    When it can, the gate SHOULD surface these time-limit and performance
    rules on an over-budget failure, so the developer's reflex is to fix the
    tests, not to raise the budget.
-10. Every bug fix MUST add a regression test that fails on the bug and
+10. A PERFORMANCE failure is a HARD failure, and it is treated as at least
+    as serious as a functional one — often more so, because a functional
+    failure is one broken behavior while a slow or hanging suite is usually
+    a broken ARCHITECTURE that will keep producing bugs.
+    - A suite that is slow, that hangs, or whose runtime grows
+      superlinearly is a DEFECT to diagnose, never a cost to absorb and
+      never a number to raise.
+    - The usual root cause is a missing seam: production code that cannot
+      be exercised without real I/O, real subprocesses, real sleeps, a real
+      network, or a real agent. That is the signature of tests bound to
+      internals instead of driving the system as a BLACK BOX through
+      injectable seams. A test that must reach through to the real world to
+      run is telling you the design has no seam there — add the seam.
+    - Fix the coupling in the production design. Do NOT raise the timeout,
+      do NOT split the suite to dodge the budget, and do NOT mark the test
+      skip/xfail to make the gate green.
+11. Every bug fix MUST add a regression test that fails on the bug and
     passes on the fix. The test name SHOULD encode the regression so future
     readers understand the contract.
-11. Every new behaviour MUST add positive coverage. Negative coverage is
+12. Every new behaviour MUST add positive coverage. Negative coverage is
     mandatory when rejection, failure, permission, boundary, or recovery
     behavior exists.
 

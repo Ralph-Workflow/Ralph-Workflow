@@ -9,6 +9,16 @@ make verify
 
 The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make verify` with `-W --keep-going` so any Sphinx warning fails the gate; it runs before the Python verify step and stays outside the immutable 60-second combined test budget.
 
+## No unrelated-failure exemption — you find it, you fix it
+
+`make verify` must pass **in full**, and there is NO exemption for a failure your change did not cause. "It was already failing on `main`", "that gate is unrelated to what I touched", and "that check isn't run by `make test`" are not acceptable outcomes — a red gate is a red gate, and whoever next observes it owns fixing it.
+
+**Do not investigate who caused it.** Stashing your changes, bisecting, or re-running against a clean tree just to prove a failure is "pre-existing" is almost never useful work — the answer does not change what you do next, which is fix it. Chase provenance only when it is genuinely diagnostic (the triggering change tells you what the bug *is*), never to decide whether the failure is yours to own. It is always yours to own.
+
+**Preventing regressions outranks finishing the task in hand.** If a pre-existing failure blocks you, fix the failure first and finish your original task afterwards. Never report your own work as verified while any gate is red; if a repair is genuinely out of scope, stop and surface it as an active blocker rather than working around it.
+
+A corollary for anyone adding a check: **wire it into `make verify`.** A check that lives only in an opt-in suite the default gate skips will rot silently. `audit_repo_structure` exists precisely because its rules previously lived only in `tests/integration/test_policy_file_rules.py`, which is `subprocess_e2e`-marked and therefore excluded from `make test` — the policy decayed for weeks while the gate stayed green.
+
 ## Fabrication guardrails
 
 Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx operator manual) is in scope for the [fabrication guard](fabrication-guard.md). USERS.md is the single canonical community directory; the previous near-duplicate community surfaces (`SHOWCASE.md`, `ECOSYSTEM.md`, `COMPARISONS.md`, `CREDIT_TEMPLATE.md`) were removed in the 2026-07-07 docs cleanup. The guard runs as a pre-commit hook at Level 1; re-run it explicitly with `./scripts/fabrication_guard.py --level 1 <file>` or `--level 2 <file>` for network existence checks. Bypassing the guard (for example with `--no-verify`) is itself fabrication.

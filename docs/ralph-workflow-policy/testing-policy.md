@@ -92,6 +92,37 @@ An agent MUST NOT:
 * Mark a test `smoke` to dodge the budget.
 * Add `@pytest.mark.skip` / `xfail` without an issue link and a
   documented rationale.
+* Treat a slow or hanging suite as a cost to absorb, or "fix" it by
+  raising a timeout, splitting the suite, or skipping the offender.
+
+## Performance is a HARD failure — and usually an architecture defect
+
+The 60-second combined budget is a **HARD CAP**, not a target to grow into.
+A performance failure is treated as at least as serious as a functional
+one, and often MORE serious: a functional failure is one broken behavior,
+whereas a slow or hanging suite is normally a broken ARCHITECTURE that will
+keep producing bugs.
+
+* A suite that is slow, that hangs, or whose runtime grows superlinearly
+  is a DEFECT to diagnose — never a number to raise.
+* The usual root cause is a MISSING SEAM: production code that cannot be
+  exercised without real I/O, a real subprocess, a real sleep, a real
+  network, or a real agent. That is the signature of a test bound to
+  internals rather than driving the system as a BLACK BOX through its
+  injectable seams. A test that must reach through to the real world is
+  telling you the design has no seam there — add the seam.
+* Worked example (2026-07-13):
+  `tests/test_interrupt.py::test_run_pipeline_saves_interrupted_resume_checkpoint`
+  hung the entire `subprocess_e2e` suite indefinitely. It stubbed
+  `run_func`, `ckpt`, `load_config`, and `resolve_workspace_scope`, but not
+  the Phase 2c project-policy-readiness preflight — which therefore ran for
+  real against an empty `tmp_path`, found the project unready, and invoked a
+  REAL remediation agent (a `claude` subprocess plus a live MCP server) that
+  never returned. The fix was to stub the documented
+  `_run_project_policy_readiness` seam, NOT to raise the budget. The hang was
+  the design telling us an un-injected side effect sat in the startup path.
+* Fix the coupling in the production design. Raising the timeout, splitting
+  the suite to dodge the budget, or skipping the test is FORBIDDEN.
 
 ## Verification
 

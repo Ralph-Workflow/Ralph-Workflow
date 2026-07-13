@@ -29,6 +29,41 @@ per-step timeouts (see `ralph/verify.py:_VERIFY_STEPS` /
   lifecycle / drift audits (see Verification below).
 * A gate documented here but not actually runnable is non-compliant.
   Documented impossibility MUST be reported as an active blocker.
+* Verification MUST pass in full, with NO exemption for a failure the
+  current change did not cause. "It was already broken on `main`",
+  "that failure is unrelated to my change", and "that gate is not run
+  by `make test`" are NOT acceptable outcomes: a red gate is a red
+  gate, and whoever next observes it owns fixing it. Preventing
+  regressions outranks completing the task in hand — if the two
+  conflict, fix the regression first and finish the task after.
+* Do NOT spend effort establishing WHO caused a failure. Stashing your
+  changes, bisecting, or re-running against a clean tree to prove a
+  failure is "pre-existing" is almost NEVER useful work: the answer
+  does not change what you must do next, which is fix it. Provenance is
+  worth investigating ONLY when it is genuinely diagnostic — when the
+  triggering change tells you what the bug IS — never to decide whether
+  the failure is yours to own. It is always yours to own.
+* Every gate MUST be wired into the authoritative entry point. A check
+  that exists only in a suite the default gate excludes (an opt-in
+  marker, a manual script) WILL rot unnoticed and is non-compliant:
+  either wire it into `make verify` or delete it. `audit_repo_structure`
+  exists because its rules previously lived only in a `subprocess_e2e`
+  test that `make verify` never ran, and they silently decayed.
+* Verification MUST complete within a bounded, gate-enforced time budget
+  (see `verification_time_budget` below). The generic sizing guide is
+  ~1 second per 1k LOC with a **HARD CAP of 2 minutes** regardless of
+  size; past ~120k LOC the cap, not the per-LOC rate, is the binding
+  constraint. The budget may shrink freely but may only GROW as a
+  deliberate, reviewed change — a suite already well under budget MUST
+  NOT relax up toward the guide.
+* A slow gate is a DEFECT, not a cost of doing business. Verification
+  time that grows superlinearly, or a step that hangs, is a HARD
+  indicator of a real problem — most often architectural: production
+  code that cannot be exercised without real I/O, real subprocesses,
+  real sleeps, or real network, which is the signature of tests coupled
+  to internals instead of driving the system as a black box through its
+  seams. Diagnose the coupling and fix the design. NEVER raise a budget
+  to make a slow gate fit.
 * Bypass detection (lint/typecheck/audit bypasses) MUST be enforced
   when the selected tools permit such checks. See "Bypass detection"
   below.
@@ -41,11 +76,12 @@ the project evolves.
 
 RALPH-FACT: authoritative_verify_command: `make -C ralph-workflow verify` (delegates to `uv run python -m ralph.verify`, which owns `ralph/verify.py:_VERIFY_STEPS`). The target prerequisite is `make docs`, wired in the Makefile so `make verify` always runs the Sphinx HTML build first under `-W --keep-going` (any Sphinx warning fails the gate).
 RALPH-FACT: gate_prerequisites: `make -C ralph-workflow dev` (uv sync of the editable install + dev extras). The prerequisite gates the test budget: tests run only against a synced environment; CI runs `make dev` before `make verify`.
-RALPH-FACT: gate_order: [1] `make docs` (Sphinx HTML build with `-W --keep-going` via `uv run --extra docs sphinx-build`); [2] ruff (`uv run ruff check ralph/ tests/`); [3] mypy (`uv run python -m mypy ralph/`); [4] `make test` (the budget-tracked pytest step, capped at 60 s combined via `_TOTAL_TEST_BUDGET_SECONDS`); [5-21] the 17 non-test audits: `ralph.testing.audit_lint_bypass`, `audit_typecheck_bypass`, `audit_test_policy`, `audit_mcp_timeout`, `audit_di_seam`, `audit_activity_aware_watchdog`, `audit_watchdog_drift`, `audit_parallelization_dormant`, `audit_artifact_submission_canonical_path`, `audit_agent_registry_sync`, `audit_agent_module_state`, `audit_agent_internal_paths`, `audit_resource_lifecycle`, `audit_skill_auto_commit`, `audit_public_docstrings`, plus the social-proof gate (`python3 ../scripts/verify_social_proof.py`). Each step has a 30 s per-step timeout (`_VERIFY_STEP_TIMEOUT_SECONDS`); only `make test` counts against the combined budget.
+RALPH-FACT: gate_order: [1] `make docs` (Sphinx HTML build with `-W --keep-going` via `uv run --extra docs sphinx-build`); then the 21 `_VERIFY_STEPS`: [2] ruff (`uv run ruff check ralph/ tests/`); [3] mypy (`uv run python -m mypy ralph/`); [4] `make test` (the budget-tracked pytest step, capped at 60 s combined via `_TOTAL_TEST_BUDGET_SECONDS`); [5-22] the 18 non-test audits: `ralph.testing.audit_lint_bypass`, `audit_typecheck_bypass`, `audit_test_policy`, `audit_mcp_timeout`, `audit_di_seam`, `audit_activity_aware_watchdog`, `audit_watchdog_drift`, `audit_parallelization_dormant`, `audit_artifact_submission_canonical_path`, `audit_agent_registry_sync`, `audit_agent_module_state`, `audit_agent_internal_paths`, `audit_resource_lifecycle`, `audit_skill_auto_commit`, `audit_public_docstrings`, `audit_terminal_escape_containment`, `audit_repo_structure`, plus the social-proof gate (`python3 ../scripts/verify_social_proof.py`). Each step has a 30 s per-step timeout (`_VERIFY_STEP_TIMEOUT_SECONDS`); only `make test` counts against the combined budget.
+RALPH-FACT: repo_structure_audit: `ralph.testing.audit_repo_structure` (step 21, allowlists in `ralph/testing/_repo_structure_allowlists.py`) enforces four structural rules: max 1000 lines per file; at most one public top-level class per module; no private (`_`-prefixed) `ralph` imports in tests; no unallowlisted lint/typecheck suppression comments. `tests/integration/test_policy_file_rules.py` asserts on the same `collect_violations()` result so there is one source of truth. It is wired into `_VERIFY_STEPS` precisely because it previously lived only in a `subprocess_e2e` test that `make verify` never ran, and the policy rotted undetected.
 RALPH-FACT: bypass_detection_lint_audit: `ralph.testing.audit_lint_bypass` walks the project tree to detect `per-file-ignores`, `extend-per-file-ignores`, blanket `# noqa` without a specific ruff error code, and weakens to the documented allowlist. Wired into `make verify` as the audit_lint_bypass step.
 RALPH-FACT: bypass_detection_typecheck_audit: `ralph.testing.audit_typecheck_bypass` walks the project tree to detect `ignore_missing_imports`, `follow_imports = silent`, `ignore_errors`, `disable_error_code`, blanket `# type: ignore` without a specific mypy error code, `# type: ignore` inside test files, and `disallow_untyped_defs = false`. The acceptance bar is documented in `ralph-workflow/docs/agents/type-ignore-policy.md`; violations fail verify.
 RALPH-FACT: ci_integration_command: both Codeberg (Woodpecker) and GitHub Actions run `make verify` on every PR; the social-proof gate under `python3 ../scripts/verify_social_proof.py` is part of the same suite. The opt-in subprocess E2E suite (`make test-subprocess-e2e`) and live AGY suite (`make test-live-agy`) are NOT in `make verify` and have their own budgets.
-RALPH-FACT: required_verification_profiles: three named profiles are declared so a caller picks the right surface for the work at hand. (1) `default` profile = `make -C ralph-workflow verify` (the 22-step `_VERIFY_STEPS` chain in ralph/verify.py, including ruff + mypy + make test + 17 audits + social-proof, the 60 s combined budget tracker, the docs prerequisite). (2) `pre-commit` profile = `make -C ralph-workflow pre-commit` (a one-shot ruff + format-check + dead-code sweep a developer runs before push; not a CI gate). (3) `subprocess-e2e` profile = `make -C ralph-workflow test-subprocess-e2e` (the subprocess-reality suite, excluded from the default 60 s budget via the `subprocess_e2e` marker, run on demand before release; per-suite timeout lives in ralph-workflow/Makefile as PYTEST_SUITE_TIMEOUT_SECONDS). (4) `live-agy` profile = `make -C ralph-workflow test-live-agy` (a network-backed AGY lifecycle test, excluded from the default budget via the `live_agy` marker and sized via LIVE_AGY_SUITE_TIMEOUT_SECONDS). A profile is selected by its Make target; a missing profile is a build-time blocker, not a runtime fallback.
+RALPH-FACT: required_verification_profiles: three named profiles are declared so a caller picks the right surface for the work at hand. (1) `default` profile = `make -C ralph-workflow verify` (the 21-step `_VERIFY_STEPS` chain in ralph/verify.py, including ruff + mypy + make test + 17 audits + social-proof, the 60 s combined budget tracker, the docs prerequisite). (2) `pre-commit` profile = `make -C ralph-workflow pre-commit` (a one-shot ruff + format-check + dead-code sweep a developer runs before push; not a CI gate). (3) `subprocess-e2e` profile = `make -C ralph-workflow test-subprocess-e2e` (the subprocess-reality suite, excluded from the default 60 s budget via the `subprocess_e2e` marker, run on demand before release; per-suite timeout lives in ralph-workflow/Makefile as PYTEST_SUITE_TIMEOUT_SECONDS). (4) `live-agy` profile = `make -C ralph-workflow test-live-agy` (a network-backed AGY lifecycle test, excluded from the default budget via the `live_agy` marker and sized via LIVE_AGY_SUITE_TIMEOUT_SECONDS). A profile is selected by its Make target; a missing profile is a build-time blocker, not a runtime fallback.
 
 ## AI execution instructions
 
@@ -59,12 +95,25 @@ To follow this policy, an agent making any change MUST:
 * UPDATE this policy (facts, commands, requirements) in the same
   workflow that changes the authoritative entry point, gate order, or
   bypass-detection audit.
+* FIX every failure the gate reports, including failures the agent did
+  not introduce and failures in code the agent never touched. On
+  encountering a pre-existing red gate, the agent MUST repair it (or,
+  when the repair is genuinely out of scope, stop and report it as an
+  active blocker) — it MUST NOT proceed, and MUST NOT report its own
+  work as verified while any gate is red.
 
 An agent MUST NOT:
 
 * Add a "verification" command that does not exercise every gate.
 * Weaken a gate to obtain a passing result.
 * Hide bypasses via file-level disables or blanket silencers.
+* Dismiss, defer, or excuse a failing gate on the grounds that the
+  failure is pre-existing, unrelated to the current change, or
+  someone else's regression.
+* Stash, bisect, or re-run against a clean tree merely to establish that
+  a failure is pre-existing. That is wasted work: the verdict is the
+  same either way — fix it.
+* Claim verification passed on the strength of a subset of gates.
 
 ## Verification
 
