@@ -20,8 +20,21 @@ class TestApplyExecPolicy:
     def test_allowed_command_passes(self) -> None:
         apply_exec_policy("ls", ["-la"])
 
-    def test_git_command_is_allowed(self) -> None:
-        apply_exec_policy("git", ["status"])
+    def test_git_command_is_denied(self) -> None:
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            apply_exec_policy("git", ["status"])
+
+    def test_hg_command_is_denied(self) -> None:
+        with pytest.raises(CapabilityDeniedError):
+            apply_exec_policy("hg", ["update"])
+
+    def test_svn_command_is_denied(self) -> None:
+        with pytest.raises(CapabilityDeniedError):
+            apply_exec_policy("svn", ["commit"])
+
+    def test_path_prefixed_git_is_denied(self) -> None:
+        with pytest.raises(CapabilityDeniedError):
+            apply_exec_policy("/usr/bin/git", ["push"])
 
     def test_denied_command_raises(self) -> None:
         with pytest.raises(CapabilityDeniedError):

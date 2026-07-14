@@ -26,7 +26,12 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.mcp.tools.exec import resolve_spill_dir, run_command
+from ralph.mcp.tools.exec import (
+    _VCS_COMMANDS,
+    _shell_command_segments,
+    resolve_spill_dir,
+    run_command,
+)
 from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
@@ -35,7 +40,25 @@ if TYPE_CHECKING:
     from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 
 PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final = "ProcessExecUnbounded"
-_VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
+
+
+def _enforce_vcs_blacklist(command: str) -> None:
+    """Deny the command when ANY pipeline segment invokes a VCS tool.
+
+    The shell string is split into the same ``(command, args)`` segments the
+    ``exec`` blacklist walks, so ``echo hi && git push``, ``true; git commit``,
+    and ``... | git apply`` are all denied — checking only the first token
+    left every shell operator a bypass. A path prefix (``/usr/bin/git``) is
+    stripped before matching. A string the tokenizer cannot parse raises
+    ``InvalidParamsError`` (fail closed) rather than running unchecked.
+    """
+    for segment_command, _segment_args in _shell_command_segments(command):
+        basename = segment_command.strip().lower().rsplit("/", 1)[-1]
+        if basename in _VCS_COMMANDS:
+            raise CapabilityDeniedError(
+                f"Command '{basename}' is blocked: version control operations "
+                "are not permitted via unsafe_exec"
+            )
 
 
 def handle_unsafe_exec(
@@ -52,12 +75,7 @@ def handle_unsafe_exec(
         raise InvalidParamsError("'command' must be a non-empty string")
 
     command = command_value.strip()
-    first_token = command.split()[0].lower()
-    if first_token in _VCS_COMMANDS:
-        raise CapabilityDeniedError(
-            f"Command '{first_token}' is blocked: version control operations "
-            "are not permitted via unsafe_exec"
-        )
+    _enforce_vcs_blacklist(command)
 
     # Require a strictly positive timeout: 0/negative/non-int falls back to the
     # default. Zero must NOT mean "unbounded" — that would make unsafe_exec a

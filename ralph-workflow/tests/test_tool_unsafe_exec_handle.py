@@ -160,6 +160,51 @@ class TestUnsafeExecVcsBlacklist:
         with pytest.raises(CapabilityDeniedError):
             handle_unsafe_exec(session, workspace, {"command": "GIT status"})
 
+    def test_blocks_git_after_and_operator(self, tmp_path: Path) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(
+                session, workspace, {"command": "echo hi && git push origin main"}
+            )
+
+    def test_blocks_git_after_semicolon(self, tmp_path: Path) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "true; git commit -m x"})
+
+    def test_blocks_git_in_pipeline(self, tmp_path: Path) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "cat patch.diff | git apply"})
+
+    def test_blocks_path_prefixed_git(self, tmp_path: Path) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "/usr/bin/git status"})
+
+    def test_allows_git_named_file_as_argument(self, tmp_path: Path) -> None:
+        """Only a git COMMAND is blocked; a file argument containing 'git' (e.g.
+        .gitignore) must still run."""
+        result = handle_unsafe_exec(
+            MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
+            MockWorkspaceRoot(tmp_path),
+            {"command": "cat .gitignore"},
+            _runner(stdout=b"ok"),
+        )
+        assert result.is_error is False
+
+    def test_malformed_shell_string_fails_closed(self, tmp_path: Path) -> None:
+        """A command the policy tokenizer cannot parse must be rejected, not run
+        unchecked through sh -c."""
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(InvalidParamsError):
+            handle_unsafe_exec(session, workspace, {"command": "echo 'unclosed && git push"})
+
 
 class TestUnsafeExecAllowedCommands:
     def test_allows_npm_command(self, tmp_path: Path) -> None:

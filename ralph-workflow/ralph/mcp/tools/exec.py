@@ -38,8 +38,10 @@ agent spawn an arbitrary subprocess. It enforces:
   ``doas``, ``pkexec``, ``runuser``), destructive system commands
   (``shutdown``, ``reboot``, ``halt``, ``poweroff``, ``killall``), network
   tunnel and remote-network tools (``nc``, ``ncat``, ``netcat``,
-  ``socat``, ``ssh``, ``scp``, ``rsync``), and container / namespace
-  escapes (``docker``, ``podman``, ``chroot``, ``nsenter``, ``unshare``).
+  ``socat``, ``ssh``, ``scp``, ``rsync``), container / namespace
+  escapes (``docker``, ``podman``, ``chroot``, ``nsenter``, ``unshare``),
+  and version control commands (``git``, ``hg``, ``svn`` — reads go through
+  the ``git_*`` tools, writes through the pipeline's commit phase).
 - A bounded per-call timeout (``timeout_ms`` capped at
   ``EXEC_MAX_TIMEOUT_MS``); a non-positive or missing value is clamped
   to the default so a direct caller can never produce an unbounded
@@ -93,7 +95,7 @@ PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 # ``ralph.timeout_defaults`` so the advertised tool-schema default (see
 # ``_specs_git_exec``) cannot drift from the handler's actual behavior. Set above
 # the 60s combined verify budget so an agent running `make verify`/`make test`
-# (or a slow git op) through exec does not time out on every call. Per-call
+# through exec does not time out on every call. Per-call
 # `timeout_ms` overrides this; the process tree is still killed on expiry.
 DEFAULT_TIMEOUT_MS = EXEC_DEFAULT_TIMEOUT_MS
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
@@ -112,6 +114,7 @@ _BLACKLIST_DESCRIPTIONS = {
     "network_exfiltration": "network/exfiltration",
     "container_escape": "container/VM escape",
     "multi_file_operation": "multi-file operation",
+    "version_control": "version control",
 }
 
 _SHELL_OPERATOR_CHARS = frozenset("|&;<>")
@@ -122,6 +125,10 @@ _SHELL_OPERATOR_CHARS = frozenset("|&;<>")
 _REDIRECTION_CHARS = frozenset("<>")
 
 _PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
+# Version control never runs through exec (safe OR unsafe): all git writes go
+# through Ralph's commit pipeline and all git reads through the git_* read
+# tools, so an agent cannot mutate repository state out from under the run.
+_VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
 _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
 _NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
 _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
@@ -306,6 +313,7 @@ def check_command(command: str, args: list[str]) -> str | None:
         check_network_exfiltration,
         check_container_escape,
         check_multi_file_operation,
+        check_version_control,
     ):
         reason = checker(cmd, args)
         if reason:
@@ -418,6 +426,27 @@ def _is_external_url(arg: str) -> bool:
     if "localhost" in lower or "127.0.0.1" in lower:
         return False
     return lower.startswith("http://") or lower.startswith("https://") or "://" in lower
+
+
+def _command_basename(command: str) -> str:
+    """Return the lowercase basename of a command token.
+
+    ``/usr/bin/git`` and ``git`` must hit the same blacklist entry — a path
+    prefix is otherwise a trivial bypass of a name-based deny rule.
+    """
+    return _command_key(command).rsplit("/", 1)[-1]
+
+
+def check_version_control(command: str, _args: list[str]) -> str | None:
+    """Return a denial reason if the command is a version control tool."""
+    if _command_basename(command) in _VCS_COMMANDS:
+        desc = _description("version_control")
+        return (
+            f"Command '{command}' is blacklisted: {desc} operations are not "
+            "allowed via exec. Use Ralph's git_* read tools; commits go "
+            "through the pipeline's commit phase."
+        )
+    return None
 
 
 def check_container_escape(command: str, _args: list[str]) -> str | None:

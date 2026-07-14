@@ -55,16 +55,37 @@ class TestHandleExecCommand:
         with pytest.raises(CapabilityDeniedError):
             handle_exec_command(session, workspace, params)
 
-    def test_exec_allows_git_command(self, tmp_path: Path) -> None:
+    def test_exec_blocks_git_command(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
         params: dict[str, object] = {"command": "git", "args": ["--version"]}
 
-        result = handle_exec_command(session, workspace, params)
-        assert result.is_error is False
-        content = result.content[0]
-        assert isinstance(content, ToolContent)
-        assert "git version" in content.text.lower()
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_blocks_git_in_compound_shell_command(self, tmp_path: Path) -> None:
+        """A git segment hidden behind a shell operator must be denied before the
+        subprocess is spawned — the runner must never be invoked."""
+        invoked: list[list[str]] = []
+
+        def _recording_runner(
+            command: list[str], cwd: object, timeout_seconds: float | None
+        ) -> exec_completed_process._CompletedProcessAdapter:
+            del cwd, timeout_seconds
+            invoked.append(command)
+            return exec_completed_process._CompletedProcessAdapter(
+                stdout=b"", stderr=b"", returncode=0
+            )
+
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "echo hi && git push origin main"}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(
+                session, workspace, params, deps=ExecRunDeps(runner=_recording_runner)
+            )
+        assert invoked == []
 
     def test_exec_with_blacklisted_command_raises(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
