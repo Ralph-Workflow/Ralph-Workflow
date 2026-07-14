@@ -29,10 +29,16 @@ from ralph.platform.detection import current_platform
 from ralph.policy.models._types import PhaseRole
 from ralph.runtime._version_info import PythonVersionInfo
 from ralph.runtime.environment import detect_runtime_environment
+from ralph.telemetry._agent_config_payload import (
+    AGENT_FAMILY_BY_TRANSPORT,
+    build_agent_config_payload,
+)
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from ralph.config.agent_config import AgentConfig
 
 _DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
 _HOME_PREFIX: str = str(Path.home())
@@ -61,17 +67,11 @@ _SESSION_TRANSACTION: object | None = None
 # keys exclusively on these values; raw phase names are never forwarded.
 _PHASE_ROLES: frozenset[str] = frozenset(cast("tuple[str, ...]", get_args(PhaseRole)))
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
-_AGENT_FAMILY_BY_TRANSPORT: dict[str, str] = {
-    AgentTransport.CLAUDE.value: "claude",
-    AgentTransport.CLAUDE_INTERACTIVE.value: "claude_interactive",
-    AgentTransport.CODEX.value: "codex",
-    AgentTransport.OPENCODE.value: "opencode",
-    AgentTransport.NANOCODER.value: "nanocoder",
-    AgentTransport.AGY.value: "agy",
-    AgentTransport.PI.value: "pi",
-    AgentTransport.CURSOR.value: "cursor",
-    AgentTransport.GENERIC.value: "custom",
-}
+# Mirrors ralph.project_policy.schema_state.POLICY_SCHEMA_STATES. Restated here
+# rather than imported so telemetry keeps a dependency-free import graph (it is
+# loaded on the pipeline-runner import path); test_telemetry_sentry.py pins the
+# two vocabularies together so they cannot drift.
+_POLICY_SCHEMA_STATES: frozenset[str] = frozenset({"current", "outdated", "absent", "unknown"})
 _SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
     {
         "planning",
@@ -204,6 +204,16 @@ def _config_file_disables_telemetry(config_path: Path) -> bool:
 
 def _telemetry_is_inactive() -> bool:
     return is_telemetry_disabled() or is_telemetry_disabled_by_config() or not _INITIALIZED
+
+
+def is_telemetry_active() -> bool:
+    """Return True when telemetry is enabled AND Sentry was initialized.
+
+    Lets a caller skip work whose ONLY purpose is to feed telemetry (e.g.
+    reading the policy pack to derive its schema state) when nothing would be
+    forwarded anyway.
+    """
+    return not _telemetry_is_inactive()
 
 
 def _sentry_environment() -> str:
@@ -463,6 +473,51 @@ def set_environment_context() -> None:
         pass
 
 
+def set_agent_config_context(agents: Mapping[str, AgentConfig]) -> None:
+    """Attach the metadata-only agent-configuration snapshot to Sentry.
+
+    Called once at config load so the payload rides on EVERY subsequent event —
+    including crashes — rather than only a cleanly finalized session. The
+    sanitization contract lives in ``_agent_config_payload``: user-authored
+    agent names, raw ``cmd`` strings, and flag values never leave the process.
+    No-op when telemetry is disabled or Sentry was never initialized.
+    Fail-soft.
+    """
+    if _telemetry_is_inactive():
+        return
+    with contextlib.suppress(Exception):
+        payload = build_agent_config_payload(agents)
+        sentry_sdk.set_context("agent_config", payload)
+        sentry_sdk.set_tag("agent_count", payload.get("agent_count"))
+        sentry_sdk.set_tag("agent_families", payload.get("agent_families"))
+
+
+def set_policy_schema_context(state: str) -> None:
+    """Attach the project's policy-schema state as a closed-vocabulary tag.
+
+    The caller derives the state (see
+    :func:`ralph.project_policy.schema_state.policy_schema_state`); telemetry
+    stays a pure sink and never reaches into the policy layer. Values outside
+    the closed vocabulary collapse to ``unknown`` rather than being forwarded.
+    No-op when telemetry is disabled or Sentry was never initialized.
+    Fail-soft.
+    """
+    if _telemetry_is_inactive():
+        return
+    with contextlib.suppress(Exception):
+        safe_state = state if state in _POLICY_SCHEMA_STATES else "unknown"
+        sentry_sdk.set_tag("policy_schema_state", safe_state)
+
+
+def _python_version() -> str | None:
+    """Return the running ``major.minor.micro`` Python version, or None."""
+    try:
+        info = PythonVersionInfo.from_sys(sys)
+    except Exception:
+        return None
+    return f"{info.major}.{info.minor}.{info.micro}"
+
+
 def _format_utc_timestamp(value: datetime) -> str:
     normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     return normalized.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -639,8 +694,8 @@ def record_agent_invocation(
         return
     transport_value = transport.value if isinstance(transport, AgentTransport) else str(transport)
     attributes: dict[str, object] = {
-        "agent_family": _AGENT_FAMILY_BY_TRANSPORT.get(transport_value, "custom"),
-        "transport": transport_value if transport_value in _AGENT_FAMILY_BY_TRANSPORT else "generic",
+        "agent_family": AGENT_FAMILY_BY_TRANSPORT.get(transport_value, "custom"),
+        "transport": transport_value if transport_value in AGENT_FAMILY_BY_TRANSPORT else "generic",
         "pipeline_profile": pipeline_profile if pipeline_profile in {"default", "custom"} else "custom",
         "phase_role": phase_role if phase_role in _PHASE_ROLES else "unknown",
         "drain": drain if drain in _SAFE_DRAIN_NAMES else "custom",
@@ -711,7 +766,14 @@ def finalize_session(
             "started_monotonic_s": started,
             "ended_monotonic_s": end_clock,
             "outcome": _SESSION_OUTCOME,
+            # Ralph's version also ships as the Sentry release + a global tag;
+            # restating it on the session makes the run self-describing when a
+            # session is inspected in isolation.
+            "ralph_version": ralph_version,
         }
+        python_version = _python_version()
+        if python_version is not None:
+            session_payload["python_version"] = python_version
         if _SESSION_STARTED_AT_UTC is not None:
             session_payload["started_at_utc"] = _format_utc_timestamp(_SESSION_STARTED_AT_UTC)
         session_payload["ended_at_utc"] = _format_utc_timestamp(ended_at_utc)

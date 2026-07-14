@@ -842,6 +842,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         (
             "tests/test_telemetry_sentry.py",
             "ralph.telemetry",
+            ("_agent_config_payload",),
+        ),
+        (
+            "tests/test_telemetry_sentry.py",
+            "ralph.telemetry",
             ("_sentry",),
         ),
         (
@@ -977,11 +982,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/mcp/tools/workspace/_media_io.py", 103),
         ("ralph/mcp/tools/workspace/_media_io.py", 177),
         ("ralph/pipeline/run_loop.py", 944),
-        ("ralph/telemetry/_sentry.py", 393),
-        ("ralph/telemetry/_sentry.py", 481),
-        ("ralph/telemetry/_sentry.py", 507),
-        ("ralph/telemetry/_sentry.py", 556),
-        ("ralph/telemetry/_sentry.py", 698),
+        ("ralph/telemetry/_sentry.py", 404),
+        ("ralph/telemetry/_sentry.py", 537),
+        ("ralph/telemetry/_sentry.py", 563),
+        ("ralph/telemetry/_sentry.py", 612),
+        ("ralph/telemetry/_sentry.py", 754),
         ("ralph/testing/audit_skill_auto_commit.py", 183),
         ("ralph/testing/audit_skill_auto_commit.py", 282),
         ("ralph/testing/audit_typecheck_bypass.py", 100),

@@ -206,6 +206,33 @@ def _invalidate_pipeline_state_if_prompt_changed(workspace_root: Path) -> bool:
     return True
 
 
+def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None) -> None:
+    """Attach the agent-config snapshot and policy-schema state to Sentry.
+
+    Runs at the single pipeline config-load chokepoint: ``_init_telemetry()``
+    initializes Sentry before any config exists, so this is the earliest point
+    the resolved agent table can be forwarded. Fail-soft — telemetry must never
+    break the run.
+    """
+    try:
+        from ralph.project_policy.schema_state import policy_schema_state
+        from ralph.telemetry._sentry import (
+            is_telemetry_active,
+            set_agent_config_context,
+            set_policy_schema_context,
+        )
+
+        if not is_telemetry_active():
+            return
+        set_agent_config_context(config.agents)
+        if workspace_root is not None:
+            # Derived only when telemetry is live: it stats and reads every
+            # policy file, and the result feeds nothing else.
+            set_policy_schema_context(policy_schema_state(workspace_root))
+    except Exception:
+        return
+
+
 def _load_configuration(
     config_path: Path | None,
     cli_overrides: ConfigOverrides,
@@ -226,6 +253,11 @@ def _load_configuration(
     except Exception as e:
         logger.error("Failed to load configuration: {}", e)
         return _EXIT_CONFIG_ERROR
+
+    _record_config_telemetry(
+        config,
+        workspace_scope.root if workspace_scope is not None else None,
+    )
 
     initial_state: PipelineState | None = None
     policy_bundle: PolicyBundle | None = None

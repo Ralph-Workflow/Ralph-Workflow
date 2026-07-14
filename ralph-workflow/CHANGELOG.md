@@ -41,6 +41,10 @@ and open a fresh `[Unreleased]`.
 
 ## [Unreleased]
 
+### Added
+
+- **feat(telemetry): attach a metadata-only agent-config snapshot, the project's policy-schema state, and the Ralph/Python versions to the Sentry session** — pinned by `tests/test_telemetry_sentry.py`. The `agent_config` context is set at the pipeline config-load chokepoint so it rides on every event including crashes; user-authored agent names, raw `cmd` strings, and flag values are dropped by `ralph/telemetry/_agent_config_payload.py` (transports stay closed-vocabulary, model IDs pass through, flags reduce to presence booleans). A `model` value that is a filesystem path or a credentialed endpoint URL — legitimate in ollama/llama.cpp/vLLM/LiteLLM setups — is rejected as `custom` rather than forwarded, since the `before_send` scrubber only rewrites the home/cwd prefix and would leave the rest of such a path (and any inline password) intact.
+
 ### Fixed
 
 - **fix(telemetry): keep one random user identity across terminal-specific XDG environments and add queryable session timing plus safe logical-agent, pipeline-profile, and drain-class metrics** — pinned by `tests/test_telemetry_user_identity.py` and `tests/test_telemetry_sentry.py`.

@@ -20,12 +20,16 @@ from __future__ import annotations
 import atexit
 from functools import lru_cache
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, get_args
 from unittest.mock import MagicMock
 
 import pytest
 
+import ralph.cli.commands.run as run_module
 import ralph.cli.main as ralph_cli_main
+import ralph.telemetry._sentry as sentry_module
+from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
@@ -38,8 +42,11 @@ from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import typer
 
+    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.policy.models import PolicyBundle
 
@@ -601,3 +608,76 @@ def test_run_pipeline_does_not_set_outcome_when_disabled(
     )
     assert rc == (1 if raise_exception else 0)
     assert recorder.calls == []
+
+
+def _agents_fixture() -> dict[str, AgentConfig]:
+    return {"acme-internal": AgentConfig.model_validate({"cmd": "claude", "model": "opus-4"})}
+
+
+def test_record_config_telemetry_forwards_the_resolved_agent_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The config-load chokepoint MUST actually reach telemetry.
+
+    ``_record_config_telemetry`` runs behind a lazy import inside a bare
+    ``try/except``, so a broken wiring (renamed function, renamed ``config
+    .agents``, import cycle) would silently no-op while every telemetry unit
+    test still passed. This pins the wiring itself.
+    """
+    forwarded_agents: list[Mapping[str, AgentConfig]] = []
+    forwarded_states: list[str] = []
+
+    monkeypatch.setattr(sentry_module, "is_telemetry_active", lambda: True)
+    monkeypatch.setattr(sentry_module, "set_agent_config_context", forwarded_agents.append)
+    monkeypatch.setattr(sentry_module, "set_policy_schema_context", forwarded_states.append)
+
+    config = cast("UnifiedConfig", SimpleNamespace(agents=_agents_fixture()))
+    run_module._record_config_telemetry(config, tmp_path)
+
+    assert len(forwarded_agents) == 1
+    assert forwarded_agents[0] == config.agents
+    # tmp_path has no policy pack, so the derivation runs and reports 'absent'.
+    assert forwarded_states == ["absent"]
+
+
+def test_record_config_telemetry_is_silent_when_telemetry_inactive(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Nothing is forwarded — and no policy files are read — when telemetry is off."""
+    calls: list[str] = []
+
+    monkeypatch.setattr(sentry_module, "is_telemetry_active", lambda: False)
+    monkeypatch.setattr(
+        sentry_module,
+        "set_agent_config_context",
+        lambda agents: calls.append("agents"),
+    )
+    monkeypatch.setattr(
+        sentry_module,
+        "set_policy_schema_context",
+        lambda state: calls.append("policy"),
+    )
+
+    config = cast("UnifiedConfig", SimpleNamespace(agents=_agents_fixture()))
+    run_module._record_config_telemetry(config, tmp_path)
+
+    assert calls == []
+
+
+def test_record_config_telemetry_never_breaks_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Telemetry failure must not propagate into the pipeline."""
+
+    def boom(_agents: object) -> None:
+        raise RuntimeError("sentry exploded")
+
+    monkeypatch.setattr(sentry_module, "is_telemetry_active", lambda: True)
+    monkeypatch.setattr(sentry_module, "set_agent_config_context", boom)
+
+    config = cast("UnifiedConfig", SimpleNamespace(agents=_agents_fixture()))
+
+    run_module._record_config_telemetry(config, tmp_path)  # must not raise
