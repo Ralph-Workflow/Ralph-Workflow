@@ -14,7 +14,10 @@ from ralph.agents.parsers.claude_interactive_transcript_parser import (
     _count_box_drawing,
     _is_tui_chrome,
 )
+from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.models import AgentConfig
 from ralph.display.vt_normalizer import normalize_vt_text
+from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 
 
 def test_vt_normalizer_strips_cursor_noise_but_keeps_semantic_text() -> None:
@@ -68,6 +71,179 @@ def test_interactive_parser_suppresses_repeated_json_tool_use_event() -> None:
 
     assert [event.kind for event in first_events] == ["tool_use"]
     assert second_events == []
+
+
+def test_claude_interactive_parser_regression_session_id_is_emitted_once() -> None:
+    """User-reported Claude smoke parsing regression, 2026-07-14."""
+    parser = ClaudeInteractiveTranscriptParser()
+    session_id = "pty-session-77"
+
+    first_events = parser.feed(
+        json.dumps({"type": "mode", "mode": "normal", "sessionId": session_id})
+    )
+    second_events = parser.feed(
+        json.dumps(
+            {
+                "type": "assistant",
+                "sessionId": session_id,
+                "message": {"content": [{"type": "text", "text": "Working now."}]},
+            }
+        )
+    )
+    third_events = parser.feed(
+        json.dumps(
+            {
+                "type": "assistant",
+                "sessionId": session_id,
+                "message": {
+                    "content": [{"type": "tool_use", "id": "toolu_read", "name": "read_file"}]
+                },
+            }
+        )
+    )
+
+    assert [event.kind for event in first_events] == ["session"]
+    assert [event.kind for event in second_events] == ["output"]
+    assert [event.kind for event in third_events] == ["tool_use"]
+
+
+def test_claude_interactive_parser_regression_parallel_results_keep_tool_identity() -> None:
+    """User-reported Claude smoke parsing regression, 2026-07-14."""
+    parser = ClaudeInteractiveParser()
+    lines = iter(
+        [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "toolu_read",
+                                "name": "mcp__ralph__read_file",
+                                "input": {"path": "PROMPT.md"},
+                            },
+                            {
+                                "type": "tool_use",
+                                "id": "toolu_stat",
+                                "name": "mcp__ralph__stat_path",
+                                "input": {"path": "tmp"},
+                            },
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_read",
+                                "content": [{"type": "text", "text": "prompt contents"}],
+                            }
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_stat",
+                                "content": [{"type": "text", "text": "directory metadata"}],
+                            }
+                        ]
+                    },
+                }
+            ),
+        ]
+    )
+
+    results = list(parser.parse(lines))
+    tool_uses = [result for result in results if result.type == "tool_use"]
+    tool_results = [result for result in results if result.type == "tool_result"]
+
+    assert tool_uses[0].metadata == {
+        "tool": "mcp__ralph__read_file",
+        "tool_use_id": "toolu_read",
+        "input": {"path": "PROMPT.md"},
+    }
+    assert tool_uses[1].metadata == {
+        "tool": "mcp__ralph__stat_path",
+        "tool_use_id": "toolu_stat",
+        "input": {"path": "tmp"},
+    }
+    assert [result.metadata["tool"] for result in tool_results] == [
+        "mcp__ralph__read_file",
+        "mcp__ralph__stat_path",
+    ]
+    assert [result.metadata["tool_use_id"] for result in tool_results] == [
+        "toolu_read",
+        "toolu_stat",
+    ]
+    assert [result.content for result in tool_results] == [
+        "prompt contents",
+        "directory metadata",
+    ]
+
+
+def test_claude_interactive_activity_stream_regression_renders_tool_result() -> None:
+    """User-reported Claude smoke parsing regression, 2026-07-14."""
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_read",
+                            "name": "mcp__ralph__read_file",
+                            "input": {"path": "PROMPT.md"},
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_read",
+                            "content": [{"type": "text", "text": "prompt contents"}],
+                        }
+                    ]
+                },
+            }
+        ),
+    ]
+    rendered: list[str] = []
+
+    stream_parsed_agent_activity(
+        lines,
+        parser_type="claude",
+        agent_name="claude/haiku",
+        agent_config=config,
+        rendered_output_sink=rendered,
+    )
+
+    assert rendered == [
+        "claude/haiku tool: mcp__ralph__read_file (path=PROMPT.md)",
+        "claude/haiku result: prompt contents",
+    ]
 
 
 def test_interactive_parser_extracts_tool_result_from_assistant_message_content() -> None:

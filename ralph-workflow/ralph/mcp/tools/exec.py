@@ -71,7 +71,7 @@ from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_output_spill import SPILL_OUTPUT_LIMIT_BYTES, format_or_spill
 from ralph.mcp.tools._exec_params import ExecParams
-from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, OutputChunkCallback
+from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, build_effective_exec_deps
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -666,8 +666,7 @@ def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> None:
     if script_hit is not None:
         script, word = script_hit
         raise CapabilityDeniedError(
-            f"Script '{script}' uses '{word}': version control operations "
-            "are not allowed via exec"
+            f"Script '{script}' uses '{word}': version control operations are not allowed via exec"
         )
 
 
@@ -841,57 +840,6 @@ def format_exec_result(
     return text
 
 
-@runtime_checkable
-class _SessionWithStreaming(Protocol):
-    """Subset of AgentSession that supports thread-owned tool output streaming."""
-
-    def current_thread_tool_output_sink(
-        self,
-    ) -> Callable[[dict[str, object]], None] | None:
-        """Return the active sink when the calling thread owns it."""
-        ...
-
-
-def _build_effective_deps(
-    session: CoordinationSessionLike,
-    deps: ExecRunDeps | None,
-) -> ExecRunDeps | None:
-    """Compose the session's thread-owned output sink into deps.on_output_chunk."""
-    if not isinstance(session, _SessionWithStreaming):
-        return deps
-    # Capture the sink ONCE, on the dispatching thread. The session is shared
-    # across concurrent request threads; resolving the sink at chunk time (from
-    # subprocess reader threads) would route this exec's output to whichever
-    # request swapped the shared sink last — cross-connection output cross-talk.
-    sink = session.current_thread_tool_output_sink()
-    if sink is None:
-        return deps
-    captured_sink = sink
-
-    def _session_chunk(chunk: str) -> None:
-        captured_sink({"tool": "exec", "stream": "combined", "text": chunk})
-
-    if deps is None:
-        return ExecRunDeps(on_output_chunk=_session_chunk)
-
-    existing_cb = deps.on_output_chunk
-    if existing_cb is None:
-        composed_cb: OutputChunkCallback = _session_chunk
-    else:
-
-        def composed_cb(chunk: str) -> None:
-            existing_cb(chunk)
-            _session_chunk(chunk)
-
-    return ExecRunDeps(
-        runner=deps.runner,
-        cwd_provider=deps.cwd_provider,
-        process_manager=deps.process_manager,
-        on_output_chunk=composed_cb,
-        spill_dir=deps.spill_dir,
-    )
-
-
 def handle_exec_command(
     session: CoordinationSessionLike,
     workspace: object,
@@ -943,7 +891,7 @@ def handle_exec_command(
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     _enforce_exec_policy(parsed, workspace)
-    effective_deps = _build_effective_deps(session, deps)
+    effective_deps = build_effective_exec_deps(session, deps)
     # AC-11: ``format=summary`` requests the bounded JSON envelope with
     # replayable resource handles; the default preserves the legacy
     # text/head-tail shape.

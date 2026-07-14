@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from ._event_classification import is_lifecycle_kind
@@ -22,6 +23,9 @@ if TYPE_CHECKING:
 
     from ralph.agents.idle_watchdog import SubagentPidRegistry
 
+_MAX_TRACKED_TOOL_USES = 128
+_ToolMap = OrderedDict[str, str]
+
 
 class ClaudeInteractiveParser:
     """Convert interactive Claude transcript lines into AgentOutputLine events."""
@@ -41,6 +45,7 @@ class ClaudeInteractiveParser:
         self._text_accumulator = TextAccumulator()
         self._thinking_accumulator = TextAccumulator()
         self._last_tool_name: str | None = None
+        self._tool_names_by_id: _ToolMap = OrderedDict()  # bounded-accumulator-ok: cap 128
 
     def emit_subagent_activity(
         self,
@@ -108,19 +113,39 @@ class ClaudeInteractiveParser:
                         event.text.split(":", 1)[-1].strip() if ":" in event.text else event.text
                     )
                     self._last_tool_name = tool_name
+                    metadata = dict(event.metadata)
+                    metadata["tool"] = tool_name
+                    tool_use_id = metadata.get("tool_use_id")
+                    if isinstance(tool_use_id, str) and tool_use_id:
+                        self._tool_names_by_id[tool_use_id] = tool_name
+                        self._tool_names_by_id.move_to_end(tool_use_id)
+                        if len(self._tool_names_by_id) > _MAX_TRACKED_TOOL_USES:
+                            self._tool_names_by_id.popitem(last=False)
                     yield AgentOutputLine(
                         type="tool_use",
                         content=tool_name,
                         raw=raw,
-                        metadata={"tool": tool_name},
+                        metadata=metadata,
                     )
                     continue
                 if event.kind == "tool_result":
+                    metadata = dict(event.metadata)
+                    tool_use_id = metadata.get("tool_use_id")
+                    if isinstance(tool_use_id, str) and tool_use_id:
+                        tool_name = (
+                            self._tool_names_by_id.pop(tool_use_id)
+                            if tool_use_id in self._tool_names_by_id
+                            else self._last_tool_name or "unknown"
+                        )
+                    else:
+                        tool_name = self._last_tool_name or "unknown"
+                    metadata["tool"] = tool_name
+                    content = event.text.removeprefix("claude result:").lstrip()
                     yield AgentOutputLine(
                         type="tool_result",
-                        content=event.text,
+                        content=content,
                         raw=raw,
-                        metadata={"tool": self._last_tool_name or "unknown"},
+                        metadata=metadata,
                     )
         yield from self._flush_accumulators()
 

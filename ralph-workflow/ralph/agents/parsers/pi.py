@@ -377,9 +377,7 @@ class _PiDispatch:
         if content_index in self._owner.saw_text_end_by_index:
             return
         acc = self._get_text_accumulator(content_index)
-        yield from acc.accumulate(
-            delta, stripped, kind=_TEXT_KIND, keep_current_when_empty=True
-        )
+        yield from acc.accumulate(delta, stripped, kind=_TEXT_KIND, keep_current_when_empty=True)
 
     def _handle_text_end(
         self,
@@ -392,9 +390,7 @@ class _PiDispatch:
         acc_key = _accumulator_key(_TEXT_KIND, content_index)
         if content:
             self._owner._accumulators.pop(acc_key, None)
-            yield AgentOutputLine(
-                type=_TEXT_KIND, content=content, raw=stripped, metadata=sub
-            )
+            yield AgentOutputLine(type=_TEXT_KIND, content=content, raw=stripped, metadata=sub)
             return
         acc = self._owner._accumulators.pop(acc_key, None)
         if acc is not None:
@@ -517,18 +513,14 @@ class _PiDispatch:
                 continue
             block_dict = cast("dict[str, object]", block)
             block_type = str(block_dict.get("type", ""))
-            if (
-                block_type == _TEXT_KIND
-                and block_index not in self._owner.saw_text_end_by_index
-            ):
+            if block_type == _TEXT_KIND and block_index not in self._owner.saw_text_end_by_index:
                 acc_key = _accumulator_key(_TEXT_KIND, block_index)
                 self._owner._accumulators.pop(acc_key, None)
                 self._owner.saw_text_end_by_index.add(block_index)
                 yield from self._handle_text_block(block_dict, stripped)
             elif (
                 block_type == _THINKING_KIND
-                and block_index
-                not in self._owner.saw_thinking_end_by_index
+                and block_index not in self._owner.saw_thinking_end_by_index
             ):
                 acc_key = _accumulator_key(_THINKING_KIND, block_index)
                 self._owner._accumulators.pop(acc_key, None)

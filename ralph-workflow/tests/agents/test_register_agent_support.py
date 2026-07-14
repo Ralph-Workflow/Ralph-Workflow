@@ -27,6 +27,7 @@ from ralph.agents.parsers import (
     _CUSTOM_COMMAND_REGISTRY,
     _PARSER_REGISTRY,
     AgentOutputLine,
+    ClaudeInteractiveParser,
     ClaudeParser,
     get_parser,
     resolve_parser_key,
@@ -40,6 +41,7 @@ from ralph.agents.support import AgentSupport
 from ralph.cli.commands.commit import collect_commit_agent_output
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.plumbing.smoke_plumbing import (
@@ -471,6 +473,20 @@ class TestResolveParserKey:
             "claude", JsonParserType.GENERIC, AgentTransport.CLAUDE_INTERACTIVE
         )
         assert key == "claude_interactive"
+
+    def test_configured_claude_interactive_override_keeps_interactive_parser(self) -> None:
+        """User-reported Claude smoke parsing regression, 2026-07-14."""
+        config = AgentConfig(
+            cmd="claude",
+            json_parser=JsonParserType.CLAUDE,
+            transport=AgentTransport.CLAUDE_INTERACTIVE,
+        )
+        AgentRegistry.from_config(UnifiedConfig(agents={"claude": config}))
+
+        key = resolve_parser_key(config.cmd, config.json_parser, config.transport)
+
+        assert key == "claude_interactive"
+        assert isinstance(get_parser(key), ClaudeInteractiveParser)
 
 
 class TestStrategyForCommand:

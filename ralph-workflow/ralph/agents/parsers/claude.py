@@ -76,11 +76,11 @@ class ClaudeParser(NdjsonParserBase):
         # without a registry.
         self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: dict[  # bounded-accumulator-ok: drained
-    tuple[str, int], TextAccumulator
-] = {}
+            tuple[str, int], TextAccumulator
+        ] = {}
         self._thinking_accumulator: dict[  # bounded-accumulator-ok: drained
-    tuple[str, int], TextAccumulator
-] = {}
+            tuple[str, int], TextAccumulator
+        ] = {}
         self._fallback_accumulator: TextAccumulator | None = None
         self._fallback_thinking_accumulator: TextAccumulator | None = None
         self._current_message_id: str | None = None

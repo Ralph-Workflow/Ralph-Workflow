@@ -240,9 +240,25 @@ class ClaudeInteractiveTranscriptParser:
         result: list[InteractiveTranscriptEvent] = []
         if item_type == "tool_use":
             self._current_content_mode = "tool_use"
-            tool_name = str(item.get("name", "tool"))
+            raw_tool_name = item.get("name")
+            tool_name = (
+                raw_tool_name.strip()
+                if isinstance(raw_tool_name, str) and raw_tool_name.strip()
+                else "tool"
+            )
+            metadata: dict[str, object] = {"tool": tool_name}
+            tool_use_id = item.get("id")
+            if isinstance(tool_use_id, str) and tool_use_id:
+                metadata["tool_use_id"] = tool_use_id
+            tool_input = item.get("input")
+            if isinstance(tool_input, dict):
+                metadata["input"] = dict(cast("dict[str, object]", tool_input))
             result.append(
-                InteractiveTranscriptEvent(kind="tool_use", text=f"claude tool: {tool_name}")
+                InteractiveTranscriptEvent(
+                    kind="tool_use",
+                    text=f"claude tool: {tool_name}",
+                    metadata=metadata,
+                )
             )
         elif item_type == "thinking":
             self._current_content_mode = "thinking"
@@ -252,8 +268,16 @@ class ClaudeInteractiveTranscriptParser:
         elif item_type == "tool_result":
             text = _extract_message_text(item.get("content")).strip()
             if text:
+                metadata = {}
+                tool_use_id = item.get("tool_use_id")
+                if isinstance(tool_use_id, str) and tool_use_id:
+                    metadata["tool_use_id"] = tool_use_id
                 result.append(
-                    InteractiveTranscriptEvent(kind="tool_result", text=f"claude result: {text}")
+                    InteractiveTranscriptEvent(
+                        kind="tool_result",
+                        text=f"claude result: {text}",
+                        metadata=metadata,
+                    )
                 )
         elif item_type == "text":
             self._current_content_mode = "output"
@@ -291,8 +315,16 @@ class ClaudeInteractiveTranscriptParser:
                 continue
             text = _extract_message_text(item_dict.get("content")).strip()
             if text:
+                metadata: dict[str, object] = {}
+                tool_use_id = item_dict.get("tool_use_id")
+                if isinstance(tool_use_id, str) and tool_use_id:
+                    metadata["tool_use_id"] = tool_use_id
                 events.append(
-                    InteractiveTranscriptEvent(kind="tool_result", text=f"claude result: {text}")
+                    InteractiveTranscriptEvent(
+                        kind="tool_result",
+                        text=f"claude result: {text}",
+                        metadata=metadata,
+                    )
                 )
         return events
 
@@ -307,7 +339,7 @@ class ClaudeInteractiveTranscriptParser:
         event_type = str(obj.get("type", ""))
         events: list[InteractiveTranscriptEvent] = []
         session_id = obj.get("sessionId") or obj.get("session_id")
-        if isinstance(session_id, str) and session_id:
+        if isinstance(session_id, str) and session_id and session_id != self.session_id:
             self.session_id = session_id
             self._append_if_new(events, InteractiveTranscriptEvent(kind="session", text=session_id))
         if event_type == "assistant":
@@ -347,22 +379,32 @@ class ClaudeInteractiveTranscriptParser:
         return result
 
     @staticmethod
-    def _detect_thinking_idle(text: str) -> InteractiveTranscriptEvent | None:
-        """Detect thinking content in idle mode — always None.
-
-        In idle mode (before JSON sets content mode), there is no legitimate
-        thinking content.  All real thinking arrives via JSON ``"type":"thinking"``
-        items that set ``_current_content_mode``.  The ``"ends with thinking"``
-        heuristic would only catch TUI status-bar counter fragments.
-        """
-        return None
-
-    @staticmethod
     def _is_tui_thinking_garbage(text: str) -> bool:
         """Return True if *text* is TUI spinner/status garbage, not real content."""
         return bool(_THINKING_STATUS_RE.search(text)) or any(c in _TUI_GLYPH_CHARS for c in text)
 
-    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911,PLR0912
+    def _event_for_active_mode(self, text: str) -> InteractiveTranscriptEvent | None:
+        """Classify text after a structured content block established its mode."""
+        if self._current_content_mode == "thinking":
+            if self._is_tui_thinking_garbage(text):
+                return None
+            return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if self._current_content_mode == "output":
+            return InteractiveTranscriptEvent(kind="output", text=text)
+        return None
+
+    @staticmethod
+    def _is_idle_tui_fragment(text: str) -> bool:
+        """Return whether idle-mode text is terminal status chrome."""
+        return (
+            bool(_THINKING_STATUS_RE.search(text))
+            or (len(text) < _IDLE_SINGLE_WORD_MAX_LEN and " " not in text)
+            or ("…" in text and len(text) < _IDLE_ELLIPSIS_MAX_LEN)
+            or (len(text) < _IDLE_TUI_GLYPH_MAX_LEN and any(c in _TUI_GLYPH_CHARS for c in text))
+            or _contains_thinking_keyword(text)
+        )
+
+    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:
         if _PURE_COUNTER_RE.match(text) or _TUI_STATUSBAR_RE.search(text):
             return None
         known = self._match_known_pattern(text)
@@ -370,30 +412,8 @@ class ClaudeInteractiveTranscriptParser:
             return known
         if _is_tui_chrome(text):
             return None
-        if self._current_content_mode == "thinking":
-            if _THINKING_STATUS_RE.search(text):
-                return None
-            if any(c in _TUI_GLYPH_CHARS for c in text):
-                return None
-            return InteractiveTranscriptEvent(kind="thinking", text=text)
-        if self._current_content_mode == "tool_use":
-            return None
-        if self._current_content_mode == "output":
-            return InteractiveTranscriptEvent(kind="output", text=text)
-        if self._current_content_mode is None:
-            if _THINKING_STATUS_RE.search(text):
-                return None
-            if len(text) < _IDLE_SINGLE_WORD_MAX_LEN and " " not in text:
-                return None
-            if "…" in text and len(text) < _IDLE_ELLIPSIS_MAX_LEN:
-                return None
-            if len(text) < _IDLE_TUI_GLYPH_MAX_LEN and any(c in _TUI_GLYPH_CHARS for c in text):
-                return None
-            if _contains_thinking_keyword(text):
-                return None
-        thinking = self._detect_thinking_idle(text)
-        if thinking is not None:
-            return thinking
-        if len(text) <= _MIN_OUTPUT_LEN:
+        if self._current_content_mode is not None:
+            return self._event_for_active_mode(text)
+        if self._is_idle_tui_fragment(text) or len(text) <= _MIN_OUTPUT_LEN:
             return None
         return InteractiveTranscriptEvent(kind="output", text=text)

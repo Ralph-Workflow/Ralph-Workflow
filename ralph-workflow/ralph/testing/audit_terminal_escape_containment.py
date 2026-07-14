@@ -135,13 +135,40 @@ from __future__ import annotations
 
 import ast
 import sys
+from collections import OrderedDict
 from pathlib import Path
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+_READ_CACHE_LIMIT = 2048
+_PARSE_CACHE_LIMIT = 256
+_READ_CACHE: OrderedDict[str, str] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 2048
+_PARSE_CACHE: OrderedDict[str, ast.Module] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 256
 
 
 def _read(rel_path: str) -> str:
-    return (_PACKAGE_ROOT / rel_path).read_text(encoding="utf-8")
+    """Read one package source file, caching the audit process's immutable snapshot."""
+    cached = _READ_CACHE.get(rel_path)
+    if cached is not None:
+        _READ_CACHE.move_to_end(rel_path)
+        return cached
+    source = (_PACKAGE_ROOT / rel_path).read_text(encoding="utf-8")
+    _READ_CACHE[rel_path] = source
+    if len(_READ_CACHE) > _READ_CACHE_LIMIT:
+        _READ_CACHE.popitem(last=False)
+    return source
+
+
+def _parse_source(source: str, filename: str = "<unknown>") -> ast.Module:
+    """Parse a source snapshot once across the audit's overlapping invariants."""
+    cached = _PARSE_CACHE.get(source)
+    if cached is not None:
+        _PARSE_CACHE.move_to_end(source)
+        return cached
+    tree = ast.parse(source, filename=filename)
+    _PARSE_CACHE[source] = tree
+    if len(_PARSE_CACHE) > _PARSE_CACHE_LIMIT:
+        _PARSE_CACHE.popitem(last=False)
+    return tree
 
 
 def _function_body(rel_path: str, *, qualname: str) -> str | None:
@@ -152,13 +179,16 @@ def _function_body(rel_path: str, *, qualname: str) -> str | None:
     (the caller treats that as a violation).
     """
     source = _read(rel_path)
-    tree = ast.parse(source)
+    tree = _parse_source(source, rel_path)
     parts = qualname.split(".")
     target_name = parts[-1]
 
     def _walk(node: ast.AST, depth: int) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == target_name:
+            if (
+                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and child.name == target_name
+            ):
                 if depth == len(parts) - 1:
                     return child
                 if depth < len(parts) - 1:
@@ -190,15 +220,14 @@ def _call_site_sources(rel_path: str, *, callee_name: str) -> list[str]:
     The audit uses this to pin ``SpawnOptions`` call-site shape.
     """
     source = _read(rel_path)
-    tree = ast.parse(source)
+    tree = _parse_source(source, rel_path)
     found: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        match = (
-            (isinstance(func, ast.Name) and func.id == callee_name)
-            or (isinstance(func, ast.Attribute) and func.attr == callee_name)
+        match = (isinstance(func, ast.Name) and func.id == callee_name) or (
+            isinstance(func, ast.Attribute) and func.attr == callee_name
         )
         if not match:
             continue
@@ -236,10 +265,16 @@ class Invariant:
     def violations(self) -> list[str]:
         content = _read(self.rel_path)
         return [
-            *(f"{self.rel_path}: missing required literal {needle!r}" for needle in self.present
-              if needle not in content),
-            *(f"{self.rel_path}: forbidden literal still present {needle!r}" for needle in self.absent
-              if needle in content),
+            *(
+                f"{self.rel_path}: missing required literal {needle!r}"
+                for needle in self.present
+                if needle not in content
+            ),
+            *(
+                f"{self.rel_path}: forbidden literal still present {needle!r}"
+                for needle in self.absent
+                if needle in content
+            ),
         ]
 
 
@@ -391,8 +426,7 @@ class PackageWideCallSiteInvariant:
         """Return the package-relative path of every ``*.py`` file (cached)."""
         if cls._PACKAGE_FILE_LIST_CACHE is None:
             cls._PACKAGE_FILE_LIST_CACHE = sorted(
-                str(p.relative_to(_PACKAGE_ROOT).as_posix())
-                for p in _PACKAGE_ROOT.rglob("*.py")
+                str(p.relative_to(_PACKAGE_ROOT).as_posix()) for p in _PACKAGE_ROOT.rglob("*.py")
             )
         return cls._PACKAGE_FILE_LIST_CACHE
 
@@ -403,9 +437,9 @@ class PackageWideCallSiteInvariant:
 
     def violations(self) -> list[str]:
         problems: list[str] = []
-        # Fast-path text filter: skip files that don't even mention the callee
-        # name. This keeps the wall-clock cost off the 60s combined budget by
-        # avoiding AST.parse on the ~99% of files that don't contain the call.
+        # Fast-path text filters: a violating call must mention both the callee
+        # and (for an absent-only invariant) one of the forbidden literals.
+        # Avoid parsing files that cannot possibly violate the contract.
         callee_token = self.callee_name
         for rel_path in self._package_files():
             try:
@@ -414,17 +448,22 @@ class PackageWideCallSiteInvariant:
                 continue
             if callee_token not in source:
                 continue
+            if (
+                self.absent
+                and not self.present
+                and not any(needle in source for needle in self.absent)
+            ):
+                continue
             try:
-                tree = ast.parse(source, filename=rel_path)
+                tree = _parse_source(source, rel_path)
             except SyntaxError:
                 continue
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
                 func = node.func
-                match = (
-                    (isinstance(func, ast.Name) and func.id == self.callee_name)
-                    or (isinstance(func, ast.Attribute) and func.attr == self.callee_name)
+                match = (isinstance(func, ast.Name) and func.id == self.callee_name) or (
+                    isinstance(func, ast.Attribute) and func.attr == self.callee_name
                 )
                 if not match:
                     continue
@@ -507,9 +546,7 @@ _INVARIANTS: tuple[
     FunctionBodyInvariant(
         rel_path="display/parallel_display.py",
         qualname="emit_activity_line",
-        present=(
-            "markup=False",
-        ),
+        present=("markup=False",),
         min_counts={"_sanitize(line)": 2},
     ),
     # activity_model.render_event_line: the activity_router render path
@@ -660,9 +697,7 @@ def main(argv: list[str] | None = None) -> int:
         problems.extend(invariant.violations())
 
     if problems:
-        print(
-            f"TERMINAL-ESCAPE-CONTAINMENT AUDIT FAILED: {len(problems)} invariant violation(s)"
-        )
+        print(f"TERMINAL-ESCAPE-CONTAINMENT AUDIT FAILED: {len(problems)} invariant violation(s)")
         print("=" * 72)
         for line in problems:
             print(f"  {line}")
