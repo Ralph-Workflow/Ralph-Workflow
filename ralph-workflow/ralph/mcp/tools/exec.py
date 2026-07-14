@@ -60,6 +60,7 @@ boundary — everything else is a hard-coded defence-in-depth layer.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 from collections.abc import Mapping
@@ -129,6 +130,21 @@ _PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
 # through Ralph's commit pipeline and all git reads through the git_* read
 # tools, so an agent cannot mutate repository state out from under the run.
 _VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
+# Deep VCS match: a standalone ``git``/``hg``/``svn`` word ANYWHERE in the
+# command text is denied — including inside quotes, ``$(...)``/backtick
+# substitutions, ``sh -c`` strings, and newline-separated sequences. Word
+# boundaries keep ``github.com`` and ``.gitignore`` out of the net while
+# still catching ``/usr/bin/git`` and ``git@host``. Deliberately fail-closed:
+# a benign mention of the word (``echo git``) is denied rather than risk a
+# textual smuggling path.
+_VCS_USAGE_PATTERN = re.compile(r"\b(" + "|".join(sorted(_VCS_COMMANDS)) + r")\b", re.IGNORECASE)
+# Interpreters whose script-file argument is executed as shell: the script's
+# CONTENT is scanned for VCS usage (``bash deploy.sh`` where deploy.sh runs
+# ``git push`` is denied). ``source``/``.`` execute in-shell the same way.
+_SHELL_INTERPRETERS: frozenset[str] = frozenset({"sh", "bash", "zsh", "dash", "ksh", "source", "."})
+_SCRIPT_EXTENSIONS = (".sh", ".bash", ".zsh", ".ksh")
+_SCRIPT_SCAN_LIMIT_BYTES = 256 * 1024
+_SHEBANG_PREFIX = b"#!"
 _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
 _NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
 _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
@@ -428,24 +444,75 @@ def _is_external_url(arg: str) -> bool:
     return lower.startswith("http://") or lower.startswith("https://") or "://" in lower
 
 
-def _command_basename(command: str) -> str:
-    """Return the lowercase basename of a command token.
+def find_vcs_usage(command: str, args: list[str]) -> str | None:
+    """Return the matched VCS word when the command text references one anywhere.
 
-    ``/usr/bin/git`` and ``git`` must hit the same blacklist entry — a path
-    prefix is otherwise a trivial bypass of a name-based deny rule.
+    Matches the whole joined text, not just the command head, so a git call
+    hidden in a quoted ``sh -c`` string, a ``$(...)``/backtick substitution, or
+    a newline-separated sequence is still caught (see ``_VCS_USAGE_PATTERN``).
     """
-    return _command_key(command).rsplit("/", 1)[-1]
+    match = _VCS_USAGE_PATTERN.search(" ".join([command, *args]))
+    return match.group(0) if match else None
 
 
-def check_version_control(command: str, _args: list[str]) -> str | None:
-    """Return a denial reason if the command is a version control tool."""
-    if _command_basename(command) in _VCS_COMMANDS:
+def check_version_control(command: str, args: list[str]) -> str | None:
+    """Return a denial reason if the command invokes or references a VCS tool."""
+    word = find_vcs_usage(command, args)
+    if word is not None:
         desc = _description("version_control")
         return (
-            f"Command '{command}' is blacklisted: {desc} operations are not "
+            f"Command references '{word}': {desc} operations are not "
             "allowed via exec. Use Ralph's git_* read tools; commits go "
             "through the pipeline's commit phase."
         )
+    return None
+
+
+def _script_candidate_tokens(segments: list[tuple[str, list[str]]]) -> list[str]:
+    """Return tokens that may name an executed script file.
+
+    Every segment head is a candidate (``./release``); when the head is a
+    shell interpreter, its first non-flag argument is the script it runs
+    (``bash deploy.sh``). An inline ``-c`` string is not a file and is
+    already covered by the textual VCS match.
+    """
+    candidates: list[str] = []
+    for head, args in segments:
+        candidates.append(head)
+        if _command_key(head).rsplit("/", 1)[-1] in _SHELL_INTERPRETERS:
+            for arg in args:
+                if not arg.startswith("-"):
+                    candidates.append(arg)
+                    break
+    return candidates
+
+
+def find_vcs_usage_in_scripts(
+    segments: list[tuple[str, list[str]]], workspace_root: Path
+) -> tuple[str, str] | None:
+    """Return ``(script_token, vcs_word)`` when an executed shell script uses VCS.
+
+    Best-effort static check: each candidate script token is resolved against
+    the workspace root; a readable file that looks like a shell script (a
+    known extension or a ``#!`` shebang) has its first
+    ``_SCRIPT_SCAN_LIMIT_BYTES`` scanned for a VCS word. Unreadable or
+    non-file tokens are skipped — the textual match on the command line
+    remains the primary net.
+    """
+    for token in _script_candidate_tokens(segments):
+        path = Path(token) if Path(token).is_absolute() else workspace_root / token
+        try:
+            if not path.is_file():
+                continue
+            with path.open("rb") as handle:
+                head_bytes = handle.read(_SCRIPT_SCAN_LIMIT_BYTES)
+        except OSError:
+            continue
+        if not (token.endswith(_SCRIPT_EXTENSIONS) or head_bytes.startswith(_SHEBANG_PREFIX)):
+            continue
+        match = _VCS_USAGE_PATTERN.search(head_bytes.decode("utf-8", errors="replace"))
+        if match:
+            return token, match.group(0)
     return None
 
 
@@ -580,18 +647,28 @@ def _shell_command_segments(command: str) -> list[tuple[str, list[str]]]:
     return segments
 
 
-def _enforce_exec_policy(parsed: ExecParams) -> None:
+def _enforce_exec_policy(parsed: ExecParams, workspace: object) -> None:
     """Enforce the blacklist for an exec invocation, shell-aware.
 
     A compound shell command is checked against every command in the pipeline;
-    a plain command is checked directly. Raises ``CapabilityDeniedError`` on the
-    first blacklisted command.
+    a plain command is checked directly. Executed shell scripts (``bash x.sh``,
+    ``./x.sh``) are additionally content-scanned for VCS usage so a git call
+    cannot be laundered through a script file. Raises ``CapabilityDeniedError``
+    on the first blacklisted command.
     """
     if parsed.shell_command is None:
-        apply_exec_policy(parsed.command, parsed.args)
-        return
-    for command, args in _shell_command_segments(parsed.shell_command):
+        segments: list[tuple[str, list[str]]] = [(parsed.command, parsed.args)]
+    else:
+        segments = _shell_command_segments(parsed.shell_command)
+    for command, args in segments:
         apply_exec_policy(command, args)
+    script_hit = find_vcs_usage_in_scripts(segments, _workspace_root(workspace))
+    if script_hit is not None:
+        script, word = script_hit
+        raise CapabilityDeniedError(
+            f"Script '{script}' uses '{word}': version control operations "
+            "are not allowed via exec"
+        )
 
 
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
@@ -865,7 +942,7 @@ def handle_exec_command(
     """
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
-    _enforce_exec_policy(parsed)
+    _enforce_exec_policy(parsed, workspace)
     effective_deps = _build_effective_deps(session, deps)
     # AC-11: ``format=summary`` requests the bounded JSON envelope with
     # replayable resource handles; the default preserves the legacy

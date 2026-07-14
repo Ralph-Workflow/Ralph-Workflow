@@ -186,6 +186,69 @@ class TestUnsafeExecVcsBlacklist:
         with pytest.raises(CapabilityDeniedError, match="git"):
             handle_unsafe_exec(session, workspace, {"command": "/usr/bin/git status"})
 
+    def test_blocks_git_inside_sh_c_string(self, tmp_path: Path) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "sh -c 'git push origin main'"})
+
+    def test_blocks_git_in_command_substitution(self, tmp_path: Path) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "echo $(git rev-parse HEAD)"})
+
+    def test_blocks_git_in_backtick_substitution(self, tmp_path: Path) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "echo `git status`"})
+
+    def test_blocks_git_separated_by_newline(self, tmp_path: Path) -> None:
+        """sh -c treats a newline as a command separator; the policy must too."""
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "echo hi\ngit push"})
+
+    def test_blocks_shell_script_that_uses_git(self, tmp_path: Path) -> None:
+        script = tmp_path / "deploy.sh"
+        script.write_text("#!/bin/sh\necho deploying\ngit push origin main\n")
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "bash deploy.sh"})
+
+    def test_blocks_direct_script_execution_with_shebang(self, tmp_path: Path) -> None:
+        script = tmp_path / "release"
+        script.write_text("#!/bin/sh\ngit tag v1\n")
+        script.chmod(0o755)
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_unsafe_exec(session, workspace, {"command": "./release"})
+
+    def test_allows_shell_script_without_git(self, tmp_path: Path) -> None:
+        script = tmp_path / "build.sh"
+        script.write_text("#!/bin/sh\necho building\n")
+        result = handle_unsafe_exec(
+            MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
+            MockWorkspaceRoot(tmp_path),
+            {"command": "sh build.sh"},
+            _runner(stdout=b"building"),
+        )
+        assert result.is_error is False
+
+    def test_allows_github_url_argument(self, tmp_path: Path) -> None:
+        """'github.com' must not trip the git word match — only the git tool itself."""
+        result = handle_unsafe_exec(
+            MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
+            MockWorkspaceRoot(tmp_path),
+            {"command": "echo https://github.com/anthropics/claude-code"},
+            _runner(stdout=b"ok"),
+        )
+        assert result.is_error is False
+
     def test_allows_git_named_file_as_argument(self, tmp_path: Path) -> None:
         """Only a git COMMAND is blocked; a file argument containing 'git' (e.g.
         .gitignore) must still run."""

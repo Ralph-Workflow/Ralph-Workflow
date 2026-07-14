@@ -29,6 +29,9 @@ from ralph.mcp.tools.coordination import (
 from ralph.mcp.tools.exec import (
     _VCS_COMMANDS,
     _shell_command_segments,
+    _workspace_root,
+    find_vcs_usage,
+    find_vcs_usage_in_scripts,
     resolve_spill_dir,
     run_command,
 )
@@ -42,23 +45,33 @@ if TYPE_CHECKING:
 PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final = "ProcessExecUnbounded"
 
 
-def _enforce_vcs_blacklist(command: str) -> None:
-    """Deny the command when ANY pipeline segment invokes a VCS tool.
+def _enforce_vcs_blacklist(command: str, workspace: object) -> None:
+    """Deny the command when it uses a VCS tool anywhere, however nested.
 
-    The shell string is split into the same ``(command, args)`` segments the
-    ``exec`` blacklist walks, so ``echo hi && git push``, ``true; git commit``,
-    and ``... | git apply`` are all denied — checking only the first token
-    left every shell operator a bypass. A path prefix (``/usr/bin/git``) is
-    stripped before matching. A string the tokenizer cannot parse raises
-    ``InvalidParamsError`` (fail closed) rather than running unchecked.
+    The textual match (``find_vcs_usage``) catches a VCS word in any pipeline
+    segment, inside quoted ``sh -c`` strings, in ``$(...)``/backtick
+    substitutions, and across newline-separated sequences — checking only the
+    first token left every shell operator a bypass. Executed shell scripts
+    (``bash deploy.sh``, ``./release``) are additionally content-scanned so a
+    git call cannot be laundered through a file. A string the tokenizer cannot
+    parse raises ``InvalidParamsError`` (fail closed) rather than running
+    unchecked.
     """
-    for segment_command, _segment_args in _shell_command_segments(command):
-        basename = segment_command.strip().lower().rsplit("/", 1)[-1]
-        if basename in _VCS_COMMANDS:
+    segments = _shell_command_segments(command)
+    for segment_command, segment_args in segments:
+        word = find_vcs_usage(segment_command, segment_args)
+        if word is not None:
             raise CapabilityDeniedError(
-                f"Command '{basename}' is blocked: version control operations "
+                f"Command references '{word}': version control operations "
                 "are not permitted via unsafe_exec"
             )
+    script_hit = find_vcs_usage_in_scripts(segments, _workspace_root(workspace))
+    if script_hit is not None:
+        script, word = script_hit
+        raise CapabilityDeniedError(
+            f"Script '{script}' uses '{word}': version control operations "
+            "are not permitted via unsafe_exec"
+        )
 
 
 def handle_unsafe_exec(
@@ -75,7 +88,7 @@ def handle_unsafe_exec(
         raise InvalidParamsError("'command' must be a non-empty string")
 
     command = command_value.strip()
-    _enforce_vcs_blacklist(command)
+    _enforce_vcs_blacklist(command, workspace)
 
     # Require a strictly positive timeout: 0/negative/non-int falls back to the
     # default. Zero must NOT mean "unbounded" — that would make unsafe_exec a

@@ -259,12 +259,11 @@ def git_exec_specs() -> list[ToolSpec]:
                     "Execute a bounded command in the workspace. Accepts command or "
                     "argv, plus optional args, timeout_ms, and format ('raw' or "
                     "'summary'). Shell operators (|, &&, ;, >, <) in a command STRING "
-                    "run through a shell, but the command blacklist (sudo, rm -rf /, "
-                    "external curl, version control commands like git/hg/svn, etc.) "
-                    "is still enforced against every command in the pipeline — use "
-                    "the git_* tools for git reads. format='summary' returns a JSON "
-                    "envelope with a replayable stdout resource id. On timeout you "
-                    "get an is_error result, not a retryable protocol error — decide "
+                    "run through a shell, but the blacklist (sudo, rm -rf /, external "
+                    "curl, git/hg/svn — use git_* tools for reads) is "
+                    "enforced on every pipeline command. format='summary' "
+                    "returns a JSON envelope with a replayable stdout resource id. "
+                    "On timeout you get an is_error result, not retryable — decide "
                     "WHY first."
                 ),
                 input_schema={

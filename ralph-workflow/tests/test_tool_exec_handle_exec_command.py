@@ -87,6 +87,45 @@ class TestHandleExecCommand:
             )
         assert invoked == []
 
+    def test_exec_blocks_git_inside_sh_c_string(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": ["sh", "-c", "git push origin main"]}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_blocks_git_in_command_substitution(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "echo $(git rev-parse HEAD) | wc -c"}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_blocks_shell_script_that_uses_git(self, tmp_path: Path) -> None:
+        script = tmp_path / "deploy.sh"
+        script.write_text("#!/bin/sh\necho deploying\ngit push origin main\n")
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "bash deploy.sh"}
+
+        with pytest.raises(CapabilityDeniedError, match="git"):
+            handle_exec_command(session, workspace, params)
+
+    def test_exec_allows_shell_script_without_git(self, tmp_path: Path) -> None:
+        script = tmp_path / "build.sh"
+        script.write_text("#!/bin/sh\necho building\n")
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "sh build.sh"}
+
+        result = handle_exec_command(session, workspace, params)
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        assert "building" in content.text
+
     def test_exec_with_blacklisted_command_raises(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
