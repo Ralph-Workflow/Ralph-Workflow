@@ -9,6 +9,7 @@ from typing import cast, get_args
 
 import pytest
 
+from ralph.config.agent_transport import AgentTransport
 from ralph.platform.architecture import Architecture
 from ralph.platform.environment_info import EnvironmentInfo
 from ralph.platform.models import PlatformInfo
@@ -893,6 +894,7 @@ def test_record_session_start_and_finalize_session(
     monkeypatch.setattr(_sentry, "_INITIALIZED", True)
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     context_calls: list[tuple[str, dict[str, object]]] = []
     message_calls: list[tuple[str, str]] = []
@@ -976,10 +978,86 @@ def test_record_session_start_and_finalize_session(
     assert session_context[1]["started_monotonic_s"] == pytest.approx(100.0)
     assert session_context[1]["ended_monotonic_s"] == pytest.approx(160.0)
     assert session_context[1]["outcome"] == "success"
-    assert len(message_calls) == 1
-    assert message_calls[0][0] == "session end"
-    assert message_calls[0][1] == "info"
+    assert [message[0] for message in message_calls] == ["session start", "session end"]
+    assert all(message[1] == "info" for message in message_calls)
     assert flush_calls == [2.0]
+
+
+def test_session_lifecycle_records_utc_start_and_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Session context exposes queryable UTC bounds alongside monotonic duration."""
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
+
+    context_calls: list[tuple[str, dict[str, object]]] = []
+    message_calls: list[str] = []
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: context_calls.append((name, dict(data))),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.capture_message",
+        lambda message, level=None: message_calls.append(str(message)),
+    )
+    monkeypatch.setattr("sentry_sdk.start_session", lambda session_mode="application": None)
+    monkeypatch.setattr("sentry_sdk.start_transaction", lambda **kwargs: None)
+    monkeypatch.setattr("sentry_sdk.end_session", lambda: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    start_dt = datetime(2026, 7, 14, 12, 0, 0, tzinfo=UTC)
+    end_dt = datetime(2026, 7, 14, 12, 0, 7, tzinfo=UTC)
+    _sentry.record_session_start(now=10.0, now_dt=start_dt)
+    assert _sentry.finalize_session(now=17.5, end_dt=end_dt) == pytest.approx(7.5)
+
+    session = next(data for name, data in context_calls if name == "session")
+    assert session["started_at_utc"] == "2026-07-14T12:00:00Z"
+    assert session["ended_at_utc"] == "2026-07-14T12:00:07Z"
+    assert message_calls == ["session start", "session end"]
+
+
+def test_agent_invocation_uses_safe_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom agent and drain names never enter invocation telemetry."""
+    metric_calls: list[tuple[str, dict[str, object] | None]] = []
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.count",
+        lambda name, value, attributes=None: metric_calls.append(
+            (str(name), dict(attributes) if attributes is not None else None)
+        ),
+    )
+    monkeypatch.setattr(
+        "sentry_sdk.metrics.distribution",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr("sentry_sdk.add_breadcrumb", lambda **kwargs: None)
+
+    _sentry.record_agent_invocation(
+        transport=AgentTransport.GENERIC,
+        phase_role="execution",
+        drain="customer-secret-drain",
+        drain_class="execution",
+        pipeline_profile="custom",
+        duration_s=2.25,
+        outcome="failure",
+    )
+
+    name, attributes = metric_calls[0]
+    assert name == "ralph.agent.invocation"
+    assert attributes == {
+        "agent_family": "custom",
+        "transport": "generic",
+        "pipeline_profile": "custom",
+        "phase_role": "execution",
+        "drain": "custom",
+        "drain_class": "execution",
+        "outcome": "failure",
+    }
+    assert "customer-secret" not in repr(metric_calls)
 
 
 def test_finalize_session_returns_none_when_not_initialized(
@@ -1075,6 +1153,7 @@ def test_finalize_session_is_fail_soft_on_flush_error(
     monkeypatch.setattr(_sentry, "_INITIALIZED", True)
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "failure")
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
@@ -1306,6 +1385,7 @@ def test_set_session_wallclock_start_records_utc_buckets(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     context_calls: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
@@ -1335,6 +1415,7 @@ def test_wallclock_no_full_timestamp_no_timezone(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -1401,6 +1482,7 @@ def test_record_phase_execution_accumulates_by_role(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
     monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
 
     captured: dict[str, object] = {}
@@ -1512,6 +1594,7 @@ def test_phase_stats_drained_after_finalize(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
     monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
     monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
     monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
 
     monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading as _threading
+import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, replace
@@ -68,7 +69,7 @@ from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -81,7 +82,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PolicyBundle
+    from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
 _VERBOSE_LOG_LEVEL = 2
@@ -90,6 +91,20 @@ _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _RECOVERY_CONTEXT_LINES = 12
 _RECOVERY_CONTEXT_MAX_CHARS = 240
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+_DEFAULT_PHASE_NAMES = frozenset(
+    {
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_commit_cleanup",
+        "development_commit",
+        "development_analysis",
+        "development_final_commit_cleanup",
+        "development_final_commit",
+        "complete",
+        "failed_terminal",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -189,20 +204,77 @@ def execute_agent_effect(
         worker_artifact_dir=cast("Path | None", opts.get("worker_artifact_dir")),
         parallel_worker=cast("bool", opts.get("parallel_worker", False)),
     )
-    return _invoke_agent_with_recovery(
-        ctx,
-        pipeline_deps,
-        bridge=bridge,
-        raw_output_sink=raw_output_sink,
-        rendered_output_sink=rendered_output_sink,
-        run_id=run_id,
-        required_artifact=required_artifact,
-        session_id=session_id,
-        extra_env=extra_env,
-        on_retry_failure=cast("Callable[[list[str]], object] | None", opts.get("on_retry_failure")),
-        raise_resumable_exit=raise_resumable_exit,
-        agent_invocation_error_sink=agent_invocation_error_sink,
-    )
+    invocation_started = time.monotonic()
+    invocation_outcome = "crashed"
+    try:
+        result = _invoke_agent_with_recovery(
+            ctx,
+            pipeline_deps,
+            bridge=bridge,
+            raw_output_sink=raw_output_sink,
+            rendered_output_sink=rendered_output_sink,
+            run_id=run_id,
+            required_artifact=required_artifact,
+            session_id=session_id,
+            extra_env=extra_env,
+            on_retry_failure=cast(
+                "Callable[[list[str]], object] | None", opts.get("on_retry_failure")
+            ),
+            raise_resumable_exit=raise_resumable_exit,
+            agent_invocation_error_sink=agent_invocation_error_sink,
+        )
+        invocation_outcome = "success" if result == PipelineEvent.AGENT_SUCCESS else "failure"
+        return result
+    except KeyboardInterrupt:
+        invocation_outcome = "interrupted"
+        raise
+    finally:
+        _record_agent_invocation_telemetry(
+            effect=effect,
+            agent_transport=agent_config.transport,
+            policy_bundle=policy_bundle,
+            agents_policy=effective_agents_policy,
+            duration_s=max(0.0, time.monotonic() - invocation_started),
+            outcome=invocation_outcome,
+        )
+
+
+def _record_agent_invocation_telemetry(
+    *,
+    effect: InvokeAgentEffect,
+    agent_transport: AgentTransport | None,
+    policy_bundle: PolicyBundle | None,
+    agents_policy: AgentsPolicy,
+    duration_s: float,
+    outcome: str,
+) -> None:
+    """Forward safe logical-invocation dimensions without affecting execution."""
+    try:
+        from ralph.telemetry._sentry import record_agent_invocation
+
+        phase_def = policy_bundle.pipeline.phases.get(str(effect.phase)) if policy_bundle else None
+        drain_config = agents_policy.agent_drains.get(effect.drain or "")
+        record_agent_invocation(
+            transport=agent_transport or AgentTransport.GENERIC,
+            phase_role=(phase_def.role or "execution") if phase_def is not None else "execution",
+            drain=effect.drain,
+            drain_class=drain_config.drain_class if drain_config is not None else None,
+            pipeline_profile=_pipeline_profile(policy_bundle),
+            duration_s=duration_s,
+            outcome=outcome,
+        )
+    except Exception:
+        return
+
+
+def _pipeline_profile(policy_bundle: PolicyBundle | None) -> str:
+    if policy_bundle is None:
+        return "custom"
+    raw_phase_names: object = getattr(policy_bundle.pipeline, "phases", {})
+    if not isinstance(raw_phase_names, dict):
+        return "custom"
+    phase_names = cast("Mapping[object, object]", raw_phase_names)
+    return "default" if all(name in _DEFAULT_PHASE_NAMES for name in phase_names) else "custom"
 
 
 class _RegistryLike(Protocol):
