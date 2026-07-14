@@ -60,6 +60,16 @@ def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
             session_id = parsed.get(key)
             if isinstance(session_id, str) and session_id:
                 return session_id
+    # OpenCode never emits a dedicated session frame: it stamps ``sessionID``
+    # (capital I, capital D -- distinct from the ``sessionId`` above) on EVERY
+    # event. Gating that spelling behind ``_TRANSPORT_JSON_TYPES`` meant the
+    # session was never captured for OpenCode, and the smoke reported "session
+    # ID was not observed" for a run whose every line carried one. The casing is
+    # OpenCode-specific, so accepting it unconditionally cannot shadow another
+    # transport's session key.
+    opencode_session_id = parsed.get("sessionID")
+    if isinstance(opencode_session_id, str) and opencode_session_id:
+        return opencode_session_id
     meta = parsed.get("meta")
     if not isinstance(meta, dict):
         return None

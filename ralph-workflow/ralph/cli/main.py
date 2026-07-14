@@ -38,6 +38,7 @@ from ralph.cli.commands.smoke import (
     smoke_interactive_claude_command,
     smoke_interactive_cursor_command,
     smoke_interactive_nanocoder_command,
+    smoke_interactive_opencode_command,
 )
 from ralph.cli.commands.star import star
 from ralph.config.bootstrap import (
@@ -536,6 +537,8 @@ Side effects:
     roots. ``--diagnose`` prints but does not mutate. ``--version``
     and ``--help`` are read-only.
 """
+
+
 def main(
     ctx: typer.Context,
     prompt: Annotated[
@@ -1194,6 +1197,59 @@ def smoke_interactive_cursor(
 
 
 app.command(name="smoke-interactive-cursor")(smoke_interactive_cursor)
+
+
+def smoke_interactive_opencode(
+    agent: str = typer.Option(
+        "opencode/minimax-coding-plan/MiniMax-M3",
+        help=(
+            "OpenCode alias to smoke, as opencode/<provider>/<model> "
+            "(e.g. opencode/minimax-coding-plan/MiniMax-M3). Run `opencode models` "
+            "to list reachable provider/model pairs."
+        ),
+    ),
+    provider: str | None = typer.Option(
+        None,
+        help=(
+            "OpenCode provider (e.g. minimax-coding-plan). Requires --model; "
+            "together they override --agent."
+        ),
+    ),
+    model: str | None = typer.Option(
+        None,
+        help="OpenCode model (e.g. MiniMax-M3). Requires --provider.",
+    ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
+    """Run the manual smoke test for OpenCode against a live provider/model."""
+    if (provider is None) != (model is None):
+        raise click.UsageError("--provider and --model must be given together")
+    agent_name = f"opencode/{provider}/{model}" if provider is not None else agent
+    raise typer.Exit(
+        code=smoke_interactive_opencode_command(
+            agent_name=agent_name,
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+        )
+    )
+
+
+app.command(name="smoke-interactive-opencode")(smoke_interactive_opencode)
 app.command()(star)
 
 
@@ -1431,7 +1487,9 @@ def _run_pipeline(
         return 1
 
 
-def _configure_logging(verbosity: Verbosity, *, console_sink: Callable[[str], None] | None = None) -> None:
+def _configure_logging(
+    verbosity: Verbosity, *, console_sink: Callable[[str], None] | None = None
+) -> None:
     """Configure logging based on verbosity level.
 
     Args:

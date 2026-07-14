@@ -64,6 +64,9 @@ _NANOCODER_SMOKE_OUTPUT_FILE = _NANOCODER_SMOKE_RELATIVE_DIR / "todo-list.js"
 _NANOCODER_SMOKE_RUN_ID = "interactive-nanocoder-smoke"
 _CURSOR_SMOKE_RELATIVE_DIR = Path("tmp/interactive-cursor-smoke")
 _CURSOR_SMOKE_OUTPUT_FILE = _CURSOR_SMOKE_RELATIVE_DIR / "todo-list.js"
+_OPENCODE_SMOKE_RELATIVE_DIR = Path("tmp/interactive-opencode-smoke")
+_OPENCODE_SMOKE_OUTPUT_FILE = _OPENCODE_SMOKE_RELATIVE_DIR / "todo-list.js"
+_OPENCODE_SMOKE_RUN_ID = "interactive-opencode-smoke"
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,27 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             agent_name=agent_name,
             relative_dir=_CURSOR_SMOKE_RELATIVE_DIR,
             output_file=_CURSOR_SMOKE_OUTPUT_FILE,
+            run_id=run_id,
+        )
+    if agent_name == "opencode" or agent_name.startswith("opencode/"):
+        # ``opencode/<provider>/<model>`` (e.g.
+        # ``opencode/minimax-coding-plan/MiniMax-M3``) carries BOTH the
+        # provider and the model, so one alias selects the full routing
+        # target. The command builder strips the leading ``opencode/`` and
+        # passes ``<provider>/<model>`` to ``opencode run --model``, which is
+        # exactly the ``provider/model`` form the CLI expects. A sanitized
+        # run_id keeps two provider/model smoke runs from colliding on
+        # completion-sentinel / receipt paths.
+        suffix = agent_name.removeprefix("opencode").lstrip("/")
+        if not suffix:
+            run_id = _OPENCODE_SMOKE_RUN_ID
+        else:
+            sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", suffix).strip("-")
+            run_id = f"{_OPENCODE_SMOKE_RUN_ID}-{sanitized}"
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_OPENCODE_SMOKE_RELATIVE_DIR,
+            output_file=_OPENCODE_SMOKE_OUTPUT_FILE,
             run_id=run_id,
         )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")

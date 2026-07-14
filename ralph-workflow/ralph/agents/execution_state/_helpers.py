@@ -137,12 +137,30 @@ def _progress_report_signal(line: str) -> AgentActivitySignal | None:
 
 
 _OPENCODE_CHILD_SPAWN_TYPES = frozenset({"child_started", "child.spawned"})
-_OPENCODE_CHILD_PROGRESS_TYPES = frozenset(
-    {"child_progress", "progress", "tool_call", "writing_artifact"}
-)
-_OPENCODE_CHILD_HEARTBEAT_TYPES = frozenset({"child_heartbeat", "heartbeat"})
+# Names that are child-scoped BY CONSTRUCTION -- the ``child_`` prefix is the
+# scope marker, so no further evidence is needed.
+_OPENCODE_CHILD_PROGRESS_TYPES = frozenset({"child_progress"})
+_OPENCODE_CHILD_HEARTBEAT_TYPES = frozenset({"child_heartbeat"})
 _OPENCODE_CHILD_TERMINAL_TYPES = frozenset({"child_complete", "child_failed", "child.terminal"})
 
+# Ambiguous names: child-scoped ONLY when the event carries an explicit child
+# scope marker. These used to count unconditionally, which is the same
+# false-positive the generic classifier below was hardened against -- a PARENT
+# that emitted one bare ``{"type":"heartbeat"}`` during startup looked like a
+# live subagent and masked the NO_OUTPUT_AT_START kill. A frame that names a
+# child (``{"type":"tool_call","child_id":"child-A"}``) is real child activity;
+# the same frame without one is just a provider frame.
+_OPENCODE_SCOPED_PROGRESS_TYPES = frozenset({"progress", "tool_call", "writing_artifact"})
+_OPENCODE_SCOPED_HEARTBEAT_TYPES = frozenset({"heartbeat"})
+#: Keys whose presence proves an event refers to a child, not the parent.
+_OPENCODE_CHILD_SCOPE_KEYS = ("child_id", "childId", "subagent_id", "subagentId")
+
+#: OpenCode's native subagent dispatch tools. A call to one of these IS a
+#: child-scope signal: it is how OpenCode delegates to a subagent. ``task`` is
+#: the tool the live runtime actually emits (verified against OpenCode 1.17.15
+#: via ``ralph smoke-interactive-opencode --subagents``); the rest are accepted
+#: so a runtime rename does not silently blind the watchdog again.
+_OPENCODE_SUBAGENT_TOOLS = frozenset({"agent", "delegate", "spawn_agent", "subagent", "task"})
 
 _OPENCODE_CHILD_KIND = {  # bounded-accumulator-ok: static
     **dict.fromkeys(_OPENCODE_CHILD_SPAWN_TYPES, AgentActivityKind.CHILD_PROCESS),
@@ -150,6 +168,40 @@ _OPENCODE_CHILD_KIND = {  # bounded-accumulator-ok: static
     **dict.fromkeys(_OPENCODE_CHILD_HEARTBEAT_TYPES, AgentActivityKind.CHILD_HEARTBEAT),
     **dict.fromkeys(_OPENCODE_CHILD_TERMINAL_TYPES, AgentActivityKind.CHILD_TERMINAL_ACK),
 }
+
+#: Top-level OpenCode event names that carry a tool call in ``part``.
+_OPENCODE_TOOL_EVENT_TYPES = frozenset({"tool_use", "tool_result"})
+
+
+def _opencode_tool_signal(obj: dict[str, object], line: str) -> AgentActivitySignal | None:
+    """Classify an OpenCode tool event from its REAL wire shape.
+
+    OpenCode emits ONE terminal event per tool call, with the call and its
+    result both embedded in ``part.state``::
+
+        {"type":"tool_use","part":{"type":"tool","tool":"task","callID":"call_..",
+         "state":{"status":"completed","input":{...},"output":"..."}}}
+
+    A ``task`` (subagent) call is a genuine child-scope signal, so it maps to
+    CHILD_PROGRESS and reaches the watchdog's ``subagent_output`` channel. Every
+    other tool maps to TOOL_USE, which is what ``_tool_activity_seen`` looks
+    for. Before this existed, every OpenCode line -- subagent dispatches
+    included -- fell through to a plain OUTPUT_LINE.
+    """
+    if str(obj.get("type", "")) not in _OPENCODE_TOOL_EVENT_TYPES:
+        return None
+    part = obj.get("part")
+    if not isinstance(part, dict):
+        return None
+    part_obj = cast("dict[str, object]", part)
+    if str(part_obj.get("type", "")) != "tool":
+        return None
+    tool_name = str(part_obj.get("tool", "")).strip()
+    if not tool_name:
+        return None
+    if tool_name.lower() in _OPENCODE_SUBAGENT_TOOLS:
+        return AgentActivitySignal(AgentActivityKind.CHILD_PROGRESS, raw=line)
+    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
 
 
 def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:
@@ -166,9 +218,31 @@ def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:
     obj = cast("dict[str, object]", parsed)
     event_type = str(obj.get("type", ""))
     kind = _OPENCODE_CHILD_KIND.get(event_type)
-    if kind is None:
+    if kind is not None:
+        return AgentActivitySignal(kind, raw=line)
+    scoped_kind = _opencode_scoped_child_kind(obj, event_type)
+    if scoped_kind is not None:
+        return AgentActivitySignal(scoped_kind, raw=line)
+    return _opencode_tool_signal(obj, line)
+
+
+def _opencode_scoped_child_kind(
+    obj: dict[str, object],
+    event_type: str,
+) -> AgentActivityKind | None:
+    """Classify an ambiguous event name, but ONLY when it names a child.
+
+    ``{"type":"tool_call","child_id":"child-A"}`` is child activity;
+    ``{"type":"tool_call"}`` on its own is a parent-level provider frame and
+    must NOT be read as proof that a subagent is alive.
+    """
+    if event_type not in _OPENCODE_SCOPED_PROGRESS_TYPES | _OPENCODE_SCOPED_HEARTBEAT_TYPES:
         return None
-    return AgentActivitySignal(kind, raw=line)
+    if not any(obj.get(key) for key in _OPENCODE_CHILD_SCOPE_KEYS):
+        return None
+    if event_type in _OPENCODE_SCOPED_HEARTBEAT_TYPES:
+        return AgentActivityKind.CHILD_HEARTBEAT
+    return AgentActivityKind.CHILD_PROGRESS
 
 
 # Cross-transport generic child-signal classifier.

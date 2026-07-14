@@ -674,3 +674,70 @@ def smoke_interactive_cursor_command(
         subagents=subagents,
         subagent_prompt_file=subagent_prompt_file,
     )
+
+
+def smoke_interactive_opencode_command(
+    agent_name: str = "opencode/minimax-coding-plan/MiniMax-M3",
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
+) -> int:
+    """Run the manual smoke harness against a live ``opencode`` provider/model.
+
+    The alias carries BOTH the provider and the model
+    (``opencode/<provider>/<model>``), so one ``--agent`` value selects the
+    full routing target -- e.g.
+    ``--agent 'opencode/minimax-coding-plan/MiniMax-M3'`` or
+    ``--agent 'opencode/kimi-for-coding/k2p5'``. Run ``opencode models`` to
+    list the provider/model pairs your credentials can reach. The command
+    builder strips the leading ``opencode/`` and passes ``<provider>/<model>``
+    to ``opencode run --model``.
+
+    Pair with ``--subagents`` to drive the native subagent (``task``) tool and
+    assert the full dispatch -> result -> post-subagent-activity lifecycle is
+    visible to the parser. That lifecycle is what feeds the idle watchdog's
+    ``subagent_output`` channel; a parser that cannot see subagent progress
+    leaves the watchdog blind while a subagent works.
+
+    Like the other smoke commands this consumes live tokens and is therefore
+    OUTSIDE ``make verify``; it only runs when an operator invokes it.
+    """
+    if shutil.which("opencode") is None:
+        logger.error(
+            "opencode binary not found. Install OpenCode and ensure `opencode` is on PATH."
+        )
+        return 2
+
+    workspace_scope = resolve_workspace_scope()
+    config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    registry = AgentRegistry.from_config(config)
+    agent_config = registry.get(agent_name)
+    if agent_config is None:
+        logger.error(
+            "Agent '{}' is not available. Use --agent with an "
+            "opencode/<provider>/<model> alias, e.g. "
+            "--agent 'opencode/minimax-coding-plan/MiniMax-M3'. "
+            "Run `opencode models` to list reachable provider/model pairs.",
+            agent_name,
+        )
+        return 2
+    if agent_config.transport is None or agent_config.transport != AgentTransport.OPENCODE:
+        logger.error(
+            "Agent '{}' resolves to transport '{}', not OPENCODE. "
+            "Use --agent with an opencode/<provider>/<model> alias.",
+            agent_name,
+            agent_config.transport.value if agent_config.transport else "None",
+        )
+        return 2
+
+    return smoke_harness_agent_command(
+        agent_name,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
+    )

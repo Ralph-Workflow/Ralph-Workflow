@@ -141,6 +141,15 @@ class _OpenCodeDispatch:
 
         status = str(state_obj.get("status", ""))
         if status == "completed":
+            # OpenCode collapses the call and its result into ONE terminal
+            # event, so a completed tool carries BOTH. Emitting only the
+            # ``tool_result`` erased the dispatch: consumers that count
+            # dispatches by ``type == "tool_use"`` (e.g.
+            # ``_subagent_smoke_evidence``) saw zero, and a real ``task``
+            # subagent run was reported as "subagent dispatch was not
+            # observed". Surface the dispatch first, then the result, so the
+            # ordered dispatch -> result -> post-activity lifecycle holds.
+            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
             output = state_obj.get("output", "")
             yield AgentOutputLine(
                 type="tool_result",
