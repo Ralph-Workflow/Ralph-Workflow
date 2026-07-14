@@ -33,15 +33,7 @@ agent spawn an arbitrary subprocess. It enforces:
 
 - A mandatory capability check (default-deny if the session does not
   declare ``ProcessExecBounded``).
-- A static blacklist (applied per pipeline segment for shell commands)
-  covering privilege escalation (``sudo``, ``su``,
-  ``doas``, ``pkexec``, ``runuser``), destructive system commands
-  (``shutdown``, ``reboot``, ``halt``, ``poweroff``, ``killall``), network
-  tunnel and remote-network tools (``nc``, ``ncat``, ``netcat``,
-  ``socat``, ``ssh``, ``scp``, ``rsync``), container / namespace
-  escapes (``docker``, ``podman``, ``chroot``, ``nsenter``, ``unshare``),
-  and version control commands (``git``, ``hg``, ``svn`` — reads go through
-  the ``git_*`` tools, writes through the pipeline's commit phase).
+- A static blacklist applied to every shell pipeline segment.
 - A bounded per-call timeout (``timeout_ms`` capped at
   ``EXEC_MAX_TIMEOUT_MS``); a non-positive or missing value is clamped
   to the default so a direct caller can never produce an unbounded
@@ -65,7 +57,7 @@ import shlex
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -933,26 +925,8 @@ def handle_exec_command(
         summary=summary,
         stdout_text=stdout_text,
         stderr_text=stderr_text,
-        exec_resource_resolver=_resolve_exec_resolver(session),
+        exec_resource_resolver=cast("object | None", getattr(session, "exec_resource_resolver", None)),
     )
-
-
-def _resolve_exec_resolver(session: object) -> object | None:
-    """Read the session's exec resource resolver attribute (or ``None``).
-
-    The attribute is typed as the
-    :class:`ralph.mcp.tools._exec_resource_protocol.ExecResourceResolverLike`
-    protocol on the production session classes; the helper returns
-    ``object | None`` to keep the surrounding ``format_or_spill``
-    signature narrow without importing the protocol at module
-    load time.
-    """
-    # The local annotation is intentionally ``Any | None`` so the
-    # surrounding ``format_or_spill`` keeps its broad ``object | None``
-    # parameter type. The helper is internal; callers that need
-    # the protocol type import it directly.
-    result: object | None = getattr(session, "exec_resource_resolver", None)
-    return result
 
 
 __all__ = [

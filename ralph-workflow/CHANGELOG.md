@@ -43,6 +43,8 @@ and open a fresh `[Unreleased]`.
 
 ### Fixed
 
+- **fix(telemetry): keep one random user identity across terminal-specific XDG environments and add queryable session timing plus safe logical-agent, pipeline-profile, and drain-class metrics** — pinned by `tests/test_telemetry_user_identity.py` and `tests/test_telemetry_sentry.py`.
+
 - **fix(claude-interactive): preserve structured transcript envelopes so parallel tool results retain their tool identity and inputs, repeated session IDs stay suppressed, and result labels render once** — regression-guarded by `tests/test_claude_interactive_parser.py` and `tests/test_pty_transcript_tool_result.py`.
 
 - **fix(policy): repair dead/stale research-citation URLs in bundled project-policy starters and add the policy-citation-linkcheck gate + offline citation-structure guard** -- pinned by `tests/project_policy/test_starters.py::test_starter_citations_are_structurally_valid`. Replaces 11 non-resolving URLs across 8 starter files (clean-code-policy.md, dependency-policy.md x2, linting-policy.md, memory-usage-policy.md x2, testing-policy.md, typechecking-policy.md x2, ux-policy.md, verification-policy.md) with primary sources verified to return HTTP 200 directly; adds `make policy-citation-linkcheck` (on-demand gate reusing `scripts/check_route_page_links.py`) and an offline pytest guard that asserts every citation block carries publisher/title/review-date fields, an https URL with a non-empty host, and an ISO `YYYY-MM-DD` review date.

@@ -24,6 +24,7 @@ import sentry_sdk
 import sentry_sdk.metrics as sentry_metrics
 
 from ralph import __version__ as ralph_version
+from ralph.config.agent_transport import AgentTransport
 from ralph.platform.detection import current_platform
 from ralph.policy.models._types import PhaseRole
 from ralph.runtime._version_info import PythonVersionInfo
@@ -49,7 +50,9 @@ _EXTRA_SCRUB_PREFIXES: tuple[str, ...] = ()
 # Module-level scalars only (no list/dict/set/deque). Populated by the
 # lifecycle functions; consumed by finalize_session.
 _SESSION_STARTED_AT: float | None = None
+_SESSION_STARTED_AT_UTC: datetime | None = None
 _SESSION_OUTCOME: str = "unknown"
+_SESSION_FINALIZED: bool = False
 _INITIALIZED: bool = False
 _SESSION_TRANSACTION: object | None = None
 
@@ -58,6 +61,31 @@ _SESSION_TRANSACTION: object | None = None
 # keys exclusively on these values; raw phase names are never forwarded.
 _PHASE_ROLES: frozenset[str] = frozenset(cast("tuple[str, ...]", get_args(PhaseRole)))
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
+_AGENT_FAMILY_BY_TRANSPORT: dict[str, str] = {
+    AgentTransport.CLAUDE.value: "claude",
+    AgentTransport.CLAUDE_INTERACTIVE.value: "claude_interactive",
+    AgentTransport.CODEX.value: "codex",
+    AgentTransport.OPENCODE.value: "opencode",
+    AgentTransport.NANOCODER.value: "nanocoder",
+    AgentTransport.AGY.value: "agy",
+    AgentTransport.PI.value: "pi",
+    AgentTransport.CURSOR.value: "cursor",
+    AgentTransport.GENERIC.value: "custom",
+}
+_SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
+    {
+        "planning",
+        "development",
+        "development_analysis",
+        "planning_analysis",
+        "development_commit",
+        "analysis",
+        "commit",
+        "policy_remediation",
+        "policy_remediation_analysis",
+    }
+)
+_AGENT_STATS_MAX_KEYS = 128
 
 # Aggregate phase statistics across the whole pipeline run. Keyed by PhaseRole,
 # drained at session finalize. Bounded by the 8-value closed vocabulary above
@@ -65,6 +93,9 @@ _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "c
 _PHASE_STATS: dict[str, dict[str, object]] = (
     {}
 )  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
+
+# bounded-accumulator-ok: bounded by _AGENT_STATS_MAX_KEYS; drained at session finalize
+_AGENT_STATS: dict[str, dict[str, object]] = {}
 
 # Coarse UTC time-of-day buckets captured once at session start for aggregate
 # ``when`` analytics. ``None`` until set_session_wallclock_start() runs; the
@@ -432,17 +463,27 @@ def set_environment_context() -> None:
         pass
 
 
-def record_session_start(now: float | None = None) -> None:
+def _format_utc_timestamp(value: datetime) -> str:
+    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return normalized.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def record_session_start(
+    now: float | None = None,
+    now_dt: datetime | None = None,
+) -> None:
     """Record the monotonic-clock session start time.
 
     Tests inject ``now=<float>`` for determinism (audit_test_policy forbids
     ``time.monotonic()`` in test files). Production code passes ``now=None``
     so the call resolves to ``time.monotonic()`` at runtime.
     """
-    global _SESSION_STARTED_AT, _SESSION_TRANSACTION  # noqa: PLW0603
+    global _SESSION_FINALIZED, _SESSION_STARTED_AT, _SESSION_STARTED_AT_UTC, _SESSION_TRANSACTION  # noqa: PLW0603
     if now is None:
         now = time.monotonic()
     _SESSION_STARTED_AT = float(now)
+    _SESSION_STARTED_AT_UTC = now_dt if now_dt is not None else datetime.now(UTC)
+    _SESSION_FINALIZED = False
     if _telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
@@ -457,6 +498,8 @@ def record_session_start(now: float | None = None) -> None:
         message="session start",
         data={"event": "start"},
     )
+    with contextlib.suppress(Exception):
+        sentry_sdk.capture_message("session start", level="info")
 
 
 def set_session_outcome(outcome: str) -> None:
@@ -575,6 +618,60 @@ def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
         )
 
 
+def record_agent_invocation(
+    *,
+    transport: AgentTransport | str,
+    phase_role: str,
+    drain: str | None,
+    drain_class: str | None,
+    pipeline_profile: str,
+    duration_s: float,
+    outcome: str,
+) -> None:
+    """Record one logical agent invocation using only bounded dimensions.
+
+    Agent names and custom policy identifiers are deliberately absent from the
+    payload. The resolved transport, closed phase role, allowlisted bundled
+    drain name, and custom/default pipeline profile provide useful attribution
+    without forwarding user-authored labels.
+    """
+    if _telemetry_is_inactive():
+        return
+    transport_value = transport.value if isinstance(transport, AgentTransport) else str(transport)
+    attributes: dict[str, object] = {
+        "agent_family": _AGENT_FAMILY_BY_TRANSPORT.get(transport_value, "custom"),
+        "transport": transport_value if transport_value in _AGENT_FAMILY_BY_TRANSPORT else "generic",
+        "pipeline_profile": pipeline_profile if pipeline_profile in {"default", "custom"} else "custom",
+        "phase_role": phase_role if phase_role in _PHASE_ROLES else "unknown",
+        "drain": drain if drain in _SAFE_DRAIN_NAMES else "custom",
+        "drain_class": drain_class if drain_class in _PHASE_ROLES else "unknown",
+        "outcome": outcome if outcome in {"success", "failure", "interrupted", "crashed"} else "crashed",
+    }
+    with contextlib.suppress(Exception):
+        _metric_count("ralph.agent.invocation", 1.0, attributes=attributes)
+        _metric_distribution(
+            "ralph.agent.duration",
+            max(0.0, float(duration_s)),
+            unit="second",
+            attributes=attributes,
+        )
+        key = "|".join(str(attributes[field]) for field in attributes)
+        if key not in _AGENT_STATS and len(_AGENT_STATS) >= _AGENT_STATS_MAX_KEYS:
+            key = "overflow"
+        slot = _AGENT_STATS.setdefault(key, {"count": 0, "duration_s": 0.0})
+        count_raw = slot.get("count", 0)
+        duration_raw = slot.get("duration_s", 0.0)
+        if not isinstance(count_raw, int) or not isinstance(duration_raw, float | int):
+            return
+        slot["count"] = count_raw + 1
+        slot["duration_s"] = duration_raw + max(0.0, float(duration_s))
+        _add_breadcrumb(
+            category="ralph.agent",
+            message="agent invocation",
+            data=attributes,
+        )
+
+
 def flush_telemetry(timeout: float = 2.0) -> None:
     """Bounded, fail-soft Sentry flush."""
     with contextlib.suppress(Exception):
@@ -583,6 +680,7 @@ def flush_telemetry(timeout: float = 2.0) -> None:
 
 def finalize_session(
     now: float | None = None,
+    end_dt: datetime | None = None,
     flush_timeout: float = 2.0,
 ) -> float | None:
     """Emit the session-end context + message and flush. Returns the duration in seconds.
@@ -597,13 +695,15 @@ def finalize_session(
     values are process-local: they are meaningful only inside this
     process instance and leak no real-world clock information.
     """
-    global _SESSION_TRANSACTION  # noqa: PLW0603
-    if not _INITIALIZED or _SESSION_STARTED_AT is None:
+    global _SESSION_FINALIZED, _SESSION_TRANSACTION  # noqa: PLW0603
+    if not _INITIALIZED or _SESSION_STARTED_AT is None or _SESSION_FINALIZED:
         return None
 
     started = _SESSION_STARTED_AT
     end_clock = time.monotonic() if now is None else float(now)
     duration = max(0.0, end_clock - started)
+    ended_at_utc = end_dt if end_dt is not None else datetime.now(UTC)
+    _SESSION_FINALIZED = True
 
     try:
         session_payload: dict[str, object] = {
@@ -612,11 +712,18 @@ def finalize_session(
             "ended_monotonic_s": end_clock,
             "outcome": _SESSION_OUTCOME,
         }
+        if _SESSION_STARTED_AT_UTC is not None:
+            session_payload["started_at_utc"] = _format_utc_timestamp(_SESSION_STARTED_AT_UTC)
+        session_payload["ended_at_utc"] = _format_utc_timestamp(ended_at_utc)
         if _SESSION_WALLCLOCK_BUCKETS is not None:
             session_payload["wallclock"] = dict(_SESSION_WALLCLOCK_BUCKETS)
         if _PHASE_STATS:
             session_payload["phases"] = {
                 role: dict(stats) for role, stats in _PHASE_STATS.items()
+            }
+        if _AGENT_STATS:
+            session_payload["agent_invocations"] = {
+                key: dict(stats) for key, stats in _AGENT_STATS.items()
             }
         sentry_sdk.set_context("session", session_payload)
         attributes = {"outcome": _SESSION_OUTCOME}
@@ -643,5 +750,6 @@ def finalize_session(
     # Drain aggregates AFTER the snapshot is sent so a subsequent session can
     # reuse the module-level accumulators safely (bounded-accumulator-ok).
     _PHASE_STATS.clear()
+    _AGENT_STATS.clear()
     _SESSION_TRANSACTION = None
     return duration

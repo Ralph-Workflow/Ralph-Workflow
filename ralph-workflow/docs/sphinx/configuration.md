@@ -143,6 +143,13 @@ These timeout variables are set by the test harness; they do **not** extend the 
 
 The main config file is `~/.config/ralph-workflow.toml`, with optional project-level overrides in `.agent/ralph-workflow.toml`.
 
+Telemetry identity is stored separately at `~/.config/ralph-workflow-user.ini`.
+That path is intentionally independent of `XDG_CONFIG_HOME`, so terminal
+applications that use different XDG environments still share one persistent
+random identifier. If an older `$XDG_CONFIG_HOME/ralph-workflow-user.ini`
+exists, Ralph Workflow migrates its valid identifier to the canonical path on
+first use. The file contains no name, email, host, repository, or prompt data.
+
 ### `[general]`
 
 Core workflow settings: verbosity, git identity, retry behavior, and liveness limits. See `ralph/policy/defaults/ralph-workflow.toml` for the canonical defaults and inline `# comment` lines documenting the semantics of each key.
