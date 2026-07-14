@@ -735,6 +735,48 @@ def _classify_claude_prefixed_line(stripped: str) -> AgentActivitySignal | None:
     return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=stripped)
 
 
+#: Claude's native subagent dispatch tool. A ``Task`` call is a child-scope
+#: signal: it is how Claude delegates to a subagent.
+_CLAUDE_SUBAGENT_TOOLS = frozenset({"task"})
+
+
+def _claude_nested_tool_kind(obj: dict[str, object]) -> AgentActivityKind | None:
+    """Classify a tool call nested inside a Claude ``assistant`` message.
+
+    Claude's ``--output-format=stream-json`` does NOT put the tool call at the
+    top level; it nests it in ``message.content[]``::
+
+        {"type":"assistant","message":{"content":[
+            {"type":"tool_use","name":"Task", ...}]}}
+
+    Matching only a TOP-LEVEL ``{"type":"tool_use"}`` meant every real Claude
+    tool call -- ``Task`` subagent dispatches included -- fell through to
+    OUTPUT_LINE. A ``Task`` call maps to CHILD_PROGRESS so it reaches the
+    watchdog's ``subagent_output`` channel: that is the signal that tells the
+    watchdog a subagent is doing work, and without it a live subagent looks
+    like a dead one.
+    """
+    message = obj.get("message")
+    if not isinstance(message, dict):
+        return None
+    content = cast("dict[str, object]", message).get("content")
+    if not isinstance(content, list):
+        return None
+    for block in cast("list[object]", content):
+        if not isinstance(block, dict):
+            continue
+        block_obj = cast("dict[str, object]", block)
+        block_type = str(block_obj.get("type", ""))
+        if block_type == "tool_use":
+            tool_name = str(block_obj.get("name", "")).strip().lower()
+            if tool_name in _CLAUDE_SUBAGENT_TOOLS:
+                return AgentActivityKind.CHILD_PROGRESS
+            return AgentActivityKind.TOOL_USE
+        if block_type == "tool_result":
+            return AgentActivityKind.TOOL_RESULT
+    return None
+
+
 def _classify_claude_json_object(
     obj: dict[str, object],
     raw: str,
@@ -744,6 +786,11 @@ def _classify_claude_json_object(
         return _classify_claude_json_object(cast("dict[str, object]", event_obj), raw)
 
     event_type = str(obj.get("type", ""))
+    if event_type in {"assistant", "user"}:
+        nested_kind = _claude_nested_tool_kind(obj)
+        if nested_kind is not None:
+            return AgentActivitySignal(nested_kind, raw=raw)
+
     kind = _claude_activity_kind_for_event(event_type, obj)
     return AgentActivitySignal(kind, raw=raw)
 
