@@ -122,6 +122,27 @@ class _HelpersOnlyMonitor(ProcessMonitor):
         return self.outputs
 
 
+@dataclass
+class _LiveSubagentMonitor(_HelpersOnlyMonitor):
+    """ProcessMonitor fake reporting ONE genuinely live subagent.
+
+    ``live_subagent_count() == 1`` makes the watchdog stamp the
+    ``subagent_liveness`` channel fresh with ``can_defer=True``, so the
+    StuckClassifier defers via the LOADING branch (branch 4).
+
+    These tests exercise the log-throttle machinery, not the fire/defer
+    policy. They previously reached a deferral via SILENT_SUBAGENT (which
+    required ZERO live subagents), but the gate now FIRES on that kind --
+    a silent subagent with no live child is a dead agent, and deferring it
+    wedged the run forever (see ``test_silent_subagent_fires.py``).
+    LOADING is a real deferral backed by a real live child, so the
+    throttle proof still holds end-to-end through ``evaluate()``.
+    """
+
+    def live_subagent_count(self) -> int:
+        return 1
+
+
 def _stale_subagent_corroborator() -> CorroborationSnapshot:
     """Corroborator that reports a stuck-but-alive child.
 
@@ -230,7 +251,7 @@ def _build_deferred_fire_watchdog(
         # Disable freshness deferrals so the classifier cannot
         # short-circuit to THINKING/LOADING and the SILENT_SUBAGENT
         # branch is the only non-STUCK branch reachable.
-        activity_evidence_ttl_seconds=0.0,
+        activity_evidence_ttl_seconds=10_000.0,
         # SILENT_SUBAGENT branch threshold.
         silent_subagent_seconds=silent_subagent_seconds,
         # Cadence gates closed during the 1000-call cycle so the
@@ -244,7 +265,7 @@ def _build_deferred_fire_watchdog(
         clock=clock,
         listener=listener,
         corroborator=_stale_subagent_corroborator,
-        process_monitor=_HelpersOnlyMonitor(),
+        process_monitor=_LiveSubagentMonitor(),
     )
 
 
@@ -387,7 +408,7 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # from the PUBLIC loguru sink filtered on
     # ``component='idle_watchdog'``.
     deferred_fire_records = [
-        r for r in log_records if "silent subagent" in r and "children_persist_too_long" in r
+        r for r in log_records if "deferred fire" in r and "children_persist_too_long" in r
     ]
     assert len(deferred_fire_records) <= 2, (
         f"R6 deferred-fire spam regression: got"
@@ -408,7 +429,7 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
         f"loguru sink filtered on component='idle_watchdog' MUST"
         f" capture the deferred-fire DEBUG log emitted at"
         f" _gate.py:174; got {len(deferred_fire_records)} records"
-        f" matching 'silent subagent' + 'children_persist_too_long'"
+        f" matching 'deferred fire' + 'children_persist_too_long'"
         f" (a zero-sink bypass means the bound is meaningless)."
     )
 
@@ -416,9 +437,9 @@ def test_log_spam_throttle_public_surface_reaches_deferred_fire_branch(
     # surface shows the classifier-kind label -- operators can
     # see WHY a would-be fire was deferred via the public
     # property (no setattr / no private read required).
-    assert watchdog.last_deferred_kind == StuckKind.SILENT_SUBAGENT, (
-        f"watchdog.last_deferred_kind (PUBLIC property) MUST be"
-        f" SILENT_SUBAGENT after 1000 deferred-fire cycles; got"
+    assert watchdog.last_deferred_kind in (StuckKind.THINKING, StuckKind.LOADING), (
+        f"watchdog.last_deferred_kind (PUBLIC property) MUST report the"
+        f" deferring kind after 1000 deferred-fire cycles; got"
         f" {watchdog.last_deferred_kind!r}"
     )
 
@@ -521,7 +542,7 @@ def test_log_spam_throttle_public_surface_deferred_fire_throttle_window(
         watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
     deferred_fire_records = [
-        r for r in log_records if "silent subagent" in r and "children_persist_too_long" in r
+        r for r in log_records if "deferred fire" in r and "children_persist_too_long" in r
     ]
     assert len(deferred_fire_records) <= 3, (
         f"R6 throttle window 0.05s produced too many deferred-fire"
@@ -657,7 +678,7 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
     deferred_fire_records = [
         r
         for r in log_records
-        if (("silent subagent" in r or "deferred fire" in r) and "children_persist_too_long" in r)
+        if (("deferred fire" in r or "deferred fire" in r) and "children_persist_too_long" in r)
     ]
     assert len(deferred_fire_records) <= 2, (
         f"R6 coarse single-key throttle MUST cap emissions across"
@@ -689,12 +710,13 @@ def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
     # evaluate(); the classifier returned DUPLICATE_KILL on that
     # last call.
     assert watchdog.last_deferred_kind in (
-        StuckKind.SILENT_SUBAGENT,
+        StuckKind.THINKING,
+        StuckKind.LOADING,
         StuckKind.DUPLICATE_KILL,
     ), (
-        f"watchdog.last_deferred_kind (PUBLIC property) MUST be"
-        f" SILENT_SUBAGENT or DUPLICATE_KILL after 1000 cycle"
-        f" iterations; got {watchdog.last_deferred_kind!r}"
+        f"watchdog.last_deferred_kind (PUBLIC property) MUST report a"
+        f" deferring kind after 1000 cycle iterations; got"
+        f" {watchdog.last_deferred_kind!r}"
     )
 
     # ASSERTION 4: PROGRESS-kind WaitingStatusEvent emissions are

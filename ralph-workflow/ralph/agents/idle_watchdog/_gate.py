@@ -145,43 +145,37 @@ def gate_fire(
     )
     if kind == StuckKind.STUCK:
         return WatchdogVerdict.FIRE
-    # Diagnostic-only kind (SILENT_SUBAGENT) gets its OWN
-    # ``_last_fire_reason`` label so operators can see WHY a
-    # would-be fire was deferred ("a subagent dispatched then went
-    # silent for >180s").  Without this branch, every non-STUCK
-    # deferral collapses to ``DEFERRED_BY_STUCK_CLASSIFIER`` and
-    # the SILENT_SUBAGENT diagnostic is invisible at the
-    # ``last_fire_reason`` surface.  See AC-05 + analysis
-    # feedback for the runtime contract.
+    # SILENT_SUBAGENT is a LABEL, never a veto.
+    #
+    # The branch matches a STRICT SUBSET of the STUCK conditions: a
+    # subagent spoke at least once, then went silent for longer than
+    # ``silent_subagent_seconds``, with NO live-child signal
+    # (``_silent_subagent_path`` requires ``alive_by is None``), no
+    # fresh first-party evidence, and ``classify_quiet`` ACTIVE. That
+    # IS a dead agent. Because the classifier checks it BEFORE the
+    # STUCK fall-through, treating it as non-FIRE made it SHADOW
+    # STUCK and inverted the watchdog's liveness: 60s of silence
+    # fired, but anything past the 180s threshold deferred forever
+    # (the gate's only bypass, SESSION_CEILING_EXCEEDED, is driven by
+    # ``max_session_seconds`` which defaults to None). A run that had
+    # ever dispatched a subagent became permanently un-killable.
+    #
+    # Deferral is only safe when a child may be alive -- and in that
+    # case the corroborator sets ``alive_by`` and the higher-priority
+    # LOADING branch wins before this one is ever reached. So the gate
+    # FIRES here. The diagnostic survives via this log line and the
+    # real ``_last_fire_reason`` the caller stamps after the FIRE.
+    #
+    # Liveness invariant, pinned by
+    # ``tests/agents/idle_watchdog/test_silent_subagent_fires.py``:
+    # no classifier kind may defer a fire unboundedly.
     if kind == StuckKind.SILENT_SUBAGENT:
-        self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
-        self._last_deferred_kind = kind
-        # Coarse single-key throttle: caps emissions to one DEBUG
-        # record per ``watchdog_log_throttle_seconds`` per fire_reason
-        # regardless of how the deferred_kind cycles (e.g.
-        # SILENT_SUBAGENT -> DUPLICATE_KILL -> SILENT_SUBAGENT, the
-        # kind-cycle scenario pinned by
-        # ``test_log_spam_throttle_public_surface_kind_cycle_via_public_surface``).
-        # The PROMPT's observed spam was IDENTICAL SILENT_SUBAGENT
-        # messages (the per-tuple throttle handles that case); the
-        # coarse throttle is the defense for hypothetical regressions
-        # that cause the deferred_kind to cycle, where the per-tuple
-        # throttle would MISS because the key changes on every call.
-        # The per-tuple throttle (``_maybe_log_deferred``) is
-        # consulted FIRST so the kind label is preserved in the
-        # ``_last_deferred_log_at`` map; the coarse throttle ONLY
-        # suppresses the duplicate emission when the per-tuple key
-        # has already been logged within the throttle window.
-        coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)
-        if coarse_allowed and self._maybe_log_deferred(
-            fire_reason, kind, idle_elapsed, now
-        ):
-            self._log.debug(
-                "idle watchdog: silent subagent (deferred) reason={} idle_elapsed={}s",
-                fire_reason,
-                round(idle_elapsed, 1),
-            )
-        return WatchdogVerdict.CONTINUE
+        self._log.info(
+            "idle watchdog: silent subagent (firing) reason={} idle_elapsed={}s",
+            fire_reason,
+            round(idle_elapsed, 1),
+        )
+        return WatchdogVerdict.FIRE
     self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
     self._last_deferred_kind = kind
     coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)

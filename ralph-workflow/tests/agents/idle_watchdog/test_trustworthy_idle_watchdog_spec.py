@@ -771,11 +771,18 @@ class TestTrustworthyIdleWatchdogSpec:
                 clock=clock,
             )
 
-            # (b) Force ``_classify_stuck_now`` to cycle SILENT_SUBAGENT
+            # (b) Force ``_classify_stuck_now`` to cycle DUPLICATE_KILL
             # <-> LOADING on every call so the per-tuple throttle key
             # changes every tick. The COARSE throttle (the headline
             # R6 fix) caps emissions regardless.
-            cycle = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
+            #
+            # R6 is about LOG THROTTLING, not fire/defer policy: it needs
+            # any two kinds the gate DEFERS on. It used to cycle
+            # SILENT_SUBAGENT, which the gate now FIRES on (a silent
+            # subagent with no live child is a dead agent -- see
+            # ``test_silent_subagent_fires.py``). DUPLICATE_KILL still
+            # defers, so the throttle proof is unchanged.
+            cycle = [StuckKind.DUPLICATE_KILL, StuckKind.LOADING]
             call_log: list[StuckKind] = []
 
             def _stuck_now(
@@ -784,7 +791,7 @@ class TestTrustworthyIdleWatchdogSpec:
                 idle_elapsed: float,
                 corroboration: CorroborationSnapshot | None = None,
             ) -> StuckKind:
-                kind = call_log[0] if call_log else StuckKind.SILENT_SUBAGENT
+                kind = call_log[0] if call_log else StuckKind.DUPLICATE_KILL
                 return kind
 
             # ``setattr`` with attribute name in a local variable

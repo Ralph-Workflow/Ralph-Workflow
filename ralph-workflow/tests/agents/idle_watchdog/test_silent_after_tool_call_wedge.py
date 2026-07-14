@@ -24,7 +24,6 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
-from ralph.agents.idle_watchdog._stuck_classifier import StuckKind
 from ralph.agents.timeout_clock import FakeClock
 
 _IDLE_TIMEOUT_SECONDS = 300.0
@@ -112,16 +111,20 @@ def test_single_mcp_tool_call_then_quiet_with_fresh_corroborator_does_not_fire()
     assert watchdog.last_fire_reason is None
 
 
-def test_subagent_silence_with_stale_corroborator_defers_via_silent_subagent() -> None:
-    """Stale subagent evidence + stale corroborator defers via SILENT_SUBAGENT.
+def test_subagent_silence_with_stale_corroborator_fires() -> None:
+    """Stale subagent evidence + STALE corroborator MUST fire, not defer.
 
     We record one subagent progress observation and one MCP tool-call at
-    t=0, then let both channels go stale.  The corroborator reports a stale
-    alive-by signal.  By t=240 the subagent channel is past
-    ``silent_subagent_seconds`` (180s), so the smart-verdict gate MUST defer
-    the would-be ``NO_OUTPUT_AT_START`` fire with
-    ``last_deferred_kind == StuckKind.SILENT_SUBAGENT`` and
-    ``last_fire_reason == DEFERRED_BY_STUCK_CLASSIFIER``.
+    t=0, then let both channels go stale. The corroborator reports
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS``: a child process still EXISTS but
+    has made no progress. That is a wedge, not work.
+
+    This test previously asserted CONTINUE -- it encoded the production hang
+    as correct behavior. A stale alive-by is explicitly NOT a deferring
+    signal (``can_defer=False``; see ``_subagent_liveness_fresh``), and with
+    no no-progress ceiling configured the run deferred forever. The gate MUST
+    fire. A genuinely working child keeps the liveness channel fresh with
+    ``can_defer=True`` and defers earlier via LOADING (branch 4).
     """
 
     def _stale_corroborator() -> CorroborationSnapshot:
@@ -139,10 +142,9 @@ def test_subagent_silence_with_stale_corroborator_defers_via_silent_subagent() -
 
     clock.advance(240.0)
     verdict = watchdog.evaluate(classify_quiet=_active)
-    assert verdict == WatchdogVerdict.CONTINUE, f"expected CONTINUE at t=240; got {verdict}"
-    assert watchdog.last_deferred_kind == StuckKind.SILENT_SUBAGENT, (
-        f"expected SILENT_SUBAGENT deferral; got {watchdog.last_deferred_kind}"
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"expected FIRE at t=240 (stale child, silent parent); got {verdict}"
     )
-    assert watchdog.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER, (
-        f"expected DEFERRED_BY_STUCK_CLASSIFIER; got {watchdog.last_fire_reason}"
+    assert watchdog.last_fire_reason != WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER, (
+        "a stale-progress child must not defer the fire indefinitely"
     )

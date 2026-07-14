@@ -85,8 +85,16 @@ def _make_watchdog(throttle_seconds: float = 30.0) -> tuple[IdleWatchdog, FakeCl
     )
 
 
-def _patch_classifier_to_silent_subagent(watchdog: IdleWatchdog) -> None:
-    """Force ``_classify_stuck_now`` to return ``StuckKind.SILENT_SUBAGENT``.
+def _patch_classifier_to_deferring_kind(watchdog: IdleWatchdog) -> None:
+    """Force ``_classify_stuck_now`` to return a kind that DEFERS.
+
+    ``LOADING`` (a live child is starting up / working) is a genuine
+    deferring kind. These tests exercise the log-throttle machinery, not
+    the fire/defer policy, so they need any kind the gate defers on.
+
+    They previously used ``SILENT_SUBAGENT``, which the gate now FIRES on
+    (see ``test_silent_subagent_fires.py``): a silent subagent with no live
+    child is a dead agent, and deferring it wedged the run forever.
 
     The classifier is pure and consults watchdog state; monkey-patching
     it directly is the cleanest deterministic seam for this test.
@@ -98,7 +106,7 @@ def _patch_classifier_to_silent_subagent(watchdog: IdleWatchdog) -> None:
         idle_elapsed: float,
         corroboration: CorroborationSnapshot | None = None,
     ) -> StuckKind:
-        return StuckKind.SILENT_SUBAGENT
+        return StuckKind.LOADING
 
     # Use ``setattr`` with the attribute name held in a local
     # variable so mypy cannot narrow the access to a private-method
@@ -121,9 +129,9 @@ def test_gate_fire_throttles_identical_deferred_emission(
     """
     _buf, records = captured_debug_records
     watchdog, clock = _make_watchdog(throttle_seconds=30.0)
-    _patch_classifier_to_silent_subagent(watchdog)
+    _patch_classifier_to_deferring_kind(watchdog)
     # SESSION_CEILING_EXCEEDED bypasses the gate; use a normal gated
-    # reason so the SILENT_SUBAGENT branch fires.
+    # reason so the deferral branch is reached.
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
     for _ in range(1000):
         verdict = watchdog._gate_fire(
@@ -134,7 +142,7 @@ def test_gate_fire_throttles_identical_deferred_emission(
         )
         assert verdict == WatchdogVerdict.CONTINUE
 
-    matching = [r for r in records if "silent subagent" in r and "CHILDREN_PERSIST_TOO_LONG" in r]
+    matching = [r for r in records if "deferred fire" in r and "CHILDREN_PERSIST_TOO_LONG" in r]
     assert len(matching) <= 2, (
         f"DEBUG log spam regression: got {len(matching)} records"
         f" for 1000 calls in the same second; expected <= 2"
@@ -154,7 +162,7 @@ def test_gate_fire_throttle_uses_configured_window(
     """
     _buf, records = captured_debug_records
     watchdog, clock = _make_watchdog(throttle_seconds=0.01)
-    _patch_classifier_to_silent_subagent(watchdog)
+    _patch_classifier_to_deferring_kind(watchdog)
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
     for _ in range(100):
         watchdog._gate_fire(
@@ -171,7 +179,7 @@ def test_gate_fire_throttle_uses_configured_window(
             idle_elapsed=300.0,
             corroboration=CorroborationSnapshot(),
         )
-    matching = [r for r in records if "silent subagent" in r and "CHILDREN_PERSIST_TOO_LONG" in r]
+    matching = [r for r in records if "deferred fire" in r and "CHILDREN_PERSIST_TOO_LONG" in r]
     # Expect at most: 1 first transition + 1 refresh = 2
     assert len(matching) <= 3, f"throttle window 0.01s produced too many emissions: {len(matching)}"
 
@@ -187,8 +195,8 @@ def test_gate_fire_throttle_is_per_key() -> None:
 
     The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949``
     even after the per-(fire_reason, deferred_kind) throttle was
-    added, because the deferred_kind cycles (SILENT_SUBAGENT ->
-    LOADING -> SILENT_SUBAGENT) and the per-tuple throttle key
+    added, because the deferred_kind cycles (DUPLICATE_KILL ->
+    LOADING -> DUPLICATE_KILL) and the per-tuple throttle key
     CHANGED on each cycle so the per-tuple throttle MISSED. The
     coarse single-key throttle solves this by keying on
     ``fire_reason.value`` alone, capping emissions to one DEBUG
@@ -203,7 +211,7 @@ def test_gate_fire_throttle_is_per_key() -> None:
         idle_elapsed: float,
         corroboration: CorroborationSnapshot | None = None,
     ) -> StuckKind:
-        kind = call_log[0] if call_log else StuckKind.SILENT_SUBAGENT
+        kind = call_log[0] if call_log else StuckKind.DUPLICATE_KILL
         return kind
 
     # Use ``setattr`` with the attribute name held in a local
@@ -215,8 +223,8 @@ def test_gate_fire_throttle_is_per_key() -> None:
     setattr(watchdog, _classify_attr, _stuck_now)
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
-    # First call with SILENT_SUBAGENT.
-    call_log = [StuckKind.SILENT_SUBAGENT]
+    # First call with DUPLICATE_KILL.
+    call_log = [StuckKind.DUPLICATE_KILL]
     assert (
         watchdog._gate_fire(
             fire_reason,
@@ -261,10 +269,10 @@ def test_gate_fire_throttle_is_per_key() -> None:
 def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
     captured_debug_records: tuple[io.StringIO, list[str]],
 ) -> None:
-    """1000 calls cycling SILENT_SUBAGENT <-> LOADING MUST emit at most 2 DEBUG records.
+    """1000 calls cycling DUPLICATE_KILL <-> LOADING MUST emit at most 2 DEBUG records.
 
     The PROMPT log spam regression: drive ``_gate_fire`` 1000 times
-    cycling between SILENT_SUBAGENT and LOADING (the typical
+    cycling between DUPLICATE_KILL and LOADING (the typical
     deferred_kind cycle during a long-lived waiting run) inside a
     single throttle window; assert the captured DEBUG records is at
     most 2 (one initial transition + one refresh). Pre-fix the count
@@ -283,14 +291,14 @@ def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
     ) -> StuckKind:
         # Cycle SILENT_SUBAGENT <-> LOADING on every call so the
         # per-tuple throttle key changes every time.
-        kind = call_log[0] if call_log else StuckKind.SILENT_SUBAGENT
+        kind = call_log[0] if call_log else StuckKind.DUPLICATE_KILL
         return kind
 
     _classify_attr = "_classify_stuck_now"
     setattr(watchdog, _classify_attr, _stuck_now)
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
-    kinds = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
+    kinds = [StuckKind.DUPLICATE_KILL, StuckKind.LOADING]
     for i in range(1000):
         call_log = [kinds[i % 2]]
         watchdog._gate_fire(
@@ -303,7 +311,7 @@ def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
     matching = [
         r
         for r in records
-        if (("silent subagent" in r or "deferred fire" in r) and "CHILDREN_PERSIST_TOO_LONG" in r)
+        if ("deferred fire" in r and "CHILDREN_PERSIST_TOO_LONG" in r)
     ]
     assert len(matching) <= 2, (
         f"coarse single-key throttle MUST cap emissions across"
