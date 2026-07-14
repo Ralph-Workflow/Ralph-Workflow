@@ -198,6 +198,35 @@ Run the manual PTY/TUI smoke test for interactive Claude using `claude/haiku`. T
 python -m ralph smoke-interactive-claude
 ```
 
+All interactive smoke commands accept `--subagents` for diagnosing native
+subagent behavior. The scenario requires exactly one observed subagent dispatch,
+its correlated tool result, meaningful main-agent activity after that result, and the normal
+artifact and completion signals. A missing signal makes the command exit
+non-zero with a specific break in the parity report.
+
+```bash
+python -m ralph smoke-interactive-claude --subagents
+python -m ralph smoke-interactive-cursor --subagents
+```
+
+Use `--subagent-prompt-file PATH` with `--subagents` to replace the default
+read-only child task while retaining the harness-owned ordering, artifact, and
+completion requirements. The file must be non-empty UTF-8 text inside the
+current workspace. This is useful
+for reproducing child silence, multi-tool work, delayed results, or other
+parser, activity-router, and watchdog edge cases without editing Ralph Workflow.
+
+```bash
+python -m ralph smoke-interactive-claude \
+  --subagents \
+  --subagent-prompt-file tmp/subagent-edge-case.txt
+```
+
+These scenarios consume live agent tokens or quota and remain manual
+diagnostics outside `make verify`. A transport without native subagent support
+fails the subagent check; the harness does not silently downgrade to the basic
+scenario.
+
 ### `ralph smoke-interactive-agy`
 
 Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is `agy/Gemini 3.5 Flash (Medium)`; override it with `--agent agy/<model>`.

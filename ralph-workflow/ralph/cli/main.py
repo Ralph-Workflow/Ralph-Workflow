@@ -1061,9 +1061,31 @@ app.command()(cleanup)
 app.command(name="contribute")(contribute)
 
 
-def smoke_interactive_claude() -> None:
+def smoke_interactive_claude(
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+) -> None:
     """Run the manual PTY/TUI smoke test for interactive Claude using claude/haiku."""
-    raise typer.Exit(code=smoke_interactive_claude_command(display_context=_get_cli_context()))
+    raise typer.Exit(
+        code=smoke_interactive_claude_command(
+            display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
+        )
+    )
 
 
 app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
@@ -1074,12 +1096,29 @@ def smoke_interactive_agy(
         "agy/Gemini 3.5 Flash (Medium)",
         help="AGY model alias to smoke (e.g. agy/Gemini 3.5 Flash (Medium)).",
     ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
 ) -> None:
     """Run the manual PTY smoke test for Google Anti Gravity."""
     raise typer.Exit(
         code=smoke_interactive_agy_command(
             agent_name=agent,
             display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
         )
     )
 
@@ -1092,12 +1131,29 @@ def smoke_interactive_nanocoder(
         "nanocoder",
         help="Nanocoder alias to smoke (e.g. nanocoder/MiniMax Coding/MiniMax-M3).",
     ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
 ) -> None:
     """Run the manual PTY smoke test for Nanocoder interactive mode."""
     raise typer.Exit(
         code=smoke_interactive_nanocoder_command(
             agent_name=agent,
             display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
         )
     )
 
@@ -1110,12 +1166,29 @@ def smoke_interactive_cursor(
         "cursor/auto",
         help="Cursor model alias to smoke (e.g. cursor/auto, cursor/gpt-5.3-codex-high).",
     ),
+    subagents: bool = typer.Option(
+        False,
+        "--subagents",
+        help="Require native subagent dispatch, result, and later main-agent activity.",
+    ),
+    subagent_prompt_file: Annotated[
+        RuntimePath | None,
+        typer.Option(
+            "--subagent-prompt-file",
+            help="UTF-8 delegated-task prompt file; requires --subagents.",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
 ) -> None:
     """Run the manual end-to-end smoke test for the Cursor Agent CLI."""
     raise typer.Exit(
         code=smoke_interactive_cursor_command(
             agent_name=agent,
             display_context=_get_cli_context(),
+            subagents=subagents,
+            subagent_prompt_file=subagent_prompt_file,
         )
     )
 

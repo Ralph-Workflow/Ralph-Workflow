@@ -18,6 +18,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import click
 from loguru import logger
 from rich.table import Table
 
@@ -249,6 +250,31 @@ __all__ = [
 build_smoke_prompt = _build_smoke_prompt
 
 
+def _append_subagent_working_lines(result: SmokeRunResult, working: list[str]) -> None:
+    """Append observed ordered subagent signals for an opted-in smoke run."""
+    if not result.subagents_requested:
+        return
+    signals = (
+        (result.subagent_dispatch_seen, "- subagent dispatch observed"),
+        (result.subagent_result_seen, "- subagent result observed"),
+        (result.post_subagent_activity_seen, "- post-subagent activity observed"),
+    )
+    working.extend(label for observed, label in signals if observed)
+
+
+def _subagent_status(result: SmokeRunResult) -> str:
+    """Return the table status for the complete opted-in subagent contract."""
+    if not result.subagents_requested:
+        return "not requested"
+    complete = (
+        result.subagent_dispatch_count == 1
+        and result.subagent_dispatch_seen
+        and result.subagent_result_seen
+        and result.post_subagent_activity_seen
+    )
+    return "yes" if complete else "no"
+
+
 def _render_smoke_report(
     results: list[SmokeRunResult],
     *,
@@ -280,6 +306,7 @@ def _render_smoke_report(
             working.append("- tool activity observed")
         if result.artifact_submitted:
             working.append("- smoke_test_result artifact submitted")
+        _append_subagent_working_lines(result, working)
         lines.extend(working or ["- none"])
         lines.append("Observed output:")
         lines.extend([f"- {line}" for line in result.meaningful_output_lines] or ["- none"])
@@ -315,6 +342,7 @@ def _render_smoke_table(
     table.add_column("Session")
     table.add_column("Parser events")
     table.add_column("Tool activity")
+    table.add_column("Subagent")
     table.add_column("Artifact")
     table.add_column("Breaks")
 
@@ -326,6 +354,7 @@ def _render_smoke_table(
             result.session_id or "missing",
             str(result.parsed_event_count),
             "yes" if result.tool_activity_seen else "no",
+            _subagent_status(result),
             "yes" if result.artifact_submitted else "no",
             "none" if not result.errors else "; ".join(result.errors),
         )
@@ -345,11 +374,32 @@ def smoke_harness_agent_command(
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
 ) -> int:
     """Run the interactive smoke harness for ``agent_name`` and report parity."""
-    ctx = display_context if display_context is not None else make_display_context()
     workspace_scope = resolve_workspace_scope()
     workspace_root = workspace_scope.root
+    if subagent_prompt_file is not None and not subagents:
+        raise click.UsageError("--subagent-prompt-file requires --subagents")
+    subagent_prompt: str | None = None
+    if subagent_prompt_file is not None:
+        resolved_prompt_file = subagent_prompt_file.resolve()
+        if not resolved_prompt_file.is_relative_to(workspace_root.resolve()):
+            raise click.UsageError("--subagent-prompt-file must be inside the workspace")
+        try:
+            subagent_prompt = resolved_prompt_file.read_text(encoding="utf-8").strip()
+        except UnicodeError as exc:
+            raise click.UsageError(
+                f"subagent prompt file '{subagent_prompt_file}' must contain valid UTF-8"
+            ) from exc
+        except OSError as exc:
+            raise click.UsageError(
+                f"unable to read subagent prompt file '{subagent_prompt_file}': {exc}"
+            ) from exc
+        if not subagent_prompt:
+            raise click.UsageError("--subagent-prompt-file must not be empty")
+    ctx = display_context if display_context is not None else make_display_context()
     spec = resolve_smoke_harness_spec(agent_name)
     smoke_dir = workspace_root / spec.relative_dir
     smoke_dir.mkdir(parents=True, exist_ok=True)
@@ -408,6 +458,8 @@ def smoke_harness_agent_command(
             spec.output_file.as_posix(),
             submit_artifact_tool_name=submit_artifact_tool_name,
             transport=agent_config.transport,
+            subagents=subagents,
+            subagent_prompt=subagent_prompt,
         ),
         encoding="utf-8",
     )
@@ -427,6 +479,7 @@ def smoke_harness_agent_command(
         output_file=output_file,
         display_context=ctx,
         pipeline_deps=deps,
+        subagents=subagents,
     )
 
     _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
@@ -440,6 +493,8 @@ def smoke_interactive_claude_command(
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
 ) -> int:
     """Run a token-consuming manual parity smoke test for interactive Claude."""
     return smoke_harness_agent_command(
@@ -447,6 +502,8 @@ def smoke_interactive_claude_command(
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
     )
 
 
@@ -456,6 +513,8 @@ def smoke_interactive_agy_command(
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
 ) -> int:
     """Run the manual AGY end-to-end smoke harness via the PTY contract.
 
@@ -506,6 +565,8 @@ def smoke_interactive_agy_command(
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
     )
 
 
@@ -515,6 +576,8 @@ def smoke_interactive_nanocoder_command(
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
 ) -> int:
     """Run the manual PTY smoke test for a Nanocoder interactive alias."""
     if shutil.which("nanocoder") is None:
@@ -547,6 +610,8 @@ def smoke_interactive_nanocoder_command(
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
     )
 
 
@@ -556,6 +621,8 @@ def smoke_interactive_cursor_command(
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
+    subagents: bool = False,
+    subagent_prompt_file: Path | None = None,
 ) -> int:
     """Run the manual end-to-end smoke harness via the Cursor headless contract.
 
@@ -604,4 +671,6 @@ def smoke_interactive_cursor_command(
         display_context=display_context,
         pro_hooks=pro_hooks,
         model_identity=model_identity,
+        subagents=subagents,
+        subagent_prompt_file=subagent_prompt_file,
     )

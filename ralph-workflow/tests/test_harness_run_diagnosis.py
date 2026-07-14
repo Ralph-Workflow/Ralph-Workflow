@@ -52,6 +52,238 @@ def test_resolve_smoke_harness_spec_claude_uses_legacy_layout() -> None:
     assert spec.run_id == "interactive-claude-smoke"
 
 
+def test_build_smoke_prompt_adds_shared_subagent_scenario_only_when_requested() -> None:
+    basic = smoke_plumbing_module._build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+    )
+    subagents = smoke_plumbing_module._build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+        subagents=True,
+    )
+
+    assert "delegate exactly one bounded, read-only task" not in basic
+    assert "delegate exactly one bounded, read-only task" in subagents
+    assert "After the subagent result" in subagents
+    assert "mcp__ralph__ralph_submit_artifact" in subagents
+    assert "declare_complete" in subagents
+
+
+def test_build_smoke_prompt_uses_custom_subagent_task_without_losing_harness_contract() -> None:
+    prompt = smoke_plumbing_module._build_smoke_prompt(
+        "tmp/interactive-claude-smoke/todo-list.js",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+        subagents=True,
+        subagent_prompt="Inspect the parser and report two possible edge cases.",
+    )
+
+    assert "Inspect the parser and report two possible edge cases." in prompt
+    assert "tmp/interactive-claude-smoke/todo-list.js" in prompt
+    assert "smoke_test_result" in prompt
+    assert "declare_complete" in prompt
+
+
+def test_subagent_smoke_evidence_requires_dispatch_result_and_later_activity() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_subagent",
+                            "name": "Agent",
+                            "input": {"prompt": "inspect parser"},
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_subagent",
+                            "content": "inspection complete",
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_write",
+                            "name": "Write",
+                            "input": {"file_path": "tmp/todo-list.js"},
+                        }
+                    ]
+                },
+            }
+        ),
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert evidence.dispatch_seen is True
+    assert evidence.result_seen is True
+    assert evidence.post_result_activity_seen is True
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) is None
+
+
+@pytest.mark.parametrize(
+    ("lines", "expected_error"),
+    [
+        ([], "subagent dispatch was not observed"),
+        (
+            [
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Task",'
+                '"input":{"prompt":"inspect"}}]}}'
+            ],
+            "subagent result was not observed",
+        ),
+        (
+            [
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Task",'
+                '"input":{"prompt":"inspect"}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+            ],
+            "no meaningful activity was observed after the subagent result",
+        ),
+    ],
+)
+def test_subagent_smoke_evidence_reports_first_missing_signal(
+    lines: list[str],
+    expected_error: str,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == expected_error
+
+
+def test_subagent_smoke_evidence_rejects_duplicate_dispatches() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    lines = [
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_first","name":"Agent","input":{}},'
+        '{"type":"tool_use","id":"toolu_second","name":"Task","input":{}}]}}',
+        '{"type":"user","message":{"content":['
+        '{"type":"tool_result","tool_use_id":"toolu_first","content":"done"}]}}',
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_write","name":"Write","input":{}}]}}',
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == (
+        "expected exactly one subagent dispatch, observed 2"
+    )
+
+
+def test_subagent_smoke_evidence_rejects_mismatched_result_id() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    lines = [
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_subagent","name":"Agent","input":{}}]}}',
+        '{"type":"user","message":{"content":['
+        '{"type":"tool_result","tool_use_id":"toolu_other","content":"done"}]}}',
+        '{"type":"assistant","message":{"content":['
+        '{"type":"tool_use","id":"toolu_write","name":"Write","input":{}}]}}',
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == (
+        "subagent result was not observed"
+    )
+
+
+def test_subagent_smoke_evidence_correlates_cursor_call_ids() -> None:
+    config = AgentConfig(
+        cmd="agent",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.CURSOR,
+    )
+    lines = [
+        '{"type":"tool_call","subtype":"started","call_id":"subagent-1",'
+        '"toolName":"Task","args":{}}',
+        '{"type":"tool_call","subtype":"completed","call_id":"subagent-other",'
+        '"toolName":"Task","result":"done"}',
+        '{"type":"tool_call","subtype":"started","call_id":"write-1",'
+        '"toolName":"Write","args":{}}',
+    ]
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
+
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) == (
+        "subagent result was not observed"
+    )
+
+
+def test_detect_smoke_errors_enforces_subagent_evidence_only_for_requested_scenario(
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    common = {
+        "agent_name": "claude/haiku",
+        "config": config,
+        "unified_config": UnifiedConfig(),
+        "workspace_root": tmp_path,
+        "prompt_file": Path("PROMPT.md"),
+        "output_file": tmp_path / "tmp" / "todo-list.js",
+        "options": InvokeOptions(show_progress=False),
+        "display_context": make_display_context(),
+    }
+    basic_params = SmokeRunParams(**common)
+    subagent_params = SmokeRunParams(**common, subagents_requested=True)
+
+    basic_errors = smoke_plumbing_module._detect_smoke_errors(
+        basic_params, [], [], None, None
+    )
+    subagent_errors = smoke_plumbing_module._detect_smoke_errors(
+        subagent_params, [], [], None, None
+    )
+
+    assert "subagent dispatch was not observed" not in basic_errors
+    assert "subagent dispatch was not observed" in subagent_errors
+
+
 def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
     spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/Claude Sonnet 4.6 (Thinking)")
     assert spec.relative_dir == Path("tmp/interactive-agy-smoke")
@@ -408,6 +640,8 @@ def _fake_config() -> UnifiedConfig:
 
 def _fake_execute_agent_effect_for_config(
     agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
+    *,
+    raw_lines: tuple[str, ...] = (),
 ) -> Callable[..., PipelineEvent]:
     def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
         raw_sink = kwargs.get("raw_output_sink")
@@ -447,6 +681,7 @@ def _fake_execute_agent_effect_for_config(
                 encoding="utf-8",
             )
         if raw_sink is not None:
+            cast("deque[str]", raw_sink).extend(raw_lines)
             cast("deque[str]", raw_sink).append(
                 "Task declared complete: session_id=dummy, summary=done\n"
                 if not agent_name.startswith("agy/")
@@ -461,6 +696,115 @@ def _fake_execute_agent_effect_for_config(
         return PipelineEvent.AGENT_SUCCESS
 
     return fake_execute_agent_effect
+
+
+@pytest.mark.parametrize(
+    ("transcript", "expected_error"),
+    [
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_write","name":"Write",'
+                '"input":{}}]}}',
+            ),
+            None,
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_other",'
+                '"content":"done"}]}}',
+            ),
+            "subagent result was not observed",
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+            ),
+            "no meaningful activity was observed after the subagent result",
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_subagent","name":"Agent",'
+                '"input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done"}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_subagent",'
+                '"content":"done again"}]}}',
+            ),
+            "no meaningful activity was observed after the subagent result",
+        ),
+        (
+            (
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_first","name":"Agent","input":{}},'
+                '{"type":"tool_use","id":"toolu_second","name":"Task","input":{}}]}}',
+                '{"type":"user","message":{"content":['
+                '{"type":"tool_result","tool_use_id":"toolu_first",'
+                '"content":"done"}]}}',
+                '{"type":"assistant","message":{"content":['
+                '{"type":"tool_use","id":"toolu_write","name":"Write",'
+                '"input":{}}]}}',
+            ),
+            "expected exactly one subagent dispatch, observed 2",
+        ),
+    ],
+)
+def test_run_smoke_plumbing_enforces_ordered_subagent_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    transcript: tuple[str, ...],
+    expected_error: str | None,
+) -> None:
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="claude/haiku"),
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "execute_agent_effect",
+        _fake_execute_agent_effect_for_config("claude/haiku", raw_lines=transcript),
+    )
+
+    result = smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        agent_name="claude/haiku",
+        prompt_file=tmp_path / "PROMPT.md",
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+        subagents=True,
+    )
+
+    lifecycle_errors = {
+        "subagent dispatch was not observed",
+        "subagent result was not observed",
+        "no meaningful activity was observed after the subagent result",
+        "expected exactly one subagent dispatch, observed 2",
+    }
+    observed_lifecycle_errors = lifecycle_errors.intersection(result.errors)
+    assert observed_lifecycle_errors == ({expected_error} if expected_error else set())
 
 
 def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:

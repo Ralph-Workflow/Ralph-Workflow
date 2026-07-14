@@ -152,6 +152,11 @@ _SMOKE_TRANSCRIPT_MAX_LINES = 400
 _MAX_MEANINGFUL_OUTPUT_LINES = 8
 _MIN_MEANINGFUL_OUTPUT_LINES = 3
 _MAX_VISIBLE_OUTPUT_LINES = 80
+_SUBAGENT_TOOL_NAMES = frozenset({"agent", "delegate", "spawn_agent", "subagent", "task"})
+_DEFAULT_SUBAGENT_PROMPT = (
+    "Inspect the requested todo-list API and return two concise edge cases "
+    "the main agent should account for. Do not modify files."
+)
 
 # Crash-detector patterns are anchored to specific error signatures so that
 # incidental words like "crash" in an agent's planning prose do not poison the
@@ -200,6 +205,21 @@ class SmokeRunResult:
     artifact_submitted: bool
     meaningful_output_lines: list[str]
     errors: list[str]
+    subagents_requested: bool = False
+    subagent_dispatch_count: int = 0
+    subagent_dispatch_seen: bool = False
+    subagent_result_seen: bool = False
+    post_subagent_activity_seen: bool = False
+
+
+@dataclass(frozen=True)
+class SubagentSmokeEvidence:
+    """Ordered subagent lifecycle evidence parsed from a smoke transcript."""
+
+    dispatch_count: int = 0
+    dispatch_seen: bool = False
+    result_seen: bool = False
+    post_result_activity_seen: bool = False
 
 
 type EnvGetter = Callable[[str], str | None]
@@ -210,6 +230,8 @@ def _build_smoke_prompt(
     *,
     submit_artifact_tool_name: str,
     transport: AgentTransport | None = None,
+    subagents: bool = False,
+    subagent_prompt: str | None = None,
 ) -> str:
     """Return the prompt used for the parity smoke test."""
     artifact_content_schema = (
@@ -218,6 +240,18 @@ def _build_smoke_prompt(
         "observed_working: string[]; observed_breaks: string[]; "
         "headless_guide_checks: string[]; summary: non-empty string."
     )
+
+    subagent_requirements = ""
+    if subagents:
+        delegated_task = subagent_prompt or _DEFAULT_SUBAGENT_PROMPT
+        subagent_requirements = (
+            "- Before creating the file, delegate exactly one bounded, read-only task "
+            "to the agent runtime's native subagent tool. Give the subagent this task:\n"
+            f"  {delegated_task.strip()}\n"
+            "- Wait for the subagent result. After the subagent result, the main agent "
+            "must perform another meaningful tool action itself before submitting the "
+            "artifact and completing.\n"
+        )
 
     if transport == AgentTransport.AGY:
         # AGY's current headless mode does not reliably call Ralph's
@@ -269,6 +303,7 @@ def _build_smoke_prompt(
             "other `.agent/` subdirectory or to the workspace root.\n"
             "- Use the headless semantic guide as a rubric: session capture, tool activity, "
             "completion signal, parser events, and tmp artifact creation.\n"
+            f"{subagent_requirements}"
             f"- Write a JSON artifact to `{artifact_path}` with this exact wrapper "
             "(do not change the outer keys):\n"
             f"```json\n{artifact_wrapper}\n```\n"
@@ -289,6 +324,7 @@ def _build_smoke_prompt(
         "- Do not touch files outside tmp/.\n"
         "- Use the headless semantic guide as a rubric: session capture, tool activity, "
         "completion signal, parser events, and tmp artifact creation.\n"
+        f"{subagent_requirements}"
         f"- Call `{submit_artifact_tool_name}` with "
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
         "and use this exact content schema: "
@@ -296,6 +332,75 @@ def _build_smoke_prompt(
         "- Do not nest extra objects like rubric/details/metadata inside the artifact content.\n"
         "- When finished, call declare_complete.\n"
     )
+
+
+def _normalized_tool_name(metadata: dict[str, object]) -> str:
+    raw_name = metadata.get("tool")
+    return raw_name.strip().lower() if isinstance(raw_name, str) else ""
+
+
+def _tool_use_id(metadata: dict[str, object]) -> str | None:
+    for key in ("tool_use_id", "call_id", "toolCallId"):
+        raw_id = metadata.get(key)
+        if isinstance(raw_id, str) and raw_id:
+            return raw_id
+    nested = metadata.get("tool_call")
+    if isinstance(nested, dict):
+        nested_id = nested.get("toolCallId")
+        if isinstance(nested_id, str) and nested_id:
+            return nested_id
+    return None
+
+
+def _subagent_smoke_evidence(
+    config: AgentConfig,
+    lines: list[str],
+) -> SubagentSmokeEvidence:
+    """Return ordered, parser-derived evidence for the subagent smoke scenario."""
+    parser = get_parser(_parser_key_for_config(config))
+    dispatch_count = 0
+    dispatch_id: str | None = None
+    result_seen = False
+    post_result_activity_seen = False
+    for parsed in parser.parse(iter(lines)):
+        metadata = parsed.metadata or {}
+        tool_name = _normalized_tool_name(metadata)
+        if parsed.type == "tool_use" and tool_name in _SUBAGENT_TOOL_NAMES:
+            dispatch_count += 1
+            if dispatch_count == 1:
+                dispatch_id = _tool_use_id(metadata)
+            continue
+        if (
+            dispatch_count == 1
+            and not result_seen
+            and parsed.type == "tool_result"
+            and tool_name in _SUBAGENT_TOOL_NAMES
+        ):
+            result_id = _tool_use_id(metadata)
+            if (dispatch_id is None and result_id is None) or dispatch_id == result_id:
+                result_seen = True
+            continue
+        if result_seen and parsed.type in {"text", "thinking", "tool_use"}:
+            post_result_activity_seen = True
+    return SubagentSmokeEvidence(
+        dispatch_count=dispatch_count,
+        dispatch_seen=dispatch_count > 0,
+        result_seen=result_seen,
+        post_result_activity_seen=post_result_activity_seen,
+    )
+
+
+def _subagent_smoke_error(evidence: SubagentSmokeEvidence) -> str | None:
+    """Return the first missing ordered subagent signal, if any."""
+    if not evidence.dispatch_seen:
+        return "subagent dispatch was not observed"
+    if evidence.dispatch_count != 1:
+        return f"expected exactly one subagent dispatch, observed {evidence.dispatch_count}"
+    if not evidence.result_seen:
+        return "subagent result was not observed"
+    if not evidence.post_result_activity_seen:
+        return "no meaningful activity was observed after the subagent result"
+    return None
 
 
 def _parser_key_for_config(config: AgentConfig) -> str:
@@ -773,6 +878,11 @@ def _detect_smoke_errors(
     if output_error := _meaningful_output_error(params.config, live_output_lines, lines):
         errors.append(output_error)
 
+    if params.subagents_requested:
+        subagent_evidence = _subagent_smoke_evidence(params.config, lines)
+        if subagent_error := _subagent_smoke_error(subagent_evidence):
+            errors.append(subagent_error)
+
     if params.config.transport == AgentTransport.AGY:
         diagnostic = _agy_upstream_diagnostic(lines, params.workspace_root)
         if diagnostic is not None:
@@ -849,6 +959,7 @@ def _run_smoke_agent(
     # (e.g. plain ``GenericParser`` output for a non-AGY agent that does not
     # tag its own lines).
     meaningful_output_lines = parsed_output_lines or live_filtered
+    subagent_evidence = _subagent_smoke_evidence(params.config, lines)
 
     errors = _detect_smoke_errors(
         params,
@@ -876,6 +987,11 @@ def _run_smoke_agent(
         artifact_submitted=artifact_submitted,
         meaningful_output_lines=meaningful_output_lines,
         errors=errors,
+        subagents_requested=params.subagents_requested,
+        subagent_dispatch_count=subagent_evidence.dispatch_count,
+        subagent_dispatch_seen=subagent_evidence.dispatch_seen,
+        subagent_result_seen=subagent_evidence.result_seen,
+        post_subagent_activity_seen=subagent_evidence.post_result_activity_seen,
     )
 
 
@@ -891,6 +1007,7 @@ def run_smoke_plumbing(
     bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
     pro_hooks: ProPipelineHooks | None = None,
+    subagents: bool = False,
 ) -> SmokeRunResult:
     """Run the interactive smoke test for ``agent_name`` and return the result.
 
@@ -989,6 +1106,7 @@ def run_smoke_plumbing(
                     display_context=display_context,
                     bridge=bridge,
                     pipeline_deps=effective_pipeline_deps,
+                    subagents_requested=subagents,
                 ),
                 run_id=spec.run_id,
             )

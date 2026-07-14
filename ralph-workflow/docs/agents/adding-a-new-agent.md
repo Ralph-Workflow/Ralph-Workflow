@@ -381,6 +381,25 @@ python -m ralph smoke-interactive-nanocoder
 python -m ralph smoke-interactive-agy
 ```
 
+To exercise the shared subagent lifecycle contract, add `--subagents` to any
+interactive smoke command. A passing run must show exactly one native subagent
+dispatch, its correlated result, later main-agent activity, and normal smoke
+completion. Use a non-empty UTF-8 task file inside the current workspace when
+the default read-only child task does not cover the edge case under investigation:
+
+```bash
+python -m ralph smoke-interactive-claude --subagents
+python -m ralph smoke-interactive-claude \
+  --subagents \
+  --subagent-prompt-file tmp/subagent-edge-case.txt
+```
+
+The custom file changes only the delegated task. Ralph retains the ordering,
+artifact, and completion requirements, so a model-authored success claim
+cannot replace observed runtime evidence. Use the resulting ordered failures
+to separate dispatch, parser/result, post-result progression, and watchdog
+problems.
+
 When a live smoke fails, inspect both the parity table and the raw transcript.
 A green file/artifact result proves task completion, but it does not prove the
 operator saw useful progress. Parser tests must cover the representative raw

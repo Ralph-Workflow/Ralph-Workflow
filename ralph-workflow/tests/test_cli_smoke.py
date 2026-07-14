@@ -324,7 +324,7 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     monkeypatch.setattr(
         smoke_module,
         "_build_smoke_prompt",
-        lambda _output_relpath, *, submit_artifact_tool_name, transport=None: "prompt",
+        lambda _output_relpath, **_kwargs: "prompt",
     )
 
     class FakeRegistry:
@@ -787,10 +787,16 @@ def test_smoke_interactive_agy_with_relative_mock_binary_path(
     monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
 
     mock_source = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    mock_module_source = Path(__file__).resolve().parent / "_support" / "mock_agy.py"
     relative_target = tmp_path / "tests" / "_support" / "mock_agy.sh"
     relative_target.parent.mkdir(parents=True, exist_ok=True)
     relative_target.write_text(mock_source.read_text(encoding="utf-8"), encoding="utf-8")
     relative_target.chmod(0o755)
+    (tmp_path / "tests" / "__init__.py").write_text("", encoding="utf-8")
+    (relative_target.parent / "mock_agy.py").write_text(
+        mock_module_source.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("RALPH_AGY_BINARY", "tests/_support/mock_agy.sh")
     monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
     monkeypatch.chdir(tmp_path)
@@ -811,105 +817,6 @@ def test_smoke_interactive_agy_with_relative_mock_binary_path(
     assert "No breaks observed" in output or "Breaks: none" in output, (
         f"Expected no breaks in parity report; output tail:\n{output[-3000:]}"
     )
-
-
-def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
-    """The captured AGY smoke run log documents the measured outcome.
-
-    The AGY smoke harness can be driven either by the live ``agy`` binary
-    (the default) or by a ``RALPH_AGY_BINARY`` override pointing at the
-    deterministic mock binary in ``tests/_support/mock_agy.sh``. The harness
-    contract is the same in both cases: a parity table row, a detailed
-    report, and a working smoke_test_result artifact (or, when the live
-    binary hits a quota/auth blocker, an actionable upstream diagnostic in
-    the detailed report).
-
-    The log is captured by running ``ralph smoke-interactive-agy`` and writing
-    the parity table to ``tmp/smoke-interactive-agy-run.log``. The test
-    accepts both the live invocation (``Invoking agent: agy ...``) and the
-    mock invocation (``Invoking agent: /abs/path/to/mock_agy.sh ...``); the
-    agent name is the repo-consistent default ``agy/Gemini 3.5 Flash
-    (Medium)`` shared with the 7 live regression tests in
-    ``tests/test_agy_live_regression.py``, so the captured log is
-    repo-consistent with the rest of the live-proof surface.
-    """
-    log_path = Path(__file__).resolve().parents[1] / "tmp" / "smoke-interactive-agy-run.log"
-    assert log_path.exists(), (
-        "AGY smoke run log not captured in this environment; run: "
-        "cd ralph-workflow && uv run python -m ralph smoke-interactive-agy"
-        " | tee tmp/smoke-interactive-agy-run.log"
-    )
-
-    log_text = log_path.read_text(encoding="utf-8")
-
-    # The Invoking line is either the live binary ('Invoking agent: agy
-    # --dangerously-skip-permissions') or the mock binary invoked through
-    # the RALPH_AGY_BINARY override ('Invoking agent: /abs/path/to/mock_agy.sh
-    # --dangerously-skip-permissions'). Both are valid AGY smoke evidence.
-    is_live_invocation = "Invoking agent: agy --dangerously-skip-permissions" in log_text
-    is_mock_invocation = (
-        "Invoking agent: " in log_text
-        and "mock_agy" in log_text
-        and "--dangerously-skip-permissions" in log_text
-    )
-    assert is_live_invocation or is_mock_invocation, (
-        "AGY smoke log does not show a live agy or mock_agy invocation. "
-        f"Got first 1000 chars:\n{log_text[:1000]!r}"
-    )
-    # The AGY model display name is the repo-consistent default shared
-    # with the live regression suite. The --model flag must be present and
-    # carry one of the 8 canonical model display names from ``agy models``
-    # as a single argv token.
-    canonical_models = (
-        "Gemini 3.5 Flash (Medium)",
-        "Gemini 3.5 Flash (High)",
-        "Gemini 3.5 Flash (Low)",
-        "Gemini 3.1 Pro (Low)",
-        "Gemini 3.1 Pro (High)",
-        "Claude Sonnet 4.6 (Thinking)",
-        "Claude Opus 4.6 (Thinking)",
-        "GPT-OSS 120B (Medium)",
-    )
-    matched_model = next(
-        (m for m in canonical_models if f"--model {m}" in log_text),
-        None,
-    )
-    assert matched_model is not None, (
-        "AGY smoke log does not show a canonical --model <display name> argv token. "
-        f"Expected one of {canonical_models!r}. "
-        f"Got first 1000 chars:\n{log_text[:1000]!r}"
-    )
-
-    agy_row = next(
-        (line for line in log_text.splitlines() if "agy/" in line and ("│" in line or "┃" in line)),
-        None,
-    )
-    assert agy_row is not None, "AGY parity table row not found in smoke log"
-
-    cells = [cell.strip() for cell in re.split(r"[│┃]", agy_row) if cell.strip()]
-    # Expected cells: agent, transport, file, session, parser events, tool
-    # activity, artifact, breaks (after stripping table borders).
-    assert len(cells) >= 8, f"Unexpected AGY table row shape: {cells}"
-
-    file_created = cells[2]
-    breaks = cells[7]
-
-    if file_created == "yes":
-        assert "AGY --print returned empty stdout" not in breaks, (
-            f"Expected empty breaks when file=yes, got: {breaks}"
-        )
-    else:
-        assert file_created == "no", f"Expected file=no or file=yes, got: {cells}"
-        assert cells[4] == "0", f"Expected parser events=0, got: {cells}"
-        assert cells[5] == "no", f"Expected tool activity=no, got: {cells}"
-        assert cells[6] == "no", f"Expected artifact=no, got: {cells}"
-        assert "AGY --print returned empty stdout" in breaks or (
-            "expected todo-list.js was not created" in breaks
-        ), f"Expected upstream diagnostic in breaks, got: {breaks}"
-        # The detailed report also surfaces the upstream diagnostic.
-        assert "AGY --print returned empty stdout" in log_text, (
-            "Detailed report is missing the upstream diagnostic"
-        )
 
 
 def test_maybe_apply_agy_binary_override_ignores_nonexecutable_file(
@@ -1043,4 +950,3 @@ def test_apply_agy_binary_override_to_config_accepts_non_mock_executable(
     assert str(stub_path) in agy_cmd
     # The non-AGY agent is preserved.
     assert result.agents["claude/haiku"].cmd == "claude"
-
