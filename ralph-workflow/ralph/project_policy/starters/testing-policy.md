@@ -96,6 +96,30 @@ thorough tests with no time limit — does NOT comply.
 12. Every new behaviour MUST add positive coverage. Negative coverage is
     mandatory when rejection, failure, permission, boundary, or recovery
     behavior exists.
+13. Shape the suite so the cheapest, most isolated layers carry the most
+    cases. The count of tests SHOULD grow as their scope narrows: many fast
+    tests at the lowest layer a unit of behavior supports, fewer integration
+    tests that exercise real collaboration across a seam, and only a thin cap
+    of end-to-end tests. The exact ratio is stack-dependent, NOT a fixed
+    quota: backend and library code that decomposes into pure units leans
+    heavily toward unit tests (the classic test pyramid), while UI-heavy or
+    full-stack code legitimately shifts weight toward component and
+    integration tests, where a rendered component or a wired-up module — not
+    an isolated function — is the smallest honest unit of behavior (the
+    "testing trophy"). What is invariant across every stack is the shape:
+    broad and cheap at the base, narrow and expensive at the top.
+14. Match each layer to the job it does cheapest, and keep case enumeration
+    OUT of the slow layers. Exhaustive branch, edge, boundary, and negative
+    coverage (rule 12) belongs at the unit or component layer, where every
+    case is reachable directly and runs fast. Integration tests SHOULD cover
+    the contracts and failure modes across a seam that unit tests cannot see.
+    End-to-end tests are the SCARCEST resource: reserve them for a small
+    number of critical user journeys — the primary happy path of each, plus
+    the few failure paths whose breakage would be catastrophic — never as the
+    place to enumerate variations. Pushing case enumeration up into slow,
+    brittle end-to-end tests is the specific anti-pattern the pyramid exists
+    to prevent, and it is also the usual cause of an over-budget suite
+    (rule 10).
 
 ## Project facts to resolve
 
@@ -236,6 +260,11 @@ This policy MUST be reviewed in the same workflow as any of:
   title: "Test Pyramid"
   http: https://martinfowler.com/bliki/TestPyramid.html
   review date: 2026-07-11
+
+* publisher: Kent C. Dodds
+  title: "The Testing Trophy and Testing Classifications"
+  http: https://kentcdodds.com/blog/the-testing-trophy-and-testing-classifications
+  review date: 2026-07-14
 
 * publisher: Pearson / Kent Beck
   title: "Test-Driven Development: By Example"
