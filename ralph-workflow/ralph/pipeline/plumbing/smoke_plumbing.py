@@ -364,7 +364,7 @@ def _normalized_tool_name(metadata: dict[str, object]) -> str:
 
 
 def _tool_use_id(metadata: dict[str, object]) -> str | None:
-    for key in ("tool_use_id", "call_id", "toolCallId"):
+    for key in ("tool_use_id", "call_id", "toolCallId", "callID", "callId"):
         raw_id = metadata.get(key)
         if isinstance(raw_id, str) and raw_id:
             return raw_id
@@ -373,6 +373,14 @@ def _tool_use_id(metadata: dict[str, object]) -> str | None:
         nested_id = nested.get("toolCallId")
         if isinstance(nested_id, str) and nested_id:
             return nested_id
+    # OpenCode carries the call id under ``part.callID`` (see the OpenCode
+    # parser's ``_tool_metadata``, which preserves the raw ``part``).
+    part = metadata.get("part")
+    if isinstance(part, dict):
+        for key in ("callID", "callId", "id"):
+            part_id = part.get(key)
+            if isinstance(part_id, str) and part_id:
+                return part_id
     return None
 
 
@@ -382,30 +390,47 @@ def _subagent_smoke_evidence(
 ) -> SubagentSmokeEvidence:
     """Return ordered, parser-derived evidence for the subagent smoke scenario."""
     parser = get_parser(_parser_key_for_config(config))
-    dispatch_count = 0
-    dispatch_id: str | None = None
+    # Count dispatches by DISTINCT call id, not by raw tool_use events. OpenCode
+    # may stream a running state then a completed state for the same call, and a
+    # completed tool now surfaces both a dispatch and a result -- both carry the
+    # same callID. Counting raw events would see one subagent twice and reject
+    # it as "observed 2". Two genuinely distinct dispatches still carry distinct
+    # ids and are still rejected. Id-less dispatches (a parser that exposes no
+    # id) cannot be de-duplicated, so each is counted, preserving the prior
+    # behaviour for those transports.
+    distinct_dispatch_ids: set[str] = set()
+    idless_dispatch_count = 0
+    first_dispatch_seen = False
+    first_dispatch_id: str | None = None
     result_seen = False
     post_result_activity_seen = False
     for parsed in parser.parse(iter(lines)):
         metadata = parsed.metadata or {}
         tool_name = _normalized_tool_name(metadata)
         if parsed.type == "tool_use" and tool_name in _SUBAGENT_TOOL_NAMES:
-            dispatch_count += 1
-            if dispatch_count == 1:
-                dispatch_id = _tool_use_id(metadata)
+            tool_id = _tool_use_id(metadata)
+            if not first_dispatch_seen:
+                first_dispatch_seen = True
+                first_dispatch_id = tool_id
+            if tool_id is None:
+                idless_dispatch_count += 1
+            else:
+                distinct_dispatch_ids.add(tool_id)
             continue
+        running_dispatch_total = len(distinct_dispatch_ids) + idless_dispatch_count
         if (
-            dispatch_count == 1
+            running_dispatch_total == 1
             and not result_seen
             and parsed.type == "tool_result"
             and tool_name in _SUBAGENT_TOOL_NAMES
         ):
             result_id = _tool_use_id(metadata)
-            if (dispatch_id is None and result_id is None) or dispatch_id == result_id:
+            if (first_dispatch_id is None and result_id is None) or first_dispatch_id == result_id:
                 result_seen = True
             continue
         if result_seen and parsed.type in {"text", "thinking", "tool_use"}:
             post_result_activity_seen = True
+    dispatch_count = len(distinct_dispatch_ids) + idless_dispatch_count
     return SubagentSmokeEvidence(
         dispatch_count=dispatch_count,
         dispatch_seen=dispatch_count > 0,

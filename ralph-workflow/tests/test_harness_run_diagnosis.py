@@ -208,6 +208,41 @@ def test_subagent_smoke_evidence_rejects_duplicate_dispatches() -> None:
     )
 
 
+def test_subagent_smoke_evidence_collapses_streamed_opencode_task() -> None:
+    """A single OpenCode ``task`` streamed as running THEN completed is ONE dispatch.
+
+    OpenCode may emit an intermediate (non-completed) tool state before the
+    terminal one, and for a completed tool the parser now surfaces both the
+    dispatch and the result. Counting raw ``tool_use`` events would see the same
+    ``callID`` twice and reject a genuine single subagent with "expected exactly
+    one subagent dispatch, observed 2". Dispatches are counted by distinct call
+    ID, so a streamed call collapses to one.
+    """
+    config = AgentConfig(
+        cmd="opencode",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+    running = (
+        '{"type":"tool_use","part":{"type":"tool","tool":"task","callID":"call_1",'
+        '"state":{"status":"running","input":{"description":"d"}}}}'
+    )
+    completed = (
+        '{"type":"tool_use","part":{"type":"tool","tool":"task","callID":"call_1",'
+        '"state":{"status":"completed","input":{"description":"d"},"output":"done"}}}'
+    )
+    post = '{"type":"text","part":{"type":"text","text":"the subagent finished"}}'
+
+    evidence = smoke_plumbing_module._subagent_smoke_evidence(config, [running, completed, post])
+
+    assert evidence.dispatch_count == 1, (
+        f"a single streamed task must count as one dispatch; got {evidence.dispatch_count}"
+    )
+    assert smoke_plumbing_module._subagent_smoke_error(evidence) is None, (
+        "a streamed single subagent with result and post-activity must pass"
+    )
+
+
 def test_subagent_smoke_evidence_rejects_mismatched_result_id() -> None:
     config = AgentConfig(
         cmd="claude",
@@ -241,8 +276,7 @@ def test_subagent_smoke_evidence_correlates_cursor_call_ids() -> None:
         '"toolName":"Task","args":{}}',
         '{"type":"tool_call","subtype":"completed","call_id":"subagent-other",'
         '"toolName":"Task","result":"done"}',
-        '{"type":"tool_call","subtype":"started","call_id":"write-1",'
-        '"toolName":"Write","args":{}}',
+        '{"type":"tool_call","subtype":"started","call_id":"write-1","toolName":"Write","args":{}}',
     ]
 
     evidence = smoke_plumbing_module._subagent_smoke_evidence(config, lines)
@@ -273,9 +307,7 @@ def test_detect_smoke_errors_enforces_subagent_evidence_only_for_requested_scena
     basic_params = SmokeRunParams(**common)
     subagent_params = SmokeRunParams(**common, subagents_requested=True)
 
-    basic_errors = smoke_plumbing_module._detect_smoke_errors(
-        basic_params, [], [], None, None
-    )
+    basic_errors = smoke_plumbing_module._detect_smoke_errors(basic_params, [], [], None, None)
     subagent_errors = smoke_plumbing_module._detect_smoke_errors(
         subagent_params, [], [], None, None
     )
