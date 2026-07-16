@@ -16,6 +16,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 from ralph.display._decision_labels import DECISION_BADGE_MAP as _DECISION_LABELS
+from ralph.display.auto_integrate_message import format_auto_integrate_message
 from ralph.display.completion_summary import (
     _analysis_decision_summary,
     _children_persist_diagnostic_line,
@@ -196,6 +197,26 @@ def _commit_section(
     return items
 
 
+def _auto_integrate_items(snapshot: PipelineSnapshot) -> list[Text]:
+    """Render the auto-integration outcome line for the group receipt.
+
+    Returns ``[]`` when no integration ran (``auto_integrate_action`` is
+    ``None`` on the disabled / never-ran path, preserving the prompt's
+    AC-01 byte-identical no-op for that run shape). ``fast_forwarded``
+    is passed explicitly so a refused land exposes its recorded reason
+    instead of rendering identically to a success.
+    """
+    if snapshot.auto_integrate_action is None:
+        return []
+    phrase = format_auto_integrate_message(
+        snapshot.auto_integrate_action,
+        snapshot.auto_integrate_target,
+        snapshot.auto_integrate_reason,
+        fast_forwarded=snapshot.auto_integrate_fast_forwarded,
+    )
+    return [Text(f"  auto-integrate: {phrase}")]
+
+
 def render_completion_summary_group(
     snapshot: PipelineSnapshot,
     *,
@@ -243,6 +264,7 @@ def render_completion_summary_group(
     renderables.extend(
         _commit_section(options.workspace_root, options.pipeline_policy, snapshot.pr_url)
     )
+    renderables.extend(_auto_integrate_items(snapshot))
     renderables.extend(
         _tail_items(
             snapshot,

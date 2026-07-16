@@ -18,6 +18,7 @@ from loguru import logger
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.config.enums import Verbosity
+from ralph.display.auto_integrate_message import format_auto_integrate_message
 from ralph.display.context import install_width_refresher, make_display_context
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -576,30 +577,25 @@ def _coarse_outcome_for_event(event: Event) -> str:
 def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) -> None:
     """Emit the user-facing action log line for an auto-integration outcome.
 
+    Delegates the verb -> phrase mapping to
+    :func:`ralph.display.auto_integrate_message.format_auto_integrate_message`
+    so the live activity line and the run's final receipt cannot drift.
+    The single ``[cyan]auto-integrate:[/cyan]`` prefix is added here;
+    the formatter returns a bare phrase.
+
     Per the prompt Notes the user-facing line should describe what
-    actually happened: ``rebased`` / ``merged`` / ``fast-forwarded
-    <target>`` / ``skipped: <reason>`` / ``conflict: <reason>``.
-    Any unknown outcome (defensive: ``outcome.last_action`` is a
-    free-form ``str | None``) falls through to a generic
-    ``auto-integrate: <action>`` so the user is never told nothing.
+    actually happened: ``rebased onto target`` / ``merged target into
+    feature`` (each optionally followed by ``, fast-forwarded
+    <target>`` or ``, fast-forward skipped: <reason>``) /
+    ``skipped: <reason>`` / ``conflict: <reason>`` /
+    ``recovered (<reason>)``.
     """
-    action = outcome.last_action or "noop"
-    target = outcome.last_target
-    reason = outcome.last_reason
-    if action == "fast_forwarded" and target:
-        message = f"fast-forwarded {target}"
-    elif action == "rebased":
-        message = "rebased onto target" + (f" ({target})" if target else "")
-    elif action == "merged":
-        message = "merged target into feature" + (f" ({target})" if target else "")
-    elif action == "skipped":
-        message = f"skipped: {reason or 'no reason recorded'}"
-    elif action == "conflict":
-        message = f"conflict: {reason or 'unresolved conflict'}"
-    elif action == "recovered":
-        message = "recovered" + (f" ({reason})" if reason else "")
-    else:
-        message = f"auto-integrate: {action}"
+    message = format_auto_integrate_message(
+        outcome.last_action,
+        outcome.last_target,
+        outcome.last_reason,
+        fast_forwarded=outcome.fast_forwarded,
+    )
     emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
 
 

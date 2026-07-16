@@ -19,6 +19,7 @@ from ralph.display._decision_labels import (
 from ralph.display._decision_labels import (
     REVISE_DECISION_VALUES as _REVISE_DECISIONS,
 )
+from ralph.display.auto_integrate_message import format_auto_integrate_message
 from ralph.display.parallel_display import phase_style_for_phase as phase_style
 from ralph.display.phase_status import (
     format_dev_cycle,
@@ -341,6 +342,22 @@ def _plain_tail_lines(
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
         lines.append(dropped_line)
+    # Auto-integration outcome projected from RebaseState. Renders only
+    # when an integration actually ran (action is None for the
+    # disabled / never-ran path, preserving the prompt's AC-01
+    # byte-identical no-op). ``fast_forwarded`` is passed explicitly so a
+    # refused land exposes its recorded reason rather than rendering
+    # identically to a success.
+    if snapshot.auto_integrate_action is not None:
+        lines.append(
+            "Auto-integrate: "
+            + format_auto_integrate_message(
+                snapshot.auto_integrate_action,
+                snapshot.auto_integrate_target,
+                snapshot.auto_integrate_reason,
+                fast_forwarded=snapshot.auto_integrate_fast_forwarded,
+            )
+        )
     return lines
 
 

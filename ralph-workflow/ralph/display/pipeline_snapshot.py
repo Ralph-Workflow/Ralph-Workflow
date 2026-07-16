@@ -49,6 +49,23 @@ class PipelineSnapshot:
     #: Lets the renderer keep the live status fresh (e.g. "exec (x3)") instead of
     #: freezing when an agent repeats the same tool call.
     active_tool_repeat: int = 0
+    # Auto-integration outcome projected from
+    # :class:`ralph.pipeline.rebase_state.RebaseState` onto the display
+    # layer. ``auto_integrate_action`` is the high-level verb (``rebased``
+    # / ``merged`` / ``skipped`` / ``conflict`` / ``recovered`` -- the
+    # producer never emits ``fast_forwarded``; that lives on the boolean).
+    # ``auto_integrate_reason`` is the human-readable skip / failure reason
+    # when one applies. ``auto_integrate_target`` is the mainline branch
+    # the integration step targeted. ``auto_integrate_fast_forwarded``
+    # records whether the fast-forward phase actually advanced the target
+    # ref. ``auto_integrate_reason`` is treated as a fast-forward SKIP
+    # reason only when ``auto_integrate_fast_forwarded`` is False; when
+    # ``True`` any non-None reason is a stale :class:`RebaseNoOp` rebase
+    # reason retained by the producer and must not be rendered as a skip.
+    auto_integrate_action: str | None = None
+    auto_integrate_reason: str | None = None
+    auto_integrate_target: str | None = None
+    auto_integrate_fast_forwarded: bool = False
     last_activity_line: str | None = None
     waiting_status_line: str | None = None
     analysis_phase: str | None = None

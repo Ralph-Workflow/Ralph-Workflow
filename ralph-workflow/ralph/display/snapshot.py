@@ -181,6 +181,16 @@ def snapshot_from_state(
         ),
         mcp_restart_count=effective_context.mcp_restart_count,
         active_process_labels=effective_context.active_process_labels,
+        # Project RebaseState onto the display layer so the completion
+        # summary can render what auto-integration actually did. The four
+        # fields correspond 1:1 to RebaseState.last_action /
+        # last_reason / last_target / fast_forwarded. Defaults keep the
+        # disabled-path receipt byte-identical to runs without
+        # auto-integration (action=None renders nothing).
+        auto_integrate_action=state.rebase.last_action,
+        auto_integrate_reason=state.rebase.last_reason,
+        auto_integrate_target=state.rebase.last_target,
+        auto_integrate_fast_forwarded=state.rebase.fast_forwarded,
     )
 
 

@@ -2956,6 +2956,13 @@ ralph.display.artifact_reader
    :members:
    :show-inheritance:
 
+ralph.display.auto_integrate_message
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.auto_integrate_message
+   :members:
+   :show-inheritance:
+
 ralph.display.context
 ~~~~~~~~~~~~~~~~~~~~~~~
 
