@@ -25,7 +25,8 @@ Acceptance criteria covered:
 * AC-10 — no invocation of this feature ever calls ``git push``.
 * AC-11 — phased crash recovery (4 cases).
 * AC-13 — target auto-detection: origin/HEAD -> develop; remote-less
-  ``main`` integration; no-candidate skip; explicit override.
+  ``main`` integration; remote-less ``master`` integration when no
+  ``main`` branch exists; no-candidate skip; explicit override.
 """
 
 from __future__ import annotations
@@ -928,6 +929,25 @@ def test_auto_detect_no_remote_picks_main(tmp_git_repo: Path) -> None:
     assert outcome is not None
     main_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/main").stdout.strip()
     assert main_sha == feature_sha
+
+
+def test_auto_detect_no_main_picks_master(tmp_git_repo: Path) -> None:
+    """AC-13: remote-less repo with no main but a master -> integrate master."""
+    base = _base_branch(tmp_git_repo)
+    # Rename base to master so NO branch named main exists; this forces
+    # resolution past the 'main' candidate onto the 'master' leg.
+    if base != "master":
+        _run(tmp_git_repo, "branch", "-m", base, "master")
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
+    config = _build_config(tmp_git_repo)  # auto-detect
+    scope = WorkspaceScope(tmp_git_repo)
+    resolved = resolve_integration_target(config, tmp_git_repo)
+    assert resolved == "master"
+    outcome = auto_integrate_after_commit(config, scope, RebaseState())
+    assert outcome is not None
+    master_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/master").stdout.strip()
+    assert master_sha == feature_sha
 
 
 def test_auto_detect_no_candidate_skips(tmp_git_repo: Path) -> None:

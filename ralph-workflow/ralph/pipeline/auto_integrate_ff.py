@@ -83,13 +83,12 @@ def _fast_forward_target_via_worktree_or_cas(
     primary_root = find_main_worktree_root(repo_root)
     wt = worktree_for_branch(primary_root, target)
     if wt is not None:
-        return _fast_forward_via_target_worktree(wt, target, feature_sha)
+        return _fast_forward_via_target_worktree(wt, feature_sha)
     return _fast_forward_via_cas(repo_root, target, feature_sha, observed_target_sha)
 
 
 def _fast_forward_via_target_worktree(
     worktree_root: Path,
-    target: str,
     feature_sha: str,
 ) -> tuple[bool, str]:
     """Fast-forward the target branch checked out in ``worktree_root`` (AC-09).

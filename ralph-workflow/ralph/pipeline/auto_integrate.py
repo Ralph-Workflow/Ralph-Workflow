@@ -727,7 +727,7 @@ def _continue_fast_forward_from_record(
     """Best-effort continue of an unfinished fast-forward (phase='integrated').
 
     Like :func:`recover_incomplete_integration`, this function
-    RETAINSthe durable record when the fast-forward fails so the
+    RETAINS the durable record when the fast-forward fails so the
     next startup can retry. The record is cleared only when
     reconciliation succeeded -- the target ref equals
     ``feature_sha`` (already landed) or the worktree-aware CAS path
