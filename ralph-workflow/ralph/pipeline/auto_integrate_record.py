@@ -17,12 +17,27 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 from pydantic import ConfigDict
 
 from ralph.pydantic_compat import RalphBaseModel
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
+
+#: Phases the auto-integrate recovery preamble understands.
+#: ``integrating`` while the rebase/merge is in flight; ``integrated``
+#: once the feature branch fully contains the target and only the
+#: fast-forward remains. Any other on-disk value is treated as
+#: corrupt by :func:`read_record` -- a malformed record must never
+#: be acted on as if it were a known phase.
+IntegrationPhase = Literal["integrating", "integrated"]
+
+#: Closed set of valid phase values, used by :func:`read_record` to
+#: reject corrupt on-disk records that pass pydantic coercion but
+#: carry a phase outside the known protocol (e.g. a value left
+#: behind by an older or partially-applied write).
+_VALID_PHASES: frozenset[str] = frozenset({"integrating", "integrated"})
 
 
 class IntegrationRecord(RalphBaseModel):
@@ -38,7 +53,11 @@ class IntegrationRecord(RalphBaseModel):
     Attributes:
         phase: ``'integrating'`` while the rebase/merge is in flight;
             ``'integrated'`` once the feature branch fully contains
-            the target and only the fast-forward remains.
+            the target and only the fast-forward remains. Restricted
+            to those two values by the :data:`IntegrationPhase`
+            Literal so an on-disk record carrying a stray value is
+            rejected by :func:`read_record` as corrupt instead of
+            being acted on.
         target: The integration target branch name.
         pre_feature_sha: The feature branch HEAD SHA captured BEFORE
             any rebase/merge; used to restore on a crash that
@@ -53,7 +72,7 @@ class IntegrationRecord(RalphBaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    phase: str
+    phase: IntegrationPhase
     target: str
     pre_feature_sha: str
     pre_target_sha: str | None
@@ -94,20 +113,61 @@ def read_record(workspace_root: Path) -> IntegrationRecord | None:
     """Return the durable record or ``None`` when absent / corrupt.
 
     A corrupt record is treated as absent so a partial write from a
-    crashed prior run never wedges the recovery preamble.
+    crashed prior run never wedges the recovery preamble. Corrupt
+    here means: missing file, unreadable file, invalid JSON,
+    non-object payload, schema mismatch, OR an on-disk ``phase``
+    outside the :data:`IntegrationPhase` Literal (e.g. a stray
+    value left behind by an older partially-applied write). A
+    record with a stray phase must never be acted on as if it were
+    a known phase -- the recovery path would otherwise run the
+    ``integrated`` fast-forward continuation on a record that is
+    neither integrating nor integrated.
     """
     record_file = record_path(workspace_root)
     if not record_file.exists():
         return None
+    raw = _read_record_raw(record_file)
+    if raw is None:
+        return None
+    return _parse_record_payload(raw)
+
+
+def _read_record_raw(record_file: Path) -> dict[str, object] | None:
+    """Read and parse the record file; return the parsed dict or None.
+
+    Splits out the read+JSON-parse steps from :func:`read_record` so
+    each helper stays under the ruff PLR0911 return-statement cap.
+    Returns ``None`` for any read or parse failure (treated as
+    corrupt / absent by the recovery preamble).
+    """
     try:
-        raw = record_file.read_text(encoding="utf-8")
+        raw_text = record_file.read_text(encoding="utf-8")
     except OSError:
         return None
     try:
-        data_raw: object = json.loads(raw)
+        parsed: object = json.loads(raw_text)
     except json.JSONDecodeError:
         return None
-    if not isinstance(data_raw, dict):
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | None:
+    """Validate the parsed record payload against the model contract.
+
+    Splits the schema-level validation out of :func:`read_record` so
+    the I/O helper stays under the ruff PLR0911 return-statement
+    cap. Returns ``None`` for any rejection (corrupt file).
+    """
+    # Reject a stray ``phase`` value before pydantic validation
+    # would coerce it (pydantic honors ``field: str`` for any
+    # string). The Literal-typed ``phase`` field already rejects
+    # unknown values during ``model_validate`` below, but an
+    # explicit pre-check lets us keep the rejection logic here in
+    # the I/O helper that owns the corrupt-record contract.
+    phase_value = data_raw.get("phase")
+    if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
         return None
     try:
         return IntegrationRecord.model_validate(data_raw)
@@ -126,6 +186,7 @@ def clear_record(workspace_root: Path) -> None:
 
 __all__ = [
     "AUTO_INTEGRATE_RECORD_FILENAME",
+    "IntegrationPhase",
     "IntegrationRecord",
     "clear_record",
     "read_record",

@@ -512,10 +512,15 @@ def _auto_integrate_resolve_context(
 ) -> tuple[Path, str | None, str | None] | None:
     """Resolve the (root, current_branch, target) context or short-circuit.
 
-    Returns ``None`` when the integration step is a no-op (AC-01
-    disabled path) or when the environment lookup itself fails; in
-    the latter case :func:`auto_integrate_after_commit` will already
-    have logged a skip before reaching this helper.
+    Returns ``None`` ONLY when the integration step is a no-op
+    (AC-01 disabled path -- byte-identical to the pre-feature run).
+    When the environment lookup itself fails (not a git repo,
+    transport error, etc.), the exception is allowed to propagate
+    so :func:`auto_integrate_after_commit`'s outer try/except can
+    record a skip ``RebaseState`` with the failure reason. A
+    context-resolution failure must NEVER be silently swallowed to
+    ``None`` -- that would make the run continue without any state
+    record explaining WHY no integration ran.
 
     The current-branch slot is ``None`` when HEAD is detached
     (GitPython raises ``TypeError`` from ``repo.active_branch.name``
@@ -525,20 +530,16 @@ def _auto_integrate_resolve_context(
     the broad ``except Exception`` branch and returned ``None``
     with no state recorded.
     """
-    try:
-        enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
-        enabled = bool(enabled_raw)
-        if not enabled:
-            return None
-        root = Path(workspace_scope.root)
-        # Typed-exception guard: detached HEAD surfaces as
-        # ``current_branch is None`` (recorded skip) rather than being
-        # absorbed into the broad ``except Exception`` below.
-        current_branch: str | None = _current_branch_or_detached_marker(root)
-        target: str | None = resolve_integration_target(config, root)
-    except Exception as exc:
-        logger.debug("auto_integrate_after_commit: skip (env lookup failed): {}", exc)
+    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
+    enabled = bool(enabled_raw)
+    if not enabled:
         return None
+    root = Path(workspace_scope.root)
+    # Typed-exception guard: detached HEAD surfaces as
+    # ``current_branch is None`` (recorded skip) rather than being
+    # absorbed into the broad ``except Exception`` above.
+    current_branch: str | None = _current_branch_or_detached_marker(root)
+    target: str | None = resolve_integration_target(config, root)
 
     return root, current_branch, target
 

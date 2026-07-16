@@ -52,8 +52,10 @@ import pytest
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import (
     IntegrationRecord,
+    auto_integrate_after_commit,
     recover_incomplete_integration,
 )
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
@@ -500,6 +502,158 @@ def test_recovery_retains_record_on_abort_failure(
     assert record_file.exists(), (
         "durable record must be retained when abort_rebase fails"
     )
+
+
+# ---------------------------------------------------------------------------
+# Context-resolution failure must produce a RECORDED skip, not a silent no-op
+# ---------------------------------------------------------------------------
+
+
+def test_context_resolution_failure_returns_recorded_skip(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-07/AC-08 supplement: env lookup failure produces a recorded skip.
+
+    The prompt feedback item flagged that
+    :func:`ralph.pipeline.auto_integrate._auto_integrate_resolve_context`
+    swallowed EVERY context-resolution exception (env lookup, git
+    transport, etc.) and returned ``None``. With ``None`` the
+    caller treated the call as AC-01 disabled and returned ``None``
+    to the runner -- a silent no-op with NO state recorded, so the
+    operator had no idea WHY integration did not run.
+
+    The fix is to let the exception propagate to
+    :func:`auto_integrate_after_commit`'s outer try/except, which
+    converts it to a recorded skip ``RebaseState``. This test
+    injects a ``RuntimeError`` from
+    :func:`ralph.pipeline.auto_integrate._current_branch_or_detached_marker`
+    and asserts the outcome is a recorded skip with the failure
+    reason captured in ``last_reason`` (and ``outcome is not None``
+    so the runner persists it).
+    """
+    import ralph.pipeline.auto_integrate as _ai_mod
+
+    def _failing_probe(root: object) -> str | None:
+        raise RuntimeError("probe failure")
+
+    monkeypatch.setattr(_ai_mod, "_current_branch_or_detached_marker", _failing_probe)
+    config = _build_config(tmp_git_repo, enabled=True)
+    outcome = auto_integrate_after_commit(config, WorkspaceScope(tmp_git_repo), RebaseState())
+    assert outcome is not None, (
+        "AC-08 supplement: env lookup failure must produce a recorded skip,"
+        " NOT a silent None (which would be indistinguishable from the AC-01"
+        " disabled path)."
+    )
+    assert outcome.last_action == "skipped"
+    assert "probe failure" in (outcome.last_reason or "")
+    assert outcome.last_target is None
+    assert outcome.fast_forwarded is False
+
+
+def test_context_resolution_disabled_returns_none_not_skip(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-01 supplement: disabled returns ``None`` (no recorded skip).
+
+    Verifies the discriminator fix: the AC-01 byte-identical
+    no-op (disabled feature) MUST still return ``None`` so the
+    runner does not persist any rebase state change when the
+    feature is off. The context-resolution failure path (the
+    regression test above) must NOT regress this behavior -- the
+    distinction is now: ``None`` means "the feature is off", a
+    ``RebaseState`` with ``last_action='skipped'`` means "the
+    feature is on but something blocked this run".
+    """
+    config = _build_config(tmp_git_repo, enabled=False)
+    outcome = auto_integrate_after_commit(config, WorkspaceScope(tmp_git_repo), RebaseState())
+    assert outcome is None, (
+        "AC-01: disabled auto-integrate must return None (byte-identical"
+        " no-op). A RebaseState here would mean we mutated run state when"
+        " the feature is off."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Malformed record phase: a bogus on-disk phase must be treated as corrupt
+# ---------------------------------------------------------------------------
+
+
+def test_recovery_treats_bogus_phase_record_as_corrupt(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-11 supplement: a record with a stray ``phase`` value is corrupt.
+
+    The prompt feedback item flagged that
+    :class:`ralph.pipeline.auto_integrate_record.IntegrationRecord`
+    accepted ANY string as ``phase``. ``recover_incomplete_integration`
+    uses an ``if record.phase == 'integrating': ... else: ...``
+    branch (the else path is the integrated fast-forward continuation),
+    so a record with ``phase='bogus'`` would silently fall into the
+    integrated-FF path and try to land a fast-forward against an
+    unknown state.
+
+    The fix is to restrict ``IntegrationRecord.phase`` to a Literal
+    of ``{'integrating', 'integrated'}`` AND to have ``read_record``
+    reject any record whose on-disk phase is outside that set. This
+    test writes a corrupt record with ``phase='bogus'`` directly to
+    disk and asserts that ``recover_incomplete_integration` is a
+    no-op (no abort, no reset_hard, no fast-forward, no rebase) -- it
+    treats the malformed record as corrupt and returns ``None``
+    (the same behavior as "no record on disk"), so the operator's
+    manual in-progress rebase is preserved untouched.
+    """
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "base v1\n", "base shared")
+    base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", base_seed)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "shared.txt", "feature v1\n", "feature shared")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "base v2\n", "base shared 2")
+    _run(tmp_git_repo, "checkout", "feature")
+    preflight = _run(tmp_git_repo, "rebase", base)
+    assert preflight.returncode != 0
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    assert (git_dir / "rebase-apply").exists() or (
+        git_dir / "rebase-merge"
+    ).exists()
+    pre_feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    pre_target_sha = _run(
+        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
+    ).stdout.strip()
+    # Write a deliberately malformed record -- phase is not in
+    # {'integrating', 'integrated'}. The recovery preamble MUST
+    # treat this as corrupt (returning None, like the no-record
+    # case) rather than acting on it as if it were an integrated
+    # record and trying to land a fast-forward.
+    record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    import json
+
+    record_file.write_text(
+        json.dumps(
+            {
+                "phase": "bogus",
+                "target": base,
+                "pre_feature_sha": pre_feature_sha,
+                "pre_target_sha": pre_target_sha,
+            }
+        ),
+        encoding="utf-8",
+    )
+    outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
+    assert outcome is None, (
+        "AC-11 supplement: a corrupt (bogus-phase) record must be"
+        " treated as absent; recovery returns None and the operator's"
+        f" in-progress rebase is preserved. Got: {outcome!r}"
+    )
+    # The operator's in-progress rebase is preserved untouched.
+    assert (git_dir / "rebase-apply").exists() or (
+        git_dir / "rebase-merge"
+    ).exists(), "AC-11 supplement: corrupt record must NOT abort the operator's rebase"
+    assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == pre_feature_sha
 
 
 # ---------------------------------------------------------------------------
