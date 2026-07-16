@@ -275,3 +275,116 @@ def test_commit_skipped_does_not_invoke_auto_integrate(
     assert rebase_calls == [], (
         "next_state.copy_with(rebase=...) must NOT be called on COMMIT_SKIPPED"
     )
+
+
+def test_recovery_outcome_persisted_to_state_and_checkpoint(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Recovery preamble outcome is threaded into ``state.rebase`` AND persisted.
+
+    The crash-recovery preamble in
+    :func:`ralph.pipeline.run_loop._run_auto_integrate_recovery_preamble`
+    can return a :class:`RebaseState` describing what the recovery
+    did (restored feature branch, completed an unfinished ff, etc.).
+    The analysis requires that this outcome be:
+
+    1. Threaded into ``state.copy_with(rebase=recovered)`` BEFORE the
+       main pipeline loop starts -- otherwise the resume run
+       continues with the pre-crash ``state.rebase`` and the
+       recovered verdict is dropped on the floor.
+    2. Persisted to the same checkpoint path the runner uses, via
+       the canonical ``save_checkpoint_or_log`` writer -- so the
+       next phase's ``_save_checkpoint_or_log`` call does not
+       overwrite the recovered state with stale data.
+
+    This test injects a sentinel recovery outcome via
+    ``recover_incomplete_integration`` (monkeypatched) and asserts
+    the state copy AND the checkpoint save carry the sentinel.
+    """
+    from ralph.pipeline import run_loop as run_loop_module
+
+    sentinel = RebaseState(
+        last_action="recovered",
+        last_reason="restored feature branch after interrupted rebase",
+        last_target="main",
+        fast_forwarded=False,
+    )
+
+    def _fake_recover(workspace_scope: object) -> RebaseState:
+        return sentinel
+
+    # ``recover_incomplete_integration`` is imported lazily inside
+    # ``_run_auto_integrate_recovery_preamble`` (to keep the module
+    # import surface minimal), so the only stable patch target is
+    # the symbol on ``ralph.pipeline.auto_integrate``.
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.recover_incomplete_integration",
+        _fake_recover,
+    )
+
+    # Track the state passed to save_checkpoint_or_log and the args.
+    save_calls: list[tuple[object, dict[str, object]]] = []
+    expected_path = tmp_path / ".agent" / "checkpoint.json"
+
+    def _fake_save(state: object, *, message: object = None, path: object = None) -> None:
+        save_calls.append((state, {"message": message, "path": path}))
+
+    monkeypatch.setattr(
+        run_loop_module._runner_module, "save_checkpoint_or_log", _fake_save
+    )
+    monkeypatch.setattr(
+        run_loop_module._runner_module, "_checkpoint_path",
+        lambda _ws: expected_path,
+    )
+
+    # Build a minimal state that exposes copy_with and rebase.
+    state = MagicMock()
+    state.rebase = RebaseState()
+    state.copy_with = MagicMock(return_value=state)
+
+    # Build a minimal _LoopContext that exposes what _run_inner_loop
+    # needs for the recovery + state-thread + checkpoint-save path.
+    # We use a plain Mock (not spec=_LoopContext) so attribute access
+    # on nested fields like ctx.policy_bundle.pipeline.terminal_phase
+    # works without a chain of explicit MagicMock construction.
+    workspace_scope = WorkspaceScope(tmp_path)
+    ctx = MagicMock()
+    ctx.workspace_scope = workspace_scope
+    # The while loop guard exits immediately so the test can
+    # inspect side-effects without running the full loop.
+    ctx.policy_bundle.pipeline.terminal_phase = "x"
+    state.phase = "x"
+
+    run_loop_module._run_inner_loop(state, ctx, prev_phase=state.phase)
+
+    # State was copied with the sentinel rebase.
+    rebase_calls = [
+        call.kwargs
+        for call in state.copy_with.call_args_list
+        if "rebase" in call.kwargs
+    ]
+    assert rebase_calls, (
+        "recovery: state.copy_with(rebase=...) must be called to persist the"
+        " recovered RebaseState before the main loop"
+    )
+    assert rebase_calls[-1]["rebase"] == sentinel, (
+        f"recovery: state.copy_with(rebase=...) must carry the recovered"
+        f" sentinel, got {rebase_calls[-1]['rebase']!r}"
+    )
+
+    # Checkpoint was saved with the recovery-threaded state at the
+    # canonical checkpoint path.
+    assert save_calls, (
+        "recovery: save_checkpoint_or_log must be called to persist the"
+        " recovered state"
+    )
+    saved_state, save_kwargs = save_calls[0]
+    assert saved_state is state, (
+        "recovery: save_checkpoint_or_log must receive the recovery-threaded"
+        f" state, got {type(saved_state).__name__}"
+    )
+    assert save_kwargs["path"] == expected_path, (
+        "recovery: save_checkpoint_or_log must be called with the canonical"
+        f" checkpoint path, got {save_kwargs['path']!r}"
+    )

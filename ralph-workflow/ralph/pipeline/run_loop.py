@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.rebase_state import RebaseState
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.heartbeat import ProHeartbeatClient
@@ -427,7 +428,7 @@ def _push_status_bar_if_changed(
     return last_sig
 
 
-def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> None:
+def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> RebaseState | None:
     """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
 
     Called from :func:`_run_inner_loop` BEFORE the pipeline starts.
@@ -437,6 +438,15 @@ def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> No
     fast-forward (phase='integrated'). It must never abort startup
     -- a defensive try/except keeps any unexpected failure from
     blocking the run.
+
+    Returns the recovery :class:`RebaseState` (or ``None`` when no
+    record existed / the recovery was a no-op) so the caller can
+    thread the outcome into ``state.copy_with(rebase=recovered)``
+    and persist it via the existing checkpoint path. Discarding the
+    recovery outcome here would mean the resume run continues with
+    the pre-crash ``PipelineState.rebase`` and the operator never
+    sees the recovered / skipped / restored verdict in the next
+    receipt.
     """
     try:
         from ralph.pipeline.auto_integrate import recover_incomplete_integration
@@ -444,9 +454,41 @@ def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> No
         recovered = recover_incomplete_integration(workspace_scope)
     except Exception as recover_exc:  # pragma: no cover -- defensive
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
-        return
+        return None
     if recovered is not None:
         logger.debug("auto_integrate recovery preamble: {}", recovered.last_action)
+    return recovered
+
+
+def _save_recovered_rebase_checkpoint(
+    state: PipelineState,
+    ctx: _LoopContext,
+) -> None:
+    """Persist the recovery-threaded ``state`` to the same checkpoint path the runner uses.
+
+    The recovery preamble in :func:`_run_auto_integrate_recovery_preamble`
+    can return a :class:`RebaseState` that must be persisted before
+    the main loop starts -- otherwise the resume run continues with
+    the pre-crash ``state.rebase`` and the recovered verdict is
+    dropped on the floor. The runner's
+    ``_save_checkpoint_or_log(next_state, ...)`` is the canonical
+    writer; we delegate through ``_runner_module`` so the same
+    formatting / fallback / path-resolution behavior is reused. The
+    failure mode (log + continue) mirrors the runner's contract: a
+    failed save must never abort the run.
+    """
+    try:
+        _runner_module.save_checkpoint_or_log(
+            state,
+            message=(
+                "Checkpoint save failed while persisting auto-integrate recovery: {err}"
+            ),
+            path=_runner_module._checkpoint_path(ctx.workspace_scope),
+        )
+    except Exception as save_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate recovery checkpoint save failed: {}", save_exc
+        )
 
 
 @dataclass(frozen=True)
@@ -772,7 +814,16 @@ def _run_inner_loop(
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted)."""
-    _run_auto_integrate_recovery_preamble(ctx.workspace_scope)
+    recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope)
+    if recovered_rebase is not None:
+        # Thread the recovery outcome into the persisted checkpoint
+        # BEFORE the loop starts, mirroring the post-commit
+        # auto-integrate wiring in ``runner._run_pipeline_step``.
+        # Without this, a resume run continues with the pre-crash
+        # ``state.rebase`` and the operator never sees the recovered
+        # verdict in the next receipt.
+        state = state.copy_with(rebase=recovered_rebase)
+        _save_recovered_rebase_checkpoint(state, ctx)
     # State holder so the providers captured by run_pipeline_step can
     # read the LIVE PipelineState / ConnectivityMonitor on every agent
     # invocation. The list is rebound every loop iteration so the

@@ -26,6 +26,7 @@ Returns exit code 0 if no violations found, 1 otherwise.
 from __future__ import annotations
 
 import ast
+import os
 import re
 import sys
 from pathlib import Path
@@ -167,20 +168,33 @@ def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
 
 
 def _collect_py_files(root: Path) -> list[Path]:
-    """Return all ``*.py`` files under any of the audit subtrees."""
+    """Return all ``*.py`` files under any of the audit subtrees.
+
+    Uses :func:`os.walk` rather than :meth:`Path.rglob` because
+    ``rglob`` materializes a fresh :class:`Path` for every match
+    and is ~3-4x slower on cold caches. Under heavy
+    ``pytest-xdist`` load (this audit is run in parallel with 8
+    workers by ``test_run_audit_against_repo_finds_no_violations``)
+    the slower ``rglob`` is the difference between a sub-1s pass
+    and a timeout. The path-prefix check preserves the original
+    "__pycache__" skip behavior.
+    """
     seen: set[Path] = set()
     files: list[Path] = []
     for subtree in _AUDIT_SUBTREES:
         base = root / subtree
         if not base.is_dir():
             continue
-        for path in base.rglob("*.py"):
-            if "__pycache__" in path.parts:
-                continue
-            if path in seen:
-                continue
-            seen.add(path)
-            files.append(path)
+        for parent, dirs, fs in os.walk(base):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for name in fs:
+                if not name.endswith(".py"):
+                    continue
+                path = Path(parent) / name
+                if path in seen:
+                    continue
+                seen.add(path)
+                files.append(path)
     return sorted(files)
 
 

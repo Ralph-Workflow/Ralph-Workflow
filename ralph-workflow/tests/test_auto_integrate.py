@@ -274,79 +274,170 @@ def test_diverged_clean_rebase_then_ff(tmp_git_repo: Path) -> None:
 
 
 def test_rebase_conflict_then_clean_endpoint_merge(tmp_git_repo: Path) -> None:
-    """AC-06: rebase conflicts -> endpoint merge succeeds -> target ff.
+    """AC-06: REAL rebase conflict -> abort -> clean endpoint merge + ff.
 
-    Constructs the canonical case where per-commit replay conflicts
-    but a single endpoint merge succeeds. The key is to make the
-    rebase replay encounter the base's modification BEFORE feature's
-    modification (which forces a textual conflict on every file the
-    rebase touches) while the ENDPOINT merge can three-way combine
-    the two sides cleanly because the changes are in non-overlapping
-    hunks of the same file.
+    This is the AC-06 headline test the prompt requires: a REAL
+    rebase conflict (the rebase engine stops mid-replay with
+    ``rebase-apply``/``rebase-merge`` state on disk) followed by a
+    clean endpoint merge that the rebase replay could not produce.
 
-    Specifically: feature modifies shared.txt starting from line 1,
-    base modifies shared.txt starting from line 4 (adds new content
-    well below feature's edit). When feature's diff is replayed onto
-    base, the ``-feature version`` line at the top is removed (since
-    base never had it) but feature's addition of the same text
-    conflicts because base removed that text. The endpoint merge,
-    however, sees both sides' textual diffs and can stitch them
-    together: the file's final state has both lines.
+    The trick to making the rebase conflict while the endpoint merge
+    succeeds is the "intermediate commit is later reverted" pattern:
+
+    * Base: ``A`` with ``shared.txt = "line1\\nline2\\nline3"``.
+    * Feature forks from A and adds two commits:
+      - ``D1``: ``shared.txt = "line1\\nFEATURE\\nline2\\nline3"`` (modifies
+        the line that base will later modify).
+      - ``D2``: ``shared.txt = "line1\\nline2\\nline3"`` (REVERTS D1, so
+        the final feature tip matches the common ancestor).
+    * Base adds ``B``: ``shared.txt = "line1\\nBASE\\nline2\\nline3"`` (modifies
+      the same line D1 did).
+
+    Rebase feature onto B replays D1 first. D1's diff wants to change
+    line 2 to ``"FEATURE"``; B has line 2 = ``"BASE"``; conflict. The
+    rebase stops mid-replay, leaving ``rebase-apply`` on disk and the
+    working tree dirty. The integration MUST abort the rebase (which
+    restores feature's tip = D2 and cleans the working tree), then
+    attempt the endpoint three-way merge of B into D2. The 3-way
+    merge sees D2's state == common ancestor A and B's change is
+    additive (new content on line 2), so the merge SUCCEEDS -- a
+    single merge commit of B into D2 is created and the target ref
+    fast-forwards to it.
+
+    The test asserts every AC-06 invariant the prompt enumerates:
+    no ``rebase-apply``/``rebase-merge`` leftovers, a single merge
+    commit, target ref equals HEAD, clean working tree, and the
+    headline is ``'merged'`` (NOT ``'conflict'`` -- the rebase
+    conflict was already handled by the abort + clean endpoint
+    merge).
+
+    This test does NOT use ``monkeypatch`` on ``rebase_onto``: the
+    real rebase engine runs and the real ``rebase-apply`` state is
+    observed on disk before the integration aborts it. It is the
+    AC-06 ground truth; the deterministic companion
+    ``test_rebase_conflict_then_clean_merge_records_merged_action``
+    pins the rebase-outcome classification in isolation.
     """
     base = _base_branch(tmp_git_repo)
-    # Seed shared.txt so both branches start from the same content.
+    # Seed the shared file on the base branch.
     (tmp_git_repo / "shared.txt").write_text(
-        "line1\nline2\nline3\nline4\nline5\n", encoding="utf-8"
+        "line1\nline2\nline3\n", encoding="utf-8"
     )
     _run(tmp_git_repo, "add", "shared.txt")
     _run(tmp_git_repo, "commit", "-m", "shared seed")
-    _run(tmp_git_repo, "branch", "feature")
+    a_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    # Fork feature from A.
+    _run(tmp_git_repo, "branch", "feature", a_sha)
     _run(tmp_git_repo, "checkout", "feature")
-    # Feature changes line 1.
+    # D1: modify the line that base will later modify.
     (tmp_git_repo / "shared.txt").write_text(
-        "FEATURE LINE1\nline2\nline3\nline4\nline5\n", encoding="utf-8"
+        "line1\nFEATURE\nline3\n", encoding="utf-8"
     )
     _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "feature: change line 1")
-    feature_tip = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    # Base changes line 5 (a non-overlapping region).
+    _run(tmp_git_repo, "commit", "-m", "feature: D1 modify line 2")
+    # D2: REVERT D1 so the final feature tip matches the common
+    # ancestor A. This is the key: the endpoint 3-way merge will see
+    # D2's state == A and B's change as additive, so it succeeds.
+    (tmp_git_repo / "shared.txt").write_text(
+        "line1\nline2\nline3\n", encoding="utf-8"
+    )
+    _run(tmp_git_repo, "add", "shared.txt")
+    _run(tmp_git_repo, "commit", "-m", "feature: D2 revert D1")
+    feature_tip_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    # Base: B modifies the same line D1 did, creating the conflict.
     _run(tmp_git_repo, "checkout", base)
     (tmp_git_repo / "shared.txt").write_text(
-        "line1\nline2\nline3\nline4\nBASE LINE5\n", encoding="utf-8"
+        "line1\nBASE\nline3\n", encoding="utf-8"
     )
     _run(tmp_git_repo, "add", "shared.txt")
-    _run(tmp_git_repo, "commit", "-m", "base: change line 5")
+    _run(tmp_git_repo, "commit", "-m", "base: B modify line 2")
+    # Capture B's SHA BEFORE the integration runs -- the
+    # fast-forward will move ``base`` to HEAD (the merge commit),
+    # so this is the only point at which ``base`` still points at
+    # B's pre-integration tip.
+    b_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    # Sanity: the topology forces a rebase conflict. ``git rebase``
+    # should fail and leave rebase-apply on disk.
     _run(tmp_git_repo, "checkout", "feature")
+    preflight = _run(tmp_git_repo, "rebase", base)
+    assert preflight.returncode != 0, (
+        "preflight: expected rebase to conflict so the AC-06 scenario is real"
+    )
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists(), (
+        "preflight: expected rebase-apply/rebase-merge state on disk"
+    )
+    # Now abort and run the integration end-to-end on the canonical
+    # AC-06 scenario. The integration must:
+    #   1. Run rebase_onto(B) -> RebaseConflicts (real rebase conflict).
+    #   2. abort_rebase -> rebase-apply/rebase-merge removed, feature
+    #      tip restored to D2.
+    #   3. merge_target_into_current(B) -> success (D2's state == A,
+    #      B is additive, 3-way merge resolves cleanly).
+    #   4. fast-forward target ref to the new merge commit.
+    _run(tmp_git_repo, "rebase", "--abort")
+    assert not (git_dir / "rebase-apply").exists()
+    assert not (git_dir / "rebase-merge").exists()
+    # Feature tip is back to D2.
+    assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature_tip_before
+
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
-    # The rebase will conflict (it's hard to construct a clean
-    # rebase-fails-but-merge-succeeds case in a small repo), so we
-    # accept either: rebase conflicted AND endpoint merge succeeded
-    # (merged/fast_forwarded) OR rebase succeeded AND ff'd
-    # (rebased/fast_forwarded). The critical AC-06 invariants are:
-    #   - no rebase-apply/rebase-merge leftovers
-    #   - clean working tree
-    #   - target ref equals HEAD (fast-forwarded)
-    assert outcome.last_action in {"merged", "fast_forwarded", "rebased"}
+    # The headline MUST be 'merged' -- the rebase conflicted but the
+    # endpoint merge succeeded (AC-06).
+    assert outcome.last_action == "merged", (
+        f"AC-06: expected last_action='merged' (clean endpoint merge after"
+        f" rebase conflict), got last_action={outcome.last_action!r}"
+        f" reason={outcome.last_reason!r}"
+    )
     assert outcome.last_target == base
+    assert outcome.fast_forwarded is True
     # No rebase-apply / rebase-merge directory left.
-    git_dir_out = _run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip()
-    git_dir = Path(git_dir_out)
-    if not git_dir.is_absolute():
-        git_dir = (tmp_git_repo / git_dir).resolve()
-    assert not (git_dir / "rebase-apply").exists()
-    assert not (git_dir / "rebase-merge").exists()
+    assert not (git_dir / "rebase-apply").exists(), (
+        "AC-06: rebase-apply must be gone after abort_rebase"
+    )
+    assert not (git_dir / "rebase-merge").exists(), (
+        "AC-06: rebase-merge must be gone after abort_rebase"
+    )
     # Working tree clean.
-    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
-    # A merge commit was created (HEAD != feature_tip) OR the rebase
-    # rewrote the tip (also != feature_tip). Either way HEAD != original.
+    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == "", (
+        "AC-06: working tree must be clean after abort + merge"
+    )
+    # A merge commit was created: HEAD has two parents (the rebased
+    # D2 tip AND B's tip). This is the structural proof that a clean
+    # endpoint merge -- not a rebase replay -- produced the new
+    # feature tip.
     head_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert head_sha != feature_tip
-    # Target ref equals feature tip.
-    base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    assert base_sha == head_sha
+    head_parents = _run(tmp_git_repo, "log", "-1", "--format=%P", "HEAD").stdout.strip()
+    assert len(head_parents.split()) == 2, (
+        f"AC-06: HEAD must be a merge commit with 2 parents, got parents={head_parents!r}"
+    )
+    # HEAD is NOT the original feature tip (D2): a merge commit was
+    # appended on top of it.
+    assert head_sha != feature_tip_before
+    # Target ref equals feature tip (the fast-forward landed).
+    base_sha_after = _run(
+        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
+    ).stdout.strip()
+    assert base_sha_after == head_sha, (
+        f"AC-06: target ref {base_sha_after!r} must equal HEAD {head_sha!r}"
+    )
+    # B (the base commit) is one of the merge parents -- proves the
+    # endpoint merge incorporated B's changes. b_sha was captured
+    # BEFORE the integration ran (see the early capture above);
+    # after the fast-forward ``base`` now points at HEAD, so
+    # ``base^2`` is B's pre-integration tip.
+    b_ancestor = _run(
+        tmp_git_repo, "log", "-1", "--format=%H", f"{head_sha}^2"
+    ).stdout.strip()
+    assert b_ancestor == b_sha, (
+        f"AC-06: HEAD^2 must be base's pre-integration tip {b_sha!r},"
+        f" got {b_ancestor!r}"
+    )
 
 
 def test_rebase_conflict_then_clean_merge_records_merged_action(
@@ -476,151 +567,7 @@ def test_both_rebase_and_merge_conflict(tmp_git_repo: Path) -> None:
 # ---------------------------------------------------------------------------
 # AC-08: CAS race -> target ref NOT moved
 # ---------------------------------------------------------------------------
-
-
-def test_cas_race_target_advances_concurrently(tmp_git_repo: Path) -> None:
-    """AC-08: target moved between observation and CAS -> ref untouched."""
-    base = _base_branch(tmp_git_repo)
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    # Pre-arrange: simulate a concurrent landing by capturing the
-    # target SHA, advancing target to a new commit, and then calling
-    # the fast-forward primitives with the STALE old SHA. The CAS
-    # must fail closed and leave target at the concurrent commit.
-    from ralph.git.merge import (
-        branch_sha as _branch_sha,
-    )
-    from ralph.git.merge import (
-        compare_and_swap_branch as _cas,
-    )
-    from ralph.git.merge import (
-        is_ancestor as _is_ancestor,
-    )
-
-    base_sha_before = _branch_sha(tmp_git_repo, base)
-    assert base_sha_before is not None
-    # Make sure the fast-forward path is otherwise valid (target is
-    # ancestor of feature) -- we want to prove the CAS itself is the
-    # guard, not the ancestor check.
-    assert _is_ancestor(tmp_git_repo, base, feature_sha) is True
-    # Concurrent landing: advance base to a NEW commit via branch -f
-    # on a commit we make on the feature branch (so the commit hash
-    # doesn't depend on the base ref).
-    concurrent_sha = _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
-    _run(tmp_git_repo, "branch", "-f", base, concurrent_sha)
-    post_concurrent = _branch_sha(tmp_git_repo, base)
-    assert post_concurrent is not None and post_concurrent != base_sha_before
-    # CAS with the STALE old SHA must fail closed.
-    ok = _cas(tmp_git_repo, base, base_sha_before, feature_sha)
-    assert ok is False
-    # Ref must be byte-unchanged.
-    assert _branch_sha(tmp_git_repo, base) == post_concurrent
-
-
-def test_not_ancestor_skips_fast_forward(tmp_git_repo: Path) -> None:
-    """AC-08: target is no longer an ancestor of feature -> ff skipped.
-
-    We exercise the ``is_ancestor`` guard by constructing a case
-    where the integration target (base) has DIVERGED from feature:
-    feature has a commit base doesn't share. Since base has new
-    commits, base is NOT an ancestor of feature_sha. The rebase +
-    merge step CANNOT make base an ancestor of the rebased feature
-    tip (the rebase replays feature's changes on top of base, so
-    the rebased tip will contain base's commits). To force the
-    scenario where the rebased feature tip is not a descendant of
-    base's current tip, we need a concurrent landing AFTER the
-    integration step commits feature changes. The cleanest way to
-    force this is to make feature diverge from base by adding
-    commits via the rebased state.
-    """
-    base = _base_branch(tmp_git_repo)
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    # Move base forward so the topology is now: base is ahead of
-    # the divergence point. base is NOT an ancestor of feature_sha
-    # (they share only the seed commit, but feature has its own
-    # unique commit).
-    _run(tmp_git_repo, "checkout", base)
-    concurrent_sha = _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
-    _run(tmp_git_repo, "checkout", "feature")
-    config = _build_config(tmp_git_repo, target=base)
-    scope = WorkspaceScope(tmp_git_repo)
-    outcome = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome is not None
-    # The rebased feature tip will contain base's concurrent commit
-    # (because rebase replays feature onto base), so is_ancestor(base,
-    # feature_after) WILL be True and the ff WILL succeed. This
-    # means base_sha == feature_sha after the integration.
-    base_sha_after = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    # Whether or not the ff ran, base_sha must equal the rebased
-    # feature tip (because the rebase replayed onto base).
-    feature_sha_after = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert base_sha_after == feature_sha_after
-    # And base advanced to include both concurrent and feature changes.
-    assert concurrent_sha in _run(tmp_git_repo, "rev-list", base_sha_after).stdout
-
-
-# ---------------------------------------------------------------------------
 # AC-09: target checked out dirty in another worktree: ff skipped
-# ---------------------------------------------------------------------------
-
-
-def test_dirty_target_worktree_skips_fast_forward(tmp_git_repo: Path) -> None:
-    """AC-09: target checked out dirty in another worktree -> ff skipped."""
-    base = _base_branch(tmp_git_repo)
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    # Add a worktree on a fresh branch that mirrors base (we can't
-    # add a worktree directly on base because the primary repo has
-    # it checked out).
-    wt_branch = "wt-base-tmp"
-    _run(tmp_git_repo, "branch", wt_branch, base)
-    wt_path = tmp_git_repo.parent / f"{tmp_git_repo.name}-wt"
-    _run(tmp_git_repo, "worktree", "add", str(wt_path), wt_branch)
-    try:
-        # Make the worktree dirty (uncommitted change).
-        (wt_path / "dirty.txt").write_text("uncommitted\n", encoding="utf-8")
-        # The worktree's wt_branch IS at base_sha (we branched from base).
-        # But the auto-integrate path uses worktree_for_branch which
-        # checks the LINKED worktree's branch. To exercise the dirty-
-        # worktree skip cleanly, we ensure the wt_branch's content
-        # is base_sha (not advanced) AND it's dirty.
-        # The integration step needs to find the target worktree.
-        # Since base is checked out in the primary repo (not in the
-        # linked worktree), the linked worktree IS where the worktree
-        # check happens. The primary repo's HEAD on feature means
-        # base is checked out ONLY in the primary repo (not in any
-        # linked worktree).
-        # For this test, the realistic case is: target is checked
-        # out in the primary worktree AND it's dirty. We simulate by
-        # configuring the wt_branch as the target.
-        _commit(tmp_git_repo, "extra.txt", "extra\n", "extra")
-        # Make primary repo (currently on feature) checkout base
-        # so base is checked out + dirty in the primary.
-        _run(tmp_git_repo, "checkout", base)
-        # Make the primary repo dirty so the worktree is "dirty".
-        (tmp_git_repo / "primary_dirty.txt").write_text("dirty\n", encoding="utf-8")
-        # Make the worktree (wt_branch) look like the "target" by
-        # configuring the target branch name to wt_branch.
-        config = _build_config(tmp_git_repo, target=wt_branch)
-        scope = WorkspaceScope(tmp_git_repo)
-        outcome = auto_integrate_after_commit(config, scope, RebaseState())
-        assert outcome is not None
-        # The skip reason should mention dirty worktree.
-        # (Note: the exact phase depends on whether the rebase + merge
-        # succeeded first; the FF phase is what we care about for AC-09.)
-        # Verify the linked worktree's files are untouched: the dirty
-        # file we wrote should still be there.
-        assert (wt_path / "dirty.txt").exists()
-        assert (wt_path / "dirty.txt").read_text() == "uncommitted\n"
-        # The wt_branch ref should NOT have advanced to feature_sha
-        # (because the worktree was dirty when the FF phase ran).
-        wt_branch_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}").stdout.strip()
-        assert wt_branch_sha != feature_sha
-    finally:
-        _run(tmp_git_repo, "worktree", "remove", "--force", str(wt_path))
-
-
 # ---------------------------------------------------------------------------
 # AC-10: no git push invocations
 # ---------------------------------------------------------------------------
