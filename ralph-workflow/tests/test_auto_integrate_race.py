@@ -223,25 +223,19 @@ def test_clean_target_worktree_fast_forward_succeeds(tmp_git_repo: Path) -> None
             f"AC-09 success: fast_forwarded must be True when the"
             f" target worktree is clean, got {outcome.fast_forwarded!r}"
         )
-        # last_reason may be set to a benign rebase NoOp reason
-        # such as ``"Branch is already up-to-date with upstream"``
-        # when the rebase replay collapses to a no-op and only the
-        # fast-forward does work -- the producer preserves that
-        # reason rather than scrubbing it. What must NOT appear is a
-        # refuse-failure reason from
-        # :func:`ralph.pipeline.auto_integrate_ff.fast_forward_target`.
-        if outcome.last_reason is not None:
-            assert outcome.last_reason not in (
-                "target worktree dirty",
-                "target advanced concurrently (CAS mismatch)",
-                "target advanced concurrently (not an ancestor of feature)",
-                "target advanced concurrently (ff-only refused)",
-                "target branch missing at fast-forward time",
-            ), (
-                f"AC-09 success: last_reason must not surface a ff"
-                f" refusal reason on a clean worktree ff, got"
-                f" {outcome.last_reason!r}"
-            )
+        # Plan step 6 contract: on a successful clean-worktree
+        # fast-forward, last_reason MUST be None -- the boolean
+        # ``fast_forwarded`` is the headline signal, and the
+        # producer scrubs any residual rebase/ff reason (including
+        # the benign NoOp "Branch is already up-to-date with
+        # upstream" that the rebase engine may surface) once the
+        # ff has actually landed. Allowing non-None reasons here
+        # would silently re-hide the regression where ff succeeds
+        # but a stale reason leaks through.
+        assert outcome.last_reason is None, (
+            f"AC-09 success: last_reason must be None on a clean"
+            f" worktree fast-forward, got {outcome.last_reason!r}"
+        )
         # Post-integration feature tip (refreshed; see TRAP above).
         feature_tip_after = _run(
             tmp_git_repo, "rev-parse", "HEAD"

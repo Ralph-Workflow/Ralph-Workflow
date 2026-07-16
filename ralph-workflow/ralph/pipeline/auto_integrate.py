@@ -403,7 +403,14 @@ def _auto_integrate_after_commit_inner(
             }
         )
     else:
-        record = record.model_copy(update={"fast_forwarded": True})
+        # Successful fast-forward: the ``fast_forwarded`` boolean is
+        # the headline signal, so any residual reason from the
+        # rebase/merge phase (including benign rebase NoOp reasons
+        # like ``"Branch is already up-to-date with upstream"``)
+        # is scrubbed here. A clean-success state carries no reason.
+        record = record.model_copy(
+            update={"fast_forwarded": True, "last_reason": None}
+        )
     return record
 
 
