@@ -172,6 +172,11 @@ def test_agent_registry_class_not_flagged() -> None:
     assert violations == []
 
 
+# This whole-repo AST scan regularly exceeds the 1.0s per-test ceiling
+# under parallel xdist load (0.21s in isolation but starved past
+# DEFAULT_TEST_TIMEOUT_SECONDS=1.0 in `make test-subprocess-e2e`), so the
+# default 1-second per-test ceiling is unsafe for this single test.
+@pytest.mark.timeout_seconds(15)
 @pytest.mark.subprocess_e2e
 def test_run_audit_against_repo_finds_no_violations() -> None:
     """Running the audit against the current repo must find zero violations.
