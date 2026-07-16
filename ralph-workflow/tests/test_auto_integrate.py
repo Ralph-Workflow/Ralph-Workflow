@@ -307,6 +307,16 @@ def test_diverged_clean_rebase_then_ff(tmp_git_repo: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+# This test drives the real rebase engine twice (a preflight ``git rebase``
+# to prove the topology conflicts, then the canonical integration run that
+# re-rebases, aborts, and performs the endpoint merge plus fast-forward).
+# Wall-clock cost under parallel xdist load (721 tests via -n auto --dist
+# worksteal in `make test-subprocess-e2e`) is regularly past 5 s on busy
+# machines, so the module-level 5-second pytestmark is unsafe for this
+# single test. The narrower override raises only this test's per-test
+# budget above the file-wide 5 s mark, mirroring the precedent at
+# tests/test_audit_public_docstrings.py:55-57.
+@pytest.mark.timeout_seconds(30)
 def test_rebase_conflict_then_clean_endpoint_merge(tmp_git_repo: Path) -> None:
     """AC-06: REAL rebase conflict -> abort -> clean endpoint merge + ff.
 
