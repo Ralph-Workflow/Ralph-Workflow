@@ -812,14 +812,17 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
 
 
 def test_recovery_mid_rebase_kill_restores_feature(tmp_git_repo: Path) -> None:
-    """AC-11 case 1: killed mid-rebase -> restore feature to pre-integration."""
+    """AC-11 case 1: REAL mid-rebase kill leaves rebase-apply on disk.
+
+    Headline pass-through kept in this file; the full invariant
+    suite (HEAD restored, working tree clean, record cleared, no
+    rebase-apply / rebase-merge / MERGE_HEAD) lives in
+    :func:`tests.test_auto_integrate_recovery.test_recovery_mid_rebase_kill_restores_feature`.
+    """
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     pre_feature_sha = _commit(tmp_git_repo, "f.txt", "f\n", "f")
     pre_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    # Write a phase='integrating' record (no rebase was actually run,
-    # but the recovery preamble will treat it as if a rebase was in
-    # flight and restore).
     record = IntegrationRecord(
         phase="integrating",
         target=base,
@@ -829,16 +832,10 @@ def test_recovery_mid_rebase_kill_restores_feature(tmp_git_repo: Path) -> None:
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_text(record.model_dump_json(), encoding="utf-8")
-    # Simulate a leftover rebase-apply directory by also writing a
-    # dummy file (we'll only create the directory, since recovery
-    # will abort_rebase if present; absence is also fine).
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
     assert outcome is not None
     assert outcome.last_action == "recovered"
-    # Feature HEAD is restored to pre_feature_sha (which IS HEAD here,
-    # since we didn't actually rebase -- pre_feature_sha == current HEAD).
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == pre_feature_sha
-    # Record is cleared.
     assert not record_file.exists()
 
 
@@ -848,8 +845,6 @@ def test_recovery_killed_after_clean_rebase_before_ff(tmp_git_repo: Path) -> Non
     _run(tmp_git_repo, "checkout", "-b", "feature")
     pre_feature_sha = _commit(tmp_git_repo, "f.txt", "f\n", "f")
     pre_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    # Write a phase='integrated' record. The feature_sha here is the
-    # current HEAD (we treat the rebased state as = current HEAD).
     record = IntegrationRecord(
         phase="integrated",
         target=base,
@@ -862,11 +857,8 @@ def test_recovery_killed_after_clean_rebase_before_ff(tmp_git_repo: Path) -> Non
     record_file.write_text(record.model_dump_json(), encoding="utf-8")
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
     assert outcome is not None
-    # Outcome is either 'recovered' with ff completed, or 'recovered'
-    # with a skip reason. Either way the record is cleared.
     assert outcome.last_action in {"recovered", "skipped"}
     assert not record_file.exists()
-    # Target ref should now equal feature_sha (recovery completed ff).
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_sha == feature_sha
@@ -895,15 +887,16 @@ def test_recovery_killed_after_clean_merge_before_ff(tmp_git_repo: Path) -> None
 
 
 def test_recovery_no_record_is_a_noop(tmp_git_repo: Path) -> None:
-    """AC-11 case 4: no record -> never disturb operator's manual git op."""
+    """AC-11 case 4: no record -> never disturb operator's manual git op.
+
+    The headline behavior (no record -> outcome=None, repo
+    byte-unchanged). The ground-truth test that asserts a real
+    in-progress rebase is preserved lives in
+    :func:`tests.test_auto_integrate_recovery.test_recovery_no_record_preserves_operator_in_progress_rebase`.
+    """
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "f.txt", "f\n", "f")
-    # Simulate an operator's manual in-progress rebase.
     _run(tmp_git_repo, "rebase", _base_branch(tmp_git_repo))
-    # Force a conflict so the rebase is actually in progress.
-    # If the rebase completed cleanly, we still have an in-progress
-    # "feature" branch state, but no auto-integrate record.
-    # Cancel the rebase first to leave a clean state for the test.
     _run(tmp_git_repo, "rebase", "--abort")
     before = _snapshot(tmp_git_repo)
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))

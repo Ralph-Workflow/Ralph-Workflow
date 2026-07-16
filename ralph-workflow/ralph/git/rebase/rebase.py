@@ -153,7 +153,9 @@ def rebase_onto(
     finally:
         repo.close()
 
-    result = executor.execute("git", ("rebase", upstream_branch), cwd=path)
+    result = executor.execute(
+        "git", ("rebase", "--", upstream_branch), cwd=path
+    )
     return _rebase_result_from_process(result, path)
 
 

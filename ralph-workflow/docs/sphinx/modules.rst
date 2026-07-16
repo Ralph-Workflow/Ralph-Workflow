@@ -930,6 +930,20 @@ ralph.pipeline.auto_integrate
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_ff
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_ff
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_record
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_record
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.runner
 ~~~~~~~~~~~~~~~~~~~~~
 

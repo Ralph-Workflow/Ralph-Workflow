@@ -30,35 +30,24 @@ which runs at startup and reconciles any durable, atomically-written
 from __future__ import annotations
 
 import contextlib
-import json
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
-from pydantic import ConfigDict
 
 from ralph.git.merge import (
     MergeResult,
     abort_merge,
     branch_exists,
     branch_sha,
-    compare_and_swap_branch,
-    fast_forward_via_worktree,
     is_ancestor,
     merge_in_progress,
     merge_target_into_current,
     reset_hard,
     resolve_origin_head_branch,
-    worktree_for_branch,
 )
-from ralph.git.operations import (
-    find_main_worktree_root,
-    get_head_sha,
-    is_repo_clean,
-)
+from ralph.git.operations import get_head_sha
 from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
@@ -72,19 +61,26 @@ from ralph.git.rebase.rebase import (
     rebase_in_progress,
     rebase_onto,
 )
+from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.auto_integrate_ff import fast_forward_target
+from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
+)
+from ralph.pipeline.auto_integrate_record import (
+    clear_record as _clear_record,
+)
+from ralph.pipeline.auto_integrate_record import (
+    read_record as _read_record,
+)
+from ralph.pipeline.auto_integrate_record import (
+    write_record as _write_record,
+)
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.workspace.scope import WorkspaceScope
 
-
-_AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
-
-#: Target branch resolution order when ``auto_integrate_target`` is unset.
-#: Mirrors the prompt's ``origin/HEAD`` -> ``main`` -> ``master`` cascade.
-_AUTO_DETECT_TARGET_CANDIDATES: tuple[str, ...] = ("main", "master")
 
 #: Outcome verbs recorded on ``RebaseState.last_action`` so the runner
 #: can format the user-facing log line (rebased / merged /
@@ -97,39 +93,9 @@ _ACTION_CONFLICT = "conflict"
 _ACTION_RECOVERED = "recovered"
 
 
-class IntegrationRecord(RalphBaseModel):
-    """Durable phased record of an in-progress auto-integration.
-
-    Persisted to ``<workspace_scope.root>/.agent/auto_integrate_in_progress.json``
-    via :func:`_write_record` (atomic temp + ``os.replace``) so a
-    SIGKILL mid-write leaves the previous record intact and a
-    recovery preamble on resume can decide whether to land the
-    fast-forward (phase='integrated') or restore the feature branch
-    to its pre-integration state (phase='integrating').
-
-    Attributes:
-        phase: ``'integrating'`` while the rebase/merge is in flight;
-            ``'integrated'`` once the feature branch fully contains
-            the target and only the fast-forward remains.
-        target: The integration target branch name.
-        pre_feature_sha: The feature branch HEAD SHA captured BEFORE
-            any rebase/merge; used to restore on a crash that
-            interrupts the rebase.
-        pre_target_sha: The target branch SHA captured BEFORE the
-            fast-forward attempt; the observed ``<oldvalue>`` for
-            the atomic compare-and-swap.
-        integrated_feature_sha: The feature branch HEAD SHA captured
-            AFTER the rebase/merge succeeded. Present only when
-            phase='integrated'.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    phase: str
-    target: str
-    pre_feature_sha: str
-    pre_target_sha: str | None
-    integrated_feature_sha: str | None = None
+#: Target branch resolution order when ``auto_integrate_target`` is unset.
+#: Mirrors the prompt's ``origin/HEAD`` -> ``main`` -> ``master`` cascade.
+_AUTO_DETECT_TARGET_CANDIDATES: tuple[str, ...] = ("main", "master")
 
 
 def resolve_integration_target(
@@ -169,68 +135,12 @@ def resolve_integration_target(
     return None
 
 
-def _record_path(workspace_root: Path) -> Path:
-    """Return the durable crash-record path anchored to ``workspace_root``."""
-    return workspace_root / ".agent" / _AUTO_INTEGRATE_RECORD_FILENAME
-
-
-def _write_record(workspace_root: Path, record: IntegrationRecord) -> None:
-    """Atomically write ``record`` to the durable record path.
-
-    The atomic-write pattern (temp file in the same directory + ``os.replace``)
-    mirrors the existing ``ralph.git.operations._atomic_append_text``
-    contract: a crash mid-write never leaves a half-written record on
-    disk. If ``os.replace`` fails, the staging file is removed before
-    re-raising.
-    """
-    record_file = _record_path(workspace_root)
-    record_file.parent.mkdir(parents=True, exist_ok=True)
-    payload = record.model_dump_json().encode("utf-8")
-    fd, staging_path = tempfile.mkstemp(
-        prefix=record_file.name + ".staging.", dir=str(record_file.parent)
-    )
-    try:
-        with os.fdopen(fd, "wb") as staging:
-            staging.write(payload)
-        Path(staging_path).replace(record_file)
-    except BaseException:
-        with contextlib.suppress(FileNotFoundError):
-            Path(staging_path).unlink()
-        raise
-
-
-def _read_record(workspace_root: Path) -> IntegrationRecord | None:
-    """Return the durable record or ``None`` when absent / corrupt.
-
-    A corrupt record is treated as absent so a partial write from a
-    crashed prior run never wedges the recovery preamble.
-    """
-    record_file = _record_path(workspace_root)
-    if not record_file.exists():
-        return None
-    try:
-        raw = record_file.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    try:
-        data_raw: object = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data_raw, dict):
-        return None
-    try:
-        return IntegrationRecord.model_validate(data_raw)
-    except Exception:
-        return None
-
-
-def _clear_record(workspace_root: Path) -> None:
-    """Unlink the durable record; missing-ok."""
-    record_file = _record_path(workspace_root)
-    try:
-        record_file.unlink()
-    except FileNotFoundError:
-        return
+# The record path / write_record / read_record / clear_record helpers
+# were extracted to :mod:`ralph.pipeline.auto_integrate_record` to keep
+# this module under the repo-structure ``_MAX_FILE_LINES`` cap. The
+# module-level ``from ... import ... as _xxx_record`` aliases above
+# expose them under the original private names so the call sites in
+# this module read unchanged.
 
 
 def _record_skip(
@@ -361,98 +271,14 @@ def _fast_forward_target(
     target: str,
     feature_sha: str,
 ) -> tuple[bool, str]:
-    """Move the local mainline ref to ``feature_sha`` via CAS or worktree ff.
+    """Backwards-compat shim for the extracted fast-forward path.
 
-    Returns ``(fast_forwarded, skip_reason)``. ``skip_reason`` is
-    empty when the fast-forward succeeded.
-
-    AC-08 atomicity contract: the ancestry decision is BOUND to the
-    same observed target SHA the CAS uses. Concretely we observe
-    ``observed_target_sha = branch_sha(target)`` ONCE, then verify
-    that *that specific SHA* is an ancestor of ``feature_sha``, and
-    then CAS that same SHA. If the target moves between observation
-    and CAS, the CAS fails closed (the ref no longer equals the
-    observed SHA) and we record a concurrency skip. Earlier
-    implementations checked ``is_ancestor(target, feature_sha)``
-    *before* reading the SHA, leaving a TOCTOU window where a
-    concurrent landing between the ancestor check and the SHA read
-    could satisfy the CAS with a SHA that was NOT an ancestor of
-    ``feature_sha`` -- the bug class closed by this rewrite.
-
-    The worktree path also observes the worktree's branch SHA and
-    verifies that observed SHA is an ancestor of ``feature_sha``
-    before attempting the worktree ff; ``git merge --ff-only`` is
-    itself the second-line guard.
-
-    Never force-moves the target. The skip reasons are recorded in
-    the final ``RebaseState.last_reason``.
+    The implementation now lives in
+    :mod:`ralph.pipeline.auto_integrate_ff`; this wrapper remains
+    so :func:`_continue_fast_forward_from_record` (and any future
+    in-module caller) can keep referencing the local symbol.
     """
-    # Observe the target SHA FIRST. This is the single value the CAS
-    # will use; every downstream check must reference the same SHA.
-    observed_target_sha = branch_sha(repo_root, target)
-    if observed_target_sha is None:
-        return False, "target branch missing at fast-forward time"
-
-    # AC-08 guard: the OBSERVED SHA (not the ref name) must be an
-    # ancestor of feature_sha. This is the contract that closes the
-    # TOCTOU race: if the target moves after this check, the
-    # downstream CAS (or the worktree ff) will refuse the move.
-    if not is_ancestor(repo_root, observed_target_sha, feature_sha):
-        return False, "target advanced concurrently (not an ancestor of feature)"
-
-    return _fast_forward_target_via_worktree_or_cas(
-        repo_root, target, feature_sha, observed_target_sha
-    )
-
-
-def _fast_forward_target_via_worktree_or_cas(
-    repo_root: Path,
-    target: str,
-    feature_sha: str,
-    observed_target_sha: str,
-) -> tuple[bool, str]:
-    """Run the worktree-aware or CAS fast-forward once ancestor + sha checks pass."""
-    primary_root = find_main_worktree_root(repo_root)
-    wt = worktree_for_branch(primary_root, target)
-    if wt is not None:
-        return _fast_forward_via_target_worktree(wt, target, feature_sha)
-    return _fast_forward_via_cas(repo_root, target, feature_sha, observed_target_sha)
-
-
-def _fast_forward_via_target_worktree(
-    worktree_root: Path,
-    target: str,
-    feature_sha: str,
-) -> tuple[bool, str]:
-    """Fast-forward the target branch checked out in ``worktree_root`` (AC-09).
-
-    Re-checks the worktree's currently-checked-out SHA against
-    ``feature_sha`` so a concurrent landing inside the worktree
-    between the caller-side ``is_ancestor`` and the ``merge --ff-only``
-    is still caught: the ancestor guard in the caller references
-    ``observed_target_sha`` which is the SHA the caller observed
-    via ``branch_sha``; the worktree's own branch SHA is the value
-    the worktree's ``HEAD`` resolves to. ``git merge --ff-only`` is
-    the second-line atomic guard -- it refuses if ``feature_sha`` is
-    not a fast-forward of the worktree's current branch.
-    """
-    if not is_repo_clean(worktree_root):
-        return False, "target worktree dirty"
-    if not fast_forward_via_worktree(worktree_root, feature_sha):
-        return False, "target advanced concurrently (ff-only refused)"
-    return True, ""
-
-
-def _fast_forward_via_cas(
-    repo_root: Path,
-    target: str,
-    feature_sha: str,
-    observed_target_sha: str,
-) -> tuple[bool, str]:
-    """Atomic CAS fast-forward of a not-checked-out target branch (AC-08)."""
-    if not compare_and_swap_branch(repo_root, target, observed_target_sha, feature_sha):
-        return False, "target advanced concurrently (CAS mismatch)"
-    return True, ""
+    return fast_forward_target(repo_root, target, feature_sha)
 
 
 def auto_integrate_after_commit(
@@ -890,7 +716,22 @@ def _continue_fast_forward_from_record(
     workspace_root: Path,
     record: IntegrationRecord,
 ) -> RebaseState:
-    """Best-effort continue of an unfinished fast-forward (phase='integrated')."""
+    """Best-effort continue of an unfinished fast-forward (phase='integrated').
+
+    Like :func:`recover_incomplete_integration`, this function
+    RETAINSthe durable record when the fast-forward fails so the
+    next startup can retry. The record is cleared only when
+    reconciliation succeeded -- the target ref equals
+    ``feature_sha`` (already landed) or the worktree-aware CAS path
+    moved it to ``feature_sha`` in this call.
+
+    The defensive branches -- malformed record, target advanced
+    concurrently, fast-forward refused -- all clear the record
+    because they represent permanent states that further retries
+    cannot resolve (no SHA to land, target diverged, ff-only
+    refused). The transient failure cases -- an exception raised
+    inside ``_fast_forward_target`` -- retain the record.
+    """
     if record.integrated_feature_sha is None:
         # Defensive: malformed record. Clear it so we stop retrying.
         _clear_record(workspace_root)
@@ -908,21 +749,48 @@ def _continue_fast_forward_from_record(
             fast_forwarded=True,
         )
     if not is_ancestor(workspace_root, record.target, feature_sha):
+        # Target advanced and is no longer an ancestor of the feature
+        # SHA: this is a permanent state. Clear the record so we
+        # don't keep retrying an impossible land.
         _clear_record(workspace_root)
         return _record_skip(
             reason="recovery: target advanced concurrently", target=record.target
         )
-    ok, skip_reason = _fast_forward_target(
-        workspace_root, record.target, feature_sha
-    )
-    _clear_record(workspace_root)
+    ff_failed = False
+    skip_reason = ""
+    try:
+        ok, skip_reason = _fast_forward_target(
+            workspace_root, record.target, feature_sha
+        )
+    except Exception as exc:
+        ff_failed = True
+        skip_reason = f"fast-forward raised: {exc}"
+        logger.warning("recovery: _fast_forward_target raised: {}", exc)
+        ok = False
     if ok:
+        _clear_record(workspace_root)
         return RebaseState(
             last_action=_ACTION_RECOVERED,
             last_reason=None,
             last_target=record.target,
             fast_forwarded=True,
         )
+    # Fast-forward was refused or raised. Only clear the record for
+    # permanent refusals (target advanced concurrently) -- retain it
+    # for transient failures so the next startup retries.
+    if ff_failed or "advanced concurrently" not in skip_reason:
+        # Transient failure: retain the record for retry.
+        return RebaseState(
+            last_action=_ACTION_SKIPPED,
+            last_reason=(
+                f"recovery: {skip_reason}; record retained for retry"
+            ),
+            last_target=record.target,
+            fast_forwarded=False,
+        )
+    # Permanent refusal (target advanced concurrently): clear the
+    # record -- a retry won't change the outcome.
+    _clear_record(workspace_root)
     return _record_skip(reason=f"recovery: {skip_reason}", target=record.target)
 
 
@@ -936,16 +804,26 @@ def recover_incomplete_integration(
     * No durable record → no-op (never disturb an operator's own
       git operation).
     * Abort any owned engine rebase/merge in flight before doing
-      anything else.
+      anything else. If the abort itself FAILS, the durable record
+      is RETAINED so the next startup can retry; the returned
+      ``RebaseState`` records the abort failure as a skip with
+      the original target preserved.
     * If ``record.phase == 'integrating'``: the rebase/merge never
       completed → restore the feature branch to ``pre_feature_sha``
-      via ``reset_hard``.
+      via ``reset_hard``. The record is cleared ONLY after
+      ``reset_hard`` succeeds AND no owned engine op remains; if
+      reset_hard raises or any prior abort left an in-progress
+      operation, the record is RETAINED for retry.
     * If ``record.phase == 'integrated'``: the rebase/merge already
       completed and only the fast-forward may be unfinished →
       safely CONTINUE the fast-forward (same worktree-aware CAS path
       used in the happy path).
-    * Always clear the record before returning so the next commit
-      phase starts clean.
+    * The durable record is cleared only when the recovery path
+      confirms (1) no owned git operation remains in flight AND
+      (2) the feature SHA was restored to ``pre_feature_sha`` (for
+      phase='integrating') OR the fast-forward reconciled cleanly
+      (for phase='integrated'). Any failure retains the record so
+      the next run can retry the recovery.
 
     Any unexpected exception inside this function is logged and
     swallowed; it must never abort the run.
@@ -957,24 +835,58 @@ def recover_incomplete_integration(
             return None
 
         # Step 1: abort any owned engine op we may have left behind.
+        # If EITHER abort fails, retain the record so the next
+        # startup can retry. This closes the bug where the prior
+        # implementation unconditionally called ``_clear_record``
+        # after the abort/reset path and returned
+        # ``last_action='recovered'`` -- leaving the repository in
+        # a rebase/merge state with no ownership marker.
+        abort_failed = False
         try:
             if rebase_in_progress(root):
                 abort_rebase(repo_root=root)
         except Exception as exc:
+            abort_failed = True
             logger.warning("recovery: abort_rebase raised: {}", exc)
         try:
             if merge_in_progress(root):
                 abort_merge(root)
         except Exception as exc:
+            abort_failed = True
             logger.warning("recovery: abort_merge raised: {}", exc)
 
         # Step 2: reconcile by phase.
         if record.phase == "integrating":
             # Restore the feature branch to its pre-integration state.
+            reset_failed = False
             try:
                 reset_hard(root, record.pre_feature_sha)
             except Exception as exc:
+                reset_failed = True
                 logger.warning("recovery: reset_hard failed: {}", exc)
+
+            # Verify the restore actually landed: read HEAD and
+            # compare to pre_feature_sha. If the reset raised OR
+            # the verification fails OR an owned op still remains,
+            # RETAIN the record so the next startup can retry. Only
+            # when all three checks pass do we clear it.
+            restored_ok = (
+                not abort_failed
+                and not reset_failed
+                and not rebase_in_progress(root)
+                and not merge_in_progress(root)
+                and _head_matches_sha(root, record.pre_feature_sha)
+            )
+            if not restored_ok:
+                return RebaseState(
+                    last_action=_ACTION_SKIPPED,
+                    last_reason=(
+                        "recovery: feature branch not restored, record"
+                        " retained for retry"
+                    ),
+                    last_target=record.target,
+                    fast_forwarded=False,
+                )
             _clear_record(root)
             return RebaseState(
                 last_action=_ACTION_RECOVERED,
@@ -990,6 +902,29 @@ def recover_incomplete_integration(
         return _record_skip(
             reason=f"recovery failed: {exc}", target=None
         )
+
+
+def _head_matches_sha(repo_root: Path, expected_sha: str) -> bool:
+    """Return True when ``HEAD`` resolves to ``expected_sha``.
+
+    Uses ``git rev-parse --verify HEAD`` (a substring match is
+    accepted since git treats an unambiguous prefix as a SHA).
+    Returns False on any failure so the recovery path retains the
+    durable record when verification is impossible -- a defensive
+    fail-closed against a half-restored feature branch that we
+    cannot prove equals ``pre_feature_sha``.
+    """
+    try:
+        result = run_git(
+            ("rev-parse", "--verify", "HEAD"),
+            cwd=repo_root,
+            label="git-rev-parse-head",
+        )
+    except Exception:
+        return False
+    if result.returncode != 0:
+        return False
+    return result.stdout.strip() == expected_sha
 
 
 __all__ = [

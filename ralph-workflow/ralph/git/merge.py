@@ -139,10 +139,17 @@ def merge_target_into_current(repo_root: Path | str, target: str) -> MergeResult
     success return ``MergeResult(outcome='success')``. The merge is
     never force-resolved; conflict outcome is the only escape hatch
     other than success.
+
+    The target branch name is passed AFTER the ``--`` option
+    terminator so a configured value that starts with ``-`` (e.g.
+    ``--allow-unrelated-histories``) is treated as a positional
+    revision argument and never parsed as a git option. This
+    closes the untrusted-config subprocess-argument-boundary
+    exposure that the prompt's feedback item flagged.
     """
     repo_root_path = Path(repo_root)
     result = run_git(
-        ("merge", "--no-edit", target),
+        ("merge", "--no-edit", "--", target),
         cwd=repo_root_path,
         label="git-merge",
     )

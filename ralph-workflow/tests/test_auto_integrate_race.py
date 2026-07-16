@@ -113,6 +113,7 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     expected-oldvalue, which fails closed.
     """
     import ralph.pipeline.auto_integrate as _ai_mod
+    import ralph.pipeline.auto_integrate_ff as _ai_ff_mod
     from ralph.git.merge import (
         branch_sha as _real_branch_sha,
     )
@@ -151,6 +152,7 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
         return _real_branch_sha(repo_root, name)
 
     monkeypatch.setattr(_ai_mod, "branch_sha", _fake_branch_sha)
+    monkeypatch.setattr(_ai_ff_mod, "branch_sha", _fake_branch_sha)
     monkeypatch.setattr("ralph.git.merge.branch_sha", _fake_branch_sha)
 
     config = _build_config(tmp_git_repo, target=base)
