@@ -56,7 +56,6 @@ from ralph.git.merge import (
 )
 from ralph.git.operations import (
     find_main_worktree_root,
-    get_current_branch,
     get_head_sha,
     is_repo_clean,
 )
@@ -506,19 +505,14 @@ def _auto_integrate_after_commit_inner(
        worktree ff, then build the final ``RebaseState``.
     """
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
-    if ctx is None:
+    early_skip, usable_ctx = _check_early_skips(ctx)
+    if early_skip is not None:
+        return early_skip
+    if usable_ctx is None:
         # Disabled (AC-01) or env lookup failed: caller already
         # recorded the skip when applicable.
         return None
-    root, current_branch, target = ctx
-    if target is None:  # surface "no target resolved" as a recorded skip (AC-13)
-        return _record_skip(
-            reason="no integration target branch resolved", target=None
-        )
-
-    skip = _auto_integrate_check_skip_conditions(root, current_branch, target)
-    if skip is not None:
-        return skip
+    root, _current_branch, target = usable_ctx
 
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
@@ -542,12 +536,11 @@ def _auto_integrate_after_commit_inner(
         return rebase_result.short_circuit
 
     # Success path: the feature branch contains the target.
-    try:
-        feature_sha = get_head_sha(root)
-    except Exception as exc:
-        _clear_record(root)
-        logger.warning("auto_integrate: get_head_sha failed post-merge: {}", exc)
-        return _record_skip(reason="post-integration HEAD read failed", target=target)
+    feature_sha = _read_post_integration_head_sha(root, target)
+    if feature_sha is None:
+        return _record_skip(
+            reason="post-integration HEAD read failed", target=target
+        )
 
     # Flip the durable record to 'integrated' BEFORE any ref move so
     # a crash between this point and the fast-forward will be
@@ -588,19 +581,123 @@ def _auto_integrate_after_commit_inner(
     return record
 
 
+def _check_early_skips(
+    ctx: tuple[Path, str | None, str | None] | None,
+) -> tuple[RebaseState | None, tuple[Path, str, str] | None]:
+    """Apply the AC-01/AC-02/AC-13 skip table to the resolved context.
+
+    Returns:
+        ``(skip_record, usable_ctx)`` where exactly one of the two
+        slots is non-``None``:
+
+        * When ``ctx is None`` (disabled / env lookup failed),
+          ``skip_record is None`` and ``usable_ctx is None`` -- the
+          caller returns ``None`` directly.
+        * When a recorded skip is triggered (AC-02/AC-13), the
+          ``RebaseState`` is returned for the caller to return
+          directly, and ``usable_ctx is None``.
+        * Otherwise, ``skip_record is None`` and ``usable_ctx`` is
+          the narrowed context tuple with ``str`` (non-Optional)
+          slots the caller can unpack without type ignores.
+
+    Extracted from :func:`_auto_integrate_after_commit_inner` so the
+    orchestrator keeps a sensible return-statement count.
+    """
+    if ctx is None:
+        # Disabled (AC-01) or env lookup failed: caller already
+        # recorded the skip when applicable.
+        return None, None
+    root, current_branch, target = ctx
+    if current_branch is None:
+        # Detached HEAD: AC-02 requires this to be a RECORDED skip,
+        # not a silent no-op. The crash record is never written in
+        # this branch -- a detached HEAD is not an in-progress
+        # integration.
+        return _record_skip(reason="detached HEAD", target=target), None
+    if target is None:  # AC-13: no target resolved -> recorded skip
+        return _record_skip(
+            reason="no integration target branch resolved", target=None
+        ), None
+    skip = _auto_integrate_check_skip_conditions(root, current_branch, target)
+    if skip is not None:
+        return skip, None
+    # No skip: usable_ctx is the narrowed tuple with non-Optional
+    # branch + target slots the orchestrator can unpack.
+    return None, (root, current_branch, target)
+
+
+def _read_post_integration_head_sha(
+    root: Path, target: str
+) -> str | None:
+    """Read the feature branch's HEAD after a successful rebase/merge.
+
+    Returns the SHA on success; clears the crash record and returns
+    ``None`` on failure so the orchestrator can fall through to its
+    final state construction without crashing.
+
+    Extracted from :func:`_auto_integrate_after_commit_inner` so the
+    orchestrator keeps a sensible return-statement count.
+    """
+    try:
+        return get_head_sha(root)
+    except Exception as exc:
+        _clear_record(root)
+        logger.warning("auto_integrate: get_head_sha failed post-merge: {}", exc)
+        return None
+
+
+def _current_branch_or_detached_marker(root: Path) -> str | None:
+    """Return the current branch name or ``None`` if HEAD is detached.
+
+    Detaches the typed-exception guard from :func:`get_current_branch`'s
+    broad fallback so the auto-integrate skip table can record a
+    DETACHED-HEAD outcome (AC-02/AC-13 skip condition: "no branch to
+    integrate"). GitPython raises ``TypeError`` from
+    ``repo.active_branch.name`` when HEAD points at a detached SHA.
+    Any other exception -- not a git repo, transport error, etc. --
+    propagates so the caller can surface the actual failure.
+
+    Returns:
+        The current branch name, or ``None`` when HEAD is detached.
+    """
+    from git import Repo
+    from git.exc import GitCommandError
+
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+        return repo.active_branch.name
+    except (TypeError, ValueError, GitCommandError, AttributeError):
+        # TypeError is GitPython's "DetachedHead has no .name"
+        # AttributeError is the same in some GitPython versions.
+        # ValueError/GitCommandError cover "no HEAD" / "ambiguous HEAD"
+        # edge cases that are also "not on a branch".
+        return None
+    finally:
+        if repo is not None:
+            close_method: object = getattr(repo, "close", None)
+            if callable(close_method):
+                close_method()
+
+
 def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
-) -> tuple[Path, str, str | None] | None:
+) -> tuple[Path, str | None, str | None] | None:
     """Resolve the (root, current_branch, target) context or short-circuit.
 
     Returns ``None`` when the integration step is a no-op (AC-01
     disabled path) or when the environment lookup itself fails; in
     the latter case :func:`auto_integrate_after_commit` will already
-    have logged a skip before reaching this helper. The target may
-    itself be ``None`` when :func:`resolve_integration_target`
-    could not pin one -- the caller surfaces that as a recorded
-    skip (``reason='no integration target branch resolved'``).
+    have logged a skip before reaching this helper.
+
+    The current-branch slot is ``None`` when HEAD is detached
+    (GitPython raises ``TypeError`` from ``repo.active_branch.name``
+    in that case). The caller surfaces that as a recorded skip
+    (``reason='detached HEAD'``) so the operator can see WHY no
+    integration ran -- previously a detached HEAD silently fell into
+    the broad ``except Exception`` branch and returned ``None``
+    with no state recorded.
     """
     try:
         enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
@@ -608,7 +705,10 @@ def _auto_integrate_resolve_context(
         if not enabled:
             return None
         root = Path(workspace_scope.root)
-        current_branch = get_current_branch(root)
+        # Typed-exception guard: detached HEAD surfaces as
+        # ``current_branch is None`` (recorded skip) rather than being
+        # absorbed into the broad ``except Exception`` below.
+        current_branch: str | None = _current_branch_or_detached_marker(root)
         target: str | None = resolve_integration_target(config, root)
     except Exception as exc:
         logger.debug("auto_integrate_after_commit: skip (env lookup failed): {}", exc)

@@ -201,6 +201,38 @@ def test_no_target_branch_resolved_skips(tmp_git_repo: Path) -> None:
     assert before == after
 
 
+def test_detached_head_records_skipped_skip(tmp_git_repo: Path) -> None:
+    """AC-02/AC-13 detached HEAD: recorded skipped state, no mutation.
+
+    AC-02 enumerates detached HEAD as a skip condition. The
+    previous implementation caught the GitPython ``TypeError`` from
+    ``repo.active_branch.name`` inside a broad ``except Exception``
+    and silently returned ``None`` -- the runner saw no
+    ``RebaseState`` to persist and the operator was never told why
+    the step was a no-op. This test pins the fixed behavior:
+    detached HEAD returns a recorded skipped state with
+    ``reason='detached HEAD'`` and mutates nothing.
+    """
+    base = _base_branch(tmp_git_repo)
+    base_sha_before = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    head_sha_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "checkout", "--detach", head_sha_before)
+    before = _snapshot(tmp_git_repo)
+    config = _build_config(tmp_git_repo, target=base)
+    scope = WorkspaceScope(tmp_git_repo)
+    outcome = auto_integrate_after_commit(config, scope, RebaseState())
+    assert outcome is not None, (
+        "detached HEAD must yield a recorded RebaseState (AC-02), not None"
+    )
+    assert outcome.last_action == "skipped"
+    assert outcome.last_reason == "detached HEAD"
+    # Repo is byte-unchanged: no refs moved, no crash record on disk.
+    assert _snapshot(tmp_git_repo) == before
+    assert _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip() == base_sha_before
+    record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    assert not record_file.exists()
+
+
 # ---------------------------------------------------------------------------
 # AC-04: feature-ahead pure fast-forward
 # ---------------------------------------------------------------------------
@@ -567,25 +599,136 @@ def test_both_rebase_and_merge_conflict(tmp_git_repo: Path) -> None:
 # ---------------------------------------------------------------------------
 # AC-08: CAS race -> target ref NOT moved
 # ---------------------------------------------------------------------------
+
+
+def test_cas_race_target_advances_concurrently(tmp_git_repo: Path) -> None:
+    """AC-08: target moves between observation and CAS leaves ref byte-unchanged.
+
+    The CAS binds the ancestor decision to the same observed SHA.
+    If the target moves between observation and CAS, the CAS fails
+    closed (ref no longer equals observed SHA) and the target ref
+    is left BYTE-UNCHANGED.
+
+    The full multi-call variant (with monkeypatched ``branch_sha``
+    to force the race inside :func:`_fast_forward_target`) lives in
+    :mod:`tests.test_auto_integrate_race`; this one exercises the
+    same contract via the primitive-level ``compare_and_swap_branch``
+    path, asserting the CAS refuses to overwrite the post-landing SHA.
+    """
+    import ralph.git.merge as _merge_mod
+
+    base = _base_branch(tmp_git_repo)
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
+    pre_landing_base_sha = _run(
+        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
+    ).stdout.strip()
+    # Concurrent landing: a new commit on base advancing it past
+    # the pre-landing SHA.
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
+    post_landing_base_sha = _run(
+        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
+    ).stdout.strip()
+    assert pre_landing_base_sha != post_landing_base_sha
+    # CAS with the STALE pre-landing SHA: Git's ``update-ref``
+    # is an atomic CAS. The ref must still equal the
+    # expected-oldvalue; it doesn't (target moved), so the CAS
+    # MUST fail closed (ref untouched).
+    target_feature_sha = _run(tmp_git_repo, "rev-parse", "feature").stdout.strip()
+    cas_ok = _merge_mod.compare_and_swap_branch(
+        tmp_git_repo, base, pre_landing_base_sha, target_feature_sha
+    )
+    assert cas_ok is False, "AC-08 CAS must fail when expected_old_sha is stale"
+    # Target ref is BYTE-UNCHANGED -- still at the post-landing SHA.
+    final_base_sha = _run(
+        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
+    ).stdout.strip()
+    assert final_base_sha == post_landing_base_sha
+
+
+# ---------------------------------------------------------------------------
 # AC-09: target checked out dirty in another worktree: ff skipped
+# ---------------------------------------------------------------------------
+
+
+def test_dirty_target_worktree_skips_fast_forward(tmp_git_repo: Path) -> None:
+    """AC-09: target checked out dirty in a linked worktree -> ff skipped.
+
+    Seeds a tracked file, forks ``wt_branch`` off the seed base,
+    adds a commit on the primary feature branch so ``feature`` is
+    genuinely ahead of ``wt_branch``, links a SECOND worktree on
+    ``wt_branch``, and dirties that worktree's tracked file. The
+    integration target is configured as ``wt_branch`` so the
+    orchestrator routes through the worktree-ff branch.
+    """
+    base = _base_branch(tmp_git_repo)
+    wt_branch = "wt-target"
+    _commit(tmp_git_repo, "seed_tracked.txt", "seed content\n", "seed tracked")
+    _run(tmp_git_repo, "branch", wt_branch, base)
+    _commit(tmp_git_repo, "base_marker.txt", "base marker\n", "base marker")
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
+    wt_branch_sha_before = _run(
+        tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
+    ).stdout.strip()
+    assert feature_sha != wt_branch_sha_before
+    wt_path = tmp_git_repo.parent / f"{tmp_git_repo.name}-wt"
+    _run(tmp_git_repo, "worktree", "add", str(wt_path), wt_branch)
+    try:
+        (wt_path / "seed_tracked.txt").write_text(
+            "uncommitted tracked change\n", encoding="utf-8"
+        )
+        config = _build_config(tmp_git_repo, target=wt_branch)
+        scope = WorkspaceScope(tmp_git_repo)
+        outcome = auto_integrate_after_commit(config, scope, RebaseState())
+        assert outcome is not None
+        assert outcome.last_action in {"rebased", "merged"}
+        assert outcome.last_target == wt_branch
+        assert outcome.fast_forwarded is False
+        assert outcome.last_reason == "target worktree dirty"
+        # Target ref UNCHANGED, dirty file UNTOUCHED.
+        assert _run(
+            tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
+        ).stdout.strip() == wt_branch_sha_before
+        assert (wt_path / "seed_tracked.txt").read_text(
+            encoding="utf-8"
+        ) == "uncommitted tracked change\n"
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(wt_path))
+
+
 # ---------------------------------------------------------------------------
 # AC-10: no git push invocations
 # ---------------------------------------------------------------------------
 
 
 def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """AC-10: monkeypatch ralph.git.merge.run_git to record every argv.
+    """AC-10: every git argv across a full integration is recorded.
 
-    Drives a real diverged-clean rebase + ff integration AND a
-    rebase-conflict -> merge -> ff integration; asserts no recorded
-    argv contains the 'push' subcommand. This is the canonical
-    passing assertion replacing the previous bare grep (which exits 1
-    on zero matches and so could never pass while asserting 'no push').
+    Patches the shared execution seam used by BOTH
+    ``ralph.git.merge`` (merge/ff/cas primitives) and the rebase
+    engine (``SubprocessExecutor``) so EVERY ``run_git`` invocation
+    during a real diverged-clean rebase+ff integration AND a
+    rebase-conflict -> merge -> ff integration flows through a
+    single recorder. Asserts no recorded argv contains the standalone
+    ``push`` subcommand.
+
+    Patching the source module's ``run_git`` does NOT propagate to
+    modules that did ``from X import run_git``; each import-site
+    needs its own monkeypatch.setattr. The fix patches every known
+    import-site so the recorder captures EVERY argv across a full
+    integration (previous version patched only the merge site).
     """
     import ralph.git.merge as _merge_mod
+    import ralph.git.operations as _operations_mod
+    import ralph.git.rebase.rebase_continuation as _continuation_mod
+    import ralph.git.rebase.rebase_preconditions as _preconditions_mod
+    import ralph.git.rebase.subprocess_executor as _executor_mod
+    import ralph.git.subprocess_runner as _runner_mod
 
     recorded: list[tuple[str, ...]] = []
-    real_run_git = _merge_mod.run_git
+    real_run_git = _runner_mod.run_git
 
     def _recording_run_git(
         args: tuple[str, ...],
@@ -597,14 +740,17 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
         recorded.append(tuple(args))
         return real_run_git(args, cwd=cwd, label=label, options=options)
 
-    # Patch in BOTH ralph.git.merge and the ralph.git.subprocess_runner
-    # re-export so calls from auto_integrate (which imports
-    # run_git indirectly via the merge primitives) all flow through
-    # the recorder.
-    monkeypatch.setattr(_merge_mod, "run_git", _recording_run_git)
-    monkeypatch.setattr("ralph.git.merge.run_git", _recording_run_git)
-    # Also patch the auto_integrate module's indirect view of run_git.
-    monkeypatch.setattr("ralph.pipeline.auto_integrate.run_git", _recording_run_git, raising=False)
+    # Patch every import-site of ``run_git`` so the recorder sees
+    # EVERY argv across both the merge path and the rebase path.
+    for mod in (
+        _runner_mod,
+        _merge_mod,
+        _executor_mod,
+        _continuation_mod,
+        _preconditions_mod,
+        _operations_mod,
+    ):
+        monkeypatch.setattr(mod, "run_git", _recording_run_git)
 
     # ---- Run 1: diverged clean rebase + ff ----
     base = _base_branch(tmp_git_repo)
