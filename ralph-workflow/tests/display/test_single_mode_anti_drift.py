@@ -337,6 +337,15 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token() -> N
             f"drift-check FAIL output must include the FAIL marker; "
             f"got stdout={result.stdout!r}, stderr={result.stderr!r}"
         )
+        # Per docs/ralph-workflow-policy/gate-script-policy.md § Failure
+        # output, the FAIL output MUST cite the governing policy file
+        # by path so an agent that hits a red gate can find the rule
+        # without loading every policy into context.
+        assert "gate-script-policy.md" in combined_output, (
+            f"drift-check FAIL output must cite the governing policy "
+            f"(gate-script-policy.md); got stdout={result.stdout!r}, "
+            f"stderr={result.stderr!r}"
+        )
     finally:
         for probe_path, _probe_name, _token, _marker in probes:
             if probe_path.exists():

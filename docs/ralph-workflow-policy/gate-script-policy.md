@@ -123,8 +123,12 @@ presence of `.ps1`/`.cmd` scripts, packaging metadata — never assumed.
   claim that no CI job ever runs is unverified, and is treated as a defect.
 
 **If `supported_platforms` does not include Windows**, the four requirements
-above do not apply. They begin to apply the moment the project ships a Windows
-artifact or adds a Windows CI job.
+above do not apply. They begin to apply the moment the project adds Windows to
+`supported_platforms` (a Windows CI runner, a maintained Windows-equivalent
+gate corpus, or an explicit declaration in the `supported_platforms` fact
+below). A Windows packaging classifier in `pyproject.toml` alone is NOT a
+`supported_platforms` change; it is a PyPI-installation hint and does not
+count as CI-tested gate support.
 
 ## Project facts to resolve
 
@@ -132,9 +136,10 @@ The `RALPH-FACT:` lines below record verified project facts. Agents rely on
 them when enforcing this policy and MUST keep them current as the project
 evolves.
 
-RALPH-FACT: supported_platforms: linux (CI matrix: `.woodpecker.yml` runs `python:3.12-bookworm` on Codeberg; `.github/workflows/*.yml` runs `ubuntu-latest`; `Dockerfile` builds on `python:${PYTHON_VERSION}-slim` / `debian:bookworm-slim`). macOS is the maintainer's development environment (POSIX shell, identical bash dialect, no `.gitattributes` / CRLF handling required). Windows has no CI runner, no `.ps1`/`.bat`/`.cmd` scripts, and no `.gitattributes` entry, so per the policy's "must actually be exercised on Windows in CI" rule, Windows is not in scope for gate-script portability. Adding a Windows CI job or a Windows artifact flips the Windows-specific section on.
-RALPH-FACT: shell_dialect: bash (every gate script uses `#!/usr/bin/env bash` and `set -euo pipefail` / `set -u`; examples: `ralph-workflow/scripts/wt028-drift-check.sh`, `scripts/pre-commit`, `scripts/verify_claims.sh`, `scripts/remote/{probe,run,sync}.sh`, `.githooks/pre-commit`).
-RALPH-FACT: script_directory: ralph-workflow/scripts/ (the only directory wired into a `make` gate via the `make verify-drift` target's call to `bash scripts/wt028-drift-check.sh` from the ralph-workflow Makefile). The repo-root `scripts/` houses the git pre-commit fabrication guard and remote build-server helpers, which are not part of the `make verify` suite.
+RALPH-FACT: supported_platforms: linux, macos. Linux is verified via CI (`.woodpecker.yml` runs `python:3.12-bookworm` on Codeberg; `.github/workflows/*.yml` runs `ubuntu-latest`; `Dockerfile` builds on `python:${PYTHON_VERSION}-slim` / `debian:bookworm-slim`). macOS is the maintainer's development environment (POSIX shell, identical bash dialect). The gate-script corpus is shell-only (bash) and POSIX paths only; the existing recipes contain no bash-only constructs without a portable replacement and no hardcoded `/` separators that would break on a future Windows port. The `Operating System :: Microsoft :: Windows` classifier in `ralph-workflow/pyproject.toml` is a packaging-metadata claim for PyPI consumers and is independent of this policy's `supported_platforms`; per the resolution rule above, packaging classifiers do NOT count as CI-tested gate support. Per the Cross-platform section above, the four Windows-portability obligations are NOT binding because Windows is not in `supported_platforms`. Adding Windows to `supported_platforms` requires satisfying all four obligations (no bash-only syntax in wired gates; explicit `.gitattributes` line-ending handling; no hardcoded `/` separators; an exercised Windows CI runner) and re-evaluating this fact in the same workflow.
+RALPH-FACT: shell_dialect: bash (every wired gate script is supposed to use `#!/usr/bin/env bash` and `set -euo pipefail` per the Default requirements above; the pre-commit fabrication guard, the Woodpecker-trusted wt028-drift-check script, and the three remote build-server helpers do). The `set -u`-only legacy form is no longer present after wt-038 closed the strict-mode gap on `ralph-workflow/scripts/wt028-drift-check.sh`. The repo-root `scripts/verify_claims.sh` is NOT a wired gate and is NOT in this corpus (see `script_directory` below); the route-page link checker is a Python script under the same root. Two Makefile-recipe violations of the strict-mode contract are recorded as project reality under `known_gate_corpus_defects` below.
+RALPH-FACT: script_directory: ralph-workflow/scripts/ is the only directory whose bash script is wired into a `make` gate (`make verify-drift` invokes `bash scripts/wt028-drift-check.sh` from the ralph-workflow Makefile). The repo-root `scripts/` houses the git pre-commit fabrication guard (`scripts/pre-commit`; wired into `.git/hooks/pre-commit`), the route-page link checker (`scripts/check_route_page_links.py`; wired into `make route-linkcheck` and `make policy-citation-linkcheck`, NOT into `make verify`), the three remote build-server helpers (`scripts/remote/{probe,run,sync}.sh`), the social-proof wrapper (`scripts/verify_social_proof.py`; called from the verify chain), and one OUT-OF-CORPUS deployment helper (`scripts/verify_claims.sh`). The OUT-OF-CORPUS status of `verify_claims.sh` is deliberate: the script hard-codes `/home/mistlight/.openclaw/workspace` and expects sibling `Ralph-Site` / `ralph-workflow` / `CLAIMS_LEDGER.md` paths that are absent from a clean clone. It is therefore not reproducible by a developer with a clean checkout and is recorded as project reality (not a gate) under `known_gate_corpus_defects` below; the dev cycle must remove it from the repo root, replace the hard-coded paths with repository-relative or configured inputs, or absorb the helper into a wired gate that satisfies this policy's reproducibility and no-phantom-path requirements.
+RALPH-FACT: known_gate_corpus_defects: (1) `ralph-workflow/Makefile:verify-drift` opens its inline shell gate with `bash -c 'set -e; …'` rather than `set -euo pipefail`. A failure earlier in a multi-stage `grep | grep -v | …` pipeline is hidden by the final pipeline command's exit status, contradicting this policy's strict-mode and fail-closed contract. The dev cycle MUST replace `set -e` with `set -euo pipefail` (or move the logic into the already-strict `ralph-workflow/scripts/wt028-drift-check.sh`) and MUST add a black-box test that demonstrates an upstream grep failure cannot pass. (2) `ralph-workflow/Makefile:formula-check` falls through with `echo "Ruby not installed, skipping formula check (install Ruby to enable)"` and exits 0 when `ruby` is absent from `PATH`. The Homebrew formula at `ralph-workflow/Formula/ralph-workflow.rb` is therefore not validated on any machine without Ruby, and the gate reports success while checking nothing — a hollow gate forbidden by this policy. The dev cycle MUST either pin Ruby in the declared `make dev` prerequisite (or in `uv` extras) so the gate can run, OR make `formula-check` exit non-zero with an actionable policy citation when Ruby is unavailable. Both defects are recorded as project reality for the dev cycle to repair; this policy's strict-mode and no-hollow-gate requirements bind regardless.
 
 ## AI execution instructions
 
@@ -176,10 +181,22 @@ An agent MUST NOT:
 
 ## Verification
 
-RALPH-COMMAND: shellcheck ralph-workflow/scripts/
+RALPH-PENDING: shellcheck ralph-workflow/scripts/ (assumed 2026-07-15); review trigger: once shellcheck is pinned as a dev dependency in `ralph-workflow/pyproject.toml` and a `make` target is added and wired into `make -C ralph-workflow verify`.
 
-The expected successful result is exit 0 from the script linter. On failure,
-report the offending script, line, and rule.
+A shell-script linter is the binding enforcement for the strict-mode
+requirement above, and ShellCheck is the de facto standard. The current
+project state — ShellCheck is absent from `ralph-workflow/pyproject.toml`,
+absent from the `make dev` prerequisite, and absent from
+`make -C ralph-workflow verify` — means the shell-script corpus is
+NOT linted today. This is a deferred gate: the lint rule still binds,
+and any agent that adds or edits a bash script MUST run ShellCheck
+locally before declaring the change complete, but the canonical
+verification suite does not yet exercise it. Until the trigger fires,
+bash-script quality is enforced by the wt-038 drift-check script
+(which runs every shell script under its own fail-closed contract)
+and by black-box tests under `ralph-workflow/tests/` (e.g.
+`tests/test_check_route_page_links.py`,
+`tests/display/test_single_mode_anti_drift.py`).
 
 ## Exceptions
 

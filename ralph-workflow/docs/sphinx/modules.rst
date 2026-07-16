@@ -923,6 +923,13 @@ ralph.pipeline.reducer
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.runner
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -2425,6 +2432,13 @@ ralph.git.operations
 ~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.operations
+   :members:
+   :show-inheritance:
+
+ralph.git.merge
+~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.merge
    :members:
    :show-inheritance:
 

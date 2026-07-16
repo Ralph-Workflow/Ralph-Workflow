@@ -74,6 +74,7 @@ from ralph.pipeline.activity_stream import (
     truncate,
 )
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
+from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
@@ -158,9 +159,11 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.mcp.websearch.secrets import EnvGetter
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.rebase_state import RebaseState
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
+        PhaseDefinition,
         PipelinePolicy,
         PolicyBundle,
     )
@@ -570,6 +573,93 @@ def _coarse_outcome_for_event(event: Event) -> str:
     return "failure"
 
 
+def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) -> None:
+    """Emit the user-facing action log line for an auto-integration outcome.
+
+    Per the prompt Notes the user-facing line should describe what
+    actually happened: ``rebased`` / ``merged`` / ``fast-forwarded
+    <target>`` / ``skipped: <reason>`` / ``conflict: <reason>``.
+    Any unknown outcome (defensive: ``outcome.last_action`` is a
+    free-form ``str | None``) falls through to a generic
+    ``auto-integrate: <action>`` so the user is never told nothing.
+    """
+    action = outcome.last_action or "noop"
+    target = outcome.last_target
+    reason = outcome.last_reason
+    if action == "fast_forwarded" and target:
+        message = f"fast-forwarded {target}"
+    elif action == "rebased":
+        message = "rebased onto target" + (f" ({target})" if target else "")
+    elif action == "merged":
+        message = "merged target into feature" + (f" ({target})" if target else "")
+    elif action == "skipped":
+        message = f"skipped: {reason or 'no reason recorded'}"
+    elif action == "conflict":
+        message = f"conflict: {reason or 'unresolved conflict'}"
+    elif action == "recovered":
+        message = "recovered" + (f" ({reason})" if reason else "")
+    else:
+        message = f"auto-integrate: {action}"
+    emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
+
+
+def _maybe_auto_integrate(
+    *,
+    effect: object,
+    event: object,
+    commit_phase_def: PhaseDefinition | None,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: PipelineState,
+    display: ParallelDisplay,
+) -> RebaseState | None:
+    """Run the post-commit auto-integration step when warranted.
+
+    Mirrors the existing commit-seam block (clears the cycle baseline,
+    then conditionally integrates). Returns ``None`` when no integration
+    ran (disabled path / non-commit phase / ``COMMIT_SKIPPED`` / the
+    integration call returned ``None``). Otherwise returns the
+    recorded ``RebaseState`` and emits a user-facing action log line
+    so the operator sees ``rebased`` / ``merged`` / ``fast-forwarded
+    <target>`` / ``skipped: <reason>``.
+
+    Extracted from :func:`_run_pipeline_step` so the seam keeps a
+    sensible branch + statement count without losing the
+    ``COMMIT_SUCCESS``-only trigger and the skip-on-``COMMIT_SKIPPED``
+    guard.
+
+    The ``effect`` / ``event`` parameters are typed as ``object`` so
+    callers passing a union of effect / event types do not need to
+    pre-narrow; the helper narrows via ``isinstance`` / ``in`` itself.
+    """
+    if not (
+        isinstance(effect, CommitEffect)
+        and commit_phase_def is not None
+        and commit_phase_def.role == "commit"
+        and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
+    ):
+        return None
+    clear_cycle_baseline(workspace_scope.root)
+    # Auto-integrate only fires on a real commit (COMMIT_SUCCESS), NOT
+    # on COMMIT_SKIPPED -- an early-skipped commit phase must not
+    # trigger a rebase + fast-forward.
+    if event != PipelineEvent.COMMIT_SUCCESS:
+        return None
+    try:
+        outcome = auto_integrate_after_commit(
+            config, workspace_scope, state.rebase
+        )
+    except Exception as auto_integrate_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate_after_commit raised unexpectedly: {}",
+            auto_integrate_exc,
+        )
+        return None
+    if outcome is not None:
+        _log_auto_integrate_outcome(display, outcome)
+    return outcome
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -705,13 +795,15 @@ def _run_pipeline_step(
                 )
 
         _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
-        if (
-            isinstance(effect, CommitEffect)
-            and _commit_phase_def is not None
-            and _commit_phase_def.role == "commit"
-            and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
-        ):
-            clear_cycle_baseline(workspace_scope.root)
+        _auto_integrate_outcome = _maybe_auto_integrate(
+            effect=effect,
+            event=event,
+            commit_phase_def=_commit_phase_def,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+        )
         _phase_outcome = _coarse_outcome_for_event(event)
         next_state, _ = reducer_reduce(
             state,
@@ -719,6 +811,12 @@ def _run_pipeline_step(
             policy_bundle.pipeline,
             recovery=recovery_controller,
         )
+        # Thread the integration outcome into the persisted checkpoint.
+        # Must happen AFTER reducer_reduce (so the state model is
+        # consistent) and BEFORE _save_checkpoint_or_log (so the
+        # outcome survives a crash right after the phase).
+        if _auto_integrate_outcome is not None:
+            next_state = next_state.copy_with(rebase=_auto_integrate_outcome)
         skipped_phases = record_phase_transition_metadata(
             display,
             state,

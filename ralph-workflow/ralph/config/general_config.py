@@ -74,6 +74,33 @@ class GeneralConfig(RalphBaseModel):
     max_backoff_ms: int = Field(default=60000, ge=0)
     max_cycles: int = Field(default=3, ge=1)
     execution_history_limit: int = Field(default=1000, ge=1)
+    auto_integrate_enabled: bool = Field(
+        default=True,
+        description=(
+            "When true (default), every commit phase that actually creates a"
+            " commit is followed by an auto-integration step: rebase the feature"
+            " branch onto the shared mainline, fall back to an endpoint merge on"
+            " rebase conflict, and fast-forward the local mainline ref to the"
+            " feature tip. Set to false to keep git behavior byte-identical to"
+            " runs without auto-integration (no rebase, no merge, no ref"
+            " movement) -- useful when an operator manages integration"
+            " manually. The step is a no-op in single-branch workflows via the"
+            " existing skip conditions (on-target, no-commits-beyond-target,"
+            " detached HEAD, missing target branch)."
+        ),
+    )
+    auto_integrate_target: str | None = Field(
+        default=None,
+        description=(
+            "Shared integration branch name. When set (e.g. 'develop') it is"
+            " used verbatim ONLY if the branch exists in the repository."
+            " When unset, the target is auto-detected: the remote's default"
+            " branch (origin/HEAD) when a remote exists, otherwise 'main',"
+            " otherwise 'master'. If no candidate resolves to an existing"
+            " branch the step skips with a recorded reason -- it never guesses"
+            " a branch that is not clearly the shared mainline."
+        ),
+    )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,
         gt=0.0,

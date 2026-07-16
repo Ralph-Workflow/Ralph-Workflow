@@ -92,6 +92,9 @@ TESTS_ALLOWLIST: set[str] = {
     # subprocess calls -- the audit is exercised through monkeypatched
     # sources). Mirrors the existing allowlist pattern for audit
     # test files that maintain POS|CO process-marker literals.
+    "test_git_merge.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
+    "test_auto_integrate.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
+    "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
 }
 
 _MCP_FIXTURE_FILES = {

@@ -154,7 +154,7 @@ RALPH-FACT: data_sensitivity (owner-supplied): sensitive by default — Ralph Wo
 RALPH-FACT: deployment_exposure (owner-supplied): local developer machine by default; no public deployment. The MCP HTTP transport is local-loopback (`127.0.0.1`) and is the only socket the runtime binds; no inbound traffic crosses the trust boundary in the default configuration. Operator confirmation is pending for any deployment that exposes the embedded MCP server to a shared network.
 RALPH-FACT: secrets_management_mechanism: secrets are NEVER read from the source tree, committed config, or test fixtures. The CLI reads from the environment (`os.environ`) and from the user-installed agent CLIs' own credential stores (Claude Code / Codex / OpenCode / Cursor / etc. each manage their own secrets). Test fixtures MUST NOT contain realistic credentials — placeholders are required (`...`, `***`, environment-variable references).
 RALPH-FACT: secret_scan_command: `python3 scripts/fabrication_guard.py --level 1 <file>` for every public-facing markdown edit (the production pre-commit hook is level 1; level 2 / 3 are opt-in verification layers). For the Git history and the broader repository tree, `python3 scripts/verify_social_proof.py` runs the level-1 sweep as part of `make verify`; both `scripts/fabrication_guard.py` and `scripts/verify_social_proof.py` are wired through the social-proof verify step in `ralph/verify.py:_VERIFY_STEPS`. A blanket bypass of the pre-commit hook (`--no-verify`) is itself fabrication (per AGENTS.md § Non-negotiables).
-RALPH-FACT: security_scanner_per_language: Python → `uv run bandit -q -r ralph/` (the language-scoped scanner called out in dependency-policy.md and Verification below). Other languages are recorded in the Verification section below as inapplicable.
+RALPH-FACT: security_scanner_per_language: Python → Bandit (the language-scoped scanner called out in dependency-policy.md and Verification below). Bandit is NOT currently pinned in `ralph-workflow/pyproject.toml`, NOT installed by `make dev`, and NOT wired into `make -C ralph-workflow verify`; the Verification section below records the corresponding deferred gate. Other languages are recorded in the Verification section below as inapplicable.
 RALPH-FACT: finding_waiver_convention: a security finding waiver carries the finding identifier (e.g. `[B105:hardcoded_password_string]` for Bandit), a per-file scope, a rationale, an owner, and a removal or review date. Waivers are recorded inline (via `# nosec: <id>` next to the suppressed line for Bandit) and again under "Exceptions" below with the same fields; the inline comment is not a substitute for the section entry. There is currently no Bandit `nosec` blanket allowlist in this project; introducing one requires an audit-style allowlist entry.
 
 ## AI execution instructions
@@ -215,7 +215,7 @@ per project language, or an explicit inapplicability record with a
 reason):
 
 RALPH-LANG: Python
-RALPH-COMMAND: uv run bandit -q -r ralph/
+RALPH-PENDING: uv run bandit -q -r ralph/ (assumed 2026-07-15); review trigger: once bandit is pinned as a dev dependency in `ralph-workflow/pyproject.toml` and a verify step is added to `ralph-workflow/ralph/verify.py:_VERIFY_STEPS` and wired into `make -C ralph-workflow verify`.
 
 RALPH-LANG: TypeScript
 RALPH-INAPPLICABLE: reason - no TypeScript source exists in this project; reopens when the first `.ts` file lands - at which point `RALPH-COMMAND: npx semgrep --config p/typescript` becomes the gate.

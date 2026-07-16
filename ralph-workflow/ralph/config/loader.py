@@ -140,6 +140,8 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
         "max_backoff_ms",
         "max_cycles",
         "execution_history_limit",
+        "auto_integrate_enabled",
+        "auto_integrate_target",
     )
     for field in simple_fields:
         if field in data:

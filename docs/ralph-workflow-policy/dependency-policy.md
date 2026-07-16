@@ -43,7 +43,7 @@ the project evolves.
 RALPH-FACT: package_manager: uv (primary; `[project]` dependencies and `[project.optional-dependencies]` for dev/docs/web-search/bundle extras in ralph-workflow/pyproject.toml). npm is used only inside ralph-workflow/skills-package/ for the bundled skills distribution artefact (one CLI bin at ralph-workflow/skills-package/bin/skills.js, two helper scripts; no runtime dependencies, no test/lint toolchain).
 RALPH-FACT: lockfile_path: ralph-workflow/uv.lock (uv-managed; pinned by `uv sync`). The skills-package artefact does not produce a package-lock.json because it ships zero runtime dependencies.
 RALPH-FACT: license_allowlist: project distribution license is `AGPL-3.0-or-later` (per ralph-workflow/pyproject.toml `[project].license`). Dependencies MUST use OSI-approved permissive or copyleft licenses compatible with AGPL-3.0-or-later distribution: MIT, BSD-2/3-Clause, Apache-2.0, ISC, MPL-2.0, LGPL-2.1-or-later, LGPL-3.0-or-later, PSF-2.0, and similar. Non-OSI / source-available licenses (BSL, SSPL, Elastic, BUSL) MUST NOT be merged without a documented exception naming the license, the scope, the owner, and the review date. GPL-family (other than LGPL) is incompatible with downstream proprietary linking without an explicit dual-license strategy.
-RALPH-FACT: security_audit_command: `uv run bandit -q -r ralph/` (recursive AST security scan against the maintained Python source). Bandit is the Python-best-practice static analyzer; it is the language-scoped scanner called out in security-policy.md. A broader CVE audit depends on the GitHub Advisory Database (Dependabot) and is wired through CODEOWNERS + Renovate rather than a CLI command.
+RALPH-FACT: security_audit_command: Bandit (the Python-best-practice static analyzer; it is the language-scoped scanner called out in security-policy.md). Bandit is NOT currently pinned in `ralph-workflow/pyproject.toml`, NOT installed by `make dev`, and NOT wired into `make -C ralph-workflow verify`; the Verification section below records the corresponding deferred gate. A broader CVE audit depends on the GitHub Advisory Database (Dependabot) and is wired through CODEOWNERS + Renovate rather than a CLI command.
 RALPH-FACT: type_info_policy: every added Python dependency MUST either ship type information in its own wheel (the default for httpx, pydantic, typer, rich, mcp, loguru, tqdm, gitpython, sentry-sdk, watchdog, jinja2, readability-lxml, selectolax) or carry a companion types package declared in `[project.optional-dependencies].dev` (`types-psutil>=5.9` is the canonical example for the untyped `psutil` runtime dep). Pure-stdlib reimplementations are preferred over dependencies that drag type stubs across the dep graph.
 RALPH-FACT: ci_install_command: `make dev` (declared in ralph-workflow/Makefile as `uv sync --extra dev`). CI installs from the lockfile by running the same target; `--extra` is `--frozen`-safe because uv resolves against `uv.lock` for every extra in the sync.
 RALPH-FACT: dependency_evaluation_record: each existing runtime dependency is recorded in ralph-workflow/pyproject.toml `[project].dependencies` and was evaluated against four criteria: (1) the upstream is actively maintained (last release within 18 months), (2) the wheel carries type information (or a sibling `types-*` package is declared in dev extras), (3) the license is on the ralph-workflow-pyproject AGPL-3.0-or-later compatible list (MIT / BSD / Apache-2.0 / ISC / MPL-2.0 / PSF / LGPL), and (4) the dependency is the smallest maintained option that satisfies the bound API. Recorded dependencies include httpx (HTTP client), pydantic (data model), typer + rich-click (CLI), rich (terminal), mcp (MCP transport), loguru (logging), tqdm (progress bars), gitpython (git ops), sentry-sdk (error reporting, opt-in), watchdog (filesystem events), jinja2 (templating), readability-lxml + selectolax (HTML extraction). No BSL/SSPL/Elastic/BUSL/non-OSI licence is present.
@@ -85,12 +85,12 @@ out of sync with `pyproject.toml`.
 The expected successful result is a clean dependency install (exit 0).
 On failure, report the affected package and the failure category
 (resolver conflict, missing platform wheel, network, lockfile drift).
-A clean bandit scan for added Python source is reported alongside:
+A clean Bandit scan for added Python source is reported alongside:
 
-RALPH-COMMAND: uv run bandit -q -r ralph/
+RALPH-PENDING: uv run bandit -q -r ralph/ (assumed 2026-07-15); review trigger: once bandit is pinned as a dev dependency in `ralph-workflow/pyproject.toml` and a verify step is added to `ralph-workflow/ralph/verify.py:_VERIFY_STEPS` and wired into `make -C ralph-workflow verify`.
 
-Failures here are security findings, not dependency conflicts. Triage
-each finding under the security-policy.md Exceptions section.
+Failures here would be security findings, not dependency conflicts;
+triage each finding under the security-policy.md Exceptions section.
 
 ## Exceptions
 

@@ -12,8 +12,13 @@
 #      the historical-context allowlist.
 #
 # Exits 0 only when no drift exists AND the search path is valid.
+#
+# Policy: docs/ralph-workflow-policy/gate-script-policy.md
+#   * Default requirements (strict mode + fail-closed + bounded).
+#   * Failure output (cite the governing policy file).
+#   * Security (private temp files via mktemp + trap cleanup, restrictive perms).
 
-set -u
+set -euo pipefail
 
 # Find the ralph-workflow root regardless of cwd.
 RALPH_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,15 +33,30 @@ ALLOWLIST_PATTERNS='tests/test_display_context\.py|tests/unit/display/test_displ
 # allowlist, the historical-collapse context would false-positive the drift check.
 HISTORICAL_ALLOWLIST_PATTERNS='ralph/display/status_bar\.py|ralph/display/__init__\.py|ralph/display/mode\.py|ralph/display/_mode_adaptive_limits\.py|ralph/display/context\.py|docs/sphinx/.*\.rst|docs/sphinx/.*\.md'
 
+# Private temp file for grep stderr: mktemp + trap cleanup + restrictive perms.
+# Per docs/ralph-workflow-policy/gate-script-policy.md § Security, predictable
+# shared paths like /tmp/wt028_drift.err are a local privilege-escalation surface.
+GREP_ERR="$(mktemp -t wt028_drift.XXXXXX.err)"
+# Per gate-script-policy.md: restrictive permissions on the temp file.
+chmod 600 "$GREP_ERR"
+cleanup() {
+    rm -f "$GREP_ERR"
+}
+trap cleanup EXIT
+
 # Exclude __pycache__ and .pyc files so the check stays stable across builds.
+set +e
 DRIFT_HITS="$(grep -rln -E "$DRIFT_PATTERNS" ralph/ tests/ docs/ \
     --include='*.py' --include='*.rst' --include='*.md' \
-    --exclude='__pycache__' --exclude='*.pyc' 2>/tmp/wt028_drift.err)"
+    --exclude='__pycache__' --exclude='*.pyc' 2>"$GREP_ERR")"
 GREP_RC=$?
+set -e
 
 if [ "$GREP_RC" -eq 2 ]; then
-    echo "FAIL: bad path or permission in upstream grep"
-    cat /tmp/wt028_drift.err
+    echo "FAIL: bad path or permission in upstream grep" >&2
+    cat "$GREP_ERR" >&2
+    echo "" >&2
+    echo "Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements (fail-closed)." >&2
     exit 2
 fi
 
@@ -44,8 +64,10 @@ fi
 FILTERED="$(echo "$DRIFT_HITS" | grep -v -E "$ALLOWLIST_PATTERNS" | grep -v -E "$HISTORICAL_ALLOWLIST_PATTERNS" || true)"
 
 if [ -n "$FILTERED" ]; then
-    echo "FAIL: drift detected in the consolidated single-mode invariant"
-    echo "$FILTERED"
+    echo "FAIL: drift detected in the consolidated single-mode invariant" >&2
+    echo "$FILTERED" >&2
+    echo "" >&2
+    echo "Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements (fail-closed)." >&2
     exit 1
 fi
 

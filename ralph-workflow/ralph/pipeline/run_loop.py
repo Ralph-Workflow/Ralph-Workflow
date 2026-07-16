@@ -121,7 +121,7 @@ class _LoopContext:
     controller: RecoveryController
     config_path: Path | None
     cli_overrides: dict[str, object]
-    monitor_stop: Callable[[], None] | None
+    monitor_stop: Callable[[], None] | None | None
     connectivity_monitor: _ConnectivityMonitorLike
     sleep: Callable[[float], None]
     is_quiet: bool
@@ -427,12 +427,352 @@ def _push_status_bar_if_changed(
     return last_sig
 
 
+def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> None:
+    """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
+
+    Called from :func:`_run_inner_loop` BEFORE the pipeline starts.
+    The recover function aborts any owned engine rebase / merge,
+    then either restores the feature branch to its pre-integration
+    SHA (phase='integrating') or safely continues the unfinished
+    fast-forward (phase='integrated'). It must never abort startup
+    -- a defensive try/except keeps any unexpected failure from
+    blocking the run.
+    """
+    try:
+        from ralph.pipeline.auto_integrate import recover_incomplete_integration
+
+        recovered = recover_incomplete_integration(workspace_scope)
+    except Exception as recover_exc:  # pragma: no cover -- defensive
+        logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
+        return
+    if recovered is not None:
+        logger.debug("auto_integrate recovery preamble: {}", recovered.last_action)
+
+
+@dataclass(frozen=True)
+class _RunCollaborators:
+    """Resolved collaborators for :func:`run`.
+
+    Bundles the dependency-injection output of
+    :func:`_resolve_run_collaborators` so :func:`run` stays narrow
+    -- the precedence cascade (pipeline_deps > pro_hooks > defaults
+    vs the legacy factory kwargs) is the bulk of the function's
+    complexity and lives in the helper.
+    """
+
+    policy_bundle: PolicyBundle
+    registry: _RegistryLike
+    state: PipelineState
+    effective_verbosity: Verbosity
+    is_quiet: bool
+    sleep: Callable[[float], None]
+    connectivity_monitor: _ConnectivityMonitorLike
+    monitor_stop: Callable[[], None] | None
+    controller: RecoveryController
+    marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None
+    snapshot_registry: SnapshotRegistry | None
+
+
+def _resolve_policy_bundle(
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    policy_bundle_factory: Callable[[WorkspaceScope, UnifiedConfig], PolicyBundle] | None,
+) -> PolicyBundle:
+    """Resolve the :class:`PolicyBundle` with the standard DI precedence.
+
+    Precedence: ``pipeline_deps.policy_bundle`` (or its factory) >
+    ``pro_hooks.policy_bundle_override`` (or its factory) > legacy
+    ``policy_bundle_factory`` kwarg > production default.
+    """
+    if pipeline_deps is not None:
+        if pipeline_deps.policy_bundle is not None:
+            return pipeline_deps.policy_bundle
+        if pipeline_deps.policy_bundle_factory is not None:
+            return pipeline_deps.policy_bundle_factory(workspace_scope, config)
+    if pro_hooks is not None and pro_hooks.policy_bundle_override is not None:
+        return pro_hooks.policy_bundle_override
+    if pro_hooks is not None and pro_hooks.policy_bundle_factory is not None:
+        return pro_hooks.policy_bundle_factory(workspace_scope, config)
+    if policy_bundle_factory is not None:
+        return policy_bundle_factory(workspace_scope, config)
+    return _runner_module.load_policy_bundle_for_run(workspace_scope, config)
+
+
+def _resolve_registry(
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
+) -> _RegistryLike:
+    """Resolve the agent registry with the standard DI precedence."""
+    if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
+        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
+    if pro_hooks is not None and pro_hooks.registry_factory is not None:
+        return cast("_RegistryLike", pro_hooks.registry_factory(config))
+    if registry_factory is not None:
+        return registry_factory(config)
+    return _runner_module.AgentRegistry.from_config(config)
+
+
+def _resolve_initial_state(
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    initial_state: PipelineState | None,
+    counter_overrides: dict[str, int] | None,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    state_factory: Callable[
+        [UnifiedConfig, AgentsPolicy, PipelinePolicy, dict[str, int] | None],
+        PipelineState,
+    ]
+    | None,
+) -> PipelineState:
+    """Resolve the initial :class:`PipelineState` with the standard DI precedence."""
+    if initial_state is not None:
+        return initial_state
+    if pipeline_deps is not None and pipeline_deps.state_factory is not None:
+        return pipeline_deps.state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
+    if pro_hooks is not None and pro_hooks.state_factory is not None:
+        return pro_hooks.state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
+    if state_factory is not None:
+        return state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
+    return _runner_module.create_initial_state(
+        config,
+        agents_policy=policy_bundle.agents,
+        pipeline_policy=policy_bundle.pipeline,
+        counter_overrides=counter_overrides,
+    )
+
+
+def _resolve_recovery_sleep(
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    recovery_sleep_kwarg: Callable[[float], None] | None,
+) -> Callable[[float], None]:
+    """Resolve the recovery-sleep callable with the standard DI precedence."""
+    if pipeline_deps is not None and pipeline_deps.recovery_sleep is not None:
+        return pipeline_deps.recovery_sleep
+    if pro_hooks is not None and pro_hooks.recovery_sleep is not None:
+        return pro_hooks.recovery_sleep
+    if recovery_sleep_kwarg is not None:
+        return recovery_sleep_kwarg
+    return time.sleep
+
+
+def _resolve_recovery_controller(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    recovery_controller_factory: Callable[
+        [PipelineState, PolicyBundle, UnifiedConfig],
+        tuple[RecoveryController, int],
+    ]
+    | None,
+) -> RecoveryController:
+    """Resolve the :class:`RecoveryController` with the standard DI precedence."""
+    if pipeline_deps is not None and pipeline_deps.recovery_controller_factory is not None:
+        controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
+        return controller
+    if pro_hooks is not None and pro_hooks.recovery_controller_factory is not None:
+        controller, _ = pro_hooks.recovery_controller_factory(state, policy_bundle, config)
+        return controller
+    if recovery_controller_factory is not None:
+        controller, _ = recovery_controller_factory(state, policy_bundle, config)
+        return controller
+    controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    return controller
+
+
+def _resolve_marker_watcher_factory(
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None,
+) -> Callable[[Path], ProMarkerWatcher] | None:
+    """Resolve the marker-watcher factory with the standard DI precedence."""
+    if pipeline_deps is not None:
+        return pipeline_deps.marker_watcher_factory
+    if pro_hooks is not None and pro_hooks.marker_watcher_factory is not None:
+        return pro_hooks.marker_watcher_factory
+    return marker_watcher_factory
+
+
+def _resolve_snapshot_registry(
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    snapshot_registry: SnapshotRegistry | None,
+) -> SnapshotRegistry | None:
+    """Resolve the snapshot registry with the standard DI precedence."""
+    if pipeline_deps is not None:
+        return pipeline_deps.snapshot_registry
+    if pro_hooks is not None and pro_hooks.snapshot_registry is not None:
+        return pro_hooks.snapshot_registry
+    return snapshot_registry
+
+
+def _resolve_run_collaborators(
+    *,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    initial_state: PipelineState | None,
+    counter_overrides: dict[str, int] | None,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    policy_bundle_factory: Callable[[WorkspaceScope, UnifiedConfig], PolicyBundle] | None,
+    registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
+    state_factory: Callable[
+        [UnifiedConfig, AgentsPolicy, PipelinePolicy, dict[str, int] | None],
+        PipelineState,
+    ]
+    | None,
+    recovery_controller_factory: Callable[
+        [PipelineState, PolicyBundle, UnifiedConfig],
+        tuple[RecoveryController, int],
+    ]
+    | None,
+    marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None,
+    snapshot_registry: SnapshotRegistry | None,
+    _recovery_sleep: Callable[[float], None] | None,
+    verbosity: Verbosity | None = None,
+    connectivity_monitor: _ConnectivityMonitorLike | None = None,
+) -> _RunCollaborators:
+    """Resolve every run-loop collaborator via the standard DI precedence cascade.
+
+    Extracted from :func:`run` so the entrypoint's branch / statement
+    count stays sensible while keeping the precedence table in one
+    auditable place.
+    """
+    policy_bundle = _resolve_policy_bundle(
+        workspace_scope, config, pipeline_deps, pro_hooks, policy_bundle_factory
+    )
+    registry = _resolve_registry(config, pipeline_deps, pro_hooks, registry_factory)
+    state = _resolve_initial_state(
+        config,
+        policy_bundle,
+        initial_state,
+        counter_overrides,
+        pipeline_deps,
+        pro_hooks,
+        state_factory,
+    )
+    effective_verbosity = _normalize_run_verbosity(config, verbosity=verbosity)
+    is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
+    sleep = _resolve_recovery_sleep(pipeline_deps, pro_hooks, _recovery_sleep)
+    resolved_monitor, monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
+    controller = _resolve_recovery_controller(
+        state,
+        policy_bundle,
+        config,
+        pipeline_deps,
+        pro_hooks,
+        recovery_controller_factory,
+    )
+    return _RunCollaborators(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        state=state,
+        effective_verbosity=effective_verbosity,
+        is_quiet=is_quiet,
+        sleep=sleep,
+        connectivity_monitor=resolved_monitor,
+        monitor_stop=monitor_stop,
+        controller=controller,
+        marker_watcher_factory=_resolve_marker_watcher_factory(
+            pipeline_deps, pro_hooks, marker_watcher_factory
+        ),
+        snapshot_registry=_resolve_snapshot_registry(
+            pipeline_deps, pro_hooks, snapshot_registry
+        ),
+    )
+
+
+def _normalize_run_verbosity(
+    config: UnifiedConfig,
+    *,
+    verbosity: Verbosity | None,
+) -> Verbosity:
+    """Normalize the verbosity for :func:`run`.
+
+    Honours the explicit ``verbosity`` kwarg when supplied; otherwise
+    reads ``config.general.verbosity``. ``normalize_verbosity`` accepts
+    both ``Verbosity`` enums and integer ranks and returns the
+    canonical ``Verbosity`` instance.
+    """
+    if verbosity is not None:
+        return normalize_verbosity(verbosity)
+    return normalize_verbosity(config.general.verbosity)
+
+
+def _apply_legacy_heartbeat_override(
+    workspace_root: Path,
+    default_client: ProHeartbeatClient | None,
+) -> ProHeartbeatClient | None:
+    """Apply the monkey-patch override of ``_start_pro_heartbeat_if_active``.
+
+    The legacy public helper is monkey-patched in many tests to inject
+    a recording heartbeat. When the test replaced it, honour that
+    override so the run loop's heartbeat_client matches what the test
+    observed when the monkey-patch was applied. The watcher above is
+    kept running so late-marker adoption still works when no override
+    is supplied.
+    """
+    _module_legacy_obj: object
+    _self_dict: dict[str, object] = sys.modules[__name__].__dict__
+    try:
+        _module_legacy_obj = _self_dict["_start_pro_heartbeat_if_active"]
+    except KeyError:
+        return default_client
+    if _module_legacy_obj is _start_pro_marker_watcher or not callable(_module_legacy_obj):
+        return default_client
+    _module_legacy = cast(
+        "Callable[[Path], ProHeartbeatClient | None]",
+        _module_legacy_obj,
+    )
+    patched_heartbeat: ProHeartbeatClient | None = _module_legacy(workspace_root)
+    return patched_heartbeat if patched_heartbeat is not None else default_client
+
+
+def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
+    """Resolve the recovery-display interval from config (fallback to default)."""
+    raw: object = getattr(
+        config.general,
+        "agent_waiting_status_interval_seconds",
+        WAITING_STATUS_INTERVAL_SECONDS,
+    )
+    if (
+        isinstance(raw, (int, float))
+        and not isinstance(raw, bool)
+        and float(raw) > 0.0
+    ):
+        return float(raw)
+    return WAITING_STATUS_INTERVAL_SECONDS
+
+
 def _run_inner_loop(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted)."""
+    _run_auto_integrate_recovery_preamble(ctx.workspace_scope)
     # State holder so the providers captured by run_pipeline_step can
     # read the LIVE PipelineState / ConnectivityMonitor on every agent
     # invocation. The list is rebound every loop iteration so the
@@ -941,7 +1281,7 @@ def _execute_with_cleanup(
     return exit_code
 
 
-def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
+def run(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
@@ -1036,104 +1376,34 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     if pipeline_deps is not None and display_context is None:
         display_context = pipeline_deps.display_context
 
-    # Resolve collaborators with precedence: pipeline_deps > pro_hooks > defaults.
-    # When pipeline_deps is provided it is the authoritative composed bundle;
-    # deprecated factory kwargs are rejected above, so the two injection paths
-    # are never mixed.
-    if pipeline_deps is not None:
-        if pipeline_deps.policy_bundle is not None:
-            policy_bundle = pipeline_deps.policy_bundle
-        elif pipeline_deps.policy_bundle_factory is not None:
-            policy_bundle = pipeline_deps.policy_bundle_factory(workspace_scope, config)
-        else:
-            policy_bundle = _runner_module.load_policy_bundle_for_run(workspace_scope, config)
-    elif pro_hooks is not None and pro_hooks.policy_bundle_override is not None:
-        policy_bundle = pro_hooks.policy_bundle_override
-    elif pro_hooks is not None and pro_hooks.policy_bundle_factory is not None:
-        policy_bundle = pro_hooks.policy_bundle_factory(workspace_scope, config)
-    elif policy_bundle_factory is not None:
-        policy_bundle = policy_bundle_factory(workspace_scope, config)
-    else:
-        policy_bundle = _runner_module.load_policy_bundle_for_run(workspace_scope, config)
-    _runner_module.register_role_handlers(policy_bundle.pipeline)
-
-    registry: _RegistryLike
-    if pipeline_deps is not None:
-        if pipeline_deps.registry_factory is not None:
-            registry = cast("_RegistryLike", pipeline_deps.registry_factory(config))
-        else:
-            registry = _runner_module.AgentRegistry.from_config(config)
-    elif pro_hooks is not None and pro_hooks.registry_factory is not None:
-        registry = cast("_RegistryLike", pro_hooks.registry_factory(config))
-    elif registry_factory is not None:
-        registry = registry_factory(config)
-    else:
-        registry = _runner_module.AgentRegistry.from_config(config)
-
-    if initial_state is not None:
-        state = initial_state
-    elif pipeline_deps is not None:
-        if pipeline_deps.state_factory is not None:
-            state = pipeline_deps.state_factory(
-                config,
-                policy_bundle.agents,
-                policy_bundle.pipeline,
-                counter_overrides,
-            )
-        else:
-            state = _runner_module.create_initial_state(
-                config,
-                agents_policy=policy_bundle.agents,
-                pipeline_policy=policy_bundle.pipeline,
-                counter_overrides=counter_overrides,
-            )
-    elif pro_hooks is not None and pro_hooks.state_factory is not None:
-        state = pro_hooks.state_factory(
-            config,
-            policy_bundle.agents,
-            policy_bundle.pipeline,
-            counter_overrides,
-        )
-    elif state_factory is not None:
-        state = state_factory(
-            config,
-            policy_bundle.agents,
-            policy_bundle.pipeline,
-            counter_overrides,
-        )
-    else:
-        state = _runner_module.create_initial_state(
-            config,
-            agents_policy=policy_bundle.agents,
-            pipeline_policy=policy_bundle.pipeline,
-            counter_overrides=counter_overrides,
-        )
-
-    effective_verbosity = normalize_verbosity(
-        verbosity if verbosity is not None else config.general.verbosity
+    collaborators = _resolve_run_collaborators(
+        config=config,
+        workspace_scope=workspace_scope,
+        initial_state=initial_state,
+        counter_overrides=counter_overrides,
+        pipeline_deps=pipeline_deps,
+        pro_hooks=pro_hooks,
+        policy_bundle_factory=policy_bundle_factory,
+        registry_factory=registry_factory,
+        state_factory=state_factory,
+        recovery_controller_factory=recovery_controller_factory,
+        marker_watcher_factory=marker_watcher_factory,
+        snapshot_registry=snapshot_registry,
+        _recovery_sleep=_recovery_sleep,
+        verbosity=verbosity,
+        connectivity_monitor=connectivity_monitor,
     )
-    is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
-    if pipeline_deps is not None and pipeline_deps.recovery_sleep is not None:
-        _sleep = pipeline_deps.recovery_sleep
-    elif pro_hooks is not None and pro_hooks.recovery_sleep is not None:
-        _sleep = pro_hooks.recovery_sleep
-    elif _recovery_sleep is not None:
-        _sleep = _recovery_sleep
-    else:
-        _sleep = time.sleep
-    connectivity_monitor, _monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
+    policy_bundle = collaborators.policy_bundle
+    registry = collaborators.registry
+    state = collaborators.state
+    effective_verbosity = collaborators.effective_verbosity
+    is_quiet = collaborators.is_quiet
+    _sleep = collaborators.sleep
+    connectivity_monitor = collaborators.connectivity_monitor
+    _monitor_stop = collaborators.monitor_stop
+    _controller = collaborators.controller
 
-    if pipeline_deps is not None:
-        if pipeline_deps.recovery_controller_factory is not None:
-            _controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
-        else:
-            _controller, _ = _build_recovery_controller(state, policy_bundle, config)
-    elif pro_hooks is not None and pro_hooks.recovery_controller_factory is not None:
-        _controller, _ = pro_hooks.recovery_controller_factory(state, policy_bundle, config)
-    elif recovery_controller_factory is not None:
-        _controller, _ = recovery_controller_factory(state, policy_bundle, config)
-    else:
-        _controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    _runner_module.register_role_handlers(policy_bundle.pipeline)
     _unsubscribe_bus = _subscribe_recovery_logger(_controller)
     logger.info("Starting pipeline: phase={}, budget_caps={}", state.phase, state.budget_caps)
     if pipeline_subscriber is None:
@@ -1145,47 +1415,13 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         dashboard_subscriber, pipeline_subscriber, active_display
     )
 
-    _effective_marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None = None
-    if pipeline_deps is not None:
-        _effective_marker_watcher_factory = pipeline_deps.marker_watcher_factory
-    elif pro_hooks is not None and pro_hooks.marker_watcher_factory is not None:
-        _effective_marker_watcher_factory = pro_hooks.marker_watcher_factory
-    else:
-        _effective_marker_watcher_factory = marker_watcher_factory
-
-    _effective_snapshot_registry: SnapshotRegistry | None = None
-    if pipeline_deps is not None:
-        _effective_snapshot_registry = pipeline_deps.snapshot_registry
-    elif pro_hooks is not None and pro_hooks.snapshot_registry is not None:
-        _effective_snapshot_registry = pro_hooks.snapshot_registry
-    else:
-        _effective_snapshot_registry = snapshot_registry
     _pro_watcher, _heartbeat_client = _start_pro_marker_watcher(
         workspace_scope.root,
-        watcher_factory=_effective_marker_watcher_factory,
+        watcher_factory=collaborators.marker_watcher_factory,
     )
-    # The legacy public helper ``_start_pro_heartbeat_if_active`` is
-    # monkey-patched in many tests to inject a recording heartbeat.
-    # If the user (or a test) replaced it, honour that override here
-    # so the run loop's heartbeat_client matches what the test
-    # observed when the monkey-patch was applied. The watcher above
-    # is kept running so late-marker adoption still works when no
-    # override is supplied.
-    _module_legacy_obj: object
-    _self_module = sys.modules[__name__]
-    _self_dict: dict[str, object] = _self_module.__dict__
-    try:
-        _module_legacy_obj = _self_dict["_start_pro_heartbeat_if_active"]
-    except KeyError:
-        _module_legacy_obj = _start_pro_marker_watcher
-    if _module_legacy_obj is not _start_pro_marker_watcher and callable(_module_legacy_obj):
-        _module_legacy = cast(
-            "Callable[[Path], ProHeartbeatClient | None]",
-            _module_legacy_obj,
-        )
-        _patched_heartbeat: ProHeartbeatClient | None = _module_legacy(workspace_scope.root)
-        if _patched_heartbeat is not None:
-            _heartbeat_client = _patched_heartbeat
+    _heartbeat_client = _apply_legacy_heartbeat_override(
+        workspace_scope.root, _heartbeat_client
+    )
     loop_ctx = _LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
@@ -1204,26 +1440,14 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         is_quiet=is_quiet,
         heartbeat_client=_heartbeat_client,
         pro_watcher=_pro_watcher,
-        snapshot_registry=_effective_snapshot_registry,
+        snapshot_registry=collaborators.snapshot_registry,
         pipeline_deps=pipeline_deps,
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
     )
-    _recovery_display_interval: float
-    _recovery_display_interval_raw: object = getattr(
-        config.general, "agent_waiting_status_interval_seconds", WAITING_STATUS_INTERVAL_SECONDS
-    )
-    if (
-        isinstance(_recovery_display_interval_raw, (int, float))
-        and not isinstance(_recovery_display_interval_raw, bool)
-        and float(_recovery_display_interval_raw) > 0.0
-    ):
-        _recovery_display_interval = float(_recovery_display_interval_raw)
-    else:
-        _recovery_display_interval = WAITING_STATUS_INTERVAL_SECONDS
     _unsubscribe_display = _subscribe_recovery_display(
         _controller,
         active_display,
-        _recovery_display_interval,
+        _resolve_recovery_display_interval(config),
         now=time.monotonic,
     )
     return _execute_with_cleanup(

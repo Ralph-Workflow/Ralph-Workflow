@@ -9,7 +9,11 @@
   "rebase": {
     "pending": false,
     "in_progress": false,
-    "completed": false
+    "completed": false,
+    "last_action": null,
+    "last_reason": null,
+    "last_target": null,
+    "fast_forwarded": false
   },
   "commit": {
     "message_prepared": false,
