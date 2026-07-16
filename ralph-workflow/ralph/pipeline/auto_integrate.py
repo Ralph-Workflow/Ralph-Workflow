@@ -68,6 +68,7 @@ from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseFailed,
     RebaseNoOp,
+    RebaseSuccess,
     abort_rebase,
     rebase_in_progress,
     rebase_onto,
@@ -264,9 +265,9 @@ def _record_conflict(
 
 def _record_rebase_outcome(
     *,
-    rebase_outcome: object,
+    rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed,
     merge_attempted: bool,
-    merge_outcome: object | None,
+    merge_outcome: MergeResult | None,
     target: str,
 ) -> RebaseState:
     """Build a ``RebaseState`` from the rebase + optional merge result.
@@ -275,52 +276,85 @@ def _record_rebase_outcome(
     ``fast_forwarded`` is set by the caller after the fast-forward
     phase; the function leaves ``fast_forwarded=False`` here so the
     caller can update it once the CAS / worktree-ff step completes.
+
+    The mapping is centralized in :func:`_classify_rebase_outcome`
+    so this function is a thin constructor over the (action, reason)
+    pair it returns.
     """
-    if isinstance(rebase_outcome, RebaseConflicts):
-        if merge_attempted and merge_outcome is not None:
-            # Conflict outcome propagated from merge_target_into_current.
-            return RebaseState(
-                last_action=_ACTION_CONFLICT,
-                last_reason="rebase and endpoint merge both conflicted",
-                last_target=target,
-                fast_forwarded=False,
-            )
-        return RebaseState(
-            last_action=_ACTION_CONFLICT,
-            last_reason="rebase conflicts",
-            last_target=target,
-            fast_forwarded=False,
-        )
-    if isinstance(rebase_outcome, RebaseNoOp):
-        # No-op is recorded as rebased (no work done, but the
-        # branch is already aligned with target).
-        return RebaseState(
-            last_action=_ACTION_REBASED,
-            last_reason=rebase_outcome.reason,
-            last_target=target,
-            fast_forwarded=False,
-        )
-    if isinstance(rebase_outcome, RebaseFailed):
-        return RebaseState(
-            last_action=_ACTION_SKIPPED,
-            last_reason=f"rebase failed: {rebase_outcome.kind}",
-            last_target=target,
-            fast_forwarded=False,
-        )
-    # RebaseSuccess or after a clean endpoint merge.
-    if merge_attempted and merge_outcome is not None:
-        return RebaseState(
-            last_action=_ACTION_MERGED,
-            last_reason=None,
-            last_target=target,
-            fast_forwarded=False,
-        )
+    action, reason = _classify_rebase_outcome(
+        rebase_outcome=rebase_outcome,
+        merge_attempted=merge_attempted,
+        merge_outcome=merge_outcome,
+    )
     return RebaseState(
-        last_action=_ACTION_REBASED,
-        last_reason=None,
+        last_action=action,
+        last_reason=reason,
         last_target=target,
         fast_forwarded=False,
     )
+
+
+def _classify_rebase_conflict_outcome(
+    *,
+    merge_attempted: bool,
+    merge_outcome: MergeResult | None,
+) -> tuple[str, str | None] | None:
+    """Sub-classifier for the ``RebaseConflicts`` branch.
+
+    Returns ``None`` when this sub-classifier cannot decide (e.g.
+    the merge was not attempted at all and we still want the
+    generic "rebase conflicts" headline to be raised by the caller).
+    Otherwise returns the ``(action, reason)`` pair to use as the
+    :func:`_record_rebase_outcome` headline.
+    """
+    if not merge_attempted or merge_outcome is None:
+        return None
+    # The rebase conflicted; the endpoint merge that followed
+    # is recorded in ``merge_outcome.outcome``. A conflicting
+    # merge is the AC-07 "both conflicted" case (headline:
+    # conflict). A clean success/noop merge is the AC-06
+    # "rebase conflicted but endpoint merge succeeded" case
+    # (headline: merged) -- the rebase-apply/rebase-merge state
+    # was already aborted by ``_resolve_rebase_conflict`` so the
+    # resulting branch state is the merged tree.
+    if merge_outcome.outcome == "conflict":
+        return _ACTION_CONFLICT, "rebase and endpoint merge both conflicted"
+    if merge_outcome.outcome in {"success", "noop"}:
+        return _ACTION_MERGED, None
+    return None
+
+
+def _classify_rebase_outcome(
+    *,
+    rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed,
+    merge_attempted: bool,
+    merge_outcome: MergeResult | None,
+) -> tuple[str, str | None]:
+    """Map a rebase + optional merge result to a ``(action, reason)`` pair.
+
+    Split out from :func:`_record_rebase_outcome` to keep the
+    headline builder within the ruff PLR0911 return-statement cap
+    (the builder is a single-return constructor; this classifier
+    owns the branch table).
+    """
+    if isinstance(rebase_outcome, RebaseConflicts):
+        sub = _classify_rebase_conflict_outcome(
+            merge_attempted=merge_attempted,
+            merge_outcome=merge_outcome,
+        )
+        if sub is not None:
+            return sub
+        return _ACTION_CONFLICT, "rebase conflicts"
+    if isinstance(rebase_outcome, RebaseNoOp):
+        # No-op is recorded as rebased (no work done, but the
+        # branch is already aligned with target).
+        return _ACTION_REBASED, rebase_outcome.reason
+    if isinstance(rebase_outcome, RebaseFailed):
+        return _ACTION_SKIPPED, f"rebase failed: {rebase_outcome.kind}"
+    # RebaseSuccess or after a clean endpoint merge.
+    if merge_attempted and merge_outcome is not None:
+        return _ACTION_MERGED, None
+    return _ACTION_REBASED, None
 
 
 def _fast_forward_target(
@@ -594,9 +628,9 @@ class _RebaseRunResult:
     should return directly.
     """
 
-    rebase_outcome: object
+    rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed
     merge_attempted: bool
-    merge_outcome: object | None
+    merge_outcome: MergeResult | None
     short_circuit: RebaseState | None
 
 

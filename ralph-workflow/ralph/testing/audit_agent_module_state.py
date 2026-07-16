@@ -26,6 +26,7 @@ Returns exit code 0 if no violations found, 1 otherwise.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -95,8 +96,44 @@ def _name_violates(name: str) -> bool:
     return "registry" in lower and ("agent" in lower or "parser" in lower)
 
 
+#: Pre-filter regex for the cheap text-level gate.
+#: A file that contains NONE of the forbidden-name substrings cannot
+#: produce a module-level dict violation, so the AST parse (the slow
+#: step) is skipped for the vast majority of files. The set of
+#: substrings here is the UNION of ``_name_violates``'s two cases:
+#: every ``_FORBIDDEN_NAME_PREFIXES`` entry, plus the lower-cased
+#: ``registry``/``agent``/``parser`` substring combinations.
+_CANDIDATE_NAME_RE = re.compile(
+    r"_PARSER_REGISTRY|_CUSTOM_COMMAND_REGISTRY|_STRATEGY_DISPATCH|"
+    r"registry[_\w]*agent|agent[_\w]*registry|"
+    r"registry[_\w]*parser|parser[_\w]*registry",
+    re.IGNORECASE,
+)
+
+
+def _has_candidate_name(content: str) -> bool:
+    """Return True when ``content`` has any substring that could be a violation.
+
+    Cheap text-level pre-filter that lets the scan skip the slow
+    ``ast.parse`` step for files that obviously contain none of the
+    forbidden-name patterns. Matches the same names
+    :func:`_name_violates` would flag, so it never produces a false
+    negative (a file that contains a candidate substring but parses
+    cleanly with no module-level dict assignment still returns ``[]``
+    from :func:`_scan_file`).
+    """
+    return _CANDIDATE_NAME_RE.search(content) is not None
+
+
 def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
     """Scan a single file for module-level dict violations."""
+    # Pre-filter: skip the slow AST parse for files that obviously
+    # contain none of the forbidden-name patterns. The 1.0s per-test
+    # budget enforced by ``ralph.verify_timeout`` is the binding
+    # constraint; ast.parse on every file in ralph/agents pushes the
+    # audit close to the cap under heavy pytest-xdist load.
+    if not _has_candidate_name(content):
+        return []
     violations: list[RegistrySyncViolation] = []
     try:
         tree = ast.parse(content)

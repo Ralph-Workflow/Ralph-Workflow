@@ -349,6 +349,87 @@ def test_rebase_conflict_then_clean_endpoint_merge(tmp_git_repo: Path) -> None:
     assert base_sha == head_sha
 
 
+def test_rebase_conflict_then_clean_merge_records_merged_action(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-06 (deterministic): rebase conflicted, endpoint merge clean -> 'merged'.
+
+    The previous implementation in
+    :func:`ralph.pipeline.auto_integrate._record_rebase_outcome` always
+    reported ``last_action='conflict'`` when ``rebase_outcome`` was a
+    :class:`RebaseConflicts`, even if the endpoint merge succeeded --
+    the headline verb then lied to the operator. This test pins the
+    fixed behavior: with a real diverged feature branch, a forced
+    :class:`RebaseConflicts` rebase outcome (via monkeypatch) and a
+    clean ``merge_target_into_current`` (real git three-way merge),
+    the headline is ``'merged'`` and the target ref fast-forwards.
+
+    The test also asserts the AC-06 invariants the prompt requires:
+    no rebase-apply/rebase-merge state, single merge commit, target
+    ref equals feature tip.
+    """
+    import ralph.pipeline.auto_integrate as _ai_mod
+    from ralph.git.rebase.rebase import RebaseConflicts
+
+    base = _base_branch(tmp_git_repo)
+    # Diverged feature branch: feature ahead of base with a disjoint
+    # file change so a real endpoint merge succeeds.
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "base.txt", "base only\n", "base")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    # Force the rebase to report conflicts; the real endpoint merge
+    # against the new base SHA will succeed (no shared file changes
+    # in this scenario).
+    def _fake_rebase_onto(
+        target: str, *, repo_root: Path, options: object = None
+    ) -> object:
+        return RebaseConflicts(files=["shared.txt"])
+
+    monkeypatch.setattr(_ai_mod, "rebase_onto", _fake_rebase_onto)
+    # Also patch the ralph.git.rebase.rebase module path that
+    # auto_integrate imports through (rebase_onto is imported at
+    # module load time, so the indirection in _ai_mod is the live
+    # binding).
+    monkeypatch.setattr(
+        "ralph.git.rebase.rebase.rebase_onto", _fake_rebase_onto
+    )
+
+    # The endpoint merge must succeed in this scenario (disjoint
+    # changes); the function under test relies on
+    # _merge_mod.merge_target_into_current to do the real work, so
+    # we leave it untouched.
+
+    config = _build_config(tmp_git_repo, target=base)
+    scope = WorkspaceScope(tmp_git_repo)
+    outcome = auto_integrate_after_commit(config, scope, RebaseState())
+    assert outcome is not None
+    # The headline must be 'merged', NOT 'conflict': the endpoint
+    # merge succeeded, the rebase-apply state was already aborted.
+    assert outcome.last_action == "merged", (
+        f"expected 'merged' (clean endpoint merge after rebase conflict),"
+        f" got last_action={outcome.last_action!r} reason={outcome.last_reason!r}"
+    )
+    assert outcome.last_target == base
+    # No rebase-apply / rebase-merge directory left (rebase was aborted).
+    git_dir_out = _run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip()
+    git_dir = Path(git_dir_out)
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    assert not (git_dir / "rebase-apply").exists()
+    assert not (git_dir / "rebase-merge").exists()
+    # Clean working tree (the endpoint merge produced a clean commit).
+    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
+    # Target ref advanced to feature tip.
+    head_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    assert base_sha == head_sha
+    # The fast-forward did happen.
+    assert outcome.fast_forwarded is True
+
+
 # ---------------------------------------------------------------------------
 # AC-07: both conflict; branch bit-identical, outcome recorded
 # ---------------------------------------------------------------------------
@@ -545,7 +626,7 @@ def test_dirty_target_worktree_skips_fast_forward(tmp_git_repo: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_no_git_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """AC-10: monkeypatch ralph.git.merge.run_git to record every argv.
 
     Drives a real diverged-clean rebase + ff integration AND a
