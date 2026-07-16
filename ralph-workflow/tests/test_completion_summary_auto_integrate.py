@@ -5,10 +5,9 @@ fields projected from :class:`ralph.pipeline.rebase_state.RebaseState` onto
 :data:`ralph.display.snapshot.PipelineSnapshot`. The producer
 (:mod:`ralph.pipeline.auto_integrate`) keeps ``last_action`` as one of
 ``rebased|merged|skipped|conflict|recovered`` and records the landing
-result on the ``fast_forwarded`` boolean. A repo-wide grep confirms
-``_ACTION_FAST_FORWARDED`` is never assigned to ``last_action``, so the
-display layer must read ``fast_forwarded`` rather than keying on a
-nonexistent ``fast_forwarded`` action.
+result on the ``fast_forwarded`` boolean. The action vocabulary contains
+no ``fast_forwarded`` verb at all, so the display layer must read
+``fast_forwarded`` rather than keying on a nonexistent action.
 
 Every case below is a tuple actually emitted by the producer; nothing here
 is invented. Both the plain renderer and the on-screen group renderer must

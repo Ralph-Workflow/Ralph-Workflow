@@ -91,33 +91,91 @@ def test_auto_integrate_precedence_global_overridden_by_local(
 
     Mirrors the precedence contract of every other ``[general]`` key:
     global < project-local. The loader reads the global from
-    ``~/.config/ralph-workflow.toml``; we monkeypatch that path so the
-    test stays in-process.
+    ``XDG_CONFIG_HOME/ralph-workflow.toml`` when that env var is set
+    (loader.py:_global_config_path honours XDG_CONFIG_HOME first);
+    the conftest autouse fixture sets XDG_CONFIG_HOME to a fresh
+    per-test directory, so this test re-points XDG_CONFIG_HOME to a
+    global file with values that BOTH differ from the local values
+    AND differ from the documented defaults -- the assertion must
+    surface 'local won', not 'the default won'.
     """
     from ralph.config import loader as loader_module
 
-    global_dir = tmp_path / "global_config"
-    global_dir.mkdir()
-    global_path = global_dir / "ralph-workflow.toml"
-    global_path.write_text(
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir()
+    (config_home / "ralph-workflow.toml").write_text(
         '[general]\n'
-        'auto_integrate_enabled = true\n'
+        'auto_integrate_enabled = false\n'
         'auto_integrate_target = "develop"\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr(loader_module, "GLOBAL_CONFIG_PATH", global_path)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
 
     local_path = tmp_path / "project_config" / "ralph-workflow.toml"
     local_path.parent.mkdir(parents=True, exist_ok=True)
     local_path.write_text(
         '[general]\n'
-        'auto_integrate_enabled = false\n'
+        'auto_integrate_enabled = true\n'
         'auto_integrate_target = "main"\n',
         encoding="utf-8",
     )
     config = loader_module.load_config(config_path=local_path)
-    assert config.general.auto_integrate_enabled is False
+    assert config.general.auto_integrate_enabled is True
     assert config.general.auto_integrate_target == "main"
+
+
+def test_auto_integrate_global_only_values_load(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Global-only values propagate when the project-local TOML omits both keys.
+
+    This is the assertion AC-12's precedence test previously could
+    not make: until the loader actually reads the global TOML, there
+    is no way to tell 'global was honoured' from 'the default was
+    used' (both look the same). With the global TOML injected via
+    XDG_CONFIG_HOME -- and the local TOML omitting both keys while
+    containing a distinct unrelated ``[general]`` value -- the
+    loader surfaces the global values verbatim and the assertion
+    proves the global layer is read at all.
+    """
+    from ralph.config import loader as loader_module
+
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir()
+    (config_home / "ralph-workflow.toml").write_text(
+        '[general]\n'
+        'auto_integrate_enabled = false\n'
+        'auto_integrate_target = "develop"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+
+    # Local TOML exists but OMITS both auto-integrate keys. We seed
+    # an unrelated ``[general]`` key so the file is genuinely loaded
+    # and the precedence exercise isn't a no-op due to 'no local
+    # config at all'.
+    local_path = tmp_path / "project_config" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(
+        '[general]\n'
+        'max_same_agent_retries = 7\n',
+        encoding="utf-8",
+    )
+    config = loader_module.load_config(config_path=local_path)
+    # Global values propagate verbatim when the local TOML does not
+    # override them. auto_integrate_enabled = false differs from the
+    # default ``True``; auto_integrate_target = "develop" differs
+    # from the default ``None``.
+    assert config.general.auto_integrate_enabled is False, (
+        "AC-12 global layer must propagate auto_integrate_enabled"
+        " when the local TOML omits it, otherwise the precedence"
+        " contract is unverifiable"
+    )
+    assert config.general.auto_integrate_target == "develop", (
+        "AC-12 global layer must propagate auto_integrate_target"
+        " when the local TOML omits it, otherwise the precedence"
+        " contract is unverifiable"
+    )
 
 
 def test_auto_integrate_keys_frozen() -> None:

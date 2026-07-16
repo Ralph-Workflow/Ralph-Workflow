@@ -84,11 +84,11 @@ if TYPE_CHECKING:
 
 #: Outcome verbs recorded on ``RebaseState.last_action`` so the runner
 #: can format the user-facing log line (rebased / merged /
-#: fast-forwarded / skipped / conflict / recovered).
+#: skipped / conflict / recovered). The landing result is recorded
+#: on the separate ``fast_forwarded`` boolean, not as an action verb.
 _ACTION_SKIPPED = "skipped"
 _ACTION_REBASED = "rebased"
 _ACTION_MERGED = "merged"
-_ACTION_FAST_FORWARDED = "fast_forwarded"
 _ACTION_CONFLICT = "conflict"
 _ACTION_RECOVERED = "recovered"
 

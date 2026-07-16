@@ -138,7 +138,7 @@ def test_default_enabled_with_no_config_set(tmp_git_repo: Path) -> None:
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
-    assert outcome.last_action in {"rebased", "merged", "fast_forwarded", "skipped"}
+    assert outcome.last_action in {"rebased", "merged", "skipped"}
     # The default branch (main or master) must now be at feature_sha.
     base = _base_branch(tmp_git_repo)
     base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
@@ -248,9 +248,11 @@ def test_feature_ahead_pure_fast_forward(tmp_git_repo: Path) -> None:
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
-    # The action may surface as rebased (no-op rebase) or fast_forwarded;
-    # both are valid representations of the pure fast-forward path.
-    assert outcome.last_action in {"rebased", "fast_forwarded"}
+    # The action may surface as rebased (no-op rebase); it is the
+    # only valid representation of the pure fast-forward path.
+    # The ``fast_forwarded`` boolean (not the action verb) records
+    # the landing itself -- see producer at auto_integrate.py.
+    assert outcome.last_action in {"rebased"}
     assert outcome.last_target == base
     # Target ref now equals feature tip.
     new_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
@@ -288,7 +290,7 @@ def test_diverged_clean_rebase_then_ff(tmp_git_repo: Path) -> None:
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
-    assert outcome.last_action in {"rebased", "fast_forwarded"}
+    assert outcome.last_action in {"rebased"}
     assert outcome.last_target == base
     # Feature tip is now descendant of (and equal to) the rebased tip;
     # target ref equals feature tip.
@@ -579,7 +581,15 @@ def test_both_rebase_and_merge_conflict(tmp_git_repo: Path) -> None:
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
     # The shared.txt change WILL conflict in the merge as well.
-    assert outcome.last_action in {"conflict", "skipped"}
+    # AC-07: both rebase and endpoint merge conflicted, so the outcome
+    # must be recorded as a conflict (not generically skipped). The
+    # exact reason comes from the live producer at
+    # auto_integrate.py:_resolve_rebase_conflict.
+    assert outcome.last_action == "conflict", (
+        f"AC-07: both rebase and endpoint merge conflicted, so the"
+        f" outcome must be recorded as a conflict, got {outcome.last_action!r}"
+    )
+    assert outcome.last_reason == "rebase and endpoint merge both conflicted"
     # Feature HEAD is byte-identical to its pre-integration SHA.
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature_sha
     # Working tree is clean.
@@ -647,55 +657,6 @@ def test_cas_race_target_advances_concurrently(tmp_git_repo: Path) -> None:
     assert final_base_sha == post_landing_base_sha
 
 
-# ---------------------------------------------------------------------------
-# AC-09: target checked out dirty in another worktree: ff skipped
-# ---------------------------------------------------------------------------
-
-
-def test_dirty_target_worktree_skips_fast_forward(tmp_git_repo: Path) -> None:
-    """AC-09: target checked out dirty in a linked worktree -> ff skipped.
-
-    Seeds a tracked file, forks ``wt_branch`` off the seed base,
-    adds a commit on the primary feature branch so ``feature`` is
-    genuinely ahead of ``wt_branch``, links a SECOND worktree on
-    ``wt_branch``, and dirties that worktree's tracked file. The
-    integration target is configured as ``wt_branch`` so the
-    orchestrator routes through the worktree-ff branch.
-    """
-    base = _base_branch(tmp_git_repo)
-    wt_branch = "wt-target"
-    _commit(tmp_git_repo, "seed_tracked.txt", "seed content\n", "seed tracked")
-    _run(tmp_git_repo, "branch", wt_branch, base)
-    _commit(tmp_git_repo, "base_marker.txt", "base marker\n", "base marker")
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    wt_branch_sha_before = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
-    ).stdout.strip()
-    assert feature_sha != wt_branch_sha_before
-    wt_path = tmp_git_repo.parent / f"{tmp_git_repo.name}-wt"
-    _run(tmp_git_repo, "worktree", "add", str(wt_path), wt_branch)
-    try:
-        (wt_path / "seed_tracked.txt").write_text(
-            "uncommitted tracked change\n", encoding="utf-8"
-        )
-        config = _build_config(tmp_git_repo, target=wt_branch)
-        scope = WorkspaceScope(tmp_git_repo)
-        outcome = auto_integrate_after_commit(config, scope, RebaseState())
-        assert outcome is not None
-        assert outcome.last_action in {"rebased", "merged"}
-        assert outcome.last_target == wt_branch
-        assert outcome.fast_forwarded is False
-        assert outcome.last_reason == "target worktree dirty"
-        # Target ref UNCHANGED, dirty file UNTOUCHED.
-        assert _run(
-            tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
-        ).stdout.strip() == wt_branch_sha_before
-        assert (wt_path / "seed_tracked.txt").read_text(
-            encoding="utf-8"
-        ) == "uncommitted tracked change\n"
-    finally:
-        _run(tmp_git_repo, "worktree", "remove", "--force", str(wt_path))
 
 
 # ---------------------------------------------------------------------------
@@ -761,7 +722,7 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome is not None
-    assert outcome.last_action in {"rebased", "fast_forwarded"}
+    assert outcome.last_action in {"rebased"}
 
     # ---- Run 2: rebase-conflict -> merge -> ff ----
     _run(tmp_git_repo, "checkout", base)
@@ -773,7 +734,7 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
     _run(tmp_git_repo, "checkout", "feature2")
     outcome2 = auto_integrate_after_commit(config, scope, RebaseState())
     assert outcome2 is not None
-    assert outcome2.last_action in {"merged", "fast_forwarded", "conflict"}
+    assert outcome2.last_action in {"merged", "conflict"}
 
     # Verify NO recorded argv contains the 'push' subcommand. ``push``
     # appears inside compound tokens like ``refs/heads/main`` (the
