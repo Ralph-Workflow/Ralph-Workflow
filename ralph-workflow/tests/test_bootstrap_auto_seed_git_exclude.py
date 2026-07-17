@@ -40,6 +40,11 @@ def test_auto_seed_default_git_exclude_creates_exclude_when_missing(tmp_path: Pa
     assert appended == list(_DEFAULT_GIT_EXCLUDE_PATTERNS)
 
 
+def test_default_excludes_cover_auto_integrate_crash_record() -> None:
+    """The seeded excludes must cover the auto-integrate crash record."""
+    assert ".agent/auto_integrate_in_progress.json" in _DEFAULT_GIT_EXCLUDE_PATTERNS
+
+
 def test_auto_seed_default_git_exclude_is_idempotent(tmp_path: Path) -> None:
     """Calling the helper twice returns ``[]`` on the second call and does not duplicate."""
     repo_root = tmp_path / "fake_repo"

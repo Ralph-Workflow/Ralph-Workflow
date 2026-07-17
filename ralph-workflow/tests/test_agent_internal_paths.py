@@ -220,3 +220,19 @@ def test_rejects_paths_outside_agent_dir() -> None:
         assert is_agent_internal_path(rel) is False, (
             f"Path outside .agent/ {rel!r} must NOT be agent-internal"
         )
+
+
+def test_accepts_auto_integrate_crash_record() -> None:
+    """The auto-integrate durable crash record is engine-internal."""
+    assert is_agent_internal_path(".agent/auto_integrate_in_progress.json") is True
+
+
+def test_auto_integrate_record_filename_is_registered() -> None:
+    """Drift pin: renaming the record file must re-register the basename."""
+    from ralph.pipeline.auto_integrate_record import AUTO_INTEGRATE_RECORD_FILENAME
+
+    assert AUTO_INTEGRATE_RECORD_FILENAME in AGENT_INTERNAL_TOP_LEVEL_BASENAMES, (
+        f"{AUTO_INTEGRATE_RECORD_FILENAME!r} must be registered in "
+        "AGENT_INTERNAL_TOP_LEVEL_BASENAMES or the commit phase's "
+        "`git add -A` will land the crash record on the operator's mainline"
+    )

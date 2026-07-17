@@ -43,8 +43,9 @@ from pathlib import Path
 # Top-level basenames under ``.agent/``. Derived from
 # ``_GENERATED_AGENT_STATE_FILES`` (12 entries) + ``HANDOFF_PATHS``
 # (``PLANNING_ANALYSIS_DECISION.md`` is the PA-001 gap) + bootstrap's
-# ``_LOCAL_MCP_FILENAME`` (``mcp.toml``). Case-sensitive -- matches the
-# canonical renderer usage.
+# ``_LOCAL_MCP_FILENAME`` (``mcp.toml``), plus the auto-integrate
+# step's durable crash record (``auto_integrate_in_progress.json``).
+# Case-sensitive -- matches the canonical renderer usage.
 AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
     {
         "CURRENT_PROMPT.md",
@@ -58,6 +59,14 @@ AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
         "checkpoint.json",
         "rebase_checkpoint.json",
         "rebase_checkpoint.json.bak",
+        # Durable crash record for the post-commit auto-integrate step
+        # (ralph.pipeline.auto_integrate_record.AUTO_INTEGRATE_RECORD_FILENAME).
+        # Engine-owned: written before any git mutation and RETAINED on a
+        # failed recovery for retry, so it must be git-excluded or the
+        # commit phase's `git add -A` would land it on the operator's
+        # mainline and its untracked presence would fail
+        # check_rebase_preconditions on every subsequent commit phase.
+        "auto_integrate_in_progress.json",
         "rebase.lock",
         "start_commit",
         "mcp.toml",
