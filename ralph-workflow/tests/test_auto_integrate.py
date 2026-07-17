@@ -587,6 +587,7 @@ def test_both_rebase_and_merge_conflict(tmp_git_repo: Path) -> None:
     _commit(tmp_git_repo, "shared2.txt", "base shared 2\n", "base shared 2")
     _run(tmp_git_repo, "checkout", "feature")
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    before = _snapshot(tmp_git_repo)
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
     outcome = auto_integrate_after_commit(config, scope, RebaseState())
@@ -615,6 +616,13 @@ def test_both_rebase_and_merge_conflict(tmp_git_repo: Path) -> None:
     # No leftover auto-integrate crash record.
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     assert not record_file.exists()
+    after = _snapshot(tmp_git_repo)
+    assert after["head"] == before["head"], (
+        "AC-07: feature HEAD must be identical to its pre-integration state"
+    )
+    assert after["worktree"] == before["worktree"], (
+        "AC-07: working tree must be identical to its pre-integration state"
+    )
 
 
 # ---------------------------------------------------------------------------

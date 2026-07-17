@@ -89,7 +89,7 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     """AC-08 orchestration race: target moves between observation and CAS.
 
     The earlier AC-08 test
-    (:func:`tests.test_auto_integrate.test_cas_race_target_advances_concurrently`)
+    (:func:`tests.test_auto_integrate.test_compare_and_swap_branch_rejects_stale_expected_sha`)
     only exercised the leaf primitive ``compare_and_swap_branch``
     directly. It did NOT exercise the ORCHESTRATION race inside
     :func:`ralph.pipeline.auto_integrate_ff.fast_forward_target`,
