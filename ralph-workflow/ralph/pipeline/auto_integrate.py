@@ -673,8 +673,15 @@ def _resolve_rebase_conflict(
             ),
         )
 
-    # RebaseConflicts marker is preserved so _record_rebase_outcome
-    # keeps the conflict headline on the resulting RebaseState.
+    # RebaseConflicts marker is preserved so
+    # _classify_rebase_conflict_outcome can distinguish the AC-06
+    # rebase-conflicted-then-cleanly-merged path (headline: merged)
+    # from the AC-05 plain-rebase path (headline: rebased). Both
+    # conflicted paths return earlier via _record_conflict, so this
+    # tail is reached only when merge_outcome.outcome is in
+    # {"success", "no_op"} and _classify_rebase_conflict_outcome
+    # returns (_ACTION_MERGED, None) -- the AC-06 "merged" headline,
+    # not the AC-07 "conflict" headline.
     return _RebaseRunResult(
         rebase_outcome=rebase_outcome,
         merge_attempted=True,

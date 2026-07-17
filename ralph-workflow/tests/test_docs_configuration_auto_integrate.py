@@ -59,9 +59,18 @@ def test_configuration_md_documents_auto_integrate_target_key() -> None:
     auto-detect (origin/HEAD -> main -> master) semantics.
     """
     content = _PATH.read_text()
-    assert "auto_integrate_target" in content, (
-        "configuration.md must document the auto_integrate_target key"
-    )
+    # Match the existing pattern of the enabled-key tests: assert against
+    # the single [general] table row via _row_for_key so the row's own text
+    # (rather than a substring of the whole file) carries the auto-detect
+    # contract. The key form must be backtick-quoted because _row_for_key
+    # matches the literal first cell of each row.
+    row = _row_for_key(content, "`auto_integrate_target`")
+    lowered = row.lower()
+    for token in ("origin/head", "main", "master"):
+        assert token in lowered, (
+            f"auto_integrate_target row must mention {token!r} (auto-detect "
+            f"fallback), got: {row!r}"
+        )
 
 
 def test_configuration_md_documents_true_default_for_auto_integrate_enabled() -> None:

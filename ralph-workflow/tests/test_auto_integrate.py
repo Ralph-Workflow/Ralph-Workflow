@@ -747,20 +747,17 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
     assert outcome2 is not None
     assert outcome2.last_action in {"merged", "conflict"}
 
-    # Verify NO recorded argv contains the 'push' subcommand. ``push``
-    # appears inside compound tokens like ``refs/heads/main`` (the
-    # ``push`` substring is a false positive) so we check for the
-    # ``push`` STANDALONE subcommand (an argv element equal to
-    # ``"push"``).
+    # Verify NO recorded argv contains the 'push' subcommand. ``recorded``
+    # is a list of tuples (see ``recorded: list[tuple[str, ...]]`` and
+    # ``recorded.append(tuple(args))`` above), so tuple ``__contains__``
+    # already matches by element equality and therefore only fires on the
+    # standalone ``push`` subcommand -- not on substrings inside larger
+    # tokens. A single element-membership check is provably sufficient.
     push_argvs = [argv for argv in recorded if "push" in argv]
     assert push_argvs == [], (
         f"auto_integrate must never invoke git push; recorded argvs "
         f"containing 'push': {push_argvs[:5]}"
     )
-    # Also confirm the exact 'push' subcommand never appears standalone.
-    assert not any(
-        any(token == "push" for token in argv) for argv in recorded
-    ), "git push subcommand found in recorded argv list"
 
     # Complementary behavioral proof: a bare remote's refs never move.
     # We use a dedicated repo+remote pair to avoid touching the
