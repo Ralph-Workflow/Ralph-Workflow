@@ -642,6 +642,80 @@ def test_move_into_excluded_destination_schedules_nothing(
     assert monitor.event_count == 0
 
 
+def test_created_directory_with_dotdot_prefixed_name_schedules_recursive_watch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a legal in-workspace directory whose name starts with
+    two dots (e.g. ``/ws/..keep``) must NOT be rejected as an
+    out-of-workspace arrival. The fix narrows the rejection to a true
+    parent traversal (``rel == '..'`` or ``rel.startswith('../')``),
+    so legitimate dot-dot-prefixed directory names receive a recursive
+    watch.
+
+    AC-04 requires a non-excluded directory created after start to
+    receive a recursive watch; only out-of-workspace destinations
+    should be rejected.
+    """
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        list_subdirs=lambda _d: [],
+        list_tree_files=lambda _d: [],
+    )
+    monitor.start()
+    initial_count = len(fake.scheduled)
+
+    event = _FakeEvent(
+        src_path="/ws/..keep",
+        is_directory=True,
+        event_type="created",
+    )
+    monitor.dispatch_event(event)
+
+    new_schedules = fake.scheduled[initial_count:]
+    assert len(new_schedules) == 1
+    assert new_schedules[0][1] == "/ws/..keep"
+    assert new_schedules[0][2] is True
+
+
+def test_created_directory_at_workspace_root_dotdot_still_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sister guard: a directory whose src_path equals ``/ws/..`` (the
+    parent traversal itself) IS still rejected -- only legal
+    dot-dot-prefixed NAMES are accepted.
+    """
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        list_subdirs=lambda _d: [],
+        list_tree_files=lambda _d: [],
+    )
+    monitor.start()
+    initial_count = len(fake.scheduled)
+
+    event = _FakeEvent(
+        src_path="/ws/..",
+        is_directory=True,
+        event_type="created",
+    )
+    monitor.dispatch_event(event)
+
+    assert len(fake.scheduled) == initial_count
+
+
 def test_move_out_of_workspace_destination_schedules_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

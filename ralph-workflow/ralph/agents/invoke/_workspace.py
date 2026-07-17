@@ -672,9 +672,18 @@ class WorkspaceMonitor:
         except ValueError:
             # Different drives on Windows -- treat as out-of-workspace.
             return None
-        if rel.startswith("..") or Path(rel).is_absolute():
+        if Path(rel).is_absolute():
             return None
+        # Reject a true parent traversal only -- ``rel == ".."`` or
+        # ``rel.startswith("../")`` (POSIX normalized). Legal directory
+        # names whose basename starts with two dots (e.g. ``..keep``,
+        # which ``os.path.relpath`` returns as ``..keep``) must NOT be
+        # treated as out-of-workspace; ``startswith("..")`` would
+        # wrongly reject them. See
+        # ``test_created_directory_with_dotdot_prefixed_name_schedules_recursive_watch``.
         rel = rel.replace(os.sep, "/")
+        if rel == ".." or rel.startswith("../"):
+            return None
         if _is_within_excluded(rel, self._watch_exclusions):
             return None
         return rel
