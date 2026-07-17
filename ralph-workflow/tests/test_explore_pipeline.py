@@ -21,12 +21,14 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from ralph.mcp.explore.pipeline import (
     DEFAULT_TIMEOUT_MS,
     ReindexOptions,
+    ReindexResult,
     ReindexWriter,
     reindex,
 )
@@ -880,88 +882,76 @@ def test_reindex_writer_returns_result_when_uncontended(tmp_path: Path) -> None:
         store.close()
 
 
-@pytest.mark.timeout_seconds(3)
-def test_coalesces_concurrent_handler_and_lifecycle_claims(tmp_path: Path) -> None:
-    """AC-02/AC-05: a public ``ralph_reindex`` handler call and a
-    concurrent ``before_agent_refresh`` lifecycle hook MUST coalesce
-    into a single ReindexWriter per workspace. Two threads, each
-    driving a long-running reindex through the production
-    coordinator, must observe that one of them actually ran the
-    reindex and the other received a ``skipped_no_changes`` result
-    (the prior committed generation is preserved).
+def test_coalesces_handler_and_lifecycle_claims_while_writer_is_active(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A concurrent lifecycle claim is coalesced while the handler owns the writer.
 
-    The test drives both threads via the public
-    ``ReindexWriter.claim`` seam (same one production callers use)
-    and asserts that the resulting generations are consistent with
-    a coalesced run, not two independent runs.
-
-    The 3-second budget absorbs the combined SQLite-store setup,
-    workspace hashing, two concurrent ``reindex`` invocations,
-    and Python thread/Barrier overhead so the assertion runs in
-    black-box real time without timing out under the default
-    1-second per-test SIGALRM cap. The 60-second combined
-    ``_TOTAL_TEST_BUDGET_SECONDS`` invariant is unaffected
-    because the per-test cap is a secondary ceiling only.
+    The old threaded test only synchronized entry before either claim, so a
+    fast first reindex could finish before the second began. This blocks the
+    fake reindex at the production boundary until the lifecycle claim has
+    observed the active writer; no SQLite or filesystem work is needed.
     """
+    from ralph.mcp.explore import pipeline as pipeline_module
+    from ralph.mcp.explore.lifecycle import claim_reindex
+
+    class _Store:
+        db_path = tmp_path / "index.sqlite"
+
+        @staticmethod
+        def get_setting(_key: str) -> str:
+            return "7"
+
+        @staticmethod
+        def peek_dirty_paths() -> tuple[str, ...]:
+            return ("changed.py",)
+
     ReindexWriter.configure(lock_factory=threading.Lock)
-    workspace = _seed_workspace(tmp_path)
-    store = _build_store(tmp_path)
-    try:
-        # Establish the prior committed generation so we can detect
-        # coalescing reliably.
-        reindex(store, workspace, options=ReindexOptions(timeout_ms=DEFAULT_TIMEOUT_MS))
-        prior_generation = int(store.get_setting("current_generation") or "1")
+    store = cast("ExploreStore", _Store())
+    owner_entered = threading.Event()
+    release_owner = threading.Event()
+    owner_results: list[ReindexResult] = []
+    reindex_calls: list[ReindexOptions | None] = []
 
-        barrier = threading.Barrier(2)
-        results_list: list[tuple[str, object]] = []
-        results_lock = threading.Lock()
+    def _fake_reindex(
+        _store: object,
+        _workspace_root: Path,
+        *,
+        options: ReindexOptions | None = None,
+        cancel: object = None,
+    ) -> ReindexResult:
+        reindex_calls.append(options)
+        owner_entered.set()
+        assert release_owner.wait(timeout=1), "test must release the active writer"
+        return ReindexResult(job_id="owner", generation=8, status="ok")
 
-        def _handler_call() -> None:
-            barrier.wait(timeout=1)
-            result = ReindexWriter.claim(store, workspace_root=workspace)
-            with results_lock:
-                results_list.append(("handler", result))
+    monkeypatch.setattr(pipeline_module, "reindex", _fake_reindex)
 
-        def _lifecycle_call() -> None:
-            from ralph.mcp.explore.lifecycle import claim_reindex
+    def _owner_claim() -> None:
+        owner_results.append(ReindexWriter.claim(store, workspace_root=tmp_path))
 
-            barrier.wait(timeout=1)
-            result = claim_reindex(
-                store, workspace, options=ReindexOptions(mode="changed", timeout_ms=5000)
-            )
-            with results_lock:
-                results_list.append(("lifecycle", result))
+    owner = threading.Thread(target=_owner_claim)
+    owner.start()
+    assert owner_entered.wait(timeout=1), "owner must reach the reindex boundary"
 
-        threads = [
-            threading.Thread(target=_handler_call),
-            threading.Thread(target=_lifecycle_call),
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(timeout=10)
+    lifecycle_result = claim_reindex(
+        store,
+        tmp_path,
+        options=ReindexOptions(mode="changed", timeout_ms=5000),
+    )
+    release_owner.set()
+    owner.join(timeout=1)
 
-        # Both threads ran. At least one must have completed a real
-        # reindex (``ok`` or ``skipped_no_changes``); the other
-        # gets a coalesced ``skipped_no_changes`` because the
-        # writer is single-flighted. Never the same call running
-        # twice independently with two different generations.
-        assert len(results_list) == 2
-        for _, status in results_list:
-            status_str = getattr(status, "status", "")
-            assert status_str in {"ok", "skipped_no_changes"}, (
-                f"unexpected status {status_str!r}"
-            )
-        # The committed generation after both threads finish is
-        # exactly one more than before — never two more, which
-        # would prove double-running.
-        after = int(store.get_setting("current_generation") or "1")
-        assert after in {prior_generation, prior_generation + 1}, (
-            f"committed generation should be unchanged or +1; got {after} "
-            f"starting from {prior_generation}"
-        )
-    finally:
-        store.close()
+    assert not owner.is_alive(), "owner must finish after the test releases it"
+    assert reindex_calls == [None]
+    assert owner_results == [ReindexResult(job_id="owner", generation=8, status="ok")]
+    assert lifecycle_result == ReindexResult(
+        job_id="coalesced-index.sqlite",
+        generation=7,
+        status="skipped_no_changes",
+        dirty_paths_count=1,
+    )
 
 
 def test_reindex_records_job_history(tmp_path: Path) -> None:

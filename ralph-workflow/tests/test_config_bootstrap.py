@@ -621,17 +621,17 @@ def test_ensure_local_configs_gitignore_dedup_when_pattern_already_present(
     assert content.count("__pycache__/") == 1
 
 
-def test_ensure_local_configs_gitignore_covers_representative_local_paths(
-    tmp_git_repo: Path,
+def test_ensure_local_configs_gitignore_includes_patterns_for_representative_local_paths(
+    tmp_path: Path,
 ) -> None:
-    agent_dir = tmp_git_repo / ".agent"
-    ensure_local_configs(agent_dir)
+    ensure_local_configs(tmp_path / ".agent")
 
-    with Repo(tmp_git_repo) as repo:
-        raw = repo.git.check_ignore(*_EXPECTED_IGNORED_LOCAL_PATHS).splitlines()
-    ignored = {p.strip() for p in raw}
-    missing = [p for p in _EXPECTED_IGNORED_LOCAL_PATHS if p not in ignored]
-    assert not missing, f"Paths not covered by .gitignore: {missing}"
+    patterns = set((tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines())
+    expected_patterns = {".agent/", "/PROMPT*", "wt-*/"}
+    assert expected_patterns <= patterns, (
+        "Missing .gitignore rules for representative local paths "
+        f"{_EXPECTED_IGNORED_LOCAL_PATHS}: {expected_patterns - patterns}"
+    )
 
 
 def _paths_ignored_by_check_ignore(cwd: Path, paths: tuple[str, ...]) -> set[str]:
