@@ -315,6 +315,24 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_repo_structure"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # wt-039 fsevents: AST-only drift audit that locks the
+        # single-recursive-root-watch consolidation in
+        # ``ralph/agents/invoke/_workspace.py`` so a future refactor
+        # cannot silently re-introduce multi-stream / dynamic
+        # per-directory / per-loop-iteration watchdog watches that
+        # reinflate the macOS fseventsd footprint. Mirrors the
+        # existing ``audit_watchdog_drift`` consolidation-lock
+        # pattern (ast + Path.read_text only -- no subprocess, no
+        # sleep, no real I/O). Appended LAST so the index-based
+        # timeout assertions in tests/test_verify.py are not shifted;
+        # NOT budget-tracked (does not count against the immutable
+        # 60-second combined test budget).
+        "fsevents watch consolidation audit (audit_fsevents_watch_consolidation)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

@@ -202,6 +202,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="repo structure audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
+                returncode=0,
+                stdout="fsevents watch consolidation audit ok\n",
+            ),
         }
     )
 
@@ -231,6 +237,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -252,6 +259,8 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[17][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[18][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[19][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[20][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[21][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -476,25 +485,35 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="repo structure audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
+                returncode=0,
+                stdout="fsevents watch consolidation audit ok\n",
+            ),
         }
     )
 
-    # Nineteen steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
-    # 5=test_policy audit, 6=mcp_timeout audit, 7=di_seam audit,
-    # 8=activity_aware_watchdog audit, 9=watchdog_drift audit,
-    # 10=parallelization_dormant audit, 11=artifact_submission_canonical_path audit,
+    # Twenty-two steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass,
+    # 4=typecheck_bypass, 5=test_policy audit, 6=mcp_timeout audit,
+    # 7=di_seam audit, 8=activity_aware_watchdog audit,
+    # 9=watchdog_drift audit, 10=parallelization_dormant audit,
+    # 11=artifact_submission_canonical_path audit,
     # 12=agent_registry_sync audit, 13=agent_module_state audit,
     # 14=agent_internal_paths audit, 15=social-proof gate,
     # 16=resource_lifecycle audit, 17=skill_auto_commit audit,
-    # 18=public_docstrings audit).
+    # 18=public_docstrings audit, 19=terminal_escape_containment audit,
+    # 20=repo_structure audit, 21=fsevents_watch_consolidation audit).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
-    # all other steps take 0s. Total: 19 steps x 2 monotonic calls = 38 entries.
+    # all other steps take 0s. Total: 22 steps x 2 monotonic calls = 44 entries.
     times = [
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -808,13 +827,20 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="repo structure audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
+                returncode=0,
+                stdout="fsevents watch consolidation audit ok\n",
+            ),
         }
     )
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Nineteen steps (ruff, mypy, make test, fourteen audits, social-proof gate,
-    # resource_lifecycle audit, skill_auto_commit audit, public_docstrings
-    # audit) x 2 monotonic calls per step = 38 entries.
+    # Twenty-two steps (ruff, mypy, make test, audits, social-proof gate,
+    # resource_lifecycle, skill_auto_commit, public_docstrings,
+    # terminal_escape_containment, repo_structure, fsevents_watch_consolidation)
+    # x 2 monotonic calls per step = 44 entries.
     times = [
         0.0,
         100.0,
@@ -860,6 +886,8 @@ def test_run_verify_non_test_steps_not_counted(
         2100.0,
         2200.0,
         2200.0,
+        2300.0,
+        2300.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
