@@ -944,6 +944,27 @@ ralph.pipeline.auto_integrate_record
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_resolve
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_resolve
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_agent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_agent
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_recovery
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_recovery
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.runner
 ~~~~~~~~~~~~~~~~~~~~~
 

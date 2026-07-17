@@ -38,13 +38,8 @@ from loguru import logger
 
 from ralph.git.merge import (
     MergeResult,
-    abort_merge,
     branch_exists,
     branch_sha,
-    is_ancestor,
-    merge_in_progress,
-    merge_target_into_current,
-    reset_hard,
     resolve_origin_head_branch,
 )
 from ralph.git.operations import get_head_sha
@@ -70,15 +65,20 @@ from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
 )
 from ralph.pipeline.auto_integrate_record import (
-    read_record as _read_record,
-)
-from ralph.pipeline.auto_integrate_record import (
     write_record as _write_record,
+)
+from ralph.pipeline.auto_integrate_recovery import (
+    recover_incomplete_integration,
+)
+from ralph.pipeline.auto_integrate_resolve import (
+    RESOLUTION_FAILED,
+    endpoint_merge_with_resolution,
 )
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -226,6 +226,8 @@ def _classify_rebase_conflict_outcome(
     # (headline: merged) -- the rebase-apply/rebase-merge state
     # was already aborted by ``_resolve_rebase_conflict`` so the
     # resulting branch state is the merged tree.
+    if merge_outcome.outcome == RESOLUTION_FAILED:
+        return _ACTION_CONFLICT, "conflict resolution failed; merge aborted"
     if merge_outcome.outcome == "conflict":
         return _ACTION_CONFLICT, "rebase and endpoint merge both conflicted"
     if merge_outcome.outcome in {"success", "noop"}:
@@ -259,11 +261,38 @@ def _classify_rebase_outcome(
         # branch is already aligned with target).
         return _ACTION_REBASED, rebase_outcome.reason
     if isinstance(rebase_outcome, RebaseFailed):
-        return _ACTION_SKIPPED, f"rebase failed: {rebase_outcome.kind}"
+        return _classify_rebase_failed_outcome(
+            rebase_outcome=rebase_outcome,
+            merge_attempted=merge_attempted,
+            merge_outcome=merge_outcome,
+        )
     # RebaseSuccess or after a clean endpoint merge.
     if merge_attempted and merge_outcome is not None:
         return _ACTION_MERGED, None
     return _ACTION_REBASED, None
+
+
+def _classify_rebase_failed_outcome(
+    *,
+    rebase_outcome: RebaseFailed,
+    merge_attempted: bool,
+    merge_outcome: MergeResult | None,
+) -> tuple[str, str | None]:
+    """Sub-classifier for the ``RebaseFailed`` branch.
+
+    The endpoint-merge fallback runs for failed rebases too; the same
+    sub-table applies, with the failed-rebase wording substituted into
+    the merge-conflicted headline and a skip when no merge ran.
+    """
+    sub = _classify_rebase_conflict_outcome(
+        merge_attempted=merge_attempted,
+        merge_outcome=merge_outcome,
+    )
+    if sub is None:
+        return _ACTION_SKIPPED, f"rebase failed: {rebase_outcome.kind}"
+    if sub == (_ACTION_CONFLICT, "rebase and endpoint merge both conflicted"):
+        return _ACTION_CONFLICT, "rebase failed and endpoint merge conflicted"
+    return sub
 
 
 def _fast_forward_target(
@@ -285,8 +314,20 @@ def auto_integrate_after_commit(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     state: RebaseState,
+    *,
+    conflict_resolver: ConflictResolver | None = None,
 ) -> RebaseState | None:
     """Run the auto-integration step after a successful commit.
+
+    Args:
+        config: Unified run configuration (enable flag + target).
+        workspace_scope: Scope whose root is the feature repository.
+        state: Prior rebase state (unused today; kept for the seam).
+        conflict_resolver: Optional callable handed a conflicted
+            in-progress endpoint merge to resolve and stage (in
+            production a focused dev-agent invocation). The merge
+            commit itself is always created deterministically here,
+            never by the resolver.
 
     Returns:
         ``None`` when the feature is disabled (AC-01: byte-identical
@@ -301,7 +342,7 @@ def auto_integrate_after_commit(
     """
     try:
         return _auto_integrate_after_commit_inner(
-            config, workspace_scope, state
+            config, workspace_scope, state, conflict_resolver
         )
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
@@ -310,10 +351,89 @@ def auto_integrate_after_commit(
         return _record_skip(reason=f"unexpected failure: {exc}", target=None)
 
 
+def auto_integrate_on_phase_transition(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: RebaseState,
+    *,
+    conflict_resolver: ConflictResolver | None = None,
+) -> RebaseState | None:
+    """Run the integration step at a phase boundary when it can help.
+
+    The commit seam already integrates after every real commit; this
+    hook keeps the feature branch in lockstep with the target between
+    commits too (e.g. the target advanced while an analysis phase
+    ran). It is deliberately quiet: phase boundaries are frequent, so
+    the hook returns ``None`` without recording anything when
+
+    * the worktree is dirty (mid-phase uncommitted work — integrating
+      would be unsafe and the next commit seam will catch up), or
+    * the resolved target already sits at the feature tip (nothing to
+      rebase, nothing to land).
+
+    Otherwise it runs the full integration (rebase → endpoint merge →
+    optional agent conflict resolution → fast-forward) and returns
+    the recorded outcome. Never raises.
+    """
+    try:
+        root = Path(workspace_scope.root)
+        # Cheap stat guard BEFORE any subprocess: phase boundaries are
+        # frequent, and a workspace that is not a git checkout (or a
+        # disabled feature) must cost nothing here.
+        enabled: object = getattr(config.general, "auto_integrate_enabled", True)
+        if not enabled or not (root / ".git").exists():
+            return None
+        if not _worktree_is_clean(root):
+            logger.debug(
+                "auto_integrate: phase-transition hook skipped (dirty worktree)"
+            )
+            return None
+        target = resolve_integration_target(config, root)
+        if target is None:
+            return None
+        target_sha = branch_sha(root, target)
+        if target_sha is not None and target_sha == get_head_sha(root):
+            # Fully integrated and landed: the frequent-boundary case.
+            return None
+    except Exception as exc:
+        logger.warning(
+            "auto_integrate: phase-transition pre-check failed: {}", exc
+        )
+        return None
+    return auto_integrate_after_commit(
+        config, workspace_scope, state, conflict_resolver=conflict_resolver
+    )
+
+
+def _worktree_is_clean(root: Path) -> bool:
+    """True when ``git status --porcelain`` reports no changes.
+
+    Fails closed (False) on any git failure so the phase-transition
+    hook never integrates on top of a worktree it cannot prove clean.
+    """
+    result = run_git(
+        ("status", "--porcelain"),
+        cwd=root,
+        label="git-transition-status",
+    )
+    if result.returncode != 0:
+        return False
+    return not result.stdout.strip()
+
+
+#: Maximum end-to-end integration attempts per commit. Attempt N+1 runs
+#: only when attempt N completed a rebase/merge but the fast-forward
+#: did not land (e.g. the target advanced concurrently, AC-08); the
+#: retry re-integrates onto the moved tip instead of waiting for the
+#: next commit phase.
+_MAX_INTEGRATION_ATTEMPTS = 3
+
+
 def _auto_integrate_after_commit_inner(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     state: RebaseState,
+    conflict_resolver: ConflictResolver | None,
 ) -> RebaseState | None:
     """Internal worker for :func:`auto_integrate_after_commit`.
 
@@ -324,11 +444,12 @@ def _auto_integrate_after_commit_inner(
     1. :func:`_auto_integrate_resolve_context` -- handle the
        ``enabled`` / env-lookup / on-target / no-commits-beyond /
        preconditions skip conditions.
-    2. :func:`_run_rebase_or_merge` -- write the crash record, run
-       the rebase engine, fall back to the endpoint merge on
-       conflict.
-    3. Fast-forward + state finalization -- atomic CAS path or
-       worktree ff, then build the final ``RebaseState``.
+    2. :func:`_integrate_once` -- write the crash record, run the
+       rebase engine, fall back to the endpoint merge on conflict or
+       failure (optionally agent-resolved), then fast-forward.
+    3. Bounded retry -- when the fast-forward did not land because
+       the target moved concurrently, re-integrate onto the moved
+       tip up to :data:`_MAX_INTEGRATION_ATTEMPTS` times.
     """
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
     early_skip, usable_ctx = _check_early_skips(ctx)
@@ -340,6 +461,32 @@ def _auto_integrate_after_commit_inner(
         return None
     root, _current_branch, target = usable_ctx
 
+    record: RebaseState | None = None
+    for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
+        record, retry_ff = _integrate_once(root, target, conflict_resolver)
+        if not retry_ff:
+            break
+        logger.info(
+            "auto_integrate: fast-forward did not land on attempt {}; "
+            "re-integrating onto the moved target",
+            attempt + 1,
+        )
+    return record
+
+
+def _integrate_once(
+    root: Path,
+    target: str,
+    conflict_resolver: ConflictResolver | None,
+) -> tuple[RebaseState | None, bool]:
+    """Run one full integrate-and-fast-forward pass.
+
+    Returns ``(record, retry_ff)``. ``retry_ff`` is True ONLY when the
+    rebase/merge phase completed but the fast-forward did not land —
+    the one case where an immediate re-integration onto the moved
+    target can still succeed. Every skip / conflict short-circuit
+    returns ``retry_ff=False``.
+    """
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
     # Write the durable crash record BEFORE any git mutation so the
@@ -355,18 +502,18 @@ def _auto_integrate_after_commit_inner(
         ),
     )
 
-    rebase_result = _run_rebase_or_merge(root, target)
+    rebase_result = _run_rebase_or_merge(root, target, conflict_resolver)
     if rebase_result.short_circuit is not None:
         # Resolved failures clear the record; an abort that leaves a rebase
         # in progress retains it for startup recovery.
-        return rebase_result.short_circuit
+        return rebase_result.short_circuit, False
 
     # Success path: the feature branch contains the target.
     feature_sha = _read_post_integration_head_sha(root, target)
     if feature_sha is None:
         return _record_skip(
             reason="post-integration HEAD read failed", target=target
-        )
+        ), False
 
     # Flip the durable record to 'integrated' BEFORE any ref move so
     # a crash between this point and the fast-forward will be
@@ -395,23 +542,24 @@ def _auto_integrate_after_commit_inner(
     if not ok:
         # Fast-forward skipped: reason is appended but we keep
         # the rebase/merged action as the headline so the log line
-        # reflects what actually happened to the feature.
+        # reflects what actually happened to the feature. The caller
+        # may re-integrate onto the moved target (bounded).
         record = record.model_copy(
             update={
                 "last_reason": skip_reason,
                 "fast_forwarded": False,
             }
         )
-    else:
-        # Successful fast-forward: the ``fast_forwarded`` boolean is
-        # the headline signal, so any residual reason from the
-        # rebase/merge phase (including benign rebase NoOp reasons
-        # like ``"Branch is already up-to-date with upstream"``)
-        # is scrubbed here. A clean-success state carries no reason.
-        record = record.model_copy(
-            update={"fast_forwarded": True, "last_reason": None}
-        )
-    return record
+        return record, True
+    # Successful fast-forward: the ``fast_forwarded`` boolean is
+    # the headline signal, so any residual reason from the
+    # rebase/merge phase (including benign rebase NoOp reasons
+    # like ``"Branch is already up-to-date with upstream"``)
+    # is scrubbed here. A clean-success state carries no reason.
+    record = record.model_copy(
+        update={"fast_forwarded": True, "last_reason": None}
+    )
+    return record, False
 
 
 def _check_early_skips(
@@ -595,29 +743,24 @@ class _RebaseRunResult:
     short_circuit: RebaseState | None
 
 
-def _run_rebase_or_merge(root: Path, target: str) -> _RebaseRunResult:
-    """Drive rebase_onto, fall back to endpoint merge on conflict.
+def _run_rebase_or_merge(
+    root: Path,
+    target: str,
+    conflict_resolver: ConflictResolver | None,
+) -> _RebaseRunResult:
+    """Drive rebase_onto, fall back to endpoint merge on conflict or failure.
 
     On success returns a ``_RebaseRunResult`` with ``short_circuit``
     ``None`` and the ``rebase_outcome`` / ``merge_outcome`` the
-    caller uses to build the final :class:`RebaseState`. On a
-    rebase failure or a resolved conflict returns a ``_RebaseRunResult``
-    whose ``short_circuit`` is the appropriate ``RebaseState``. When
+    caller uses to build the final :class:`RebaseState`. Both a
+    conflicted AND a failed rebase fall back to the endpoint merge —
+    a rebase that fails for any reason must never end the integration
+    attempt while a single three-way merge could still land it. When
     aborting a conflicted rebase leaves it in progress, the durable crash
     record is retained so startup recovery can restore the repository.
     """
     rebase_outcome = rebase_onto(target, repo_root=root)
-    if isinstance(rebase_outcome, RebaseFailed):
-        _clear_record(root)
-        return _RebaseRunResult(
-            rebase_outcome=rebase_outcome,
-            merge_attempted=False,
-            merge_outcome=None,
-            short_circuit=_record_skip(
-                reason=f"rebase failed: {rebase_outcome.kind}", target=target
-            ),
-        )
-    if not isinstance(rebase_outcome, RebaseConflicts):
+    if not isinstance(rebase_outcome, (RebaseConflicts, RebaseFailed)):
         return _RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=False,
@@ -625,15 +768,25 @@ def _run_rebase_or_merge(root: Path, target: str) -> _RebaseRunResult:
             short_circuit=None,
         )
 
-    return _resolve_rebase_conflict(root, target, rebase_outcome)
+    return _fallback_to_endpoint_merge(
+        root, target, rebase_outcome, conflict_resolver
+    )
 
 
-def _resolve_rebase_conflict(
+def _fallback_to_endpoint_merge(
     root: Path,
     target: str,
-    rebase_outcome: RebaseConflicts,
+    rebase_outcome: RebaseConflicts | RebaseFailed,
+    conflict_resolver: ConflictResolver | None,
 ) -> _RebaseRunResult:
-    """Abort the conflicted rebase and attempt the endpoint merge (AC-06/AC-07)."""
+    """Abort the unfinished rebase and attempt the endpoint merge (AC-06/AC-07).
+
+    With a ``conflict_resolver``, a conflicted endpoint merge is
+    handed to the resolver and — on full resolution — committed
+    deterministically, so the integration continues to the
+    fast-forward phase instead of giving up (see
+    :mod:`ralph.pipeline.auto_integrate_resolve`).
+    """
     _abort_rebase_after_conflict(root)
     if rebase_in_progress(root):
         # Keep the pre-mutation record: abort_rebase can fail after the
@@ -648,12 +801,14 @@ def _resolve_rebase_conflict(
             ),
         )
 
-    merge_result = _try_endpoint_merge(root, target)
+    merge_result = endpoint_merge_with_resolution(
+        root, target, conflict_resolver
+    )
     if merge_result is None:
-        # _try_endpoint_merge returned None because the merge
-        # attempt raised; surface that as the headline conflict
-        # state (the merge-attempt reason is more informative than
-        # the generic "both conflicted" message).
+        # The merge attempt raised; surface that as the headline
+        # conflict state (the merge-attempt reason is more
+        # informative than the generic "both conflicted" message).
+        _clear_record(root)
         return _RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=True,
@@ -663,26 +818,27 @@ def _resolve_rebase_conflict(
                 target=target,
             ),
         )
-    if merge_result.outcome == "conflict":
+    if merge_result.outcome in ("conflict", RESOLUTION_FAILED):
         _clear_record(root)
         return _RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=True,
             merge_outcome=merge_result,
-            short_circuit=_record_conflict(
-                reason="rebase and endpoint merge both conflicted", target=target
+            short_circuit=_record_rebase_outcome(
+                rebase_outcome=rebase_outcome,
+                merge_attempted=True,
+                merge_outcome=merge_result,
+                target=target,
             ),
         )
 
-    # RebaseConflicts marker is preserved so
-    # _classify_rebase_conflict_outcome can distinguish the AC-06
+    # The RebaseConflicts / RebaseFailed marker is preserved so
+    # _classify_rebase_outcome can distinguish the AC-06
     # rebase-conflicted-then-cleanly-merged path (headline: merged)
     # from the AC-05 plain-rebase path (headline: rebased). Both
-    # conflicted paths return earlier via _record_conflict, so this
-    # tail is reached only when merge_outcome.outcome is in
-    # {"success", "no_op"} and _classify_rebase_conflict_outcome
-    # returns (_ACTION_MERGED, None) -- the AC-06 "merged" headline,
-    # not the AC-07 "conflict" headline.
+    # conflicted paths return earlier, so this tail is reached only
+    # when merge_outcome.outcome is in {"success", "noop"} and the
+    # classifier returns the "merged" headline, not "conflict".
     return _RebaseRunResult(
         rebase_outcome=rebase_outcome,
         merge_attempted=True,
@@ -698,16 +854,6 @@ def _abort_rebase_after_conflict(root: Path) -> None:
             abort_rebase(repo_root=root)
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)
-
-
-def _try_endpoint_merge(root: Path, target: str) -> MergeResult | None:
-    """Attempt the endpoint three-way merge; log + clear the record on raise."""
-    try:
-        return merge_target_into_current(root, target)
-    except Exception as merge_exc:
-        logger.warning("auto_integrate: merge attempt raised: {}", merge_exc)
-        _clear_record(root)
-        return None
 
 
 def _count_commits_ahead(repo_root: Path, target_sha: str) -> int:
@@ -728,224 +874,10 @@ def _count_commits_ahead(repo_root: Path, target_sha: str) -> int:
         return 1
 
 
-def _continue_fast_forward_from_record(
-    workspace_root: Path,
-    record: IntegrationRecord,
-) -> RebaseState:
-    """Best-effort continue of an unfinished fast-forward (phase='integrated').
-
-    Like :func:`recover_incomplete_integration`, this function
-    RETAINS the durable record when the fast-forward fails so the
-    next startup can retry. The record is cleared only when
-    reconciliation succeeded -- the target ref equals
-    ``feature_sha`` (already landed) or the worktree-aware CAS path
-    moved it to ``feature_sha`` in this call.
-
-    The defensive branches -- malformed record, target advanced
-    concurrently, fast-forward refused -- all clear the record
-    because they represent permanent states that further retries
-    cannot resolve (no SHA to land, target diverged, ff-only
-    refused). The transient failure cases -- an exception raised
-    inside ``_fast_forward_target`` -- retain the record.
-    """
-    if record.integrated_feature_sha is None:
-        # Defensive: malformed record. Clear it so we stop retrying.
-        _clear_record(workspace_root)
-        return _record_skip(
-            reason="recovery: malformed integrated record", target=record.target
-        )
-    feature_sha = record.integrated_feature_sha
-    if branch_sha(workspace_root, record.target) == feature_sha:
-        # Already landed (another run / operator).
-        _clear_record(workspace_root)
-        return RebaseState(
-            last_action=_ACTION_RECOVERED,
-            last_reason="already fast-forwarded",
-            last_target=record.target,
-            fast_forwarded=True,
-        )
-    if not is_ancestor(workspace_root, record.target, feature_sha):
-        # Target advanced and is no longer an ancestor of the feature
-        # SHA: this is a permanent state. Clear the record so we
-        # don't keep retrying an impossible land.
-        _clear_record(workspace_root)
-        return _record_skip(
-            reason="recovery: target advanced concurrently", target=record.target
-        )
-    ff_failed = False
-    skip_reason = ""
-    try:
-        ok, skip_reason = _fast_forward_target(
-            workspace_root, record.target, feature_sha
-        )
-    except Exception as exc:
-        ff_failed = True
-        skip_reason = f"fast-forward raised: {exc}"
-        logger.warning("recovery: _fast_forward_target raised: {}", exc)
-        ok = False
-    if ok:
-        _clear_record(workspace_root)
-        return RebaseState(
-            last_action=_ACTION_RECOVERED,
-            last_reason=None,
-            last_target=record.target,
-            fast_forwarded=True,
-        )
-    # Fast-forward was refused or raised. Only clear the record for
-    # permanent refusals (target advanced concurrently) -- retain it
-    # for transient failures so the next startup retries.
-    if ff_failed or "advanced concurrently" not in skip_reason:
-        # Transient failure: retain the record for retry.
-        return RebaseState(
-            last_action=_ACTION_SKIPPED,
-            last_reason=(
-                f"recovery: {skip_reason}; record retained for retry"
-            ),
-            last_target=record.target,
-            fast_forwarded=False,
-        )
-    # Permanent refusal (target advanced concurrently): clear the
-    # record -- a retry won't change the outcome.
-    _clear_record(workspace_root)
-    return _record_skip(reason=f"recovery: {skip_reason}", target=record.target)
-
-
-def recover_incomplete_integration(
-    workspace_scope: WorkspaceScope,
-) -> RebaseState | None:
-    """Recover from an interrupted integration at run-loop startup.
-
-    Behavior (AC-11):
-
-    * No durable record → no-op (never disturb an operator's own
-      git operation).
-    * Abort any owned engine rebase/merge in flight before doing
-      anything else. If the abort itself FAILS, the durable record
-      is RETAINED so the next startup can retry; the returned
-      ``RebaseState`` records the abort failure as a skip with
-      the original target preserved.
-    * If ``record.phase == 'integrating'``: the rebase/merge never
-      completed → restore the feature branch to ``pre_feature_sha``
-      via ``reset_hard``. The record is cleared ONLY after
-      ``reset_hard`` succeeds AND no owned engine op remains; if
-      reset_hard raises or any prior abort left an in-progress
-      operation, the record is RETAINED for retry.
-    * If ``record.phase == 'integrated'``: the rebase/merge already
-      completed and only the fast-forward may be unfinished →
-      safely CONTINUE the fast-forward (same worktree-aware CAS path
-      used in the happy path).
-    * The durable record is cleared only when the recovery path
-      confirms (1) no owned git operation remains in flight AND
-      (2) the feature SHA was restored to ``pre_feature_sha`` (for
-      phase='integrating') OR the fast-forward reconciled cleanly
-      (for phase='integrated'). Any failure retains the record so
-      the next run can retry the recovery.
-
-    Any unexpected exception inside this function is logged and
-    swallowed; it must never abort the run.
-    """
-    try:
-        root = Path(workspace_scope.root)
-        record = _read_record(root)
-        if record is None:
-            return None
-
-        # Step 1: abort any owned engine op we may have left behind.
-        # If EITHER abort fails, retain the record so the next
-        # startup can retry. This closes the bug where the prior
-        # implementation unconditionally called ``_clear_record``
-        # after the abort/reset path and returned
-        # ``last_action='recovered'`` -- leaving the repository in
-        # a rebase/merge state with no ownership marker.
-        abort_failed = False
-        try:
-            if rebase_in_progress(root):
-                abort_rebase(repo_root=root)
-        except Exception as exc:
-            abort_failed = True
-            logger.warning("recovery: abort_rebase raised: {}", exc)
-        try:
-            if merge_in_progress(root):
-                abort_merge(root)
-        except Exception as exc:
-            abort_failed = True
-            logger.warning("recovery: abort_merge raised: {}", exc)
-
-        # Step 2: reconcile by phase.
-        if record.phase == "integrating":
-            # Restore the feature branch to its pre-integration state.
-            reset_failed = False
-            try:
-                reset_hard(root, record.pre_feature_sha)
-            except Exception as exc:
-                reset_failed = True
-                logger.warning("recovery: reset_hard failed: {}", exc)
-
-            # Verify the restore actually landed: read HEAD and
-            # compare to pre_feature_sha. If the reset raised OR
-            # the verification fails OR an owned op still remains,
-            # RETAIN the record so the next startup can retry. Only
-            # when all three checks pass do we clear it.
-            restored_ok = (
-                not abort_failed
-                and not reset_failed
-                and not rebase_in_progress(root)
-                and not merge_in_progress(root)
-                and _head_matches_sha(root, record.pre_feature_sha)
-            )
-            if not restored_ok:
-                return RebaseState(
-                    last_action=_ACTION_SKIPPED,
-                    last_reason=(
-                        "recovery: feature branch not restored, record"
-                        " retained for retry"
-                    ),
-                    last_target=record.target,
-                    fast_forwarded=False,
-                )
-            _clear_record(root)
-            return RebaseState(
-                last_action=_ACTION_RECOVERED,
-                last_reason="restored feature branch after interrupted rebase",
-                last_target=record.target,
-                fast_forwarded=False,
-            )
-
-        # phase == 'integrated': continue the fast-forward.
-        return _continue_fast_forward_from_record(root, record)
-    except Exception as exc:
-        logger.warning("recover_incomplete_integration failed: {}", exc)
-        return _record_skip(
-            reason=f"recovery failed: {exc}", target=None
-        )
-
-
-def _head_matches_sha(repo_root: Path, expected_sha: str) -> bool:
-    """Return True when ``HEAD`` resolves to ``expected_sha``.
-
-    Uses ``git rev-parse --verify HEAD`` (a substring match is
-    accepted since git treats an unambiguous prefix as a SHA).
-    Returns False on any failure so the recovery path retains the
-    durable record when verification is impossible -- a defensive
-    fail-closed against a half-restored feature branch that we
-    cannot prove equals ``pre_feature_sha``.
-    """
-    try:
-        result = run_git(
-            ("rev-parse", "--verify", "HEAD"),
-            cwd=repo_root,
-            label="git-rev-parse-head",
-        )
-    except Exception:
-        return False
-    if result.returncode != 0:
-        return False
-    return result.stdout.strip() == expected_sha
-
-
 __all__ = [
     "IntegrationRecord",
     "auto_integrate_after_commit",
+    "auto_integrate_on_phase_transition",
     "recover_incomplete_integration",
     "resolve_integration_target",
 ]

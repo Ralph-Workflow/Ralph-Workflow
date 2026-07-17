@@ -403,7 +403,23 @@ def _build_status_bar_model(
         outer_dev_cap=entry.outer_dev_cap,
         inner_analysis=entry.inner_analysis,
         inner_analysis_cap=entry.inner_analysis_cap,
+        integration_alert=_integration_alert_for_state(state),
     )
+
+
+def _integration_alert_for_state(state: PipelineState) -> str | None:
+    """Alert text while the last auto-integrate outcome is a conflict.
+
+    Defensive ``getattr`` access so a fake / legacy state object without
+    a ``rebase`` slot can never break the status bar push.
+    """
+    rebase: object = getattr(state, "rebase", None)
+    last_action: object = getattr(rebase, "last_action", None)
+    if last_action != "conflict":
+        return None
+    reason_raw: object = getattr(rebase, "last_reason", None)
+    reason = reason_raw if isinstance(reason_raw, str) and reason_raw else "unresolved"
+    return f"integration conflict ({reason}) — resolution required"
 
 
 def _push_status_bar_if_changed(
@@ -411,17 +427,25 @@ def _push_status_bar_if_changed(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_root: Path,
-    last_sig: tuple[str, int | None, int | None] | None,
-) -> tuple[str, int | None, int | None] | None:
-    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle) signature changes.
+    last_sig: tuple[str, int | None, int | None, str | None] | None,
+) -> tuple[str, int | None, int | None, str | None] | None:
+    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle, alert) signature changes.
 
-    Returns the new signature so the caller's closure-local ``last_status_sig``
-    stays current. Defensive: any failure is swallowed. Pass ``last_sig=None``
-    for an unconditional initial push.
+    The integration alert participates in the signature so the bar
+    repushes the moment a conflict appears or clears, not only on the
+    next phase change. Returns the new signature so the caller's
+    closure-local ``last_status_sig`` stays current. Defensive: any
+    failure is swallowed. Pass ``last_sig=None`` for an unconditional
+    initial push.
     """
     with suppress(Exception):
         model = _build_status_bar_model(state, policy_bundle, workspace_root)
-        signature = (state.phase, model.outer_dev_iteration, model.inner_analysis)
+        signature = (
+            state.phase,
+            model.outer_dev_iteration,
+            model.inner_analysis,
+            model.integration_alert,
+        )
         if signature != last_sig and hasattr(active_display, "update_status_bar"):
             active_display.update_status_bar(model)
             return signature
@@ -837,7 +861,7 @@ def _run_inner_loop(
     def _live_is_waiting() -> bool:
         return bool(state_holder[0].is_waiting_state)
 
-    last_status_sig: tuple[str, int | None, int | None] | None = None
+    last_status_sig: tuple[str, int | None, int | None, str | None] | None = None
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state

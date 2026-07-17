@@ -49,7 +49,6 @@ def check_rebase_preconditions(repo_root: Path | str) -> None:
         _check_shallow_clone(repo)
         _ensure_clean_worktree(repo)
         _check_worktree_conflicts(repo)
-        _check_submodule_state(repo)
         _check_sparse_checkout_state(repo)
     finally:
         repo.close()
@@ -144,7 +143,9 @@ def _ensure_clean_worktree(repo: Repo) -> None:
 
 
 def _check_shallow_clone(repo: Repo) -> None:
-    shallow = _git_dir(repo) / "shallow"
+    # The shallow marker is shared repository state: it lives in the
+    # common git dir, never in a linked worktree's private git dir.
+    shallow = _common_git_dir(repo) / "shallow"
     if shallow.exists():
         try:
             content = shallow.read_text()
@@ -168,13 +169,19 @@ def _check_worktree_conflicts(repo: Repo) -> None:
     except (TypeError, GitCommandError):
         return
 
-    worktrees_dir = _git_dir(repo) / "worktrees"
+    # Worktree registrations live in the common git dir; when running
+    # from a linked worktree the repo's own registration must be
+    # skipped or the current branch would always self-conflict.
+    worktrees_dir = _common_git_dir(repo) / "worktrees"
     if not worktrees_dir.is_dir():
         return
 
+    own_git_dir = _git_dir(repo).resolve()
     target_ref = f"refs/heads/{branch_name}"
     for entry in worktrees_dir.iterdir():
         if not entry.is_dir():
+            continue
+        if entry.resolve() == own_git_dir:
             continue
         head_file = entry / "HEAD"
         if not head_file.exists():
@@ -189,37 +196,6 @@ def _check_worktree_conflicts(repo: Repo) -> None:
             raise RebasePreconditionError(
                 f"Branch '{branch_name}' is already checked out in worktree '{entry.name}'. "
                 "Use 'git worktree add' to create a new worktree for this branch."
-            )
-
-
-def _check_submodule_state(repo: Repo) -> None:
-    workdir = _worktree(repo)
-    gitmodules = workdir / ".gitmodules"
-    if not gitmodules.exists():
-        return
-
-    modules_dir = _git_dir(repo) / "modules"
-    if not modules_dir.exists():
-        raise RebasePreconditionError(
-            "Submodules are not initialized. Run: git submodule update --init --recursive"
-        )
-
-    content = gitmodules.read_text()
-    if "path =" not in content:
-        return
-
-    for line in content.splitlines():
-        if "path =" not in line:
-            continue
-        _, _, remainder = line.partition("path =")
-        path_value = remainder.strip()
-        if not path_value:
-            continue
-        submodule_path = workdir / path_value
-        if not submodule_path.exists():
-            raise RebasePreconditionError(
-                f"Submodule '{path_value}' is not initialized. Run: "
-                "git submodule update --init --recursive"
             )
 
 
@@ -268,6 +244,20 @@ def _git_dir(repo: Repo) -> Path:
     if not git_dir:
         raise RebasePreconditionError("Cannot determine .git directory for repository")
     return Path(git_dir)
+
+
+def _common_git_dir(repo: Repo) -> Path:
+    """Resolve the git directory shared by every worktree of the repository.
+
+    ``repo.git_dir`` for a linked worktree is its private
+    ``.git/worktrees/<name>`` directory; state shared across worktrees
+    (the ``shallow`` marker, the ``worktrees/`` registry) lives only in
+    the common directory. For a primary checkout both are the same path.
+    """
+    common: object = getattr(repo, "common_dir", None)
+    if isinstance(common, str) and common:
+        return Path(common).resolve()
+    return _git_dir(repo).resolve()
 
 
 def _worktree(repo: Repo) -> Path:

@@ -83,7 +83,7 @@ def _run_commit_phase(
 def test_commit_success_threads_rebase_state_into_next_state(monkeypatch: MonkeyPatch) -> None:
     """Plan step 5: a successful integration outcome is persisted through the runner."""
     outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
-    state, reducer = _run_commit_phase(monkeypatch, integration=lambda *_args: outcome)
+    state, reducer = _run_commit_phase(monkeypatch, integration=lambda *_args, **_kwargs: outcome)
 
     assert reducer.call_args.args[1] is PipelineEvent.COMMIT_SUCCESS
     rebase_calls = [call for call in state.copy_with.call_args_list if "rebase" in call.kwargs]
@@ -131,7 +131,7 @@ def test_commit_conflict_outcome_does_not_halt_run(monkeypatch: MonkeyPatch) -> 
         last_target="main",
         fast_forwarded=False,
     )
-    state, reducer = _run_commit_phase(monkeypatch, integration=lambda *_args: conflict)
+    state, reducer = _run_commit_phase(monkeypatch, integration=lambda *_args, **_kwargs: conflict)
 
     assert reducer.call_args.args[1] is PipelineEvent.COMMIT_SUCCESS
     rebase_calls = [call for call in state.copy_with.call_args_list if "rebase" in call.kwargs]
@@ -146,6 +146,130 @@ def test_auto_integrate_exception_does_not_halt_run(monkeypatch: MonkeyPatch) ->
     integration.assert_called_once()
     assert reducer.call_args.args[1] is PipelineEvent.COMMIT_SUCCESS
     assert all("rebase" not in call.kwargs for call in state.copy_with.call_args_list)
+
+
+def test_commit_success_passes_conflict_resolver_to_integration(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """The seam hands auto_integrate_after_commit a dev-agent conflict resolver."""
+    captured: dict[str, object] = {}
+
+    def _integration(*_args: object, **kwargs: object) -> RebaseState:
+        captured.update(kwargs)
+        return RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
+
+    _run_commit_phase(monkeypatch, integration=_integration)
+
+    resolver = captured.get("conflict_resolver")
+    assert resolver is not None, "seam must pass a conflict_resolver"
+    assert callable(resolver)
+
+
+def test_phase_transition_event_runs_boundary_integration(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A successful non-commit phase event triggers the boundary hook."""
+    outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
+    hook = MagicMock(return_value=outcome)
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
+    state = MagicMock()
+    state.phase = "development_analysis"
+    state.rebase = RebaseState()
+
+    result = runner_module._maybe_auto_integrate(
+        effect=object(),
+        event=PipelineEvent.AGENT_SUCCESS,
+        commit_phase_def=None,
+        config=MagicMock(),
+        workspace_scope=MagicMock(),
+        state=state,
+        display=MagicMock(),
+        policy_bundle=_load_default_policy_bundle(),
+        registry=MagicMock(),
+    )
+
+    hook.assert_called_once()
+    assert result is outcome
+
+
+def test_phase_transition_hook_not_called_on_failure_events(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Failure / retry events never trigger the boundary hook."""
+    hook = MagicMock()
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
+    state = MagicMock()
+    state.phase = "development"
+    state.rebase = RebaseState()
+
+    for event in (
+        PipelineEvent.AGENT_FAILURE,
+        PipelineEvent.AGENT_RETRY,
+        PipelineEvent.INTERRUPTED,
+        PipelineEvent.FAILED,
+    ):
+        result = runner_module._maybe_auto_integrate(
+            effect=object(),
+            event=event,
+            commit_phase_def=None,
+            config=MagicMock(),
+            workspace_scope=MagicMock(),
+            state=state,
+            display=MagicMock(),
+            policy_bundle=_load_default_policy_bundle(),
+            registry=MagicMock(),
+        )
+        assert result is None
+    hook.assert_not_called()
+
+
+def test_log_outcome_skip_emits_warn_line() -> None:
+    """A skipped integration is surfaced as a WARN line, not an info line."""
+    display = MagicMock()
+    outcome = RebaseState(
+        last_action="skipped",
+        last_reason="preconditions not met: example",
+        last_target="main",
+        fast_forwarded=False,
+    )
+
+    runner_module._log_auto_integrate_outcome(display, outcome)
+
+    display.emit_warn_line.assert_called_once()
+    unit_id, tag, message = display.emit_warn_line.call_args.args
+    assert unit_id == "run"
+    assert tag == "auto-integrate"
+    assert "preconditions not met: example" in message
+    display.emit.assert_not_called()
+
+
+def test_log_outcome_conflict_emits_warn_line() -> None:
+    """A conflict outcome is surfaced as a WARN line."""
+    display = MagicMock()
+    outcome = RebaseState(
+        last_action="conflict",
+        last_reason="rebase and endpoint merge both conflicted",
+        last_target="main",
+        fast_forwarded=False,
+    )
+
+    runner_module._log_auto_integrate_outcome(display, outcome)
+
+    display.emit_warn_line.assert_called_once()
+    display.emit.assert_not_called()
+
+
+def test_log_outcome_success_emits_info_line() -> None:
+    """A successful integration keeps the ordinary activity line."""
+    display = MagicMock()
+    outcome = RebaseState(
+        last_action="rebased", last_target="main", fast_forwarded=True
+    )
+
+    runner_module._log_auto_integrate_outcome(display, outcome)
+
+    display.emit.assert_called_once()
+    display.emit_warn_line.assert_not_called()
 
 
 def test_recovery_outcome_persisted_to_state_and_checkpoint(

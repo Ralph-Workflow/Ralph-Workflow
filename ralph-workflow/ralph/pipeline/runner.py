@@ -75,7 +75,11 @@ from ralph.pipeline.activity_stream import (
     truncate,
 )
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit,
+    auto_integrate_on_phase_transition,
+)
+from ralph.pipeline.auto_integrate_agent import build_agent_conflict_resolver
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
@@ -159,6 +163,7 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.websearch.secrets import EnvGetter
+    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.policy.models import (
@@ -596,6 +601,12 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
         outcome.last_reason,
         fast_forwarded=outcome.fast_forwarded,
     )
+    # A skip or conflict means no integration happened this commit; an
+    # operator who expects continuous integration must not lose that
+    # signal in the INFO stream, so it escalates to a WARN line.
+    if outcome.last_action in ("skipped", "conflict"):
+        display.emit_warn_line("run", "auto-integrate", message)
+        return
     emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
 
 
@@ -608,6 +619,8 @@ def _maybe_auto_integrate(
     workspace_scope: WorkspaceScope,
     state: PipelineState,
     display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None = None,
+    registry: _RegistryLike | None = None,
 ) -> RebaseState | None:
     """Run the post-commit auto-integration step when warranted.
 
@@ -634,21 +647,106 @@ def _maybe_auto_integrate(
         and commit_phase_def.role == "commit"
         and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
     ):
-        return None
+        # Non-commit seam: keep the branch in lockstep with the target
+        # at every successful phase boundary (silent no-op when the
+        # worktree is dirty or nothing moved).
+        return _integrate_on_phase_transition(
+            event=event,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+        )
     clear_cycle_baseline(workspace_scope.root)
     # Auto-integrate only fires on a real commit (COMMIT_SUCCESS), NOT
     # on COMMIT_SKIPPED -- an early-skipped commit phase must not
     # trigger a rebase + fast-forward.
     if event != PipelineEvent.COMMIT_SUCCESS:
         return None
+    conflict_resolver = _build_seam_conflict_resolver(
+        policy_bundle=policy_bundle, registry=registry, display=display
+    )
     try:
         outcome = auto_integrate_after_commit(
-            config, workspace_scope, state.rebase
+            config,
+            workspace_scope,
+            state.rebase,
+            conflict_resolver=conflict_resolver,
         )
     except Exception as auto_integrate_exc:  # pragma: no cover -- defensive
         logger.warning(
             "auto_integrate_after_commit raised unexpectedly: {}",
             auto_integrate_exc,
+        )
+        return None
+    if outcome is not None:
+        _log_auto_integrate_outcome(display, outcome)
+    return outcome
+
+
+#: Events that mark a successfully completed (or cleanly advancing)
+#: phase step. Only these trigger the boundary integration — failures,
+#: retries, and interrupts must never move refs under a phase that is
+#: about to be re-run.
+_PHASE_TRANSITION_INTEGRATION_EVENTS = (
+    PipelineEvent.AGENT_SUCCESS,
+    PipelineEvent.ANALYSIS_SUCCESS,
+    PipelineEvent.ANALYSIS_LOOPBACK,
+    PipelineEvent.PHASE_LOOPBACK,
+    PipelineEvent.PHASE_ADVANCE,
+    PipelineEvent.REVIEW_CLEAN,
+    PipelineEvent.FIX_SUCCESS,
+)
+
+
+def _build_seam_conflict_resolver(
+    *,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    display: ParallelDisplay,
+) -> ConflictResolver | None:
+    """Dev-agent resolver when policy + registry are available, else None."""
+    if policy_bundle is None or registry is None:
+        return None
+    # Production path: hand the integration step a dev-agent resolver
+    # so a conflicted endpoint merge is resolved and committed instead
+    # of abandoned until the next commit.
+    return build_agent_conflict_resolver(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+    )
+
+
+def _integrate_on_phase_transition(
+    *,
+    event: object,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: PipelineState,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+) -> RebaseState | None:
+    """Run the boundary integration hook for successful phase events."""
+    if event not in _PHASE_TRANSITION_INTEGRATION_EVENTS:
+        return None
+    conflict_resolver = _build_seam_conflict_resolver(
+        policy_bundle=policy_bundle, registry=registry, display=display
+    )
+    try:
+        outcome = auto_integrate_on_phase_transition(
+            config,
+            workspace_scope,
+            state.rebase,
+            conflict_resolver=conflict_resolver,
+        )
+    except Exception as transition_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate_on_phase_transition raised unexpectedly: {}",
+            transition_exc,
         )
         return None
     if outcome is not None:
@@ -799,6 +897,8 @@ def _run_pipeline_step(
             workspace_scope=workspace_scope,
             state=state,
             display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
         )
         _phase_outcome = _coarse_outcome_for_event(event)
         next_state, _ = reducer_reduce(

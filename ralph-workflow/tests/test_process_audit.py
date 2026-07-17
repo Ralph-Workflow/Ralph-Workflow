@@ -94,6 +94,7 @@ TESTS_ALLOWLIST: set[str] = {
     # test files that maintain POS|CO process-marker literals.
     "test_git_merge.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
     "test_auto_integrate.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
+    "test_auto_integrate_resolution.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; conflict-resolution + ff-retry tests)
     "test_auto_integrate_race.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite)
     "test_auto_integrate_recovery.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; recovery + dashed-target security regression tests)
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts

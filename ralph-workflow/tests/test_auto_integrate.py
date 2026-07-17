@@ -625,7 +625,6 @@ def test_both_rebase_and_merge_conflict(tmp_git_repo: Path) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
 # AC-08: CAS race -> target ref NOT moved
 # (Real AC-08 proof lives in tests/test_auto_integrate_race.py:86 and :315.)
 # ---------------------------------------------------------------------------

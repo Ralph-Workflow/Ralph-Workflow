@@ -429,7 +429,7 @@ def test_recovery_retains_record_on_reset_failure(
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_text(record.model_dump_json(), encoding="utf-8")
-    import ralph.pipeline.auto_integrate as _ai_mod
+    import ralph.pipeline.auto_integrate_recovery as _ai_mod
 
     def _failing_reset(repo_root: object, sha: str) -> None:
         raise RuntimeError("simulated reset_hard failure")
@@ -489,7 +489,7 @@ def test_recovery_retains_record_on_abort_failure(
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_text(record.model_dump_json(), encoding="utf-8")
-    import ralph.pipeline.auto_integrate as _ai_mod
+    import ralph.pipeline.auto_integrate_recovery as _ai_mod
 
     def _failing_abort(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated abort_rebase failure")

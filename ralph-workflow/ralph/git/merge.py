@@ -18,7 +18,11 @@ Public functions (every primitive has a docstring):
 * ``merge_in_progress`` — checks for ``MERGE_HEAD`` in the git dir.
 * ``merge_target_into_current`` — runs ``git merge --no-edit`` against
   the current branch; aborts cleanly on conflict and reports
-  ``MergeResult(outcome='conflict', ...)``.
+  ``MergeResult(outcome='conflict', ...)``; ``keep_conflicts=True``
+  leaves a conflicted merge in progress for resolution.
+* ``unmerged_paths`` — lists paths still carrying conflict markers.
+* ``commit_merge_in_progress`` — deterministically commits a fully
+  resolved in-progress merge (``git commit --no-edit``).
 * ``abort_merge`` — guarded ``git merge --abort``.
 * ``reset_hard`` — guarded ``git reset --hard``; used by crash
   recovery to restore the feature branch to its pre-integration SHA.
@@ -131,7 +135,9 @@ def merge_in_progress(repo_root: Path | str) -> bool:
     return (git_dir / "MERGE_HEAD").exists()
 
 
-def merge_target_into_current(repo_root: Path | str, target: str) -> MergeResult:
+def merge_target_into_current(
+    repo_root: Path | str, target: str, *, keep_conflicts: bool = False
+) -> MergeResult:
     """Run ``git merge --no-edit <target>`` into the current branch.
 
     On non-zero return code, run ``git merge --abort`` (guarded by a
@@ -139,6 +145,14 @@ def merge_target_into_current(repo_root: Path | str, target: str) -> MergeResult
     success return ``MergeResult(outcome='success')``. The merge is
     never force-resolved; conflict outcome is the only escape hatch
     other than success.
+
+    With ``keep_conflicts=True`` a conflicted merge is left in
+    progress (``MERGE_HEAD`` retained, conflict markers in the
+    working tree) so a conflict-resolution step can repair and
+    complete it; the caller owns the eventual
+    :func:`commit_merge_in_progress` or :func:`abort_merge`. A merge
+    that failed without starting (no ``MERGE_HEAD``) still returns
+    ``'conflict'`` with nothing to keep.
 
     The target branch name is passed AFTER the ``--`` option
     terminator so a configured value that starts with ``-`` (e.g.
@@ -155,12 +169,53 @@ def merge_target_into_current(repo_root: Path | str, target: str) -> MergeResult
     )
     if result.returncode == 0:
         return MergeResult(outcome="success")
-    # Conflict path. Abort the in-progress merge so the working tree
-    # is left clean (the caller can then record the conflict and
-    # return; auto_integrate uses this to satisfy AC-07).
-    if merge_in_progress(repo_root_path):
+    # Conflict path. Unless the caller asked to keep the conflicted
+    # merge for resolution, abort so the working tree is left clean
+    # (the caller can then record the conflict and return;
+    # auto_integrate uses this to satisfy AC-07).
+    if not keep_conflicts and merge_in_progress(repo_root_path):
         abort_merge(repo_root_path)
     return MergeResult(outcome="conflict")
+
+
+def unmerged_paths(repo_root: Path | str) -> list[str]:
+    """Return the paths still carrying merge conflicts.
+
+    Wraps ``git diff --name-only --diff-filter=U``. An empty list
+    means every conflict has been resolved and staged; the in-progress
+    merge is then safe to commit via :func:`commit_merge_in_progress`.
+    A failed git invocation reports a sentinel non-empty list so a
+    broken repository is never mistaken for "fully resolved".
+    """
+    repo_root_path = Path(repo_root)
+    result = run_git(
+        ("diff", "--name-only", "--diff-filter=U"),
+        cwd=repo_root_path,
+        label="git-unmerged-paths",
+    )
+    if result.returncode != 0:
+        return ["<unmerged-path-query-failed>"]
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def commit_merge_in_progress(repo_root: Path | str) -> bool:
+    """Commit an in-progress merge with the default merge message.
+
+    Returns True when the merge commit was created (``git commit
+    --no-edit`` exited 0 and ``MERGE_HEAD`` is gone). The auto-
+    integrate conflict-resolution path calls this AFTER verifying
+    :func:`unmerged_paths` is empty, so the commit is deterministic —
+    the resolving agent only ever stages content, never commits.
+    """
+    repo_root_path = Path(repo_root)
+    if not merge_in_progress(repo_root_path):
+        return False
+    result = run_git(
+        ("commit", "--no-edit"),
+        cwd=repo_root_path,
+        label="git-merge-commit",
+    )
+    return result.returncode == 0 and not merge_in_progress(repo_root_path)
 
 
 def abort_merge(repo_root: Path | str) -> None:

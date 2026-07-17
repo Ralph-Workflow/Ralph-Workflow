@@ -127,6 +127,100 @@ def test_render_status_bar_default_mode_shows_all_applicable_fields() -> None:
     assert "Analysis 2/5" in plain
 
 
+def test_render_status_bar_shows_integration_alert() -> None:
+    """An unresolved integration conflict renders a leading alert segment."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+        integration_alert="integration conflict — resolution required",
+    )
+    ctx = _make_display_context(width=140)
+    text = render_status_bar(model, ctx, home="/Users/alice")
+    plain = _plain_text(text)
+    assert "integration conflict" in plain
+    # The alert leads the bar so it can never be missed.
+    assert plain.index("integration conflict") < plain.index("Development")
+
+
+def test_render_status_bar_without_alert_unchanged() -> None:
+    """No alert set: the bar renders exactly as before (no alert text)."""
+    model = StatusBarModel(
+        workspace_root="/Users/alice/code/my-cool-project",
+        phase_label="Development",
+        phase_style="theme.phase.development",
+    )
+    ctx = _make_display_context(width=140)
+    plain = _plain_text(render_status_bar(model, ctx, home="/Users/alice"))
+    assert "conflict" not in plain
+
+
+def _build_model_with_rebase(
+    monkeypatch: pytest.MonkeyPatch, rebase: object
+) -> StatusBarModel:
+    """Drive _build_status_bar_model with fakes and the given rebase state."""
+
+    class _FakeEntry:
+        outer_dev_iteration = None
+        outer_dev_cap = None
+        inner_analysis = None
+        inner_analysis_cap = None
+
+        def human_label(self) -> str:
+            return "Development"
+
+    monkeypatch.setattr(
+        _run_loop_module,
+        "build_phase_entry_model_from_state",
+        lambda *_a, **_k: _FakeEntry(),
+    )
+    monkeypatch.setattr(
+        _run_loop_module,
+        "phase_style_for_phase",
+        lambda *_a, **_k: "theme.phase.development",
+    )
+
+    class _FakeState:
+        phase = "development"
+        rebase: object
+
+        def __init__(self, rebase_state: object) -> None:
+            self.rebase = rebase_state
+
+    class _FakePolicyBundle:
+        pipeline = object()
+
+    return _run_loop_module._build_status_bar_model(
+        _FakeState(rebase), _FakePolicyBundle(), Path("/tmp/ws")
+    )
+
+
+def test_build_status_bar_model_sets_integration_alert_on_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The run-loop model builder surfaces an unresolved conflict state."""
+    from ralph.pipeline.rebase_state import RebaseState
+
+    rebase = RebaseState(
+        last_action="conflict",
+        last_reason="rebase and endpoint merge both conflicted",
+        last_target="main",
+    )
+    model = _build_model_with_rebase(monkeypatch, rebase)
+    assert model.integration_alert is not None
+    assert "conflict" in model.integration_alert
+
+
+def test_build_status_bar_model_no_alert_without_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A clean rebase state yields no alert."""
+    from ralph.pipeline.rebase_state import RebaseState
+
+    model = _build_model_with_rebase(monkeypatch, RebaseState())
+    assert model.integration_alert is None
+
+
 @pytest.mark.parametrize("width", [100, 120, 200])
 def test_render_status_bar_shows_all_fields_at_wide_widths(width: int) -> None:
     """At wide widths (>=100 cols), the Status Bar renders phase + dir + outer_dev + inner_analysis.

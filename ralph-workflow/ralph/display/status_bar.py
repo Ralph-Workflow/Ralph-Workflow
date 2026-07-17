@@ -223,6 +223,10 @@ class StatusBarModel:
             or ``None`` when the active phase does not track analysis cycles.
         inner_analysis_cap: Inner analysis iteration cap, or ``None`` when
             unknown.
+        integration_alert: Operator-facing alert rendered as a leading
+            bar segment while an auto-integrate conflict is unresolved
+            (``None`` otherwise). Present so a run that needs conflict
+            resolution can never scroll its warning out of sight.
     """
 
     workspace_root: str
@@ -232,6 +236,7 @@ class StatusBarModel:
     outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
+    integration_alert: str | None = None
 
 
 def _home_relative(path: str, home: str | None) -> str:
@@ -697,6 +702,16 @@ def render_status_bar(
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
     text = Text()
+    if model.integration_alert:
+        # The alert LEADS the bar so an unresolved integration conflict
+        # is visible at every width; the final width clamp below still
+        # bounds the rendered line. Sanitized like every other segment.
+        alert_display = _safe_single_line(model.integration_alert)
+        text.append(
+            ctx.glyph_for("warning") + " " + alert_display,
+            style="theme.status.error",
+        )
+        text.append(separator, style="theme.status.path_marker")
     if ctx.glyphs_enabled and budgets.render_marker:
         marker = ctx.glyph_for("phase_marker")
         text.append(marker + " ", style="theme.status.bar_marker")
