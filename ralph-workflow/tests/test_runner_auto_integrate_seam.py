@@ -192,6 +192,74 @@ def test_phase_transition_event_runs_boundary_integration(
     assert result is outcome
 
 
+def test_commit_skipped_still_integrates_via_boundary_hook(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """COMMIT_SKIPPED means a clean tree: the boundary hook must catch up.
+
+    The commit-boundary integration (rebase triggered by a NEW commit)
+    stays COMMIT_SUCCESS-only, but a skipped commit still re-integrates
+    via the phase-transition hook so a target that moved during the
+    cycle is caught immediately.
+    """
+    outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
+    hook = MagicMock(return_value=outcome)
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
+    monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda *_a, **_k: None)
+    state = MagicMock()
+    state.phase = "development_commit"
+    state.rebase = RebaseState()
+    commit_def = _load_default_policy_bundle().pipeline.phases["development_commit"]
+
+    result = runner_module._maybe_auto_integrate(
+        effect=CommitEffect(message_file="/dev/null"),
+        event=PipelineEvent.COMMIT_SKIPPED,
+        commit_phase_def=commit_def,
+        config=MagicMock(),
+        workspace_scope=MagicMock(),
+        state=state,
+        display=MagicMock(),
+        policy_bundle=_load_default_policy_bundle(),
+        registry=MagicMock(),
+    )
+
+    hook.assert_called_once()
+    assert result is outcome
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        PipelineEvent.REVIEW_ISSUES_FOUND,
+        PipelineEvent.ALL_WORKERS_COMPLETE,
+        PipelineEvent.COMPLETE,
+    ],
+)
+def test_additional_transition_events_trigger_boundary_hook(
+    monkeypatch: MonkeyPatch, event: PipelineEvent
+) -> None:
+    """Review-issues, fan-out completion, and run completion also integrate."""
+    hook = MagicMock(return_value=None)
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
+    state = MagicMock()
+    state.phase = "development"
+    state.rebase = RebaseState()
+
+    runner_module._maybe_auto_integrate(
+        effect=object(),
+        event=event,
+        commit_phase_def=None,
+        config=MagicMock(),
+        workspace_scope=MagicMock(),
+        state=state,
+        display=MagicMock(),
+        policy_bundle=_load_default_policy_bundle(),
+        registry=MagicMock(),
+    )
+
+    hook.assert_called_once()
+
+
 def test_phase_transition_hook_not_called_on_failure_events(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -270,6 +338,43 @@ def test_log_outcome_success_emits_info_line() -> None:
 
     display.emit.assert_called_once()
     display.emit_warn_line.assert_not_called()
+
+
+def test_startup_integration_runs_before_loop(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """An old branch is integrated onto the target at run start.
+
+    The loop preamble must run the boundary-integration hook BEFORE the
+    first phase executes so a run started on a stale branch begins from
+    the current target tip (planning must never read stale code).
+    """
+    from ralph.pipeline import run_loop as run_loop_module
+
+    outcome = RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
+    hook = MagicMock(return_value=outcome)
+    monkeypatch.setattr(
+        run_loop_module, "auto_integrate_on_phase_transition", hook
+    )
+    state = MagicMock()
+    state.phase = "complete"
+    state.rebase = RebaseState()
+    state.copy_with = MagicMock(return_value=state)
+    ctx = MagicMock()
+    ctx.workspace_scope = WorkspaceScope(tmp_path)
+    ctx.policy_bundle.pipeline.terminal_phase = "complete"
+    saved = MagicMock()
+    monkeypatch.setattr(run_loop_module._runner_module, "save_checkpoint_or_log", saved)
+    monkeypatch.setattr(
+        run_loop_module._runner_module,
+        "_checkpoint_path",
+        lambda _scope: tmp_path / ".agent" / "checkpoint.json",
+    )
+
+    run_loop_module._run_inner_loop(state, ctx, prev_phase="complete")
+
+    hook.assert_called_once()
+    assert state.copy_with.call_args.kwargs["rebase"] is outcome
 
 
 def test_recovery_outcome_persisted_to_state_and_checkpoint(

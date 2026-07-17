@@ -25,11 +25,14 @@ from ralph.display.parallel_display import (
 )
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
+from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
+from ralph.pipeline.auto_integrate_agent import build_agent_conflict_resolver
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
     emit_final_summary,
 )
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -48,7 +51,6 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.rebase_state import RebaseState
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.heartbeat import ProHeartbeatClient
@@ -484,6 +486,39 @@ def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> Re
     return recovered
 
 
+def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
+    """Integrate the branch onto the target BEFORE the first phase runs.
+
+    A run started (or resumed) on a stale branch must not plan or
+    develop against old code: the same clean-worktree boundary hook
+    used at phase transitions runs once at startup so the feature
+    branch begins from the current target tip. Silent no-op when the
+    worktree is dirty, the feature is disabled, or nothing moved.
+    Never raises.
+    """
+    try:
+        resolver = build_agent_conflict_resolver(
+            policy_bundle=ctx.policy_bundle,
+            registry=ctx.registry,
+            display=ctx.active_display,
+        )
+        outcome = auto_integrate_on_phase_transition(
+            ctx.config,
+            ctx.workspace_scope,
+            RebaseState(),
+            conflict_resolver=resolver,
+        )
+    except Exception as startup_exc:  # pragma: no cover -- defensive
+        logger.warning("startup auto-integrate failed: {}", startup_exc)
+        return None
+    if outcome is not None:
+        with suppress(Exception):
+            _runner_module._log_auto_integrate_outcome(
+                ctx.active_display, outcome
+            )
+    return outcome
+
+
 def _save_recovered_rebase_checkpoint(
     state: PipelineState,
     ctx: _LoopContext,
@@ -832,22 +867,38 @@ def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
     return WAITING_STATUS_INTERVAL_SECONDS
 
 
+def _apply_startup_rebase_outcomes(
+    state: PipelineState,
+    ctx: _LoopContext,
+) -> PipelineState:
+    """Run crash recovery + startup integration; thread outcomes into state.
+
+    The recovery outcome is threaded into the persisted checkpoint
+    BEFORE the loop starts, mirroring the post-commit auto-integrate
+    wiring in ``runner._run_pipeline_step`` — otherwise a resume run
+    continues with the pre-crash ``state.rebase`` and the operator
+    never sees the recovered verdict in the next receipt. The startup
+    catch-up then integrates a stale branch onto the target BEFORE the
+    first phase so planning never reads old code.
+    """
+    recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope)
+    if recovered_rebase is not None:
+        state = state.copy_with(rebase=recovered_rebase)
+        _save_recovered_rebase_checkpoint(state, ctx)
+    startup_rebase = _run_startup_integration(ctx)
+    if startup_rebase is not None:
+        state = state.copy_with(rebase=startup_rebase)
+        _save_recovered_rebase_checkpoint(state, ctx)
+    return state
+
+
 def _run_inner_loop(
     state: PipelineState,
     ctx: _LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted)."""
-    recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope)
-    if recovered_rebase is not None:
-        # Thread the recovery outcome into the persisted checkpoint
-        # BEFORE the loop starts, mirroring the post-commit
-        # auto-integrate wiring in ``runner._run_pipeline_step``.
-        # Without this, a resume run continues with the pre-crash
-        # ``state.rebase`` and the operator never sees the recovered
-        # verdict in the next receipt.
-        state = state.copy_with(rebase=recovered_rebase)
-        _save_recovered_rebase_checkpoint(state, ctx)
+    state = _apply_startup_rebase_outcomes(state, ctx)
     # State holder so the providers captured by run_pipeline_step can
     # read the LIVE PipelineState / ConnectivityMonitor on every agent
     # invocation. The list is rebound every loop iteration so the

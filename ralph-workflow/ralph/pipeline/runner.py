@@ -660,11 +660,20 @@ def _maybe_auto_integrate(
             registry=registry,
         )
     clear_cycle_baseline(workspace_scope.root)
-    # Auto-integrate only fires on a real commit (COMMIT_SUCCESS), NOT
-    # on COMMIT_SKIPPED -- an early-skipped commit phase must not
-    # trigger a rebase + fast-forward.
+    # The commit-boundary integration (crash record + full sequence
+    # keyed to a NEW commit) fires only on COMMIT_SUCCESS. An
+    # early-skipped commit still means a clean tree, so the boundary
+    # hook below catches a target that moved during the cycle.
     if event != PipelineEvent.COMMIT_SUCCESS:
-        return None
+        return _integrate_on_phase_transition(
+            event=event,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+        )
     conflict_resolver = _build_seam_conflict_resolver(
         policy_bundle=policy_bundle, registry=registry, display=display
     )
@@ -697,7 +706,11 @@ _PHASE_TRANSITION_INTEGRATION_EVENTS = (
     PipelineEvent.PHASE_LOOPBACK,
     PipelineEvent.PHASE_ADVANCE,
     PipelineEvent.REVIEW_CLEAN,
+    PipelineEvent.REVIEW_ISSUES_FOUND,
     PipelineEvent.FIX_SUCCESS,
+    PipelineEvent.COMMIT_SKIPPED,
+    PipelineEvent.ALL_WORKERS_COMPLETE,
+    PipelineEvent.COMPLETE,
 )
 
 
