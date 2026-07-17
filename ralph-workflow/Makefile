@@ -2,25 +2,14 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 4 — measured on a 12-core host, 4 workers is the FASTEST
-# realistic worker count because the per-test 1.0 s SIGALRM (ITIMER_REAL
-# wall clock) budget established in ``tests/conftest.py`` charges a
-# worker for time it never used when descheduled, and many non-e2e
-# tests still spawn real git subprocesses, so 8 pytest workers plus
-# their git children oversubscribe a 12-core host. Measured numbers
-# on this host: 8 workers = 4-7 spurious TestExecutionTimeoutError
-# failures in 44.61 s; 6 workers = 11819 passed in 40.13 s; 4 workers
-# = 11819 passed in 38.00 s / 31.74 s / 34.37 s across three runs.
-# Lowering concurrency RAISED throughput (contention was costing more
-# than parallelism gained). The previous ``auto`` default bypassed the
-# Python-side cap on the raw Makefile targets (test-unit /
-# test-integration / test-subprocess-e2e / test-cov interpolate
-# ``-n $(PYTEST_WORKERS)`` literally), so the literal string ``auto``
-# reached pytest, which self-detected 12 workers and ignored the
-# Python cap entirely. Defaulting the variable to 4 fixes both the
-# ralph.test_suites path (where ``make test`` reads the env via
-# ``_pytest_workers``) AND the raw-target paths in one step. The conditional-assignment operator
-# MUST be preserved so operators can still override:
+# Default: 5 — four workers are too slow on this host, while six workers can
+# still starve 1.0 s SIGALRM-budgeted tests under verify load. Five workers keep
+# the default suite under its immutable 60 s budget without the observed
+# contention failures. The previous ``auto`` default bypassed the Python-side
+# cap on raw targets (test-unit / test-integration / test-subprocess-e2e /
+# test-cov interpolate ``-n $(PYTEST_WORKERS)`` literally), so defaulting this
+# exported variable governs both ralph.test_suites and raw-target paths. Keep
+# conditional assignment so operators can override:
 #   PYTEST_WORKERS=auto make test
 #   PYTEST_WORKERS=2  make test
 #   PYTEST_WORKERS=12 make test   # may exceed 1s per-test under load
@@ -31,7 +20,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 4
+PYTEST_WORKERS ?= 5
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
 # ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points
@@ -131,9 +120,8 @@ test-integration:
 # Runs with the same parallel workers as `make test`. It previously forced
 # `-n 1`, which serialized 659 real-subprocess tests into ~85 s and blew the
 # 60 s per-suite cap; the tests are independent, so worksteal brings it to
-# ~42 s on 8 workers. After lowering the worker cap to 4 (the FASTEST
-# realistic worker count measured on this host) the measured wall-clock
-# for this target is ~49 s, comfortably inside the 60 s per-suite cap.
+# ~42 s on 8 workers. Five workers preserve enough concurrency for the
+# selected suite to finish within its immutable 60 s per-suite cap.
 # The cap is NOT raised to accommodate a slow suite — the suite is made
 # fast enough to fit it (see docs/ralph-workflow-policy/testing-policy.md
 # §'Performance is a HARD failure').
