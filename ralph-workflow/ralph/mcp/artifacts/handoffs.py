@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.plan import render_plan_markdown
 
 HANDOFF_PATHS: dict[str, str] = {
@@ -52,7 +53,7 @@ def sync_markdown_handoff(
     markdown = render_markdown_handoff(artifact_type, content)
     destination = workspace_root / relative_path
     backend.mkdir(destination.parent, parents=True, exist_ok=True)
-    backend.write_text(destination, markdown, encoding="utf-8")
+    write_text_if_changed(backend, destination, markdown, encoding="utf-8")
     return relative_path
 
 

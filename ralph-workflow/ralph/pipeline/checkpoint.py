@@ -16,6 +16,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.pipeline.state import PipelineState
 
 CHECKPOINT_PATH = Path(".agent") / "checkpoint.json"
@@ -82,28 +84,42 @@ def _sanitize_last_error(state: PipelineState) -> PipelineState:
     return state
 
 
-def save(state: PipelineState, path: Path = CHECKPOINT_PATH) -> None:
+def save(
+    state: PipelineState,
+    path: Path = CHECKPOINT_PATH,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
     """Atomically write state to disk.
 
     Writes to a temporary file first, then renames to the target path.
     This ensures no partial checkpoint data on disk if the write is
     interrupted.
 
+    A byte-identical existing checkpoint short-circuits the temp
+    write and the replace so per-iteration saves do not advance
+    the file's mtime or generate an additional fseventsd
+    notification. The post-condition "checkpoint file contains the
+    serialized state" always holds: any read uncertainty or
+    content mismatch falls through to a real write.
+
     Args:
         state: The pipeline state to save.
         path: Path to save the checkpoint. Defaults to .agent/checkpoint.json.
+        backend: FileBackend used for the atomic write so the
+            idempotent guard can be exercised by an in-memory backend
+            under test without real filesystem I/O.
     """
     state = _normalize_recovery_state(state)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    serialized = state.model_dump_json(indent=2)
+    backend.mkdir(path.parent, parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
     try:
-        tmp.write_text(state.model_dump_json(indent=2), encoding="utf-8")
-        tmp.replace(path)
+        atomic_write_text_if_changed(backend, path, serialized, tmp_path=tmp_path)
         logger.debug("Checkpoint saved to {}", path)
     except Exception as exc:
         logger.error("Failed to save checkpoint to {}: {}", path, exc)
-        if tmp.exists():
-            tmp.unlink()
+        backend.unlink(tmp_path, missing_ok=True)
         raise
 
 

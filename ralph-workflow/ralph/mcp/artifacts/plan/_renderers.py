@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.plan._section_registry import PLAN_MARKDOWN_PATH
 from ralph.mcp.artifacts.plan._validation import (
     normalize_plan_artifact_content,
@@ -150,56 +151,104 @@ def _render_steps_section(steps: object) -> list[str]:
     return lines
 
 
-def _render_step_entry(step: Mapping[str, object]) -> list[str]:  # noqa: PLR0912 - per-step field rendering
+def _render_step_entry(step: Mapping[str, object]) -> list[str]:
     number = step.get("number", "?")
     title = step.get("title", "Untitled step")
     lines = ["", f"{number}. **{title}**"]
+    lines.extend(_render_step_content(step))
+    lines.extend(_render_step_targets(step))
+    lines.extend(_render_step_step_type(step))
+    lines.extend(_render_step_priority(step))
+    lines.extend(_render_step_depends_on(step))
+    lines.extend(_render_step_satisfies(step))
+    lines.extend(_render_step_expected_evidence(step))
+    lines.extend(_render_step_verify_command(step))
+    lines.extend(_render_step_location(step))
+    return lines
+
+
+def _render_step_content(step: Mapping[str, object]) -> list[str]:
     content_text = step.get("content")
     if isinstance(content_text, str) and content_text.strip():
-        lines.extend(["", f"   {content_text.strip()}"])
+        return ["", f"   {content_text.strip()}"]
+    return []
 
+
+def _render_step_targets(step: Mapping[str, object]) -> list[str]:
     targets = step.get("targets")
-    if isinstance(targets, list) and targets:
-        lines.extend(["", "   Targets:"])
-        for target in targets:
-            if not isinstance(target, dict):
-                continue
-            path = target.get("path")
-            action = target.get("action")
-            if isinstance(path, str) and isinstance(action, str):
-                lines.extend(["", f"   - `{path}` ({action})"])
+    if not isinstance(targets, list) or not targets:
+        return []
+    lines: list[str] = ["", "   Targets:"]
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        path = target.get("path")
+        action = target.get("action")
+        if isinstance(path, str) and isinstance(action, str):
+            lines.extend(["", f"   - `{path}` ({action})"])
+    return lines
 
+
+def _render_step_step_type(step: Mapping[str, object]) -> list[str]:
     step_type = step.get("step_type")
     if isinstance(step_type, str) and step_type and step_type != "action":
-        lines.extend(["", f"   - step_type: {step_type}"])
+        return ["", f"   - step_type: {step_type}"]
+    return []
+
+
+def _render_step_priority(step: Mapping[str, object]) -> list[str]:
     priority = step.get("priority")
     if isinstance(priority, str) and priority.strip():
-        lines.extend(["", f"   - priority: {priority.strip()}"])
+        return ["", f"   - priority: {priority.strip()}"]
+    return []
+
+
+def _render_step_depends_on(step: Mapping[str, object]) -> list[str]:
     depends_on = step.get("depends_on")
-    if isinstance(depends_on, list) and depends_on:
-        rendered = [str(d) for d in depends_on if isinstance(d, (int, str))]
-        if rendered:
-            lines.extend(["", f"   - depends_on: [{', '.join(rendered)}]"])
+    if not isinstance(depends_on, list) or not depends_on:
+        return []
+    rendered = [str(d) for d in depends_on if isinstance(d, (int, str))]
+    if rendered:
+        return ["", f"   - depends_on: [{', '.join(rendered)}]"]
+    return []
+
+
+def _render_step_satisfies(step: Mapping[str, object]) -> list[str]:
     satisfies = step.get("satisfies")
-    if isinstance(satisfies, list) and satisfies:
-        rendered = [str(s) for s in satisfies if isinstance(s, str) and s.strip()]
-        if rendered:
-            lines.extend(["", f"   - satisfies: [{', '.join(rendered)}]"])
+    if not isinstance(satisfies, list) or not satisfies:
+        return []
+    rendered = [str(s) for s in satisfies if isinstance(s, str) and s.strip()]
+    if rendered:
+        return ["", f"   - satisfies: [{', '.join(rendered)}]"]
+    return []
+
+
+def _render_step_expected_evidence(step: Mapping[str, object]) -> list[str]:
     expected_evidence = step.get("expected_evidence")
-    if isinstance(expected_evidence, list) and expected_evidence:
-        rendered = [_format_evidence_ref(entry) for entry in expected_evidence]
-        rendered = [r for r in rendered if r]
-        if rendered:
-            lines.extend(["", "   - expected_evidence:"])
-            for entry in rendered:
-                lines.extend(["", f"     - {entry}"])
+    if not isinstance(expected_evidence, list) or not expected_evidence:
+        return []
+    rendered = [_format_evidence_ref(entry) for entry in expected_evidence]
+    rendered = [r for r in rendered if r]
+    if not rendered:
+        return []
+    lines: list[str] = ["", "   - expected_evidence:"]
+    for entry in rendered:
+        lines.extend(["", f"     - {entry}"])
+    return lines
+
+
+def _render_step_verify_command(step: Mapping[str, object]) -> list[str]:
     verify_command = step.get("verify_command")
     if isinstance(verify_command, str) and verify_command.strip():
-        lines.extend(["", f"   - verify_command: `{verify_command.strip()}`"])
+        return ["", f"   - verify_command: `{verify_command.strip()}`"]
+    return []
+
+
+def _render_step_location(step: Mapping[str, object]) -> list[str]:
     location = step.get("location")
     if isinstance(location, str) and location.strip():
-        lines.extend(["", f"   - location: `{location.strip()}`"])
-    return lines
+        return ["", f"   - location: `{location.strip()}`"]
+    return []
 
 
 def _format_evidence_ref(ref: object) -> str:
@@ -552,7 +601,7 @@ def write_plan_markdown(
     """Persist the agent-facing Markdown handoff for a normalized plan."""
     destination = workspace_root / ".agent" / "PLAN.md"
     backend.mkdir(destination.parent, parents=True, exist_ok=True)
-    backend.write_text(destination, render_plan_markdown(content), encoding="utf-8")
+    write_text_if_changed(backend, destination, render_plan_markdown(content), encoding="utf-8")
 
 
 __all__ = [
