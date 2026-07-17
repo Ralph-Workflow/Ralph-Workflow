@@ -6,6 +6,7 @@ import importlib.resources
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -74,7 +75,7 @@ def materialize_format_doc(
         return None
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{artifact_type}.md"
     backend.mkdir(dest.parent, parents=True, exist_ok=True)
-    backend.write_text(dest, content, encoding="utf-8")
+    write_text_if_changed(backend, dest, content, encoding="utf-8")
     return format_doc_workspace_path(artifact_type)
 
 
@@ -90,7 +91,7 @@ def materialize_format_index(
     content = load_bundled_format_index()
     dest = workspace_root / FORMAT_DOCS_WORKSPACE_DIR / f"{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md"
     backend.mkdir(dest.parent, parents=True, exist_ok=True)
-    backend.write_text(dest, content, encoding="utf-8")
+    write_text_if_changed(backend, dest, content, encoding="utf-8")
     return format_index_workspace_path()
 
 

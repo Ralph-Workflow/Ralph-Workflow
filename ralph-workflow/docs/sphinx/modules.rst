@@ -1746,6 +1746,13 @@ ralph.mcp.artifacts.format_docs
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.idempotent_write
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.idempotent_write
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.handoffs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -13,6 +13,8 @@ from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 #: Default maximum file size in bytes for ``read_lines`` (any mode).
@@ -37,16 +39,25 @@ class FsWorkspace:
     """
 
     def __init__(
-        self, root: Path | str, *, allowed_roots: Sequence[Path | str] | None = None
+        self,
+        root: Path | str,
+        *,
+        allowed_roots: Sequence[Path | str] | None = None,
+        backend: FileBackend = DEFAULT_FILE_BACKEND,
     ) -> None:
         """Initialize filesystem workspace.
 
         Args:
             root: Root directory path.
+            allowed_roots: Optional sequence of additional allowed root paths.
+            backend: FileBackend used for the idempotent ``write`` guard so a
+                fake backend can intercept both the parent-directory creation
+                and the write itself (no real I/O under test).
         """
         self._root = Path(root).expanduser().resolve()
         requested_allowed = allowed_roots or (self._root,)
         self._allowed_roots = tuple(Path(path).expanduser().resolve() for path in requested_allowed)
+        self._backend = backend
         # Optional ExploreIndex handle attached by the production
         # session bridge; ``None`` keeps the legacy contract.
         self.explore_index: object | None = None
@@ -92,13 +103,20 @@ class FsWorkspace:
     def write(self, path: str, content: str) -> None:
         """Write content to file.
 
+        Skips the physical write when the target already contains
+        byte-identical content, so re-emitting an unchanged file does
+        not advance the file's mtime or generate an additional
+        fseventsd notification. The post-condition "file contains
+        ``content``" always holds: any read uncertainty or content
+        mismatch falls through to a real write.
+
         Args:
             path: Relative path to the file.
             content: Content to write.
         """
         p = self._abs(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
+        self._backend.mkdir(p.parent, parents=True, exist_ok=True)
+        write_text_if_changed(self._backend, p, content, encoding="utf-8")
 
     def append(self, path: str, content: str) -> None:
         """Append content to file.
