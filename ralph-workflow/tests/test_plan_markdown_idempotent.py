@@ -105,7 +105,14 @@ def _minimal_plan_payload(context_text: str) -> Mapping[str, object]:
 
 
 def test_plan_markdown_regression_skips_write_when_content_identical() -> None:
-    """Identical re-render: one write_text; stored PLAN.md matches the renderer output."""
+    """AC-03: identical ``.agent/PLAN.md`` re-render performs zero additional writes.
+
+    Verifies the skip half of AC-03: ``write_plan_markdown`` skips the
+    physical write to ``.agent/PLAN.md`` when the destination already
+    contains byte-identical ``render_plan_markdown`` output. The first
+    call writes; the second identical call is a skip. The final
+    ``_files[destination]`` equals the renderer output.
+    """
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
     content = _minimal_plan_payload("ctx-original")
@@ -121,7 +128,13 @@ def test_plan_markdown_regression_skips_write_when_content_identical() -> None:
 
 
 def test_plan_markdown_regression_writes_when_content_changed() -> None:
-    """Changed content: a second write_text fires; final PLAN.md matches the new renderer output."""
+    """AC-03: changed plan payload re-fires the write so ``.agent/PLAN.md`` reflects the new render.
+
+    Verifies the changed-content half of AC-03: any re-render whose
+    ``render_plan_markdown`` output differs triggers a fresh
+    ``write_text`` call, and the final stored ``.agent/PLAN.md`` content
+    equals ``render_plan_markdown`` of the changed payload.
+    """
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
     initial = _minimal_plan_payload("ctx-original")

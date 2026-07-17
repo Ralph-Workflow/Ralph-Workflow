@@ -78,7 +78,14 @@ class _ReplacingCountingBackend(FileBackend):
 
 
 def test_checkpoint_save_regression_writes_and_replaces_on_first_save() -> None:
-    """First save: exactly one write_text to tmp_path + one replace; dest holds the serialized state; tmp absent."""
+    """AC-04 + AC-05: first ``checkpoint.save`` performs one tmp-write plus one replace returning True.
+
+    Verifies that an absent destination triggers the full atomic cycle:
+    exactly one ``write_text`` to the tmp path plus exactly one
+    ``replace(tmp, dest)``. The stored destination equals the serialized
+    state, the tmp path is absent, and the parent directory creation was
+    routed through the injected backend rather than the real filesystem.
+    """
     backend = _ReplacingCountingBackend()
     dest = Path("/virtual-ws/.agent/checkpoint.json")
     tmp = dest.with_suffix(".tmp")
@@ -96,7 +103,14 @@ def test_checkpoint_save_regression_writes_and_replaces_on_first_save() -> None:
 
 
 def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None:
-    """Second identical save: zero additional write_text + zero additional replace; dest unchanged."""
+    """AC-04 + AC-05: second identical ``checkpoint.save`` performs zero additional writes and replaces.
+
+    Verifies the skip half of AC-04: a repeated ``save`` with a
+    ``PipelineState`` whose serialized JSON equals the destination bytes
+    must not write the tmp path and must not call ``replace``. The
+    stored destination remains the original bytes; the tmp path stays
+    absent.
+    """
     backend = _ReplacingCountingBackend()
     dest = Path("/virtual-ws/.agent/checkpoint.json")
     tmp = dest.with_suffix(".tmp")
@@ -116,7 +130,13 @@ def test_checkpoint_save_regression_skips_replace_when_state_identical() -> None
 
 
 def test_checkpoint_save_regression_writes_and_replaces_when_state_changed() -> None:
-    """Changed state: one additional write_text + one additional replace; dest holds the new serialized state."""
+    """AC-04 + AC-05: changed ``PipelineState`` re-fires one write_text plus one replace.
+
+    Verifies the changed-content half of AC-04: a ``save`` whose
+    serialized state differs from the destination bytes performs the
+    full atomic tmp-write plus replace cycle and the destination ends
+    up holding the new serialized state.
+    """
     backend = _ReplacingCountingBackend()
     dest = Path("/virtual-ws/.agent/checkpoint.json")
     tmp = dest.with_suffix(".tmp")

@@ -82,7 +82,14 @@ class _RaisingReadBackend(_ReplacingCountingBackend):
 
 
 def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -> None:
-    """Fresh destination: returns True; one write_text to tmp_path + one replace; tmp absent."""
+    """AC-01: fresh destination performs one tmp-write plus one replace returning True.
+
+    Verifies the changed-content half of AC-01: when the destination does
+    not exist, ``atomic_write_text_if_changed`` writes the content to the
+    tmp path, replaces the destination, and returns ``True``. The final
+    ``_files[destination]`` equals the requested content and the tmp path
+    is absent.
+    """
     backend = _ReplacingCountingBackend()
     destination = Path("/virtual-ws/checkpoint.json")
     tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
@@ -102,7 +109,13 @@ def test_atomic_write_regression_writes_and_replaces_when_destination_absent() -
 
 
 def test_atomic_write_regression_skips_write_and_replace_when_content_identical() -> None:
-    """Identical destination content: returns False; zero writes; zero replaces; bytes unchanged."""
+    """AC-01: byte-identical destination content returns False with zero writes and zero replaces.
+
+    Verifies the skip half of AC-01: when the destination already contains
+    exactly the requested content, ``atomic_write_text_if_changed`` must
+    not write the tmp path and must not call ``replace``, returning
+    ``False`` instead. The stored destination bytes remain unchanged.
+    """
     backend = _ReplacingCountingBackend()
     destination = Path("/virtual-ws/checkpoint.json")
     tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
@@ -122,7 +135,13 @@ def test_atomic_write_regression_skips_write_and_replace_when_content_identical(
 
 
 def test_atomic_write_regression_writes_and_replaces_when_content_changed() -> None:
-    """Changed destination content: returns True; one write_text + one replace; new bytes persisted."""
+    """AC-01: changed destination content triggers one write_text plus one replace returning True.
+
+    Verifies that when the destination exists but its bytes differ from
+    the requested content, ``atomic_write_text_if_changed`` still performs
+    the full tmp-write plus replace cycle, returning ``True`` and leaving
+    the destination populated with the new bytes.
+    """
     backend = _ReplacingCountingBackend()
     destination = Path("/virtual-ws/checkpoint.json")
     tmp_path = Path("/virtual-ws/checkpoint.json.tmp")
@@ -143,7 +162,13 @@ def test_atomic_write_regression_writes_and_replaces_when_content_changed() -> N
 
 
 def test_atomic_write_regression_fails_open_when_read_text_raises_oserror() -> None:
-    """Unreadable existing destination (OSError on read): fails open to a real write+replace."""
+    """AC-01: fail-open path -- OSError on the read falls through to a real write plus replace.
+
+    Verifies the fail-open half of AC-01: when ``exists()`` reports True
+    but ``read_text`` raises ``OSError``, ``atomic_write_text_if_changed``
+    must not silently skip; it must perform the tmp-write plus replace
+    cycle and return ``True``.
+    """
     backend = _RaisingReadBackend()
     destination = Path("/virtual-ws/locked.json")
     tmp_path = Path("/virtual-ws/locked.json.tmp")

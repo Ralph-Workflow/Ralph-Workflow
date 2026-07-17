@@ -64,7 +64,14 @@ class _CountingBackend(FileBackend):
 
 
 def test_markdown_handoff_regression_skips_write_when_content_identical() -> None:
-    """Identical re-render: zero additional write_text; stored content matches the renderer output."""
+    """AC-02: identical re-submit of the per-artifact Markdown handoff performs zero additional writes.
+
+    Verifies the skip half of AC-02: ``sync_markdown_handoff`` skips the
+    physical write when the destination already contains byte-identical
+    rendered markdown. The first call writes; the second identical call
+    is a skip. The final ``_files[destination]`` equals
+    ``render_markdown_handoff`` output.
+    """
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
     content: Mapping[str, object] = {
@@ -87,7 +94,13 @@ def test_markdown_handoff_regression_skips_write_when_content_identical() -> Non
 
 
 def test_markdown_handoff_regression_writes_when_content_changed() -> None:
-    """Changed content: a second write_text fires; final stored content matches the new renderer output."""
+    """AC-02: changed handoff content re-fires the write so the file reflects the new render.
+
+    Verifies the changed-content half of AC-02: any re-submit whose
+    rendered markdown differs triggers a fresh ``write_text`` call, and
+    the final stored content equals ``render_markdown_handoff`` of the
+    changed payload.
+    """
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
     initial: Mapping[str, object] = {
