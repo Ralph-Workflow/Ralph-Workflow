@@ -511,10 +511,20 @@ def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
     except Exception as startup_exc:  # pragma: no cover -- defensive
         logger.warning("startup auto-integrate failed: {}", startup_exc)
         return None
-    if outcome is not None:
-        with suppress(Exception):
+    with suppress(Exception):
+        if outcome is not None:
             _runner_module._log_auto_integrate_outcome(
                 ctx.active_display, outcome
+            )
+        else:
+            # The startup check must never be invisible: even the
+            # nothing-to-do outcome prints one line so an operator can
+            # tell the sync ran (vs. silently not existing).
+            ctx.active_display.emit(
+                "run",
+                "[cyan]auto-integrate:[/cyan] startup check: nothing to"
+                " integrate (branch in sync with target, worktree busy,"
+                " or not a git checkout)",
             )
     return outcome
 

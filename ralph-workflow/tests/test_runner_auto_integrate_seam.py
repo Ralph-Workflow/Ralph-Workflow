@@ -377,6 +377,27 @@ def test_startup_integration_runs_before_loop(
     assert state.copy_with.call_args.kwargs["rebase"] is outcome
 
 
+def test_startup_integration_nothing_to_do_still_prints_a_line(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """The startup check is never invisible, even when it does nothing."""
+    from ralph.pipeline import run_loop as run_loop_module
+
+    monkeypatch.setattr(
+        run_loop_module,
+        "auto_integrate_on_phase_transition",
+        MagicMock(return_value=None),
+    )
+    ctx = MagicMock()
+    ctx.workspace_scope = WorkspaceScope(tmp_path)
+
+    assert run_loop_module._run_startup_integration(ctx) is None
+
+    ctx.active_display.emit.assert_called_once()
+    line = ctx.active_display.emit.call_args.args[1]
+    assert "startup check" in line
+
+
 def test_recovery_outcome_persisted_to_state_and_checkpoint(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
