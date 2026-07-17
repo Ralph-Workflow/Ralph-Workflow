@@ -103,7 +103,7 @@ def _iter_py_files(root: Path) -> list[Path]:
     ``rglob`` materializes a fresh :class:`Path` for every match and
     is ~3-4x slower on cold caches. Under heavy ``pytest-xdist``
     load (the test that drives this audit against the production
-    ``ralph/`` tree runs in parallel with 5 workers) the slower
+    ``ralph/`` tree runs in parallel with 4 workers) the slower
     ``rglob`` is the difference between a sub-1s pass and a
     timeout. ``os.walk`` is also a single syscall-per-directory
     walk, which is friendlier to the OS page cache.

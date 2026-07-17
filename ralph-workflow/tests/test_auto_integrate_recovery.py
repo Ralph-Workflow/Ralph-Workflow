@@ -739,3 +739,53 @@ def test_merge_target_with_leading_dash_is_treated_as_ref_only(
     result = _merge_mod.merge_target_into_current(tmp_git_repo, branch_name)
     assert result.outcome in {"success", "noop"}
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature_tip
+
+
+def test_rebase_conflict_abort_failure_retains_record_for_recovery(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-11: a normal conflict abort failure remains recoverable.
+
+    This drives ``auto_integrate_after_commit`` through a real rebase conflict,
+    injects a failing fallback abort, then proves the retained record lets the
+    next recovery abort the rebase and restore the pre-integration feature HEAD.
+    """
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    _run(tmp_git_repo, "checkout", "feature")
+    pre_feature_sha = _commit(tmp_git_repo, "shared.txt", "feature\n", "feature")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "mainline\n", "mainline")
+    _run(tmp_git_repo, "checkout", "feature")
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+
+    import ralph.pipeline.auto_integrate as auto_integrate_module
+
+    def _failing_abort(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("simulated normal-path abort failure")
+
+    monkeypatch.setattr(auto_integrate_module, "abort_rebase", _failing_abort)
+    outcome = auto_integrate_after_commit(
+        _build_config(tmp_git_repo, target=base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
+    record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert record_file.exists(), "abort failure must retain recovery ownership"
+    assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists()
+
+    monkeypatch.undo()
+    recovered = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
+    assert recovered is not None
+    assert recovered.last_action == "recovered"
+    assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == pre_feature_sha
+    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
+    assert not (git_dir / "rebase-apply").exists()
+    assert not (git_dir / "rebase-merge").exists()
+    assert not record_file.exists()

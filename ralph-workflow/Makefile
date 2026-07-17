@@ -2,14 +2,15 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 5 — four workers are too slow on this host, while six workers can
-# still starve 1.0 s SIGALRM-budgeted tests under verify load. Five workers keep
-# the default suite under its immutable 60 s budget without the observed
-# contention failures. The previous ``auto`` default bypassed the Python-side
-# cap on raw targets (test-unit / test-integration / test-subprocess-e2e /
-# test-cov interpolate ``-n $(PYTEST_WORKERS)`` literally), so defaulting this
-# exported variable governs both ralph.test_suites and raw-target paths. Keep
-# conditional assignment so operators can override:
+# Default: 4 — the 1.0 s SIGALRM budget charges wall clock, so eight pytest
+# workers plus real-git children over-subscribed a 12-core host and caused
+# spurious failures. Four workers passed 11819 tests in 38.00 s, 31.74 s, and
+# 34.37 s, faster than eight workers' 44.61 s contention run. The previous
+# ``auto`` default bypassed the Python-side cap on raw targets (test-unit /
+# test-integration / test-subprocess-e2e / test-cov interpolate
+# ``-n $(PYTEST_WORKERS)`` literally), so this exported default governs both
+# ralph.test_suites and raw-target paths. Keep conditional assignment so
+# operators can override:
 #   PYTEST_WORKERS=auto make test
 #   PYTEST_WORKERS=2  make test
 #   PYTEST_WORKERS=12 make test   # may exceed 1s per-test under load
@@ -20,7 +21,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 5
+PYTEST_WORKERS ?= 4
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
 # ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points
@@ -120,8 +121,7 @@ test-integration:
 # Runs with the same parallel workers as `make test`. It previously forced
 # `-n 1`, which serialized 659 real-subprocess tests into ~85 s and blew the
 # 60 s per-suite cap; the tests are independent, so worksteal brings it to
-# ~42 s on 8 workers. Five workers preserve enough concurrency for the
-# selected suite to finish within its immutable 60 s per-suite cap.
+# 48.85 s on 4 workers, within its immutable 60 s per-suite cap.
 # The cap is NOT raised to accommodate a slow suite — the suite is made
 # fast enough to fit it (see docs/ralph-workflow-policy/testing-policy.md
 # §'Performance is a HARD failure').

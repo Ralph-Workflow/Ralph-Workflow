@@ -53,19 +53,17 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-# Default: capped ``auto`` — pytest-xdist auto-detects available CPU cores,
-# but we cap at 5 to avoid I/O contention on loaded machines while still
-# using the full machine on modern hardware. ``loadfile`` scheduling keeps
-# each test file on a single worker, which preserves test isolation and
-# reduces scheduling overhead compared to ``worksteal``. The 5-worker
-# cap (down from 8) avoids the measured contention failure at 8 while
-# retaining enough throughput for this repository's 60 s suite budget.
+# Default: capped ``auto``. The 1.0 s per-test ITIMER_REAL budget charges
+# wall clock, so eight pytest workers plus real-git child processes starved
+# trivial tests on a 12-core host. Four workers passed 11819 tests in
+# 38.00 s, 31.74 s, and 34.37 s; eight workers took 44.61 s and produced
+# 4-7 spurious timeouts. ``loadfile`` scheduling preserves file isolation.
 # This is a concurrency cap, not a budget change:
 # ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
 # ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1.0) are unchanged. Override via
 # the ``PYTEST_WORKERS`` env var if needed.
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 5
+_MAX_PYTEST_WORKERS = 4
 
 
 def _pytest_workers() -> str:

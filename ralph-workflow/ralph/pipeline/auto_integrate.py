@@ -357,8 +357,8 @@ def _auto_integrate_after_commit_inner(
 
     rebase_result = _run_rebase_or_merge(root, target)
     if rebase_result.short_circuit is not None:
-        # _run_rebase_or_merge already cleared the record and
-        # returned the appropriate conflict / skip RebaseState.
+        # Resolved failures clear the record; an abort that leaves a rebase
+        # in progress retains it for startup recovery.
         return rebase_result.short_circuit
 
     # Success path: the feature branch contains the target.
@@ -601,11 +601,10 @@ def _run_rebase_or_merge(root: Path, target: str) -> _RebaseRunResult:
     On success returns a ``_RebaseRunResult`` with ``short_circuit``
     ``None`` and the ``rebase_outcome`` / ``merge_outcome`` the
     caller uses to build the final :class:`RebaseState`. On a
-    rebase failure, a rebase conflict followed by an unresolved
-    merge, or a rebase conflict whose abort left the engine in
-    progress, returns a ``_RebaseRunResult`` whose ``short_circuit``
-    is the appropriate ``RebaseState`` -- the durable crash record
-    has already been cleared in that case.
+    rebase failure or a resolved conflict returns a ``_RebaseRunResult``
+    whose ``short_circuit`` is the appropriate ``RebaseState``. When
+    aborting a conflicted rebase leaves it in progress, the durable crash
+    record is retained so startup recovery can restore the repository.
     """
     rebase_outcome = rebase_onto(target, repo_root=root)
     if isinstance(rebase_outcome, RebaseFailed):
@@ -637,7 +636,9 @@ def _resolve_rebase_conflict(
     """Abort the conflicted rebase and attempt the endpoint merge (AC-06/AC-07)."""
     _abort_rebase_after_conflict(root)
     if rebase_in_progress(root):
-        _clear_record(root)
+        # Keep the pre-mutation record: abort_rebase can fail after the
+        # rebase engine has created state, and recovery needs that record
+        # to prove ownership and retry the abort/reset on the next run.
         return _RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=False,
