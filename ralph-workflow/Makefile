@@ -2,24 +2,28 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: ``auto`` — uses all available CPU cores up to the cap in
-# ralph/test_suites.py (_MAX_PYTEST_WORKERS = 8). On an 8+-core machine
-# this is 8 workers; on smaller hosts fewer. The earlier default of 4
-# was safe on the legacy ~10k test corpus but is borderline once a
-# feature branch adds a few hundred tests (per-tick wall-clock with 4
-# workers is ~49-55s pytest + ~4s Python startup overhead, which
-# intermittently exceeds 60s). The cap moved from 12 down to 8 because
-# the per-test 1.0 s SIGALRM budget established in ``tests/conftest.py``
-# was occasionally exceeded by fast-but-CPU-bound tests under full
-# 12-worker saturation on shared hosts with 12+ cores. 8 workers leaves
-# enough scheduling headroom that every kept test reliably finishes
-# inside its 1 s window while keeping the combined wall-clock well under
-# the 60 s combined budget (~30 s observed). On systems with 12+ fast
-# cores, ``auto`` (capped at 8 by ralph.test_suites) is the safe
-# default; bump workers manually only after measuring the impact:
+# Default: 4 — measured on a 12-core host, 4 workers is the FASTEST
+# realistic worker count because the per-test 1.0 s SIGALRM (ITIMER_REAL
+# wall clock) budget established in ``tests/conftest.py`` charges a
+# worker for time it never used when descheduled, and many non-e2e
+# tests still spawn real git subprocesses, so 8 pytest workers plus
+# their git children oversubscribe a 12-core host. Measured numbers
+# on this host: 8 workers = 4-7 spurious TestExecutionTimeoutError
+# failures in 44.61 s; 6 workers = 11819 passed in 40.13 s; 4 workers
+# = 11819 passed in 38.00 s / 31.74 s / 34.37 s across three runs.
+# Lowering concurrency RAISED throughput (contention was costing more
+# than parallelism gained). The previous ``auto`` default bypassed the
+# Python-side cap on the raw Makefile targets (test-unit /
+# test-integration / test-subprocess-e2e / test-cov interpolate
+# ``-n $(PYTEST_WORKERS)`` literally), so the literal string ``auto``
+# reached pytest, which self-detected 12 workers and ignored the
+# Python cap entirely. Defaulting the variable to 4 fixes both the
+# ralph.test_suites path (where ``make test`` reads the env via
+# ``_pytest_workers``) AND the raw-target paths in one step. The conditional-assignment operator
+# MUST be preserved so operators can still override:
 #   PYTEST_WORKERS=auto make test
+#   PYTEST_WORKERS=2  make test
 #   PYTEST_WORKERS=12 make test   # may exceed 1s per-test under load
-#   PYTEST_WORKERS=2  make test   # legacy default — may exceed budget
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
@@ -27,7 +31,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= auto
+PYTEST_WORKERS ?= 4
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
 # ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points
@@ -127,7 +131,10 @@ test-integration:
 # Runs with the same parallel workers as `make test`. It previously forced
 # `-n 1`, which serialized 659 real-subprocess tests into ~85 s and blew the
 # 60 s per-suite cap; the tests are independent, so worksteal brings it to
-# ~42 s. The cap is NOT raised to accommodate a slow suite — the suite is made
+# ~42 s on 8 workers. After lowering the worker cap to 4 (the FASTEST
+# realistic worker count measured on this host) the measured wall-clock
+# for this target is ~49 s, comfortably inside the 60 s per-suite cap.
+# The cap is NOT raised to accommodate a slow suite — the suite is made
 # fast enough to fit it (see docs/ralph-workflow-policy/testing-policy.md
 # §'Performance is a HARD failure').
 test-subprocess-e2e:

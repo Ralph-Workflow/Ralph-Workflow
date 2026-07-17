@@ -619,22 +619,19 @@ def test_both_rebase_and_merge_conflict(tmp_git_repo: Path) -> None:
 
 # ---------------------------------------------------------------------------
 # AC-08: CAS race -> target ref NOT moved
+# (Real AC-08 proof lives in tests/test_auto_integrate_race.py:86 and :315.)
 # ---------------------------------------------------------------------------
 
 
-def test_cas_race_target_advances_concurrently(tmp_git_repo: Path) -> None:
-    """AC-08: target moves between observation and CAS leaves ref byte-unchanged.
+def test_compare_and_swap_branch_rejects_stale_expected_sha(tmp_git_repo: Path) -> None:
+    """CAS primitive: stale expected_old_sha is rejected without force-update.
 
-    The CAS binds the ancestor decision to the same observed SHA.
-    If the target moves between observation and CAS, the CAS fails
-    closed (ref no longer equals observed SHA) and the target ref
-    is left BYTE-UNCHANGED.
-
-    The full multi-call variant (with monkeypatched ``branch_sha``
-    to force the race inside :func:`_fast_forward_target`) lives in
-    :mod:`tests.test_auto_integrate_race`; this one exercises the
-    same contract via the primitive-level ``compare_and_swap_branch``
-    path, asserting the CAS refuses to overwrite the post-landing SHA.
+    Pins ``compare_and_swap_branch`` semantics ONLY -- does NOT prove
+    prompt AC-08 end-to-end. The real AC-08 proofs live in
+    :mod:`tests.test_auto_integrate_race` at lines 86 and 315, which
+    drive ``auto_integrate_after_commit`` through a full integration
+    pass with a monkeypatched ``branch_sha`` that forces the race
+    inside ``_fast_forward_target``.
     """
     import ralph.git.merge as _merge_mod
 
@@ -777,16 +774,27 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
 
 # ---------------------------------------------------------------------------
 # AC-11: phased crash recovery (4 cases)
+# (Full AC-11 proof with real rebase-apply state lives in
+# tests/test_auto_integrate_recovery.py.)
 # ---------------------------------------------------------------------------
 
 
-def test_recovery_mid_rebase_kill_restores_feature(tmp_git_repo: Path) -> None:
-    """AC-11 case 1: REAL mid-rebase kill leaves rebase-apply on disk.
+def test_recovery_with_record_and_no_in_progress_rebase_restores_head(
+    tmp_git_repo: Path,
+) -> None:
+    """Recovery record path: HEAD restored when no real rebase is in flight.
 
-    Headline pass-through kept in this file; the full invariant
-    suite (HEAD restored, working tree clean, record cleared, no
-    rebase-apply / rebase-merge / MERGE_HEAD) lives in
-    :func:`tests.test_auto_integrate_recovery.test_recovery_mid_rebase_kill_restores_feature`.
+    Pins the ``phase="integrating"`` record-path branch ONLY -- does
+    NOT prove prompt AC-11 end-to-end: this writes a record and calls
+    ``recover_incomplete_integration`` without starting a real rebase,
+    so no ``rebase-apply`` ever exists on disk and the assertions do
+    not cover the absence of in-progress rebase state.
+
+    The real AC-11 proof lives in
+    :func:`tests.test_auto_integrate_recovery.test_recovery_mid_rebase_kill_restores_feature`
+    (line 116), which creates GENUINE conflicting rebase state, asserts
+    ``rebase-apply`` exists first, then asserts it is gone and HEAD is
+    restored.
     """
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")

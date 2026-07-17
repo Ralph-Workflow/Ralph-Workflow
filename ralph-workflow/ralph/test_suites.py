@@ -54,20 +54,27 @@ if TYPE_CHECKING:
 
 
 # Default: capped ``auto`` — pytest-xdist auto-detects available CPU cores,
-# but we cap at 8 to avoid I/O contention on loaded machines while still
+# but we cap at 4 to avoid I/O contention on loaded machines while still
 # using the full machine on modern hardware. ``loadfile`` scheduling keeps
 # each test file on a single worker, which preserves test isolation and
-# reduces scheduling overhead compared to ``worksteal``. The 8-worker
-# cap (down from 12) was selected because the per-test 1.0 s SIGALRM
-# budget established in ``tests/conftest.py`` could be exceeded by a
-# handful of fast-but-CPU-bound tests under full 12-worker saturation
-# on shared hosts with 12+ cores. 8 workers leaves enough scheduling
-# headroom that every kept test reliably finishes inside its 1 s window
-# while still keeping the combined wall-clock well under the
-# immutable 60 s combined budget (~30 s observed). Override via
-# PYTEST_WORKERS env var if needed.
+# reduces scheduling overhead compared to ``worksteal``. The 4-worker
+# cap (down from 8) was selected because the per-test 1.0 s SIGALRM
+# (ITIMER_REAL WALL CLOCK) budget established in
+# ``tests/conftest.py:52-83`` charges a worker for time it never used
+# when it is descheduled, and many non-e2e tests still spawn real git
+# subprocesses, so 8 pytest workers plus their git children
+# oversubscribe a 12-core host. Measured on this host: 8 workers
+# = 4-7 spurious TestExecutionTimeoutError failures in 44.61 s;
+# 6 workers = 11819 passed in 40.13 s; 4 workers = 11819 passed in
+# 38.00 s / 31.74 s / 34.37 s across three runs. Lowering the
+# concurrency RAISED throughput (contention was costing more than
+# parallelism gained), so the immutable 60 s combined budget gains
+# headroom rather than losing it. This is a concurrency cap, not a
+# budget change: ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
+# ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1.0) are unchanged. Override via
+# the ``PYTEST_WORKERS`` env var if needed.
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 8
+_MAX_PYTEST_WORKERS = 4
 
 
 def _pytest_workers() -> str:
