@@ -544,6 +544,67 @@ def test_dynamic_scheduling_idempotent(
     assert new_schedules[0][2] is True
 
 
+def test_created_under_recursive_ancestor_schedules_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a directory CREATED under an already-recursive
+    scoped watch must NOT receive a redundant recursive watch and
+    must NOT trigger a catch-up rescan -- the existing ancestor
+    watch already covers it.
+
+    Default classifier plans ``/ws/src`` recursive (because src is
+    not excluded). Dispatching a created-directory event for
+    ``/ws/src/newpkg`` adds NO new ``observer.schedule`` call and
+    NO catch-up recording; the existing ``/ws/src`` watch handles
+    all descendant events.
+
+    This is the analyzer's regression: a static
+    ``rel in _scheduled_watch_paths`` check only catches duplicates
+    on the SAME path; without the recursive-ancestor check, a new
+    directory under an existing recursive watch would be double-
+    watched, and its descendant events would arrive through both
+    recursive subscriptions -- doubling ``event_count`` / callbacks
+    AND adding the filesystem-event work this refactor is intended
+    to avoid.
+    """
+    list_subdirs, _tree = _list_subdirs_factory()
+    fake = _FakeObserver()
+    monkeypatch.setattr(
+        "ralph.agents.invoke._workspace._create_watchdog_observer",
+        lambda: fake,
+    )
+
+    pre_existing = ["/ws/src/newpkg/early.py"]
+    monitor = WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        list_subdirs=list_subdirs,
+        list_tree_files=lambda d: list(pre_existing) if d == "/ws/src/newpkg" else [],
+    )
+    monitor.start()
+    initial_count = len(fake.scheduled)
+    # Sanity: start() plans /ws/src recursive
+    scheduled_paths = [path for _h, path, recursive in fake.scheduled]
+    assert "/ws/src" in scheduled_paths
+    src_recursive = next(
+        recursive for _h, path, recursive in fake.scheduled if path == "/ws/src"
+    )
+    assert src_recursive is True
+
+    event = _FakeEvent(
+        src_path="/ws/src/newpkg",
+        is_directory=True,
+        event_type="created",
+    )
+    monitor.dispatch_event(event)
+
+    # No new schedule call -- /ws/src is already recursive and covers it.
+    assert len(fake.scheduled) == initial_count
+    # No catch-up recording either -- the existing watch handles descendants.
+    assert monitor.event_count == 0
+    assert "/ws/src/newpkg/early.py" not in monitor.changed_files
+
+
 # ---------------------------------------------------------------------------
 # Step 3: moved-into-workspace directory scheduling
 # ---------------------------------------------------------------------------

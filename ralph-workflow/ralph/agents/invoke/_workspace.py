@@ -473,10 +473,18 @@ class WorkspaceMonitor:
             list_tree_files if list_tree_files is not None else _scandir_tree_files
         )
         # Tracks the workspace-relative paths already handed to the
-        # observer so dynamic re-scheduling is idempotent (a duplicate
+        # observer, mapping each path to its ``recursive`` flag, so
+        # dynamic re-scheduling is idempotent (a duplicate
         # created/moved-in event for the same path does NOT produce a
-        # second ``observer.schedule`` call). Cleared in ``stop()``.
-        self._scheduled_watch_paths: set[str] = set()  # bounded-accumulator-ok: bounded by workspace directory count; cleared in stop()
+        # second ``observer.schedule`` call) AND a directory created
+        # under an existing recursive scoped watch is not double-watched
+        # (the ancestor's recursive subscription already covers it --
+        # scheduling another recursive watch on the new directory would
+        # deliver descendant events through both streams and double
+        # ``event_count`` / callbacks, defeating the fseventsd-scope
+        # reduction this refactor is meant to achieve). Cleared in
+        # ``stop()``.
+        self._scheduled_watch_paths: dict[str, bool] = {}  # bounded-accumulator-ok: bounded by workspace directory count; cleared in stop()
         self._watch_lock: threading.Lock = threading.Lock()
         self._handler: object | None = None
 
@@ -515,7 +523,7 @@ class WorkspaceMonitor:
             for rel, recursive in plan:
                 abs_path = str(Path(workspace_str) / rel) if rel else workspace_str
                 self._observer.schedule(handler, abs_path, recursive=recursive)
-                self._scheduled_watch_paths.add(rel)
+                self._scheduled_watch_paths[rel] = recursive
         self._observer.start()
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
@@ -693,8 +701,20 @@ class WorkspaceMonitor:
 
         Returns the absolute in-workspace path on success (so the
         caller can run the catch-up rescan) or ``None`` when the
-        monitor is stopped, ``rel`` is already scheduled, or the
-        lock could not be acquired.
+        monitor is stopped, ``rel`` is already scheduled exactly,
+        OR some ancestor of ``rel`` is already scheduled with
+        ``recursive=True`` (the ancestor's recursive watch already
+        covers the new subtree -- adding another recursive watch
+        would double ``event_count`` / callbacks and re-add the
+        fseventsd work this refactor is intended to avoid; the
+        catch-up rescan is also skipped in that case because the
+        ancestor subscription is already emitting events for the
+        descendants).
+
+        The ancestor check walks the immediate-parent-to-root chain
+        under ``self._watch_lock`` so it sees the same snapshot the
+        subsequent ``observer.schedule`` call will commit to (no
+        race between two concurrent created-directory events).
         """
         workspace_str = str(self._workspace)
         abs_path = str(Path(workspace_str) / rel)
@@ -703,9 +723,32 @@ class WorkspaceMonitor:
                 return None
             if rel in self._scheduled_watch_paths:
                 return None
+            if self._has_recursive_ancestor_scheduled(rel):
+                return None
             self._observer.schedule(self._handler, abs_path, recursive=True)
-            self._scheduled_watch_paths.add(rel)
+            self._scheduled_watch_paths[rel] = True
         return abs_path
+
+    def _has_recursive_ancestor_scheduled(self, rel: str) -> bool:
+        """Return True iff some ancestor of ``rel`` is already
+        scheduled with ``recursive=True``.
+
+        Walks the ancestor chain from the immediate parent to the
+        workspace root (POSIX-relative, ``""`` for the root itself)
+        and looks each ancestor up in ``self._scheduled_watch_paths``.
+        Caller MUST hold ``self._watch_lock`` so the snapshot stays
+        consistent with the subsequent ``observer.schedule`` call.
+        """
+        parts = rel.split("/")
+        # ``i`` walks from ``len(parts) - 1`` (immediate parent) down
+        # to ``0`` (workspace root ``""``). ``parts[:0]`` is the empty
+        # list, joined to ``""`` which matches the root key the
+        # ``build_watch_plan`` entry emits.
+        for i in range(len(parts) - 1, -1, -1):
+            ancestor = "/".join(parts[:i]) if i > 0 else ""
+            if self._scheduled_watch_paths.get(ancestor) is True:
+                return True
+        return False
 
     def dispatch_event(self, event: object) -> None:
         """Dispatch a watchdog-style event through the per-monitor handler.
