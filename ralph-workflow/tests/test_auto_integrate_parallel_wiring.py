@@ -25,21 +25,24 @@ def test_fan_out_join_invokes_auto_integrate_when_enabled(
         return_value=RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
     )
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
+    rebase = RebaseState()
     state = MagicMock()
-    state.rebase = RebaseState()
+    state.rebase = rebase
     state.copy_with.return_value = state
+    config = _config(enabled=True)
+    workspace_scope = MagicMock()
     display = MagicMock()
 
     result = runner_module._integrate_after_fan_out(
         state=state,
-        config=_config(enabled=True),
-        workspace_scope=MagicMock(),
+        config=config,
+        workspace_scope=workspace_scope,
         display=display,
         policy_bundle=None,
         registry=None,
     )
 
-    hook.assert_called_once()
+    hook.assert_called_once_with(config, workspace_scope, rebase, conflict_resolver=None)
     assert result is state
     state.copy_with.assert_called_once_with(rebase=hook.return_value)
 
