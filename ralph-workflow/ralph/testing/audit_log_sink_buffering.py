@@ -89,6 +89,24 @@ _STREAM_SINK_NAMES: frozenset[str] = frozenset(
     }
 )
 
+#: Canonical ``ast.Name`` identifiers that mark a sink argument as
+#: a FILE PATH (not a callable/stream sink).  The audit treats these
+#: names as file-path expressions -- matching the canonical engine
+#: file-sink bindings in ``ralph/logging.py::_configure_file_handlers``
+#: (``text_log_path = run_directory / "ralph.log"``,
+#: ``structured_log_path = run_directory / "ralph.jsonl"``).  A
+#: future refactor that writes ``logger.add(text_log_path, ...)``
+#: or ``logger.add(structured_log_path, ...)`` directly MUST pass
+#: ``buffering=8192``; this set locks the invariant structurally so
+#: the regression class (omitted buffering on a named path) is
+#: detected by the audit, not by ad-hoc review.
+_FILE_SINK_PATH_NAMES: frozenset[str] = frozenset(
+    {
+        "text_log_path",
+        "structured_log_path",
+    }
+)
+
 
 @dataclass(frozen=True)
 class LogSinkBufferingViolation:
@@ -154,18 +172,37 @@ def _is_filesystem_path_expression(node: ast.AST) -> bool:
       * ``ast.Constant`` whose value is a ``str`` (string literal
         path -- rare in production but defensible).
       * ``ast.JoinedStr`` (f-string path -- rare but allowed).
+      * ``ast.Name`` whose identifier is in ``_FILE_SINK_PATH_NAMES``
+        (the canonical engine file-sink bindings -- ``text_log_path``
+        and ``structured_log_path``).  The audit treats these as
+        file-path expressions so that a direct
+        ``logger.add(text_log_path, ...)`` call without
+        ``buffering=8192`` is flagged as a regression -- exactly the
+        per-record filesystem-mutation class the fseventsd
+        mitigation closes.  Other ``ast.Name`` values (e.g. ``sink``,
+        ``console_sink``) are explicitly NOT in this set; they are
+        stream/callable sinks and are skipped by
+        :func:`_is_stream_or_callable_sink` before this function is
+        even consulted.
     """
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-        return True
-    if isinstance(node, ast.Call):
-        func = node.func
-        if isinstance(func, ast.Name) and func.id == "Path":
-            return True
-        if isinstance(func, ast.Attribute):
-            return func.attr in {"Path", "PurePath", "PosixPath", "WindowsPath"}
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return True
-    return isinstance(node, ast.JoinedStr)
+    is_div_join: bool = isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
+    is_path_constructor: bool = bool(_is_path_constructor(node))
+    is_string_literal: bool = isinstance(node, ast.Constant) and isinstance(node.value, str)
+    is_fstring: bool = isinstance(node, ast.JoinedStr)
+    is_named_path: bool = isinstance(node, ast.Name) and node.id in _FILE_SINK_PATH_NAMES
+    return bool(is_div_join or is_path_constructor or is_string_literal or is_fstring or is_named_path)
+
+
+def _is_path_constructor(node: ast.AST) -> bool:
+    """Return True iff ``node`` is a ``Path(...)``-style filesystem constructor call."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id == "Path"
+    if isinstance(func, ast.Attribute):
+        return func.attr in {"Path", "PurePath", "PosixPath", "WindowsPath"}
+    return False
 
 
 def _get_buffering_kwarg(call: ast.Call) -> ast.expr | None:

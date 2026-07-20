@@ -240,6 +240,135 @@ def test_audit_ignores_callable_stream_sinks(tmp_path: Path) -> None:
     )
 
 
+def test_audit_flags_text_log_path_without_buffering(tmp_path: Path) -> None:
+    """``logger.add(text_log_path, ...)`` without ``buffering`` triggers
+    ``file_sink_missing_buffering``.
+
+    The plan explicitly requires the audit to recognize the canonical
+    ``text_log_path`` Name binding as a file-path expression. Without
+    this branch, a future refactor that writes
+    ``logger.add(text_log_path, level='INFO')`` directly (instead of
+    routing through ``_add_buffered_file_sink``) would silently
+    regress to loguru's line-buffered ``FileSink`` default and
+    reinflate the fseventsd footprint. This fixture pins that
+    detection.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(text_log_path):\n"
+            "    logger.add(text_log_path, level='INFO')\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+
+    kinds: list[str] = [v.kind for v in violations]
+    assert "file_sink_missing_buffering" in kinds, (
+        f"expected file_sink_missing_buffering violation for text_log_path;"
+        f" got kinds: {kinds}"
+    )
+    text_violation: audit.LogSinkBufferingViolation = next(
+        v for v in violations if v.kind == "file_sink_missing_buffering"
+    )
+    assert text_violation.line > 0, (
+        f"violation line must be the call's lineno; got {text_violation.line}"
+    )
+
+
+def test_audit_flags_structured_log_path_without_buffering(tmp_path: Path) -> None:
+    """``logger.add(structured_log_path, ...)`` without ``buffering``
+    triggers ``file_sink_missing_buffering``.
+
+    The plan explicitly requires the audit to recognize the canonical
+    ``structured_log_path`` Name binding as a file-path expression.
+    Mirrors the ``text_log_path`` fixture -- pins the structured
+    JSONL sink under the same invariant.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(structured_log_path):\n"
+            "    logger.add(structured_log_path, level='INFO', serialize=True)\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+
+    kinds: list[str] = [v.kind for v in violations]
+    assert "file_sink_missing_buffering" in kinds, (
+        f"expected file_sink_missing_buffering violation for"
+        f" structured_log_path; got kinds: {kinds}"
+    )
+    text_violation: audit.LogSinkBufferingViolation = next(
+        v for v in violations if v.kind == "file_sink_missing_buffering"
+    )
+    assert text_violation.line > 0, (
+        f"violation line must be the call's lineno; got {text_violation.line}"
+    )
+
+
+def test_audit_passes_text_log_path_with_buffering(tmp_path: Path) -> None:
+    """``logger.add(text_log_path, ..., buffering=8192)`` yields zero violations.
+
+    Negative-control fixture proving the named-path recognition
+    does NOT false-flag a correctly buffered call -- the audit
+    only triggers on MISSING buffering.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(text_log_path):\n"
+            "    logger.add(text_log_path, level='INFO', buffering=8192)\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+    assert violations == [], (
+        f"buffered text_log_path sink must NOT be flagged; got: {violations}"
+    )
+
+
+def test_audit_passes_structured_log_path_with_buffering(tmp_path: Path) -> None:
+    """``logger.add(structured_log_path, ..., buffering=8192)`` yields
+    zero violations.
+
+    Negative-control fixture proving the named-path recognition
+    does NOT false-flag a correctly buffered call -- the audit
+    only triggers on MISSING buffering.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(structured_log_path):\n"
+            "    logger.add(structured_log_path, level='INFO', serialize=True,"
+            " buffering=8192)\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+    assert violations == [], (
+        f"buffered structured_log_path sink must NOT be flagged;"
+        f" got: {violations}"
+    )
+
+
 def test_audit_flags_missing_logging_module(tmp_path: Path) -> None:
     """A package root WITHOUT ``logging.py`` triggers ``missing_logging_module``.
 
