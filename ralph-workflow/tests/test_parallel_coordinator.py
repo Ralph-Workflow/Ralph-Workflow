@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, cast
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     Event,
+    PipelineEvent,
+    WorkerCompletedEvent,
     WorkerFailedEvent,
 )
 from ralph.pipeline.work_units import WorkUnit
@@ -75,6 +77,28 @@ def _seed_artifact(repo_root: Path, unit_id: str) -> None:
             }
         )
     )
+
+
+async def test_nonzero_worker_exit_is_failure_even_when_artifacts_would_exist() -> None:
+    """Analysis regression: exit 1 must not become a completed worker event."""
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    executor = FakeAgentExecutor(
+        {unit.unit_id: FakeRun(outputs=["agent failed"], exit_code=1, duration_ms=1)}
+    )
+
+    events = await run_fan_out(
+        effect=FanOutEffect(work_units=(unit,), max_workers=1),
+        executor=executor,
+        display=RecordingDisplay(),
+    )
+
+    failures = [event for event in events if isinstance(event, WorkerFailedEvent)]
+    assert len(failures) == 1
+    assert failures[0].exit_code == 1
+    assert "agent failed" in failures[0].error
+    assert not any(isinstance(event, WorkerCompletedEvent) for event in events)
+    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
 
 
 class TestPreflightRejection:

@@ -847,7 +847,18 @@ def _run_pipeline_step(
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
-            fan_out_state = execute_fan_out_sync(
+
+            def integrate_after_successful_fan_out(finished_state: PipelineState) -> PipelineState:
+                return _integrate_after_fan_out(
+                    state=finished_state,
+                    config=config,
+                    workspace_scope=workspace_scope,
+                    display=display,
+                    policy_bundle=policy_bundle,
+                    registry=registry,
+                )
+
+            return execute_fan_out_sync(
                 effect=effect,
                 state=state,
                 display=display,
@@ -859,14 +870,7 @@ def _run_pipeline_step(
                 cli_overrides=cli_overrides,
                 monitor_stop_cb=_monitor_stop_cb,
                 pipeline_deps=pipeline_deps,
-            )
-            return _integrate_after_fan_out(
-                state=fan_out_state,
-                config=config,
-                workspace_scope=workspace_scope,
-                display=display,
-                policy_bundle=policy_bundle,
-                registry=registry,
+                _on_successful_completion=integrate_after_successful_fan_out,
             )
 
         with process_phase_scope(state.phase):
