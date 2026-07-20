@@ -177,8 +177,13 @@ def build_session_bridge(
     # the moment the prompt tells it to. Without this, the agent's first read
     # fails with ENOENT and the artifact submission silently breaks. (Bug
     # surfaced on 2026-06-14 when the commit prompt pointed at a format doc
-    # that hadn't been written yet.) Idempotent — re-running on a workspace
-    # that already has the docs is a no-op overwrite.
+    # that hadn't been written yet.) Idempotent and fseventsd-friendly:
+    # ``materialize_format_doc`` and ``materialize_format_index`` route
+    # through ``write_text_if_changed`` from
+    # ``ralph/mcp/artifacts/idempotent_write``, which SKIPS the physical
+    # rewrite when the on-disk doc is byte-identical, so re-running per
+    # session adds no filesystem mutation (and therefore no fsevents
+    # notification) on a workspace that already has the docs.
     materialize_all_format_docs(workspace_root)
     # AC-11: attach one ``ExecResourceResolver`` per session so
     # ``ralph://exec/<spill-name>`` URIs returned by ``format=summary``
