@@ -20,6 +20,15 @@ from ralph.git.merge import (
 )
 from ralph.git.operations import find_main_worktree_root, is_repo_clean
 
+_TARGET_MISSING = "target branch missing at fast-forward time"
+_TARGET_NOT_ANCESTOR = "target advanced concurrently (not an ancestor of feature)"
+_TARGET_DIRTY = "target worktree dirty"
+_TARGET_FF_REFUSED = "target advanced concurrently (ff-only refused)"
+_TARGET_CAS_MISMATCH = "target advanced concurrently (CAS mismatch)"
+_RETRYABLE_REASONS = frozenset(
+    {_TARGET_NOT_ANCESTOR, _TARGET_FF_REFUSED, _TARGET_CAS_MISMATCH}
+)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -59,14 +68,14 @@ def fast_forward_target(
     # will use; every downstream check must reference the same SHA.
     observed_target_sha = branch_sha(repo_root, target)
     if observed_target_sha is None:
-        return False, "target branch missing at fast-forward time"
+        return False, _TARGET_MISSING
 
     # AC-08 guard: the OBSERVED SHA (not the ref name) must be an
     # ancestor of feature_sha. This is the contract that closes the
     # TOCTOU race: if the target moves after this check, the
     # downstream CAS (or the worktree ff) will refuse the move.
     if not is_ancestor(repo_root, observed_target_sha, feature_sha):
-        return False, "target advanced concurrently (not an ancestor of feature)"
+        return False, _TARGET_NOT_ANCESTOR
 
     return _fast_forward_target_via_worktree_or_cas(
         repo_root, target, feature_sha, observed_target_sha
@@ -104,9 +113,9 @@ def _fast_forward_via_target_worktree(
     not a fast-forward of the worktree's current branch.
     """
     if not is_repo_clean(worktree_root):
-        return False, "target worktree dirty"
+        return False, _TARGET_DIRTY
     if not fast_forward_via_worktree(worktree_root, feature_sha):
-        return False, "target advanced concurrently (ff-only refused)"
+        return False, _TARGET_FF_REFUSED
     return True, ""
 
 
@@ -118,8 +127,13 @@ def _fast_forward_via_cas(
 ) -> tuple[bool, str]:
     """Atomic CAS fast-forward of a not-checked-out target branch (AC-08)."""
     if not compare_and_swap_branch(repo_root, target, observed_target_sha, feature_sha):
-        return False, "target advanced concurrently (CAS mismatch)"
+        return False, _TARGET_CAS_MISMATCH
     return True, ""
 
 
-__all__ = ["fast_forward_target"]
+def is_retryable_fast_forward_failure(reason: str) -> bool:
+    """Whether a failed fast-forward reflects a transient target move."""
+    return reason in _RETRYABLE_REASONS
+
+
+__all__ = ["fast_forward_target", "is_retryable_fast_forward_failure"]

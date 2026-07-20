@@ -57,7 +57,10 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline.auto_integrate_ff import fast_forward_target
+from ralph.pipeline.auto_integrate_ff import (
+    fast_forward_target,
+    is_retryable_fast_forward_failure,
+)
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
 )
@@ -542,15 +545,15 @@ def _integrate_once(
     if not ok:
         # Fast-forward skipped: reason is appended but we keep
         # the rebase/merged action as the headline so the log line
-        # reflects what actually happened to the feature. The caller
-        # may re-integrate onto the moved target (bounded).
+        # reflects what actually happened to the feature. Only an
+        # explicit concurrent target move merits a bounded retry.
         record = record.model_copy(
             update={
                 "last_reason": skip_reason,
                 "fast_forwarded": False,
             }
         )
-        return record, True
+        return record, is_retryable_fast_forward_failure(skip_reason)
     # Successful fast-forward: the ``fast_forwarded`` boolean is
     # the headline signal, so any residual reason from the
     # rebase/merge phase (including benign rebase NoOp reasons

@@ -247,6 +247,37 @@ def test_conflict_resolver_exception_aborts_and_records_conflict(
     assert after["worktree"] == before["worktree"]
 
 
+def test_auto_integrate_regression_deterministic_ff_refusal_does_not_retry(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Analysis feedback: a safety refusal makes exactly one integration pass."""
+    import ralph.pipeline.auto_integrate as _ai_mod
+
+    base = _base_branch(tmp_git_repo)
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
+    calls: list[int] = []
+
+    def _dirty_target_ff(
+        repo_root: Path, target: str, feature_sha: str
+    ) -> tuple[bool, str]:
+        calls.append(1)
+        return False, "target worktree dirty"
+
+    monkeypatch.setattr(_ai_mod, "_fast_forward_target", _dirty_target_ff)
+
+    outcome = auto_integrate_after_commit(
+        _build_config(tmp_git_repo, target=base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is False
+    assert outcome.last_reason == "target worktree dirty"
+    assert calls == [1]
+
+
 def test_ff_race_retries_integration_onto_moved_target(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -263,23 +294,33 @@ def test_ff_race_retries_integration_onto_moved_target(
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feature only\n", "feat")
 
-    real_ff = _ai_mod.fast_forward_target
+    real_ff = _ai_mod._fast_forward_target
     calls: list[int] = []
+    intervening_shas: list[str] = []
 
     def _flaky_ff(repo_root: Path, target: str, feature_sha: str) -> tuple[bool, str]:
         calls.append(1)
         if len(calls) == 1:
-            return False, "target branch moved concurrently"
+            _run(repo_root, "checkout", target)
+            intervening_sha = _commit(
+                repo_root, "intervening.txt", "intervening\n", "concurrent target move"
+            )
+            _run(repo_root, "checkout", "feature")
+            intervening_shas.append(intervening_sha)
+            assert intervening_sha == _run(
+                repo_root, "rev-parse", f"refs/heads/{target}"
+            ).stdout.strip()
+            return False, "target advanced concurrently (CAS mismatch)"
         return real_ff(repo_root, target, feature_sha)
 
-    monkeypatch.setattr(_ai_mod, "fast_forward_target", _flaky_ff)
+    monkeypatch.setattr(_ai_mod, "_fast_forward_target", _flaky_ff)
 
     config = _build_config(tmp_git_repo, target=base)
     outcome = auto_integrate_after_commit(
         config, WorkspaceScope(tmp_git_repo), RebaseState()
     )
     assert outcome is not None
-    assert len(calls) >= 2, "ff race must trigger an immediate retry"
+    assert len(calls) == 2, "ff race must trigger exactly one immediate retry"
     assert outcome.fast_forwarded is True, (
         f"retry must land the fast-forward, got action={outcome.last_action!r}"
         f" reason={outcome.last_reason!r}"
@@ -287,6 +328,9 @@ def test_ff_race_retries_integration_onto_moved_target(
     head_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_sha == head_sha
+    assert _run(
+        tmp_git_repo, "merge-base", "--is-ancestor", intervening_shas[0], "HEAD"
+    ).returncode == 0
 
 
 def test_phase_transition_integrates_when_target_moved(tmp_git_repo: Path) -> None:
