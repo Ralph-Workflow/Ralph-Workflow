@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._capability_state import CapabilityState
+
+if TYPE_CHECKING:
+    from ralph.mcp.artifacts.file_backend import FileBackend
 
 DEFAULT_STATE_PATH: Path = Path.home() / ".config" / "ralph-workflow-capabilities.json"
 
@@ -25,11 +31,21 @@ def load_capability_state(path: Path | None = None) -> CapabilityState:
         return CapabilityState()
 
 
-def save_capability_state(state: CapabilityState, path: Path | None = None) -> None:
+def save_capability_state(
+    state: CapabilityState,
+    path: Path | None = None,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
     """Persist capability state to JSON file."""
     resolved = path if path is not None else default_state_path()
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(state.model_dump_json(indent=2), encoding="utf-8")
+    backend.mkdir(resolved.parent, parents=True, exist_ok=True)
+    write_text_if_changed(
+        backend,
+        resolved,
+        state.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
 
 
 __all__ = [

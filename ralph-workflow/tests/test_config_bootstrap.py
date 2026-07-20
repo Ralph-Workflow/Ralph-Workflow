@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from git import Repo
+from pathspec import GitIgnoreSpec
 
 if TYPE_CHECKING:
     import pytest
@@ -634,43 +635,28 @@ def test_ensure_local_configs_gitignore_includes_patterns_for_representative_loc
     )
 
 
-def _paths_ignored_by_check_ignore(cwd: Path, paths: tuple[str, ...]) -> set[str]:
-    """Return the subset of paths git check-ignore -v reports as ignored.
-
-    A path is considered ignored iff a non-negation pattern matched it.
-    The matching pattern is the third colon-separated segment of the first
-    stdout line (after a tab).
-    """
-    if not paths:
-        return set()
-    result = Repo(cwd).git.check_ignore("-v", "--", *paths)
-    ignored: set[str] = set()
-    for line in result.splitlines():
-        if not line:
-            continue
-        prefix, _, path = line.partition("\t")
-        pattern = prefix.rsplit(":", 1)[-1] if ":" in prefix else prefix
-        if not pattern.startswith("!"):
-            ignored.add(path.strip())
-    return ignored
+def _paths_ignored_by_gitignore(gitignore: Path, paths: tuple[str, ...]) -> set[str]:
+    """Return the subset of paths matched by the generated gitignore."""
+    spec = GitIgnoreSpec.from_lines(gitignore.read_text(encoding="utf-8").splitlines())
+    return set(spec.match_files(paths))
 
 
 def test_ensure_local_configs_gitignore_matches_per_category_positive_paths(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
     """Each new gitignore category must cover at least one representative path."""
-    agent_dir = tmp_git_repo / ".agent"
+    agent_dir = tmp_path / ".agent"
     ensure_local_configs(agent_dir)
 
-    ignored = _paths_ignored_by_check_ignore(
-        tmp_git_repo, _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS
+    ignored = _paths_ignored_by_gitignore(
+        tmp_path / ".gitignore", _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS
     )
     missing = [p for p in _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS if p not in ignored]
     assert not missing, f"New-category paths not covered by .gitignore: {missing}"
 
 
 def test_ensure_local_configs_does_not_overignore_tracked_conventions(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
     """Tracked files and source-controlled .gitkeep markers must NOT be ignored.
 
@@ -682,10 +668,12 @@ def test_ensure_local_configs_does_not_overignore_tracked_conventions(
       `!<dir>/.gitkeep` allowlist so source-controlled marker files stay
       tracked even when the dir itself is ignored.
     """
-    agent_dir = tmp_git_repo / ".agent"
+    agent_dir = tmp_path / ".agent"
     ensure_local_configs(agent_dir)
 
-    ignored = _paths_ignored_by_check_ignore(tmp_git_repo, _EXPECTED_TRACKED_NON_IGNORED_PATHS)
+    ignored = _paths_ignored_by_gitignore(
+        tmp_path / ".gitignore", _EXPECTED_TRACKED_NON_IGNORED_PATHS
+    )
     over_ignored = [p for p in _EXPECTED_TRACKED_NON_IGNORED_PATHS if p in ignored]
     assert not over_ignored, (
         f"Tracked files or .gitkeep markers that the new gitignore must NOT ignore: {over_ignored}"

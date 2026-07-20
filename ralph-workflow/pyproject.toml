@@ -56,6 +56,7 @@ dev = [
   "hatch",
   "ruff",
   "mypy",
+  "pathspec>=1.0.4",
   "types-psutil>=5.9",
   "hypothesis>=6.100",
   "pytest>=8.0",
@@ -267,6 +268,7 @@ exclude_lines = [
 [dependency-groups]
 dev = [
     "mypy>=1.20.1",
+    "pathspec>=1.0.4",
     "types-psutil",
     "hypothesis>=6.100",
     "pytest>=8.0",
