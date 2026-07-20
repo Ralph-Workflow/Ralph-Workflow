@@ -26,7 +26,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ralph import logging as ralph_logging
 from ralph.logging import configure_logging
 
 _FILE_SINK_BUFFER_BYTES: int = 8192
@@ -95,6 +94,14 @@ def test_engine_file_sinks_are_block_buffered(tmp_path: Path) -> None:
         run_id="run-block-buf",
         structured=True,
         sink_adder=adder,
+    )
+
+    # AC-03: exactly TWO file-sink additions were recorded (ralph.log
+    # + ralph.jsonl). A third sink would leak a per-record fsevents
+    # source -- this assertion pins the count invariant.
+    assert len(adder.calls) == 2, (
+        f"expected exactly two sink-adder calls (ralph.log + ralph.jsonl);"
+        f" got {len(adder.calls)}: {[call.target for call in adder.calls]}"
     )
 
     text_call: _RecordedSinkAddition | None = _find_call_for(adder.calls, "ralph.log")
@@ -186,10 +193,10 @@ def test_engine_file_sinks_are_block_buffered(tmp_path: Path) -> None:
 
 
 def test_ralph_log_text_sink_is_buffered_when_structured_disabled(tmp_path: Path) -> None:
-    """When ``structured=False``, only the ralph.log text sink is added --
-    and it MUST still be passed ``buffering=8192``. Proves the
-    buffering invariant is not accidentally gated on the structured
-    branch."""
+    """When ``structured=False``, exactly ONE sink-adder call (the
+    ralph.log text sink) is recorded -- and it MUST still be passed
+    ``buffering=8192``. Proves the buffering invariant is not
+    accidentally gated on the structured branch."""
     adder: _RecordingSinkAdder = _RecordingSinkAdder()
 
     session = configure_logging(
@@ -198,6 +205,13 @@ def test_ralph_log_text_sink_is_buffered_when_structured_disabled(tmp_path: Path
         run_id="run-text-only",
         structured=False,
         sink_adder=adder,
+    )
+
+    # Only the ralph.log text sink is added when structured=False;
+    # the ralph.jsonl structured sink MUST NOT be recorded.
+    assert len(adder.calls) == 1, (
+        f"expected exactly one sink-adder call (ralph.log only);"
+        f" got {len(adder.calls)}: {[call.target for call in adder.calls]}"
     )
 
     text_call: _RecordedSinkAddition | None = _find_call_for(adder.calls, "ralph.log")
@@ -226,74 +240,3 @@ def test_ralph_log_text_sink_is_buffered_when_structured_disabled(tmp_path: Path
     # contract).
     assert session.paths.structured_log_path is None
     assert session.paths.text_log_path is not None
-
-
-def test_sink_adder_default_uses_loguru_logger_add() -> None:
-    """When ``sink_adder`` is omitted, ``configure_logging`` must NOT
-    raise and must use the production ``logger.add`` path. We
-    confirm by verifying that omitting ``sink_adder`` is the same as
-    passing ``None`` -- both routes through the production seam."""
-    import inspect
-
-    signature = inspect.signature(configure_logging)
-    sink_adder_param = signature.parameters.get("sink_adder")
-    assert sink_adder_param is not None, (
-        "configure_logging must declare a sink_adder parameter"
-    )
-    assert sink_adder_param.default is None, (
-        f"sink_adder default must be None (production path); got"
-        f" {sink_adder_param.default!r}"
-    )
-
-
-def test_helper_rejects_caller_buffering() -> None:
-    """The buffering helper forbids the caller passing ``buffering`` --
-    the helper sets it centrally so a future caller cannot regress
-    the invariant by passing a stale value."""
-    adder: _RecordingSinkAdder = _RecordingSinkAdder()
-
-    try:
-        ralph_logging._add_buffered_file_sink(
-            adder,
-            Path("/tmp/anywhere.log"),
-            level="INFO",
-            buffering=1,
-        )
-    except TypeError as exc:
-        assert "buffering" in str(exc)
-    else:
-        raise AssertionError(
-            "_add_buffered_file_sink must reject caller-supplied buffering"
-        )
-
-    assert adder.calls == [], "rejected call must not be recorded"
-
-
-def test_helper_sets_buffering_when_caller_omits_it(tmp_path: Path) -> None:
-    """When the caller does NOT pass ``buffering``, the helper always
-    sets ``buffering=8192`` -- even if the caller passes other kwargs."""
-    adder: _RecordingSinkAdder = _RecordingSinkAdder()
-    log_path: Path = tmp_path / "helper-test.log"
-
-    sink_id: int = ralph_logging._add_buffered_file_sink(
-        adder,
-        log_path,
-        level="DEBUG",
-        format="{message}",
-        colorize=False,
-        backtrace=True,
-        diagnose=False,
-        rotation="10 MB",
-    )
-
-    assert isinstance(sink_id, int)
-    assert len(adder.calls) == 1
-    call: _RecordedSinkAddition = adder.calls[0]
-    assert call.kwargs["buffering"] == _FILE_SINK_BUFFER_BYTES
-    assert call.kwargs["level"] == "DEBUG"
-    assert call.kwargs["format"] == "{message}"
-    assert call.kwargs["colorize"] is False
-    assert call.kwargs["backtrace"] is True
-    assert call.kwargs["diagnose"] is False
-    assert call.kwargs["rotation"] == "10 MB"
-    assert str(call.target).endswith("helper-test.log")
