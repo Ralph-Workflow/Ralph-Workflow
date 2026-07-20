@@ -711,21 +711,13 @@ def _auto_integrate_check_skip_conditions(
     if current_branch == target:
         return _record_skip(reason="on target branch", target=target)
     target_sha = branch_sha(root, target)
-    if target_sha is not None and not _has_commits_ahead(root, target_sha):
+    if target_sha is not None and target_sha == get_head_sha(root):
         return _record_skip(reason="no commits beyond target", target=target)
     try:
         check_rebase_preconditions(root)
     except RebasePreconditionError as exc:
         return _record_skip(reason=f"preconditions not met: {exc}", target=target)
     return None
-
-
-def _has_commits_ahead(root: Path, target_sha: str) -> bool:
-    """True when there is at least one commit beyond ``target_sha`` (AC-03)."""
-    try:
-        return bool(_count_commits_ahead(root, target_sha))
-    except Exception:
-        return True
 
 
 @dataclass(frozen=True)
@@ -857,24 +849,6 @@ def _abort_rebase_after_conflict(root: Path) -> None:
             abort_rebase(repo_root=root)
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)
-
-
-def _count_commits_ahead(repo_root: Path, target_sha: str) -> int:
-    """Return ``git rev-list --count <target_sha>..HEAD`` as int."""
-    from ralph.git.subprocess_runner import run_git
-
-    result = run_git(
-        ("rev-list", "--count", f"{target_sha}..HEAD"),
-        cwd=repo_root,
-        label="git-rev-list-count",
-    )
-    if result.returncode != 0:
-        return 1  # conservative
-    raw = result.stdout.strip()
-    try:
-        return int(raw)
-    except ValueError:
-        return 1
 
 
 __all__ = [

@@ -9,7 +9,10 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha, is_ancestor
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit,
+    auto_integrate_on_phase_transition,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -75,8 +78,12 @@ def test_commit_rebases_feature_and_fast_forwards_main(tmp_git_repo: Path) -> No
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
 
 
-def test_two_agents_keep_main_in_lockstep(tmp_git_repo: Path) -> None:
-    """Plan Step 5: each agent lands its tip and receives the other's work."""
+def test_two_independent_worktree_agents_converge_on_main(tmp_git_repo: Path) -> None:
+    """Regression: an idle feature must rebase after main advances past its tip.
+
+    The former ``no commits beyond target`` skip treated a feature behind main
+    as already integrated, so it never received another agent's landed commit.
+    """
     main = _base_branch(tmp_git_repo)
     feature_a = tmp_git_repo.parent / "feature-a"
     feature_b = tmp_git_repo.parent / "feature-b"
@@ -103,6 +110,17 @@ def test_two_agents_keep_main_in_lockstep(tmp_git_repo: Path) -> None:
         assert second.fast_forwarded is True
         assert branch_sha(tmp_git_repo, main) == feature_b_head
         assert (feature_b / "a.txt").exists()
+
+        # Regression: after B lands, A has no commits beyond main but must
+        # still catch up at the next phase boundary instead of silently skipping.
+        catch_up = auto_integrate_on_phase_transition(
+            _build_config(target=main), WorkspaceScope(feature_a), RebaseState()
+        )
+
+        assert catch_up is not None
+        assert catch_up.fast_forwarded is True
+        assert (feature_a / "b.txt").exists()
+        assert _run(feature_a, "rev-parse", "HEAD").stdout.strip() == branch_sha(tmp_git_repo, main)
     finally:
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_b))
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_a))
