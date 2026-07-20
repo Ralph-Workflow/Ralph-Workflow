@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import ralph.recovery.controller as recovery_controller_module
 from ralph.config.enums import Verbosity
+from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -121,6 +122,19 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
         "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
+    # Skip the post-commit auto-integrate step so the runner does not shell
+    # out to ``git`` during the test. The seam is identical to the one used
+    # by ``tests/test_auto_integrate_parallel_wiring.py`` and
+    # ``tests/test_runner_auto_integrate_seam.py``: replacing the function
+    # on both ``runner_module`` (used by the per-step hook) and
+    # ``run_loop_module`` (used by the startup integration preamble)
+    # eliminates the ~75 ms of real subprocess + psutil work that the
+    # offline tests were paying per run. The offline/online assertions
+    # do not depend on auto-integrate behaviour, so neutralising it here
+    # keeps the test deterministic within the 1.0 s per-test policy
+    # limit without weakening the black-box contract.
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
+    monkeypatch.setattr(run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
 
     # Monitor starts OFFLINE so the runner will block on first loop iteration
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.OFFLINE)
@@ -241,6 +255,17 @@ def test_offline_window_produces_no_failure_events(
         "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
+    # Skip the post-commit auto-integrate step so the runner does not shell
+    # out to ``git`` during the test. The seam mirrors the one in
+    # ``test_offline_pauses_agent_invocation_and_resume_completes`` and the
+    # standalone ``test_auto_integrate_*`` suites: replacing the function
+    # on both ``runner_module`` and ``run_loop_module`` eliminates the real
+    # subprocess + psutil work that the offline tests were paying per run,
+    # so the test stays deterministic within the 1.0 s per-test policy
+    # limit. The offline/no-failure-event assertions do not depend on
+    # auto-integrate behaviour, so neutralising it here is safe.
+    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
+    monkeypatch.setattr(run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.OFFLINE)
 
