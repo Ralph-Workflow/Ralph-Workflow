@@ -767,6 +767,31 @@ def _integrate_on_phase_transition(
     return outcome
 
 
+def _integrate_after_fan_out(
+    *,
+    state: PipelineState,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+) -> PipelineState:
+    """Integrate a completed fan-out at the shared coordinator seam."""
+    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
+    if not bool(enabled_raw):
+        return state
+    outcome = _integrate_on_phase_transition(
+        event=PipelineEvent.ALL_WORKERS_COMPLETE,
+        config=config,
+        workspace_scope=workspace_scope,
+        state=state,
+        display=display,
+        policy_bundle=policy_bundle,
+        registry=registry,
+    )
+    return state.copy_with(rebase=outcome) if outcome is not None else state
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -822,7 +847,7 @@ def _run_pipeline_step(
 
         if isinstance(effect, FanOutEffect):
             _phase_outcome = "success"
-            return execute_fan_out_sync(
+            fan_out_state = execute_fan_out_sync(
                 effect=effect,
                 state=state,
                 display=display,
@@ -834,6 +859,14 @@ def _run_pipeline_step(
                 cli_overrides=cli_overrides,
                 monitor_stop_cb=_monitor_stop_cb,
                 pipeline_deps=pipeline_deps,
+            )
+            return _integrate_after_fan_out(
+                state=fan_out_state,
+                config=config,
+                workspace_scope=workspace_scope,
+                display=display,
+                policy_bundle=policy_bundle,
+                registry=registry,
             )
 
         with process_phase_scope(state.phase):
