@@ -10,10 +10,12 @@ advances ``updated_at``.
 The tests drive the public entry points
 (:func:`new_plan_draft`, :func:`save_plan_draft`,
 :func:`load_plan_draft`) with an injected in-memory counting
-``FileBackend`` (no real filesystem I/O, no ``tmp_path``, no
+``FileBackend`` (no real filesystem I/O, no
 ``time.sleep``) and a monotonically-incrementing ``now_iso`` stub,
 so every post-condition is observed through the backend's recording
 of ``write_text`` / ``replace`` invocations and the stubbed clock.
+The artifact directory is a fixed virtual path (``/virtual-ws/.agent/artifacts``)
+that never touches the host filesystem.
 
 A ``_CountingBackend`` (defined here for test isolation) is
 structurally shaped to match the public :class:`FileBackend` protocol
@@ -102,10 +104,10 @@ class _Clock:
         return f"2026-01-01T00:00:0{self._counter}+00:00"
 
 
-def test_first_save_writes(tmp_path: Path) -> None:
+def test_first_save_writes() -> None:
     backend = _CountingBackend()
     clock = _Clock()
-    artifact_dir = tmp_path
+    artifact_dir = Path("/virtual-ws/.agent/artifacts")
     draft = new_plan_draft(now_iso=clock)
     draft["sections"] = {"summary": {"context": "first stage"}}
 
@@ -120,10 +122,10 @@ def test_first_save_writes(tmp_path: Path) -> None:
     assert "summary" in sections
 
 
-def test_identical_restage_performs_no_write(tmp_path: Path) -> None:
+def test_identical_restage_performs_no_write() -> None:
     backend = _CountingBackend()
     clock = _Clock()
-    artifact_dir = tmp_path
+    artifact_dir = Path("/virtual-ws/.agent/artifacts")
     draft = new_plan_draft(now_iso=clock)
     draft["sections"] = {"summary": {"context": "first stage"}}
 
@@ -147,10 +149,10 @@ def test_identical_restage_performs_no_write(tmp_path: Path) -> None:
     assert second_updated_at["updated_at"] == first_stamp
 
 
-def test_changed_sections_write_and_advance_updated_at(tmp_path: Path) -> None:
+def test_changed_sections_write_and_advance_updated_at() -> None:
     backend = _CountingBackend()
     clock = _Clock()
-    artifact_dir = tmp_path
+    artifact_dir = Path("/virtual-ws/.agent/artifacts")
     draft = new_plan_draft(now_iso=clock)
     draft["sections"] = {"summary": {"context": "first stage"}}
 
