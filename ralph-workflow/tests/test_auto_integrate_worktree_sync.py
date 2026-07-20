@@ -51,6 +51,10 @@ def _build_config(*, target: str) -> UnifiedConfig:
     )
 
 
+def _default_config() -> UnifiedConfig:
+    return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}})
+
+
 def _add_worktree(repo_root: Path, path: Path, branch: str) -> None:
     assert _run(repo_root, "worktree", "add", "-b", branch, str(path)).returncode == 0
 
@@ -74,6 +78,31 @@ def test_commit_rebases_feature_and_fast_forwards_main(tmp_git_repo: Path) -> No
         assert outcome.last_action in {"rebased", "merged"}
         assert branch_sha(tmp_git_repo, main) == feature_head
         assert is_ancestor(tmp_git_repo, main, feature_head) is True
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
+
+
+def test_default_config_worktree_agent_advances_shared_main(tmp_git_repo: Path) -> None:
+    """AC-01 regression: default target detection lands despite a dirty main checkout."""
+    main = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
+    feature = tmp_git_repo.parent / "feature-default"
+    _add_worktree(tmp_git_repo, feature, "feature-default")
+    try:
+        _commit(feature, "feature.txt", "feature\n", "feature change")
+        dirty_file = tmp_git_repo / "tracked.txt"
+        dirty_file.write_text("operator work\n", encoding="utf-8")
+
+        outcome = auto_integrate_after_commit(
+            _default_config(), WorkspaceScope(feature), RebaseState()
+        )
+        feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
+
+        assert outcome is not None
+        assert outcome.fast_forwarded is True
+        assert branch_sha(tmp_git_repo, main) == feature_head
+        assert is_ancestor(tmp_git_repo, main, feature_head) is True
+        assert dirty_file.read_text(encoding="utf-8") == "operator work\n"
     finally:
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
 
@@ -111,8 +140,6 @@ def test_two_independent_worktree_agents_converge_on_main(tmp_git_repo: Path) ->
         assert branch_sha(tmp_git_repo, main) == feature_b_head
         assert (feature_b / "a.txt").exists()
 
-        # Regression: after B lands, A has no commits beyond main but must
-        # still catch up at the next phase boundary instead of silently skipping.
         catch_up = auto_integrate_on_phase_transition(
             _build_config(target=main), WorkspaceScope(feature_a), RebaseState()
         )
