@@ -18,7 +18,7 @@ Custom levels registered on first configure_logging() call::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -26,11 +26,35 @@ from ralph.display.log_sink import make_stderr_log_sink
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
 
     from loguru import Logger
 
+    class SinkAdder(Protocol):
+        """Structural seam that mirrors ``loguru.Logger.add``.
+
+        Tests substitute a recording fake implementing this protocol
+        (a callable accepting a sink target plus arbitrary kwargs and
+        returning a synthetic ``int`` sink id) so the buffering
+        invariant can be asserted without doing any real loguru file
+        I/O.  Production code binds the actual ``logger.add`` here.
+        """
+
+        def __call__(self, target: object, /, **kwargs: object) -> int: ...
+
 from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
 from .logging_worker_sink import WorkerSinkHandle, bind_worker_sink, remove_worker_sink
+
+#: Block-buffer size for file sinks. loguru's FileSink defaults to
+#: ``buffering=1`` (line-buffered) which causes one OS write per log
+#: record -- and therefore one fsevents notification per record --
+#: at verbose levels. ``buffering=8192`` amortizes writes (and the
+#: fsevents they generate) across ~8 KB of records, matching the
+#: already-buffered ralph.jsonl sink and the worker sink. Records
+#: are flushed on buffer full, on rotation, and on sink close at
+#: process teardown so no record is lost; ``tail -f`` sees records
+#: in bursts (deliberate tradeoff for fseventsd amortization).
+_FILE_SINK_BUFFER_BYTES: int = 8192
 
 # Verbosity level to loguru minimum level
 _VERBOSITY_LEVELS = {
@@ -63,6 +87,7 @@ def configure_logging(
     structured: bool = False,
     rotation: str | int | None = "10 MB",
     console_sink: Callable[[str], None] | None = None,
+    sink_adder: SinkAdder | None = None,
 ) -> LoggingSession:
     """Configure loguru for Ralph Workflow CLI output.
 
@@ -85,6 +110,14 @@ def configure_logging(
             through the rich ``DisplayContext`` ``Console`` instead
             (so the rich Live status bar is the single painter of
             the terminal).
+        sink_adder: Optional callable that replaces ``loguru.logger.add``
+            for file-sink wiring. Defaults to ``logger.add`` (production).
+            Tests inject a recording fake to assert that both engine
+            file sinks receive ``buffering=8192`` without doing any
+            real loguru file I/O. The console/stderr callable sink
+            is wired through ``logger.add`` directly and is NOT
+            routed through this seam (callable sinks are not file
+            sinks and so are not subject to the buffering invariant).
 
     Returns:
         Logging session with resolved paths and bound logger helpers.
@@ -120,7 +153,7 @@ def configure_logging(
         diagnose=False,
     )
 
-    paths = _configure_file_handlers(config, level)
+    paths = _configure_file_handlers(config, level, sink_adder=sink_adder)
     session = LoggingSession(
         config=config,
         paths=paths,
@@ -138,7 +171,38 @@ def _build_base_extra(run_id: str | None) -> dict[str, str]:
     return {"run_id": run_id}
 
 
-def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
+def _configure_file_handlers(
+    config: LoggingConfig,
+    level: str,
+    *,
+    sink_adder: SinkAdder | None = None,
+) -> LoggingPaths:
+    """Wire the engine file sinks for a configured logging session.
+
+    Both engine file sinks (the always-on ``ralph.log`` text sink and
+    the optional ``ralph.jsonl`` structured sink) are routed through
+    :func:`_add_buffered_file_sink` so they share one sink-adder
+    seam AND one explicit ``buffering=8192`` invariant. loguru's
+    ``FileSink`` defaults to ``buffering=1`` (line-buffered) which
+    produces one OS write per record -- and therefore one fsevents
+    notification per record -- at verbose levels. The 8 KB buffer
+    amortizes writes (and fsevents) across many records, matching
+    the buffering already in place for the worker sink. Records are
+    flushed on buffer full, on rotation, and on sink close at
+    process teardown so no record is lost.
+
+    Args:
+        config: The :class:`LoggingConfig` resolved by the caller.
+        level: The minimum loguru level name (e.g. ``"DEBUG"``) to
+            apply to the file sinks.
+        sink_adder: Optional override of ``loguru.logger.add`` used
+            ONLY for the file sinks. Defaults to ``logger.add``.
+            Tests inject a recording fake to assert the buffering
+            invariant without doing real file I/O. The console
+            callable sink wired by ``configure_logging`` is NOT
+            routed through this seam (callable sinks are not file
+            sinks).
+    """
     log_directory = config.log_directory
     if log_directory is None:
         return LoggingPaths(
@@ -150,8 +214,11 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
     run_directory = log_directory / config.run_id if config.run_id else log_directory
     run_directory.mkdir(parents=True, exist_ok=True)
 
+    adder: SinkAdder = sink_adder if sink_adder is not None else cast("SinkAdder", logger.add)
+
     text_log_path = run_directory / "ralph.log"
-    logger.add(
+    _add_buffered_file_sink(
+        adder,
         text_log_path,
         level=level,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
@@ -165,14 +232,14 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
     if config.structured:
         structured_log_path = run_directory / "ralph.jsonl"
         assert structured_log_path is not None
-        logger.add(
+        _add_buffered_file_sink(
+            adder,
             structured_log_path,
             level=level,
             serialize=True,
             backtrace=True,
             diagnose=False,
             rotation=config.rotation,
-            buffering=8192,
         )
 
     return LoggingPaths(
@@ -180,6 +247,39 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
         text_log_path=text_log_path,
         structured_log_path=structured_log_path,
     )
+
+
+def _add_buffered_file_sink(adder: SinkAdder, path: Path, **kwargs: object) -> int:
+    """Add a block-buffered (buffering=8192) loguru file sink.
+
+    Centralizes the buffering invariant for every file sink in
+    ``ralph/logging.py``. ``ralph.jsonl`` and ``ralph.log`` MUST both
+    pass through this helper so a future refactor cannot regress the
+    buffering property -- the matching AST drift audit
+    (``ralph.testing.audit_log_sink_buffering``) parses
+    ``ralph/logging.py`` and rejects any ``logger.add(<file-path>,
+    ...)`` that omits an explicit positive ``buffering`` kwarg.
+
+    Args:
+        adder: The sink-adder callable (defaults to ``logger.add``
+            in production; tests substitute a recording fake).
+        path: The filesystem path of the file sink.
+        **kwargs: Extra kwargs forwarded verbatim to ``adder`` (the
+            loguru ``logger.add`` kwargs -- level, format,
+            colorize, backtrace, diagnose, serialize, rotation,
+            filter, etc.). ``buffering`` MUST NOT be passed by the
+            caller; this helper always sets it.
+
+    Returns:
+        The sink id returned by ``adder`` (the ``logger.add``
+            int sink-id used to later ``logger.remove(sink_id)``).
+    """
+    if "buffering" in kwargs:
+        raise TypeError(
+            "_add_buffered_file_sink sets buffering=8192 internally;"
+            " callers must NOT pass buffering"
+        )
+    return adder(str(path), buffering=_FILE_SINK_BUFFER_BYTES, **kwargs)
 
 
 def get_logger() -> Logger:

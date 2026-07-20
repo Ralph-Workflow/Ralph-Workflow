@@ -333,6 +333,28 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # wt-039 fsevents: AST-only drift audit that locks the
+        # ``buffering=8192`` invariant on every file-path
+        # ``logger.add(...)`` call in ``ralph/logging.py`` so a
+        # future refactor cannot silently regress to loguru's
+        # ``FileSink`` line-buffered default (one OS write per
+        # record, one fsevents notification per record -- the exact
+        # per-record filesystem-mutation source the fseventsd
+        # mitigation closes). Discriminates file sinks structurally
+        # (a ``/``-join ``BinOp`` or ``Path(...)`` call) from
+        # callable/stream sinks (``make_stderr_log_sink()``,
+        # ``sys.stderr``) so the CLI's terminal sink is not
+        # false-flagged. AST + Path.read_text only -- no subprocess,
+        # no sleep, no real I/O. Appended LAST so the index-based
+        # timeout assertions in tests/test_verify.py are not shifted;
+        # NOT budget-tracked (does not count against the immutable
+        # 60-second combined test budget).
+        "log sink buffering audit (audit_log_sink_buffering)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

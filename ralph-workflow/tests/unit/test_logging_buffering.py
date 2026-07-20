@@ -57,19 +57,24 @@ def test_worker_sink_uses_block_buffering(tmp_path: Path) -> None:
     assert "small record" in handle.log_path.read_text()
 
 
-def test_text_log_unbuffered_structured_block_buffered(
+def test_text_log_and_structured_log_both_block_buffered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """RFC-013 P1 liveness contract: the operator-facing text log MUST stay
-    line-buffered (no ``buffering=`` kwarg) so ``tail -f`` and the live
-    watchdog see records immediately; the structured JSONL sink and the
-    per-worker sink MUST use ``buffering=8192`` so high-volume batch writes
-    don't generate a per-line fsevent storm.
+    """wt-039 fsevents-mitigation contract: BOTH engine file sinks --
+    the operator-facing ``ralph.log`` text sink AND the structured
+    ``ralph.jsonl`` sink -- MUST use ``buffering=8192`` so verbose
+    engine logging does not emit one OS write (and one fsevents
+    notification) per record. loguru's ``FileSink`` defaults to
+    ``buffering=1`` (line-buffered) which is the per-record
+    filesystem-mutation class the fseventsd mitigation closes.
+    Records are flushed on buffer full, on rotation, and on sink
+    close at process teardown so ``tail -f`` still sees the
+    records; operators trade per-line immediacy for the fseventsd
+    amortization, matching the decisions already shipped for
+    ``ralph.jsonl`` and the worker sink.
 
-    Pins the RFC-013 P1 contract against a regression where the text log
-    is unintentionally given a ``buffering=8192`` kwarg (which would
-    silently delay operator-visible log lines by up to 8 KB of buffer
-    pressure).
+    Pins the buffering invariant against a regression where the
+    text log is silently reverted to the line-buffered default.
     """
     captured: list[dict[str, object]] = []
     real_add = logger.add
@@ -113,9 +118,9 @@ def test_text_log_unbuffered_structured_block_buffered(
     assert structured_calls, "expected a ralph.jsonl (structured log) sink to be added"
 
     for call in text_log_calls:
-        assert "buffering" not in call["kwargs"], (
-            f"operator text log MUST NOT use block buffering; tail -f would "
-            f"show stale lines. Got kwargs: {call['kwargs']!r}"
+        assert call["kwargs"].get("buffering") == 8192, (
+            f"operator text log MUST use buffering=8192 to amortize"
+            f" fsevents; got kwargs: {call['kwargs']!r}"
         )
 
     for call in structured_calls:
