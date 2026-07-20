@@ -68,6 +68,8 @@ _LOGGING_MODULE: str = "logging.py"
 #: add a loguru sink, so the expensive AST pass is skipped for them.
 _LOGGER_ADD_MARKER: str = "logger.add("
 
+_BUFFERED_FILE_SINK_HELPER_MARKER: str = "def _add_buffered_file_sink"
+
 #: The loguru ``FileSink`` ``buffering`` minimum that the audit
 #: considers non-trivial.  ``buffering=1`` is line-buffered (one
 #: OS write per record), which is exactly the regression class
@@ -243,22 +245,47 @@ def _get_buffering_kwarg(call: ast.Call) -> ast.expr | None:
     return None
 
 
-def _positive_int_constant(node: ast.expr) -> bool:
-    """Return True iff ``node`` is a positive integer ``ast.Constant``.
+def _constant_int_bindings(tree: ast.Module) -> dict[str, int]:
+    """Return statically resolvable integer bindings in ``tree``."""
+    bindings: dict[str, int] = {}
+    for node in ast.walk(tree):
+        value: ast.expr | None = None
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            value = node.value
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            value = node.value
+            targets = [node.target]
+        if not isinstance(value, ast.Constant):
+            continue
+        if isinstance(value.value, bool) or not isinstance(value.value, int):
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                bindings[target.id] = value.value
+    return bindings
 
-    Requires the value to be an ``int`` (not ``True`` / ``False``
-    which are technically ``ast.Constant`` bools) AND greater than
-    or equal to ``_MIN_BLOCK_BUFFERING``.  ``buffering=1`` is
-    line-buffered -- the exact regression class -- so a kwarg of
-    ``buffering=1`` is rejected even though 1 is a positive int.
-    """
-    if not isinstance(node, ast.Constant):
+
+def _positive_int_constant(
+    node: ast.expr,
+    bindings: dict[str, int] | None = None,
+) -> bool:
+    """Return True iff ``node`` is a literal or the pinned buffer constant."""
+    value: object
+    if (
+        isinstance(node, ast.Name)
+        and bindings is not None
+        and node.id == "_FILE_SINK_BUFFER_BYTES"
+    ):
+        value = bindings.get(node.id)
+    elif isinstance(node, ast.Constant):
+        value = node.value
+    else:
         return False
-    if isinstance(node.value, bool):
+    if isinstance(value, bool) or not isinstance(value, int):
         return False
-    if not isinstance(node.value, int):
-        return False
-    return node.value >= _MIN_BLOCK_BUFFERING
+    return value >= _MIN_BLOCK_BUFFERING
 
 
 def _find_logger_add_calls(tree: ast.Module) -> list[ast.Call]:
@@ -285,6 +312,23 @@ def _find_logger_add_calls(tree: ast.Module) -> list[ast.Call]:
     return calls
 
 
+def _find_buffered_file_adder_calls(tree: ast.Module) -> list[ast.Call]:
+    """Return calls to the injected adder inside the file-sink helper."""
+    calls: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name != "_add_buffered_file_sink" or not node.args.args:
+            continue
+        adder_name: str = node.args.args[0].arg
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Call):
+                continue
+            if isinstance(child.func, ast.Name) and child.func.id == adder_name:
+                calls.append(child)
+    return calls
+
+
 def _check_logging_module(
     module_path: Path,
     rel_path: str,
@@ -308,35 +352,34 @@ def _check_logging_module(
     except (SyntaxError, ValueError):
         return []
 
-    violations: list[LogSinkBufferingViolation] = []
+    constant_bindings: dict[str, int] = _constant_int_bindings(tree)
+    file_sink_calls: list[tuple[ast.Call, bool]] = []
     for call in _find_logger_add_calls(tree):
         if not call.args:
-            # logger.add with no positional sink -- unusual but skip.
             continue
         sink_arg = call.args[0]
         if _is_stream_or_callable_sink(sink_arg):
-            # Callable / stream sink -- not a file sink.
             continue
-        if not _is_filesystem_path_expression(sink_arg):
-            # Unknown sink shape -- be conservative and skip (we
-            # don't want to flag unknown-but-valid forms).
-            continue
+        if _is_filesystem_path_expression(sink_arg):
+            file_sink_calls.append((call, False))
+    file_sink_calls.extend((call, True) for call in _find_buffered_file_adder_calls(tree))
+
+    violations: list[LogSinkBufferingViolation] = []
+    for call, allow_pinned_constant in file_sink_calls:
         buffering = _get_buffering_kwarg(call)
-        if buffering is None or not _positive_int_constant(buffering):
+        bindings = constant_bindings if allow_pinned_constant else None
+        if buffering is None or not _positive_int_constant(buffering, bindings):
             violations.append(
                 LogSinkBufferingViolation(
                     kind="file_sink_missing_buffering",
                     file_path=rel_path,
                     line=call.lineno,
                     message=(
-                        f"logger.add(<file-path>, ...) call at line {call.lineno}"
-                        f" must pass buffering={_MIN_BLOCK_BUFFERING}+ (a positive"
-                        " integer constant); loguru's FileSink defaults to"
-                        " buffering=1 (line-buffered) which emits one OS write"
-                        " and one fsevents notification per record -- the"
-                        " exact regression class the fseventsd mitigation"
-                        " closes. Use ralph.logging._add_buffered_file_sink"
-                        " to set the invariant centrally."
+                        f"file sink adder call at line {call.lineno} must pass"
+                        f" buffering={_MIN_BLOCK_BUFFERING}+ (a positive integer"
+                        " constant); loguru's FileSink defaults to buffering=1"
+                        " (line-buffered), which emits one OS write and one"
+                        " fsevents notification per record."
                     ),
                 )
             )
@@ -377,7 +420,10 @@ def audit_log_sink_buffering(
     except (OSError, UnicodeDecodeError):
         return []
 
-    if _LOGGER_ADD_MARKER not in source:
+    if (
+        _LOGGER_ADD_MARKER not in source
+        and _BUFFERED_FILE_SINK_HELPER_MARKER not in source
+    ):
         return []
 
     return _check_logging_module(module_path, rel_path, source)

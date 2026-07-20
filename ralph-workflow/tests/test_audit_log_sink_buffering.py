@@ -113,15 +113,44 @@ def test_audit_flags_file_sink_without_buffering(tmp_path: Path) -> None:
         package_root
     )
 
-    kinds: list[str] = [v.kind for v in violations]
-    assert "file_sink_missing_buffering" in kinds, (
-        f"expected file_sink_missing_buffering violation; got kinds: {kinds}"
+    assert len(violations) == 1, f"expected exactly one violation; got {violations}"
+    text_violation: audit.LogSinkBufferingViolation = violations[0]
+    assert text_violation.kind == "file_sink_missing_buffering"
+    assert text_violation.line == 4, (
+        f"violation line must be the fixture call line; got {text_violation.line}"
     )
-    text_violation: audit.LogSinkBufferingViolation = next(
-        v for v in violations if v.kind == "file_sink_missing_buffering"
+
+
+def test_audit_log_sink_buffering_regression_helper_missing_buffering(
+    tmp_path: Path,
+) -> None:
+    """The Step 4 audit must catch a missing kwarg in the injected-adder helper.
+
+    This covers analysis feedback Item 1: the actual production file-sink
+    path is ``_add_buffered_file_sink`` calling its injected ``adder``.
+    Omitting ``buffering`` there must produce one violation at the adder
+    call, even when the source has no direct ``logger.add`` call.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "_FILE_SINK_BUFFER_BYTES = 8192\n"
+            "\n"
+            "def _add_buffered_file_sink(adder, path):\n"
+            "    return adder(str(path), level='INFO')\n"
+        ),
     )
-    assert text_violation.line > 0, (
-        f"violation line must be the call's lineno; got {text_violation.line}"
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+
+    assert len(violations) == 1, f"expected exactly one violation; got {violations}"
+    helper_violation: audit.LogSinkBufferingViolation = violations[0]
+    assert helper_violation.kind == "file_sink_missing_buffering"
+    assert helper_violation.line == 5, (
+        f"violation line must be the helper adder call; got {helper_violation.line}"
     )
 
 
