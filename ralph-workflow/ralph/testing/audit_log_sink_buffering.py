@@ -23,7 +23,11 @@ It discriminates file sinks structurally from callable/stream sinks:
 
 * A file sink has its FIRST positional argument as a filesystem
   expression (a ``/``-join ``BinOp`` like ``run_directory /
-  "ralph.log"``, an ``Attribute``/``Call`` returning a ``Path``
+  "ralph.log"``, an ``Attribute`` whose terminal ``attr`` is a
+  canonical file-sink name (``paths.text_log_path``,
+  ``config.structured_log_path``), a ``Name`` bound to a canonical
+  file-sink name (``text_log_path``, ``structured_log_path``), a
+  ``Call`` to a ``Path``-family constructor returning a ``Path``
   like ``Path(...)``, a ``Constant`` that is a string path, or
   any ``Call`` to a known filesystem constructor).  These MUST
   pass ``buffering``.
@@ -184,13 +188,34 @@ def _is_filesystem_path_expression(node: ast.AST) -> bool:
         stream/callable sinks and are skipped by
         :func:`_is_stream_or_callable_sink` before this function is
         even consulted.
+      * ``ast.Attribute`` whose terminal ``attr`` is in
+        ``_FILE_SINK_PATH_NAMES`` (e.g. ``paths.text_log_path``,
+        ``config.structured_log_path``).  Recognized conservatively
+        -- only the canonical file-sink names are matched, so other
+        attribute access (e.g. ``module.foo``) does not false-flag.
+        Stream/callable attribute access (e.g. ``sys.stderr``) is
+        filtered out earlier by
+        :func:`_is_stream_or_callable_sink` via the same dotted-name
+        resolution; this branch only sees attribute access that did
+        not match the stream set, so matching
+        ``attr in _FILE_SINK_PATH_NAMES`` is sound and conservative.
     """
     is_div_join: bool = isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
     is_path_constructor: bool = bool(_is_path_constructor(node))
     is_string_literal: bool = isinstance(node, ast.Constant) and isinstance(node.value, str)
     is_fstring: bool = isinstance(node, ast.JoinedStr)
     is_named_path: bool = isinstance(node, ast.Name) and node.id in _FILE_SINK_PATH_NAMES
-    return bool(is_div_join or is_path_constructor or is_string_literal or is_fstring or is_named_path)
+    is_attribute_path: bool = (
+        isinstance(node, ast.Attribute) and node.attr in _FILE_SINK_PATH_NAMES
+    )
+    return bool(
+        is_div_join
+        or is_path_constructor
+        or is_string_literal
+        or is_fstring
+        or is_named_path
+        or is_attribute_path
+    )
 
 
 def _is_path_constructor(node: ast.AST) -> bool:

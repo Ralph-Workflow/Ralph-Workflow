@@ -369,6 +369,175 @@ def test_audit_passes_structured_log_path_with_buffering(tmp_path: Path) -> None
     )
 
 
+def test_audit_flags_attribute_path_without_buffering(tmp_path: Path) -> None:
+    """``logger.add(paths.text_log_path, ...)`` without ``buffering``
+    triggers ``file_sink_missing_buffering`` at the call line.
+
+    PLAN step 4 requires the audit to recognize Attribute
+    filesystem-path expressions; this fixture pins that the
+    canonical ``*.text_log_path`` form is detected. Without
+    Attribute recognition, a future refactor that writes
+    ``logger.add(paths.text_log_path, level='INFO')`` directly
+    (bypassing the ``_add_buffered_file_sink`` helper) would
+    silently regress to loguru's line-buffered FileSink default
+    and reinflate the fseventsd footprint.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(paths):\n"
+            "    logger.add(paths.text_log_path, level='INFO')\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+
+    kinds: list[str] = [v.kind for v in violations]
+    assert "file_sink_missing_buffering" in kinds, (
+        f"expected file_sink_missing_buffering violation for"
+        f" attribute-path sink (paths.text_log_path); got kinds: {kinds}"
+    )
+    text_violation: audit.LogSinkBufferingViolation = next(
+        v for v in violations if v.kind == "file_sink_missing_buffering"
+    )
+    assert text_violation.line > 0, (
+        f"violation line must be the call's lineno; got {text_violation.line}"
+    )
+
+
+def test_audit_flags_attribute_path_structured_log_path_without_buffering(
+    tmp_path: Path,
+) -> None:
+    """``logger.add(paths.structured_log_path, ...)`` without
+    ``buffering`` triggers ``file_sink_missing_buffering``.
+
+    Mirrors the ``text_log_path`` attribute-path fixture and pins
+    the structured JSONL sink under the same invariant. The audit
+    MUST treat any ``Attribute`` whose terminal ``attr`` is
+    ``structured_log_path`` (or ``text_log_path``) as a file-path
+    expression regardless of the value's namespace (e.g. an
+    object attribute access via ``paths.`` / ``config.``).
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(paths):\n"
+            "    logger.add(paths.structured_log_path, level='INFO',"
+            " serialize=True)\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+
+    kinds: list[str] = [v.kind for v in violations]
+    assert "file_sink_missing_buffering" in kinds, (
+        f"expected file_sink_missing_buffering violation for"
+        f" attribute-path sink (paths.structured_log_path); got kinds: {kinds}"
+    )
+
+
+def test_audit_passes_attribute_path_with_buffering(tmp_path: Path) -> None:
+    """``logger.add(paths.text_log_path, ..., buffering=8192)`` yields
+    zero violations.
+
+    Negative-control fixture proving the Attribute filesystem-path
+    recognition does NOT false-flag a correctly buffered
+    attribute-path sink -- the audit only triggers on MISSING
+    buffering. Without this negative control, an over-broad
+    fix that always flags any Attribute sink regardless of the
+    buffering kwarg would slip past review.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(paths):\n"
+            "    logger.add(paths.text_log_path, level='INFO', buffering=8192)\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+    assert violations == [], (
+        f"buffered attribute-path sink (paths.text_log_path with"
+        f" buffering=8192) must NOT be flagged; got: {violations}"
+    )
+
+
+def test_audit_passes_attribute_path_structured_with_buffering(
+    tmp_path: Path,
+) -> None:
+    """``logger.add(paths.structured_log_path, ..., buffering=8192)``
+    yields zero violations.
+
+    Buffered negative control for the structured attribute path.
+    Proves the Attribute recognition accepts any value-bearing
+    namespace (``paths.``, ``config.``, ``ctx.``, etc.) when the
+    buffering kwarg is present and correct.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(config):\n"
+            "    logger.add(config.structured_log_path, level='INFO',"
+            " serialize=True, buffering=8192)\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+    assert violations == [], (
+        f"buffered attribute-path structured sink (config.structured_log_path"
+        f" with buffering=8192) must NOT be flagged; got: {violations}"
+    )
+
+
+def test_audit_does_not_flag_non_canonical_attribute(tmp_path: Path) -> None:
+    """``logger.add(obj.foo, ...)`` (a non-canonical attribute) is
+    NOT flagged even without buffering.
+
+    The audit's Attribute recognition is conservative: only the
+    canonical ``text_log_path`` / ``structured_log_path`` terminal
+    attribute names trigger the file-sink check. Other attribute
+    access (e.g. ``module.foo``, ``config.bar``) is left alone to
+    avoid over-matching unrelated patterns. The
+    :func:`_is_stream_or_callable_sink` filter still runs first,
+    so true stream/callable attribute access (e.g. ``sys.stderr``)
+    is excluded at the stream stage.
+    """
+    package_root: Path = _write_fake_logging_module(
+        tmp_path,
+        module_body=(
+            "from loguru import logger\n"
+            "\n"
+            "def configure(obj):\n"
+            "    logger.add(obj.foo, level='INFO')\n"
+            "    logger.add(obj.bar, level='INFO')\n"
+        ),
+    )
+
+    violations: list[audit.LogSinkBufferingViolation] = audit.audit_log_sink_buffering(
+        package_root
+    )
+    assert violations == [], (
+        f"non-canonical attribute sinks (obj.foo, obj.bar) must NOT be"
+        f" flagged -- the audit is conservative on Attribute; got: {violations}"
+    )
+
+
 def test_audit_flags_missing_logging_module(tmp_path: Path) -> None:
     """A package root WITHOUT ``logging.py`` triggers ``missing_logging_module``.
 
