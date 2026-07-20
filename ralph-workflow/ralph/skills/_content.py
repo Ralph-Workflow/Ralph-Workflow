@@ -13,8 +13,13 @@ import json
 from importlib.resources import files
 from typing import TYPE_CHECKING, TypedDict, cast
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.mcp.artifacts.file_backend import FileBackend
 
 
 class SkillMetadata(TypedDict):
@@ -75,8 +80,14 @@ def managed_skill_marker(name: str, *, installed_sha256: str) -> dict[str, str]:
     }
 
 
-def materialize_skills_to_dir(target: Path) -> list[str]:
-    """Write every bundled skill as ``target/{name}.md`` plus metadata.
+def materialize_skills_to_dir(
+    target: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> list[str]:
+    """Write every bundled skill and metadata via an injectable backend.
+
+    Byte-identical rewrites are skipped.
 
     Returns:
         The list of skill names written.
@@ -85,24 +96,35 @@ def materialize_skills_to_dir(target: Path) -> list[str]:
     written_names: list[str] = []
     metadata = get_skill_metadata()
     for name in BASELINE_SKILL_NAMES:
-        (target / f"{name}.md").write_text(get_skill_content(name), encoding="utf-8")
+        write_text_if_changed(
+            backend,
+            target / f"{name}.md",
+            get_skill_content(name),
+            encoding="utf-8",
+        )
         written_names.append(name)
-    (target / "metadata.json").write_text(
+    write_text_if_changed(
+        backend,
+        target / "metadata.json",
         json.dumps(metadata, indent=2) + "\n",
         encoding="utf-8",
     )
     return written_names
 
 
-def materialize_skills_to_claude_dir(target: Path) -> list[str]:
-    """Write bundled skills into Claude-style ``target/{name}/SKILL.md`` dirs.
+def materialize_skills_to_claude_dir(
+    target: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> list[str]:
+    """Write Claude-style skill dirs via an injectable backend.
 
-    Skips a skill when an existing ``SKILL.md`` and ``.ralph-managed.json``
-    marker indicate the user manually edited the file. Returns the names of
-    skills actually written or refreshed.
+    Byte-identical rewrites are skipped. A skill is skipped when an existing
+    ``SKILL.md`` and ``.ralph-managed.json`` marker indicate user edits.
 
     Args:
         target: Root skill directory (e.g. ``~/.claude/skills``).
+        backend: File backend used for materialization writes.
 
     Returns:
         The list of skill names materialized.
@@ -131,14 +153,18 @@ def materialize_skills_to_claude_dir(target: Path) -> list[str]:
                 if current_sha != stored_sha:
                     continue  # user manually edited; preserve
         content = get_skill_content(name)
-        skill_file.write_text(content, encoding="utf-8")
+        write_text_if_changed(backend, skill_file, content, encoding="utf-8")
         content_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        marker_file.write_text(
+        write_text_if_changed(
+            backend,
+            marker_file,
             json.dumps(managed_skill_marker(name, installed_sha256=content_sha), indent=2) + "\n",
             encoding="utf-8",
         )
         written_names.append(name)
-    (target / "metadata.json").write_text(
+    write_text_if_changed(
+        backend,
+        target / "metadata.json",
         json.dumps(metadata, indent=2) + "\n",
         encoding="utf-8",
     )

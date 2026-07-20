@@ -9,6 +9,8 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Literal, cast
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._content import (
     _MANAGED_MARKER,
     BASELINE_SKILL_NAMES,
@@ -35,7 +37,9 @@ def _merge_external_skills(target: Path) -> None:
             source = skill_dir / "SKILL.md"
             if not source.is_file():
                 continue
-            (target / f"{skill_dir.name}.md").write_text(
+            write_text_if_changed(
+                DEFAULT_FILE_BACKEND,
+                target / f"{skill_dir.name}.md",
                 source.read_text(encoding="utf-8"),
                 encoding="utf-8",
             )

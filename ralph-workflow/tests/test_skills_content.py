@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.mcp.artifacts._path_file_backend import PathFileBackend
+from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.skills._content import (
     BASELINE_SKILL_NAMES,
     get_skill_content,
@@ -19,6 +21,34 @@ from ralph.skills._content import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class _CountingBackend(FileBackend):
+    def __init__(self) -> None:
+        self._delegate = PathFileBackend()
+        self.writes = 0
+
+    def exists(self, path: Path) -> bool:
+        return self._delegate.exists(path)
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        self._delegate.mkdir(path, parents=parents, exist_ok=exist_ok)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        return self._delegate.read_text(path, encoding=encoding)
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        self.writes += 1
+        self._delegate.write_text(path, content, encoding=encoding)
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self._delegate.replace(source, destination)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        self._delegate.unlink(path, missing_ok=missing_ok)
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        return self._delegate.glob(path, pattern)
 
 
 def test_baseline_skill_names_are_canonical_and_complete() -> None:
@@ -125,3 +155,49 @@ def test_materialize_skills_to_dir_writes_all_skills(tmp_path: Path) -> None:
             or content.startswith(f"---\nname: {name}\n")
             or content.startswith(f"---\nname: {expected_internal_name}\n")
         )
+
+
+def test_materialize_skills_to_claude_dir_second_pass_writes_nothing(tmp_path: Path) -> None:
+    backend = _CountingBackend()
+
+    first_written = materialize_skills_to_claude_dir(tmp_path, backend=backend)
+    first_contents = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert backend.writes > 0
+
+    backend.writes = 0
+    second_written = materialize_skills_to_claude_dir(tmp_path, backend=backend)
+
+    assert backend.writes == 0
+    assert second_written == first_written
+    assert {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    } == first_contents
+
+
+def test_materialize_skills_to_dir_second_pass_writes_nothing(tmp_path: Path) -> None:
+    backend = _CountingBackend()
+
+    first_written = materialize_skills_to_dir(tmp_path, backend=backend)
+    first_contents = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert backend.writes > 0
+
+    backend.writes = 0
+    second_written = materialize_skills_to_dir(tmp_path, backend=backend)
+
+    assert backend.writes == 0
+    assert second_written == first_written
+    assert {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    } == first_contents
