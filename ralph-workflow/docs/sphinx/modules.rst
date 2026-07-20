@@ -3645,6 +3645,13 @@ ralph.testing.audit_di_seam
    :members:
    :show-inheritance:
 
+ralph.testing.audit_idempotent_write_adoption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_idempotent_write_adoption
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_parallelization_dormant
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

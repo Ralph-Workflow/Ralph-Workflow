@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.invoke import InvokeOptions, invoke_agent
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.mcp.artifacts.file_backend import FileBackend
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.policy.models import PolicyBundle
 
@@ -147,12 +150,19 @@ def _resolver_agent_name(policy_bundle: PolicyBundle) -> str | None:
     return chain_config.agents[0]
 
 
-def _write_prompt(root: Path, target: str) -> Path | None:
+def _write_prompt(
+    root: Path,
+    target: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> Path | None:
     """Write the transient resolution prompt; None on failure."""
     prompt_path = root / ".agent" / _PROMPT_FILENAME
     try:
-        prompt_path.parent.mkdir(parents=True, exist_ok=True)
-        prompt_path.write_text(
+        backend.mkdir(prompt_path.parent, parents=True, exist_ok=True)
+        write_text_if_changed(
+            backend,
+            prompt_path,
             _PROMPT_TEMPLATE.format(root=root, target=target),
             encoding="utf-8",
         )

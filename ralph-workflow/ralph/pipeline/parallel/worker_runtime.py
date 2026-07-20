@@ -10,6 +10,8 @@ from loguru import logger
 
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline.checkpoint import worker_checkpoint_path
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
@@ -29,6 +31,7 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.artifacts.file_backend import FileBackend
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
@@ -83,6 +86,17 @@ def _state_for_worker_manifest(
     )
 
 
+def _write_worker_prompt(
+    prompt_path: Path,
+    rendered_prompt: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Persist a rendered worker prompt without rewriting identical content."""
+    backend.mkdir(prompt_path.parent, parents=True, exist_ok=True)
+    write_text_if_changed(backend, prompt_path, rendered_prompt, encoding="utf-8")
+
+
 def run_parallel_worker_from_manifest(
     *,
     manifest_path: Path,
@@ -90,6 +104,7 @@ def run_parallel_worker_from_manifest(
     pipeline_deps: PipelineDeps | None = None,
     model_identity: MultimodalModelIdentity | None = None,
     pro_hooks: ProPipelineHooks | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> int:
     """Execute one manifest-backed worker flow without entering the shared run loop.
 
@@ -151,8 +166,7 @@ def run_parallel_worker_from_manifest(
     )
     rendered_prompt = workspace.read(prompt_path)
     resolved_prompt_path = Path(manifest.prompt_file)
-    resolved_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved_prompt_path.write_text(rendered_prompt, encoding="utf-8")
+    _write_worker_prompt(resolved_prompt_path, rendered_prompt, backend=backend)
 
     worker_effect = InvokeAgentEffect(
         agent_name=effect.agent_name,

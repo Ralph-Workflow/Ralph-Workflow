@@ -355,6 +355,22 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # wt-039 fsevents: AST-only drift audit that locks the
+        # idempotent-write consolidation across stable persistence
+        # paths so a future refactor cannot silently replace
+        # write_text_if_changed with raw write_text calls and
+        # reinflate the macOS fseventsd footprint. AST +
+        # Path.read_text only -- no subprocess, no sleep, no real
+        # I/O. Appended LAST so the index-based timeout assertions
+        # in tests/test_verify.py are not shifted; NOT
+        # budget-tracked (does not count against the immutable
+        # 60-second combined test budget).
+        "idempotent write adoption audit (audit_idempotent_write_adoption)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
