@@ -464,6 +464,13 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
     manager.kill_process_group_calls = []
     _patch_psutil_shared(monkeypatch, float)
     _patch_pid_alive(monkeypatch, alive=True)
+    clock_state: dict[str, float] = {"now": 0.0}
+
+    def _fake_clock() -> float:
+        return clock_state["now"]
+
+    def _fake_sleep(seconds: float) -> None:
+        clock_state["now"] += seconds
 
     dispatcher = InterruptDispatcher(
         controller=InterruptController(
@@ -474,6 +481,8 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
         hard_exit=cast("Callable[[int], None]", lambda _c: None),
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
+        clock=_fake_clock,
+        sleep=_fake_sleep,
     )
     dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == []
