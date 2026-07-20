@@ -607,6 +607,13 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
     if outcome.last_action in ("skipped", "conflict"):
         display.emit_warn_line("run", "auto-integrate", message)
         return
+    if (
+        outcome.last_action in ("rebased", "merged")
+        and not outcome.fast_forwarded
+        and outcome.last_reason
+    ):
+        display.emit_warn_line("run", "auto-integrate", message)
+        return
     emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
 
 

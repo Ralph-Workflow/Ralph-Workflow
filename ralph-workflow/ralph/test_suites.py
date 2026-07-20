@@ -56,14 +56,15 @@ if TYPE_CHECKING:
 # Default: capped ``auto``. The 1.0 s per-test ITIMER_REAL budget charges
 # wall clock, so eight pytest workers plus real-git child processes starved
 # trivial tests on a 12-core host. Four workers passed 11819 tests in
-# 38.00 s, 31.74 s, and 34.37 s; eight workers took 44.61 s and produced
-# 4-7 spurious timeouts. ``loadfile`` scheduling preserves file isolation.
+# 38.00 s, 31.74 s, and 34.37 s, but the current suite can exceed its
+# immutable 60-second wall-clock limit under four concurrent workers; two
+# workers complete it in 42.79 s. ``loadfile`` scheduling preserves file isolation.
 # This is a concurrency cap, not a budget change:
 # ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
 # ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1.0) are unchanged. Override via
 # the ``PYTEST_WORKERS`` env var if needed.
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 4
+_MAX_PYTEST_WORKERS = 2
 
 
 def _pytest_workers() -> str:

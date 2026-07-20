@@ -75,32 +75,36 @@ def test_commit_rebases_feature_and_fast_forwards_main(tmp_git_repo: Path) -> No
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
 
 
-def test_two_worktrees_sync_through_main(tmp_git_repo: Path) -> None:
-    """AC-01: a second agent lands after the first advances the common mainline."""
+def test_two_agents_keep_main_in_lockstep(tmp_git_repo: Path) -> None:
+    """Plan Step 5: each agent lands its tip and receives the other's work."""
     main = _base_branch(tmp_git_repo)
     feature_a = tmp_git_repo.parent / "feature-a"
     feature_b = tmp_git_repo.parent / "feature-b"
     _add_worktree(tmp_git_repo, feature_a, "feature-a")
+    _add_worktree(tmp_git_repo, feature_b, "feature-b")
     try:
         _commit(feature_a, "a.txt", "a\n", "feature a")
         first = auto_integrate_after_commit(
             _build_config(target=main), WorkspaceScope(feature_a), RebaseState()
         )
-        assert first is not None and first.fast_forwarded is True
-        _add_worktree(tmp_git_repo, feature_b, "feature-b")
-        try:
-            _commit(feature_b, "b.txt", "b\n", "feature b")
-            second = auto_integrate_after_commit(
-                _build_config(target=main), WorkspaceScope(feature_b), RebaseState()
-            )
-            feature_b_head = _run(feature_b, "rev-parse", "HEAD").stdout.strip()
+        feature_a_head = _run(feature_a, "rev-parse", "HEAD").stdout.strip()
 
-            assert second is not None and second.fast_forwarded is True
-            assert branch_sha(tmp_git_repo, main) == feature_b_head
-            assert _run(feature_a, "rebase", main).returncode == 0
-        finally:
-            _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_b))
+        assert first is not None
+        assert first.fast_forwarded is True
+        assert branch_sha(tmp_git_repo, main) == feature_a_head
+
+        _commit(feature_b, "b.txt", "b\n", "feature b")
+        second = auto_integrate_after_commit(
+            _build_config(target=main), WorkspaceScope(feature_b), RebaseState()
+        )
+        feature_b_head = _run(feature_b, "rev-parse", "HEAD").stdout.strip()
+
+        assert second is not None
+        assert second.fast_forwarded is True
+        assert branch_sha(tmp_git_repo, main) == feature_b_head
+        assert (feature_b / "a.txt").exists()
     finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_b))
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_a))
 
 
