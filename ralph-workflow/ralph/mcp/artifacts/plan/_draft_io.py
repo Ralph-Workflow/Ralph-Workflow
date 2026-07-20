@@ -72,6 +72,18 @@ def load_plan_draft(
     return parsed_dict
 
 
+def _semantic_draft(draft: dict[str, object]) -> dict[str, object]:
+    """Return ``draft`` minus the volatile ``updated_at`` bookkeeping field.
+
+    ``updated_at`` is a clock-derived timestamp that advances on every
+    write; treating it as part of the draft's semantic content would
+    defeat the idempotent-skip path. The remaining keys
+    (``schema_version``, ``started_at``, ``sections``) are the durable
+    content that plan-tooling decisions actually read.
+    """
+    return {key: value for key, value in draft.items() if key != "updated_at"}
+
+
 def save_plan_draft(
     artifact_dir: Path,
     draft: dict[str, object],
@@ -79,7 +91,37 @@ def save_plan_draft(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     now_iso: Callable[[], str] = _now_iso,
 ) -> None:
-    """Atomically write the plan draft file."""
+    """Atomically write the plan draft file when its semantic content changes.
+
+    Skips the temp-write + replace when the existing on-disk draft's
+    content (excluding the volatile ``updated_at`` field) is
+    byte-identical to the draft being saved. This mirrors the
+    ``atomic_write_text_if_changed`` precedent used by
+    ``ralph/pipeline/checkpoint.py`` and keeps long unattended runs
+    from emitting an fseventsd notification for every no-op
+    plan-section re-stage.
+
+    ``updated_at`` is treated as bookkeeping metadata only: it is not
+    read by any plan-tooling decision (section staging, validation,
+    finalize, load round-trip), so the no-op skip is observable only
+    on the file mtime / fseventsd side. A real content change still
+    rewrites the file and advances ``updated_at``.
+
+    The atomic ``temp write + replace`` durability guarantee is
+    preserved on the write path. The helper is fail-open: when
+    ``load_plan_draft`` returns ``None`` (missing / corrupt /
+    unparseable file) the code falls through to a real write so any
+    read uncertainty self-heals.
+
+    ``atomic_write_text_if_changed`` cannot be reused directly here
+    because it compares the FULL serialized content, including the
+    always-fresh ``updated_at``; a semantic comparison that excludes
+    ``updated_at`` is required to make the skip work for no-op
+    re-stages.
+    """
+    existing = load_plan_draft(artifact_dir, backend=backend)
+    if existing is not None and _semantic_draft(existing) == _semantic_draft(draft):
+        return
     backend.mkdir(artifact_dir, parents=True, exist_ok=True)
     draft_path = artifact_dir / ".plan_draft.json"
     tmp_path = draft_path.with_suffix(".json.tmp")
