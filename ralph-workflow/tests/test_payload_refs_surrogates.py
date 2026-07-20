@@ -25,6 +25,28 @@ def test_sanitize_surrogates_preserves_normal_text() -> None:
     assert sanitize_surrogates(text) == text
 
 
+def test_sanitize_surrogates_replaces_high_surrogate() -> None:
+    sanitized = sanitize_surrogates("prefix \ud800 suffix")
+
+    assert "\ud800" not in sanitized
+    sanitized.encode("utf-8")
+
+
+def test_sanitize_surrogates_replaces_out_of_range_low_surrogate() -> None:
+    sanitized = sanitize_surrogates("prefix \udc00 suffix")
+
+    assert "\udc00" not in sanitized
+    sanitized.encode("utf-8")
+
+
+def test_sanitize_surrogates_replaces_surrogates_outside_pep383_range() -> None:
+    for surrogate in ("\udd00", "\udfff"):
+        sanitized = sanitize_surrogates(f"prefix {surrogate} suffix")
+
+        assert surrogate not in sanitized
+        sanitized.encode("utf-8")
+
+
 def test_build_prompt_payload_variables_inlines_surrogate_text(tmp_path: Path) -> None:
     diff = f"line1\n{SURROGATE}\nline3"
 

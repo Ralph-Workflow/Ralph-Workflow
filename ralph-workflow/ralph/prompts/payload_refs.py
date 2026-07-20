@@ -19,7 +19,8 @@ type PromptPayloadWriter = Callable[[str, str], str]
 
 def sanitize_surrogates(text: str) -> str:
     """Replace lone surrogate code points so the result is strictly UTF-8 encodable."""
-    return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+    pep383_safe = re.sub(r"[\ud800-\udc7f\udd00-\udfff]", "\ufffd", text)
+    return pep383_safe.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
 
 
 def build_prompt_payload_variables(
