@@ -165,8 +165,10 @@ def test_changed_sections_write_and_advance_updated_at() -> None:
     backend.replace_calls.clear()
     backend.mkdir_calls.clear()
 
-    updated_draft = dict(draft)
-    updated_sections = dict(draft["sections"])
+    existing_sections: object = draft["sections"]
+    assert isinstance(existing_sections, dict)
+    updated_draft: dict[str, object] = dict(draft)
+    updated_sections: dict[str, object] = dict(existing_sections)
     updated_sections["design"] = {"notes": "added design section"}
     updated_draft["sections"] = updated_sections
 
