@@ -26,6 +26,8 @@ from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
@@ -786,7 +788,12 @@ def run_pipeline(
         workspace_scope = resolve_workspace_scope()
         current_prompt_path = workspace_scope.root / ".agent" / "CURRENT_PROMPT.md"
         current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-        current_prompt_path.write_text(effective_request.inline_prompt, encoding="utf-8")
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            current_prompt_path,
+            effective_request.inline_prompt,
+            encoding="utf-8",
+        )
 
     # Phase 1: Load configuration
     load_result = _load_configuration(

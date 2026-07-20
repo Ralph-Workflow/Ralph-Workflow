@@ -6,12 +6,24 @@ import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.prompts.template_registry import _packaged_template_cache, packaged_template_root
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+
+def _write_system_prompt_file(
+    system_prompt_path: Path,
+    content: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    backend.mkdir(system_prompt_path.parent, parents=True, exist_ok=True)
+    write_text_if_changed(backend, system_prompt_path, content, encoding="utf-8")
 
 
 def materialize_system_prompt(
@@ -33,14 +45,13 @@ def materialize_system_prompt(
         if worker_namespace is not None
         else workspace_root / ".agent" / "tmp" / f"{name}_system_prompt.md"
     )
-    system_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    system_prompt_path.write_text(
+    _write_system_prompt_file(
+        system_prompt_path,
         build_system_prompt(
             phase_name=name,
             current_prompt_path=str(current_prompt_path),
             current_plan_path=str(current_plan_path) if current_plan_path is not None else None,
         ),
-        encoding="utf-8",
     )
     return str(system_prompt_path)
 

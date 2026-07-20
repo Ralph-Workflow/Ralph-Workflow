@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
@@ -40,6 +42,7 @@ def persist_current_prompt(
     prompt_content: str | None,
     *,
     worker_namespace: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:
     """Persist the active prompt content to the workspace prompt file."""
     current_prompt_path = (
@@ -47,10 +50,15 @@ def persist_current_prompt(
         if worker_namespace is not None
         else workspace_root / ".agent" / "CURRENT_PROMPT.md"
     )
-    current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    if prompt_content is None and current_prompt_path.exists():
+    backend.mkdir(current_prompt_path.parent, parents=True, exist_ok=True)
+    if prompt_content is None and backend.exists(current_prompt_path):
         return str(current_prompt_path)
-    current_prompt_path.write_text(prompt_content or "No requirements provided", encoding="utf-8")
+    write_text_if_changed(
+        backend,
+        current_prompt_path,
+        prompt_content or "No requirements provided",
+        encoding="utf-8",
+    )
     return str(current_prompt_path)
 
 
