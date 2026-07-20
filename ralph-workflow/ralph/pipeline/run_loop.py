@@ -898,7 +898,8 @@ def _apply_startup_rebase_outcomes(
     startup_rebase = _run_startup_integration(ctx)
     if startup_rebase is not None:
         state = state.copy_with(rebase=startup_rebase)
-        _save_recovered_rebase_checkpoint(state, ctx)
+        if startup_rebase.last_action != "skipped":
+            _save_recovered_rebase_checkpoint(state, ctx)
     return state
 
 
