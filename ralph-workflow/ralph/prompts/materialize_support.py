@@ -19,8 +19,19 @@ def phase_payload_variables(
     workspace_root: Path,
     values: dict[str, str],
     worker_namespace: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, str]:
-    """Build prompt payload variables, writing oversized values to disk."""
+    """Build prompt payload variables, writing oversized values to disk.
+
+    The injected ``backend`` controls both ``mkdir`` and the physical
+    write so a byte-identical re-emit of an oversized prompt payload
+    does not advance the file's mtime or generate an additional
+    fseventsd notification. The default backend is the real-Path
+    backend; tests inject an in-memory counting backend to verify the
+    idempotent skip. The post-condition "the destination file contains
+    the expected payload content" always holds: any read uncertainty
+    or content mismatch falls through to a real write.
+    """
     output_dir = (
         worker_namespace / "tmp" / "prompt_payloads"
         if worker_namespace is not None
@@ -33,6 +44,7 @@ def phase_payload_variables(
             output_dir,
             relative_path,
             content,
+            backend=backend,
         ),
     )
 

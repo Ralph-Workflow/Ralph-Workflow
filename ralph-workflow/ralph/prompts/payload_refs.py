@@ -6,6 +6,9 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
@@ -48,11 +51,35 @@ def prompt_payload_relative_path(prompt_name_prefix: str, variable_name: str) ->
     return f".agent/tmp/prompt_payloads/{normalized_prefix}_{normalized_name}.txt"
 
 
-def write_payload_to_directory(output_dir: Path, relative_path: str, content: str) -> str:
-    """Write payload content to a directory and return the absolute path."""
+def write_payload_to_directory(
+    output_dir: Path,
+    relative_path: str,
+    content: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> str:
+    """Write payload content to a directory and return the absolute path.
+
+    Routes the physical write through :func:`write_text_if_changed` so
+    a byte-identical re-emit of an oversized prompt payload does not
+    advance the destination's mtime or generate an additional
+    fseventsd notification. The post-condition "file contains
+    ``sanitize_surrogates(content)``" always holds: any read
+    uncertainty or content mismatch falls through to a real write.
+
+    Args:
+        output_dir: Directory under which the payload file is created.
+        relative_path: Path whose final segment names the payload file.
+        content: Payload text to persist (sanitized via
+            :func:`sanitize_surrogates` before being written).
+        backend: Filesystem backend used for ``mkdir`` and the
+            idempotent text write. Defaults to the real-Path backend;
+            tests inject an in-memory counting backend to verify the
+            byte-identical re-emit skip.
+    """
     destination = output_dir / Path(relative_path).name
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(sanitize_surrogates(content), encoding="utf-8")
+    backend.mkdir(destination.parent, parents=True, exist_ok=True)
+    write_text_if_changed(backend, destination, sanitize_surrogates(content), encoding="utf-8")
     return str(destination)
 
 
