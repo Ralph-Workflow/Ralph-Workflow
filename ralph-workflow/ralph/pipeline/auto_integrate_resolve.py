@@ -164,8 +164,23 @@ def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:
 
 
 def _abort_merge_safely(root: Path) -> None:
-    """Abort any in-progress merge; never raises."""
+    """Abort any in-progress merge; never raises.
+
+    A refused abort is reported rather than assumed successful: a
+    stranded ``MERGE_HEAD`` blocks every subsequent integration, so the
+    operator needs to see it the moment it happens. ``abort_merge``
+    also returns False for the benign "there was nothing to abort"
+    case, which is why the warning is gated on the merge still being
+    in progress afterwards.
+    """
     try:
-        abort_merge(root)
+        if abort_merge(root):
+            return
+        if merge_in_progress(root):
+            logger.warning(
+                "auto_integrate: merge still in progress after abort in {}; "
+                "later integrations will be blocked until it is resolved",
+                root,
+            )
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_merge failed: {}", abort_exc)

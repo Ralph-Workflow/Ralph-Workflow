@@ -77,8 +77,10 @@ class GeneralConfig(RalphBaseModel):
     auto_integrate_enabled: bool = Field(
         default=True,
         description=(
-            "When true (default), every commit phase that actually creates a"
-            " commit is followed by an auto-integration step: rebase the feature"
+            "When true (default), an auto-integration step runs at four seams"
+            " -- after every commit phase that creates a commit, at every"
+            " successful phase boundary with a clean worktree, at the parallel"
+            " fan-out join, and once at run startup: rebase the feature"
             " branch onto the shared mainline, fall back to an endpoint merge on"
             " rebase conflict, and fast-forward the local mainline ref to the"
             " feature tip. Set to false to keep git behavior byte-identical to"
@@ -93,7 +95,10 @@ class GeneralConfig(RalphBaseModel):
         default=None,
         description=(
             "Shared integration branch name. When set (e.g. 'develop') it is"
-            " used verbatim ONLY if the branch exists in the repository."
+            " used verbatim, provided that branch exists locally OR can be"
+            " materialized from refs/remotes/origin/<target> (the clone"
+            " topology, where an agent's checkout often has only"
+            " origin/main)."
             " When unset, the target is auto-detected: the remote's default"
             " branch (origin/HEAD) when a remote exists, otherwise 'main',"
             " otherwise 'master'. If no candidate resolves to an existing"

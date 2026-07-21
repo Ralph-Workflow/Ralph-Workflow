@@ -13,7 +13,9 @@
     "last_action": null,
     "last_reason": null,
     "last_target": null,
-    "fast_forwarded": false
+    "fast_forwarded": false,
+    "last_refresh": null,
+    "consecutive_conflicts": 0
   },
   "commit": {
     "message_prepared": false,

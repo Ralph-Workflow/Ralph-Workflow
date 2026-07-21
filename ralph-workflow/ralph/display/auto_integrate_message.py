@@ -38,12 +38,24 @@ def _fast_forward_suffix(
     return ""
 
 
+def _refresh_suffix(refresh: str | None) -> str:
+    """Append the pre-landing origin-refresh outcome, when one was recorded.
+
+    The refresh is fail-open -- an unreachable or diverged mainline
+    still lands locally -- so without this clause an integration
+    computed against a stale pointer is indistinguishable from a
+    healthy one in the operator-facing line.
+    """
+    return f" [target refresh: {refresh}]" if refresh else ""
+
+
 def format_auto_integrate_message(
     action: str | None,
     target: str | None,
     reason: str | None,
     *,
     fast_forwarded: bool = False,
+    refresh: str | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
@@ -63,6 +75,12 @@ def format_auto_integrate_message(
     (the producer retains it on a successful land) and must not be
     rendered as a skip -- doing so would emit a phantom
     ``fast-forward skipped`` on a healthy run.
+
+    ``refresh`` is the ``RebaseState.last_refresh`` outcome of the origin
+    refresh performed immediately before the fast-forward observed the
+    target SHA. It is appended as ``[target refresh: <outcome>]`` when
+    present, and omitted entirely when ``None`` (no refresh was recorded,
+    e.g. a skip that short-circuited before the landing phase).
 
     The unknown-verb fallback returns a bare ``f"{action}"`` rather than
     ``f"auto-integrate: {action}"``; the single ``auto-integrate:`` prefix
@@ -95,7 +113,7 @@ def format_auto_integrate_message(
     else:
         message = f"{normalized}"
 
-    return message
+    return message + _refresh_suffix(refresh)
 
 
 __all__ = ["format_auto_integrate_message"]

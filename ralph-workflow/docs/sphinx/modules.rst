@@ -930,6 +930,13 @@ ralph.pipeline.auto_integrate
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_conflict_budget
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_conflict_budget
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_ff
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -962,6 +969,13 @@ ralph.pipeline.auto_integrate_recovery
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate_recovery
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_refresh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_refresh
    :members:
    :show-inheritance:
 

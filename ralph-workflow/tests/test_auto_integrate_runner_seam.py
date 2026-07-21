@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.merge import WORKTREE_FOUND
 from ralph.pipeline import auto_integrate, auto_integrate_ff, runner
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
@@ -22,7 +23,15 @@ def _stub_ff_environment(monkeypatch, root: Path) -> None:
     monkeypatch.setattr(auto_integrate_ff, "branch_sha", lambda _root, _branch: "old-main")
     monkeypatch.setattr(auto_integrate_ff, "is_ancestor", lambda *_args: True)
     monkeypatch.setattr(auto_integrate_ff, "find_main_worktree_root", lambda _root: root)
-    monkeypatch.setattr(auto_integrate_ff, "worktree_for_branch", lambda _root, _branch: root)
+    # The fast-forward now consults ``worktree_lookup``, which reports
+    # found / not-checked-out / query-failed instead of collapsing the
+    # last two into ``None``. The stub answers "found", which is the
+    # same environment these tests always described.
+    monkeypatch.setattr(
+        auto_integrate_ff,
+        "worktree_lookup",
+        lambda _root, _branch: (WORKTREE_FOUND, root),
+    )
 
 
 def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None:

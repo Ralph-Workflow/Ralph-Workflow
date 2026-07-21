@@ -24,11 +24,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import (
+    WORKTREE_FOUND,
+    WORKTREE_QUERY_FAILED,
     branch_sha,
     compare_and_swap_branch,
     fast_forward_via_worktree,
     is_ancestor,
-    worktree_for_branch,
+    worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
 
@@ -36,8 +38,14 @@ _TARGET_MISSING = "target branch missing at fast-forward time"
 _TARGET_NOT_ANCESTOR = "target advanced concurrently (not an ancestor of feature)"
 _TARGET_FF_REFUSED = "target advanced concurrently (ff-only refused)"
 _TARGET_CAS_MISMATCH = "target advanced concurrently (CAS mismatch)"
+_TARGET_WORKTREE_QUERY_FAILED = "target worktree lookup failed"
 _RETRYABLE_REASONS = frozenset(
-    {_TARGET_NOT_ANCESTOR, _TARGET_FF_REFUSED, _TARGET_CAS_MISMATCH}
+    {
+        _TARGET_NOT_ANCESTOR,
+        _TARGET_FF_REFUSED,
+        _TARGET_CAS_MISMATCH,
+        _TARGET_WORKTREE_QUERY_FAILED,
+    }
 )
 
 if TYPE_CHECKING:
@@ -100,10 +108,27 @@ def _fast_forward_target_via_worktree_or_cas(
     feature_sha: str,
     observed_target_sha: str,
 ) -> tuple[bool, str]:
-    """Run the worktree-aware or CAS fast-forward once ancestor + sha checks pass."""
+    """Run the worktree-aware or CAS fast-forward once ancestor + sha checks pass.
+
+    A FAILED worktree query is not "nobody holds the target". In this
+    repository's own linked-worktree topology the mainline genuinely is
+    checked out in a sibling worktree, and CAS-ing the shared ref there
+    advances ``refs/heads/<target>`` while leaving that checkout's index
+    and working tree behind. So a failed query fails closed with a
+    RETRYABLE reason and the bounded retry loop in
+    :mod:`ralph.pipeline.auto_integrate` re-attempts, rather than
+    desynchronising a live checkout.
+    """
     primary_root = find_main_worktree_root(repo_root)
-    wt = worktree_for_branch(primary_root, target)
-    if wt is not None:
+    verdict, wt = worktree_lookup(primary_root, target)
+    if verdict == WORKTREE_QUERY_FAILED:
+        logger.warning(
+            "auto_integrate: could not determine whether '{}' is checked out; "
+            "refusing to move the shared ref",
+            target,
+        )
+        return False, _TARGET_WORKTREE_QUERY_FAILED
+    if verdict == WORKTREE_FOUND and wt is not None:
         return _fast_forward_via_target_worktree(
             repo_root, wt, target, feature_sha, observed_target_sha
         )

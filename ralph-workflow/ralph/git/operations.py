@@ -563,11 +563,22 @@ def get_head_sha(repo_root: Path | str) -> str:
 
     Returns:
         SHA of the current HEAD commit.
+
+    Raises:
+        GitOperationError: If HEAD cannot be read.
+
+    The wrapping is deliberate and matches :func:`find_repo_root` and
+    :func:`merge_base` in this module. Raw GitPython exceptions used to
+    escape into the auto-integrate skip table, where they were recorded
+    as an opaque ``unexpected failure`` that named neither the operation
+    nor the repository.
     """
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
         return repo.head.commit.hexsha
+    except Exception as exc:
+        raise GitOperationError("get_head_sha", str(exc)) from exc
     finally:
         _close_repo(repo)
 

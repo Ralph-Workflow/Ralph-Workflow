@@ -156,7 +156,7 @@ def rebase_onto(
     result = executor.execute(
         "git", ("rebase", "--", upstream_branch), cwd=path
     )
-    return _rebase_result_from_process(result, path)
+    return _rebase_result_from_process(result, path, executor)
 
 
 def _validate_rebase_request(
@@ -190,16 +190,40 @@ def _validate_rebase_request(
     return None
 
 
-def _rebase_result_from_process(result: ProcessResult, repo_root: Path) -> RebaseResult:
+def _rebase_result_from_process(
+    result: ProcessResult,
+    repo_root: Path,
+    executor: ProcessExecutor,
+) -> RebaseResult:
+    """Classify a completed ``git rebase`` process result.
+
+    A non-zero exit is only ever reported as :class:`RebaseNoOp` when
+    the on-disk state CORROBORATES it: git printed an up-to-date
+    message AND left no rebase directory behind. Matching the message
+    alone was a false-success bug -- git prints ``up to date`` inside
+    the hint block of a genuinely conflicted rebase, and a
+    success-shaped ``RebaseNoOp`` makes
+    :func:`ralph.pipeline.auto_integrate._run_rebase_or_merge` skip the
+    endpoint-merge fallback and leave the unfinished rebase on disk,
+    where it fails ``check_rebase_preconditions`` for every later
+    integration.
+
+    Everything else falls through to :func:`classify_rebase_error`,
+    whose :class:`RebaseConflicts` / :class:`RebaseFailed` outcomes
+    both route into that fallback, so a misclassification inside the
+    classifier table can no longer end the integration attempt.
+    """
     if result.succeeded:
         return RebaseSuccess()
 
-    if _contains_up_to_date_message(result):
+    if _contains_up_to_date_message(result) and not rebase_in_progress(repo_root):
         return RebaseNoOp("Branch is already up-to-date with upstream")
 
     error_kind = classify_rebase_error(result.stderr, result.stdout)
     if error_kind.kind == RebaseKind.CONTENT_CONFLICT:
-        return RebaseConflicts(get_conflicted_files(repo_root=repo_root))
+        return RebaseConflicts(
+            get_conflicted_files(repo_root=repo_root, executor=executor)
+        )
 
     return RebaseFailed(error_kind)
 

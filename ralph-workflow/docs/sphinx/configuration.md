@@ -160,11 +160,11 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
-| `auto_integrate_enabled` | `true` | On by default: after every commit phase that creates a commit, Ralph Workflow rebases the current feature branch onto the shared mainline (falling back to a single endpoint merge on conflict) and fast-forwards the local mainline ref to the feature tip. Never pushes to a remote and never force-moves the mainline. A no-op on single-branch workflows via the skip conditions (on the target branch, no commits beyond the target, detached HEAD, missing target). Set to `false` to keep git behaviour byte-identical to runs without auto-integration. |
+| `auto_integrate_enabled` | `true` | On by default: at each of the four integration seams (see [Auto-integration triggers and skips](#auto-integration-triggers-and-skips)) Ralph Workflow rebases the current feature branch onto the shared mainline (falling back to a single endpoint merge on conflict) and fast-forwards the local mainline ref to the feature tip. Never pushes to a remote and never force-moves the mainline. A no-op on single-branch workflows via the skip conditions (on the target branch, no commits beyond the target, detached HEAD, missing target). Set to `false` to keep git behaviour byte-identical to runs without auto-integration. |
 | `auto_integrate_target` | (auto-detect) | Shared integration branch name. When set (e.g. `"develop"`) it is used verbatim, provided that branch exists locally or can be materialized from `refs/remotes/origin/<target>`. When unset, the target is auto-detected: the remote default branch (`origin/HEAD`) when a remote exists, otherwise `main`, otherwise `master`. If no candidate exists the step skips with a recorded reason and never guesses. |
 | `auto_integrate_fetch_enabled` | `true` | On by default: before each integration attempt Ralph Workflow runs a bounded, read-only `git fetch origin <target>` and fast-forwards the local mainline ref when the remote-tracking ref is strictly ahead. Never force-moves a ref and never pushes; a diverged remote is left alone. Set to `false` to keep the step strictly local -- appropriate when every agent shares one git common directory through linked worktrees, where the mainline ref is already shared. |
 | `auto_integrate_fetch_timeout_seconds` | `10.0` | Wall-clock budget for the auto-integration fetch (must be `> 0` and `<= 120`). On timeout or any remote failure the step degrades silently to local-only integration; the run is never failed by an unreachable remote. |
-| `auto_integrate_resolve_timeout_seconds` | `900.0` | Wall-clock ceiling for ONE conflict-resolution agent invocation during auto-integration (must be `> 0` and `<= 7200`). On expiry the invocation is cut, the in-progress merge is aborted and the integration records a conflict, so a hung resolver can never stall the run with a merge in progress. |
+| `auto_integrate_resolve_timeout_seconds` | `900.0` | Wall-clock ceiling for ONE conflict-resolution agent invocation during auto-integration (must be `> 0` and `<= 7200`). On expiry the invocation is cut, the in-progress merge is aborted and the integration records a conflict, so a hung resolver can never stall the run with a merge in progress. At most two CONSECUTIVE unresolved conflicts against the same target may invoke the resolver; after that the integration records an escalation naming the blocked target and stops invoking an agent until a later integration lands. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
@@ -173,6 +173,60 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
+
+### Auto-integration triggers and skips
+
+Auto-integration does **not** run only after a commit. With
+`auto_integrate_enabled = true` it runs at four seams:
+
+1. **The commit seam.** After a commit phase that actually created a
+   commit (`COMMIT_SUCCESS`). This is the full sequence: durable crash
+   record, rebase, endpoint-merge fallback, optional agent conflict
+   resolution, fast-forward.
+2. **Every successful phase boundary.** Eleven phase-transition events
+   (agent success, analysis success, analysis/phase loopback, phase
+   advance, review clean, review issues found, and their siblings) run
+   the same integration so the feature branch stays in lockstep with a
+   mainline that moved while an analysis phase ran.
+3. **The parallel fan-out join.** After parallel work units are joined
+   back together.
+4. **Run startup.** Once per run, before the first phase, so a run that
+   resumes onto a mainline that moved while it was stopped integrates
+   before doing anything else.
+
+An integration attempt is skipped, with the reason recorded on the run
+state and surfaced in the `auto-integrate:` log line, when:
+
+| Skip | Meaning |
+|------|---------|
+| worktree not clean | **Phase boundaries only.** `git status --porcelain` reports anything at all -- including **untracked** files. This is deliberate: a boundary rebase would rewrite `HEAD` while a development agent has uncommitted work in flight, so a stray scratch file suppresses boundary integration until the next commit seam, which catches up moments later under the relaxed rebase preconditions. Any git failure here also counts as "not clean" (fail closed). |
+| on target branch | The checkout is already on the mainline; there is nothing to integrate. |
+| no commits beyond target | The target ref already equals `HEAD`. |
+| detached HEAD | There is no branch to integrate. |
+| no integration target branch resolved | Neither the configured target nor any auto-detect candidate exists. |
+| preconditions not met | `check_rebase_preconditions` refused -- most often a rebase left in progress on disk by an earlier interrupted attempt. |
+| HEAD read failed | `git` could not report `HEAD`; the underlying error is named in the recorded reason. |
+
+When the fast-forward itself cannot land, the attempt is **retried up
+to three times** within the same seam: the target is re-read from
+origin and the integration recomputed onto the moved tip. Retryable
+causes are a target that advanced concurrently (not an ancestor,
+`merge --ff-only` refused, compare-and-swap mismatch) and a failed
+`git worktree list` query -- the last of which fails closed rather than
+moving the shared mainline ref while a live checkout may hold it.
+
+Immediately before the fast-forward observes the target SHA, the target
+is re-read from origin a second time (the first read happens when the
+integration context is resolved). This matters because the rebase, the
+endpoint merge and any agent conflict resolution can take minutes,
+during which other agents keep landing on the same mainline. The
+outcome of that refresh -- `refreshed from origin`, `already current`,
+`no origin remote`, `origin unreachable`, `diverged from origin`,
+`fetch disabled` -- is recorded on the run state and rendered in the
+`auto-integrate:` line as `[target refresh: <outcome>]`, so a landing
+computed against a stale pointer is never silent. The refresh itself
+stays fail-open: an unreachable remote degrades to local-only
+integration and never fails the run.
 
 ### `[general.workflow]`
 

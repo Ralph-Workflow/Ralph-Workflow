@@ -42,7 +42,7 @@ from ralph.git.merge import (
     branch_sha,
     resolve_origin_head_branch,
 )
-from ralph.git.operations import get_head_sha
+from ralph.git.operations import GitOperationError, get_head_sha
 from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
@@ -57,6 +57,10 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.auto_integrate_conflict_budget import (
+    apply_conflict_budget,
+    resolver_allowed,
+)
 from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
     is_retryable_fast_forward_failure,
@@ -73,11 +77,13 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_recovery import (
     recover_incomplete_integration,
 )
+from ralph.pipeline.auto_integrate_refresh import (
+    refresh_target as _refresh_target,
+)
 from ralph.pipeline.auto_integrate_resolve import (
     RESOLUTION_FAILED,
     endpoint_merge_with_resolution,
 )
-from ralph.pipeline.auto_integrate_sync import refresh_target_from_remote
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -499,6 +505,12 @@ def _auto_integrate_after_commit_inner(
        the target moved concurrently, refresh the target from origin
        and re-integrate onto the moved tip up to
        :data:`_MAX_INTEGRATION_ATTEMPTS` times.
+
+    The incoming ``state`` is the seam its docstring promised: it
+    carries the consecutive-unresolved-conflict count that
+    :mod:`ralph.pipeline.auto_integrate_conflict_budget` uses to stop
+    re-invoking the dev agent on a conflict it has already failed to
+    resolve.
     """
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
     early_skip, usable_ctx = _check_early_skips(ctx)
@@ -510,6 +522,19 @@ def _auto_integrate_after_commit_inner(
         return None
     root, _current_branch, target = usable_ctx
 
+    # Budget check BEFORE any git mutation: an exhausted budget still
+    # runs the rebase and the endpoint merge (and still aborts them
+    # cleanly), it merely stops paying for another agent invocation.
+    allowed = resolver_allowed(state, target)
+    effective_resolver = conflict_resolver if allowed else None
+    resolver_suppressed = conflict_resolver is not None and not allowed
+    if resolver_suppressed:
+        logger.warning(
+            "auto_integrate: conflict resolution budget exhausted for '{}'; "
+            "not invoking the resolver again until an integration lands",
+            target,
+        )
+
     record: RebaseState | None = None
     for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
         if attempt:
@@ -519,7 +544,7 @@ def _auto_integrate_after_commit_inner(
             # _auto_integrate_resolve_context, so this never doubles
             # the fetch on the common single-attempt path.
             _refresh_target(config, root, target)
-        record, retry_ff = _integrate_once(root, target, conflict_resolver)
+        record, retry_ff = _integrate_once(config, root, target, effective_resolver)
         if not retry_ff:
             break
         logger.info(
@@ -527,10 +552,18 @@ def _auto_integrate_after_commit_inner(
             "re-integrating onto the moved target",
             attempt + 1,
         )
-    return record
+    if record is None:
+        return None
+    return apply_conflict_budget(
+        record,
+        prior=state,
+        target=target,
+        resolver_suppressed=resolver_suppressed,
+    )
 
 
 def _integrate_once(
+    config: UnifiedConfig,
     root: Path,
     target: str,
     conflict_resolver: ConflictResolver | None,
@@ -542,6 +575,12 @@ def _integrate_once(
     the one case where an immediate re-integration onto the moved
     target can still succeed. Every skip / conflict short-circuit
     returns ``retry_ff=False``.
+
+    ``config`` is threaded in for the pre-landing target refresh: the
+    rebase, the endpoint merge and any dev-agent conflict resolution
+    (bounded at 900 s by default) all run between context resolution
+    and the fast-forward, so the pointer read at context-resolution
+    time can be minutes old by the time the landing needs it.
     """
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
@@ -586,6 +625,13 @@ def _integrate_once(
         ),
     )
 
+    # Re-read the mainline pointer from origin IMMEDIATELY before the
+    # fast-forward observes it. Several agents land on the same
+    # mainline continuously, so binding the ancestry decision inside
+    # fast_forward_target to a pointer read seconds ago (rather than
+    # before the rebase/merge/resolution sequence) is what keeps the
+    # landing correct under concurrency.
+    refresh_outcome = _refresh_target(config, root, target)
     ok, skip_reason = _fast_forward_target(root, target, feature_sha)
     _clear_record(root)
 
@@ -594,7 +640,7 @@ def _integrate_once(
         merge_attempted=rebase_result.merge_attempted,
         merge_outcome=rebase_result.merge_outcome,
         target=target,
-    )
+    ).model_copy(update={"last_refresh": refresh_outcome})
     if not ok:
         # Fast-forward skipped: reason is appended but we keep
         # the rebase/merged action as the headline so the log line
@@ -717,24 +763,6 @@ def _current_branch_or_detached_marker(root: Path) -> str | None:
                 close_method()
 
 
-def _refresh_target(config: UnifiedConfig, root: Path, target: str) -> None:
-    """Pull the freshest mainline pointer from origin before integrating.
-
-    A no-op when the feature is disabled or the repository has no
-    origin. Never raises: an unreachable remote must degrade to
-    local-only integration, not fail the run.
-    """
-    enabled: object = getattr(config.general, "auto_integrate_fetch_enabled", True)
-    if not enabled:
-        return
-    timeout: object = getattr(
-        config.general, "auto_integrate_fetch_timeout_seconds", 10.0
-    )
-    seconds = timeout if isinstance(timeout, (int, float)) else 10.0
-    with contextlib.suppress(Exception):
-        refresh_target_from_remote(root, target, timeout_seconds=float(seconds))
-
-
 def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -783,11 +811,22 @@ def _auto_integrate_check_skip_conditions(
     current_branch: str,
     target: str,
 ) -> RebaseState | None:
-    """Apply the AC-02 / AC-03 / preconditions skip table; return skip or None."""
+    """Apply the AC-02 / AC-03 / preconditions skip table; return skip or None.
+
+    A failed HEAD read is recorded with the underlying
+    :class:`GitOperationError` message rather than being allowed to
+    reach the caller's broad handler, where it became an opaque
+    ``unexpected failure`` that named neither the operation nor the
+    repository.
+    """
     if current_branch == target:
         return _record_skip(reason="on target branch", target=target)
     target_sha = branch_sha(root, target)
-    if target_sha is not None and target_sha == get_head_sha(root):
+    try:
+        head_sha = get_head_sha(root)
+    except GitOperationError as exc:
+        return _record_skip(reason=f"HEAD read failed: {exc}", target=target)
+    if target_sha is not None and target_sha == head_sha:
         return _record_skip(reason="no commits beyond target", target=target)
     try:
         check_rebase_preconditions(root)
