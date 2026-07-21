@@ -33,28 +33,53 @@ ALLOWLIST_PATTERNS='tests/test_display_context\.py|tests/unit/display/test_displ
 # allowlist, the historical-collapse context would false-positive the drift check.
 HISTORICAL_ALLOWLIST_PATTERNS='ralph/display/status_bar\.py|ralph/display/__init__\.py|ralph/display/mode\.py|ralph/display/_mode_adaptive_limits\.py|ralph/display/context\.py|docs/sphinx/.*\.rst|docs/sphinx/.*\.md'
 
-# Private temp file for grep stderr: mktemp + trap cleanup + restrictive perms.
-# Per docs/ralph-workflow-policy/gate-script-policy.md § Security, predictable
-# shared paths like /tmp/wt028_drift.err are a local privilege-escalation surface.
-GREP_ERR="$(mktemp -t wt028_drift.XXXXXX.err)"
-# Per gate-script-policy.md: restrictive permissions on the temp file.
-chmod 600 "$GREP_ERR"
+# Private temporary directory for parallel grep output. Per
+# docs/ralph-workflow-policy/gate-script-policy.md § Security, predictable
+# shared paths are a local privilege-escalation surface.
+GREP_DIR="$(mktemp -d -t wt028_drift.XXXXXX)"
+chmod 700 "$GREP_DIR"
 cleanup() {
-    rm -f "$GREP_ERR"
+    rm -rf "$GREP_DIR"
 }
 trap cleanup EXIT
 
-# Exclude __pycache__ and .pyc files so the check stays stable across builds.
+# Find bounds the traversal to relevant source suffixes before one grep
+# process scans the resulting file list, avoiding recursive BSD grep's
+# directory-walk overhead without a non-standard dependency.
+GREP_TIMEOUT_SECONDS=2
+find ralph tests docs -type f \( -name '*.py' -o -name '*.rst' -o -name '*.md' \) \
+    -not -path '*/__pycache__/*' -exec grep -lE "$DRIFT_PATTERNS" {} + \
+    >"$GREP_DIR/scan.out" 2>"$GREP_DIR/scan.err" &
+SCAN_PID="$!"
+(
+    sleep "$GREP_TIMEOUT_SECONDS"
+    : >"$GREP_DIR/timed_out"
+    kill "$SCAN_PID" 2>/dev/null || true
+) &
+WATCHDOG_PID="$!"
 set +e
-DRIFT_HITS="$(grep -rln -E "$DRIFT_PATTERNS" ralph/ tests/ docs/ \
-    --include='*.py' --include='*.rst' --include='*.md' \
-    --exclude='__pycache__' --exclude='*.pyc' 2>"$GREP_ERR")"
-GREP_RC=$?
+wait "$SCAN_PID"
+GREP_RC="$?"
 set -e
+kill "$WATCHDOG_PID" 2>/dev/null || true
+wait "$WATCHDOG_PID" 2>/dev/null || true
+
+if [ -e "$GREP_DIR/timed_out" ]; then
+    echo "FAIL: drift scan exceeded ${GREP_TIMEOUT_SECONDS}s and was stopped" >&2
+    echo "Fix the slow scan; do not raise the gate timeout. Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Bounded." >&2
+    exit 124
+fi
+
+if [ "$GREP_RC" -eq 1 ]; then
+    GREP_RC=0
+elif [ "$GREP_RC" -ne 0 ]; then
+    GREP_RC=2
+fi
+DRIFT_HITS="$(cat "$GREP_DIR/scan.out")"
 
 if [ "$GREP_RC" -eq 2 ]; then
     echo "FAIL: bad path or permission in upstream grep" >&2
-    cat "$GREP_ERR" >&2
+    cat "$GREP_DIR/scan.err" >&2
     echo "" >&2
     echo "Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements (fail-closed)." >&2
     exit 2

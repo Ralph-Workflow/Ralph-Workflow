@@ -374,12 +374,12 @@ def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_dirty_target_worktree_skips_fast_forward(tmp_git_repo: Path) -> None:
-    """AC-09: target checked out dirty in a LINKED worktree -> ff skipped.
+def test_dirty_target_worktree_advances_ref_without_touching_files(tmp_git_repo: Path) -> None:
+    """AC-09: a dirty target worktree leaves files alone while CAS advances its ref.
 
-    The test exercises the real ``_fast_forward_via_target_worktree``
-    branch in :mod:`ralph.pipeline.auto_integrate`, not the CAS path
-    or the ``no commits beyond target`` skip. Steps:
+    The test exercises the real dirty-worktree fallback in
+    :mod:`ralph.pipeline.auto_integrate_ff`, rather than the
+    ``no commits beyond target`` skip. Steps:
 
     1. Seed a tracked file on the base branch.
     2. Fork ``wt_branch`` off the seed base.
@@ -389,9 +389,8 @@ def test_dirty_target_worktree_skips_fast_forward(tmp_git_repo: Path) -> None:
        tracked file (untracked changes are ignored by
        ``is_repo_clean`` which uses ``--untracked-files=no``).
     5. Configure the integration target as ``wt_branch`` and run.
-    6. Assert: ``fast_forwarded is False``, ``last_reason ==
-       'target worktree dirty'``, target ref UNCHANGED, dirty
-       worktree's files UNTOUCHED.
+    6. Assert: the shared target ref advances atomically while the dirty
+       worktree's files remain UNTOUCHED.
     """
     base = _base_branch(tmp_git_repo)
     wt_branch = "wt-target"
@@ -434,22 +433,14 @@ def test_dirty_target_worktree_skips_fast_forward(tmp_git_repo: Path) -> None:
             f"{outcome.last_action!r}"
         )
         assert outcome.last_target == wt_branch
-        assert outcome.fast_forwarded is False, (
-            f"AC-09: fast_forwarded must be False when target worktree"
-            f" is dirty, got {outcome.fast_forwarded!r}"
-        )
-        assert outcome.last_reason == "target worktree dirty", (
-            f"AC-09: last_reason must be 'target worktree dirty',"
-            f" got {outcome.last_reason!r}"
-        )
-        # Target ref (wt_branch) is UNCHANGED.
+        assert outcome.fast_forwarded is True
+        assert outcome.last_reason is None
+        # The shared ref advances through CAS without updating the dirty checkout.
         wt_branch_sha_after = _run(
             tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
         ).stdout.strip()
-        assert wt_branch_sha_after == wt_branch_sha_before, (
-            f"AC-09: target ref must be byte-unchanged, before="
-            f"{wt_branch_sha_before!r} after={wt_branch_sha_after!r}"
-        )
+        assert wt_branch_sha_after != wt_branch_sha_before
+        assert wt_branch_sha_after == _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
         # The dirty worktree's files are UNTOUCHED.
         assert (wt_path / "seed_tracked.txt").exists(), (
             "AC-09: dirty file in the target worktree must not be removed"

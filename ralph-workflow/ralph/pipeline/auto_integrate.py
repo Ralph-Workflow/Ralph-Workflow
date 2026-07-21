@@ -57,7 +57,10 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline.auto_integrate_ff import fast_forward_target
+from ralph.pipeline.auto_integrate_ff import (
+    fast_forward_target,
+    is_retryable_fast_forward_failure,
+)
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
 )
@@ -125,14 +128,39 @@ def resolve_integration_target(
         return None
 
     origin_default = resolve_origin_head_branch(repo_root_path)
-    if origin_default and branch_exists(repo_root_path, origin_default):
+    if origin_default and _ensure_local_origin_branch(repo_root_path, origin_default):
         return origin_default
 
     for candidate in _AUTO_DETECT_TARGET_CANDIDATES:
-        if branch_exists(repo_root_path, candidate):
+        if _ensure_local_origin_branch(repo_root_path, candidate):
             return candidate
 
     return None
+
+
+def _ensure_local_origin_branch(repo_root: Path, branch: str) -> bool:
+    """Return whether ``branch`` is local, materializing ``origin/branch`` if needed.
+
+    A clone-style agent worktree commonly has only ``origin/main``.  The
+    local mainline ref is required for the later CAS/fast-forward contract,
+    so create it from that remote-tracking ref before integration.  Git
+    refuses an already-created branch; re-checking makes that race harmless.
+    """
+    if branch_exists(repo_root, branch):
+        return True
+    remote_ref = f"refs/remotes/origin/{branch}"
+    if run_git(
+        ("show-ref", "--verify", "--quiet", remote_ref),
+        cwd=repo_root,
+        label="git-origin-target-exists",
+    ).returncode != 0:
+        return False
+    run_git(
+        ("branch", "--", branch, remote_ref),
+        cwd=repo_root,
+        label="git-create-local-origin-target",
+    )
+    return branch_exists(repo_root, branch)
 
 
 # The record path / write_record / read_record / clear_record helpers
@@ -542,15 +570,15 @@ def _integrate_once(
     if not ok:
         # Fast-forward skipped: reason is appended but we keep
         # the rebase/merged action as the headline so the log line
-        # reflects what actually happened to the feature. The caller
-        # may re-integrate onto the moved target (bounded).
+        # reflects what actually happened to the feature. Only an
+        # explicit concurrent target move merits a bounded retry.
         record = record.model_copy(
             update={
                 "last_reason": skip_reason,
                 "fast_forwarded": False,
             }
         )
-        return record, True
+        return record, is_retryable_fast_forward_failure(skip_reason)
     # Successful fast-forward: the ``fast_forwarded`` boolean is
     # the headline signal, so any residual reason from the
     # rebase/merge phase (including benign rebase NoOp reasons
@@ -708,21 +736,13 @@ def _auto_integrate_check_skip_conditions(
     if current_branch == target:
         return _record_skip(reason="on target branch", target=target)
     target_sha = branch_sha(root, target)
-    if target_sha is not None and not _has_commits_ahead(root, target_sha):
+    if target_sha is not None and target_sha == get_head_sha(root):
         return _record_skip(reason="no commits beyond target", target=target)
     try:
         check_rebase_preconditions(root)
     except RebasePreconditionError as exc:
         return _record_skip(reason=f"preconditions not met: {exc}", target=target)
     return None
-
-
-def _has_commits_ahead(root: Path, target_sha: str) -> bool:
-    """True when there is at least one commit beyond ``target_sha`` (AC-03)."""
-    try:
-        return bool(_count_commits_ahead(root, target_sha))
-    except Exception:
-        return True
 
 
 @dataclass(frozen=True)
@@ -854,24 +874,6 @@ def _abort_rebase_after_conflict(root: Path) -> None:
             abort_rebase(repo_root=root)
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)
-
-
-def _count_commits_ahead(repo_root: Path, target_sha: str) -> int:
-    """Return ``git rev-list --count <target_sha>..HEAD`` as int."""
-    from ralph.git.subprocess_runner import run_git
-
-    result = run_git(
-        ("rev-list", "--count", f"{target_sha}..HEAD"),
-        cwd=repo_root,
-        label="git-rev-list-count",
-    )
-    if result.returncode != 0:
-        return 1  # conservative
-    raw = result.stdout.strip()
-    try:
-        return int(raw)
-    except ValueError:
-        return 1
 
 
 __all__ = [

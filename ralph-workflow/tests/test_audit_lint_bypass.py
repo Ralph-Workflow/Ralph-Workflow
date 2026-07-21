@@ -98,13 +98,37 @@ def test_multiple_noqa_on_same_line() -> None:
 def test_noqa_inside_triple_quoted_string_skipped() -> None:
     """# noqa inside a triple-quoted string is not flagged."""
     lines = [
-        '"""',
+        '""" # noqa',
         "A docstring with # noqa in it.",
         '"""',
         "def my_func(): pass",
     ]
     violations = _find_noqa_violations(lines, "src/docstring.py")
     assert len(violations) == 0
+
+
+def test_noqa_after_triple_quoted_string_detected() -> None:
+    """A noqa after a triple-quoted string is still checked."""
+    lines = [
+        '"""',
+        "A docstring.",
+        '"""',
+        "value = 1  # noqa",
+    ]
+    violations = _find_noqa_violations(lines, "src/docstring.py")
+    assert len(violations) == 1
+    assert violations[0].line == 4
+
+
+def test_noqa_after_single_line_triple_quoted_string_detected() -> None:
+    """A single-line triple-quoted literal does not hide a later noqa."""
+    lines = [
+        '\"\"\"A docstring.\"\"\"',
+        "value = 1  # noqa",
+    ]
+    violations = _find_noqa_violations(lines, "src/docstring.py")
+    assert len(violations) == 1
+    assert violations[0].line == 2
 
 
 # ---------------------------------------------------------------------------

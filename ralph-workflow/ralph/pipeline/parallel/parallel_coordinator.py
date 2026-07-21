@@ -400,6 +400,14 @@ async def _run_worker(
                     raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
                 raise
 
+            if result.exit_code != 0:
+                display.set_status(unit.unit_id, WorkerStatus.FAILED)
+                detail = result.final_message.strip()
+                message = f"Worker {unit.unit_id!r} exited with code {result.exit_code}"
+                if detail:
+                    message = f"{message}: {detail}"
+                raise _WorkerFailureError(unit.unit_id, result.exit_code, message)
+
             if bundle is not None and worker_namespace is not None:
                 artifact_dir = worker_namespace / "artifacts"
                 if not list_artifacts(artifact_dir):

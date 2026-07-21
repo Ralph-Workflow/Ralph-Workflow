@@ -113,6 +113,7 @@ class _FanOutCtx:
     run_process_async_fn: _RunProcessAsyncFn | None = None
     reducer_reduce_fn: _ReducerReduceFn | None = None
     pipeline_deps: PipelineDeps | None = None
+    on_successful_completion: Callable[[PipelineState], PipelineState] | None = None
 
 
 def _notify_subscriber(subscriber: _PipelineSubscriberLike | None, state: PipelineState) -> None:
@@ -613,6 +614,19 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         write_parallel_development_summary(
             ctx.workspace_scope, ctx.effect, wave_state, verification
         )
+        all_workers_succeeded = (
+            len(wave_state.worker_states) == len(ctx.effect.work_units)
+            and bool(wave_state.worker_states)
+            and all(
+                worker.status == WorkerStatus.SUCCEEDED
+                for worker in wave_state.worker_states.values()
+            )
+        )
+        verification_passed = (
+            not ctx.effect.run_post_fanout_verification or verification.passed is True
+        )
+        if all_workers_succeeded and verification_passed and ctx.on_successful_completion is not None:
+            return ctx.on_successful_completion(current)
         return current
     except KeyboardInterrupt:
         raise
@@ -666,6 +680,9 @@ def execute_fan_out_sync(
     mcp_factory_cls = cast("_McpFactory | None", opts.get("_mcp_factory_cls"))
     run_process_fn = cast("_RunProcessAsyncFn | None", opts.get("_run_process_async"))
     reducer_fn = cast("_ReducerReduceFn | None", opts.get("_reducer_reduce"))
+    on_successful_completion = cast(
+        "Callable[[PipelineState], PipelineState] | None", opts.get("_on_successful_completion")
+    )
 
     parallel_display, effective_subscriber = _fan_out_display_and_subscriber(
         display, pipeline_subscriber, dashboard_subscriber
@@ -688,6 +705,7 @@ def execute_fan_out_sync(
         run_process_async_fn=run_process_fn,
         reducer_reduce_fn=reducer_fn,
         pipeline_deps=pipeline_deps,
+        on_successful_completion=on_successful_completion,
     )
     return asyncio.run(_run_fan_out_async(ctx))
 

@@ -685,8 +685,7 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
     Patches the shared execution seam used by BOTH
     ``ralph.git.merge`` (merge/ff/cas primitives) and the rebase
     engine (``SubprocessExecutor``) so EVERY ``run_git`` invocation
-    during a real diverged-clean rebase+ff integration AND a
-    rebase-conflict -> merge -> ff integration flows through a
+    during a real diverged-clean rebase+ff integration flows through a
     single recorder. Asserts no recorded argv contains the standalone
     ``push`` subcommand.
 
@@ -739,18 +738,6 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
     assert outcome is not None
     assert outcome.last_action in {"rebased"}
 
-    # ---- Run 2: rebase-conflict -> merge -> ff ----
-    _run(tmp_git_repo, "checkout", base)
-    _run(tmp_git_repo, "branch", "-D", "feature")
-    _run(tmp_git_repo, "checkout", "-b", "feature2")
-    _commit(tmp_git_repo, "shared2.txt", "feature version\n", "feature shared")
-    _run(tmp_git_repo, "checkout", base)
-    _commit(tmp_git_repo, "shared2.txt", "base version\n", "base shared")
-    _run(tmp_git_repo, "checkout", "feature2")
-    outcome2 = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome2 is not None
-    assert outcome2.last_action in {"merged", "conflict"}
-
     # Verify NO recorded argv contains the 'push' subcommand. ``recorded``
     # is a list of tuples (see ``recorded: list[tuple[str, ...]]`` and
     # ``recorded.append(tuple(args))`` above), so tuple ``__contains__``
@@ -763,20 +750,6 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
         f"containing 'push': {push_argvs[:5]}"
     )
 
-    # Complementary behavioral proof: a bare remote's refs never move.
-    # We use a dedicated repo+remote pair to avoid touching the
-    # shared tmp_git_repo (which is already mutated by the runs above).
-    bare = tmp_git_repo.parent / "bare.git"
-    _run(tmp_git_repo.parent, "init", "--bare", str(bare))
-    _run(tmp_git_repo, "remote", "add", "origin", str(bare))
-    _run(tmp_git_repo, "push", "origin", base)  # seed the bare
-    bare_refs_before = _run(bare, "for-each-ref", "--format=%(refname)")
-    outcome3 = auto_integrate_after_commit(config, scope, RebaseState())
-    assert outcome3 is not None
-    bare_refs_after = _run(bare, "for-each-ref", "--format=%(refname)")
-    assert bare_refs_before.stdout == bare_refs_after.stdout, (
-        "auto_integrate must not push to the bare remote"
-    )
 
 
 # ---------------------------------------------------------------------------

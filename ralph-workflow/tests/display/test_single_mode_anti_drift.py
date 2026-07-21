@@ -33,6 +33,7 @@ The AST cache is populated at module import time so the test runs in
 from __future__ import annotations
 
 import ast
+import os
 import re
 import subprocess
 from functools import cache, lru_cache
@@ -359,6 +360,44 @@ def test_drift_check_script_fails_closed_against_every_named_legacy_token() -> N
     assert "PASS" in result_after.stdout, (
         f"drift-check PASS output must include the PASS marker; got stdout={result_after.stdout!r}"
     )
+
+
+def test_drift_check_fails_closed_when_search_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unexpected search failures must not be reported as a clean drift check."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_find = bin_dir / "find"
+    fake_find.write_text("#!/usr/bin/env bash\nexit 127\n", encoding="utf-8")
+    fake_find.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+    result = _run_drift_check()
+
+    assert result.returncode == 2
+    assert "FAIL: bad path or permission in upstream grep" in result.stderr
+
+
+def test_drift_check_times_out_when_search_stalls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A stalled scan is bounded and fails with the gate-timeout guidance."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_find = bin_dir / "find"
+    fake_find.write_text("#!/usr/bin/env bash\nwhile :; do :; done\n", encoding="utf-8")
+    fake_find.chmod(0o755)
+    fake_sleep = bin_dir / "sleep"
+    fake_sleep.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    fake_sleep.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+
+    result = _run_drift_check()
+
+    assert result.returncode == 124
+    assert "drift scan exceeded 2s and was stopped" in result.stderr
+    assert "gate-script-policy.md § Bounded" in result.stderr
 
 
 # ---------------------------------------------------------------------------
