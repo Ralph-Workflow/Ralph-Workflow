@@ -85,6 +85,24 @@ def test_configuration_md_documents_true_default_for_auto_integrate_enabled() ->
     )
 
 
+def test_configuration_md_documents_auto_integrate_resolve_timeout_key() -> None:
+    """The conflict-resolution ceiling must be discoverable with its default.
+
+    An operator whose conflict resolutions legitimately run long needs to
+    find the knob that bounds them, and its ``900.0`` default.
+    """
+    content = _PATH.read_text()
+    row = _row_for_key(content, "`auto_integrate_resolve_timeout_seconds`")
+    assert "900.0" in row, (
+        "auto_integrate_resolve_timeout_seconds row must document the 900.0 "
+        f"default, got: {row!r}"
+    )
+    lowered = row.lower()
+    assert "conflict" in lowered, (
+        f"the row must say what it bounds (conflict resolution), got: {row!r}"
+    )
+
+
 def test_configuration_md_documents_false_optout_for_auto_integrate_enabled() -> None:
     """The ``auto_integrate_enabled`` row must mention ``false`` so an
     operator can discover how to opt out of auto-integration.

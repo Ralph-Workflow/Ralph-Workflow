@@ -33,7 +33,7 @@ from ralph.git.merge import (
     is_ancestor,
     worktree_for_branch,
 )
-from ralph.git.operations import find_main_worktree_root, is_repo_clean
+from ralph.git.operations import find_main_worktree_root
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
@@ -162,9 +162,13 @@ def _advance_local_ref(
 
     Reuses the same worktree-aware and compare-and-swap paths as the
     normal fast-forward, so a concurrent mover wins and this refresh
-    fails closed rather than clobbering.
+    fails closed rather than clobbering. ``git merge --ff-only`` is
+    tried first whenever the branch is checked out, because it keeps
+    that checkout's index and working tree consistent with the ref;
+    it is its own guard and refuses without mutating anything when
+    local changes would be overwritten. The CAS is the fallback.
     """
     worktree = worktree_for_branch(find_main_worktree_root(repo_root), target)
-    if worktree is not None and is_repo_clean(worktree):
-        return fast_forward_via_worktree(worktree, remote_sha)
+    if worktree is not None and fast_forward_via_worktree(worktree, remote_sha):
+        return True
     return compare_and_swap_branch(repo_root, target, local_sha, remote_sha)

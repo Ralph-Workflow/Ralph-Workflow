@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_agent as resolver_module
 from ralph.policy.loader import load_policy
 
@@ -31,6 +32,22 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
+#: Distinct from every other timeout default so an assertion on it
+#: cannot pass by coincidence.
+_RESOLVE_TIMEOUT_SECONDS = 123.5
+
+
+def _build_config() -> UnifiedConfig:
+    return UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": True,
+                "auto_integrate_resolve_timeout_seconds": _RESOLVE_TIMEOUT_SECONDS,
+            }
+        }
+    )
+
+
 def _build_resolver(
     *,
     agent_config: object,
@@ -42,6 +59,7 @@ def _build_resolver(
         policy_bundle=_load_default_policy_bundle(),
         registry=registry,
         display=display,
+        config=_build_config(),
     )
     return resolver, registry, display
 
@@ -109,3 +127,92 @@ def test_resolver_returns_false_when_agent_unavailable(
 
     assert resolver(tmp_path, "main") is False
     invoke.assert_not_called()
+
+
+def test_resolver_passes_bounded_timeouts_to_invoke_agent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC-06: the invocation is bounded on BOTH the wall-clock and idle axes.
+
+    ``ralph.agents.invoke._options`` assigns ``idle_timeout_seconds``
+    straight from the options with no fallback to the config-derived
+    base, so leaving it unset disables the idle watchdog entirely and a
+    hung resolver can park the repository in a merge-in-progress state.
+    """
+    seen: list[object] = []
+
+    def _fake_invoke(
+        _agent_config: object, _prompt_file: str, *, options: object = None
+    ) -> object:
+        seen.append(options)
+        return iter(["line"])
+
+    monkeypatch.setattr(resolver_module, "invoke_agent", _fake_invoke)
+    resolver, _registry, _display = _build_resolver(agent_config=object())
+
+    assert resolver(tmp_path, "main") is True
+
+    options = seen[0]
+    assert getattr(options, "max_session_seconds", None) == _RESOLVE_TIMEOUT_SECONDS
+    idle = getattr(options, "idle_timeout_seconds", None)
+    assert idle is not None
+    assert isinstance(idle, float)
+    assert idle > 0
+
+
+def test_resolver_falls_over_to_second_agent_when_first_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC-06: one failing agent must not end the resolution attempt.
+
+    The default ``development`` chain is ``["claude", "opencode"]``; an
+    unavailable or crashing first agent used to abort the merge and
+    re-conflict on every later commit with no progress.
+    """
+    attempts: list[str] = []
+
+    def _flaky_invoke(
+        agent_config: object, _prompt_file: str, *, options: object = None
+    ) -> object:
+        attempts.append(str(agent_config))
+        if len(attempts) == 1:
+            raise RuntimeError("first agent exploded")
+        return iter(["line"])
+
+    monkeypatch.setattr(resolver_module, "invoke_agent", _flaky_invoke)
+    resolver, registry, _display = _build_resolver(agent_config=object())
+
+    assert resolver(tmp_path, "main") is True
+    assert len(attempts) == 2
+    looked_up = [call.args[0] for call in registry.get.call_args_list]
+    assert looked_up == ["claude", "opencode"]
+
+
+def test_resolver_returns_false_when_every_chain_agent_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC-06: an exhausted chain reports failure and issues no git command.
+
+    Aborting the merge is the caller's job
+    (``auto_integrate_resolve.endpoint_merge_with_resolution``); the
+    resolver only edits files, so it must leave the repository exactly
+    as it found it.
+    """
+    attempts: list[str] = []
+
+    def _always_boom(
+        agent_config: object, _prompt_file: str, *, options: object = None
+    ) -> object:
+        attempts.append(str(agent_config))
+        raise RuntimeError("agent exploded")
+
+    run_git = MagicMock()
+    monkeypatch.setattr(resolver_module, "invoke_agent", _always_boom)
+    monkeypatch.setattr(
+        "ralph.git.subprocess_runner.run_git", run_git, raising=True
+    )
+    resolver, _registry, _display = _build_resolver(agent_config=object())
+
+    assert resolver(tmp_path, "main") is False
+    assert len(attempts) == 2
+    run_git.assert_not_called()

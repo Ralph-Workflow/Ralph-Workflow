@@ -28,16 +28,51 @@ def test_allows_clean_repository(tmp_git_repo: Path) -> None:
     check_rebase_preconditions(tmp_git_repo)
 
 
-def test_detects_dirty_worktree(tmp_git_repo: Path) -> None:
-    """Dirty worktrees should trigger a precondition error."""
+def test_tracked_modification_still_blocks_rebase_preconditions(
+    tmp_git_repo: Path,
+) -> None:
+    """An uncommitted TRACKED modification must still block a rebase.
 
-    (tmp_git_repo / "dirty.txt").write_text("uncommitted")
+    This pins that the untracked-file relaxation below is scoped: git
+    itself refuses to replay commits over modified tracked content, so
+    Ralph must keep refusing too.
+    """
+
+    (tmp_git_repo / "README.md").write_text("locally modified", encoding="utf-8")
 
     with pytest.raises(
         RebasePreconditionError,
         match="Working tree is not clean",
     ):
         check_rebase_preconditions(tmp_git_repo)
+
+
+def test_untracked_file_does_not_block_rebase_preconditions(
+    tmp_git_repo: Path,
+) -> None:
+    """An untracked file must never disable integration for the whole run.
+
+    ``git rebase`` and ``git merge`` tolerate untracked files and refuse
+    non-destructively only when a specific untracked path would be
+    overwritten. Blocking up front converted that per-file, git-detectable
+    hazard into a run-wide outage.
+    """
+
+    (tmp_git_repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
+
+    check_rebase_preconditions(tmp_git_repo)
+
+
+def test_untracked_directory_does_not_block_rebase_preconditions(
+    tmp_git_repo: Path,
+) -> None:
+    """A whole untracked directory is equally benign."""
+
+    build_dir = tmp_git_repo / "build"
+    build_dir.mkdir(parents=True)
+    (build_dir / "out.txt").write_text("untracked\n", encoding="utf-8")
+
+    check_rebase_preconditions(tmp_git_repo)
 
 
 def test_detects_missing_identity(tmp_git_repo: Path) -> None:

@@ -82,6 +82,38 @@ def test_commit_rebases_feature_and_fast_forwards_main(tmp_git_repo: Path) -> No
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
 
 
+def test_untracked_file_in_feature_worktree_does_not_block_integration(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-01: a non-ignored untracked file must not disable integration.
+
+    A single scratch file left behind by a phase used to trip the rebase
+    preconditions and record ``skipped: Working tree is not clean`` at
+    every commit seam for the rest of the run.
+    """
+    main = _base_branch(tmp_git_repo)
+    feature = tmp_git_repo.parent / "feature-untracked"
+    _add_worktree(tmp_git_repo, feature, "feature-untracked")
+    try:
+        _commit(feature, "feature.txt", "feature\n", "feature change")
+        _commit(tmp_git_repo, "main.txt", "main\n", "main change")
+        scratch = feature / "scratch.log"
+        scratch.write_text("noise\n", encoding="utf-8")
+
+        outcome = auto_integrate_after_commit(
+            _build_config(target=main), WorkspaceScope(feature), RebaseState()
+        )
+        feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
+
+        assert outcome is not None
+        assert outcome.fast_forwarded is True
+        assert outcome.last_action in {"rebased", "merged"}
+        assert branch_sha(tmp_git_repo, main) == feature_head
+        assert scratch.read_text(encoding="utf-8") == "noise\n"
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
+
+
 def test_default_config_worktree_agent_advances_shared_main(tmp_git_repo: Path) -> None:
     """AC-01 regression: default target detection lands despite a dirty main checkout."""
     main = _base_branch(tmp_git_repo)
@@ -103,6 +135,46 @@ def test_default_config_worktree_agent_advances_shared_main(tmp_git_repo: Path) 
         assert branch_sha(tmp_git_repo, main) == feature_head
         assert is_ancestor(tmp_git_repo, main, feature_head) is True
         assert dirty_file.read_text(encoding="utf-8") == "operator work\n"
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
+
+
+def test_dirty_target_worktree_lands_through_ff_only_and_stays_consistent(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-04: a dirty mainline checkout still lands consistently.
+
+    ``git merge --ff-only`` refuses only for the specific paths it would
+    overwrite, so an unrelated uncommitted modification must not push the
+    landing onto the ref-only CAS path -- that leaves the checkout's index
+    behind and shows the landed commit as a local reverse diff.
+    """
+    main = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "tracked.txt", "base\n", "seed tracked file")
+    feature = tmp_git_repo.parent / "feature-ff"
+    _add_worktree(tmp_git_repo, feature, "feature-ff")
+    try:
+        _commit(feature, "feature.txt", "feature\n", "feature change")
+        dirty_file = tmp_git_repo / "tracked.txt"
+        dirty_file.write_text("operator work\n", encoding="utf-8")
+
+        outcome = auto_integrate_after_commit(
+            _build_config(target=main), WorkspaceScope(feature), RebaseState()
+        )
+        feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
+
+        assert outcome is not None
+        assert outcome.fast_forwarded is True
+        assert branch_sha(tmp_git_repo, main) == feature_head
+        # The operator's uncommitted work survives byte-for-byte...
+        assert dirty_file.read_text(encoding="utf-8") == "operator work\n"
+        # ...and the checkout itself advanced, rather than only the ref.
+        assert (tmp_git_repo / "feature.txt").exists()
+        status = _run(
+            tmp_git_repo, "status", "--porcelain", "--untracked-files=no"
+        ).stdout.strip()
+        assert "tracked.txt" in status
+        assert "feature.txt" not in status
     finally:
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
 
@@ -153,6 +225,61 @@ def test_two_independent_worktree_agents_converge_on_main(tmp_git_repo: Path) ->
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_a))
 
 
+def test_sibling_worktree_landing_mid_integration_is_retried_and_lands(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-08 (linked-worktree topology): a mid-flight sibling landing is absorbed.
+
+    Every agent in this topology shares one ``refs/heads/<main>``, so the
+    real race is a sibling advancing it BETWEEN our pre-integration read
+    and our fast-forward. The bounded retry must re-integrate onto the
+    moved tip rather than discarding the sibling's commit.
+    """
+    import ralph.pipeline.auto_integrate as _ai_mod
+
+    main = _base_branch(tmp_git_repo)
+    feature_a = tmp_git_repo.parent / "feature-a"
+    _add_worktree(tmp_git_repo, feature_a, "feature-a")
+    try:
+        _commit(feature_a, "a.txt", "a\n", "feature a")
+
+        real_ff = _ai_mod._fast_forward_target
+        calls: list[int] = []
+        sibling_shas: list[str] = []
+
+        def _flaky_ff(
+            repo_root: Path, target: str, feature_sha: str
+        ) -> tuple[bool, str]:
+            calls.append(1)
+            if len(calls) == 1:
+                # A sibling agent lands on the shared mainline right now.
+                sibling_shas.append(
+                    _commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landing")
+                )
+                return False, "target advanced concurrently (CAS mismatch)"
+            return real_ff(repo_root, target, feature_sha)
+
+        monkeypatch.setattr(_ai_mod, "_fast_forward_target", _flaky_ff)
+
+        outcome = auto_integrate_after_commit(
+            _build_config(target=main), WorkspaceScope(feature_a), RebaseState()
+        )
+        feature_a_head = _run(feature_a, "rev-parse", "HEAD").stdout.strip()
+
+        assert outcome is not None
+        assert len(calls) == 2, "a sibling landing must trigger exactly one retry"
+        assert outcome.fast_forwarded is True, (
+            f"retry must land, got action={outcome.last_action!r}"
+            f" reason={outcome.last_reason!r}"
+        )
+        assert branch_sha(tmp_git_repo, main) == feature_a_head
+        # The sibling's work was re-integrated onto, never discarded.
+        assert is_ancestor(tmp_git_repo, sibling_shas[0], feature_a_head) is True
+        assert (feature_a / "sibling.txt").exists()
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_a))
+
+
 def test_rebase_conflict_falls_back_to_endpoint_merge_and_fast_forwards(
     tmp_git_repo: Path,
 ) -> None:
@@ -175,5 +302,113 @@ def test_rebase_conflict_falls_back_to_endpoint_merge_and_fast_forwards(
         assert outcome.last_action == "merged"
         assert outcome.fast_forwarded is True
         assert branch_sha(tmp_git_repo, main) == feature_head
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
+
+
+def _strip_conflict_markers(path: Path, merged: str) -> None:
+    """Replace a conflicted file's whole content with the resolved text.
+
+    Mirrors what the production resolver agent does: edit files only.
+    Ralph -- not the resolver -- stages and commits.
+    """
+    path.write_text(merged, encoding="utf-8")
+
+
+def _seed_conflicting_worktrees(
+    tmp_git_repo: Path, branch: str
+) -> tuple[Path, str, str]:
+    """Set up a feature worktree whose change conflicts with a moved main.
+
+    Returns ``(feature_root, main_branch, feature_head_before)``.
+    """
+    main = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "one\ntwo\nthree\n", "seed shared")
+    feature = tmp_git_repo.parent / branch
+    _add_worktree(tmp_git_repo, feature, branch)
+    feature_head = _commit(
+        feature, "shared.txt", "one\nfeature\nthree\n", "feature change"
+    )
+    _commit(tmp_git_repo, "shared.txt", "one\nmain\nthree\n", "main change")
+    # An untracked file also exercises the relaxed rebase preconditions
+    # on the conflicted path.
+    (feature / "scratch.log").write_text("noise\n", encoding="utf-8")
+    return feature, main, feature_head
+
+
+def test_conflicted_shared_main_resolves_and_fast_forwards_across_worktrees(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-07: conflict -> resolution -> merge commit -> shared-main fast-forward.
+
+    The full path the operator actually hits when two agents edit the
+    same lines: the replay conflicts, the endpoint merge conflicts, the
+    resolver rewrites the file, Ralph commits deterministically, and the
+    shared mainline ref lands on the feature tip.
+    """
+    feature, main, _ = _seed_conflicting_worktrees(tmp_git_repo, "feature-resolve")
+    merged = "one\nfeature+main\nthree\n"
+
+    def _resolver(root: Path, target: str) -> bool:
+        assert target == main
+        _strip_conflict_markers(root / "shared.txt", merged)
+        return True
+
+    try:
+        outcome = auto_integrate_after_commit(
+            _build_config(target=main),
+            WorkspaceScope(feature),
+            RebaseState(),
+            conflict_resolver=_resolver,
+        )
+        feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
+
+        assert outcome is not None
+        assert outcome.last_action == "merged"
+        assert outcome.fast_forwarded is True
+        assert outcome.last_reason is None
+        assert branch_sha(tmp_git_repo, main) == feature_head
+        assert is_ancestor(tmp_git_repo, main, feature_head) is True
+
+        resolved = (feature / "shared.txt").read_text(encoding="utf-8")
+        assert resolved == merged
+        assert "<<<<<<<" not in resolved
+        # The merge was COMMITTED, not left in progress.
+        assert _run(feature, "rev-parse", "--verify", "MERGE_HEAD").returncode != 0
+        assert (feature / "scratch.log").read_text(encoding="utf-8") == "noise\n"
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
+
+
+def test_failed_resolution_leaves_feature_branch_untouched_across_worktrees(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-07 negative twin: a failed resolution aborts and changes nothing.
+
+    Both branches must be bit-identical to their pre-call state, and no
+    merge may be left in progress to poison the next commit seam.
+    """
+    feature, main, feature_head_before = _seed_conflicting_worktrees(
+        tmp_git_repo, "feature-unresolved"
+    )
+    main_before = branch_sha(tmp_git_repo, main)
+
+    def _resolver(_root: Path, _target: str) -> bool:
+        return False
+
+    try:
+        outcome = auto_integrate_after_commit(
+            _build_config(target=main),
+            WorkspaceScope(feature),
+            RebaseState(),
+            conflict_resolver=_resolver,
+        )
+
+        assert outcome is not None
+        assert outcome.last_action == "conflict"
+        assert outcome.fast_forwarded is False
+        assert _run(feature, "rev-parse", "HEAD").stdout.strip() == feature_head_before
+        assert branch_sha(tmp_git_repo, main) == main_before
+        assert _run(feature, "rev-parse", "--verify", "MERGE_HEAD").returncode != 0
     finally:
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))

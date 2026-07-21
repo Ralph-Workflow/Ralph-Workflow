@@ -123,6 +123,18 @@ class GeneralConfig(RalphBaseModel):
             " integration; the run is never failed by an unreachable remote."
         ),
     )
+    auto_integrate_resolve_timeout_seconds: float = Field(
+        default=900.0,
+        gt=0.0,
+        le=7200.0,
+        description=(
+            "Wall-clock ceiling for ONE conflict-resolution agent invocation"
+            " during auto-integration. On expiry the invocation is cut, the"
+            " in-progress merge is aborted and the integration records a"
+            " conflict, so a hung resolver can never stall the run with a"
+            " merge in progress."
+        ),
+    )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,
         gt=0.0,

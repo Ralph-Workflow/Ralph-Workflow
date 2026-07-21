@@ -111,7 +111,8 @@ def resolve_integration_target(
     Precedence:
 
     1. ``config.general.auto_integrate_target`` when set: used verbatim
-       ONLY if the branch exists in the repository (AC-13).
+       when the branch exists locally OR can be materialized from
+       ``refs/remotes/origin/<branch>`` (AC-13).
     2. Else: ``origin/HEAD`` remote default branch when it resolves.
     3. Else: the first existing branch in
        ``('main', 'master')``.
@@ -124,7 +125,10 @@ def resolve_integration_target(
     if isinstance(configured_attr, str) and configured_attr:
         configured = configured_attr
     if isinstance(configured, str) and configured:
-        if branch_exists(repo_root_path, configured):
+        # Same materialization the auto-detect path below uses: a
+        # clone-layout agent that pins its target explicitly must not be
+        # worse off than one that lets Ralph detect it.
+        if _ensure_local_origin_branch(repo_root_path, configured):
             return configured
         return None
 
@@ -412,13 +416,15 @@ def auto_integrate_on_phase_transition(
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
         if not enabled or not (root / ".git").exists():
             return None
-        if not _worktree_is_clean(root):
-            logger.debug(
-                "auto_integrate: phase-transition hook skipped (dirty worktree)"
-            )
-            return None
         target = resolve_integration_target(config, root)
         if target is None:
+            return None
+        if not _worktree_is_clean(root):
+            logger.info(
+                "auto_integrate: phase-transition integration deferred; "
+                "worktree dirty (target '{}')",
+                target,
+            )
             return None
         # A stale remote pointer must not let this cheap hook conclude
         # 'nothing to do'. Every free early return above still costs
@@ -440,6 +446,15 @@ def auto_integrate_on_phase_transition(
 
 def _worktree_is_clean(root: Path) -> bool:
     """True when ``git status --porcelain`` reports no changes.
+
+    Deliberately asymmetric with
+    :func:`ralph.git.rebase.rebase_preconditions._ensure_clean_worktree`,
+    which tolerates untracked files: this guard runs at every phase
+    boundary, mid-cycle, while a development agent may have just
+    created files it has not committed yet. Integrating here is
+    opportunistic, never required -- the commit seam catches up a
+    moment later under the relaxed preconditions -- so untracked work
+    in flight is reason enough to defer.
 
     Fails closed (False) on any git failure so the phase-transition
     hook never integrates on top of a worktree it cannot prove clean.

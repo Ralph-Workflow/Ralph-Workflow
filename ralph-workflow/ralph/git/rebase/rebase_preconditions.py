@@ -151,9 +151,29 @@ def _ensure_git_identity(repo: Repo) -> None:
 
 
 def _ensure_clean_worktree(repo: Repo) -> None:
+    """Block only on uncommitted TRACKED modifications.
+
+    Untracked files and submodule-pointer drift are deliberately
+    tolerated, because ``git rebase`` and ``git merge`` tolerate them
+    too: git refuses non-destructively, and only for the specific
+    untracked path that would actually be overwritten. That refusal
+    surfaces as ``RebaseFailed``, which
+    :func:`ralph.pipeline.auto_integrate._run_rebase_or_merge` already
+    routes into the endpoint-merge fallback. Blocking up front instead
+    turned a per-file, git-detectable hazard into a run-wide outage:
+    one scratch file left by a phase disabled integration for every
+    later commit seam.
+
+    ``ralph.git.operations.is_repo_clean`` is the existing precedent
+    for the ``--untracked-files=no`` definition of "clean".
+    """
     worktree = _worktree(repo)
     try:
-        result = run_git(("status", "--porcelain"), cwd=worktree, label="rebase-preflight-status")
+        result = run_git(
+            ("status", "--porcelain", "--untracked-files=no"),
+            cwd=worktree,
+            label="rebase-preflight-status",
+        )
         if result.returncode == 0 and result.stdout.splitlines():
             raise RebasePreconditionError(
                 "Working tree is not clean. Please commit or stash changes before rebasing."
@@ -163,7 +183,7 @@ def _ensure_clean_worktree(repo: Repo) -> None:
     except OSError:
         pass
 
-    if repo.is_dirty(untracked_files=True, submodules=True):
+    if repo.is_dirty(untracked_files=False, submodules=False):
         raise RebasePreconditionError(
             "Working tree is not clean. Please commit or stash changes before rebasing."
         )

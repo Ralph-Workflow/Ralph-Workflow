@@ -5,11 +5,23 @@ main :mod:`ralph.pipeline.auto_integrate` module stays under the
 repo-structure ``_MAX_FILE_LINES`` cap. The four helpers here are
 a coherent unit (the AC-08 / AC-09 fast-forward branch table)
 and have no callers outside :mod:`ralph.pipeline.auto_integrate`.
+
+When the target branch is checked out somewhere, the landing order is
+``git merge --ff-only`` in that worktree FIRST, then the atomic CAS as
+a fallback. ``merge --ff-only`` advances the ref, the index and the
+working tree together and exits non-zero WITHOUT mutating anything
+when local changes would be overwritten; the CAS advances only the
+shared ref, leaving that checkout's index behind so ``git status``
+there describes the freshly landed work as a local reverse diff.
+Trying the consistent path first is therefore strictly safer, and the
+CAS still keeps the ref moving when git refuses the merge.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
+from loguru import logger
 
 from ralph.git.merge import (
     branch_sha,
@@ -18,11 +30,10 @@ from ralph.git.merge import (
     is_ancestor,
     worktree_for_branch,
 )
-from ralph.git.operations import find_main_worktree_root, is_repo_clean
+from ralph.git.operations import find_main_worktree_root
 
 _TARGET_MISSING = "target branch missing at fast-forward time"
 _TARGET_NOT_ANCESTOR = "target advanced concurrently (not an ancestor of feature)"
-_TARGET_DIRTY = "target worktree dirty"
 _TARGET_FF_REFUSED = "target advanced concurrently (ff-only refused)"
 _TARGET_CAS_MISMATCH = "target advanced concurrently (CAS mismatch)"
 _RETRYABLE_REASONS = frozenset(
@@ -56,10 +67,11 @@ def fast_forward_target(
     could satisfy the CAS with a SHA that was NOT an ancestor of
     ``feature_sha`` -- the bug class closed by this rewrite.
 
-    The worktree path uses ``git merge --ff-only`` when its checkout
-    is clean. When that checkout is dirty, it preserves its files and
-    uses the same observed-SHA CAS path instead; the ref update cannot
-    overwrite a concurrent landing or the worktree's uncommitted work.
+    The worktree path always tries ``git merge --ff-only`` first so
+    the checkout's ref, index and working tree advance together, and
+    falls back to the same observed-SHA CAS only when git refuses.
+    Neither path can overwrite a concurrent landing or the worktree's
+    uncommitted work.
 
     Never force-moves the target. The skip reasons are recorded in
     the final ``RebaseState.last_reason``.
@@ -107,20 +119,27 @@ def _fast_forward_via_target_worktree(
 ) -> tuple[bool, str]:
     """Fast-forward the target branch checked out in ``worktree_root`` (AC-09).
 
-    A clean checkout lands through ``git merge --ff-only``. A dirty
-    checkout cannot safely merge, so its files are left untouched and
-    the shared ref is advanced through the already-validated CAS path.
-    The CAS fails closed if another process moved the ref.
+    ``git merge --ff-only`` is attempted first regardless of how dirty
+    that checkout is: it is its own guard, refusing with a non-zero exit
+    and no mutation when local changes would be overwritten or when
+    ``feature_sha`` is not a descendant. Only once git has refused do we
+    fall back to the CAS, which advances the shared ref alone and so
+    leaves that checkout's index behind — a transient but operator-
+    visible state, hence the WARN.
     """
-    if not is_repo_clean(worktree_root):
-        # The checked-out worktree cannot safely run ``git merge`` with
-        # local modifications.  A CAS still advances only the shared ref
-        # when it remains at the already-verified ancestor; it does not
-        # overwrite or stage the dirty worktree's files.
-        return _fast_forward_via_cas(repo_root, target, feature_sha, observed_target_sha)
-    if not fast_forward_via_worktree(worktree_root, feature_sha):
-        return False, _TARGET_FF_REFUSED
-    return True, ""
+    if fast_forward_via_worktree(worktree_root, feature_sha):
+        return True, ""
+    landed, reason = _fast_forward_via_cas(
+        repo_root, target, feature_sha, observed_target_sha
+    )
+    if landed:
+        logger.warning(
+            "auto_integrate: advanced '{}' by ref while its worktree at {} "
+            "could not fast-forward; that checkout's index is now behind",
+            target,
+            worktree_root,
+        )
+    return landed, reason
 
 
 def _fast_forward_via_cas(

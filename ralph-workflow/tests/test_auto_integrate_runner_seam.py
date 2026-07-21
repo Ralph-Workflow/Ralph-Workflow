@@ -17,12 +17,20 @@ def _default_config() -> UnifiedConfig:
     return UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}})
 
 
-def test_default_config_resolves_main_and_lands_dirty_worktree_ref(monkeypatch) -> None:
-    """Analysis regression: default worktree integration resolves and lands main.
+def _stub_ff_environment(monkeypatch, root: Path) -> None:
+    """Point every fast-forward lookup at a single in-memory worktree."""
+    monkeypatch.setattr(auto_integrate_ff, "branch_sha", lambda _root, _branch: "old-main")
+    monkeypatch.setattr(auto_integrate_ff, "is_ancestor", lambda *_args: True)
+    monkeypatch.setattr(auto_integrate_ff, "find_main_worktree_root", lambda _root: root)
+    monkeypatch.setattr(auto_integrate_ff, "worktree_for_branch", lambda _root, _branch: root)
 
-    This is the in-budget half of the real-Git worktree regression. It
-    proves the default-target and dirty-checkout CAS decisions without
-    filesystem or subprocess I/O; the E2E test retains the real Git proof.
+
+def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None:
+    """AC-04: a checked-out target lands through ``merge --ff-only``, not the CAS.
+
+    ``merge --ff-only`` advances the ref, the index and the working tree
+    together, so it is tried first no matter how dirty that checkout is;
+    the CAS advances the ref alone and must stay a fallback.
     """
     config = _default_config()
     root = Path("/workspace/feature")
@@ -35,16 +43,34 @@ def test_default_config_resolves_main_and_lands_dirty_worktree_ref(monkeypatch) 
 
     target = auto_integrate.resolve_integration_target(config, root)
 
-    monkeypatch.setattr(auto_integrate_ff, "branch_sha", lambda _root, _branch: "old-main")
-    monkeypatch.setattr(auto_integrate_ff, "is_ancestor", lambda *_args: True)
-    monkeypatch.setattr(auto_integrate_ff, "find_main_worktree_root", lambda _root: root)
-    monkeypatch.setattr(auto_integrate_ff, "worktree_for_branch", lambda _root, _branch: root)
-    monkeypatch.setattr(auto_integrate_ff, "is_repo_clean", lambda _root: False)
+    _stub_ff_environment(monkeypatch, root)
+    worktree_ff = MagicMock(return_value=True)
     cas = MagicMock(return_value=True)
+    monkeypatch.setattr(auto_integrate_ff, "fast_forward_via_worktree", worktree_ff)
     monkeypatch.setattr(auto_integrate_ff, "compare_and_swap_branch", cas)
 
     assert target == "main"
     assert auto_integrate_ff.fast_forward_target(root, target, "feature-head") == (True, "")
+    assert worktree_ff.call_args.args == (root, "feature-head")
+    cas.assert_not_called()
+
+
+def test_refused_ff_only_falls_back_to_observed_sha_cas(monkeypatch) -> None:
+    """AC-04/AC-08: when git refuses the merge, the CAS still lands the ref.
+
+    The CAS oldvalue must remain the SAME observed target SHA the
+    ancestry check was bound to, so a concurrent landing between the two
+    fails closed instead of overwriting.
+    """
+    root = Path("/workspace/feature")
+    _stub_ff_environment(monkeypatch, root)
+    monkeypatch.setattr(
+        auto_integrate_ff, "fast_forward_via_worktree", lambda *_args: False
+    )
+    cas = MagicMock(return_value=True)
+    monkeypatch.setattr(auto_integrate_ff, "compare_and_swap_branch", cas)
+
+    assert auto_integrate_ff.fast_forward_target(root, "main", "feature-head") == (True, "")
     assert cas.call_args.args == (root, "main", "old-main", "feature-head")
 
 
