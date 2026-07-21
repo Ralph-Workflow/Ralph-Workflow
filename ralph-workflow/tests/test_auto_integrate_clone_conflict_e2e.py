@@ -16,10 +16,11 @@ Two production paths that no existing test reached:
   call detects the move, retries and lands.
 
 Every test here sequences its concurrency deterministically -- the
-sibling lands at a fixed point in the test body, or on a named
-production call boundary -- with no sleep, no thread and no polling,
-per docs/ralph-workflow-policy/testing-policy.md. Every remote is a
-local bare repository path: no test reaches a real network host.
+sibling lands at a fixed point in the test body, or on a real git
+``post-rewrite`` hook boundary that git fires mid-integration -- with
+no sleep, no thread and no polling, per
+docs/ralph-workflow-policy/testing-policy.md. Every remote is a local
+bare repository path: no test reaches a real network host.
 
 File-level markers. ``subprocess_e2e`` excludes this file from ``make
 test`` (the budget-tracked 60 s step): every test drives real git.
@@ -43,7 +44,6 @@ from pathlib import Path
 import pytest
 from loguru import logger
 
-import ralph.pipeline.auto_integrate as _ai_mod
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
@@ -243,7 +243,7 @@ def test_sibling_worktree_landing_is_reintegrated_and_lands_both_commits(
 
 
 def test_target_moved_mid_integration_is_detected_retried_and_lands_both(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_git_repo: Path,
 ) -> None:
     """AC-09 (composed): the move happens INSIDE one integration call.
 
@@ -254,52 +254,65 @@ def test_target_moved_mid_integration_is_detected_retried_and_lands_both(
     landing is about to publish was computed against a mainline that no
     longer exists.
 
-    The move is sequenced with a deterministic synchronization hook
-    around a production dependency, not by replacing the code under
-    test. ``auto_integrate._refresh_target`` is wrapped -- the real
-    refresh still runs on every call -- and the sibling commit is made
-    on the pre-landing refresh of the first attempt. That is the exact
-    instant between "the feature SHA exists" and
-    "``fast_forward_target`` observes the target", so the PRODUCTION
-    fast-forward, the PRODUCTION retryable-reason classification and
-    the PRODUCTION bounded retry loop are all exercised unmodified.
-    ``_fast_forward_target`` is deliberately left alone.
+    NO monkeypatching anywhere -- not ``_refresh_target``, not
+    ``_fast_forward_target``, not any other production dependency. The
+    move is sequenced by a real ``post-rewrite`` git hook, so the whole
+    integration runs through production code untouched. Two facts make
+    this deterministic:
 
-    ``_refresh_target`` is called exactly four times here: context
-    resolution, attempt 1's pre-landing refresh (where the sibling
-    lands), attempt 2's re-integration refresh, and attempt 2's
-    pre-landing refresh. No sleep, no thread, no polling.
+    * The mainline is advanced ONCE before the call, so attempt 1's
+      rebase actually replays the feature commit onto that advance.
+      (A no-op rebase runs no ``git rebase`` subprocess and would fire
+      no hook.)
+    * ``git`` fires ``post-rewrite`` the instant it has finished
+      rewriting the feature branch and BEFORE the production
+      fast-forward observes the target -- the exact mid-integration
+      instant. The hook lands a sibling commit on the shared mainline
+      from the primary worktree, so the feature SHA attempt 1 is about
+      to publish was computed against a tip that no longer exists.
+
+    A guard file lands the sibling exactly once, so attempt 2's replay
+    re-fires the hook harmlessly. The PRODUCTION fast-forward, the
+    PRODUCTION retryable-reason classification and the PRODUCTION
+    bounded retry loop are all exercised unmodified. No sleep, no
+    thread, no polling: git's own execution order is the
+    synchronization.
     """
     main = _base_branch(tmp_git_repo)
     feature = tmp_git_repo.parent / "feature-c"
     _add_worktree(tmp_git_repo, feature, "feature-c")
+    guard = tmp_git_repo.parent / "prw-guard"
+    sibling_sha_file = tmp_git_repo.parent / "prw-sibling-sha"
+    # Linked worktrees share the common git dir, so a hook installed on
+    # the primary repo also fires for the feature worktree's rebase.
+    hook = tmp_git_repo / ".git" / "hooks" / "post-rewrite"
     buf = io.StringIO()
     handler_id = logger.add(buf, level="INFO")
     try:
         _commit(feature, "feature.txt", "feature\n", "feature change")
+        # A prior mainline advance so attempt 1's rebase replays the
+        # feature commit (and thus fires post-rewrite) rather than
+        # short-circuiting as an already-up-to-date no-op.
+        _commit(tmp_git_repo, "base.txt", "prior main advance\n", "prior main advance")
 
-        real_refresh = _ai_mod._refresh_target
-        refresh_calls: list[str] = []
-        sibling_shas: list[str] = []
-        doomed_feature_shas: list[str] = []
-
-        def _refresh_and_land_sibling(
-            config: UnifiedConfig, root: Path, target: str
-        ) -> str:
-            refresh_calls.append(target)
-            if len(refresh_calls) == 2:
-                # Mid-integration: the feature SHA for attempt 1 has been
-                # computed and recorded, and the fast-forward has not yet
-                # observed the target.
-                doomed_feature_shas.append(
-                    _run(feature, "rev-parse", "HEAD").stdout.strip()
-                )
-                sibling_shas.append(
-                    _commit(tmp_git_repo, "main.txt", "main\n", "sibling landing")
-                )
-            return real_refresh(config, root, target)
-
-        monkeypatch.setattr(_ai_mod, "_refresh_target", _refresh_and_land_sibling)
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        # The hook lands the sibling ONCE (guarded), from the primary
+        # worktree, clearing any inherited GIT_* env so the commit binds
+        # to that repo rather than the in-flight rebase.
+        hook.write_text(
+            f"""#!/bin/sh
+if [ -f "{guard}" ]; then exit 0; fi
+touch "{guard}"
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_REFLOG_ACTION
+cd "{tmp_git_repo}"
+printf 'sibling\\n' > main.txt
+git add main.txt
+git commit -qm "sibling landing"
+git rev-parse HEAD > "{sibling_sha_file}"
+""",
+            encoding="utf-8",
+        )
+        hook.chmod(0o755)
 
         outcome = auto_integrate_after_commit(
             _build_config(fetch_enabled=False),
@@ -307,24 +320,22 @@ def test_target_moved_mid_integration_is_detected_retried_and_lands_both(
             RebaseState(),
         )
         feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
-        sibling_sha = sibling_shas[0]
-        doomed_sha = doomed_feature_shas[0]
+        sibling_sha = sibling_sha_file.read_text(encoding="utf-8").strip()
 
         assert outcome is not None
-        # The first landing was refused: publishing that SHA would have
-        # rewound the sibling's commit off the shared mainline.
-        assert is_ancestor(feature, sibling_sha, doomed_sha) is False
+        # The sibling really landed mid-integration, exactly once.
+        assert sibling_sha
+        assert _run(tmp_git_repo, "log", "--oneline").stdout.count("sibling landing") == 1
+        # Attempt 1's stale fast-forward was refused: the production
+        # bounded loop logged the refusal before retrying.
         assert "fast-forward did not land on attempt 1" in buf.getvalue()
-        # ... and the bounded loop re-integrated onto the moved tip.
-        assert len(refresh_calls) == 4, (
-            f"expected one retry (4 refreshes), got {len(refresh_calls)}"
-        )
+        # ... and the bounded retry re-integrated onto the moved tip.
         assert outcome.fast_forwarded is True, (
-            f"retry must land, got action={outcome.last_action!r}"
-            f" reason={outcome.last_reason!r}"
+            f"retry must land, got action={outcome.last_action!r} reason={outcome.last_reason!r}"
         )
-        # The shared mainline carries BOTH agents' work.
-        assert feature_head != doomed_sha
+        # The shared mainline carries BOTH agents' work: the sibling's
+        # commit by ancestry, the feature's by content (the rebase
+        # rewrote its SHA).
         assert branch_sha(tmp_git_repo, main) == feature_head
         assert is_ancestor(feature, sibling_sha, feature_head) is True
         assert (feature / "feature.txt").exists()
