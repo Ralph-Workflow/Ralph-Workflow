@@ -48,6 +48,35 @@ def test_audit_idempotent_write_adoption_regression_flags_raw_write_text(
     assert "write_text_if_changed" in violations[0].message
 
 
+def test_audit_idempotent_write_adoption_regression_flags_whitespace_raw_write_text(
+    tmp_path: Path,
+) -> None:
+    """Regression: whitespace between attr and call must not bypass the audit.
+
+    A textual prefilter that keys on the exact ``.write_text(`` substring
+    can be evaded by inserting whitespace (e.g. ``path.write_text (...)``).
+    The audit must rely on the AST parse, not a syntax-sensitive substring
+    check, so every valid raw overwrite is reported regardless of formatting.
+    """
+    module_rel = "pipeline/example.py"
+    package_root = _write_fake_package(
+        tmp_path,
+        module_rel,
+        "def persist(path, content):\n    path.write_text (content)\n",
+    )
+
+    violations = audit.audit_idempotent_write_adoption(
+        package_root,
+        module_paths=(module_rel,),
+    )
+
+    assert len(violations) == 1
+    assert violations[0].kind == "raw_write_text"
+    assert violations[0].file_path == module_rel
+    assert violations[0].line == 2
+    assert "write_text_if_changed" in violations[0].message
+
+
 def test_audit_idempotent_write_adoption_regression_ignores_guarded_write(
     tmp_path: Path,
 ) -> None:

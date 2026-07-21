@@ -53,8 +53,6 @@ _ALLOWLISTED_MODULES: tuple[str, ...] = (
     "pipeline/parallel/worker_runtime.py",
 )
 
-_RAW_WRITE_MARKER = ".write_text("
-
 
 @dataclass(frozen=True)
 class IdempotentWriteViolation:
@@ -156,8 +154,6 @@ def audit_idempotent_write_adoption(
             source = module_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             violations.append(_unreadable_module_violation(rel_path))
-            continue
-        if _RAW_WRITE_MARKER not in source:
             continue
         violations.extend(_raw_write_violations(module_path, rel_path, source))
     return violations
