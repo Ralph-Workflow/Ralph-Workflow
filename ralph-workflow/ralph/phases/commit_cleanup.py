@@ -719,7 +719,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
     # ``ralph.config -> ralph.policy -> ralph.phases``; the calls are
     # wrapped in try/except so a seeding failure cannot fail the phase.
     try:
-        from ralph.config.bootstrap import auto_seed_default_gitignore  # noqa: PLC0415
+        from ralph.config.bootstrap import auto_seed_default_gitignore
 
         _gitignore_appended = auto_seed_default_gitignore(repo_root)
         logger.debug(
@@ -729,7 +729,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
     except Exception as exc:
         logger.warning("auto_seed_default_gitignore failed (continuing): {}", exc)
     try:
-        from ralph.config.bootstrap import auto_seed_default_git_exclude  # noqa: PLC0415
+        from ralph.config.bootstrap import auto_seed_default_git_exclude
 
         _gitexclude_appended = auto_seed_default_git_exclude(repo_root)
         logger.debug(

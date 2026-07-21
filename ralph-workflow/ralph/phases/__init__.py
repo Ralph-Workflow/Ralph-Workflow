@@ -14,6 +14,26 @@ Two registration mechanisms are supported:
 The role-based mechanism registers the generic handler for every phase whose
 role matches a known role class (commit or analysis). This allows policy-renamed
 phases to work without hardcoded handler registration.
+
+Import ordering note: ``register_role_handlers`` must be importable before any
+module that ultimately loads ``ralph.policy.loader`` (which imports this
+function during policy loading). Concretely, ``ralph.policy.loader`` is reached
+via ``ralph.phases.analysis -> ralph.phases.artifacts -> ralph.pipeline ->
+ralph.config -> ralph.policy``. To break that cycle, the phase-module imports
+are deferred to call time inside ``register_role_handlers``. The phase modules
+were already imported once during the policy load chain, so they are available
+when ``register_role_handlers`` is actually invoked.
+
+``PhaseContext`` is exposed at the package level via the ``__getattr__`` lazy
+loader below so that ``from ralph.phases import PhaseContext`` still works
+after the cycle has unwound.
+
+``InvokeAgentEffect`` and ``PreparePromptEffect`` are similarly imported
+lazily inside ``handle_phase`` because ``ralph.pipeline.effects`` also sits
+on the same import cycle (via ``ralph.pipeline`` -> ``ralph.config`` ->
+``ralph.policy`` -> ``ralph.policy.loader``). They are runtime values for
+an ``isinstance`` check, so a lazy import inside the function keeps the
+top-of-file declarations cycle-free without changing observable behavior.
 """
 
 from __future__ import annotations
@@ -23,17 +43,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.phases import analysis as _analysis
-from ralph.phases import commit as _commit
-from ralph.phases import commit_cleanup as _commit_cleanup
-from ralph.phases import execution as _execution
-from ralph.phases import review as _review
-from ralph.phases import verification as _verification
-from ralph.phases.phase_context import PhaseContext
-from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event
-
 if TYPE_CHECKING:
+    from ralph.phases.phase_context import PhaseContext
+    from ralph.pipeline.effects import Effect
+    from ralph.pipeline.events import Event
     from ralph.policy.models import PipelinePolicy
 
 
@@ -55,7 +68,7 @@ class PhaseHandlerNotFoundError(Exception):
 
 
 # Phase handler signature: takes Effect and PhaseContext, returns list of Events
-PhaseHandler = Callable[["Effect", PhaseContext], list[Event]]
+PhaseHandler = Callable[["Effect", "PhaseContext"], list["Event"]]
 
 
 # Registry of built-in phase handlers
@@ -100,9 +113,22 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
 
     Phases already registered via ``@register_handler`` are not overwritten.
 
+    The phase module imports are deferred to call time: ``ralph.policy.loader``
+    imports this function during policy loading, and importing the phase modules
+    at module load time would re-enter that same loading chain. By the time
+    policy loading finishes and this function is actually called, all phase
+    modules are fully available as a side effect of the load.
+
     Args:
         policy: Loaded pipeline policy.
     """
+    from ralph.phases import analysis as _analysis
+    from ralph.phases import commit as _commit
+    from ralph.phases import commit_cleanup as _commit_cleanup
+    from ralph.phases import execution as _execution
+    from ralph.phases import review as _review
+    from ralph.phases import verification as _verification
+
     for phase_name, phase_def in policy.phases.items():
         if phase_def.role == "execution" and phase_name not in HANDLERS:
             HANDLERS[phase_name] = _execution.handle_execution_phase
@@ -152,8 +178,14 @@ def handle_phase(
     Raises:
         PhaseHandlerNotFoundError: If no handler is registered for the phase.
     """
-    # The effect may be a PreparePromptEffect or InvokeAgentEffect
-    # Extract the phase name from the effect
+    # The effect may be a PreparePromptEffect or InvokeAgentEffect. Both
+    # types are imported lazily so the ralph.phases -> ralph.pipeline ->
+    # ralph.config -> ralph.policy -> ralph.policy.loader -> ralph.phases
+    # import cycle does not re-enter an unfinished ``ralph.phases`` module
+    # load when this module is first imported. By the time ``handle_phase``
+    # is called, the cycle has unwound and these imports are safe.
+    from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
+
     if isinstance(effect, InvokeAgentEffect | PreparePromptEffect):
         phase_name = effect.phase
     else:
@@ -162,6 +194,23 @@ def handle_phase(
     handler = get_handler(phase_name)
     logger.debug("Dispatching to handler for phase: {}", phase_name)
     return handler(effect, ctx)
+
+
+def __getattr__(name: str) -> object:
+    """Lazily expose ``PhaseContext`` to break the ralph.phases import cycle.
+
+    Importing ``ralph.phases.phase_context`` at package import time would pull
+    ``ralph.phases.__init__`` back into its own loading chain and re-enter
+    ``ralph.policy.loader`` mid-load. Defer the resolution to attribute access
+    so direct imports from ``ralph.phases`` and from any downstream consumer
+    continue to work without re-entering the cycle.
+    """
+    if name == "PhaseContext":
+        from ralph.phases.phase_context import PhaseContext
+
+        return PhaseContext
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 __all__ = [

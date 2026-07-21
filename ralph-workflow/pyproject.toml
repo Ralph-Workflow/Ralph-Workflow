@@ -192,6 +192,9 @@ select = [
 "ralph/pipeline/**/*.py" = [
     "PLC0415",  # The dev/fix session lifecycle hook lazily imports the explore lifecycle module to avoid pulling the substrate into every pipeline module's import graph.
 ]
+"ralph/phases/**/*.py" = [
+    "PLC0415",  # The ralph.phases.__init__ module breaks the ralph.phases -> ralph.pipeline -> ralph.config -> ralph.policy -> ralph.policy.loader -> ralph.phases cycle by deferring the phase-module imports and PhaseContext lazy attribute lookup to call time; without PLC0415 the audit would force the cycle back into ralph.phases at module load time.
+]
 
 [tool.ruff.lint.pylint]
 # CLI entry-point functions (e.g., typer commands) necessarily have one parameter per flag.

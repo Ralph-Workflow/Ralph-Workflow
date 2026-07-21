@@ -277,13 +277,17 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/mcp/explore/**/*.py",
             "ralph/mcp/tools/workspace/**/*.py",
             "ralph/pipeline/**/*.py",
+            "ralph/phases/**/*.py",
             "tests/**/*.py",
         ],
         "reason": (
             "Lazy imports break specific cycles: explore<->workspace seam "
             "for the FTS/evidence substrate; workspace<->explore for the "
             "index handle session seam; pipeline<->explore for the "
-            "before/after dev-fix session refresh hook. Mirrors the "
+            "before/after dev-fix session refresh hook; phases->pipeline"
+            "->config->policy->loader->phases for the phase-handler "
+            "registration seam so register_role_handlers can be defined "
+            "before ralph.policy.loader imports it. Mirrors the "
             "CLI/config/display precedent."
         ),
     },
