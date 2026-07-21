@@ -19,11 +19,18 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha, is_ancestor
+from ralph.pipeline import auto_integrate
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+
+#: A fast-forward skip reason the bounded retry loop treats as a
+#: transient concurrent target move (asserted below, so the literal
+#: cannot silently drift away from the production set).
+_CONCURRENT_MOVE = "target advanced concurrently (CAS mismatch)"
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -154,3 +161,55 @@ def test_diverged_remote_is_not_force_moved(tmp_git_repo: Path) -> None:
     assert refreshed is not None
     assert refreshed != remote_sha, "a diverged remote must not be force-applied"
     assert is_ancestor(agent, local_sha, refreshed) is True
+
+
+def test_retry_attempt_refetches_the_moved_mainline(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-03: EVERY bounded retry refetches, not only the first attempt.
+
+    The first attempt loses the landing race exactly as it would in
+    production (another agent moved the target between the ancestry
+    check and the ref update). The retry must therefore integrate
+    onto the mainline as it is NOW, which means fetching origin
+    again -- a refresh performed only once, before the loop, would
+    re-integrate onto the same stale pointer forever.
+    """
+    assert is_retryable_fast_forward_failure(_CONCURRENT_MOVE) is True
+
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-retry", main, branch="feature")
+    other = _make_clone(bare, tmp_git_repo.parent / "agent-late", main, branch="other")
+    assert _run(other, "checkout", main).returncode == 0
+
+    _commit(agent, "feature.txt", "feature\n", "feature change")
+
+    real_fast_forward = auto_integrate._fast_forward_target
+    landed: list[str] = []
+
+    def _lose_the_first_race(
+        repo_root: Path, target: str, feature_sha: str
+    ) -> tuple[bool, str]:
+        if not landed:
+            # The other agent lands on origin while THIS attempt is
+            # mid-fast-forward, so attempt 1 legitimately loses.
+            landed.append(_commit(other, "late.txt", "late\n", "late landing"))
+            assert _run(other, "push", "origin", main).returncode == 0
+            return False, _CONCURRENT_MOVE
+        return real_fast_forward(repo_root, target, feature_sha)
+
+    monkeypatch.setattr(auto_integrate, "_fast_forward_target", _lose_the_first_race)
+
+    outcome = auto_integrate_after_commit(
+        _build_config(), WorkspaceScope(agent), RebaseState()
+    )
+    feature_head = _run(agent, "rev-parse", "HEAD").stdout.strip()
+
+    assert landed, "the injected landing race never fired"
+    assert outcome is not None
+    assert outcome.fast_forwarded is True
+    # Proof the retry fetched: the commit pushed AFTER the first
+    # attempt started is in the integrated history and on disk.
+    assert is_ancestor(agent, landed[0], feature_head) is True
+    assert (agent / "late.txt").exists()
+    assert branch_sha(agent, main) == feature_head

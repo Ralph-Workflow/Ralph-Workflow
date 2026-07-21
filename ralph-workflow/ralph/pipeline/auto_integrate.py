@@ -481,8 +481,9 @@ def _auto_integrate_after_commit_inner(
        rebase engine, fall back to the endpoint merge on conflict or
        failure (optionally agent-resolved), then fast-forward.
     3. Bounded retry -- when the fast-forward did not land because
-       the target moved concurrently, re-integrate onto the moved
-       tip up to :data:`_MAX_INTEGRATION_ATTEMPTS` times.
+       the target moved concurrently, refresh the target from origin
+       and re-integrate onto the moved tip up to
+       :data:`_MAX_INTEGRATION_ATTEMPTS` times.
     """
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
     early_skip, usable_ctx = _check_early_skips(ctx)
@@ -496,6 +497,13 @@ def _auto_integrate_after_commit_inner(
 
     record: RebaseState | None = None
     for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
+        if attempt:
+            # A retry only happens because the target moved under us,
+            # so re-read it from origin before re-integrating (AC-03).
+            # Attempt 0 is already refreshed by
+            # _auto_integrate_resolve_context, so this never doubles
+            # the fetch on the common single-attempt path.
+            _refresh_target(config, root, target)
         record, retry_ff = _integrate_once(root, target, conflict_resolver)
         if not retry_ff:
             break
