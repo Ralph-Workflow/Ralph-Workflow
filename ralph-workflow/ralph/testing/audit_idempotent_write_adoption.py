@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 _ALLOWLISTED_MODULES: tuple[str, ...] = (
+    "prompts/system_prompt.py",
     "prompts/payload_refs.py",
     "prompts/materialize_support.py",
     "skills/_state_store.py",

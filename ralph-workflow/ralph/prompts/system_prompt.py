@@ -32,12 +32,24 @@ def materialize_system_prompt(
     name: str,
     default_current_prompt: str | None = None,
     worker_namespace: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:
-    """Write a system prompt file for the named agent and return its path."""
+    """Write a system prompt file for the named agent and return its path.
+
+    The injected ``backend`` controls both ``mkdir`` and the physical
+    text writes so a byte-identical re-emit of the current or system
+    prompt does not advance the file's mtime or generate an additional
+    fseventsd notification. The default backend is the real-Path
+    backend; tests inject an in-memory counting backend to verify the
+    idempotent skip. The post-condition "file contains the rendered
+    prompt" always holds: any read uncertainty or content mismatch
+    falls through to a real write.
+    """
     current_prompt_path = _sync_current_prompt_file(
         workspace_root=workspace_root,
         default_current_prompt=default_current_prompt,
         worker_namespace=worker_namespace,
+        backend=backend,
     )
     current_plan_path = _current_plan_handoff_path(workspace_root, phase_name=name)
     system_prompt_path = (
@@ -52,6 +64,7 @@ def materialize_system_prompt(
             current_prompt_path=str(current_prompt_path),
             current_plan_path=str(current_plan_path) if current_plan_path is not None else None,
         ),
+        backend=backend,
     )
     return str(system_prompt_path)
 
@@ -61,6 +74,7 @@ def _sync_current_prompt_file(
     workspace_root: Path,
     default_current_prompt: str | None,
     worker_namespace: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> Path:
     """Mirror the operator-visible prompt into the engine-owned CURRENT_PROMPT.md.
 
@@ -68,6 +82,15 @@ def _sync_current_prompt_file(
     :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
     ``PROMPT_PATH`` env var is honoured in Pro mode. The destination
     remains the engine-owned materialised file under ``.agent/``.
+
+    The injected ``backend`` controls both ``mkdir`` and the physical
+    text writes so a byte-identical re-emit of the current prompt does
+    not advance the file's mtime or generate an additional fseventsd
+    notification. The default backend is the real-Path backend;
+    tests inject an in-memory counting backend to verify the
+    idempotent skip. The post-condition "file contains the resolved
+    prompt text" always holds: any read uncertainty or content mismatch
+    falls through to a real write.
     """
     current_prompt_path = (
         worker_current_prompt_path(worker_namespace)
@@ -75,7 +98,7 @@ def _sync_current_prompt_file(
         else workspace_root / ".agent" / "CURRENT_PROMPT.md"
     )
     source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    backend.mkdir(current_prompt_path.parent, parents=True, exist_ok=True)
     if source_prompt_path.exists():
         # Use the (st_size, st_mtime_ns) fast path to avoid reading
         # current_prompt_path's content when it is identical to
@@ -100,19 +123,28 @@ def _sync_current_prompt_file(
         # provided -- but we always pass read_source above, so it is
         # populated when changed is True.
         if changed and prompt_text is not None:
-            current_prompt_path.write_text(prompt_text, encoding="utf-8")
+            write_text_if_changed(
+                backend, current_prompt_path, prompt_text, encoding="utf-8"
+            )
             if worker_namespace is None:
                 _write_prompt_history_snapshot(
                     workspace_root=workspace_root,
                     prompt_text=prompt_text,
+                    backend=backend,
                 )
         return current_prompt_path
-    if not current_prompt_path.exists() and default_current_prompt is not None:
-        current_prompt_path.write_text(default_current_prompt, encoding="utf-8")
+    if not backend.exists(current_prompt_path) and default_current_prompt is not None:
+        write_text_if_changed(
+            backend,
+            current_prompt_path,
+            default_current_prompt,
+            encoding="utf-8",
+        )
         if worker_namespace is None:
             _write_prompt_history_snapshot(
                 workspace_root=workspace_root,
                 prompt_text=default_current_prompt,
+                backend=backend,
             )
     return current_prompt_path
 
@@ -128,11 +160,26 @@ def worker_system_prompt_path(worker_namespace: Path, phase: str) -> Path:
     return worker_namespace / "tmp" / f"{normalized}_system_prompt.md"
 
 
-def _write_prompt_history_snapshot(*, workspace_root: Path, prompt_text: str) -> None:
+def _write_prompt_history_snapshot(
+    *,
+    workspace_root: Path,
+    prompt_text: str,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Mirror the new prompt into the timestamped prompt-history directory.
+
+    The injected ``backend`` controls both ``mkdir`` and the physical
+    text write so the implementation does not regress to a raw
+    ``Path.write_text`` call. The history filename embeds
+    ``_history_timestamp`` so the file is unique per call; the idempotent
+    guard still holds even when the same nanosecond timestamps collide
+    (the read-comparison falls through to a real write on a content
+    mismatch or a missing path).
+    """
     history_dir = workspace_root / ".agent" / "prompt_history"
-    history_dir.mkdir(parents=True, exist_ok=True)
     history_path = history_dir / f"PROMPT_{_history_timestamp()}.md"
-    history_path.write_text(prompt_text, encoding="utf-8")
+    backend.mkdir(history_dir, parents=True, exist_ok=True)
+    write_text_if_changed(backend, history_path, prompt_text, encoding="utf-8")
 
 
 def _history_timestamp() -> str:
