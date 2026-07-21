@@ -20,7 +20,11 @@ Fault-tolerance contract:
   bit-identical to its pre-merge state.
 * A merge that conflicts without leaving ``MERGE_HEAD`` (refused
   pre-start) is returned as a plain conflict — there is nothing for a
-  resolver to repair.
+  resolver to repair. That verdict is read through
+  :func:`ralph.git.merge.merge_state`, never its boolean projection:
+  when the git query itself fails the merge state is UNKNOWN, which is
+  not evidence of a clean tree, so the abort is attempted rather than
+  assumed unnecessary.
 * A resolution that leaves a conflict marker in any previously
   conflicted file is REFUSED. ``git add`` on a marker-bearing file
   silently clears its unmerged state, so the git-authoritative
@@ -36,10 +40,12 @@ from pathlib import Path
 from loguru import logger
 
 from ralph.git.merge import (
+    MERGE_STATE_IN_PROGRESS,
+    MERGE_STATE_NONE,
     MergeResult,
     abort_merge,
     commit_merge_in_progress,
-    merge_in_progress,
+    merge_state,
     merge_target_into_current,
     paths_with_conflict_markers,
     stage_paths,
@@ -85,7 +91,19 @@ def endpoint_merge_with_resolution(
         return None
     if result.outcome != "conflict" or resolver is None:
         return result
-    if not merge_in_progress(root):
+    state = merge_state(root)
+    if state != MERGE_STATE_IN_PROGRESS:
+        if state != MERGE_STATE_NONE:
+            # The git query itself failed, so "no MERGE_HEAD" is NOT
+            # established. Fail closed: attempt the abort so a merge we
+            # cannot see is never left to block later integrations.
+            logger.warning(
+                "auto_integrate: merge state unreadable in {} after a "
+                "conflicted merge; aborting rather than assuming clean",
+                root,
+            )
+            _abort_merge_safely(root)
+            return result
         # The merge refused to start (no MERGE_HEAD): there are no
         # conflict markers on disk for a resolver to repair.
         return result
@@ -170,17 +188,20 @@ def _abort_merge_safely(root: Path) -> None:
     stranded ``MERGE_HEAD`` blocks every subsequent integration, so the
     operator needs to see it the moment it happens. ``abort_merge``
     also returns False for the benign "there was nothing to abort"
-    case, which is why the warning is gated on the merge still being
-    in progress afterwards.
+    case, which is why the warning is gated on the post-abort state
+    NOT being a positive :data:`MERGE_STATE_NONE`. An unreadable state
+    warns too: it does not prove the merge is gone.
     """
     try:
         if abort_merge(root):
             return
-        if merge_in_progress(root):
+        state = merge_state(root)
+        if state != MERGE_STATE_NONE:
             logger.warning(
-                "auto_integrate: merge still in progress after abort in {}; "
+                "auto_integrate: merge not proven aborted in {} (state {}); "
                 "later integrations will be blocked until it is resolved",
                 root,
+                state,
             )
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_merge failed: {}", abort_exc)

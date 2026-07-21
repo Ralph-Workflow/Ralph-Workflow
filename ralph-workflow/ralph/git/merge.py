@@ -202,7 +202,11 @@ def merge_target_into_current(
     """Run ``git merge --no-edit <target>`` into the current branch.
 
     On non-zero return code, run ``git merge --abort`` (guarded by a
-    ``merge_in_progress`` precheck) and return a conflict result. On
+    :func:`merge_state` precheck) and return a conflict result. The
+    abort's own verdict is checked: when it did not run, failed, or
+    left an unreadable merge state, a warning names the repository
+    rather than letting a possibly-stranded ``MERGE_HEAD`` hide behind
+    an ordinary conflict result. On
     success return ``MergeResult(outcome='success')``. The merge is
     never force-resolved; conflict outcome is the only escape hatch
     other than success.
@@ -234,8 +238,20 @@ def merge_target_into_current(
     # merge for resolution, abort so the working tree is left clean
     # (the caller can then record the conflict and return;
     # auto_integrate uses this to satisfy AC-07).
-    if not keep_conflicts:
-        abort_merge(repo_root_path)
+    if not keep_conflicts and not abort_merge(repo_root_path):
+        state = merge_state(repo_root_path)
+        if state != MERGE_STATE_NONE:
+            # The abort did not run, failed, or could not be proven. A
+            # stranded MERGE_HEAD blocks every later integration, so
+            # this is reported rather than folded into the plain
+            # conflict verdict the caller sees.
+            logger.warning(
+                "conflicted merge not proven aborted in {} (merge state"
+                " {}); later integrations will be blocked until it is"
+                " resolved",
+                repo_root_path,
+                state,
+            )
     return MergeResult(outcome="conflict")
 
 
@@ -326,16 +342,25 @@ def commit_merge_in_progress(repo_root: Path | str) -> bool:
     integrate conflict-resolution path calls this AFTER verifying
     :func:`unmerged_paths` is empty, so the commit is deterministic —
     the resolving agent only ever stages content, never commits.
+
+    Both the precheck and the post-commit verification go through
+    :func:`merge_state` rather than its boolean projection: a
+    :data:`MERGE_STATE_UNKNOWN` verdict is never accepted as proof
+    that ``MERGE_HEAD`` is gone, so an unreadable repository is
+    reported as "not committed" instead of a clean merge.
     """
     repo_root_path = Path(repo_root)
-    if not merge_in_progress(repo_root_path):
+    if merge_state(repo_root_path) != MERGE_STATE_IN_PROGRESS:
         return False
     result = run_git(
         ("commit", "--no-edit"),
         cwd=repo_root_path,
         label="git-merge-commit",
     )
-    return result.returncode == 0 and not merge_in_progress(repo_root_path)
+    return (
+        result.returncode == 0
+        and merge_state(repo_root_path) == MERGE_STATE_NONE
+    )
 
 
 def abort_merge(repo_root: Path | str) -> bool:

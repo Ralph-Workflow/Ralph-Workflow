@@ -13,6 +13,12 @@ silently skip work:
   strand ``MERGE_HEAD`` and block every later integration.
 * ``abort_merge`` never reported whether the abort actually ran.
 
+The same collapse existed one level up, in the callers: the resolution
+path asked ``merge_in_progress`` and read a failed query as "no merge to
+repair", so an unreadable repository was left with a possible
+``MERGE_HEAD`` and no abort attempt. Those callers now read
+``merge_state`` directly.
+
 Every test here injects git through ``ralph.git.merge.run_git`` and
 touches no repository, so the file stays in the DEFAULT (budget-tracked)
 suite: ``worktree_lookup``, ``merge_state`` and ``abort_merge`` pass
@@ -26,6 +32,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.merge import (
     MERGE_STATE_IN_PROGRESS,
@@ -34,9 +42,12 @@ from ralph.git.merge import (
     WORKTREE_FOUND,
     WORKTREE_NOT_CHECKED_OUT,
     WORKTREE_QUERY_FAILED,
+    MergeResult,
     abort_merge,
+    commit_merge_in_progress,
     merge_in_progress,
     merge_state,
+    merge_target_into_current,
     worktree_for_branch,
     worktree_lookup,
 )
@@ -44,6 +55,7 @@ from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
     is_retryable_fast_forward_failure,
 )
+from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
 
 if TYPE_CHECKING:
     import pytest
@@ -273,3 +285,236 @@ def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(
         _FEATURE_SHA,
         _TARGET_SHA,
     ) in calls
+
+
+def test_merge_regression_unreadable_git_dir_never_commits_a_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreadable repository is never reported as a committed merge."""
+    calls = _install_git_stub(
+        monkeypatch,
+        {
+            ("rev-parse", "--git-dir"): (128, ""),
+            ("commit", "--no-edit"): (0, ""),
+        },
+    )
+
+    assert commit_merge_in_progress(Path("/repos/main")) is False
+    # Fail closed on the precheck: no commit is attempted against a
+    # repository whose merge state could not be read.
+    assert ("commit", "--no-edit") not in calls
+
+
+def _install_resolve_stub(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    state: str,
+) -> list[str]:
+    """Drive ``endpoint_merge_with_resolution`` to a conflict with ``state``.
+
+    Returns the recorded call log so a test can assert whether the abort
+    was attempted and whether the resolver was ever invoked.
+    """
+    log: list[str] = []
+
+    def _fake_merge(
+        repo_root: Path | str, target: str, *, keep_conflicts: bool = False
+    ) -> MergeResult:
+        log.append("merge")
+        return MergeResult(outcome="conflict")
+
+    def _fake_merge_state(repo_root: Path | str) -> str:
+        return state
+
+    def _fake_abort(repo_root: Path | str) -> bool:
+        log.append("abort")
+        return False
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_resolve.merge_target_into_current",
+        _fake_merge,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_resolve.merge_state", _fake_merge_state
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_resolve.abort_merge", _fake_abort
+    )
+    return log
+
+
+def test_resolution_regression_unreadable_merge_state_still_aborts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed merge-state query must not be read as 'nothing to repair'.
+
+    The resolution path used to ask ``merge_in_progress``: on a failed
+    ``rev-parse --git-dir`` it read ``False`` and returned the plain
+    conflict WITHOUT attempting an abort, so a ``MERGE_HEAD`` that could
+    not be seen was left on disk to block every later integration.
+    """
+    log = _install_resolve_stub(monkeypatch, state=MERGE_STATE_UNKNOWN)
+
+    def _resolver(repo_root: Path, target: str) -> bool:
+        log.append("resolver")
+        return True
+
+    outcome = endpoint_merge_with_resolution(Path("/repos/main"), "main", _resolver)
+
+    assert outcome is not None
+    assert outcome.outcome == "conflict"
+    assert "abort" in log, (
+        "an unreadable merge state must still attempt the abort"
+    )
+    assert "resolver" not in log, (
+        "there are no readable conflicted paths to hand a resolver"
+    )
+
+
+def test_resolution_readable_no_merge_state_returns_the_plain_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The paired positive case: a POSITIVE 'no merge' needs no abort."""
+    log = _install_resolve_stub(monkeypatch, state=MERGE_STATE_NONE)
+
+    def _resolver(repo_root: Path, target: str) -> bool:
+        log.append("resolver")
+        return True
+
+    outcome = endpoint_merge_with_resolution(Path("/repos/main"), "main", _resolver)
+
+    assert outcome is not None
+    assert outcome.outcome == "conflict"
+    assert log == ["merge"], (
+        "git positively reported no MERGE_HEAD: nothing to abort, nothing"
+        f" to resolve; got {log}"
+    )
+
+
+def _install_sequenced_git_stub(
+    monkeypatch: pytest.MonkeyPatch,
+    responses: dict[tuple[str, ...], list[tuple[int, str]]],
+) -> list[tuple[str, ...]]:
+    """Route ``run_git`` to a per-argv QUEUE of results, one per call.
+
+    The plain stub answers every repetition of an argv identically,
+    which cannot express "the repository became unreadable between the
+    precheck and the verification". The last queued result is reused
+    once the queue is drained.
+    """
+    calls: list[tuple[str, ...]] = []
+    queues = {argv: list(results) for argv, results in responses.items()}
+
+    def _fake_run_git(
+        args: Sequence[str],
+        *,
+        cwd: Path | None = None,
+        label: str = "",
+        options: GitRunOptions | None = None,
+    ) -> GitRunResult:
+        argv = tuple(args)
+        calls.append(argv)
+        queue = queues.get(argv)
+        if not queue:
+            return _result(argv, 0, "")
+        returncode, stdout = queue.pop(0) if len(queue) > 1 else queue[0]
+        return _result(argv, returncode, stdout)
+
+    monkeypatch.setattr("ralph.git.merge.run_git", _fake_run_git)
+    return calls
+
+
+def test_merge_regression_unreadable_git_dir_after_commit_is_not_a_merge_commit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A merge is 'committed' only when git PROVES ``MERGE_HEAD`` is gone.
+
+    The post-commit verification used to read ``not
+    merge_in_progress(...)``, so a repository that became unreadable
+    between the commit and the check reported a successful merge
+    commit — and the resolution path then treated an unproven merge as
+    landed.
+    """
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "MERGE_HEAD").write_text("cafebabe\n", encoding="utf-8")
+    calls = _install_sequenced_git_stub(
+        monkeypatch,
+        {
+            # First read: a real in-progress merge. Second read (the
+            # post-commit verification): the query itself fails.
+            ("rev-parse", "--git-dir"): [(0, str(git_dir)), (128, "")],
+            ("commit", "--no-edit"): [(0, "")],
+        },
+    )
+
+    assert commit_merge_in_progress(tmp_path) is False
+    # The commit WAS attempted (the precheck saw a real merge); only the
+    # unprovable post-state makes the answer False.
+    assert ("commit", "--no-edit") in calls
+
+
+def _capture_warnings() -> tuple[list[str], int]:
+    """Attach a WARNING-level loguru sink; return its buffer and sink id."""
+    captured: list[str] = []
+    sink_id = logger.add(
+        lambda message: captured.append(str(message)),
+        level="WARNING",
+        format="{message}",
+    )
+    return captured, sink_id
+
+
+def test_merge_regression_unprovable_cleanup_abort_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The no-resolver cleanup abort must not hide behind a conflict result.
+
+    ``merge_target_into_current`` discarded ``abort_merge``'s verdict, so
+    a ``MERGE_HEAD`` the abort could not clear (or could not be read at
+    all) was reported to the pipeline as an ordinary conflict with
+    nothing naming the repository that is now blocked.
+    """
+    calls = _install_git_stub(
+        monkeypatch,
+        {
+            ("merge", "--no-edit", "--", "main"): (1, ""),
+            ("rev-parse", "--git-dir"): (128, ""),
+            ("merge", "--abort"): (128, ""),
+        },
+    )
+    captured, sink_id = _capture_warnings()
+    try:
+        outcome = merge_target_into_current(Path("/repos/feature"), "main")
+    finally:
+        logger.remove(sink_id)
+
+    assert outcome.outcome == "conflict"
+    assert ("merge", "--abort") in calls
+    assert any("not proven aborted" in line for line in captured), (
+        f"the blocked repository must be named in a warning; got {captured}"
+    )
+
+
+def test_merge_cleanup_abort_is_silent_when_git_proves_the_tree_is_clean(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The paired positive case: a readable, merge-free repo warns nothing."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    calls = _install_git_stub(
+        monkeypatch,
+        {
+            ("merge", "--no-edit", "--", "main"): (1, ""),
+            ("rev-parse", "--git-dir"): (0, str(git_dir)),
+        },
+    )
+    captured, sink_id = _capture_warnings()
+    try:
+        outcome = merge_target_into_current(tmp_path, "main")
+    finally:
+        logger.remove(sink_id)
+
+    assert outcome.outcome == "conflict"
+    assert ("merge", "--abort") not in calls
+    assert captured == []
