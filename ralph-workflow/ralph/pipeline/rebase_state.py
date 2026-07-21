@@ -60,3 +60,20 @@ class RebaseState(RalphBaseModel):
     # on any successful land. Defaulted, so legacy checkpoints load
     # unchanged.
     consecutive_conflicts: int = 0
+
+    # Durable identity of the conflict ``consecutive_conflicts`` counts.
+    # ``last_target`` alone does not identify a conflict: a developer
+    # can add a feature commit that changes what conflicts while the
+    # mainline branch NAME stays ``main``, and other agents move the
+    # mainline tip continuously. Without these two observations the
+    # budget would keep suppressing the resolver for a conflict it has
+    # never actually seen. The pair is the feature tip and the target
+    # tip observed immediately before the integration attempt that
+    # recorded the conflict; when either differs at the next seam the
+    # budget starts fresh (see
+    # ``ralph.pipeline.auto_integrate_conflict_budget.ConflictIdentity``).
+    # Both are cleared on a successful land and both are defaulted, so
+    # legacy checkpoints load unchanged and conservatively keep their
+    # carried count.
+    last_conflict_feature_sha: str | None = None
+    last_conflict_target_sha: str | None = None

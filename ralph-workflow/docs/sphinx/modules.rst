@@ -937,6 +937,13 @@ ralph.pipeline.auto_integrate_conflict_budget
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_budget_seam
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_budget_seam
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_ff
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

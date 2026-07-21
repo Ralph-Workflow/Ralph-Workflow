@@ -57,6 +57,11 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.auto_integrate_budget_seam import (
+    carry_budget_through_skip,
+    charge_failed_attempt,
+    observe_conflict_identity,
+)
 from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
     resolver_allowed,
@@ -361,7 +366,9 @@ def auto_integrate_after_commit(
     Args:
         config: Unified run configuration (enable flag + target).
         workspace_scope: Scope whose root is the feature repository.
-        state: Prior rebase state (unused today; kept for the seam).
+        state: Prior rebase state. Carries the consecutive-conflict
+            count and the conflict identity that bound how often the
+            dev-agent resolver is invoked for one unresolved conflict.
         conflict_resolver: Optional callable handed a conflicted
             in-progress endpoint merge to resolve and stage (in
             production a focused dev-agent invocation). The merge
@@ -515,7 +522,7 @@ def _auto_integrate_after_commit_inner(
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
     early_skip, usable_ctx = _check_early_skips(ctx)
     if early_skip is not None:
-        return early_skip
+        return carry_budget_through_skip(early_skip, prior=state)
     if usable_ctx is None:
         # Disabled (AC-01) or env lookup failed: caller already
         # recorded the skip when applicable.
@@ -525,7 +532,10 @@ def _auto_integrate_after_commit_inner(
     # Budget check BEFORE any git mutation: an exhausted budget still
     # runs the rebase and the endpoint merge (and still aborts them
     # cleanly), it merely stops paying for another agent invocation.
-    allowed = resolver_allowed(state, target)
+    # The identity is observed here, before the rebase moves anything,
+    # so it names the endpoints this attempt is about to reconcile.
+    identity = observe_conflict_identity(root, target)
+    allowed = resolver_allowed(state, target, identity)
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
     if resolver_suppressed:
@@ -536,21 +546,35 @@ def _auto_integrate_after_commit_inner(
         )
 
     record: RebaseState | None = None
-    for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
-        if attempt:
-            # A retry only happens because the target moved under us,
-            # so re-read it from origin before re-integrating (AC-03).
-            # Attempt 0 is already refreshed by
-            # _auto_integrate_resolve_context, so this never doubles
-            # the fetch on the common single-attempt path.
-            _refresh_target(config, root, target)
-        record, retry_ff = _integrate_once(config, root, target, effective_resolver)
-        if not retry_ff:
-            break
-        logger.info(
-            "auto_integrate: fast-forward did not land on attempt {}; "
-            "re-integrating onto the moved target",
-            attempt + 1,
+    try:
+        for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
+            if attempt:
+                # A retry only happens because the target moved under
+                # us: re-read it from origin (AC-03) and re-observe the
+                # identity, so a conflict recorded by a later attempt
+                # is not stamped with attempt 0's endpoint pair.
+                _refresh_target(config, root, target)
+                identity = observe_conflict_identity(root, target)
+            record, retry_ff = _integrate_once(config, root, target, effective_resolver)
+            if not retry_ff:
+                break
+            logger.info(
+                "auto_integrate: fast-forward did not land on attempt {}; "
+                "re-integrating onto the moved target",
+                attempt + 1,
+            )
+    except Exception as exc:
+        # Caught here, not only in the caller's broad guard: this is
+        # the first frame knowing the target/identity to scope by.
+        logger.warning("auto_integrate: integration attempt failed: {}", exc)
+        with contextlib.suppress(Exception):
+            _clear_record(root)
+        return charge_failed_attempt(
+            _record_skip(reason=f"unexpected failure: {exc}", target=target),
+            prior=state,
+            target=target,
+            identity=identity,
+            resolver_offered=effective_resolver is not None,
         )
     if record is None:
         return None
@@ -559,6 +583,7 @@ def _auto_integrate_after_commit_inner(
         prior=state,
         target=target,
         resolver_suppressed=resolver_suppressed,
+        identity=identity,
     )
 
 
