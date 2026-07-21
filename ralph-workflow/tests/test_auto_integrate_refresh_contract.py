@@ -34,7 +34,10 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.auto_integrate_message import format_auto_integrate_message
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit,
+    auto_integrate_on_phase_transition,
+)
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ALREADY_CURRENT,
     REFRESH_UNREACHABLE,
@@ -181,3 +184,82 @@ def test_refresh_outcome_is_recorded_and_rendered_for_the_operator(
         refresh=outcome.last_refresh,
     )
     assert REFRESH_UNREACHABLE in message
+
+
+def _feature_level_with_base(tmp_git_repo: Path) -> str:
+    """Put ``feature`` at exactly the base tip: nothing to integrate."""
+    base = _base_branch(tmp_git_repo)
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    return base
+
+
+def test_unreachable_refresh_is_recorded_on_the_early_no_op_skip(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unhealthy refresh must not be silenced by an early no-op.
+
+    ``no commits beyond target`` is decided from the target pointer the
+    refresh was supposed to freshen. When that refresh could not reach
+    origin, the "nothing to do" verdict rests on a pointer of unknown
+    age, so the outcome that produced it has to travel with the record
+    instead of being discarded at the context-resolution seam.
+    """
+    base = _feature_level_with_base(tmp_git_repo)
+    calls = _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
+
+    outcome = auto_integrate_after_commit(
+        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+    )
+
+    assert calls == [base]
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert outcome.last_reason == "no commits beyond target"
+    assert outcome.last_refresh == REFRESH_UNREACHABLE
+    message = format_auto_integrate_message(
+        outcome.last_action,
+        outcome.last_target,
+        outcome.last_reason,
+        fast_forwarded=outcome.fast_forwarded,
+        refresh=outcome.last_refresh,
+    )
+    assert REFRESH_UNREACHABLE in message
+
+
+def test_unreachable_refresh_is_recorded_at_the_phase_boundary_no_op(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The quiet phase-boundary hook stays quiet only while origin is readable."""
+    base = _feature_level_with_base(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
+
+    outcome = auto_integrate_on_phase_transition(
+        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert outcome.last_refresh == REFRESH_UNREACHABLE
+    message = format_auto_integrate_message(
+        outcome.last_action,
+        outcome.last_target,
+        outcome.last_reason,
+        fast_forwarded=outcome.fast_forwarded,
+        refresh=outcome.last_refresh,
+    )
+    assert REFRESH_UNREACHABLE in message
+
+
+def test_healthy_refresh_keeps_the_phase_boundary_no_op_silent(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The unchanged contract: a healthy nothing-to-do boundary records nothing."""
+    base = _feature_level_with_base(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_ALREADY_CURRENT)
+
+    assert (
+        auto_integrate_on_phase_transition(
+            _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+        )
+        is None
+    )

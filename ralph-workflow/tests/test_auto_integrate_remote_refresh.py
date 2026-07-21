@@ -22,6 +22,10 @@ from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline import auto_integrate
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
+from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_UNREACHABLE,
+    refresh_target_from_remote,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -213,3 +217,44 @@ def test_retry_attempt_refetches_the_moved_mainline(
     assert is_ancestor(agent, landed[0], feature_head) is True
     assert (agent / "late.txt").exists()
     assert branch_sha(agent, main) == feature_head
+
+
+def test_refresh_regression_failed_fetch_never_claims_a_fresh_origin_read(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    """A cached remote-tracking ref is not evidence of a fresh origin read.
+
+    The refresh used to fall through to the advance whenever
+    ``refs/remotes/origin/<target>`` existed, even when the fetch meant
+    to update it had just failed. It then advanced the shared local ref
+    and reported ``refreshed from origin`` -- a freshness claim about a
+    pointer that can be arbitrarily old. The only outcome an
+    unreachable origin may produce is ``origin unreachable``.
+    """
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-cached", main, branch="feature")
+    other = _make_clone(bare, tmp_git_repo.parent / "agent-pusher", main, branch="other")
+
+    assert _run(other, "checkout", main).returncode == 0
+    ahead = _commit(other, "other.txt", "other agent\n", "other agent change")
+    assert _run(other, "push", "origin", main).returncode == 0
+
+    # The agent caches the advanced remote-tracking ref while origin is
+    # still reachable, and does NOT advance its local ref.
+    assert _run(agent, "fetch", "origin", main).returncode == 0
+    cached = _run(agent, "rev-parse", f"refs/remotes/origin/{main}").stdout.strip()
+    assert cached == ahead
+    stale_local = branch_sha(agent, main)
+    assert stale_local is not None
+    assert stale_local != ahead
+
+    # Origin then becomes unreachable: the cache is all that is left.
+    assert (
+        _run(agent, "remote", "set-url", "origin", str(tmp_path / "gone.git")).returncode
+        == 0
+    )
+
+    outcome = refresh_target_from_remote(agent, main, timeout_seconds=2.0)
+
+    assert outcome == REFRESH_UNREACHABLE
+    assert branch_sha(agent, main) == stale_local

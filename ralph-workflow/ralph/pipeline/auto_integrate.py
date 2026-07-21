@@ -66,6 +66,13 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
     resolver_allowed,
 )
+from ralph.pipeline.auto_integrate_context import (
+    current_branch_or_detached_marker as _current_branch_or_detached_marker,
+)
+from ralph.pipeline.auto_integrate_context import (
+    record_refresh,
+    record_when_stale,
+)
 from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
     is_retryable_fast_forward_failure,
@@ -415,7 +422,12 @@ def auto_integrate_on_phase_transition(
     * the worktree is dirty (mid-phase uncommitted work — integrating
       would be unsafe and the next commit seam will catch up), or
     * the resolved target already sits at the feature tip (nothing to
-      rebase, nothing to land).
+      rebase, nothing to land) AND the origin refresh that pointer was
+      read through was healthy. When the refresh could not confirm the
+      pointer (unreachable origin, diverged remote, lost refresh race)
+      the same nothing-to-do case is RECORDED as a skip carrying
+      ``last_refresh`` instead, because a silent no-op computed from an
+      unverifiable pointer is indistinguishable from a healthy one.
 
     Otherwise it runs the full integration (rebase → endpoint merge →
     optional agent conflict resolution → fast-forward) and returns
@@ -442,11 +454,16 @@ def auto_integrate_on_phase_transition(
         # A stale remote pointer must not let this cheap hook conclude
         # 'nothing to do'. Every free early return above still costs
         # nothing.
-        _refresh_target(config, root, target)
+        refresh = _refresh_target(config, root, target)
         target_sha = branch_sha(root, target)
         if target_sha is not None and target_sha == get_head_sha(root):
             # Fully integrated and landed: the frequent-boundary case.
-            return None
+            # Quiet only while the refreshed pointer that verdict was
+            # read through can be trusted (see ``record_when_stale``).
+            return record_when_stale(
+                _record_skip(reason="no commits beyond target", target=target),
+                refresh,
+            )
     except Exception as exc:
         logger.warning(
             "auto_integrate: phase-transition pre-check failed: {}", exc
@@ -690,7 +707,7 @@ def _integrate_once(
 
 
 def _check_early_skips(
-    ctx: tuple[Path, str | None, str | None] | None,
+    ctx: tuple[Path, str | None, str | None, str | None] | None,
 ) -> tuple[RebaseState | None, tuple[Path, str, str] | None]:
     """Apply the AC-01/AC-02/AC-13 skip table to the resolved context.
 
@@ -715,20 +732,25 @@ def _check_early_skips(
         # Disabled (AC-01) or env lookup failed: caller already
         # recorded the skip when applicable.
         return None, None
-    root, current_branch, target = ctx
+    root, current_branch, target, refresh = ctx
     if current_branch is None:
         # Detached HEAD: AC-02 requires this to be a RECORDED skip,
         # not a silent no-op. The crash record is never written in
         # this branch -- a detached HEAD is not an in-progress
         # integration.
-        return _record_skip(reason="detached HEAD", target=target), None
+        return record_refresh(
+            _record_skip(reason="detached HEAD", target=target), refresh
+        ), None
     if target is None:  # AC-13: no target resolved -> recorded skip
         return _record_skip(
             reason="no integration target branch resolved", target=None
         ), None
     skip = _auto_integrate_check_skip_conditions(root, current_branch, target)
     if skip is not None:
-        return skip, None
+        # Every skip in that table is decided FROM the target pointer
+        # the refresh above was meant to freshen, so the record carries
+        # how fresh that pointer actually was.
+        return record_refresh(skip, refresh), None
     # No skip: usable_ctx is the narrowed tuple with non-Optional
     # branch + target slots the orchestrator can unpack.
     return None, (root, current_branch, target)
@@ -754,45 +776,11 @@ def _read_post_integration_head_sha(
         return None
 
 
-def _current_branch_or_detached_marker(root: Path) -> str | None:
-    """Return the current branch name or ``None`` if HEAD is detached.
-
-    Detaches the typed-exception guard from :func:`get_current_branch`'s
-    broad fallback so the auto-integrate skip table can record a
-    DETACHED-HEAD outcome (AC-02/AC-13 skip condition: "no branch to
-    integrate"). GitPython raises ``TypeError`` from
-    ``repo.active_branch.name`` when HEAD points at a detached SHA.
-    Any other exception -- not a git repo, transport error, etc. --
-    propagates so the caller can surface the actual failure.
-
-    Returns:
-        The current branch name, or ``None`` when HEAD is detached.
-    """
-    from git import Repo
-    from git.exc import GitCommandError
-
-    repo: Repo | None = None
-    try:
-        repo = Repo(root)
-        return repo.active_branch.name
-    except (TypeError, ValueError, GitCommandError, AttributeError):
-        # TypeError is GitPython's "DetachedHead has no .name"
-        # AttributeError is the same in some GitPython versions.
-        # ValueError/GitCommandError cover "no HEAD" / "ambiguous HEAD"
-        # edge cases that are also "not on a branch".
-        return None
-    finally:
-        if repo is not None:
-            close_method: object = getattr(repo, "close", None)
-            if callable(close_method):
-                close_method()
-
-
 def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
-) -> tuple[Path, str | None, str | None] | None:
-    """Resolve the (root, current_branch, target) context or short-circuit.
+) -> tuple[Path, str | None, str | None, str | None] | None:
+    """Resolve the (root, current_branch, target, refresh) context or short-circuit.
 
     Returns ``None`` ONLY when the integration step is a no-op
     (AC-01 disabled path -- byte-identical to the pre-feature run).
@@ -822,13 +810,18 @@ def _auto_integrate_resolve_context(
     # absorbed into the broad ``except Exception`` above.
     current_branch: str | None = _current_branch_or_detached_marker(root)
     target: str | None = resolve_integration_target(config, root)
+    refresh: str | None = None
     if target is not None:
         # BEFORE the skip table reads branch_sha: the 'no commits
         # beyond target' and 'on target branch' decisions must be made
-        # against the refreshed pointer, never a stale one.
-        _refresh_target(config, root, target)
+        # against the refreshed pointer, never a stale one. The outcome
+        # is carried out of here rather than discarded: those skip
+        # decisions inherit whatever staleness the refresh could not
+        # rule out, and the fail-open contract means nothing else will
+        # report it.
+        refresh = _refresh_target(config, root, target)
 
-    return root, current_branch, target
+    return root, current_branch, target, refresh
 
 
 def _auto_integrate_check_skip_conditions(

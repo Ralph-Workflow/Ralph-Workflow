@@ -944,6 +944,13 @@ ralph.pipeline.auto_integrate_budget_seam
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_context
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_context
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_ff
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

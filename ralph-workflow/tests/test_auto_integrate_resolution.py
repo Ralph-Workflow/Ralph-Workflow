@@ -472,3 +472,49 @@ def test_resolver_leaving_conflict_markers_is_rejected(tmp_git_repo: Path) -> No
     assert isinstance(before_refs, dict)
     assert isinstance(after_refs, dict)
     assert after_refs[f"refs/heads/{base}"] == before_refs[f"refs/heads/{base}"]
+
+
+@pytest.mark.parametrize(
+    "half_resolved",
+    [
+        "<<<<<<< HEAD\nfeature version\nbase version 1\n",
+        "feature version\nbase version 1\n>>>>>>> main\n",
+    ],
+    ids=["opening-fence-only", "closing-fence-only"],
+)
+def test_resolver_regression_lone_conflict_marker_is_rejected(
+    tmp_git_repo: Path, half_resolved: str
+) -> None:
+    """A resolver that deletes only one conflict fence is still rejected.
+
+    The marker scan is the only gate left once Ralph stages the
+    previously-conflicted paths -- ``git add`` clears the unmerged bit
+    -- and it used to demand BOTH fences before reporting a file. A
+    resolution that removed just one of them therefore passed both
+    gates and was committed with the conflict text intact.
+    """
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    before = _snapshot(tmp_git_repo)
+
+    def _resolver(root: Path, target: str) -> bool:
+        (root / "shared.txt").write_text(half_resolved, encoding="utf-8")
+        return True
+
+    outcome = auto_integrate_after_commit(
+        _build_config(tmp_git_repo, target=base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=_resolver,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert outcome.fast_forwarded is False
+    after = _snapshot(tmp_git_repo)
+    assert after["head"] == before["head"], "no merge commit may be created"
+    before_refs = before["refs"]
+    after_refs = after["refs"]
+    assert isinstance(before_refs, dict)
+    assert isinstance(after_refs, dict)
+    assert after_refs[f"refs/heads/{base}"] == before_refs[f"refs/heads/{base}"]
+    assert not (tmp_git_repo / ".git" / "MERGE_HEAD").exists()

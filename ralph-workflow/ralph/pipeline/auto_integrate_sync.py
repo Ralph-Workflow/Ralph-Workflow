@@ -94,9 +94,20 @@ def refresh_target_from_remote(
         logger.debug("auto_integrate: no origin remote; skipping target refresh")
         return REFRESH_NO_ORIGIN
 
-    fetched = _fetch_target(repo_root, target, timeout_seconds)
+    if not _fetch_target(repo_root, target, timeout_seconds):
+        # A cached ``refs/remotes/origin/<target>`` from an earlier,
+        # successful fetch is NOT evidence of a fresh origin read: it
+        # can be arbitrarily old. Advancing the local ref on the
+        # strength of it and reporting REFRESH_REFRESHED would assert a
+        # freshness this call never established, which is exactly the
+        # silent staleness the outcome vocabulary exists to prevent.
+        logger.debug(
+            "auto_integrate: fetch of '{}' failed; not refreshing from cache",
+            target,
+        )
+        return REFRESH_UNREACHABLE
 
-    outcome, advance = _pending_advance(repo_root, target, fetched=fetched)
+    outcome, advance = _pending_advance(repo_root, target)
     if advance is None:
         return outcome if outcome is not None else REFRESH_ALREADY_CURRENT
     local_sha, remote_sha = advance
@@ -115,7 +126,7 @@ def refresh_target_from_remote(
 
 
 def _pending_advance(
-    repo_root: Path, target: str, *, fetched: bool
+    repo_root: Path, target: str
 ) -> tuple[str | None, tuple[str, str] | None]:
     """Decide whether the local ref may be advanced, and why not otherwise.
 
@@ -129,17 +140,14 @@ def _pending_advance(
     """
     remote_sha = _remote_tracking_sha(repo_root, target)
     if remote_sha is None:
+        # Reached only after a SUCCESSFUL fetch, so the remote
+        # genuinely does not carry this branch -- the unreachable case
+        # returned before this function was called.
         logger.debug(
             "auto_integrate: no remote-tracking ref for '{}'; nothing to refresh",
             target,
         )
-        # A failed fetch with no tracking ref means we never saw the
-        # remote pointer at all; that is materially different from a
-        # successful fetch of a branch the remote does not carry.
-        return (
-            REFRESH_NO_REMOTE_BRANCH if fetched else REFRESH_UNREACHABLE,
-            None,
-        )
+        return REFRESH_NO_REMOTE_BRANCH, None
 
     local_sha = branch_sha(repo_root, target)
     if local_sha is None:
@@ -172,12 +180,13 @@ def _has_origin(repo_root: Path) -> bool:
 def _fetch_target(repo_root: Path, target: str, timeout_seconds: float) -> bool:
     """Fetch exactly one branch from origin, bounded and fail-open.
 
-    Returns whether the fetch itself succeeded. A failure does NOT stop
-    the refresh: an already-fetched ``refs/remotes/origin/<target>`` is
-    still worth reconciling against even when this particular fetch
-    could not reach the remote. The boolean only lets the caller tell
-    an unreachable remote apart from a remote that simply does not
-    carry the branch. ``run_git`` already forces
+    Returns whether the fetch itself succeeded. A failure ENDS the
+    refresh with :data:`REFRESH_UNREACHABLE`: the caller must not fall
+    back on a cached ``refs/remotes/origin/<target>``, because that ref
+    proves only that SOME earlier fetch succeeded, not that the pointer
+    is current. Fail-open is preserved at the layer that matters --
+    integration continues locally -- without claiming a freshness this
+    call never established. ``run_git`` already forces
     ``GIT_TERMINAL_PROMPT=0`` and ``GCM_INTERACTIVE=Never``, so a
     credential prompt fails fast rather than hanging.
     """

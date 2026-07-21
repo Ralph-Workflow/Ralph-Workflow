@@ -77,6 +77,11 @@ if TYPE_CHECKING:
 #: ``=======`` markdown rule is not mistaken for a conflict.
 _CONFLICT_MARKER_PREFIXES: tuple[str, ...] = ("<<<<<<< ", "=======", ">>>>>>> ")
 
+#: The subset of :data:`_CONFLICT_MARKER_PREFIXES` that only ever
+#: appears in an unresolved conflict. ``=======`` is excluded on
+#: purpose: it is also ordinary heading punctuation in prose files.
+_UNRESOLVED_CONFLICT_FENCES: frozenset[str] = frozenset({"<<<<<<< ", ">>>>>>> "})
+
 #: :func:`merge_state` verdicts. ``MERGE_STATE_UNKNOWN`` is the
 #: fail-closed answer: git could not be asked, so "there is no merge
 #: to abort" must NOT be inferred.
@@ -308,11 +313,14 @@ def paths_with_conflict_markers(
     :func:`unmerged_paths` result is NOT proof that a conflict was
     really resolved. This scan closes that hole.
 
-    A path is reported only when it holds BOTH an opening
-    ``<<<<<<< `` line and a closing ``>>>>>>> `` line, so a lone
-    ``=======`` separator in ordinary prose never trips it. A path
-    that cannot be read as text (binary or deleted) is skipped rather
-    than reported.
+    A path is reported when EITHER an opening ``<<<<<<< `` line or a
+    closing ``>>>>>>> `` line survives: half a conflict hunk is still
+    an unresolved conflict, and demanding both fences let a resolver
+    that deleted only one of them past the last remaining gate. A lone
+    ``=======`` separator is deliberately still allowed, because it is
+    ordinary reStructuredText/Markdown heading punctuation rather than
+    a conflict-specific token. A path that cannot be read as text
+    (binary or deleted) is skipped rather than reported.
     """
     repo_root_path = Path(repo_root)
     reported: list[str] = []
@@ -329,7 +337,7 @@ def paths_with_conflict_markers(
             for prefix in _CONFLICT_MARKER_PREFIXES
             if line.startswith(prefix)
         }
-        if "<<<<<<< " in seen and ">>>>>>> " in seen:
+        if seen & _UNRESOLVED_CONFLICT_FENCES:
             reported.append(path)
     return reported
 
