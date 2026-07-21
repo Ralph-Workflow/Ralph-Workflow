@@ -505,6 +505,7 @@ def _run_pipeline_with_heartbeat(
         recording.start()
         return recording
 
+    monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", lambda *_args, **_kwargs: (None, None))
     monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", _fake_start)
 
     pipeline = PipelinePolicy(
