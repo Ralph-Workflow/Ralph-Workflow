@@ -51,7 +51,10 @@ _ALLOWLISTED_MODULES: tuple[str, ...] = (
     "mcp/artifacts/plan/_renderers.py",
     "pipeline/auto_integrate_agent.py",
     "pipeline/cycle_baseline.py",
+    "pipeline/checkpoint.py",
     "pipeline/parallel/worker_runtime.py",
+    "cli/commands/run.py",
+    "workspace/fs.py",
     "phases/review.py",
 )
 

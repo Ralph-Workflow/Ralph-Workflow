@@ -124,3 +124,10 @@ def test_audit_idempotent_write_adoption_regression_cli_exit_codes(
     assert audit.main([str(PRODUCTION_ROOT)]) == 0
     assert audit.main([str(violating_root)]) == 1
     assert audit.main([str(tmp_path / "missing")]) == 2
+
+
+def test_hot_path_idempotent_adopters_are_locked() -> None:
+    """Step 3: the three optimized hot-path writers stay covered by the audit."""
+    assert "pipeline/checkpoint.py" in audit._ALLOWLISTED_MODULES
+    assert "cli/commands/run.py" in audit._ALLOWLISTED_MODULES
+    assert "workspace/fs.py" in audit._ALLOWLISTED_MODULES

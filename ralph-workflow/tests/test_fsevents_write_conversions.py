@@ -9,6 +9,7 @@ from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.phases import review as review_module
 from ralph.pipeline import auto_integrate_agent, cycle_baseline
 from ralph.pipeline.parallel import worker_runtime
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -175,3 +176,21 @@ def test_review_baseline_regression_writes_on_changed_content() -> None:
 
     assert backend.write_text_calls == 2
     assert backend.files[marker_path] == "bbbb"
+
+
+def test_fsworkspace_write_skips_byte_identical_rewrite(tmp_path: Path) -> None:
+    """Step 4: identical workspace content writes once and changed content writes again."""
+    backend = RecordingFileBackend()
+    workspace = FsWorkspace(tmp_path, backend=backend)
+    expected_path = (tmp_path / "file.txt").resolve()
+
+    workspace.write("file.txt", "same")
+    workspace.write("file.txt", "same")
+
+    assert backend.write_text_calls == 1
+    assert backend.files[expected_path] == "same"
+
+    workspace.write("file.txt", "changed")
+
+    assert backend.write_text_calls == 2
+    assert backend.files[expected_path] == "changed"
