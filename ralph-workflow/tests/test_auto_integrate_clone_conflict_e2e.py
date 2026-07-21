@@ -11,13 +11,15 @@ Two production paths that no existing test reached:
   ``tests/test_auto_integrate_worktree_sync.py::test_sibling_worktree_landing_mid_integration_is_retried_and_lands``),
   so the PRODUCTION detection inside
   :func:`ralph.pipeline.auto_integrate_ff.fast_forward_target` had never
-  been exercised on its own.
+  been exercised on its own, and no test moved the mainline *during*
+  one ``auto_integrate_after_commit`` call and then proved that same
+  call detects the move, retries and lands.
 
-Both tests here sequence their concurrency deterministically -- the
-sibling lands at a fixed point in the test body -- with no sleep, no
-thread and no polling, per docs/ralph-workflow-policy/testing-policy.md.
-Every remote is a local bare repository path: no test reaches a real
-network host.
+Every test here sequences its concurrency deterministically -- the
+sibling lands at a fixed point in the test body, or on a named
+production call boundary -- with no sleep, no thread and no polling,
+per docs/ralph-workflow-policy/testing-policy.md. Every remote is a
+local bare repository path: no test reaches a real network host.
 
 File-level markers. ``subprocess_e2e`` excludes this file from ``make
 test`` (the budget-tracked 60 s step): every test drives real git.
@@ -34,11 +36,14 @@ tests/test_auto_integrate_race.py:11-15.
 
 from __future__ import annotations
 
+import io
 import subprocess
 from pathlib import Path
 
 import pytest
+from loguru import logger
 
+import ralph.pipeline.auto_integrate as _ai_mod
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
@@ -234,4 +239,96 @@ def test_sibling_worktree_landing_is_reintegrated_and_lands_both_commits(
         assert (feature / "feature.txt").exists()
         assert (feature / "main.txt").exists()
     finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
+
+
+def test_target_moved_mid_integration_is_detected_retried_and_lands_both(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-09 (composed): the move happens INSIDE one integration call.
+
+    The two tests above prove the halves separately -- production
+    refusal, and recovery when the sibling landed before the call. The
+    production failure the user reported is the composition: the sibling
+    lands *while* this agent is integrating, so the feature SHA the
+    landing is about to publish was computed against a mainline that no
+    longer exists.
+
+    The move is sequenced with a deterministic synchronization hook
+    around a production dependency, not by replacing the code under
+    test. ``auto_integrate._refresh_target`` is wrapped -- the real
+    refresh still runs on every call -- and the sibling commit is made
+    on the pre-landing refresh of the first attempt. That is the exact
+    instant between "the feature SHA exists" and
+    "``fast_forward_target`` observes the target", so the PRODUCTION
+    fast-forward, the PRODUCTION retryable-reason classification and
+    the PRODUCTION bounded retry loop are all exercised unmodified.
+    ``_fast_forward_target`` is deliberately left alone.
+
+    ``_refresh_target`` is called exactly four times here: context
+    resolution, attempt 1's pre-landing refresh (where the sibling
+    lands), attempt 2's re-integration refresh, and attempt 2's
+    pre-landing refresh. No sleep, no thread, no polling.
+    """
+    main = _base_branch(tmp_git_repo)
+    feature = tmp_git_repo.parent / "feature-c"
+    _add_worktree(tmp_git_repo, feature, "feature-c")
+    buf = io.StringIO()
+    handler_id = logger.add(buf, level="INFO")
+    try:
+        _commit(feature, "feature.txt", "feature\n", "feature change")
+
+        real_refresh = _ai_mod._refresh_target
+        refresh_calls: list[str] = []
+        sibling_shas: list[str] = []
+        doomed_feature_shas: list[str] = []
+
+        def _refresh_and_land_sibling(
+            config: UnifiedConfig, root: Path, target: str
+        ) -> str:
+            refresh_calls.append(target)
+            if len(refresh_calls) == 2:
+                # Mid-integration: the feature SHA for attempt 1 has been
+                # computed and recorded, and the fast-forward has not yet
+                # observed the target.
+                doomed_feature_shas.append(
+                    _run(feature, "rev-parse", "HEAD").stdout.strip()
+                )
+                sibling_shas.append(
+                    _commit(tmp_git_repo, "main.txt", "main\n", "sibling landing")
+                )
+            return real_refresh(config, root, target)
+
+        monkeypatch.setattr(_ai_mod, "_refresh_target", _refresh_and_land_sibling)
+
+        outcome = auto_integrate_after_commit(
+            _build_config(fetch_enabled=False),
+            WorkspaceScope(feature),
+            RebaseState(),
+        )
+        feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
+        sibling_sha = sibling_shas[0]
+        doomed_sha = doomed_feature_shas[0]
+
+        assert outcome is not None
+        # The first landing was refused: publishing that SHA would have
+        # rewound the sibling's commit off the shared mainline.
+        assert is_ancestor(feature, sibling_sha, doomed_sha) is False
+        assert "fast-forward did not land on attempt 1" in buf.getvalue()
+        # ... and the bounded loop re-integrated onto the moved tip.
+        assert len(refresh_calls) == 4, (
+            f"expected one retry (4 refreshes), got {len(refresh_calls)}"
+        )
+        assert outcome.fast_forwarded is True, (
+            f"retry must land, got action={outcome.last_action!r}"
+            f" reason={outcome.last_reason!r}"
+        )
+        # The shared mainline carries BOTH agents' work.
+        assert feature_head != doomed_sha
+        assert branch_sha(tmp_git_repo, main) == feature_head
+        assert is_ancestor(feature, sibling_sha, feature_head) is True
+        assert (feature / "feature.txt").exists()
+        assert (feature / "main.txt").exists()
+    finally:
+        logger.remove(handler_id)
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))

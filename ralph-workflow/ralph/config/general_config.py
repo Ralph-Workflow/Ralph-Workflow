@@ -124,8 +124,11 @@ class GeneralConfig(RalphBaseModel):
         le=120.0,
         description=(
             "Wall-clock budget for the auto-integration fetch. On timeout or"
-            " any remote failure the step degrades silently to local-only"
-            " integration; the run is never failed by an unreachable remote."
+            " any remote failure the step falls back to local-only"
+            " integration and the run is never failed by an unreachable"
+            " remote. The degradation is not silent: the refresh outcome is"
+            " recorded on the run state and rendered to the operator in the"
+            " auto-integrate line."
         ),
     )
     auto_integrate_resolve_timeout_seconds: float = Field(
