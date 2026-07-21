@@ -411,32 +411,20 @@ class LintBypassViolation:
         return f"{self.file_path}:{self.line}: [LINT-BYPASS] {self.category}: {self.detail}"
 
 
-def _is_inside_triple_quoted(lines: list[str], line_index: int) -> bool:
-    """Return True if *line_index* is inside a triple-quoted string literal.
-
-    Walks from index 0 to line_index - 1 to detect unclosed ''' or \"\"\".
-    This is a simple heuristic that works for most real-world Python.
-    """
-    in_triple: bool = False
-    for i in range(line_index):
-        stripped = lines[i].strip()
-        # Count triple-quote occurrences — odd count means state toggled.
-        count = stripped.count('"""') + stripped.count("'''")
-        if count % 2 == 1:
-            in_triple = not in_triple
-    return in_triple
-
-
 def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassViolation]:
     """Scan source lines for forbidden noqa annotations."""
     violations: list[LintBypassViolation] = []
     file_stem = Path(rel_path).stem
 
+    in_triple = False
     for idx, raw_line in enumerate(lines):
         lineno = idx + 1
+        quote_count = raw_line.count('"""') + raw_line.count("'''")
 
-        # Skip lines inside triple-quoted strings.
-        if _is_inside_triple_quoted(lines, idx):
+        # Skip multi-line literals and keep their state in one pass.
+        if in_triple or quote_count % 2 == 1:
+            if quote_count % 2 == 1:
+                in_triple = not in_triple
             continue
 
         match = _NOQA_RE.search(raw_line)

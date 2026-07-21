@@ -43,32 +43,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Scan independent roots concurrently. A watchdog bounds the gate even if grep
-# stalls; one recursive grep per root avoids serial directory-walk latency.
+# Find bounds the traversal to relevant source suffixes before one grep
+# process scans the resulting file list, avoiding recursive BSD grep's
+# directory-walk overhead without a non-standard dependency.
 GREP_TIMEOUT_SECONDS=2
-PIDS=()
-ROOTS=(ralph tests docs)
-for ROOT in "${ROOTS[@]}"; do
-    grep -rln -E "$DRIFT_PATTERNS" "$ROOT/" \
-        --include='*.py' --include='*.rst' --include='*.md' \
-        --exclude='__pycache__' --exclude='*.pyc' >"$GREP_DIR/$ROOT.out" 2>"$GREP_DIR/$ROOT.err" &
-    PIDS+=("$!")
-done
+find ralph tests docs -type f \( -name '*.py' -o -name '*.rst' -o -name '*.md' \) \
+    -not -path '*/__pycache__/*' -exec grep -lE "$DRIFT_PATTERNS" {} + \
+    >"$GREP_DIR/scan.out" 2>"$GREP_DIR/scan.err" &
+SCAN_PID="$!"
 (
     sleep "$GREP_TIMEOUT_SECONDS"
     : >"$GREP_DIR/timed_out"
-    for PID in "${PIDS[@]}"; do
-        kill "$PID" 2>/dev/null || true
-    done
+    kill "$SCAN_PID" 2>/dev/null || true
 ) &
 WATCHDOG_PID="$!"
-GREP_RCS=()
-for PID in "${PIDS[@]}"; do
-    set +e
-    wait "$PID"
-    GREP_RCS+=("$?")
-    set -e
-done
+set +e
+wait "$SCAN_PID"
+GREP_RC="$?"
+set -e
 kill "$WATCHDOG_PID" 2>/dev/null || true
 wait "$WATCHDOG_PID" 2>/dev/null || true
 
@@ -78,18 +70,16 @@ if [ -e "$GREP_DIR/timed_out" ]; then
     exit 124
 fi
 
-GREP_RC=0
-for ROOT_INDEX in "${!ROOTS[@]}"; do
-    ROOT_RC="${GREP_RCS[$ROOT_INDEX]}"
-    if [ "$ROOT_RC" -ne 0 ] && [ "$ROOT_RC" -ne 1 ]; then
-        GREP_RC=2
-    fi
-done
-DRIFT_HITS="$(cat "$GREP_DIR"/*.out)"
+if [ "$GREP_RC" -eq 1 ]; then
+    GREP_RC=0
+elif [ "$GREP_RC" -ne 0 ]; then
+    GREP_RC=2
+fi
+DRIFT_HITS="$(cat "$GREP_DIR/scan.out")"
 
 if [ "$GREP_RC" -eq 2 ]; then
     echo "FAIL: bad path or permission in upstream grep" >&2
-    cat "$GREP_DIR"/*.err >&2
+    cat "$GREP_DIR/scan.err" >&2
     echo "" >&2
     echo "Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Default requirements (fail-closed)." >&2
     exit 2

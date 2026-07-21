@@ -118,13 +118,9 @@ test-unit:
 test-integration:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke"
 
-# Runs with the same parallel workers as `make test`. It previously forced
-# `-n 1`, which serialized 659 real-subprocess tests into ~85 s and blew the
-# 60 s per-suite cap; the tests are independent, so worksteal brings it to
-# 48.85 s on 4 workers, within its immutable 60 s per-suite cap.
-# The cap is NOT raised to accommodate a slow suite — the suite is made
-# fast enough to fit it (see docs/ralph-workflow-policy/testing-policy.md
-# §'Performance is a HARD failure').
+# Runs with the same parallel workers as `make test`. Work stealing balances
+# independent real-process tests across workers within the immutable 60-second
+# per-suite cap.
 test-subprocess-e2e:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
 
