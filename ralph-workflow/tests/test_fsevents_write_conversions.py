@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.file_backend import FileBackend
-from ralph.pipeline import auto_integrate_agent
+from ralph.phases import review as review_module
+from ralph.pipeline import auto_integrate_agent, cycle_baseline
 from ralph.pipeline.parallel import worker_runtime
 
 if TYPE_CHECKING:
@@ -55,6 +56,14 @@ def _auto_integrate_prompt_writer() -> Callable[..., Path | None]:
 
 def _parallel_worker_prompt_writer() -> Callable[..., None]:
     return cast("Callable[..., None]", worker_runtime._write_worker_prompt)
+
+
+def _persist_review_baseline() -> Callable[..., None]:
+    return cast("Callable[..., None]", review_module._persist_review_baseline)
+
+
+def _write_cycle_baseline() -> Callable[..., None]:
+    return cast("Callable[..., None]", cycle_baseline.write_cycle_baseline)
 
 
 def test_write_prompt_regression_skips_byte_identical_rewrite() -> None:
@@ -112,3 +121,57 @@ def test_parallel_worker_prompt_regression_writes_on_changed_content() -> None:
 
     assert backend.write_text_calls == 2
     assert backend.files[prompt_path] == "changed prompt"
+
+
+def test_cycle_baseline_regression_skips_byte_identical_rewrite() -> None:
+    """Step 1: a force=True rewrite of the same SHA performs one physical write total."""
+    backend = RecordingFileBackend()
+    root = Path("/virtual-workspace")
+    write_baseline = _write_cycle_baseline()
+
+    write_baseline(root, "sha-x", force=True, backend=backend)
+    write_baseline(root, "sha-x", force=True, backend=backend)
+
+    expected_path = root / ".agent" / "start_commit"
+    assert backend.write_text_calls == 1
+    assert backend.files[expected_path] == "sha-x\n"
+
+
+def test_cycle_baseline_regression_writes_on_changed_content() -> None:
+    """Step 1: a force=True rewrite of a different SHA performs a second physical write."""
+    backend = RecordingFileBackend()
+    root = Path("/virtual-workspace")
+    write_baseline = _write_cycle_baseline()
+
+    write_baseline(root, "sha-first", force=True, backend=backend)
+    write_baseline(root, "sha-second", force=True, backend=backend)
+
+    expected_path = root / ".agent" / "start_commit"
+    assert backend.write_text_calls == 2
+    assert backend.files[expected_path] == "sha-second\n"
+
+
+def test_review_baseline_regression_skips_byte_identical_rewrite() -> None:
+    """Step 2: a review baseline rewrite of the same SHA performs one physical write."""
+    backend = RecordingFileBackend()
+    marker_path = Path("/virtual-workspace/.agent/tmp/last_reviewed_sha.txt")
+    persist = _persist_review_baseline()
+
+    persist(marker_path, "deadbeef", backend=backend)
+    persist(marker_path, "deadbeef", backend=backend)
+
+    assert backend.write_text_calls == 1
+    assert backend.files[marker_path] == "deadbeef"
+
+
+def test_review_baseline_regression_writes_on_changed_content() -> None:
+    """Step 2: a review baseline rewrite with a different SHA performs a second write."""
+    backend = RecordingFileBackend()
+    marker_path = Path("/virtual-workspace/.agent/tmp/last_reviewed_sha.txt")
+    persist = _persist_review_baseline()
+
+    persist(marker_path, "aaaa", backend=backend)
+    persist(marker_path, "bbbb", backend=backend)
+
+    assert backend.write_text_calls == 2
+    assert backend.files[marker_path] == "bbbb"

@@ -23,6 +23,8 @@ from git import InvalidGitRepositoryError
 from loguru import logger
 
 from ralph.git.operations import GitOperationError, get_head_sha, has_commits_since
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -61,16 +63,41 @@ def _read_review_baseline(ctx: PhaseContext) -> str | None:
     return sha or None
 
 
+def _persist_review_baseline(
+    marker_path: Path,
+    sha: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Persist the review baseline marker without rewriting identical content.
+
+    Wraps the mkdir + write pair in the existing try/except so an
+    ``OSError`` from the workspace still degrades to a debug log line
+    instead of crashing the handler. The marker byte format is bare
+    ``sha`` with no trailing newline, matching the prior behavior.
+
+    The ``backend`` seam defaults to :data:`DEFAULT_FILE_BACKEND` so
+    an in-memory backend can exercise the idempotent guard without
+    real filesystem I/O. A byte-identical rewrite of an existing
+    marker short-circuits the physical write so per-cycle clean
+    review passes do not advance the file's mtime or generate an
+    additional fseventsd notification. The post-condition "marker
+    file contains ``sha``" still holds because the fail-open
+    ``write_text_if_changed`` guard falls through to a real write
+    on any read uncertainty or content mismatch.
+    """
+    try:
+        backend.mkdir(marker_path.parent, parents=True, exist_ok=True)
+        write_text_if_changed(backend, marker_path, sha)
+    except OSError as exc:
+        logger.debug("Failed to write review baseline marker: {}", exc)
+
+
 def _write_review_baseline(ctx: PhaseContext, sha: str) -> None:
     marker = _workspace_absolute_path(ctx, REVIEW_BASELINE_MARKER)
     if marker is None:
         return
-    marker_path = Path(marker)
-    try:
-        marker_path.parent.mkdir(parents=True, exist_ok=True)
-        marker_path.write_text(sha, encoding="utf-8")
-    except OSError as exc:
-        logger.debug("Failed to write review baseline marker: {}", exc)
+    _persist_review_baseline(Path(marker), sha)
 
 
 def _current_head_sha(ctx: PhaseContext) -> str | None:
