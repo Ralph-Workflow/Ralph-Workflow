@@ -397,3 +397,78 @@ def test_phase_transition_silent_when_nothing_to_integrate(
 
 
 # ---------------------------------------------------------------------------
+
+
+def test_resolver_that_only_edits_files_still_lands_the_merge(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-02: a resolver issuing NO git command still lands the merge.
+
+    Ralph's own MCP exec policy denies every git invocation, so a
+    resolver agent can never stage anything. Ralph must therefore stage
+    the previously-conflicted paths itself; before that fix this
+    resolver produced ``resolution_failed``.
+    """
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    feature_sha_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+
+    def _resolver(root: Path, target: str) -> bool:
+        (root / "shared.txt").write_text("edited only\n", encoding="utf-8")
+        return True
+
+    config = _build_config(tmp_git_repo, target=base)
+    outcome = auto_integrate_after_commit(
+        config,
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=_resolver,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "merged", (
+        f"a git-less resolver must still land the merge, got"
+        f" last_action={outcome.last_action!r} reason={outcome.last_reason!r}"
+    )
+    assert outcome.fast_forwarded is True
+    head_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    assert head_sha != feature_sha_before
+    assert (tmp_git_repo / "shared.txt").read_text() == "edited only\n"
+    base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    assert base_sha == head_sha
+
+
+def test_resolver_leaving_conflict_markers_is_rejected(tmp_git_repo: Path) -> None:
+    """AC-02: a marker-bearing "resolution" must never be committed.
+
+    ``git add`` on a file that still holds ``<<<<<<<`` markers silently
+    clears its unmerged state, so the git-authoritative unmerged-path
+    check alone cannot catch this.
+    """
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    before = _snapshot(tmp_git_repo)
+
+    def _resolver(root: Path, target: str) -> bool:
+        (root / "shared.txt").write_text(
+            "<<<<<<< HEAD\nfeature version\n=======\nbase version 1\n>>>>>>> main\n",
+            encoding="utf-8",
+        )
+        return True
+
+    config = _build_config(tmp_git_repo, target=base)
+    outcome = auto_integrate_after_commit(
+        config,
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=_resolver,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert outcome.fast_forwarded is False
+    after = _snapshot(tmp_git_repo)
+    assert after["head"] == before["head"], "no merge commit may be created"
+    before_refs = before["refs"]
+    after_refs = after["refs"]
+    assert isinstance(before_refs, dict)
+    assert isinstance(after_refs, dict)
+    assert after_refs[f"refs/heads/{base}"] == before_refs[f"refs/heads/{base}"]

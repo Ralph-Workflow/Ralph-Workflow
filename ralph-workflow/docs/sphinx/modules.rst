@@ -965,6 +965,13 @@ ralph.pipeline.auto_integrate_recovery
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_sync
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_sync
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.runner
 ~~~~~~~~~~~~~~~~~~~~~
 

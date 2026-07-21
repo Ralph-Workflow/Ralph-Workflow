@@ -137,3 +137,63 @@ def test_detects_shallow_clone_from_linked_worktree(
         match="shallow clone with 1 commits",
     ):
         check_rebase_preconditions(worktree_path)
+
+
+def test_stale_auto_merge_marker_does_not_block(tmp_git_repo: Path) -> None:
+    """A leftover ``AUTO_MERGE`` must never read as an in-progress merge.
+
+    Git's ``ort`` merge strategy writes ``AUTO_MERGE`` into the git dir
+    whenever a merge stops on conflicts, and neither ``merge --abort``
+    nor the follow-up merge commit removes it. Treating that leftover
+    as a concurrent operation permanently disabled auto-integration in
+    every worktree that had ever hit a single conflict.
+    """
+
+    (tmp_git_repo / ".git" / "AUTO_MERGE").write_text("")
+
+    check_rebase_preconditions(tmp_git_repo)
+
+
+@pytest.mark.parametrize(
+    "leftover",
+    ["MERGE_MSG", "MERGE_MODE", "MERGE_RR", "SQUASH_MSG", "ORIG_HEAD"],
+)
+def test_stale_merge_bookkeeping_files_do_not_block(
+    tmp_git_repo: Path, leftover: str
+) -> None:
+    """Bookkeeping git leaves behind after an operation must not block."""
+
+    marker = tmp_git_repo / ".git" / leftover
+    marker.write_text("")
+    try:
+        check_rebase_preconditions(tmp_git_repo)
+    finally:
+        marker.unlink()
+
+
+def test_real_merge_head_still_blocks(tmp_git_repo: Path) -> None:
+    """``MERGE_HEAD`` proves a genuine in-progress merge and must block."""
+
+    (tmp_git_repo / ".git" / "MERGE_HEAD").write_text("0" * 40)
+
+    with pytest.raises(
+        RebasePreconditionError,
+        match="merge already in progress",
+    ):
+        check_rebase_preconditions(tmp_git_repo)
+
+
+def test_real_cherry_pick_and_revert_still_block(tmp_git_repo: Path) -> None:
+    """``CHERRY_PICK_HEAD`` and ``REVERT_HEAD`` must keep blocking."""
+
+    for filename, description in (
+        ("CHERRY_PICK_HEAD", "cherry-pick already in progress"),
+        ("REVERT_HEAD", "revert already in progress"),
+    ):
+        marker = tmp_git_repo / ".git" / filename
+        marker.write_text("0" * 40)
+        try:
+            with pytest.raises(RebasePreconditionError, match=description):
+                check_rebase_preconditions(tmp_git_repo)
+        finally:
+            marker.unlink()

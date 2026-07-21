@@ -99,6 +99,8 @@ TESTS_ALLOWLIST: set[str] = {
     "test_auto_integrate_recovery.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; recovery + dashed-target security regression tests)
     "test_auto_integrate_worktree_sync.py",  # real-git multi-worktree integration regression
     "test_auto_integrate_end_to_end.py",  # clone-layout real-git integration regression
+    "test_auto_integrate_stale_merge_marker.py",  # real-git worktree regression for the stale AUTO_MERGE marker
+    "test_auto_integrate_remote_refresh.py",  # real-git clone-layout regression for the bounded origin refresh
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
 }
 

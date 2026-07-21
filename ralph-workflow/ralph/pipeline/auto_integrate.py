@@ -77,6 +77,7 @@ from ralph.pipeline.auto_integrate_resolve import (
     RESOLUTION_FAILED,
     endpoint_merge_with_resolution,
 )
+from ralph.pipeline.auto_integrate_sync import refresh_target_from_remote
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -419,6 +420,10 @@ def auto_integrate_on_phase_transition(
         target = resolve_integration_target(config, root)
         if target is None:
             return None
+        # A stale remote pointer must not let this cheap hook conclude
+        # 'nothing to do'. Every free early return above still costs
+        # nothing.
+        _refresh_target(config, root, target)
         target_sha = branch_sha(root, target)
         if target_sha is not None and target_sha == get_head_sha(root):
             # Fully integrated and landed: the frequent-boundary case.
@@ -689,6 +694,24 @@ def _current_branch_or_detached_marker(root: Path) -> str | None:
                 close_method()
 
 
+def _refresh_target(config: UnifiedConfig, root: Path, target: str) -> None:
+    """Pull the freshest mainline pointer from origin before integrating.
+
+    A no-op when the feature is disabled or the repository has no
+    origin. Never raises: an unreachable remote must degrade to
+    local-only integration, not fail the run.
+    """
+    enabled: object = getattr(config.general, "auto_integrate_fetch_enabled", True)
+    if not enabled:
+        return
+    timeout: object = getattr(
+        config.general, "auto_integrate_fetch_timeout_seconds", 10.0
+    )
+    seconds = timeout if isinstance(timeout, (int, float)) else 10.0
+    with contextlib.suppress(Exception):
+        refresh_target_from_remote(root, target, timeout_seconds=float(seconds))
+
+
 def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -723,6 +746,11 @@ def _auto_integrate_resolve_context(
     # absorbed into the broad ``except Exception`` above.
     current_branch: str | None = _current_branch_or_detached_marker(root)
     target: str | None = resolve_integration_target(config, root)
+    if target is not None:
+        # BEFORE the skip table reads branch_sha: the 'no commits
+        # beyond target' and 'on target branch' decisions must be made
+        # against the refreshed pointer, never a stale one.
+        _refresh_target(config, root, target)
 
     return root, current_branch, target
 

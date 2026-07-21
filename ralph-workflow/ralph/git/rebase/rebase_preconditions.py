@@ -7,18 +7,36 @@ from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
+from loguru import logger
 
 from ralph.git.rebase._concurrent_operation import _ConcurrentOperation
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from git.config import GitConfigParser
 
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
 _LOCK_FILES = ("index.lock", "packed-refs.lock", "HEAD.lock")
+
+#: Files whose presence proves a real in-progress operation. Closed set:
+#: git may add new bookkeeping filenames at any time, so an unknown
+#: entry must never be treated as a blocking operation.
+_IN_PROGRESS_MARKER_FILES: tuple[tuple[str, str], ...] = (
+    ("MERGE_HEAD", "merge"),
+    ("CHERRY_PICK_HEAD", "cherry-pick"),
+    ("REVERT_HEAD", "revert"),
+    ("REBASE_HEAD", "rebase"),
+)
+
+#: Bookkeeping files git leaves behind AFTER an operation finishes or is
+#: aborted. ``AUTO_MERGE`` is written by the ``ort`` strategy on every
+#: conflicted merge and survives ``merge --abort``; treating it as an
+#: in-progress operation permanently disabled auto-integration in any
+#: worktree that had ever hit a conflict.
+_BENIGN_LEFTOVER_ENTRIES: frozenset[str] = frozenset(
+    {"AUTO_MERGE", "MERGE_MSG", "MERGE_MODE", "MERGE_RR", "SQUASH_MSG", "ORIG_HEAD"}
+)
 
 
 class RebasePreconditionError(Exception):
@@ -27,6 +45,14 @@ class RebasePreconditionError(Exception):
 
 def check_rebase_preconditions(repo_root: Path | str) -> None:
     """Ensure the git repository is ready to start a rebase.
+
+    Only a closed set of authoritative markers blocks a rebase: the
+    ``rebase-merge``/``rebase-apply`` directories, the in-progress
+    marker files in :data:`_IN_PROGRESS_MARKER_FILES`, the bisect
+    state files and the git lock files. Any other git-dir entry --
+    including bookkeeping git leaves behind after an operation ends,
+    such as ``AUTO_MERGE`` -- is observed at DEBUG level but never
+    blocks.
 
     Args:
         repo_root: Path to the git repository.
@@ -85,13 +111,7 @@ def _detect_concurrent_operation(repo: Repo) -> _ConcurrentOperation | None:
     if (git_dir / REBASE_MERGE_DIR).exists() or (git_dir / REBASE_APPLY_DIR).exists():
         return _ConcurrentOperation("rebase", "rebase")
 
-    checks: Sequence[tuple[str, str]] = (
-        ("MERGE_HEAD", "merge"),
-        ("CHERRY_PICK_HEAD", "cherry-pick"),
-        ("REVERT_HEAD", "revert"),
-    )
-
-    for filename, label in checks:
+    for filename, label in _IN_PROGRESS_MARKER_FILES:
         if (git_dir / filename).exists():
             return _ConcurrentOperation(label, label)
 
@@ -102,10 +122,17 @@ def _detect_concurrent_operation(repo: Repo) -> _ConcurrentOperation | None:
     if any((git_dir / lock_file).exists() for lock_file in _LOCK_FILES):
         return _ConcurrentOperation("lock", "another Git process")
 
-    for entry in git_dir.iterdir():
-        name = entry.name
-        if any(keyword in name for keyword in ("REBASE", "MERGE", "CHERRY")):
-            return _ConcurrentOperation("unknown", f"unknown operation: {name}")
+    unknown = sorted(
+        entry.name
+        for entry in git_dir.iterdir()
+        if any(k in entry.name for k in ("REBASE", "MERGE", "CHERRY"))
+        and entry.name not in _BENIGN_LEFTOVER_ENTRIES
+    )
+    if unknown:
+        logger.debug(
+            "rebase preconditions: ignoring unrecognized git-dir entries {}",
+            unknown,
+        )
 
     return None
 

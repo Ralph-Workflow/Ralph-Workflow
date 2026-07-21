@@ -101,6 +101,28 @@ class GeneralConfig(RalphBaseModel):
             " a branch that is not clearly the shared mainline."
         ),
     )
+    auto_integrate_fetch_enabled: bool = Field(
+        default=True,
+        description=(
+            "When true (default), the auto-integration step runs a bounded,"
+            " read-only 'git fetch origin <target>' before each attempt and"
+            " fast-forwards the local mainline ref when the remote-tracking ref"
+            " is strictly ahead. Never force-moves a ref and never pushes. Set"
+            " to false to keep the step strictly local -- appropriate when"
+            " every agent shares one git common directory through linked"
+            " worktrees, where the mainline ref is already shared."
+        ),
+    )
+    auto_integrate_fetch_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0.0,
+        le=120.0,
+        description=(
+            "Wall-clock budget for the auto-integration fetch. On timeout or"
+            " any remote failure the step degrades silently to local-only"
+            " integration; the run is never failed by an unreachable remote."
+        ),
+    )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,
         gt=0.0,

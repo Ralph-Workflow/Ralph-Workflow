@@ -3,10 +3,13 @@
 Builds the production :data:`~ralph.pipeline.auto_integrate_resolve.ConflictResolver`
 handed to :func:`ralph.pipeline.auto_integrate.auto_integrate_after_commit`:
 a focused invocation of the FIRST agent bound to the ``development``
-drain whose only job is to resolve the conflict markers of the
-in-progress endpoint merge and stage the results. The agent never
-commits — the merge commit is created deterministically by the
-integration flow after verifying every conflict is resolved.
+drain whose only job is to rewrite the conflicted files of the
+in-progress endpoint merge in place. The agent never runs a git
+command: Ralph stages the previously-conflicted paths and creates the
+merge commit deterministically after verifying every conflict marker
+is gone. Requiring the agent to stage would be unimplementable — an
+agent running under Ralph's own MCP exec policy is denied every git
+invocation.
 
 Fault-tolerance contract: every failure mode (no dev agent configured,
 prompt write failure, agent invocation error) returns ``False`` so the
@@ -22,8 +25,10 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.invoke import InvokeOptions, invoke_agent
+from ralph.git.merge import unmerged_paths
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
     from typing import Protocol
 
@@ -46,31 +51,41 @@ _RESOLVER_DRAIN = "development"
 #: duration of the resolution invocation, then removed.
 _PROMPT_FILENAME = "auto_integrate_conflict_prompt.md"
 
+#: Fallback body used when the conflicted-path query returned nothing,
+#: so the agent still has an actionable instruction.
+_UNKNOWN_PATHS_BODY = (
+    "The conflicted paths could not be listed. Search the repository\n"
+    "for files containing `<<<<<<< ` conflict markers and resolve every\n"
+    "one of them."
+)
+
 _PROMPT_TEMPLATE = """# Resolve merge conflicts (auto-integrate)
 
-The repository at `{root}` has an IN-PROGRESS `git merge` of the
-mainline branch `{target}` into the current feature branch, stopped on
+The repository at `{root}` has an IN-PROGRESS merge of the mainline
+branch `{target}` into the current feature branch, stopped on
 conflicts.
+
+{conflicted_body}
 
 Your ONLY job:
 
-1. Run `git status` and `git diff` to inspect every conflicted path.
-2. Resolve every conflict marker thoughtfully, preserving the intent
-   of BOTH the feature branch and `{target}`. Never delete one side
-   blindly.
-3. If a quick verification (build, targeted tests) is needed to be
-   confident in a resolution, run it.
-4. Stage every resolved file with `git add`.
+1. Open each conflicted file listed above.
+2. Resolve every conflict-marker region thoughtfully, preserving the
+   intent of BOTH the feature branch and `{target}`. Never delete one
+   side blindly.
+3. Remove every `<<<<<<<`, `=======` and `>>>>>>>` marker line, so the
+   file is left as valid, consistent content.
 
 Hard rules:
 
-- DO NOT COMMIT. Do not run `git commit`, `git merge --continue`, or
-  `git rebase --continue`. The pipeline commits the merge itself.
-- Do not abort the merge, switch branches, or move any refs.
-- Do not change files that have no conflict markers except as strictly
+- DO NOT run any git command. Ralph stages the resolved files and
+  creates the merge commit itself. You only edit file contents.
+- Do not commit, merge, rebase, abort, switch branches or move any
+  refs.
+- Do not modify files that had no conflict, except as strictly
   required to make the resolved code consistent.
-- When you are done, every path listed by
-  `git diff --name-only --diff-filter=U` must be staged and clean.
+- A leftover conflict marker in any listed file will cause the whole
+  resolution to be REJECTED and the merge aborted.
 """
 
 
@@ -109,7 +124,7 @@ def build_agent_conflict_resolver(
             display,
             f"merge of {target} conflicted — invoking {agent_name} to resolve",
         )
-        prompt_path = _write_prompt(root, target)
+        prompt_path = _write_prompt(root, target, unmerged_paths(root))
         if prompt_path is None:
             return False
         try:
@@ -147,13 +162,23 @@ def _resolver_agent_name(policy_bundle: PolicyBundle) -> str | None:
     return chain_config.agents[0]
 
 
-def _write_prompt(root: Path, target: str) -> Path | None:
-    """Write the transient resolution prompt; None on failure."""
+def _write_prompt(
+    root: Path, target: str, conflicted_paths: Sequence[str]
+) -> Path | None:
+    """Write the transient resolution prompt; None on failure.
+
+    The conflicted paths are interpolated into the prompt so the agent
+    never needs a git command to discover them.
+    """
     prompt_path = root / ".agent" / _PROMPT_FILENAME
     try:
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(
-            _PROMPT_TEMPLATE.format(root=root, target=target),
+            _PROMPT_TEMPLATE.format(
+                root=root,
+                target=target,
+                conflicted_body=_conflicted_body(conflicted_paths),
+            ),
             encoding="utf-8",
         )
     except OSError as write_exc:
@@ -162,6 +187,15 @@ def _write_prompt(root: Path, target: str) -> Path | None:
         )
         return None
     return prompt_path
+
+
+def _conflicted_body(conflicted_paths: Sequence[str]) -> str:
+    """Render the conflicted-path list, or the search fallback."""
+    listed = [path for path in conflicted_paths if path.strip()]
+    if not listed:
+        return _UNKNOWN_PATHS_BODY
+    bullets = "\n".join(f"- `{path}`" for path in listed)
+    return f"Conflicted paths:\n\n{bullets}"
 
 
 def _drain_invocation(

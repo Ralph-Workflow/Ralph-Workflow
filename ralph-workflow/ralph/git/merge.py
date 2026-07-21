@@ -21,6 +21,12 @@ Public functions (every primitive has a docstring):
   ``MergeResult(outcome='conflict', ...)``; ``keep_conflicts=True``
   leaves a conflicted merge in progress for resolution.
 * ``unmerged_paths`` — lists paths still carrying conflict markers.
+* ``stage_paths`` — ``git add -- <paths>``; Ralph stages a resolved
+  conflict itself so resolution never depends on the resolving
+  agent's git access.
+* ``paths_with_conflict_markers`` — textual scan proving a resolution
+  is real; ``git add`` on a marker-bearing file silently clears its
+  unmerged state, so ``unmerged_paths`` alone is not proof.
 * ``commit_merge_in_progress`` — deterministically commits a fully
   resolved in-progress merge (``git commit --no-edit``).
 * ``abort_merge`` — guarded ``git merge --abort``.
@@ -48,8 +54,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.git.subprocess_runner import GitRunOptions, run_git
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+#: Canonical git conflict-marker line prefixes. Matched as line
+#: PREFIXES, never substrings, so ordinary prose containing an
+#: ``=======`` markdown rule is not mistaken for a conflict.
+_CONFLICT_MARKER_PREFIXES: tuple[str, ...] = ("<<<<<<< ", "=======", ">>>>>>> ")
 
 
 @dataclass(frozen=True)
@@ -196,6 +211,65 @@ def unmerged_paths(repo_root: Path | str) -> list[str]:
     if result.returncode != 0:
         return ["<unmerged-path-query-failed>"]
     return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
+    """Stage the given paths with ``git add -- <paths>``.
+
+    Returns True when every path staged cleanly. The paths are passed
+    AFTER the ``--`` terminator so a filename beginning with ``-`` is
+    never parsed as a git option. An empty ``paths`` sequence is a
+    no-op that returns True.
+
+    Ralph stages the resolution itself rather than requiring the
+    resolving agent to run ``git add``: an agent running under Ralph's
+    own MCP exec policy is denied every git invocation, so a
+    resolver-side staging step could never succeed.
+    """
+    if not paths:
+        return True
+    result = run_git(
+        ("add", "--", *paths),
+        cwd=Path(repo_root),
+        label="git-add-resolved",
+    )
+    return result.returncode == 0
+
+
+def paths_with_conflict_markers(
+    repo_root: Path | str, paths: Sequence[str]
+) -> list[str]:
+    """Return the subset of ``paths`` whose content still holds markers.
+
+    ``git add`` on a file that still contains ``<<<<<<<`` markers
+    silently clears its unmerged state, so an empty
+    :func:`unmerged_paths` result is NOT proof that a conflict was
+    really resolved. This scan closes that hole.
+
+    A path is reported only when it holds BOTH an opening
+    ``<<<<<<< `` line and a closing ``>>>>>>> `` line, so a lone
+    ``=======`` separator in ordinary prose never trips it. A path
+    that cannot be read as text (binary or deleted) is skipped rather
+    than reported.
+    """
+    repo_root_path = Path(repo_root)
+    reported: list[str] = []
+    for path in paths:
+        try:
+            content = (repo_root_path / path).read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            continue
+        seen = {
+            prefix
+            for line in content.splitlines()
+            for prefix in _CONFLICT_MARKER_PREFIXES
+            if line.startswith(prefix)
+        }
+        if "<<<<<<< " in seen and ">>>>>>> " in seen:
+            reported.append(path)
+    return reported
 
 
 def commit_merge_in_progress(repo_root: Path | str) -> bool:
@@ -369,7 +443,9 @@ __all__ = [
     "is_ancestor",
     "merge_in_progress",
     "merge_target_into_current",
+    "paths_with_conflict_markers",
     "reset_hard",
     "resolve_origin_head_branch",
+    "stage_paths",
     "worktree_for_branch",
 ]
