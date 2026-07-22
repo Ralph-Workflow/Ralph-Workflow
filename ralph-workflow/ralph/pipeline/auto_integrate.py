@@ -57,10 +57,7 @@ from ralph.git.rebase import (
 )
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
-from ralph.pipeline.auto_integrate_boundary_refresh import (
-    BOUNDARY_REFRESH_THROTTLE,
-    FORCED_BOUNDARY_REFRESH_THROTTLE,
-)
+from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
 from ralph.pipeline.auto_integrate_budget_seam import (
     carry_budget_through_skip,
     charge_failed_attempt,
@@ -476,11 +473,9 @@ def _defer_dirty_boundary(
     it on local evidence of divergence keeps the common dirty boundary
     free of any fetch at all.
 
-    The override has a window of its own
-    (:data:`~ralph.pipeline.auto_integrate_boundary_refresh.FORCED_BOUNDARY_REFRESH_THROTTLE`)
-    rather than no window: a target that stays ahead for a whole cycle
-    would otherwise cost one fetch per boundary event, which is exactly
-    the storm the first throttle exists to prevent.
+    The forced refresh records its outcome on the ordinary throttle, so
+    a healthy re-read arms the same window and prevents a burst of dirty
+    boundaries from becoming a fetch storm.
     """
     refresh = REFRESH_SUPPRESSED
     if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
@@ -488,14 +483,9 @@ def _defer_dirty_boundary(
         BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
     target_sha = branch_sha(root, target)
     diverged = _target_is_ahead(root, target_sha)
-    if (
-        diverged
-        and refresh == REFRESH_SUPPRESSED
-        and FORCED_BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target)
-    ):
+    if diverged and refresh == REFRESH_SUPPRESSED:
         refresh = _refresh_target(config, root, target)
         BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
-        FORCED_BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
         target_sha = branch_sha(root, target)
         diverged = _target_is_ahead(root, target_sha)
     if diverged:

@@ -35,7 +35,6 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_NO_ORIGIN,
     REFRESH_REFRESHED,
-    REFRESH_SUPPRESSED,
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
@@ -232,13 +231,6 @@ def _dirty_boundary_workspace(
         "BOUNDARY_REFRESH_THROTTLE",
         BoundaryRefreshThrottle(min_interval_seconds=30.0, clock=_FakeClock()),
     )
-    # The divergence override has its own window; give it a fake clock too
-    # so the process-wide singleton never leaks state between tests.
-    monkeypatch.setattr(
-        auto_integrate,
-        "FORCED_BOUNDARY_REFRESH_THROTTLE",
-        BoundaryRefreshThrottle(min_interval_seconds=30.0, clock=_FakeClock()),
-    )
     return WorkspaceScope(tmp_path)
 
 
@@ -379,8 +371,8 @@ def test_a_failed_boundary_refresh_is_retried_on_the_next_boundary(
 
 
 # ---------------------------------------------------------------------------
-# The one-shot throttle override: a suppressed pointer must never decide a
-# catch-up verdict the operator will be shown.
+# The forced refresh: a suppressed pointer must never decide a catch-up
+# verdict the operator will be shown.
 # ---------------------------------------------------------------------------
 
 
@@ -494,14 +486,15 @@ def test_the_forced_refresh_arms_the_throttle_window(
         for _ in range(4)
     ]
 
-    assert len(calls) == 2, (
-        "the forced refresh must consume a window of its own, so the third "
-        "and fourth boundaries refresh nothing"
+    assert len(calls) == 4, (
+        "every divergent suppressed boundary must re-read the target before "
+        "recording its verdict"
     )
-    later = outcomes[2]
-    assert later is not None
-    assert later.last_refresh == REFRESH_SUPPRESSED, (
-        "a boundary that could refresh neither way must still say so"
+    assert all(outcome is not None for outcome in outcomes)
+    assert all(
+        outcome.last_refresh == REFRESH_REFRESHED
+        for outcome in outcomes
+        if outcome is not None
     )
 
 
