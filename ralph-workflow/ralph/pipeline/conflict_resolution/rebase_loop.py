@@ -266,7 +266,9 @@ def _rebase_base_sha(root: Path) -> str | None:
     return None
 
 
-def _read_replay_progress(root: Path) -> tuple[int, int] | None:
+def _read_replay_progress(
+    root: Path, *, read_text: Callable[[Path], str] | None = None
+) -> tuple[int, int] | None:
     """Position of the current commit within the paused rebase's replay.
 
     Returns ``(current, total)`` -- the operator-facing "commit i/N" --
@@ -285,9 +287,10 @@ def _read_replay_progress(root: Path) -> tuple[int, int] | None:
     alone, so an unreadable counter degrades the footer label and must
     never be able to fail a resolution.
     """
+    reader = _read_rebase_state_text if read_text is None else read_text
     for current_file, total_file in _REBASE_PROGRESS_FILES:
-        current = _read_rebase_state_int(root, current_file)
-        total = _read_rebase_state_int(root, total_file)
+        current = _read_rebase_state_int(root, current_file, read_text=reader)
+        total = _read_rebase_state_int(root, total_file, read_text=reader)
         if current is None or total is None:
             continue
         if total >= 1 and 1 <= current <= total:
@@ -295,7 +298,14 @@ def _read_replay_progress(root: Path) -> tuple[int, int] | None:
     return None
 
 
-def _read_rebase_state_int(root: Path, relative: str) -> int | None:
+def _read_rebase_state_text(path: Path) -> str:
+    """Read one rebase state file through the production filesystem seam."""
+    return path.read_text(encoding="utf-8")
+
+
+def _read_rebase_state_int(
+    root: Path, relative: str, *, read_text: Callable[[Path], str] = _read_rebase_state_text
+) -> int | None:
     """One integer out of a rebase state file, or ``None`` if unusable.
 
     Unreadable, absent, half-written and non-numeric all collapse to
@@ -312,7 +322,7 @@ def _read_rebase_state_int(root: Path, relative: str) -> int | None:
     if not state_path.is_absolute():
         state_path = root / state_path
     try:
-        return int(state_path.read_text(encoding="utf-8").strip())
+        return int(read_text(state_path).strip())
     except (OSError, ValueError):
         return None
 

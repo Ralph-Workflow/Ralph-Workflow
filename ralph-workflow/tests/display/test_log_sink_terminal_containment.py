@@ -319,17 +319,24 @@ def test_no_call_site_hands_sys_stderr_to_logger_add() -> None:
     ``ralph.cli.main._configure_logging`` stay routed through the
     sanitizing sink forever.
     """
+    import os
     import re
     from pathlib import Path
 
     ralph_root = Path(__file__).resolve().parent.parent.parent / "ralph"
     offenders: list[str] = []
     needle = re.compile(r"logger\.add\(\s*sys\.stderr")
-    for path in sorted(ralph_root.rglob("*.py")):
-        source = path.read_text(encoding="utf-8")
-        for lineno, line in enumerate(source.splitlines(), start=1):
-            if needle.search(line):
-                offenders.append(f"{path}:{lineno}: {line.strip()}")
+    for directory, _dirs, names in os.walk(ralph_root):
+        for name in names:
+            if not name.endswith(".py"):
+                continue
+            path = Path(directory, name)
+            source = path.read_text(encoding="utf-8")
+            if "logger.add" not in source or "sys.stderr" not in source:
+                continue
+            for lineno, line in enumerate(source.splitlines(), start=1):
+                if needle.search(line):
+                    offenders.append(f"{path}:{lineno}: {line.strip()}")
     assert not offenders, (
         "logger.add(sys.stderr, ...) re-introduced; must route through "
         "ralph.display.log_sink:\n" + "\n".join(offenders)

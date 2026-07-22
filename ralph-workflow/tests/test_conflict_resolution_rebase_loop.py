@@ -602,10 +602,9 @@ def _install_progress_git_seam(
     looks like from here.
     """
     state_dir = root / "state"
-    state_dir.mkdir(exist_ok=True)
-    for relative, text in files.items():
-        state_file = state_dir / relative.replace("/", "_")
-        state_file.write_text(text, encoding="utf-8")
+    scripted_files = {
+        state_dir / relative.replace("/", "_"): text for relative, text in files.items()
+    }
 
     def _fake_run_git(
         args: Sequence[str], *, cwd: Path, label: str
@@ -621,7 +620,14 @@ def _install_progress_git_seam(
             stderr="",
         )
 
+    def _fake_read_text(path: Path) -> str:
+        try:
+            return scripted_files[path]
+        except KeyError as exc:
+            raise OSError("scripted state file is absent") from exc
+
     monkeypatch.setattr(loop_module, "run_git", _fake_run_git)
+    monkeypatch.setattr(loop_module, "_read_rebase_state_text", _fake_read_text)
 
 
 def test_the_merge_backend_replay_counter_is_read_and_rendered(

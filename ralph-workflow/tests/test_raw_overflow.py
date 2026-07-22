@@ -166,12 +166,14 @@ def test_size_bytes_returns_zero_when_prior_run_file_exists(tmp_path: Path) -> N
     log1.flush()
     prior_size = log1.path.stat().st_size
     assert prior_size > 0
+    log1.close()
 
     log2 = RawOverflowLog(tmp_path, "unit-1")
     assert log2.size_bytes == 0
 
     log2.append("current run content")
     assert log2.size_bytes == len(b"current run content\n")
+    log2.close()
 
 
 def test_is_disabled_true_after_max_bytes(tmp_path: Path) -> None:

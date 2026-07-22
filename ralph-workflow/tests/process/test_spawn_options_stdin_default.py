@@ -32,6 +32,7 @@ In-process, no real subprocess; stays under the per-test SIGALRM.
 from __future__ import annotations
 
 import ast
+import os
 import subprocess
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -84,7 +85,7 @@ def test_no_spawn_call_site_passes_stdin_none() -> None:
             source = source_path.read_text(encoding="utf-8")
         except OSError:
             continue
-        if "SpawnOptions" not in source:
+        if "SpawnOptions" not in source or "stdin" not in source:
             continue
         try:
             tree = ast.parse(source, filename=str(source_path))
@@ -207,7 +208,10 @@ def test_process_manager_passes_devnull_when_caller_omits_stdin() -> None:
 
 def _iter_python_files(root: Path) -> Iterator[Path]:
     """Yield every ``*.py`` file under ``root`` (recursive)."""
-    yield from sorted(root.rglob("*.py"))
+    for directory, _dirs, names in os.walk(root):
+        for name in names:
+            if name.endswith(".py"):
+                yield Path(directory, name)
 
 
 def _is_spawn_options_call(node: ast.Call) -> bool:

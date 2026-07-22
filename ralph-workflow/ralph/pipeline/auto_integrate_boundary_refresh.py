@@ -81,7 +81,7 @@ class BoundaryRefreshThrottle:
         self._clock = clock
         self._max_tracked_keys = max(1, max_tracked_keys)
         self._last_refresh: OrderedDict[  # bounded-accumulator-ok: FIFO-capped in _arm
-            tuple[str, str], float
+            tuple[str, str], tuple[float, float | None]
         ] = OrderedDict()
 
     def should_refresh(self, root: Path | str, target: str) -> bool:
@@ -100,10 +100,24 @@ class BoundaryRefreshThrottle:
         Returns:
             ``True`` when the caller may refresh now.
         """
-        last = self._last_refresh.get(self._key(root, target))
-        if last is None:
+        timestamps = self._last_refresh.get(self._key(root, target))
+        if timestamps is None:
             return True
-        return self._clock() - last >= self._min_interval_seconds
+        return self._clock() - timestamps[0] >= self._min_interval_seconds
+
+    def should_force_refresh(self, root: Path | str, target: str) -> bool:
+        """Whether one divergent override is still available in this window.
+
+        A healthy forced refresh consumes this separate permit. Otherwise
+        every suppressed dirty boundary that still sees local divergence
+        would force another fetch and turn a phase burst into a storm.
+        Unhealthy forced refreshes do not consume the permit, so they
+        retry immediately just like ordinary unhealthy refreshes.
+        """
+        timestamps = self._last_refresh.get(self._key(root, target))
+        if timestamps is None or timestamps[1] is None:
+            return True
+        return self._clock() - timestamps[1] >= self._min_interval_seconds
 
     def record_outcome(self, root: Path | str, target: str, outcome: str) -> None:
         """Arm the next window for ``(root, target)`` if ``outcome`` was healthy.
@@ -120,19 +134,34 @@ class BoundaryRefreshThrottle:
         """
         if not refresh_outcome_is_healthy(outcome):
             return
-        self._arm(self._key(root, target))
+        self._arm(self._key(root, target), forced_at=None)
+
+    def record_forced_outcome(
+        self, root: Path | str, target: str, outcome: str
+    ) -> None:
+        """Record a divergent override, consuming it only when healthy."""
+        if not refresh_outcome_is_healthy(outcome):
+            return
+        now = self._clock()
+        self._arm(self._key(root, target), refreshed_at=now, forced_at=now)
 
     @staticmethod
     def _key(root: Path | str, target: str) -> tuple[str, str]:
         """Normalise a ``(root, target)`` pair into a hashable map key."""
         return (str(root), target)
 
-    def _arm(self, key: tuple[str, str]) -> None:
+    def _arm(
+        self,
+        key: tuple[str, str],
+        *,
+        refreshed_at: float | None = None,
+        forced_at: float | None,
+    ) -> None:
         """Start a fresh window for ``key``, evicting the oldest if capped."""
         self._last_refresh.pop(key, None)
         while len(self._last_refresh) >= self._max_tracked_keys:
             self._last_refresh.popitem(last=False)
-        self._last_refresh[key] = self._clock()
+        self._last_refresh[key] = (self._clock() if refreshed_at is None else refreshed_at, forced_at)
 
 
 #: Process-wide throttle shared by every phase-boundary hook, so the

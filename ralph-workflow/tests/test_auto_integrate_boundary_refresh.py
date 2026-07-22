@@ -35,6 +35,7 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_NO_ORIGIN,
     REFRESH_REFRESHED,
+    REFRESH_SUPPRESSED,
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
@@ -474,28 +475,64 @@ def test_a_forced_refresh_that_clears_the_divergence_records_nothing(
 def test_the_forced_refresh_arms_the_throttle_window(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A burst of dirty boundaries must not turn into a fetch storm."""
+    """One forced refresh is allowed per window; a later window retries it."""
     scope = _dirty_boundary_workspace(monkeypatch, tmp_path)
+    clock = _FakeClock()
+    monkeypatch.setattr(
+        auto_integrate,
+        "BOUNDARY_REFRESH_THROTTLE",
+        BoundaryRefreshThrottle(min_interval_seconds=30.0, clock=clock),
+    )
     calls = _recording_refresh(monkeypatch, REFRESH_REFRESHED)
     config = _config()
 
-    outcomes = [
-        auto_integrate.auto_integrate_on_phase_transition(
-            config, scope, RebaseState()
-        )
-        for _ in range(4)
-    ]
+    first = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
+    forced = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
+    suppressed = auto_integrate.auto_integrate_on_phase_transition(
+        config, scope, RebaseState()
+    )
 
-    assert len(calls) == 4, (
-        "every divergent suppressed boundary must re-read the target before "
-        "recording its verdict"
+    assert calls == ["main", "main"]
+    assert first is not None
+    assert forced is not None
+    assert forced.last_refresh == REFRESH_REFRESHED
+    assert suppressed is not None
+    assert suppressed.last_refresh == REFRESH_SUPPRESSED
+
+    clock.advance(30.0)
+    later = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
+
+    assert calls == ["main", "main", "main"]
+    assert later is not None
+    assert later.last_refresh == REFRESH_REFRESHED
+
+
+def test_an_unhealthy_forced_refresh_is_retried_immediately(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed override establishes no freshness and cannot consume its permit."""
+    scope = _dirty_boundary_workspace(monkeypatch, tmp_path)
+    outcomes = iter([REFRESH_REFRESHED, REFRESH_UNREACHABLE, REFRESH_UNREACHABLE])
+    calls: list[str] = []
+
+    def _fake_refresh(_config: UnifiedConfig, _root: Path, target: str) -> str:
+        calls.append(target)
+        return next(outcomes)
+
+    monkeypatch.setattr(auto_integrate, "_refresh_target", _fake_refresh)
+    config = _config()
+
+    auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
+    first_forced = auto_integrate.auto_integrate_on_phase_transition(
+        config, scope, RebaseState()
     )
-    assert all(outcome is not None for outcome in outcomes)
-    assert all(
-        outcome.last_refresh == REFRESH_REFRESHED
-        for outcome in outcomes
-        if outcome is not None
-    )
+    retry = auto_integrate.auto_integrate_on_phase_transition(config, scope, RebaseState())
+
+    assert calls == ["main", "main", "main"]
+    assert first_forced is not None
+    assert first_forced.last_refresh == REFRESH_UNREACHABLE
+    assert retry is not None
+    assert retry.last_refresh == REFRESH_UNREACHABLE
 
 
 # ---------------------------------------------------------------------------

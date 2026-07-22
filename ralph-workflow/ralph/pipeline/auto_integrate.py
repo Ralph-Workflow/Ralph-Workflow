@@ -473,9 +473,10 @@ def _defer_dirty_boundary(
     it on local evidence of divergence keeps the common dirty boundary
     free of any fetch at all.
 
-    The forced refresh records its outcome on the ordinary throttle, so
-    a healthy re-read arms the same window and prevents a burst of dirty
-    boundaries from becoming a fetch storm.
+    A healthy forced refresh consumes one separate override permit for
+    this throttle interval, so a burst of still-divergent dirty
+    boundaries does not become a fetch storm. An unhealthy forced
+    refresh leaves that permit available for an immediate retry.
     """
     refresh = REFRESH_SUPPRESSED
     if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
@@ -483,9 +484,13 @@ def _defer_dirty_boundary(
         BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
     target_sha = branch_sha(root, target)
     diverged = _target_is_ahead(root, target_sha)
-    if diverged and refresh == REFRESH_SUPPRESSED:
+    if (
+        diverged
+        and refresh == REFRESH_SUPPRESSED
+        and BOUNDARY_REFRESH_THROTTLE.should_force_refresh(root, target)
+    ):
         refresh = _refresh_target(config, root, target)
-        BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
+        BOUNDARY_REFRESH_THROTTLE.record_forced_outcome(root, target, refresh)
         target_sha = branch_sha(root, target)
         diverged = _target_is_ahead(root, target_sha)
     if diverged:
