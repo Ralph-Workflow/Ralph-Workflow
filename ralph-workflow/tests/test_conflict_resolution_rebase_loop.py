@@ -69,8 +69,22 @@ def _install_seams(
     unmerged: Sequence[str] = (),
     stage_ok: bool = True,
     verified: bool = True,
+    dirty_after_resolution: Sequence[str] | None = None,
+    dirty_query_fails: bool = False,
 ) -> None:
-    """Replace every git call the loop makes with a scripted fake."""
+    """Replace every git call the loop makes with a scripted fake.
+
+    ``dirty_after_resolution`` scripts what the worktree looks like once
+    the resolver has run. The loop reads the worktree twice per stop --
+    once before the resolver, once after -- so the fake alternates, and
+    leaving the argument ``None`` means the resolver touched exactly the
+    conflicted paths it was given.
+    """
+    _install_worktree_seam(
+        monkeypatch,
+        dirty_after_resolution=dirty_after_resolution,
+        dirty_query_fails=dirty_query_fails,
+    )
     monkeypatch.setattr(loop_module, "rebase_in_progress_at", repo.in_progress)
     monkeypatch.setattr(
         loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED)
@@ -95,6 +109,27 @@ def _install_seams(
     monkeypatch.setattr(
         loop_module, "verify_rebase_completed_at", lambda _r, _t: verified
     )
+
+
+def _install_worktree_seam(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    dirty_after_resolution: Sequence[str] | None,
+    dirty_query_fails: bool,
+) -> None:
+    """Script the before/after worktree observations of one stop."""
+    reads = {"count": 0}
+
+    def _dirty_paths(_root: Path) -> frozenset[str] | None:
+        if dirty_query_fails:
+            return None
+        reads["count"] += 1
+        is_before_read = reads["count"] % 2 == 1
+        if is_before_read or dirty_after_resolution is None:
+            return frozenset(_CONFLICTED)
+        return frozenset(dirty_after_resolution)
+
+    monkeypatch.setattr(loop_module, "_worktree_dirty_paths", _dirty_paths)
 
 
 def _accepting_resolver(seen: list[RebaseStop]):
@@ -194,6 +229,71 @@ def test_failure_to_stage_rejects_the_stop(
     )
 
     assert resolved is False
+
+
+def test_a_resolver_that_edits_an_unrequested_path_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Scope is enforced, not merely requested.
+
+    Only ``stop.conflicted_files`` is staged, so an edit anywhere else
+    cannot reach the replayed commit -- it can only linger as dirty
+    worktree state on top of a rebase that claimed to have landed. The
+    stop is refused before anything is staged.
+    """
+    repo = _FakeRepo(stops=1)
+    _install_seams(
+        monkeypatch,
+        repo,
+        dirty_after_resolution=[*_CONFLICTED, "docs/unrelated.md"],
+    )
+    seen: list[RebaseStop] = []
+
+    resolved = resolve_rebase_in_progress(
+        tmp_path, _TARGET, _accepting_resolver(seen)
+    )
+
+    assert resolved is False
+    assert repo.staged == []
+    assert repo.continue_calls == 0
+
+
+def test_a_worktree_dirty_before_the_resolver_ran_is_not_blamed_on_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The gate is about what THIS round changed, not what it inherited."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    # Constant across both reads: the same unrelated path is dirty before
+    # AND after, so it was not this round's doing.
+    monkeypatch.setattr(
+        loop_module,
+        "_worktree_dirty_paths",
+        lambda _root: frozenset([*_CONFLICTED, "docs/already-dirty.md"]),
+    )
+    seen: list[RebaseStop] = []
+
+    assert (
+        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
+        is True
+    )
+
+
+def test_an_unreadable_worktree_declines_rather_than_assuming_it_is_clean(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fail closed: an unreadable worktree hides exactly what we look for."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo, dirty_query_fails=True)
+    seen: list[RebaseStop] = []
+
+    resolved = resolve_rebase_in_progress(
+        tmp_path, _TARGET, _accepting_resolver(seen)
+    )
+
+    assert resolved is False
+    assert seen == []
+    assert repo.continue_calls == 0
 
 
 def test_conflict_remaining_error_from_continue_declines(

@@ -139,21 +139,8 @@ def _resolve_stops(
     """Body of the bounded loop; see :func:`resolve_rebase_in_progress`."""
     stops_spent = 0
     while rebase_in_progress_at(root):
-        stop = _read_stop(root, stops_spent + 1)
-        if stop is None:
+        if not _resolve_one_stop(root, target, resolver, stops_spent + 1):
             return False
-        if not resolver(root, target, stop):
-            logger.info(
-                "conflict_resolution: resolver declined rebase stop {} ({})",
-                stop.stop_index,
-                stop.sha,
-            )
-            return False
-        if not _stage_and_prove(root, stop):
-            return False
-        if not _continue_past(root, stop):
-            return False
-
         stops_spent += 1
         route = route_after_stop(stops_spent, not rebase_in_progress_at(root))
         if route == TERMINAL_RESOLVED:
@@ -167,6 +154,45 @@ def _resolve_stops(
             return False
 
     return verify_rebase_completed_at(root, target)
+
+
+def _resolve_one_stop(
+    root: Path,
+    target: str,
+    resolver: RebaseStopResolver,
+    stop_index: int,
+) -> bool:
+    """Resolve, prove and continue past ONE stop of the paused rebase.
+
+    The order is the contract: observe the worktree BEFORE the resolver
+    runs, so what it changed can be told apart from what the replay had
+    already left dirty; check the scope BEFORE staging, so a resolver
+    that strayed outside its conflicted paths is rejected rather than
+    half-applied; and only then continue.
+
+    Returns:
+        Whether this stop landed. ``False`` routes the caller -- and
+        through it :func:`resolve_rebase_in_progress` -- to the abort and
+        endpoint-merge fallback.
+    """
+    stop = _read_stop(root, stop_index)
+    if stop is None:
+        return False
+    before = _worktree_dirty_paths(root)
+    if before is None:
+        return False
+    if not resolver(root, target, stop):
+        logger.info(
+            "conflict_resolution: resolver declined rebase stop {} ({})",
+            stop.stop_index,
+            stop.sha,
+        )
+        return False
+    return (
+        _touched_nothing_unexpected(root, stop, before)
+        and _stage_and_prove(root, stop)
+        and _continue_past(root, stop)
+    )
 
 
 def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
@@ -192,6 +218,67 @@ def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
         stop_index=stop_index,
         stop_cap=MAX_REBASE_CONFLICT_STOPS,
     )
+
+
+def _worktree_dirty_paths(root: Path) -> frozenset[str] | None:
+    """Tracked paths whose worktree content differs from the index.
+
+    During a paused rebase this set is exactly the conflicted paths: the
+    replayed commit's non-conflicting changes are already staged, so they
+    match the worktree and do not appear. Anything ELSE in the set after
+    a resolver has run is a file the resolver edited without being asked
+    to.
+
+    Returns ``None`` when git could not answer. The caller must treat
+    that as a rejection rather than as "nothing changed": an unreadable
+    worktree is precisely the state in which an unnoticed edit would be
+    replayed into the commit.
+    """
+    result = run_git(
+        ("diff", "--name-only"),
+        cwd=root,
+        label="git-worktree-dirty-paths",
+    )
+    if result.returncode != 0:
+        logger.warning(
+            "conflict_resolution: could not read the worktree diff: {}",
+            result.stderr.strip(),
+        )
+        return None
+    return frozenset(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
+def _touched_nothing_unexpected(
+    root: Path,
+    stop: RebaseStop,
+    before: frozenset[str],
+) -> bool:
+    """Whether the resolver stayed inside the paths it was given.
+
+    The prompt forbids editing any path that is not conflicted, and this
+    is the enforcement that makes the prohibition real rather than
+    advisory. Without it a disobedient resolver's unrelated edit is
+    neither staged into the replayed commit -- :func:`_stage_and_prove`
+    stages only ``stop.conflicted_files`` -- nor rejected, so it survives
+    as dirty worktree state on top of a rebase that reported success.
+
+    ``before`` is subtracted so a worktree that was already dirty when
+    the stop was read is not blamed on the resolver; the gate is about
+    what THIS round changed.
+    """
+    after = _worktree_dirty_paths(root)
+    if after is None:
+        return False
+    unexpected = sorted(after - before - frozenset(stop.conflicted_files))
+    if not unexpected:
+        return True
+    logger.warning(
+        "conflict_resolution: resolver edited unrequested path(s) at stop {}: {}; "
+        "rejecting the resolution",
+        stop.stop_index,
+        unexpected,
+    )
+    return False
 
 
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:

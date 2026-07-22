@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 _RESOLVED_MARKER = "resolved by the stub resolver\n"
+
+_BYSTANDER_CONTENT = "nobody asked for this file to change\n"
 
 
 def _run(
@@ -101,6 +104,26 @@ def _one_conflicting_commit(tmp_git_repo: Path) -> str:
     return base
 
 
+def _one_conflicting_commit_with_a_bystander(tmp_git_repo: Path) -> str:
+    """As :func:`_one_conflicting_commit`, plus a tracked file nobody touches.
+
+    ``bystander.txt`` is identical on both branches and is not part of
+    the conflict, so it is exactly the kind of path a resolver is
+    forbidden to edit.
+    """
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "bystander.txt", _BYSTANDER_CONTENT, "seed bystander")
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    seed = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature edit")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "base version\n", "base edit")
+    _run(tmp_git_repo, "checkout", "feature")
+    return base
+
+
 def _two_conflicting_commits(tmp_git_repo: Path) -> str:
     """Two feature commits that BOTH conflict, so the replay stops twice."""
     base = _base_branch(tmp_git_repo)
@@ -131,6 +154,17 @@ def _stub_resolver(seen: list[RebaseStop]):
         return True
 
     return _resolve
+
+
+def _capture_warnings() -> tuple[list[str], int]:
+    """Attach a WARNING-level loguru sink; return its buffer and sink id."""
+    captured: list[str] = []
+    sink_id = logger.add(
+        lambda message: captured.append(str(message)),
+        level="WARNING",
+        format="{message}",
+    )
+    return captured, sink_id
 
 
 def _rebase_dirs(tmp_git_repo: Path) -> list[Path]:
@@ -303,6 +337,58 @@ def test_with_no_resolver_at_all_the_rebase_is_still_aborted(
     assert _rebase_dirs(tmp_git_repo) == []
     assert outcome is not None
     assert outcome.last_action == "conflict"
+
+
+def test_a_resolver_editing_an_unrequested_path_is_refused(
+    tmp_git_repo: Path,
+) -> None:
+    """The prompt forbids editing unlisted paths; this is the enforcement.
+
+    ``_stage_and_prove`` stages only ``stop.conflicted_files``, so an
+    unrelated edit is never replayed into the commit. Left unchecked it
+    reaches ``git rebase --continue``, which refuses it with the
+    thoroughly misleading "You must edit all merge conflicts" -- the one
+    diagnostic guaranteed to send an operator looking at the file that
+    was resolved correctly. The loop therefore names the real cause
+    itself, before staging anything.
+
+    The warning sink is the discriminating assertion: the outcome below
+    is what git's own refusal produces too, so only the named path proves
+    that Ralph, not git, rejected this.
+    """
+    base = _one_conflicting_commit_with_a_bystander(tmp_git_repo)
+    feature_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+
+    def _overreaching_resolver(root: Path, _target: str, stop: RebaseStop) -> bool:
+        for relative in stop.conflicted_files:
+            (root / relative).write_text(_RESOLVED_MARKER, encoding="utf-8")
+        (root / "bystander.txt").write_text("tidied up too\n", encoding="utf-8")
+        return True
+
+    captured, sink_id = _capture_warnings()
+    try:
+        outcome = auto_integrate_after_commit(
+            _build_config(base),
+            WorkspaceScope(tmp_git_repo),
+            RebaseState(),
+            rebase_stop_resolver=_overreaching_resolver,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert outcome is not None
+    assert outcome.last_action != "rebased"
+    assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature_before
+    assert _rebase_dirs(tmp_git_repo) == []
+    # The whole point of failing closed: the unrequested edit does not
+    # survive the abort, in the worktree or in the commit graph.
+    assert (tmp_git_repo / "bystander.txt").read_text(
+        encoding="utf-8"
+    ) == _BYSTANDER_CONTENT
+    assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
+    rejections = [line for line in captured if "unrequested path" in line]
+    assert rejections, captured
+    assert "bystander.txt" in rejections[0]
 
 
 def test_a_resolver_leaving_conflict_markers_is_refused(

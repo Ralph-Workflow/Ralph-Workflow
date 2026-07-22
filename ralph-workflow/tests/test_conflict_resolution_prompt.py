@@ -35,6 +35,24 @@ def _render(
     return prompt_path.read_text(encoding="utf-8")
 
 
+def _render_rebase_stop(tmp_path: Path) -> str:
+    """Render the REBASE variant, which the endpoint-merge one differs from."""
+    prompt_path = render_conflict_prompt(
+        root=tmp_path,
+        target="main",
+        conflicted_paths=_CONFLICTED,
+        round_index=1,
+        round_cap=3,
+        surviving_marker_paths=(),
+        replaying_commit_sha="0123456789abcdef",
+        replaying_commit_subject="feat: the replayed commit",
+        stop_index=1,
+        stop_cap=10,
+    )
+    assert prompt_path is not None
+    return prompt_path.read_text(encoding="utf-8")
+
+
 def test_every_conflicted_path_appears(tmp_path: Path) -> None:
     rendered = _render(tmp_path)
     for path in _CONFLICTED:
@@ -66,6 +84,76 @@ def test_exiting_without_declare_complete_is_stated_to_be_a_failed_round(
     assert "mcp__ralph__declare_complete" in rendered
     assert "WITHOUT calling `declare_complete`" in rendered
     assert "FAILED" in rendered
+
+
+def test_the_standard_unattended_preamble_is_present(tmp_path: Path) -> None:
+    """AC-02: the resolution session gets the same standard preamble."""
+    assert "UNATTENDED MODE" in _render(tmp_path)
+
+
+def test_the_granted_capabilities_are_stated(tmp_path: Path) -> None:
+    """AC-02: the agent is told what it is authorized to do.
+
+    Rendered from the resolution drain's own defaults, so the prompt
+    cannot drift into describing a capability set the session is not
+    actually granted.
+    """
+    rendered = _render(tmp_path)
+    assert "SESSION CAPABILITIES (Granted by Ralph Workflow)" in rendered
+    assert "workspace.write_tracked" in rendered
+
+
+def test_the_brokered_mcp_tool_surface_is_stated(tmp_path: Path) -> None:
+    """AC-02: native file tools are disabled, so the prompt must say so.
+
+    An agent that is not told to edit through ``write_file`` reaches for
+    a native tool the MCP broker has turned off and burns the round.
+    """
+    rendered = _render(tmp_path)
+    assert "MCP TOOLS (Ralph Workflow Brokered)" in rendered
+    assert "mcp__ralph__write_file" in rendered
+
+
+def test_the_preamble_does_not_offer_artifact_submission(tmp_path: Path) -> None:
+    """The completion contract is ``declare_complete`` and nothing else.
+
+    Offering the artifact surface would invite a ``development_result``
+    for work that is not a development iteration, and the payload-free
+    contract this prompt exists to keep would be the first casualty.
+    """
+    rendered = _render(tmp_path)
+    assert "ARTIFACT SUBMISSION" not in rendered
+    assert "submit_artifact" not in rendered
+    assert "declare_complete" in rendered
+
+
+def test_editing_an_unlisted_path_is_forbidden_outright(tmp_path: Path) -> None:
+    """The prompt and ``rebase_loop``'s enforcement must agree.
+
+    ``_stage_and_prove`` stages only the conflicted paths, so an edit the
+    prompt permits elsewhere would be neither committed nor rejected. The
+    prohibition is therefore absolute, with no 'strictly required'
+    escape hatch.
+    """
+    rendered = _render(tmp_path)
+    assert 'Do not modify ANY file that is not listed under "Conflicted files"' in rendered
+    assert "strictly required" not in rendered
+
+
+def test_the_rebase_variant_states_the_unlisted_path_enforcement(
+    tmp_path: Path,
+) -> None:
+    """Only the rebase loop enforces it, so only the rebase prompt claims it."""
+    assert "REJECTS the whole resolution and aborts the\n  rebase" in _render_rebase_stop(
+        tmp_path
+    )
+
+
+def test_the_endpoint_merge_variant_claims_no_unenforced_gate(
+    tmp_path: Path,
+) -> None:
+    """A prompt that promises a gate the merge path does not run would lie."""
+    assert "re-reads the worktree after you return" not in _render(tmp_path)
 
 
 def test_round_counter_is_rendered(tmp_path: Path) -> None:

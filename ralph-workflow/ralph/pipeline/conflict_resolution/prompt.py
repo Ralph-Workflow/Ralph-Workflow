@@ -4,8 +4,17 @@ The resolution session must see the CONFLICT and nothing else. A prompt
 carrying the run's source-prompt or plan payload would invite the agent
 to resume feature work inside an in-progress merge, which is precisely
 the state in which unrelated edits are most expensive to unpick. The
-template is therefore rendered with a closed six-variable set and no
-project payload section at all.
+template is therefore rendered with a closed variable set and no project
+payload section at all.
+
+"Closed" means closed to the RUN's payload, not to the session's own
+contract. The standard preamble every Ralph session gets -- unattended
+mode, the granted capabilities, and the brokered MCP tool surface -- is
+rendered here too, because a resolution session that is not told it must
+edit through ``write_file`` will reach for a native tool that the MCP
+broker has disabled. Only the ARTIFACT SUBMISSION block is suppressed:
+this session submits nothing, it edits files and calls
+``declare_complete``.
 
 The rendered file lands at ``.agent/tmp/<phase>_prompt.md`` -- the same
 location :func:`ralph.prompts.debug_dump.prompt_dump_path` already uses
@@ -21,12 +30,18 @@ from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.mcp.protocol.capability_mapping import SessionDrain
+from ralph.mcp.tools.names import claude_tool_name_prefix
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.prompts.debug_dump import prompt_dump_path
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_registry import (
     load_partial_templates,
     packaged_template_root,
+)
+from ralph.prompts.template_variables import (
+    capability_template_variables,
+    default_caps_and_flags_for_drain,
 )
 
 if TYPE_CHECKING:
@@ -39,6 +54,13 @@ if TYPE_CHECKING:
 #: alongside the pipeline prompt templates so it follows the same
 #: convention as every other prompt.
 PROMPT_TEMPLATE_NAME = "conflict_resolution.jinja"
+
+#: Drain class the resolution drain is bound to in
+#: ``ralph/policy/defaults/agents.toml``. Its defaults are what the
+#: session is really granted, so rendering the capability preamble from
+#: them keeps the prompt and the session in lock-step instead of
+#: describing a capability set the agent does not have.
+_RESOLUTION_DRAIN = SessionDrain.DEVELOPMENT
 
 #: Body used when the conflicted-path query returned nothing, so the agent
 #: still has an actionable instruction rather than an empty list.
@@ -105,6 +127,7 @@ def render_conflict_prompt(
         "replaying_commit_subject": replaying_commit_subject or "",
         "stop_index": str(stop_index) if stop_index is not None else "",
         "stop_cap": str(stop_cap) if stop_cap is not None else "",
+        **_session_preamble_variables(),
     }
     template_root = packaged_template_root()
     try:
@@ -131,6 +154,25 @@ def render_conflict_prompt(
         )
         return None
     return prompt_path
+
+
+def _session_preamble_variables() -> dict[str, str]:
+    """Capability and MCP-tool variables the shared preamble partials need.
+
+    ``HIDE_ARTIFACT_SUBMISSION_GUIDANCE`` is the one deliberate
+    subtraction: the resolution session's completion contract is
+    ``declare_complete`` alone, and offering it the artifact-submission
+    surface would invite a ``development_result`` for work that is not a
+    development iteration.
+    """
+    capabilities, policy_flags = default_caps_and_flags_for_drain(_RESOLUTION_DRAIN)
+    variables = capability_template_variables(
+        capabilities,
+        policy_flags,
+        tool_name_prefix=claude_tool_name_prefix(),
+    )
+    variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
+    return variables
 
 
 def _conflicted_block(conflicted_paths: Sequence[str]) -> str:

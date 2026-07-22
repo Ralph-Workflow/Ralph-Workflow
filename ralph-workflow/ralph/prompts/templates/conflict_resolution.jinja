@@ -1,5 +1,9 @@
 {% include 'shared/_unattended_mode.j2' %}
 
+{% include 'shared/_session_capabilities.j2' %}
+
+{% include 'shared/_mcp_tools.j2' %}
+
 # Ralph Workflow — Rebase Conflict Resolution
 
 ## Your role and goal
@@ -44,9 +48,14 @@ outside the conflicted regions listed below is in scope.
   {% if replaying_commit_sha %}continues the rebase{% else %}creates the merge commit{% endif %} itself. You only edit file contents. Git is
   denied to this session by the exec policy, so attempting it wastes the round.
 - Do not commit, merge, rebase, abort, switch branches, or move any ref.
-- Do not modify files that had no conflict, except as strictly required to make
-  the resolved code consistent.
-- A leftover conflict marker in ANY listed file REJECTS the whole resolution
+- Do not modify ANY file that is not listed under "Conflicted files" above.
+  Not a neighbouring module, not a test, not an import, not a formatting nit.
+  If the resolved code needs a change elsewhere, leave it: that belongs to a
+  later run, not to this one.
+{% if replaying_commit_sha %}- Ralph Workflow re-reads the worktree after you return. An edit to ANY tracked
+  path that is not listed above REJECTS the whole resolution and aborts the
+  rebase, discarding your work on the listed files too.
+{% endif %}- A leftover conflict marker in ANY listed file REJECTS the whole resolution
   and {% if replaying_commit_sha %}aborts the rebase{% else %}aborts the merge{% endif %}. Ralph Workflow re-scans every listed path
   textually after you return; your own report is never the evidence.
 
