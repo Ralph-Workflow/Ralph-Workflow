@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.phases import review as review_module
-from ralph.pipeline import auto_integrate_agent, cycle_baseline
+from ralph.pipeline import cycle_baseline
+from ralph.pipeline.conflict_resolution import prompt as conflict_prompt
 from ralph.pipeline.parallel import worker_runtime
 from ralph.workspace.fs import FsWorkspace
 
@@ -52,7 +53,9 @@ class RecordingFileBackend(FileBackend):
 
 
 def _auto_integrate_prompt_writer() -> Callable[..., Path | None]:
-    return cast("Callable[..., Path | None]", auto_integrate_agent._write_prompt)
+    return cast(
+        "Callable[..., Path | None]", conflict_prompt.render_conflict_prompt
+    )
 
 
 def _parallel_worker_prompt_writer() -> Callable[..., None]:
@@ -67,16 +70,36 @@ def _write_cycle_baseline() -> Callable[..., None]:
     return cast("Callable[..., None]", cycle_baseline.write_cycle_baseline)
 
 
+def _render(
+    write_prompt: Callable[..., Path | None],
+    root: Path,
+    target: str,
+    conflicted: tuple[str, ...],
+    backend: RecordingFileBackend,
+) -> Path | None:
+    return write_prompt(
+        root=root,
+        target=target,
+        conflicted_paths=conflicted,
+        round_index=1,
+        round_cap=3,
+        surviving_marker_paths=(),
+        backend=backend,
+    )
+
+
 def test_write_prompt_regression_skips_byte_identical_rewrite() -> None:
     """Step 2: an unchanged auto-integrate prompt performs one physical write total."""
     backend = RecordingFileBackend()
     root = Path("/virtual-workspace")
     write_prompt = _auto_integrate_prompt_writer()
 
-    first_path = write_prompt(root, "main", ("shared.txt",), backend=backend)
-    second_path = write_prompt(root, "main", ("shared.txt",), backend=backend)
+    first_path = _render(write_prompt, root, "main", ("shared.txt",), backend)
+    second_path = _render(write_prompt, root, "main", ("shared.txt",), backend)
 
-    expected_path = root / ".agent" / "auto_integrate_conflict_prompt.md"
+    expected_path = (
+        root / ".agent" / "tmp" / "rebase_conflict_resolution_prompt.md"
+    )
     assert first_path == expected_path
     assert second_path == expected_path
     assert backend.write_text_calls == 1
@@ -90,8 +113,8 @@ def test_write_prompt_regression_writes_on_changed_content() -> None:
     root = Path("/virtual-workspace")
     write_prompt = _auto_integrate_prompt_writer()
 
-    prompt_path = write_prompt(root, "main", ("shared.txt",), backend=backend)
-    changed_path = write_prompt(root, "release", ("shared.txt",), backend=backend)
+    prompt_path = _render(write_prompt, root, "main", ("shared.txt",), backend)
+    changed_path = _render(write_prompt, root, "release", ("shared.txt",), backend)
 
     assert prompt_path is not None
     assert changed_path == prompt_path
@@ -100,7 +123,7 @@ def test_write_prompt_regression_writes_on_changed_content() -> None:
 
     # A changed conflicted-path list is changed content too, so it must
     # persist rather than be skipped as a byte-identical rewrite.
-    write_prompt(root, "release", ("other.txt",), backend=backend)
+    _render(write_prompt, root, "release", ("other.txt",), backend)
     assert backend.write_text_calls == 3
     assert "other.txt" in backend.files[prompt_path]
 

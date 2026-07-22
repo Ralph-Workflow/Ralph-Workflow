@@ -76,7 +76,6 @@ def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
         "commit_message.jinja",
         "commit_simplified.jinja",
         "conflict_resolution.jinja",
-        "conflict_resolution_fallback.jinja",
         "developer_iteration.jinja",
         "developer_iteration_continuation.jinja",
         "development_analysis.jinja",

@@ -58,6 +58,9 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.auto_integrate_boundary_refresh import (
+    BOUNDARY_REFRESH_THROTTLE,
+)
 from ralph.pipeline.auto_integrate_budget_seam import (
     carry_budget_through_skip,
     charge_failed_attempt,
@@ -291,16 +294,21 @@ def auto_integrate_on_phase_transition(
       ``last_refresh`` instead, because a silent no-op computed from an
       unverifiable pointer is indistinguishable from a healthy one.
 
-    The dirty-boundary ancestry probe reads the LOCAL target ref and
-    deliberately does NOT trigger an extra ``git fetch``: phase
-    boundaries fire on eleven events, and a bounded-but-real fetch on
-    every dirty one is a per-cycle cost regression. In the
-    linked-worktree topology this feature exists for,
-    ``refs/heads/<target>`` is shared across every agent, so the local
-    ref IS the authoritative pointer. In a clone topology the probe can
-    under-report (stay silent when it could have recorded), which is
-    strictly the safe direction — no integration decision is taken from
-    it, only whether to record a diagnostic.
+    The dirty-boundary ancestry probe is fetch-THROTTLED rather than
+    fetch-free. Phase boundaries fire on eleven events, so an
+    unconditional fetch on every dirty one is a per-cycle cost
+    regression; but a probe that reads a pointer another agent moved
+    minutes ago reports "nothing to catch up" from stale data, and that
+    silent staleness is indistinguishable from the feature being dead.
+    :data:`~ralph.pipeline.auto_integrate_boundary_refresh.BOUNDARY_REFRESH_THROTTLE`
+    (default 30.0 s) therefore permits at most one refresh per interval
+    per process. The fetch is bounded by
+    ``general.auto_integrate_fetch_timeout_seconds`` and fails open: an
+    unreachable origin yields ``REFRESH_UNREACHABLE`` and integration
+    continues against the local ref. In the linked-worktree topology
+    this feature exists for, ``refs/heads/<target>`` is shared across
+    every agent, so the local ref IS the authoritative pointer and the
+    refresh correctly records ``REFRESH_NO_ORIGIN``.
 
     Otherwise it runs the full integration (rebase → endpoint merge →
     optional agent conflict resolution → fast-forward) and returns
@@ -318,7 +326,7 @@ def auto_integrate_on_phase_transition(
         if target is None:
             return None
         if not _worktree_is_clean(root):
-            return _defer_dirty_boundary(root, target)
+            return _defer_dirty_boundary(config, root, target)
         # A stale remote pointer must not let this cheap hook conclude
         # 'nothing to do'. Every free early return above still costs
         # nothing.
@@ -379,7 +387,9 @@ def _worktree_is_clean(root: Path) -> bool:
     return not result.stdout.strip()
 
 
-def _defer_dirty_boundary(root: Path, target: str) -> RebaseState | None:
+def _defer_dirty_boundary(
+    config: UnifiedConfig, root: Path, target: str
+) -> RebaseState | None:
     """Defer a boundary integration, recording it only when it cost something.
 
     A dirty boundary is routine and fires on eleven phase-transition
@@ -390,20 +400,29 @@ def _defer_dirty_boundary(root: Path, target: str) -> RebaseState | None:
     suppressed a genuine cross-agent catch-up, and a suppression the
     operator cannot see is the whole reason auto-integration reads as
     broken. That case is recorded so it surfaces in the
-    ``auto-integrate:`` line.
+    ``auto-integrate:`` line, carrying the ``REFRESH_*`` outcome so the
+    operator can also see how the pointer it was decided from was read.
 
-    The ancestry probe is deliberately fetch-free; see
-    :func:`auto_integrate_on_phase_transition` for why.
+    The ancestry probe runs against a THROTTLED refresh rather than a
+    fetch-free local read: see
+    :func:`auto_integrate_on_phase_transition` for the interval, the
+    bound and the fail-open behaviour.
     """
+    refresh = (
+        _refresh_target(config, root, target)
+        if BOUNDARY_REFRESH_THROTTLE.should_refresh()
+        else None
+    )
     target_sha = branch_sha(root, target)
     if target_sha is not None and not is_ancestor(root, target_sha, get_head_sha(root)):
-        return _record_skip(
+        skip = _record_skip(
             reason=(
                 "worktree not clean; uncommitted tracked changes deferred "
                 "catch-up integration"
             ),
             target=target,
         )
+        return record_refresh(skip, refresh)
     logger.info(
         "auto_integrate: phase-transition integration deferred; "
         "worktree dirty (target '{}')",

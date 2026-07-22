@@ -502,6 +502,9 @@ def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
             registry=ctx.registry,
             display=ctx.active_display,
             config=ctx.config,
+            pipeline_deps=ctx.pipeline_deps,
+            workspace_scope=ctx.workspace_scope,
+            display_context=ctx.display_context,
         )
         outcome = auto_integrate_on_phase_transition(
             ctx.config,

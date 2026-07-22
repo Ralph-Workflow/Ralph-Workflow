@@ -1,12 +1,13 @@
-"""Unit contracts for the dev-agent conflict resolver builder.
+"""Unit contracts for the conflict-resolver builder.
 
 All-mock: no test here starts git or a real agent subprocess. The
-builder's contract is (a) the resolver invokes the FIRST agent of the
-``development`` drain chain with a focused conflict-resolution prompt,
-(b) every failure mode (missing agent, invocation error) is contained
-as ``False`` so :mod:`ralph.pipeline.auto_integrate_resolve` aborts
-the merge instead of crashing the run, and (c) the operator sees WARN
-lines around the resolution attempt.
+builder is a thin adapter now, so its contract is (a) it delegates to the
+conflict-resolution pipeline with the seam's dependencies threaded
+through, (b) a MISSING dependency declines instead of falling back to an
+MCP-less invocation -- that fallback was the defect -- and (c) every
+failure mode is contained as ``False`` so
+:mod:`ralph.pipeline.auto_integrate_resolve` aborts the merge rather than
+crashing the run.
 """
 
 from __future__ import annotations
@@ -51,6 +52,8 @@ def _build_config() -> UnifiedConfig:
 def _build_resolver(
     *,
     agent_config: object,
+    pipeline_deps: object = "pipeline-deps-sentinel",
+    workspace_scope: object = "workspace-scope-sentinel",
 ) -> tuple[resolver_module.ConflictResolver, MagicMock, MagicMock]:
     registry = MagicMock()
     registry.get.return_value = agent_config
@@ -60,159 +63,128 @@ def _build_resolver(
         registry=registry,
         display=display,
         config=_build_config(),
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
     )
     return resolver, registry, display
 
 
-def test_resolver_invokes_dev_agent_with_focused_prompt(
+def _install_pipeline_spy(
+    monkeypatch: pytest.MonkeyPatch, *, result: bool = True
+) -> list[dict[str, object]]:
+    """Replace the pipeline with a recorder; returns the recorded kwargs."""
+    calls: list[dict[str, object]] = []
+
+    def _fake_pipeline(**kwargs: object) -> bool:
+        calls.append(kwargs)
+        return result
+
+    monkeypatch.setattr(
+        resolver_module, "run_conflict_resolution_pipeline", _fake_pipeline
+    )
+    return calls
+
+
+def test_resolver_delegates_to_the_conflict_resolution_pipeline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The dev-chain agent is invoked with a resolve-only prompt."""
-    calls: dict[str, object] = {}
-
-    def _fake_invoke(
-        agent_config: object, prompt_file: str, *, options: object = None
-    ) -> object:
-        prompt_path = Path(prompt_file)
-        calls["agent_config"] = agent_config
-        calls["prompt_path"] = prompt_path
-        calls["prompt_text"] = prompt_path.read_text(encoding="utf-8")
-        calls["options"] = options
-        return iter(["line"])
-
-    monkeypatch.setattr(resolver_module, "invoke_agent", _fake_invoke)
-    sentinel_agent = object()
-    resolver, registry, display = _build_resolver(agent_config=sentinel_agent)
-
-    assert resolver(tmp_path, "main") is True
-
-    # First agent of the development drain chain in the default policy.
-    registry.get.assert_called_once_with("claude")
-    assert calls["agent_config"] is sentinel_agent
-    prompt_text = str(calls["prompt_text"])
-    assert "main" in prompt_text
-    assert "do not commit" in prompt_text.lower()
-    # The invocation runs inside the conflicted repository.
-    options = calls["options"]
-    assert getattr(options, "workspace_path", None) == tmp_path
-    # The transient prompt file is cleaned up after the invocation.
-    prompt_path = calls["prompt_path"]
-    assert isinstance(prompt_path, Path)
-    assert not prompt_path.exists()
-    # The operator saw the resolution attempt.
-    display.emit_warn_line.assert_called()
-
-
-def test_resolver_returns_false_when_invocation_fails(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """An agent invocation error is contained as resolution failure."""
-
-    def _boom(*_args: object, **_kwargs: object) -> object:
-        raise RuntimeError("agent exploded")
-
-    monkeypatch.setattr(resolver_module, "invoke_agent", _boom)
-    resolver, _registry, _display = _build_resolver(agent_config=object())
-
-    assert resolver(tmp_path, "main") is False
-
-
-def test_resolver_returns_false_when_agent_unavailable(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A registry with no dev agent yields a failing (but safe) resolver."""
-    invoke = MagicMock()
-    monkeypatch.setattr(resolver_module, "invoke_agent", invoke)
-    resolver, _registry, _display = _build_resolver(agent_config=None)
-
-    assert resolver(tmp_path, "main") is False
-    invoke.assert_not_called()
-
-
-def test_resolver_passes_bounded_timeouts_to_invoke_agent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """AC-06: the invocation is bounded on BOTH the wall-clock and idle axes.
-
-    ``ralph.agents.invoke._options`` assigns ``idle_timeout_seconds``
-    straight from the options with no fallback to the config-derived
-    base, so leaving it unset disables the idle watchdog entirely and a
-    hung resolver can park the repository in a merge-in-progress state.
-    """
-    seen: list[object] = []
-
-    def _fake_invoke(
-        _agent_config: object, _prompt_file: str, *, options: object = None
-    ) -> object:
-        seen.append(options)
-        return iter(["line"])
-
-    monkeypatch.setattr(resolver_module, "invoke_agent", _fake_invoke)
-    resolver, _registry, _display = _build_resolver(agent_config=object())
-
-    assert resolver(tmp_path, "main") is True
-
-    options = seen[0]
-    assert getattr(options, "max_session_seconds", None) == _RESOLVE_TIMEOUT_SECONDS
-    idle = getattr(options, "idle_timeout_seconds", None)
-    assert idle is not None
-    assert isinstance(idle, float)
-    assert idle > 0
-
-
-def test_resolver_falls_over_to_second_agent_when_first_raises(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """AC-06: one failing agent must not end the resolution attempt.
-
-    The default ``development`` chain is ``["claude", "opencode"]``; an
-    unavailable or crashing first agent used to abort the merge and
-    re-conflict on every later commit with no progress.
-    """
-    attempts: list[str] = []
-
-    def _flaky_invoke(
-        agent_config: object, _prompt_file: str, *, options: object = None
-    ) -> object:
-        attempts.append(str(agent_config))
-        if len(attempts) == 1:
-            raise RuntimeError("first agent exploded")
-        return iter(["line"])
-
-    monkeypatch.setattr(resolver_module, "invoke_agent", _flaky_invoke)
+    """The seam's dependencies reach the pipeline that needs them."""
+    calls = _install_pipeline_spy(monkeypatch)
     resolver, registry, _display = _build_resolver(agent_config=object())
 
     assert resolver(tmp_path, "main") is True
-    assert len(attempts) == 2
+
+    assert len(calls) == 1
+    kwargs = calls[0]
+    assert kwargs["root"] == tmp_path
+    assert kwargs["target"] == "main"
+    # Without these two the pipeline cannot build an MCP session at all.
+    assert kwargs["pipeline_deps"] == "pipeline-deps-sentinel"
+    assert kwargs["workspace_scope"] == "workspace-scope-sentinel"
+    assert kwargs["policy_bundle"] is _load_default_policy_bundle()
+    # The resolution chain is checked against the installed agents first.
     looked_up = [call.args[0] for call in registry.get.call_args_list]
-    assert looked_up == ["claude", "opencode"]
+    assert looked_up[0] == "claude"
 
 
-def test_resolver_returns_false_when_every_chain_agent_fails(
+def test_resolver_reports_the_pipeline_verdict(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """AC-06: an exhausted chain reports failure and issues no git command.
-
-    Aborting the merge is the caller's job
-    (``auto_integrate_resolve.endpoint_merge_with_resolution``); the
-    resolver only edits files, so it must leave the repository exactly
-    as it found it.
-    """
-    attempts: list[str] = []
-
-    def _always_boom(
-        agent_config: object, _prompt_file: str, *, options: object = None
-    ) -> object:
-        attempts.append(str(agent_config))
-        raise RuntimeError("agent exploded")
-
-    run_git = MagicMock()
-    monkeypatch.setattr(resolver_module, "invoke_agent", _always_boom)
-    monkeypatch.setattr(
-        "ralph.git.subprocess_runner.run_git", run_git, raising=True
-    )
+    """A pipeline that could not resolve is reported as failure, not success."""
+    _install_pipeline_spy(monkeypatch, result=False)
     resolver, _registry, _display = _build_resolver(agent_config=object())
 
     assert resolver(tmp_path, "main") is False
-    assert len(attempts) == 2
+
+
+def test_resolver_declines_without_pipeline_deps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A seam that did not thread pipeline_deps must NOT invoke an agent.
+
+    An invocation without pipeline_deps has no Ralph MCP session, hence
+    no exec-policy git denial and no completion contract. Declining is
+    the only safe answer.
+    """
+    calls = _install_pipeline_spy(monkeypatch)
+    resolver, _registry, _display = _build_resolver(
+        agent_config=object(), pipeline_deps=None
+    )
+
+    assert resolver(tmp_path, "main") is False
+    assert calls == []
+
+
+def test_resolver_declines_without_workspace_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Same contract for the other required dependency."""
+    calls = _install_pipeline_spy(monkeypatch)
+    resolver, _registry, _display = _build_resolver(
+        agent_config=object(), workspace_scope=None
+    )
+
+    assert resolver(tmp_path, "main") is False
+    assert calls == []
+
+
+def test_resolver_declines_when_no_chain_agent_is_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No usable agent: decline before paying for a session."""
+    calls = _install_pipeline_spy(monkeypatch)
+    resolver, _registry, _display = _build_resolver(agent_config=None)
+
+    assert resolver(tmp_path, "main") is False
+    assert calls == []
+
+
+def test_resolver_contains_a_pipeline_exception(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The resolver never raises into the integration step."""
+
+    def _boom(**_kwargs: object) -> bool:
+        raise RuntimeError("pipeline exploded")
+
+    monkeypatch.setattr(resolver_module, "run_conflict_resolution_pipeline", _boom)
+    resolver, _registry, _display = _build_resolver(agent_config=object())
+
+    try:
+        resolved = resolver(tmp_path, "main")
+    except Exception as exc:  # pragma: no cover - the assertion below reports it
+        raise AssertionError(f"resolver must not raise: {exc}") from exc
+    assert resolved is False
+
+
+def test_resolver_issues_no_git_command_itself(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Aborting and committing the merge belong to the caller, not here."""
+    _install_pipeline_spy(monkeypatch, result=False)
+    run_git = MagicMock()
+    monkeypatch.setattr("ralph.git.subprocess_runner.run_git", run_git, raising=True)
+    resolver, _registry, _display = _build_resolver(agent_config=object())
+
+    assert resolver(tmp_path, "main") is False
     run_git.assert_not_called()

@@ -181,7 +181,15 @@ def _validate_rebase_request(
     if branch_name is None:
         return RebaseNoOp("HEAD is detached (not on any branch), rebase not applicable")
 
-    if branch_name in {"main", "master"}:
+    # Identity, not name: this guard exists solely to stop a branch
+    # rebasing onto itself. Keying it on the hardcoded names main/master
+    # made the decision name-based, so a configured integration target
+    # such as 'develop' produced a phantom no-op whenever the feature
+    # branch happened to be called main or master. The genuine
+    # already-up-to-date case is still covered by the ancestry check
+    # below, and auto_integrate short-circuits the on-target case earlier
+    # with reason 'on target branch'.
+    if branch_name == upstream_branch:
         return RebaseNoOp(f"Already on '{branch_name}' branch, rebase not applicable")
 
     if _merge_base_is_ancestor(executor, repo_root, upstream_branch):
@@ -279,9 +287,13 @@ def _merge_base_is_ancestor(
     repo_root: Path,
     upstream_branch: str,
 ) -> bool:
+    # ``--`` terminator, for the same reason ``rebase_onto`` uses one: a
+    # branch whose name begins with ``-`` would otherwise be parsed as an
+    # option (git exits 129, "unknown switch"), and this probe would
+    # silently report "not an ancestor" for every such target.
     result = executor.execute(
         "git",
-        ("merge-base", "--is-ancestor", upstream_branch, "HEAD"),
+        ("merge-base", "--is-ancestor", "--", upstream_branch, "HEAD"),
         cwd=repo_root,
     )
     return result.returncode == 0

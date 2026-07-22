@@ -10,6 +10,7 @@ from git.exc import GitCommandError
 from loguru import logger
 
 from ralph.git.rebase._concurrent_operation import _ConcurrentOperation
+from ralph.git.rebase._worktree_head_ref import head_file_targets_branch
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
@@ -224,7 +225,6 @@ def _check_worktree_conflicts(repo: Repo) -> None:
         return
 
     own_git_dir = _git_dir(repo).resolve()
-    target_ref = f"refs/heads/{branch_name}"
     for entry in worktrees_dir.iterdir():
         if not entry.is_dir():
             continue
@@ -239,7 +239,9 @@ def _check_worktree_conflicts(repo: Repo) -> None:
         except OSError:
             continue
 
-        if target_ref in content:
+        # Exact ref identity, never a substring: a sibling worktree on a
+        # branch that merely has this branch as a prefix is not a conflict.
+        if head_file_targets_branch(content, branch_name):
             raise RebasePreconditionError(
                 f"Branch '{branch_name}' is already checked out in worktree '{entry.name}'. "
                 "Use 'git worktree add' to create a new worktree for this branch."

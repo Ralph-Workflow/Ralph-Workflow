@@ -41,11 +41,11 @@ import pytest
 from ralph.agents.registry import AgentRegistry
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
-from ralph.pipeline import auto_integrate_agent as resolver_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_agent import build_agent_conflict_resolver
 from ralph.pipeline.auto_integrate_record import record_path
+from ralph.pipeline.conflict_resolution import driver as resolution_driver
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
@@ -54,13 +54,19 @@ from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from ralph.policy.models import PhaseDefinition, PolicyBundle
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
-_PROMPT_RELATIVE_PATH = Path(".agent") / "auto_integrate_conflict_prompt.md"
+_PROMPT_RELATIVE_PATH = (
+    Path(".agent") / "tmp" / "rebase_conflict_resolution_prompt.md"
+)
+
+#: Stand-in for the pipeline dependency bundle. The resolver refuses to
+#: run without one (an MCP-less invocation is the defect this pipeline
+#: exists to remove); the real bundle is only consumed by the agent
+#: launch, which these tests replace.
+_PIPELINE_DEPS_SENTINEL = "pipeline-deps-sentinel"
 
 
 def _run(
@@ -137,21 +143,29 @@ def _commit_phase_def() -> PhaseDefinition:
 
 
 def _install_editing_agent(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
-    """Stub ``invoke_agent`` with a file-editing, git-free resolver agent.
+    """Stub the agent LAUNCH with a file-editing, git-free resolver agent.
 
-    The stub honours the production contract stated in
-    :mod:`ralph.pipeline.auto_integrate_agent`: it reads the prompt Ralph
-    wrote, rewrites each conflicted file listed there with marker-free
-    content, and runs NO git command.
+    Only the process launch is replaced. The production factory, the
+    drain and registry lookups, the prompt render, the status-bar
+    lifecycle, the deterministic marker gate, the staging and the merge
+    commit all stay real.
+
+    The stub honours the contract the prompt states: it reads the prompt
+    Ralph wrote, rewrites each conflicted file listed there with
+    marker-free content, and runs NO git command.
     """
     prompts: list[Path] = []
 
     def _fake_invoke(
-        agent_config: object, prompt_file: str, *, options: object = None
-    ) -> Iterator[str]:
-        prompt_path = Path(prompt_file)
+        *,
+        agent_name: str,
+        prompt_path: Path,
+        max_session_seconds: float,
+        **_rest: object,
+    ) -> bool:
         prompts.append(prompt_path)
-        root = prompt_path.parent.parent
+        # .agent/tmp/<phase>_prompt.md -> repository root
+        root = prompt_path.parents[2]
         for line in prompt_path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not stripped.startswith("- `") or not stripped.endswith("`"):
@@ -160,9 +174,11 @@ def _install_editing_agent(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
             (root / relative).write_text(
                 "feature version\nbase version 1\n", encoding="utf-8"
             )
-        return iter(())
+        return True
 
-    monkeypatch.setattr(resolver_module, "invoke_agent", _fake_invoke)
+    monkeypatch.setattr(
+        resolution_driver, "invoke_resolution_agent", _fake_invoke
+    )
     return prompts
 
 
@@ -184,6 +200,8 @@ def test_production_resolver_factory_resolves_a_real_conflict_end_to_end(
         registry=AgentRegistry.from_config(config),
         display=MagicMock(),
         config=config,
+        pipeline_deps=_PIPELINE_DEPS_SENTINEL,
+        workspace_scope=WorkspaceScope(tmp_git_repo),
     )
 
     outcome = auto_integrate_after_commit(
@@ -225,6 +243,7 @@ def test_runner_commit_seam_drives_the_full_conflict_chain(
         display=MagicMock(),
         policy_bundle=_default_policy_bundle(),
         registry=AgentRegistry.from_config(config),
+        pipeline_deps=_PIPELINE_DEPS_SENTINEL,
     )
 
     assert outcome is not None

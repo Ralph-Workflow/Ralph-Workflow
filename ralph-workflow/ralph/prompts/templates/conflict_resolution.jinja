@@ -1,11 +1,48 @@
-CONFLICT RESOLUTION MODE
-
-Resolve the reported merge or rebase conflicts while preserving the intended work.
-
-{% from 'shared/_payload_section.j2' import render_payload_section %}
-
 {% include 'shared/_unattended_mode.j2' %}
 
-{{ render_payload_section('CONTEXT', PROMPT, PROMPT_PATH) }}
+# Ralph Workflow — Rebase Conflict Resolution
 
-{{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
+## Your role and goal
+
+The repository at `{{ repo_root }}` has an IN-PROGRESS merge of the mainline
+branch `{{ target }}` into the current feature branch. The merge stopped on
+conflicts.
+
+Resolving those conflicts is your ONLY job. You are not implementing a
+feature, not reviewing the project, and not fixing unrelated failures. Nothing
+outside the conflicted regions listed below is in scope.
+
+Round {{ round_index }} of {{ round_cap }}.
+
+## Conflicted files
+
+{{ conflicted_block }}
+{{ feedback_block }}
+## How to resolve
+
+1. Open each conflicted file listed above.
+2. Resolve every conflict-marker region thoughtfully, preserving the intent of
+   BOTH the feature branch and `{{ target }}`. Never delete one side blindly.
+3. Remove every `<<<<<<<`, `=======` and `>>>>>>>` marker line, so each file is
+   left as valid, self-consistent content.
+
+## Hard rules
+
+- DO NOT run any git command. Ralph Workflow stages the resolved files and
+  creates the merge commit itself. You only edit file contents. Git is denied
+  to this session by the exec policy, so attempting it wastes the round.
+- Do not commit, merge, rebase, abort, switch branches, or move any ref.
+- Do not modify files that had no conflict, except as strictly required to make
+  the resolved code consistent.
+- A leftover conflict marker in ANY listed file REJECTS the whole resolution
+  and aborts the merge. Ralph Workflow re-scans every listed path textually
+  after you return; your own report is never the evidence.
+
+## Completion contract
+
+When every listed file is resolved and marker-free, call the
+`declare_complete` MCP tool (`mcp__ralph__declare_complete`) with a short
+summary of what you resolved.
+
+Exiting cleanly WITHOUT calling `declare_complete` is treated as a FAILED
+round, not as a resolution.

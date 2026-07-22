@@ -107,7 +107,7 @@ def _executor_for(
             # Non-zero => the pre-flight "already up-to-date" check in
             # _validate_rebase_request does NOT short-circuit, so the
             # rebase really runs and its result is classified.
-            ("git", ("merge-base", "--is-ancestor", base, "HEAD")): ProcessResult(
+            ("git", ("merge-base", "--is-ancestor", "--", base, "HEAD")): ProcessResult(
                 returncode=1, stdout="", stderr=""
             ),
             ("git", ("rebase", "--", base)): rebase_result,
@@ -170,3 +170,49 @@ def test_conflicting_rebase_result_is_classified_as_conflicts(
     )
 
     assert isinstance(result, RebaseConflicts)
+
+
+def test_rebase_onto_non_default_target_from_master_is_not_a_phantom_noop(
+    tmp_git_repo: Path,
+) -> None:
+    """A feature branch named 'master' still rebases onto a different target.
+
+    The no-op guard used to fire whenever the CURRENT branch was named
+    main or master, regardless of the upstream actually requested, so a
+    configured integration target such as 'develop' was reported as
+    "already on branch" and the rebase never ran.
+    """
+    with Repo(tmp_git_repo) as repo:
+        repo.git.branch("develop")
+        repo.git.checkout("-B", "master")
+
+    executor = _executor_for(
+        "develop", ProcessResult(returncode=1, stdout="", stderr=_PLAIN_CONFLICT)
+    )
+
+    result = rebase_onto(
+        upstream_branch="develop", repo_root=tmp_git_repo, executor=executor
+    )
+
+    assert not isinstance(result, RebaseNoOp), (
+        "a branch named 'master' rebasing onto 'develop' is a real rebase"
+    )
+    assert isinstance(result, RebaseConflicts)
+
+
+def test_rebase_onto_the_branch_already_checked_out_is_a_noop(
+    tmp_git_repo: Path,
+) -> None:
+    """The self-rebase guard the identity comparison replaced still holds."""
+    with Repo(tmp_git_repo) as repo:
+        repo.git.checkout("-B", "develop")
+
+    executor = _executor_for(
+        "develop", ProcessResult(returncode=0, stdout="", stderr="")
+    )
+
+    result = rebase_onto(
+        upstream_branch="develop", repo_root=tmp_git_repo, executor=executor
+    )
+
+    assert isinstance(result, RebaseNoOp)

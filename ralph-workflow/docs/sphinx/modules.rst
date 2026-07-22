@@ -930,6 +930,55 @@ ralph.pipeline.auto_integrate
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_boundary_refresh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_boundary_refresh
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.graph
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.graph
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.prompt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.prompt
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.status
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.session
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.session
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.driver
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.driver
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_conflict_budget
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -134,20 +134,31 @@ def test_continue_rebase_executes_cli_when_ready(
 
 
 def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> None:
+    """An up-to-date feature branch is a no-op against a DISTINCT upstream.
+
+    The upstream is deliberately a different branch from the checked-out
+    one: rebasing a branch onto itself is a separate no-op path (the
+    self-rebase identity guard), and conflating the two hid which check
+    actually fired.
+    """
     with Repo(tmp_git_repo) as repo:
-        branch_name = "feature-noop"
-        repo.git.checkout("-b", branch_name)
+        upstream = repo.active_branch.name
+        repo.git.checkout("-b", "feature-noop")
     responses = {
-        ("git", ("merge-base", "--is-ancestor", branch_name, "HEAD")): _mk_result(returncode=0),
+        ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")): _mk_result(
+            returncode=0
+        ),
     }
     executor = FakeProcessExecutor(responses)
 
-    result = rebase_onto(upstream_branch=branch_name, repo_root=tmp_git_repo, executor=executor)
+    result = rebase_onto(upstream_branch=upstream, repo_root=tmp_git_repo, executor=executor)
 
     assert isinstance(result, RebaseNoOp)
     assert "up-to-date" in result.reason
+    # The ``--`` terminator is part of the contract: without it a target
+    # whose name begins with '-' is parsed by git as an option.
     assert executor.calls == [
-        ("git", ("merge-base", "--is-ancestor", branch_name, "HEAD")),
+        ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")),
     ]
 
 
@@ -157,7 +168,9 @@ def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_
         base_branch = current
         repo.git.checkout("-b", "feature-conflict")
     responses = {
-        ("git", ("merge-base", "--is-ancestor", base_branch, "HEAD")): _mk_result(returncode=1),
+        ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(
+            returncode=1
+        ),
         ("git", ("rebase", "--", base_branch)): _mk_result(
             returncode=1,
             stderr="CONFLICT (content): Merge conflict in README.md",

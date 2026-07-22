@@ -629,6 +629,8 @@ def _maybe_auto_integrate(
     display: ParallelDisplay,
     policy_bundle: PolicyBundle | None = None,
     registry: _RegistryLike | None = None,
+    pipeline_deps: PipelineDeps | None = None,
+    display_context: DisplayContext | None = None,
 ) -> RebaseState | None:
     """Run the post-commit auto-integration step when warranted.
 
@@ -666,6 +668,8 @@ def _maybe_auto_integrate(
             display=display,
             policy_bundle=policy_bundle,
             registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
         )
     clear_cycle_baseline(workspace_scope.root)
     # The commit-boundary integration (crash record + full sequence
@@ -681,12 +685,17 @@ def _maybe_auto_integrate(
             display=display,
             policy_bundle=policy_bundle,
             registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
         )
     conflict_resolver = _build_seam_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
         display=display,
         config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
     )
     try:
         outcome = auto_integrate_after_commit(
@@ -731,18 +740,31 @@ def _build_seam_conflict_resolver(
     registry: _RegistryLike | None,
     display: ParallelDisplay,
     config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None = None,
+    workspace_scope: WorkspaceScope | None = None,
+    display_context: DisplayContext | None = None,
 ) -> ConflictResolver | None:
-    """Dev-agent resolver when policy + registry are available, else None."""
+    """Pipeline-backed resolver when policy + registry are available, else None.
+
+    ``pipeline_deps`` and ``workspace_scope`` are what let the resolver
+    start a REAL Ralph MCP session; a resolver built without them
+    declines instead of invoking an agent that would have no exec policy
+    and no completion contract. They are keyword-only with ``None``
+    defaults so an all-mock seam still constructs.
+    """
     if policy_bundle is None or registry is None:
         return None
-    # Production path: hand the integration step a dev-agent resolver
-    # so a conflicted endpoint merge is resolved and committed instead
-    # of abandoned until the next commit.
+    # Production path: hand the integration step a pipeline-backed
+    # resolver so a conflicted endpoint merge is resolved and committed
+    # instead of abandoned until the next commit.
     return build_agent_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
         display=display,
         config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
     )
 
 
@@ -755,6 +777,8 @@ def _integrate_on_phase_transition(
     display: ParallelDisplay,
     policy_bundle: PolicyBundle | None,
     registry: _RegistryLike | None,
+    pipeline_deps: PipelineDeps | None = None,
+    display_context: DisplayContext | None = None,
 ) -> RebaseState | None:
     """Run the boundary integration hook for successful phase events."""
     if event not in _PHASE_TRANSITION_INTEGRATION_EVENTS:
@@ -764,6 +788,9 @@ def _integrate_on_phase_transition(
         registry=registry,
         display=display,
         config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
     )
     try:
         outcome = auto_integrate_on_phase_transition(
@@ -791,6 +818,8 @@ def _integrate_after_fan_out(
     display: ParallelDisplay,
     policy_bundle: PolicyBundle | None,
     registry: _RegistryLike | None,
+    pipeline_deps: PipelineDeps | None = None,
+    display_context: DisplayContext | None = None,
 ) -> PipelineState:
     """Integrate a completed fan-out at the shared coordinator seam."""
     enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
@@ -804,6 +833,8 @@ def _integrate_after_fan_out(
         display=display,
         policy_bundle=policy_bundle,
         registry=registry,
+        pipeline_deps=pipeline_deps,
+        display_context=display_context,
     )
     return state.copy_with(rebase=outcome) if outcome is not None else state
 
@@ -872,6 +903,8 @@ def _run_pipeline_step(
                     display=display,
                     policy_bundle=policy_bundle,
                     registry=registry,
+                    pipeline_deps=pipeline_deps,
+                    display_context=display_context,
                 )
 
             return execute_fan_out_sync(
@@ -965,6 +998,8 @@ def _run_pipeline_step(
             display=display,
             policy_bundle=policy_bundle,
             registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
         )
         _phase_outcome = _coarse_outcome_for_event(event)
         next_state, _ = reducer_reduce(

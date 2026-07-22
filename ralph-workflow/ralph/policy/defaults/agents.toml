@@ -75,6 +75,19 @@ agents = ["claude"]
 max_retries = 2
 retry_delay_ms = 1000
 
+# Out-of-graph rebase-conflict-resolution chain. Invoked by the hardcoded
+# conflict-resolution pipeline (ralph/pipeline/conflict_resolution/) when an
+# auto-integration endpoint merge stops on conflicts. Like the policy chains
+# above it is bound to no phase in ralph/policy/defaults/pipeline.toml, so
+# validate_drain_contracts / validate_agent_chains_satisfiable do not require a
+# phase binding. The chain mirrors `development` because resolving a conflict
+# is source editing under verification, and conflict resolution must be able
+# to fall back to a second agent when the first cannot converge.
+[agent_chains.rebase_conflict_resolution]
+agents = ["claude", "opencode"]
+max_retries = 2
+retry_delay_ms = 1000
+
 # ---------------------------------------------------------------------------
 # Drain bindings
 # ---------------------------------------------------------------------------
@@ -125,3 +138,18 @@ drain_class = "development"
 [agent_drains.policy_remediation_analysis]
 chain = "policy_remediation_analysis"
 drain_class = "analysis"
+
+# Out-of-graph rebase-conflict-resolution drain. Bound only to the dedicated
+# rebase_conflict_resolution chain; not referenced by any pipeline phase.
+# drain_class = "development" is deliberate: ralph/mcp/session_plan.py's
+# development extras are what grant workspace.edit / workspace.write_tracked so
+# the agent can rewrite the conflicted files, and the base capability set grants
+# artifact.submit, which ralph/mcp/tools/coordination.py::handle_declare_complete
+# requires for the completion contract. The agent still cannot run git: the
+# session's exec policy (ralph/mcp/tools/exec.py::apply_exec_policy) denies every
+# vcs invocation, so Ralph Workflow alone stages the resolved paths and creates
+# the merge commit. Exercised by
+# ralph/pipeline/conflict_resolution/driver.py::run_conflict_resolution_pipeline.
+[agent_drains.rebase_conflict_resolution]
+chain = "rebase_conflict_resolution"
+drain_class = "development"
