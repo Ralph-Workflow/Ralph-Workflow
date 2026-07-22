@@ -166,13 +166,40 @@ def _resolve_conflicted_rebase(
     The footer is captured once here and restored once, around the ENTIRE
     loop: the per-stop pushes happen inside it, so a per-stop capture
     would snapshot the conflict bar itself and strand it after the loop.
+
+    The resolution does not start until the durable record actually says
+    ``resolving_rebase=true``. A resolution session runs for as long as an
+    agent takes, and if this run is killed inside that window, startup
+    recovery reads the record to decide what it found; a record still
+    saying ``false`` makes an interrupted resolution indistinguishable
+    from an ordinary crashed rebase, and the operator loses the one
+    warning that explains it. When the flag cannot be persisted the
+    rebase is therefore handed to the fallback -- which aborts it here
+    and now, while this process is alive to do it -- rather than left
+    paused under an agent whose crash could not be described.
     """
-    set_resolving_rebase(root, True)
+    if not set_resolving_rebase(root, True):
+        logger.warning(
+            "auto_integrate: could not record the in-flight rebase resolution "
+            "for '{}'; falling back to the endpoint merge",
+            target,
+        )
+        return None
     try:
         with conflict_status_bar_session(display, root):
             resolved = resolve_rebase_in_progress(root, target, rebase_stop_resolver)
     finally:
-        set_resolving_rebase(root, False)
+        # The unflag cannot fail the integration -- the resolution has
+        # already happened by the time it runs -- but a stale ``true``
+        # left behind would make the NEXT unrelated crash report an
+        # interrupted resolution that never existed, so say so.
+        if not set_resolving_rebase(root, False):
+            logger.warning(
+                "auto_integrate: could not clear the rebase-resolution flag "
+                "for '{}'; the durable record may misreport a later crash as "
+                "an interrupted resolution",
+                target,
+            )
     if not resolved:
         logger.info(
             "auto_integrate: rebase conflict resolution declined for '{}'; "

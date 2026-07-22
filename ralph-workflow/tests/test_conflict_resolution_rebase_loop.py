@@ -301,6 +301,34 @@ def test_an_unreadable_worktree_declines_rather_than_assuming_it_is_clean(
     assert repo.continue_calls == 0
 
 
+def test_an_unreadable_rebase_head_declines_before_the_resolver_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fail closed when the stopped commit has no readable identity.
+
+    An empty ``REBASE_HEAD`` costs the loop both of the things that SHA
+    buys: the prompt template gates its whole rebase-mode commit context
+    on ``replaying_commit_sha``, so the resolver would be asked to fix a
+    commit it is never told the identity of, and ``_advanced_to_a_new_stop``
+    compares SHAs, so an empty one would let any later readable SHA pass
+    as proof that this stop landed. Declining hands the paused rebase to
+    the caller's abort path untouched.
+    """
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "")
+    seen: list[RebaseStop] = []
+
+    resolved = resolve_rebase_in_progress(
+        tmp_path, _TARGET, _accepting_resolver(seen)
+    )
+
+    assert resolved is False
+    assert seen == []
+    assert repo.staged == []
+    assert repo.continue_calls == 0
+
+
 def test_conflict_remaining_error_from_continue_declines(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

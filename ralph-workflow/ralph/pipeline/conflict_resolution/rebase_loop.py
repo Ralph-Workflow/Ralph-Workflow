@@ -245,12 +245,28 @@ def _rebase_base_sha(root: Path) -> str | None:
 def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
     """Describe the commit the rebase is currently stopped on.
 
-    Returns ``None`` when the paused rebase reports no conflicted path.
-    That combination is anomalous -- a stop this loop can act on always
-    has unmerged entries in the index -- and there is nothing a resolver
-    could repair, so declining hands the repository to the caller's
-    abort path untouched rather than guessing.
+    Returns ``None`` when the stopped commit's IDENTITY is unreadable,
+    and when the paused rebase reports no conflicted path.
+
+    Both are fail-closed on purpose. An unreadable ``REBASE_HEAD`` breaks
+    two things at once: the prompt template gates its whole rebase-mode
+    commit context on ``replaying_commit_sha``, so the resolver would be
+    asked to fix a commit it is never told the identity of; and
+    :func:`_advanced_to_a_new_stop` proves a stop landed by comparing
+    SHAs, so an empty one would make ANY later readable SHA look like
+    proof of advancement. A stop with no conflicted path is the other
+    anomaly -- a stop this loop can act on always has unmerged entries in
+    the index -- and there is nothing a resolver could repair there
+    either. Declining hands the repository to the caller's abort path
+    untouched rather than guessing.
     """
+    sha = _rev_parse_rebase_head(root)
+    if not sha:
+        logger.warning(
+            "conflict_resolution: could not read REBASE_HEAD for the paused "
+            "rebase; declining to resolve"
+        )
+        return None
     conflicted = tuple(get_conflicted_files(repo_root=root))
     if not conflicted:
         logger.warning(
@@ -259,7 +275,7 @@ def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
         )
         return None
     return RebaseStop(
-        sha=_rev_parse_rebase_head(root),
+        sha=sha,
         subject=_rebase_head_subject(root),
         conflicted_files=conflicted,
         stop_index=stop_index,

@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
+from loguru import logger
 from pydantic import ConfigDict
 
 from ralph.pydantic_compat import RalphBaseModel
@@ -183,29 +184,51 @@ def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | No
         return None
 
 
-def set_resolving_rebase(workspace_root: Path, resolving: bool) -> None:
+def set_resolving_rebase(workspace_root: Path, resolving: bool) -> bool:
     """Flag (or unflag) the durable record as an in-flight rebase resolution.
 
     Called around the resolve-and-continue loop so a run killed while an
     agent was editing a paused rebase leaves evidence of WHY the rebase
-    was paused. A missing record is not an error: the loop can only run
-    inside an integration that already wrote one, and a record that has
-    since been cleared means the integration finished.
+    was paused.
 
-    Never raises. This is bookkeeping for the operator, and failing an
-    integration because a flag could not be persisted would trade a real
-    capability for a diagnostic.
+    Returns:
+        Whether the durable state on disk now says ``resolving``. That
+        includes the two no-op cases: a record already carrying the
+        wanted value, and NO RECORD FILE at all -- with nothing on disk,
+        recovery has nothing to act on either, so no interrupted-
+        resolution warning is lost by proceeding. ``False`` is returned
+        whenever the durable state was left disagreeing with the caller:
+        a failed write, and also a record file that EXISTS but could not
+        be read back. :func:`read_record` deliberately collapses absent,
+        corrupt and transiently-unreadable into a single ``None``, so
+        the file's existence is what separates "nothing to record" from
+        "something is there and we could not see it"; the latter must
+        not be reported as a persisted flag.
+
+    Never raises. Deciding what an unpersistable flag means belongs to
+    the caller: :mod:`ralph.pipeline.auto_integrate_rebase_merge` refuses
+    to start a resolution it could not record and takes the safe
+    abort-then-endpoint-merge path instead.
     """
     try:
         current = read_record(workspace_root)
-        if current is None or current.resolving_rebase == resolving:
-            return
+        if current is None:
+            return not record_path(workspace_root).exists()
+        if current.resolving_rebase == resolving:
+            return True
         write_record(
             workspace_root,
             current.model_copy(update={"resolving_rebase": resolving}),
         )
-    except Exception:
-        return
+    except Exception as exc:
+        logger.warning(
+            "auto_integrate: could not persist resolving_rebase={} to the "
+            "durable record: {}",
+            resolving,
+            exc,
+        )
+        return False
+    return True
 
 
 def clear_record(workspace_root: Path) -> None:
