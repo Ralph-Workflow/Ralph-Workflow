@@ -21,7 +21,10 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
-from ralph.pipeline.conflict_resolution.status import PHASE_LABEL
+from ralph.pipeline.conflict_resolution.status import (
+    NEUTRAL_PHASE_LABEL,
+    PHASE_LABEL,
+)
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -259,6 +262,45 @@ def test_previous_status_bar_model_is_restored_on_exit(
 
     assert _run(tmp_path, invoke=lambda name, path, index: True, display=display) is True
     assert display.models[-1] is sentinel
+
+
+def test_status_bar_is_not_left_on_the_resolution_label_without_a_prior_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC-05: nothing to restore must still clear the resolution label.
+
+    The pipeline is entered from four seams, one of which is the startup
+    seam, where the run loop's next status-bar push can be a whole phase
+    away. A footer left claiming ``Rebase Conflict Resolution`` after the
+    pipeline has exited reads exactly like the hang the label exists to
+    rule out.
+    """
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    display = _FakeDisplay()
+    assert display.status_bar.last_model is None
+
+    assert _run(tmp_path, invoke=lambda name, path, index: True, display=display) is True
+
+    final = display.models[-1]
+    assert getattr(final, "phase_label", None) == NEUTRAL_PHASE_LABEL
+    assert getattr(final, "phase_label", None) != PHASE_LABEL
+    assert getattr(final, "workspace_root", None) == str(tmp_path)
+
+
+def test_status_bar_clear_tolerates_a_display_that_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Presentation must never break integration, on the clear path too."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+
+    class _ExplodingDisplay(_FakeDisplay):
+        def update_status_bar(self, model: object) -> None:
+            message = "status bar exploded"
+            raise RuntimeError(message)
+
+    display = _ExplodingDisplay()
+
+    assert _run(tmp_path, invoke=lambda name, path, index: True, display=display) is True
 
 
 def test_entry_and_exit_are_announced_to_the_operator(

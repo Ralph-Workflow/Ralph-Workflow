@@ -190,6 +190,11 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             args=("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
             returncode=0, stdout="idempotent write adoption audit ok\n",
         ),
+        ("make", ("test-auto-integrate-e2e",)): _result(
+            command="make",
+            args=("test-auto-integrate-e2e",),
+            returncode=0, stdout="auto-integrate end-to-end ok\n",
+        ),
     }
 
 
@@ -232,7 +237,16 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
+        ("make", ("test-auto-integrate-e2e",)),
     ]
+    # The real-git end-to-end step gets its OWN per-step timeout and is
+    # never charged against the immutable combined test budget.
+    assert runner.calls[-1][3] == verify_module._AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS
+    assert (
+        "auto-integrate end-to-end (make test-auto-integrate-e2e)"
+        not in verify_module._KNOWN_TEST_STEP_LABELS
+    )
+    assert len(verify_module._VERIFY_STEPS) - 1 not in verify_module._BUDGET_TRACKED_STEPS
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS
@@ -367,15 +381,18 @@ def test_run_verify_single_step_within_budget(
     # 16=resource_lifecycle audit, 17=skill_auto_commit audit,
     # 18=public_docstrings audit, 19=terminal_escape_containment audit,
     # 20=repo_structure audit, 21=fsevents_watch_consolidation audit,
-    # 22=log_sink_buffering audit, 23=idempotent_write_adoption audit).
+    # 22=log_sink_buffering audit, 23=idempotent_write_adoption audit,
+    # 24=auto-integrate end-to-end).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
-    # all other steps take 0s. Total: 24 steps x 2 monotonic calls = 48 entries.
+    # all other steps take 0s. Total: 25 steps x 2 monotonic calls = 50 entries.
     times = [
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -570,11 +587,11 @@ def test_run_verify_non_test_steps_not_counted(
     runner = StubRunner(_all_steps_success_responses())
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Twenty-four steps (ruff, mypy, make test, audits, social-proof gate,
+    # Twenty-five steps (ruff, mypy, make test, audits, social-proof gate,
     # resource_lifecycle, skill_auto_commit, public_docstrings,
     # terminal_escape_containment, repo_structure, fsevents_watch_consolidation,
-    # log_sink_buffering, idempotent_write_adoption)
-    # x 2 monotonic calls per step = 48 entries.
+    # log_sink_buffering, idempotent_write_adoption, auto-integrate end-to-end)
+    # x 2 monotonic calls per step = 50 entries.
     times = [
         0.0,
         100.0,
@@ -624,6 +641,8 @@ def test_run_verify_non_test_steps_not_counted(
         2300.0,
         2400.0,
         2400.0,
+        2500.0,
+        2500.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

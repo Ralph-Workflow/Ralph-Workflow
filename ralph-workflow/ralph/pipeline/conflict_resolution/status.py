@@ -30,12 +30,21 @@ if TYPE_CHECKING:
 #: Footer label shown while the resolution pipeline owns the run.
 PHASE_LABEL = "Rebase Conflict Resolution"
 
+#: Neutral footer label pushed when the resolution pipeline exits and
+#: there was no prior model to restore. Deliberately generic: this
+#: module cannot know which phase the run will resume into, and any
+#: label is better than leaving the footer claiming a resolution that
+#: has finished.
+NEUTRAL_PHASE_LABEL = "Running"
+
 #: Channel used for the pipeline's operator-facing warn lines.
 _WARN_CHANNEL = "rebase-conflict"
 
 __all__ = [
+    "NEUTRAL_PHASE_LABEL",
     "PHASE_LABEL",
     "capture_status_bar_model",
+    "clear_conflict_status_bar",
     "emit_conflict_phase_line",
     "push_conflict_status_bar",
     "restore_status_bar",
@@ -103,12 +112,44 @@ def capture_status_bar_model(display: object) -> object | None:
         return None
 
 
+def clear_conflict_status_bar(display: object, workspace_root: Path) -> None:
+    """Push a neutral footer when there is no prior model to restore.
+
+    The resolution pipeline is entered from four seams, including the
+    startup seam, where the next run-loop status-bar push can be a whole
+    phase away. Leaving the footer on
+    :data:`PHASE_LABEL` for that long tells the operator a resolution is
+    still running when it has already finished -- which reads exactly
+    like the hang this phase label exists to rule out.
+
+    Defensive by contract, like every function here: a display that
+    raises is logged at DEBUG and otherwise ignored.
+    """
+    try:
+        model = StatusBarModel(
+            workspace_root=str(workspace_root),
+            phase_label=NEUTRAL_PHASE_LABEL,
+            phase_style=phase_style_for_phase(""),
+        )
+        update = cast(
+            "Callable[[object], None] | None",
+            getattr(display, "update_status_bar", None),
+        )
+        if update is not None:
+            update(model)
+    except Exception as exc:
+        logger.debug(
+            "conflict_resolution: status-bar clear failed (non-fatal): {}", exc
+        )
+
+
 def restore_status_bar(display: object, model: object | None) -> None:
     """Put the pre-resolution footer model back. Never raises.
 
-    A ``None`` model leaves the resolution label in place; the run loop
-    re-pushes the surrounding phase on its next iteration, so the label
-    is transient either way.
+    A ``None`` model means the display exposed no readable footer to
+    capture, so there is nothing to restore verbatim; the caller uses
+    :func:`clear_conflict_status_bar` for that case rather than leaving
+    the resolution label stranded.
     """
     if model is None:
         return

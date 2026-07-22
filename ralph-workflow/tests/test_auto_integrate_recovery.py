@@ -763,7 +763,7 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()
 
-    import ralph.pipeline.auto_integrate as auto_integrate_module
+    import ralph.pipeline.auto_integrate_rebase_merge as auto_integrate_module
 
     def _failing_abort(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated normal-path abort failure")

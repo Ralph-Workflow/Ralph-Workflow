@@ -1014,6 +1014,13 @@ ralph.pipeline.auto_integrate_outcome
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_rebase_merge
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_rebase_merge
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_record
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

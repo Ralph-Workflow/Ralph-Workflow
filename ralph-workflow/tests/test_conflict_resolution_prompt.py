@@ -52,6 +52,22 @@ def test_completion_contract_is_stated(tmp_path: Path) -> None:
     assert "declare_complete" in rendered
 
 
+def test_exiting_without_declare_complete_is_stated_to_be_a_failed_round(
+    tmp_path: Path,
+) -> None:
+    """AC-05: the completion contract is a contract, not a suggestion.
+
+    A resolution session that returns without calling ``declare_complete``
+    is a failed round, and the prompt has to say so: the pipeline's
+    invocation-succeeded input is derived from that call, so an agent
+    that does not know the rule can silently burn a round.
+    """
+    rendered = _render(tmp_path)
+    assert "mcp__ralph__declare_complete" in rendered
+    assert "WITHOUT calling `declare_complete`" in rendered
+    assert "FAILED" in rendered
+
+
 def test_round_counter_is_rendered(tmp_path: Path) -> None:
     assert "Round 2 of 3" in _render(tmp_path, round_index=2)
 
@@ -74,6 +90,27 @@ def test_prompt_carries_no_project_payload(tmp_path: Path) -> None:
         assert forbidden not in rendered
 
 
+def test_prompt_carries_none_of_the_in_graph_payload_headings(
+    tmp_path: Path,
+) -> None:
+    """AC-05: the payload headings the in-graph templates use must be absent.
+
+    The negative contract is the load-bearing one. A resolution agent
+    that can see the run's task or execution plan is an agent that may
+    resume feature work inside an in-progress merge, so no heading that
+    would carry one may survive a future edit of the template.
+    """
+    rendered = _render(tmp_path, round_index=2, surviving=("src/alpha.py",))
+    for heading in (
+        "## Payload",
+        "## Task",
+        "EXECUTION PLAN",
+        "ORIGINAL REQUEST",
+        "CURRENT_PROMPT.md",
+    ):
+        assert heading not in rendered
+
+
 def test_unlistable_conflicts_fall_back_to_a_search_instruction(
     tmp_path: Path,
 ) -> None:
@@ -84,6 +121,16 @@ def test_unlistable_conflicts_fall_back_to_a_search_instruction(
 def test_the_agent_is_told_not_to_run_git(tmp_path: Path) -> None:
     rendered = _render(tmp_path)
     assert "DO NOT run any git command" in rendered
+
+
+def test_the_rendered_prompt_names_the_target_and_every_conflicted_path(
+    tmp_path: Path,
+) -> None:
+    """AC-05: the operator surface is bound to the conflict it is resolving."""
+    rendered = _render(tmp_path, conflicted=("a/one.py", "b/two.md", "c/three.txt"))
+    assert "main" in rendered
+    for path in ("a/one.py", "b/two.md", "c/three.txt"):
+        assert path in rendered
 
 
 def test_rendering_is_idempotent_for_the_same_round(tmp_path: Path) -> None:

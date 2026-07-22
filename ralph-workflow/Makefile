@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e test-auto-integrate-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck policy-citation-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -51,6 +51,18 @@ PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
 # `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
 # this target. Raising it does NOT raise the verify budget.
 LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
+# AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS is the per-suite timeout for
+# the `test-auto-integrate-e2e` target. That target drives real git
+# (clones, worktrees, rebases, conflicted merges) across four
+# integration seams and two repository topologies, so it does not fit
+# inside the 60s per-suite cap that gates `test-subprocess-e2e`.
+#
+# This is a PER-SUITE timeout only. The 60s combined
+# `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
+# this target: its verify step is deliberately absent from
+# ralph/verify.py:_BUDGET_TRACKED_STEPS. Raising it does NOT raise the
+# verify budget.
+AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS ?= 180
 RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -64,6 +76,7 @@ help:
 	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
 	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
 	@echo "  test-live-agy    Run live AGY subprocess tests (excluded from test-subprocess-e2e; longer timeout)"
+	@echo "  test-auto-integrate-e2e Run the real-git auto-integration end-to-end proof (wired into 'make verify')"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
 	@echo "  fmt            Format code with ruff"
@@ -135,6 +148,18 @@ test-subprocess-e2e:
 # so any drift fails CI.
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
+
+# Real-git end-to-end proof of auto-integration. Every file here is
+# marked `subprocess_e2e`, which `make test` (ralph.test_suites) does
+# not collect, so this behaviour would otherwise be proven by no step
+# `make verify` runs -- the rot condition AGENTS.md forbids. The
+# matching verify step is defined in ralph/verify.py:_VERIFY_STEPS.
+#
+# Scoped to a named file list rather than the whole `subprocess_e2e`
+# marker so the verify step stays bounded, and run with the same
+# work-stealing parallelism as `test-subprocess-e2e`.
+test-auto-integrate-e2e:
+	uv run python -m ralph.verify_timeout --suite-timeout $(AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_auto_integrate_conflict_e2e.py tests/test_auto_integrate_clone_conflict_e2e.py tests/test_auto_integrate_worktree_prefix_e2e.py tests/test_auto_integrate_fail_closed_e2e.py tests/test_auto_integrate_end_to_end.py tests/test_auto_integrate_refresh_contract.py tests/test_auto_integrate_seams_e2e.py tests/test_auto_integrate_conflict_seams_e2e.py -q -n $(PYTEST_WORKERS) --dist worksteal
 
 # Real-runtime budget test that runs ``make test`` to assert the 60 s combined
 # test budget. This test consumes ~25 s of wall-clock time by design (it

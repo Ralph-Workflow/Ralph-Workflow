@@ -109,6 +109,14 @@ TESTS_ALLOWLIST: set[str] = {
     # git worktree setup via subprocess.run in test fixtures (real-git
     # subprocess_e2e suite; prefix-colliding sibling worktree regression)
     "test_auto_integrate_worktree_prefix_e2e.py",
+    # real-git fixtures for the four-seam / two-topology proof: linked
+    # worktrees and clones of a local bare origin are built with git
+    # itself, the same convention every sibling auto-integrate e2e file
+    # follows
+    "test_auto_integrate_seams_e2e.py",
+    # real-git fixtures for the conflict chain at the phase-transition
+    # and startup seams
+    "test_auto_integrate_conflict_seams_e2e.py",
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
 }
 

@@ -504,7 +504,7 @@ def test_rebase_conflict_then_clean_merge_records_merged_action(
     no rebase-apply/rebase-merge state, single merge commit, target
     ref equals feature tip.
     """
-    import ralph.pipeline.auto_integrate as _ai_mod
+    import ralph.pipeline.auto_integrate_rebase_merge as _ai_mod
     from ralph.git.rebase.rebase import RebaseConflicts
 
     base = _base_branch(tmp_git_repo)
@@ -526,9 +526,9 @@ def test_rebase_conflict_then_clean_merge_records_merged_action(
 
     monkeypatch.setattr(_ai_mod, "rebase_onto", _fake_rebase_onto)
     # Also patch the ralph.git.rebase.rebase module path that
-    # auto_integrate imports through (rebase_onto is imported at
-    # module load time, so the indirection in _ai_mod is the live
-    # binding).
+    # auto_integrate_rebase_merge imports through (rebase_onto is
+    # imported at module load time, so the indirection in _ai_mod is
+    # the live binding).
     monkeypatch.setattr(
         "ralph.git.rebase.rebase.rebase_onto", _fake_rebase_onto
     )

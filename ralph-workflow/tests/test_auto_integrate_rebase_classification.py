@@ -4,7 +4,8 @@
 rebase`` whose combined stdout/stderr merely CONTAINED the substring
 ``up to date`` into :class:`RebaseNoOp`. A ``RebaseNoOp`` is a
 success-shaped outcome, so
-:func:`ralph.pipeline.auto_integrate._run_rebase_or_merge` skipped the
+:func:`ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`
+skipped the
 endpoint-merge fallback entirely and never aborted the half-applied
 rebase; the leftover ``rebase-apply`` / ``rebase-merge`` directory then
 failed ``check_rebase_preconditions`` for every subsequent integration,

@@ -38,6 +38,7 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.conflict_resolution.status import (
     capture_status_bar_model,
+    clear_conflict_status_bar,
     emit_conflict_phase_line,
     push_conflict_status_bar,
     restore_status_bar,
@@ -136,7 +137,14 @@ def run_conflict_resolution_pipeline(
         emit_conflict_phase_line(display, f"conflict resolution failed: {exc}")
         return False
     finally:
-        restore_status_bar(display, previous_model)
+        # A captured model is restored verbatim. When there was none to
+        # capture, the footer would otherwise keep claiming a running
+        # resolution until the run loop's next push -- which, at the
+        # startup seam, can be a whole phase away.
+        if previous_model is None:
+            clear_conflict_status_bar(display, root)
+        else:
+            restore_status_bar(display, previous_model)
 
 
 def _run_rounds(

@@ -211,7 +211,8 @@ def _rebase_result_from_process(
     alone was a false-success bug -- git prints ``up to date`` inside
     the hint block of a genuinely conflicted rebase, and a
     success-shaped ``RebaseNoOp`` makes
-    :func:`ralph.pipeline.auto_integrate._run_rebase_or_merge` skip the
+    :func:`ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`
+    skip the
     endpoint-merge fallback and leave the unfinished rebase on disk,
     where it fails ``check_rebase_preconditions`` for every later
     integration.

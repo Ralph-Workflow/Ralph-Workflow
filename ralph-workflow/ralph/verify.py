@@ -90,6 +90,13 @@ _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 #: budget. Pinned to a minimum of 5 seconds by an import-time invariant
 #: so a step cannot be silently disabled by lowering this constant.
 
+_AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS: Final = 240.0
+#: PER-STEP wall-clock timeout for the real-git auto-integration
+#: end-to-end step. It does NOT extend the combined test budget: that
+#: step is deliberately absent from ``_BUDGET_TRACKED_STEPS`` and its
+#: label is absent from ``_KNOWN_TEST_STEP_LABELS``, so no real-git
+#: subprocess time is ever charged against ``_TOTAL_TEST_BUDGET_SECONDS``.
+
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
 #: ABSOLUTE and IMMUTABLE combined wall-clock budget for **all** test
 #: suites running sequentially under ``make verify``. Enforced by
@@ -370,6 +377,28 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # Real-git end-to-end proof of auto-integration across all four
+        # seams (startup, after-commit, phase-transition, fan-out join)
+        # and both topologies multiple agents actually run in (linked
+        # worktrees sharing one common git dir, and clones sharing an
+        # origin). Wired here because AGENTS.md forbids a check that
+        # lives only in an opt-in suite the default gate excludes:
+        # every auto-integrate e2e file is marked ``subprocess_e2e``,
+        # which ``make test`` (ralph.test_suites) does not collect, so
+        # this behaviour was previously proven by NO step ``make
+        # verify`` runs and could rot unnoticed.
+        #
+        # NOT a budget-tracked step: its label is deliberately absent
+        # from _KNOWN_TEST_STEP_LABELS and its index absent from
+        # _BUDGET_TRACKED_STEPS, so the ABSOLUTE 60 s
+        # _TOTAL_TEST_BUDGET_SECONDS is untouched. Appended LAST so the
+        # index-based assertions in tests/test_verify.py are not shifted.
+        "auto-integrate end-to-end (make test-auto-integrate-e2e)",
+        "make",
+        ("test-auto-integrate-e2e",),
+        _AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS,
     ),
 )
 

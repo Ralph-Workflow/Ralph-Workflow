@@ -159,7 +159,8 @@ def _ensure_clean_worktree(repo: Repo) -> None:
     too: git refuses non-destructively, and only for the specific
     untracked path that would actually be overwritten. That refusal
     surfaces as ``RebaseFailed``, which
-    :func:`ralph.pipeline.auto_integrate._run_rebase_or_merge` already
+    :func:`ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`
+    already
     routes into the endpoint-merge fallback. Blocking up front instead
     turned a per-file, git-detectable hazard into a run-wide outage:
     one scratch file left by a phase disabled integration for every

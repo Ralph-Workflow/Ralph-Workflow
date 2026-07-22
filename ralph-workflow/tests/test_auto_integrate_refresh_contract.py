@@ -250,6 +250,121 @@ def test_unreachable_refresh_is_recorded_at_the_phase_boundary_no_op(
     assert REFRESH_UNREACHABLE in message
 
 
+def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
+    """Diverge ``feature`` and base on the SAME line so the rebase conflicts."""
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "base_seed.txt", "base seed\n", "base seed")
+    seed = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
+    _run(tmp_git_repo, "checkout", "feature")
+    return base
+
+
+def test_unreachable_refresh_is_recorded_on_the_plain_conflict(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-04: the conflict record says how fresh the pointer was too.
+
+    The success path stamped ``last_refresh`` from the start; every
+    conflict short circuit returned without it, so on exactly the path
+    the operator most needs to diagnose -- integration stopped on a
+    conflict -- nothing reported whether the mainline pointer the
+    decision was made against had even been readable.
+    """
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
+
+    outcome = auto_integrate_after_commit(
+        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert outcome.last_refresh == REFRESH_UNREACHABLE
+
+
+def test_unreachable_refresh_is_recorded_when_the_abort_leaves_a_rebase(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-04: the rebase-in-progress-after-abort short circuit carries it."""
+    import ralph.pipeline.auto_integrate_rebase_merge as _rm_mod
+
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
+
+    def _failing_abort(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("simulated abort failure")
+
+    monkeypatch.setattr(_rm_mod, "abort_rebase", _failing_abort)
+
+    outcome = auto_integrate_after_commit(
+        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert outcome.last_reason == "rebase in-progress after abort"
+    assert outcome.last_refresh == REFRESH_UNREACHABLE
+
+
+def test_unreachable_refresh_is_recorded_when_the_merge_attempt_raises(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-04: the merge-exception short circuit carries it."""
+    import ralph.pipeline.auto_integrate_rebase_merge as _rm_mod
+
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
+    monkeypatch.setattr(
+        _rm_mod, "endpoint_merge_with_resolution", lambda *_a, **_k: None
+    )
+
+    outcome = auto_integrate_after_commit(
+        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert (
+        outcome.last_reason
+        == "rebase conflict followed by merge attempt exception"
+    )
+    assert outcome.last_refresh == REFRESH_UNREACHABLE
+
+
+def test_unreachable_refresh_is_recorded_on_the_resolution_failed_record(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-04: the resolution-failed record carries it."""
+    import ralph.pipeline.auto_integrate_rebase_merge as _rm_mod
+    from ralph.git.merge import MergeResult
+    from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
+
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
+    monkeypatch.setattr(
+        _rm_mod,
+        "endpoint_merge_with_resolution",
+        lambda *_a, **_k: MergeResult(outcome=RESOLUTION_FAILED),
+    )
+
+    outcome = auto_integrate_after_commit(
+        _build_config(target=base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=lambda *_a, **_k: False,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert outcome.last_reason == "conflict resolution failed; merge aborted"
+    assert outcome.last_refresh == REFRESH_UNREACHABLE
+
+
 def test_healthy_refresh_keeps_the_phase_boundary_no_op_silent(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

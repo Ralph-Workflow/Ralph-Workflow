@@ -110,7 +110,7 @@ def test_rebase_failed_falls_back_to_endpoint_merge(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A rebase failure (not just a conflict) still tries the endpoint merge."""
-    import ralph.pipeline.auto_integrate as _ai_mod
+    import ralph.pipeline.auto_integrate_rebase_merge as _ai_mod
     from ralph.git.rebase._rebase_kind import RebaseKind
     from ralph.git.rebase.rebase import RebaseFailed
     from ralph.git.rebase.rebase_kinds import RebaseErrorKind
