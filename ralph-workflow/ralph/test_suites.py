@@ -54,17 +54,25 @@ if TYPE_CHECKING:
 
 
 # Default: capped ``auto``. The 1.0 s per-test ITIMER_REAL budget charges
-# wall clock, so eight pytest workers plus real-git child processes starved
-# trivial tests on a 12-core host. Four workers passed 11819 tests in
-# 38.00 s, 31.74 s, and 34.37 s, but the current suite can exceed its
-# immutable 60-second wall-clock limit under four concurrent workers; two
-# workers complete it in 42.79 s. ``loadfile`` scheduling preserves file isolation.
+# wall clock, so the worker count has both a floor and a ceiling: too few
+# workers and the suite runs past the immutable 60-second combined budget,
+# too many and a trivial test is starved past its own 1 s cap.
+#
+# The cap was 2 when the suite held ~11.8k tests. At 12,137 collected tests
+# that no longer clears the floor -- measured on a 12-core host, two workers
+# need ~160 s and four reach only ~50 % of the suite before the 60 s cap
+# fires. Eight workers complete the same suite (12111 passed, 26 skipped)
+# in 38.09 s with zero per-test SIGALRM failures, so the cap is 8.
+# ``loadfile`` scheduling preserves file isolation.
+#
 # This is a concurrency cap, not a budget change:
 # ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
 # ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1.0) are unchanged. Override via
-# the ``PYTEST_WORKERS`` env var if needed.
+# the ``PYTEST_WORKERS`` env var if needed. Note that ``make test`` exports
+# ``PYTEST_WORKERS`` from the Makefile, so this cap governs only the
+# ``auto`` path (a bare ``python -m ralph.test_suites`` with no env var).
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 2
+_MAX_PYTEST_WORKERS = 8
 
 
 def _pytest_workers() -> str:

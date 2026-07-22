@@ -2,15 +2,23 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 4 — the 1.0 s SIGALRM budget charges wall clock, so eight pytest
-# workers plus real-git children over-subscribed a 12-core host and caused
-# spurious failures. Four workers passed 11819 tests in 38.00 s, 31.74 s, and
-# 34.37 s, faster than eight workers' 44.61 s contention run. The previous
-# ``auto`` default bypassed the Python-side cap on raw targets (test-unit /
-# test-integration / test-subprocess-e2e / test-cov interpolate
-# ``-n $(PYTEST_WORKERS)`` literally), so this exported default governs both
-# ralph.test_suites and raw-target paths. Keep conditional assignment so
-# operators can override:
+# Default: 8 — the 1.0 s SIGALRM budget charges wall clock, so the worker
+# count has a floor (too few workers and the suite runs past the immutable
+# 60 s combined budget) and a ceiling (too many workers and a trivial test
+# is starved past its own 1 s cap). The suite has grown to 12,137 collected
+# tests, and four workers no longer clear the floor: a measured `make test`
+# reached only ~50 % of the suite when the 60 s cap fired, and six workers
+# reached ~96 %. Eight workers on this 12-core host completed the whole
+# budget-tracked suite — 12111 passed, 26 skipped — in 38.09 s with zero
+# per-test SIGALRM failures, leaving ~22 s of headroom under the 60 s
+# budget. The earlier note that eight workers cost 44.61 s in contention
+# predates that growth and no longer describes this suite.
+#
+# The raw targets (test-unit / test-integration / test-subprocess-e2e /
+# test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
+# literally, so this exported default governs both ralph.test_suites and
+# the raw-target paths. Keep conditional assignment so operators can
+# override:
 #   PYTEST_WORKERS=auto make test
 #   PYTEST_WORKERS=2  make test
 #   PYTEST_WORKERS=12 make test   # may exceed 1s per-test under load
@@ -21,7 +29,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 4
+PYTEST_WORKERS ?= 8
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
 # ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points
