@@ -776,7 +776,9 @@ def _default_lifecycle_deps() -> LifecycleDeps:
 
 
 def _create_session_file(root: Path, session: SessionLike) -> Path:
-    session_dir = root / ".agent" / "tmp"
+    # The runtime clears .agent/tmp between agent attempts. Session metadata
+    # must outlive that cleanup for the whole MCP server lifetime.
+    session_dir = root / ".agent"
     session_dir.mkdir(parents=True, exist_ok=True)
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json", dir=session_dir)
     os.close(fd)
