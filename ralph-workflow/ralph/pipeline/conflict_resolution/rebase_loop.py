@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from loguru import logger
 
@@ -54,13 +54,15 @@ from ralph.pipeline.conflict_resolution.graph import (
     route_after_stop,
 )
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 #: Placeholder subject used when the stopped commit's subject could not
 #: be read. The stop is still resolvable -- the conflicted paths are what
 #: the agent actually needs -- so an unreadable subject must not abort it.
 _UNKNOWN_SUBJECT = "(subject unavailable)"
+
+#: Where git records the commit a paused rebase is replaying onto, newest
+#: backend first. ``rebase-merge`` is the default backend; ``rebase-apply``
+#: is still produced by ``--apply`` and by older gits.
+_REBASE_ONTO_FILES = ("rebase-merge/onto", "rebase-apply/onto")
 
 __all__ = [
     "RebaseStop",
@@ -106,14 +108,19 @@ def resolve_rebase_in_progress(
 
     Args:
         root: Repository root holding the paused rebase.
-        target: Branch being rebased onto, used to verify completion.
+        target: Branch being rebased onto, passed through to the
+            resolver as context and used as the completion check's
+            fallback when the replay's own base cannot be read.
         resolver: Called once per stop to resolve that stop's conflicts.
 
     Returns:
         ``True`` only when the rebase finished AND ``HEAD`` is a
-        descendant of ``target``. ``False`` for every other outcome,
-        including a declining resolver, a surviving conflict marker, a
-        refused continuation and an exhausted stop budget.
+        descendant of the commit the replay was landing on. ``False``
+        for every other outcome, including a declining resolver, a
+        surviving conflict marker, a refused continuation and an
+        exhausted stop budget. A ``target`` a sibling moved during the
+        resolution is NOT one of those outcomes -- see
+        :func:`_resolve_stops`.
 
     Never raises. The caller treats ``False`` as "resolution declined"
     and falls through to the pre-existing abort-then-endpoint-merge
@@ -137,6 +144,17 @@ def _resolve_stops(
     resolver: RebaseStopResolver,
 ) -> bool:
     """Body of the bounded loop; see :func:`resolve_rebase_in_progress`."""
+    # Completion is proved against the commit this replay is actually
+    # landing on, pinned BEFORE the first resolver call -- not against
+    # the target NAME. A resolution session runs for as long as an agent
+    # takes, and in a shared-checkout fleet a sibling lands on the
+    # mainline during that window routinely. Re-reading the name at the
+    # end would then report a perfectly good replay as "not a descendant
+    # of target" and throw it away for an endpoint merge, burying the
+    # resolved work under a merge commit. A target that moved is the
+    # bounded retry loop's job (it re-observes and replays onto the new
+    # tip); it is not evidence that this rebase failed.
+    base = _rebase_base_sha(root) or target
     stops_spent = 0
     while rebase_in_progress_at(root):
         if not _resolve_one_stop(root, target, resolver, stops_spent + 1):
@@ -153,7 +171,7 @@ def _resolve_stops(
             )
             return False
 
-    return verify_rebase_completed_at(root, target)
+    return verify_rebase_completed_at(root, base)
 
 
 def _resolve_one_stop(
@@ -193,6 +211,35 @@ def _resolve_one_stop(
         and _stage_and_prove(root, stop)
         and _continue_past(root, stop)
     )
+
+
+def _rebase_base_sha(root: Path) -> str | None:
+    """Commit the paused rebase is replaying onto, or ``None`` if unreadable.
+
+    Read through ``git rev-parse --git-path`` rather than by joining
+    ``.git`` onto ``root``: this loop runs in LINKED worktrees, whose
+    rebase state lives under the per-worktree git dir, not the common
+    one. ``None`` is a benign answer -- the caller falls back to the
+    branch name, i.e. exactly the pre-existing behaviour.
+    """
+    for relative in _REBASE_ONTO_FILES:
+        result = run_git(
+            ("rev-parse", "--git-path", relative),
+            cwd=root,
+            label="git-rebase-onto-path",
+        )
+        if result.returncode != 0:
+            return None
+        onto = Path(result.stdout.strip())
+        if not onto.is_absolute():
+            onto = root / onto
+        try:
+            sha = onto.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if sha:
+            return sha
+    return None
 
 
 def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:

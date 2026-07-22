@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -46,6 +47,9 @@ from ralph.pipeline.auto_integrate_sync import (
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution import RebaseStop
+
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 #: Prefix-sharing branch names, re-pinning the regression recorded in
@@ -53,6 +57,10 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 #: ``wt-040-fix-autorebase`` must not read as holding ``wt-040``.
 _SIBLING_BRANCH = "wt-040"
 _FEATURE_BRANCH = "wt-040-fix-autorebase"
+
+#: Content a stub resolver writes over a conflict, so the assertions
+#: can tell a real resolution apart from either side winning.
+_RESOLVED_MARKER = "resolved by the stub resolver\n"
 
 
 def _run(
@@ -115,6 +123,39 @@ def _fleet(tmp_git_repo: Path, tmp_path: Path) -> tuple[str, Path]:
     return target, feature
 
 
+def _fleet_with_a_conflicting_target_edit(
+    tmp_git_repo: Path, tmp_path: Path
+) -> tuple[str, Path]:
+    """A fleet whose feature commit conflicts with the mainline.
+
+    The conflict is not the point -- it is the only deterministic way to
+    pause an integration mid-flight at a production seam, so a sibling
+    can advance the target between the first observation and the
+    fast-forward.
+    """
+    target = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed shared")
+    _run(tmp_git_repo, "remote", "remove", "origin")
+
+    feature = tmp_path / "wt-feature"
+    _run(tmp_git_repo, "worktree", "add", "-b", _FEATURE_BRANCH, str(feature))
+    _commit(feature, "shared.txt", "feature version\n", "feature edit")
+    _commit(tmp_git_repo, "shared.txt", "target version\n", "target edit")
+    return target, feature
+
+
+def _rebase_dirs(repo_root: Path) -> list[Path]:
+    """Rebase state directories surviving in ``repo_root``'s git dir."""
+    git_dir = Path(
+        _run(repo_root, "rev-parse", "--absolute-git-dir").stdout.strip()
+    )
+    return [
+        path
+        for path in (git_dir / "rebase-merge", git_dir / "rebase-apply")
+        if path.exists()
+    ]
+
+
 def test_no_origin_with_a_local_target_reports_the_local_fleet_outcome(
     tmp_git_repo: Path, tmp_path: Path
 ) -> None:
@@ -165,10 +206,10 @@ def test_the_observation_reads_the_ref_a_sibling_just_advanced(
     assert observe_target_sha(feature, target) == advanced
 
 
-def test_a_sibling_advancing_the_target_mid_run_is_still_landed(
+def test_a_target_advanced_before_the_run_is_rebased_onto_and_landed(
     tmp_git_repo: Path, tmp_path: Path
 ) -> None:
-    """The fleet requirement end to end: rebase onto the NEW tip and land."""
+    """The easy half: a target already ahead when integration starts."""
     target, feature = _fleet(tmp_git_repo, tmp_path)
     # A sibling agent lands on the mainline after this worktree committed.
     advanced = _commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed")
@@ -185,6 +226,82 @@ def test_a_sibling_advancing_the_target_mid_run_is_still_landed(
         _run(feature, "merge-base", "--is-ancestor", advanced, "HEAD").returncode == 0
     )
     assert branch_sha(feature, target) == feature_head
+
+
+def test_a_sibling_advancing_the_target_mid_run_is_still_landed(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    """The fleet requirement end to end: the target moves DURING the run.
+
+    A target that is already ahead when integration starts is the easy
+    half -- the very first observation sees the new tip. The half that
+    actually needs proving is the race AC-04 is about: integration takes
+    its observation, starts replaying, and only THEN does a sibling land
+    on the mainline. The landing must notice, re-observe, replay onto the
+    new tip and still fast-forward.
+
+    The synchronisation point is deterministic and needs no sleeps: the
+    production ``rebase_stop_resolver`` seam is called while the rebase
+    is paused mid-replay, which is precisely the window between the
+    initial observation and the fast-forward. The sibling commit is made
+    from inside it, in the PRIMARY worktree, exactly as another agent in
+    the fleet would.
+
+    The assertions are deliberately narrow enough that ONLY the retry
+    can satisfy them. The endpoint-merge fallback would also leave the
+    mainline at the feature tip, so "it landed" proves nothing on its
+    own; a linear history with ``last_action == 'rebased'`` can be
+    reached only by replaying onto the moved target on attempt 2.
+    Pinning ``_MAX_INTEGRATION_ATTEMPTS`` to 1 must make this test fail.
+    """
+    target, feature = _fleet_with_a_conflicting_target_edit(tmp_git_repo, tmp_path)
+    target_at_first_observation = observe_target_sha(feature, target)
+    advanced: list[str] = []
+
+    def _resolve_and_let_a_sibling_land(
+        root: Path, _target: str, stop: RebaseStop
+    ) -> bool:
+        """Resolve this stop; a sibling lands while we are paused here."""
+        if not advanced:
+            advanced.append(
+                _commit(
+                    tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed"
+                )
+            )
+        for relative in stop.conflicted_files:
+            (root / relative).write_text(_RESOLVED_MARKER, encoding="utf-8")
+        return True
+
+    outcome = auto_integrate_after_commit(
+        _build_config(target),
+        WorkspaceScope(feature),
+        RebaseState(),
+        rebase_stop_resolver=_resolve_and_let_a_sibling_land,
+    )
+
+    assert outcome is not None
+    # The sibling really did land after integration's first observation.
+    assert advanced and advanced[0] != target_at_first_observation
+    assert outcome.last_refresh == REFRESH_LOCAL_FLEET
+    assert outcome.fast_forwarded is True
+    # The in-place resolution was KEPT and replayed, not discarded for
+    # an endpoint merge: that fallback would report 'merged' here.
+    assert outcome.last_action == "rebased"
+    feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
+    # The retry re-observed the moved target and replayed onto it...
+    assert (
+        _run(
+            feature, "merge-base", "--is-ancestor", advanced[0], "HEAD"
+        ).returncode
+        == 0
+    )
+    # ...linearly, so no merge commit papered over the moved target...
+    assert _run(feature, "log", "--merges", "--format=%H").stdout.strip() == ""
+    # ...the resolved content survived the second replay...
+    assert _run(feature, "show", "HEAD:shared.txt").stdout == _RESOLVED_MARKER
+    # ...and the mainline pointer ended up at the feature tip.
+    assert branch_sha(feature, target) == feature_head
+    assert _rebase_dirs(feature) == []
 
 
 def test_a_prefix_sharing_sibling_branch_does_not_block_the_rebase(

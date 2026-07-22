@@ -41,6 +41,10 @@ if TYPE_CHECKING:
 
 _TARGET = "main"
 _CONFLICTED = ["src/alpha.py"]
+#: The commit a paused rebase is replaying onto, as git records it in
+#: ``rebase-merge/onto``. Completion is proved against THIS, not against
+#: the target name a fleet sibling can move mid-resolution.
+_BASE_SHA = "ba5e0000000000000000000000000000000000ba"
 
 
 class _FakeRepo:
@@ -106,6 +110,7 @@ def _install_seams(
     )
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _r: list(unmerged))
     monkeypatch.setattr(loop_module, "continue_rebase_at", repo.continue_rebase)
+    monkeypatch.setattr(loop_module, "_rebase_base_sha", lambda _root: _BASE_SHA)
     monkeypatch.setattr(
         loop_module, "verify_rebase_completed_at", lambda _r, _t: verified
     )
@@ -457,10 +462,61 @@ def test_an_unexpected_exception_declines_without_propagating(
     )
 
 
+def test_completion_is_proved_against_the_pinned_replay_base(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The completion check must not re-read a ref a sibling can move.
+
+    A resolution session is long, and in a shared-checkout fleet the
+    mainline moves during it routinely. Verifying against the target
+    NAME would report a finished replay as "not a descendant of target"
+    the moment a sibling landed, discarding a good resolution in favour
+    of an endpoint merge. The base recorded in ``rebase-merge/onto`` at
+    the start of the loop is the only stable answer.
+    """
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    verified_against: list[str] = []
+
+    def _verify(_root: Path, upstream: str) -> bool:
+        verified_against.append(upstream)
+        return True
+
+    monkeypatch.setattr(loop_module, "verify_rebase_completed_at", _verify)
+
+    assert (
+        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([]))
+        is True
+    )
+    assert verified_against == [_BASE_SHA]
+
+
+def test_an_unreadable_replay_base_falls_back_to_the_target_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No ``onto`` file to read: verify exactly as before this seam existed."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(loop_module, "_rebase_base_sha", lambda _root: None)
+    verified_against: list[str] = []
+
+    def _verify(_root: Path, upstream: str) -> bool:
+        verified_against.append(upstream)
+        return True
+
+    monkeypatch.setattr(loop_module, "verify_rebase_completed_at", _verify)
+
+    assert (
+        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([]))
+        is True
+    )
+    assert verified_against == [_TARGET]
+
+
 def test_an_unverifiable_completion_declines(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """HEAD not descending from the target is not a resolved rebase."""
+    """HEAD not descending from the replay base is not a resolved rebase."""
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo, verified=False)
     seen: list[RebaseStop] = []

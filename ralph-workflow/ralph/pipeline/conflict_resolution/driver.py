@@ -362,10 +362,17 @@ def _run_rounds(
                 cap=round_cap,
             )
             if route == TERMINAL_RESOLVED:
+                # Phase feedback has to name the operation actually in
+                # flight: the merge path commits, the rebase path stages
+                # the paths and hands back to ``git rebase --continue``.
                 emit_conflict_phase_line(
                     display,
                     f"conflicts resolved in round {round_index}; "
-                    "verifying and committing the merge",
+                    + (
+                        "verifying and continuing the rebase"
+                        if stop is not None
+                        else "verifying and committing the merge"
+                    ),
                 )
                 return True
             emit_conflict_phase_line(

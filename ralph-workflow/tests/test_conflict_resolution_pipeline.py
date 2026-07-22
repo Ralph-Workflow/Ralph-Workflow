@@ -19,8 +19,12 @@ from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.driver import (
+    run_conflict_resolution_pipeline,
+    run_rebase_conflict_resolution_pipeline,
+)
 from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
+from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.conflict_resolution.status import (
     NEUTRAL_PHASE_LABEL,
     PHASE_LABEL,
@@ -325,3 +329,52 @@ def test_entry_and_exit_are_announced_to_the_operator(
     assert "entering rebase conflict resolution" in joined
     assert "abandoning conflict resolution" in joined
     assert "src/alpha.py" in joined
+
+
+def test_merge_mode_success_reports_committing_the_merge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The endpoint-merge path really does commit a merge next."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    display = _FakeDisplay()
+
+    assert _run(tmp_path, invoke=lambda name, path, index: True, display=display) is True
+
+    joined = "\n".join(display.warn_lines)
+    assert "conflicts resolved in round 1; verifying and committing the merge" in joined
+
+
+def test_rebase_mode_success_reports_continuing_the_rebase(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The rebase path stages and continues; it commits no merge.
+
+    Claiming a merge commit here is observably wrong phase feedback for
+    the dedicated rebase-conflict workflow, so the wording is asserted.
+    """
+    _install_seams(monkeypatch, unmerged=[], surviving_per_round=[[]])
+    display = _FakeDisplay()
+
+    resolved = run_rebase_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        stop=RebaseStop(
+            sha="0123456789abcdef",
+            subject="feat: add alpha",
+            conflicted_files=tuple(_CONFLICTED),
+            stop_index=1,
+            stop_cap=4,
+        ),
+        config=_config(),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=display,
+        display_context=None,
+        invoke=lambda name, path, index: True,
+    )
+
+    assert resolved is True
+    joined = "\n".join(display.warn_lines)
+    assert "conflicts resolved in round 1; verifying and continuing the rebase" in joined
+    assert "committing the merge" not in joined
