@@ -77,3 +77,22 @@ class RebaseState(RalphBaseModel):
     # carried count.
     last_conflict_feature_sha: str | None = None
     last_conflict_target_sha: str | None = None
+
+    # ``recovery_record_retained`` marks a startup crash-recovery outcome
+    # that deliberately LEFT the durable ``IntegrationRecord`` on disk for
+    # the next startup to retry (a failed abort, a failed reset, a target
+    # pointer that could not be refreshed, a transient fast-forward
+    # failure). Recovery still owns that record, so the caller must not
+    # begin a fresh integration in the same startup: ``_integrate_once``
+    # writes a new ``IntegrationRecord(phase='integrating', ...)`` before
+    # it mutates anything, which would overwrite the only durable
+    # metadata describing the interrupted operation.
+    #
+    # This is a STRUCTURED flag on purpose. The retention fact used to be
+    # legible only from the free-form ``last_reason`` display text, which
+    # no caller may parse. Produced by
+    # ``ralph.pipeline.auto_integrate_recovery`` and read through its
+    # ``recovery_retained_record`` predicate; defaulted, so legacy
+    # checkpoints load unchanged and conservatively read as "not
+    # retained".
+    recovery_record_retained: bool = False

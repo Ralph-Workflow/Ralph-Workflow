@@ -50,13 +50,50 @@ _ACTION_SKIPPED = "skipped"
 _ACTION_RECOVERED = "recovered"
 
 
-def _record_skip(*, reason: str, target: str | None) -> RebaseState:
-    """Build a ``RebaseState`` recording a recovery skip outcome."""
+def recovery_retained_record(state: RebaseState | None) -> bool:
+    """Whether ``state`` came back still OWNING the durable record.
+
+    :func:`recover_incomplete_integration` has two shapes of outcome.
+    Either it reconciled the interrupted operation -- cleared the
+    durable :class:`~ralph.pipeline.auto_integrate_record.IntegrationRecord`
+    after proving the feature branch was restored or the fast-forward
+    landed -- or it hit a transient failure and deliberately LEFT the
+    record on disk so the next startup can retry it.
+
+    In the second shape recovery is not finished, and the caller must
+    NOT start a fresh integration in the same startup:
+    ``auto_integrate._integrate_once`` writes a new
+    ``IntegrationRecord(phase='integrating', ...)`` before it touches
+    git, which overwrites the only durable metadata describing the
+    still-unreconciled operation -- the pre-integration feature SHA a
+    later recovery needs to restore, and the target the interrupted
+    landing was aimed at.
+
+    Callers read the retention fact THROUGH this predicate rather than
+    from ``last_reason``: that string is operator display text, is
+    formatted differently on every branch, and interpolates exception
+    messages. ``None`` (no record existed, recovery was a no-op) is not
+    retained.
+    """
+    return state is not None and state.recovery_record_retained
+
+
+def _record_skip(
+    *, reason: str, target: str | None, record_retained: bool = False
+) -> RebaseState:
+    """Build a ``RebaseState`` recording a recovery skip outcome.
+
+    ``record_retained`` marks the skips that left the durable record on
+    disk for the next startup to retry. It defaults to ``False`` so a
+    skip only claims ownership when its branch explicitly says so; see
+    :func:`recovery_retained_record`.
+    """
     return RebaseState(
         last_action=_ACTION_SKIPPED,
         last_reason=reason,
         last_target=target,
         fast_forwarded=False,
+        recovery_record_retained=record_retained,
     )
 
 
@@ -161,6 +198,7 @@ def _continue_fast_forward_from_record(
                     " record retained for retry"
                 ),
                 target=record.target,
+                record_retained=True,
             ),
             refresh,
         )
@@ -233,13 +271,10 @@ def _land_and_reconcile(
     if ff_failed or "advanced concurrently" not in skip_reason:
         # Transient failure: retain the record for retry.
         return record_refresh(
-            RebaseState(
-                last_action=_ACTION_SKIPPED,
-                last_reason=(
-                    f"recovery: {skip_reason}; record retained for retry"
-                ),
-                last_target=record.target,
-                fast_forwarded=False,
+            _record_skip(
+                reason=f"recovery: {skip_reason}; record retained for retry",
+                target=record.target,
+                record_retained=True,
             ),
             refresh,
         )
@@ -288,6 +323,12 @@ def recover_incomplete_integration(
       phase='integrating') OR the fast-forward reconciled cleanly
       (for phase='integrated'). Any failure retains the record so
       the next run can retry the recovery.
+    * Every outcome that RETAINS the record sets
+      ``RebaseState.recovery_record_retained``, which callers read
+      through :func:`recovery_retained_record`. A caller that sees it
+      must not start a fresh integration in the same startup: the
+      integration writes its own durable record before mutating git
+      and would overwrite the unreconciled one.
 
     Args:
         workspace_scope: Scope whose root holds the durable record.
@@ -374,14 +415,13 @@ def recover_incomplete_integration(
                 and _head_matches_sha(root, record.pre_feature_sha)
             )
             if not restored_ok:
-                return RebaseState(
-                    last_action=_ACTION_SKIPPED,
-                    last_reason=(
+                return _record_skip(
+                    reason=(
                         "recovery: feature branch not restored, record"
                         " retained for retry"
                     ),
-                    last_target=record.target,
-                    fast_forwarded=False,
+                    target=record.target,
+                    record_retained=True,
                 )
             _clear_record(root)
             return RebaseState(
@@ -396,17 +436,24 @@ def recover_incomplete_integration(
         # it while an owned merge may still be in flight would strand
         # the repository with no ownership marker.
         if abort_failed:
-            return RebaseState(
-                last_action=_ACTION_SKIPPED,
-                last_reason=(
+            return _record_skip(
+                reason=(
                     "recovery: owned merge not proven aborted, record"
                     " retained for retry"
                 ),
-                last_target=record.target,
-                fast_forwarded=False,
+                target=record.target,
+                record_retained=True,
             )
         return _continue_fast_forward_from_record(root, record, config)
     except Exception as exc:
+        # Deliberately NOT marked ``record_retained``. This is the
+        # catch-all for an unexpected failure anywhere above, including
+        # before the record was even read, so it cannot honestly claim
+        # ownership of a record it may never have seen. Claiming it
+        # would gate the startup catch-up behind a fault that has no
+        # bounded end, which is the opposite of recovery's fail-open
+        # contract. The named retention branches above are the ones that
+        # know a record is on disk.
         logger.warning("recover_incomplete_integration failed: {}", exc)
         return _record_skip(
             reason=f"recovery failed: {exc}", target=None

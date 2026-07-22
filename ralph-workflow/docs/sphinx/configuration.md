@@ -265,6 +265,33 @@ Auto-integration does **not** run only after a commit. With
    so it can never abort a worker: when its dependencies are
    unavailable the worker simply runs with no integration.
 
+Seams 3 and 4 both begin with **crash recovery** of any integration a
+previous process was interrupted in the middle of, and recovery either
+reconciles that interruption -- restoring the feature branch, or
+finishing the unfinished fast-forward -- and clears its durable record,
+or hits a transient failure (a failed abort, a failed reset, a target
+pointer that could not be refreshed, a fast-forward that raised) and
+deliberately **keeps** the record on disk for the next startup to retry.
+When the record is kept, **that startup's catch-up integration is
+deferred**: an integration writes its own durable record before it
+touches git, which would overwrite the retained one and lose the
+pre-integration feature SHA a later recovery needs in order to restore
+the branch. The deferral prints an `auto-integrate:` warn line naming
+the retained reason, so a run that skipped its catch-up says why rather
+than looking like auto-integration did nothing. At seam 3 the retained
+verdict is also written to the run checkpoint; at seam 4 it is returned
+to the worker's caller, since a worker keeps no run checkpoint of its
+own. A recovery that cleared its record proceeds to the catch-up in the
+same startup as usual.
+
+The deferral is scoped to that one seam, and deliberately so. The
+later in-run seams -- the commit seam, the eleven phase boundaries and
+the parallel worker's post-phase boundary -- are **not** gated on it,
+because gating them would disable auto-integration for the whole run
+over a transient fault and strand the agent off the shared mainline,
+which is the failure this feature exists to prevent. Recovery retries
+the retained record at the next process startup.
+
 A fifth seam exists in the code at **the Ralph-managed parallel fan-out
 join**, reached when parallel work units are joined back together. It is
 **dormant** under the bundled `dispatch_mode = "agent_subagents"`, which

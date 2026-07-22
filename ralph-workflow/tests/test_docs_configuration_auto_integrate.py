@@ -340,3 +340,43 @@ def test_configuration_md_documents_the_bounded_jittered_landing_backoff() -> No
         assert token in lowered, (
             f"the page must document the backoff shape ({token!r})"
         )
+
+
+def test_configuration_md_documents_the_deferred_catch_up_after_recovery() -> None:
+    """The page must explain a startup that recovers but does NOT catch up.
+
+    That combination looks exactly like the reported "auto rebase does
+    nothing", so the reference has to name the cause: crash recovery
+    still owns the durable record, and integrating over it would destroy
+    the pre-integration feature SHA a later recovery needs.
+    """
+    section = _skip_section(_PATH.read_text())
+    lowered = section.lower()
+    assert "crash recovery" in lowered, (
+        "the section must name crash recovery as the first step of the "
+        "startup and parallel-worker seams"
+    )
+    for token in (
+        "keeps** the record on disk",
+        "catch-up integration is deferred",
+        "writes its own durable record before it",
+        "pre-integration feature sha",
+    ):
+        assert token in lowered, (
+            f"the page must document the retained-record deferral ({token!r})"
+        )
+    assert "cleared its record proceeds to the catch-up" in lowered, (
+        "the page must also state that a reconciled recovery still catches "
+        "up, or an operator would read the deferral as unconditional"
+    )
+    # Load-bearing: the deferral gates ONLY the startup catch-up. The
+    # commit seam and the phase boundaries still integrate, so a page
+    # that implied recovery holds ownership for the whole run would be
+    # documenting behaviour the code does not have.
+    assert "scoped to that one seam" in lowered, (
+        "the page must scope the deferral to the startup seam"
+    )
+    assert "are **not** gated on it" in lowered, (
+        "the page must state that the in-run seams keep integrating, or it "
+        "promises an ownership window the code does not enforce"
+    )

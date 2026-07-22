@@ -25,10 +25,14 @@ from ralph.display.parallel_display import (
 )
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
-from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_on_phase_transition,
+    recovery_retained_record,
+)
 from ralph.pipeline.auto_integrate_agent import (
     build_agent_conflict_resolver,
     build_agent_rebase_stop_resolver,
+    emit_integration_warn_line,
 )
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
@@ -896,6 +900,25 @@ def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
     return WAITING_STATUS_INTERVAL_SECONDS
 
 
+def _announce_deferred_startup_integration(
+    ctx: _LoopContext, recovered: RebaseState
+) -> None:
+    """Tell the operator why the startup catch-up was skipped this run.
+
+    A deferral that only appeared in the log file would read exactly
+    like the reported "auto rebase silently does nothing", so the
+    retained-record reason goes to the transcript through the same
+    duck-typed warn seam every other integration decline uses. Never
+    raises: a display that cannot take the line must not abort startup.
+    """
+    with suppress(Exception):
+        emit_integration_warn_line(
+            ctx.active_display,
+            "startup catch-up deferred: crash recovery still owns the"
+            f" durable integration record ({recovered.last_reason})",
+        )
+
+
 def _apply_startup_rebase_outcomes(
     state: PipelineState,
     ctx: _LoopContext,
@@ -909,6 +932,22 @@ def _apply_startup_rebase_outcomes(
     never sees the recovered verdict in the next receipt. The startup
     catch-up then integrates a stale branch onto the target BEFORE the
     first phase so planning never reads old code.
+
+    The catch-up is SKIPPED when recovery came back still owning the
+    durable integration record
+    (:func:`~ralph.pipeline.auto_integrate_recovery.recovery_retained_record`).
+    Integrating there would write a fresh
+    ``IntegrationRecord(phase='integrating', ...)`` over the retained
+    one before any git mutation, destroying the pre-integration feature
+    SHA the next recovery attempt needs.
+
+    That skip is scoped to THIS seam only. The in-run seams -- the
+    commit seam and the phase boundaries -- are deliberately not gated
+    on it: gating them would disable auto-integration for the whole run
+    over a transient recovery fault and strand this agent off the
+    shared mainline, which is the failure auto-integration exists to
+    prevent. The retained record is retried by recovery at the next
+    process startup.
     """
     recovered_rebase = _run_auto_integrate_recovery_preamble(
         ctx.workspace_scope, ctx.config
@@ -916,6 +955,16 @@ def _apply_startup_rebase_outcomes(
     if recovered_rebase is not None:
         state = state.copy_with(rebase=recovered_rebase)
         _save_recovered_rebase_checkpoint(state, ctx)
+        if recovery_retained_record(recovered_rebase):
+            # Recovery could not reconcile the interrupted integration
+            # and left its durable record on disk for the next startup.
+            # That record is still the only description of the
+            # interrupted operation, and the startup catch-up below
+            # would overwrite it with a record of its OWN before
+            # touching git. Hand this startup back to recovery instead;
+            # the checkpoint already carries the retained outcome.
+            _announce_deferred_startup_integration(ctx, recovered_rebase)
+            return state
     startup_rebase = _run_startup_integration(ctx)
     if startup_rebase is not None:
         state = state.copy_with(rebase=startup_rebase)

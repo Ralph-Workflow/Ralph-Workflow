@@ -104,6 +104,7 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_recovery import (
     recover_incomplete_integration,
+    recovery_retained_record,
 )
 from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
@@ -987,5 +988,6 @@ __all__ = [
     "auto_integrate_after_commit",
     "auto_integrate_on_phase_transition",
     "recover_incomplete_integration",
+    "recovery_retained_record",
     "resolve_integration_target",
 ]

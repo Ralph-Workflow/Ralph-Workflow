@@ -26,6 +26,7 @@ value, and records a conflict rather than resolving one.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,6 +41,7 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition,
     recover_incomplete_integration,
+    recovery_retained_record,
 )
 from ralph.pipeline.auto_integrate_agent import (
     build_agent_conflict_resolver,
@@ -135,6 +137,25 @@ def _write_worker_prompt(
     write_text_if_changed(backend, prompt_path, rendered_prompt, encoding="utf-8")
 
 
+def _emit_deferred_integration_line(
+    display_context: DisplayContext | None, recovered: RebaseState
+) -> None:
+    """Tell the operator why this worker skipped its catch-up integration.
+
+    Uses the same duck-typed warn seam every other integration decline
+    uses, and is a silent no-op when the worker has no display context
+    at all. Never raises: a display problem must not abort the worker.
+    """
+    if display_context is None:
+        return
+    with suppress(Exception):
+        emit_integration_warn_line(
+            resolve_active_display(None, display_context),
+            "catch-up integration deferred: crash recovery still owns the"
+            f" durable integration record ({recovered.last_reason})",
+        )
+
+
 def _worker_integration_resolvers(
     *,
     config: UnifiedConfig,
@@ -227,7 +248,14 @@ def run_worker_auto_integration(
 
     Returns:
         The recorded :class:`~ralph.pipeline.rebase_state.RebaseState`,
-        or ``None`` when the hook decided there was nothing to do.
+        or ``None`` when the hook decided there was nothing to do. When
+        ``recover_first`` recovery came back still owning the durable
+        integration record
+        (:func:`~ralph.pipeline.auto_integrate_recovery.recovery_retained_record`)
+        the recovery outcome is returned WITHOUT integrating: the
+        integration writes its own durable record before mutating git,
+        which would overwrite the unreconciled one and lose the
+        pre-integration feature SHA the next recovery needs.
 
     Never raises: a failure anywhere in this seam is logged and
     swallowed, because an integration problem must never abort the
@@ -251,6 +279,18 @@ def run_worker_auto_integration(
                     "integration: {}",
                     recovered.last_action,
                 )
+                if recovery_retained_record(recovered):
+                    # Recovery could not reconcile the interrupted
+                    # integration and left its durable record on disk
+                    # for the next startup. Integrating now would write
+                    # a fresh ``IntegrationRecord(phase='integrating',
+                    # ...)`` over it before any git mutation,
+                    # destroying the only record of the
+                    # pre-integration feature SHA. Return the retained
+                    # outcome so the worker's caller still sees the
+                    # verdict, and leave ownership with recovery.
+                    _emit_deferred_integration_line(display_context, recovered)
+                    return recovered
         conflict_resolver, rebase_stop_resolver, display = (
             _worker_integration_resolvers(
                 config=config,
