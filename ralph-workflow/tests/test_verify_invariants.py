@@ -147,6 +147,23 @@ def test_budget_violation_survives_minus_o() -> None:
 # --- Negative: label and budget integrity invariants ---
 
 
+def _replace_once(source: str, old: str, new: str) -> str:
+    """Replace ``old`` in ``source``, failing loudly when it is absent.
+
+    These tests prove an import-time RuntimeError fires for a patched
+    constant. A silent no-op ``str.replace`` would import the PRISTINE
+    module instead, so the test would fail with a confusing "expected a
+    RuntimeError" rather than naming the real cause: the literal in
+    ``ralph/verify.py`` was reformatted and this patcher went stale.
+    """
+    if old not in source:
+        raise AssertionError(
+            f"ralph/verify.py no longer contains the patch anchor {old!r};"
+            " update this test's anchor to match the current source."
+        )
+    return source.replace(old, new)
+
+
 def _run_label_patched_import(
     known_test_step_labels: frozenset[str] | None = None,
     budget_tracked_steps: frozenset[int] | None = None,
@@ -164,17 +181,24 @@ def _run_label_patched_import(
     patched = original
 
     if known_test_step_labels is not None:
-        old = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
+        old = (
+            "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(\n"
+            '    {"make test", "auto-integrate end-to-end '
+            '(make test-auto-integrate-e2e)"}\n'
+            ")"
+        )
         # Build replacement with the given labels sorted.
         labels_repr = sorted(known_test_step_labels)
         new = f"_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({labels_repr!r})"
-        patched = patched.replace(old, new)
+        patched = _replace_once(patched, old, new)
 
     if budget_tracked_steps is not None:
-        # Replace: _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
-        old = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})"
+        # Replace the literal defined in ralph/verify.py. Both test
+        # steps are tracked, so the source form names the e2e step by
+        # its position rather than repeating a bare index.
+        old = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 1})"
         new = f"_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({sorted(budget_tracked_steps)!r})"
-        patched = patched.replace(old, new)
+        patched = _replace_once(patched, old, new)
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", prefix="verify_patched_", delete=False

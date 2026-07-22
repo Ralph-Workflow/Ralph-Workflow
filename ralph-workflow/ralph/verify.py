@@ -41,10 +41,17 @@ check (``if``/``raise`` rather than ``assert`` so the checks survive
   timeouts (an epsilon check pins the 60-second value to 60.0).
 
 Tests marked ``@pytest.mark.subprocess_e2e`` are excluded from the
-main ``make test`` suite and do **not** count against the combined
-budget. The single allowed skip is ``tests/test_verify_invariants.py``
-(Python 3.14 + loguru import-order incompatibility; the invariants
-remain enforced in the main ``make verify`` path).
+main ``make test`` suite, but a verify step that RUNS them is still a
+test step and is still charged against the combined budget. The
+``make test-auto-integrate-e2e`` step is the one such step: it is in
+``_KNOWN_TEST_STEP_LABELS`` and ``_BUDGET_TRACKED_STEPS``, so its
+real-git wall-clock time is summed with ``make test`` against the same
+60 seconds. "It runs under a different marker" is not an exemption --
+the budget is the combined total of every test suite ``make verify``
+runs sequentially. The single allowed skip is
+``tests/test_verify_invariants.py`` (Python 3.14 + loguru import-order
+incompatibility; the invariants remain enforced in the main
+``make verify`` path).
 
 If tests are too slow, fix the test design — replace real I/O with
 fakes (``MemoryWorkspace``, ``tmp_path``, ``MockProcessExecutor``),
@@ -91,11 +98,12 @@ _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 #: so a step cannot be silently disabled by lowering this constant.
 
 _AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS: Final = 240.0
-#: PER-STEP wall-clock timeout for the real-git auto-integration
-#: end-to-end step. It does NOT extend the combined test budget: that
-#: step is deliberately absent from ``_BUDGET_TRACKED_STEPS`` and its
-#: label is absent from ``_KNOWN_TEST_STEP_LABELS``, so no real-git
-#: subprocess time is ever charged against ``_TOTAL_TEST_BUDGET_SECONDS``.
+#: PER-STEP ceiling for the real-git auto-integration end-to-end step.
+#: It is a SECONDARY cap only and can never extend the combined test
+#: budget: the step IS budget-tracked, so ``run_verify`` passes it
+#: ``min(this, remaining_budget)`` and charges its elapsed time against
+#: ``_TOTAL_TEST_BUDGET_SECONDS`` exactly like ``make test``. Raising
+#: it buys nothing once the cumulative total reaches 60 seconds.
 
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
 #: ABSOLUTE and IMMUTABLE combined wall-clock budget for **all** test
@@ -138,9 +146,10 @@ _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 #
 # _BUDGET_TRACKED_STEPS: the indices within _VERIFY_STEPS whose
 # elapsed wall-clock time counts against _TOTAL_TEST_BUDGET_SECONDS.
-# Currently only index 2 (make test) counts. Adding more test-related
-# steps here does NOT increase the combined budget — the cumulative
-# tracker sums time across ALL tracked indices.
+# Index 2 (make test) and the LAST index (make test-auto-integrate-e2e)
+# both count: every step that runs a test suite is tracked. Adding more
+# test-related steps here does NOT increase the combined budget — the
+# cumulative tracker sums time across ALL tracked indices.
 _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     (
         "ruff check ralph/ tests/",
@@ -390,11 +399,14 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         # this behaviour was previously proven by NO step ``make
         # verify`` runs and could rot unnoticed.
         #
-        # NOT a budget-tracked step: its label is deliberately absent
-        # from _KNOWN_TEST_STEP_LABELS and its index absent from
-        # _BUDGET_TRACKED_STEPS, so the ABSOLUTE 60 s
-        # _TOTAL_TEST_BUDGET_SECONDS is untouched. Appended LAST so the
-        # index-based assertions in tests/test_verify.py are not shifted.
+        # A BUDGET-TRACKED step: it runs a test suite, so its label is
+        # in _KNOWN_TEST_STEP_LABELS and its index is in
+        # _BUDGET_TRACKED_STEPS, and its real-git wall-clock time is
+        # summed with ``make test`` against the single ABSOLUTE 60 s
+        # _TOTAL_TEST_BUDGET_SECONDS. Must stay LAST: the index-based
+        # assertions in tests/test_verify.py assume it, and
+        # _BUDGET_TRACKED_STEPS names it as ``len(_VERIFY_STEPS) - 1``
+        # (moving it trips the label/steps sync RuntimeError below).
         "auto-integrate end-to-end (make test-auto-integrate-e2e)",
         "make",
         ("test-auto-integrate-e2e",),
@@ -402,7 +414,10 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
 )
 
-_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
+#: Index 2 is ``make test``; the LAST index is the real-git
+#: ``make test-auto-integrate-e2e`` step. Both run test suites, so both
+#: are charged against the ONE 60-second combined budget.
+_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 1})
 
 # --- Module-level invariants ---
 # These are runtime checks that must hold for the enforcement
@@ -456,7 +471,9 @@ if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
 # INVARIANT: This frozenset must NOT be empty.
 # INVARIANT: The canonical test step label 'make test' must be present.
 # Both invariants are enforced by import-time RuntimeError checks below.
-_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})
+_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(
+    {"make test", "auto-integrate end-to-end (make test-auto-integrate-e2e)"}
+)
 
 # --- Module-level invariants for label/budget integrity ---
 # These prevent the circumvention of budget enforcement by emptying

@@ -638,12 +638,17 @@ def test_recovery_without_a_config_behaves_exactly_as_before(
 def test_a_raising_refresh_never_escapes_recovery(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Recovery's never-raises contract covers the new seam too."""
+    """Recovery's never-raises contract covers the new seam too.
+
+    The refresh raising is swallowed -- and, because nothing then
+    vouches for the target pointer, the landing is DEFERRED rather
+    than decided from it.
+    """
 
     def _explode() -> str:
         raise RuntimeError("origin unreachable")
 
-    _install_recovery_seams(
+    events = _install_recovery_seams(
         monkeypatch, target_sha=_TARGET_SHA, ancestor=True, on_refresh=_explode
     )
 
@@ -652,4 +657,93 @@ def test_a_raising_refresh_never_escapes_recovery(
     )
 
     assert outcome is not None
-    assert outcome.last_action == "recovered"
+    assert outcome.last_action == "skipped"
+    assert "clear" not in events, "a failed refresh must not drop the record"
+
+
+def test_a_raising_refresh_cannot_clear_the_record_from_a_stale_pointer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The destructive combination: refresh raises AND the local ref diverged.
+
+    ``_refresh_before_verdict`` used to swallow the raise into ``None``
+    and let the caller carry on, so the UNREFRESHED local pointer still
+    reached the "target advanced concurrently" branch and CLEARED the
+    durable record permanently -- exactly the stale-pointer discard the
+    refresh seam exists to prevent. The verdict must now fail closed:
+    no ancestry decision, no clear, record kept for the next startup.
+    """
+
+    def _explode() -> str:
+        raise RuntimeError("origin unreachable")
+
+    events = _install_recovery_seams(
+        monkeypatch, target_sha=_TARGET_SHA, ancestor=False, on_refresh=_explode
+    )
+
+    outcome = recovery.recover_incomplete_integration(
+        WorkspaceScope(tmp_path), config=_config()
+    )
+
+    assert outcome is not None
+    assert "clear" not in events, "the durable record must be retained for retry"
+    assert "is_ancestor" not in events, (
+        "no ancestry verdict may be taken from an unrefreshed pointer"
+    )
+    assert "branch_sha" not in events
+    assert outcome.last_action == "skipped"
+    assert outcome.last_reason is not None
+    assert "record retained for retry" in outcome.last_reason
+    assert outcome.last_refresh == REFRESH_UNREACHABLE, (
+        "the skip must name why the pointer could not be trusted"
+    )
+    assert outcome.fast_forwarded is False
+
+
+def test_an_unhealthy_refresh_outcome_also_defers_the_recovery_verdict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A refresh that RETURNS unreachable is no fresher than one that raised.
+
+    ``refresh_outcome_is_healthy`` is the repository's single predicate
+    for "this pointer was confirmed current", so recovery fails closed
+    on every unhealthy verb, not just on the exceptional path.
+    """
+    events = _install_recovery_seams(
+        monkeypatch,
+        target_sha=_TARGET_SHA,
+        ancestor=False,
+        on_refresh=lambda: REFRESH_UNREACHABLE,
+    )
+
+    outcome = recovery.recover_incomplete_integration(
+        WorkspaceScope(tmp_path), config=_config()
+    )
+
+    assert outcome is not None
+    assert "clear" not in events
+    assert outcome.last_action == "skipped"
+    assert outcome.last_refresh == REFRESH_UNREACHABLE
+
+
+def test_a_healthy_refresh_still_reaches_the_ancestry_verdicts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fail-closed must not swallow the ordinary diverged-target verdict.
+
+    With a CONFIRMED-current pointer, "target advanced concurrently" is
+    still a permanent state and still clears the record.
+    """
+    events = _install_recovery_seams(
+        monkeypatch, target_sha=_TARGET_SHA, ancestor=False
+    )
+
+    outcome = recovery.recover_incomplete_integration(
+        WorkspaceScope(tmp_path), config=_config()
+    )
+
+    assert outcome is not None
+    assert events[0] == "refresh"
+    assert "clear" in events
+    assert outcome.last_reason == "recovery: target advanced concurrently"
+    assert outcome.last_refresh == REFRESH_REFRESHED

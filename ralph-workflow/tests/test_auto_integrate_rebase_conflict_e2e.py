@@ -19,15 +19,21 @@ continue the rebase, repeat, and land?) and plumbing is exactly what a
 model in the loop would make non-deterministic.
 
 File-level markers. ``subprocess_e2e`` keeps this file out of ``make
-test``'s budget-tracked 60 s step, because every test drives real git
-through :func:`auto_integrate_after_commit`. ``timeout_seconds(30)``
-sizes the budget for a two-stop rebase plus its fast-forward; no shared
-suite cap is raised.
+test``, because every test drives real git through
+:func:`auto_integrate_after_commit`. It still costs the ONE 60 s
+combined budget: the ``test-auto-integrate-e2e`` verify step that runs
+it is in ``ralph/verify.py:_BUDGET_TRACKED_STEPS``. That is why the
+six assertions about a single successful conflicted rebase share ONE
+module-scoped run of the scenario instead of paying for six identical
+rebases. ``timeout_seconds(30)`` sizes the budget for a two-stop
+rebase plus its fast-forward; no shared suite cap is raised.
 """
 
 from __future__ import annotations
 
+import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -176,112 +182,97 @@ def _rebase_dirs(tmp_git_repo: Path) -> list[Path]:
     ]
 
 
-def test_a_conflicted_rebase_is_resolved_and_reported_as_rebased(
-    tmp_git_repo: Path,
-) -> None:
-    """The headline: the integration lands as ``rebased``, not ``conflict``."""
-    base = _one_conflicting_commit(tmp_git_repo)
+@dataclass(frozen=True)
+class _LandedRebase:
+    """Everything observable about ONE resolved conflicted rebase.
+
+    The six assertions below are six independent claims about the SAME
+    successful integration, so they observe one run instead of paying
+    for six identical real-git rebases. That cost is not free: the
+    ``test-auto-integrate-e2e`` verify step is budget-tracked, so a
+    duplicated rebase here spends the same 60 s combined budget a slow
+    deterministic test would.
+    """
+
+    root: Path
+    base: str
+    outcome: RebaseState | None
+    stops: tuple[RebaseStop, ...]
+
+
+@pytest.fixture(scope="module")
+def landed_rebase(
+    tmp_path_factory: pytest.TempPathFactory, _git_repo_template: Path
+) -> _LandedRebase:
+    """Drive ONE conflicted rebase to a landed state and freeze the result.
+
+    Module-scoped, and therefore READ-ONLY for its consumers: every test
+    that uses it only inspects git state and the returned value, so no
+    test can perturb what the next one observes. Anything that mutates
+    the repository (a declining resolver, an overreaching resolver, the
+    two-stop replay) keeps its own function-scoped ``tmp_git_repo``.
+    """
+    root = tmp_path_factory.mktemp("rebase-conflict") / "repo"
+    shutil.copytree(_git_repo_template, root)
+    base = _one_conflicting_commit(root)
     seen: list[RebaseStop] = []
 
     outcome = auto_integrate_after_commit(
         _build_config(base),
-        WorkspaceScope(tmp_git_repo),
+        WorkspaceScope(root),
         RebaseState(),
         rebase_stop_resolver=_stub_resolver(seen),
     )
 
-    assert outcome is not None
-    assert outcome.last_action == "rebased"
+    return _LandedRebase(root=root, base=base, outcome=outcome, stops=tuple(seen))
+
+
+def test_a_conflicted_rebase_is_resolved_and_reported_as_rebased(
+    landed_rebase: _LandedRebase,
+) -> None:
+    """The headline: the integration lands as ``rebased``, not ``conflict``."""
+    assert landed_rebase.outcome is not None
+    assert landed_rebase.outcome.last_action == "rebased"
 
 
 def test_the_rebase_really_continued_and_left_no_rebase_state(
-    tmp_git_repo: Path,
+    landed_rebase: _LandedRebase,
 ) -> None:
     """``git rebase --continue`` ran: no rebase directory survives."""
-    base = _one_conflicting_commit(tmp_git_repo)
-    seen: list[RebaseStop] = []
-
-    auto_integrate_after_commit(
-        _build_config(base),
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-        rebase_stop_resolver=_stub_resolver(seen),
-    )
-
-    assert _rebase_dirs(tmp_git_repo) == []
+    assert _rebase_dirs(landed_rebase.root) == []
 
 
 def test_the_resolved_content_is_what_landed_on_the_feature_tip(
-    tmp_git_repo: Path,
+    landed_rebase: _LandedRebase,
 ) -> None:
     """The replayed commit carries the RESOLVER's content, not either side's."""
-    base = _one_conflicting_commit(tmp_git_repo)
-    seen: list[RebaseStop] = []
-
-    auto_integrate_after_commit(
-        _build_config(base),
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-        rebase_stop_resolver=_stub_resolver(seen),
-    )
-
-    landed = _run(tmp_git_repo, "show", "HEAD:shared.txt").stdout
+    landed = _run(landed_rebase.root, "show", "HEAD:shared.txt").stdout
     assert landed == _RESOLVED_MARKER
 
 
 def test_the_target_is_fast_forwarded_to_the_resolved_feature_tip(
-    tmp_git_repo: Path,
+    landed_rebase: _LandedRebase,
 ) -> None:
     """AC-04's other half: the mainline ref actually moves."""
-    base = _one_conflicting_commit(tmp_git_repo)
-    seen: list[RebaseStop] = []
-
-    outcome = auto_integrate_after_commit(
-        _build_config(base),
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-        rebase_stop_resolver=_stub_resolver(seen),
-    )
-
-    head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert outcome is not None
-    assert outcome.fast_forwarded is True
-    assert branch_sha(tmp_git_repo, base) == head
+    head = _run(landed_rebase.root, "rev-parse", "HEAD").stdout.strip()
+    assert landed_rebase.outcome is not None
+    assert landed_rebase.outcome.fast_forwarded is True
+    assert branch_sha(landed_rebase.root, landed_rebase.base) == head
 
 
 def test_the_replay_is_linear_history_not_a_merge_commit(
-    tmp_git_repo: Path,
+    landed_rebase: _LandedRebase,
 ) -> None:
     """A rebase that landed as a rebase leaves no merge commit behind."""
-    base = _one_conflicting_commit(tmp_git_repo)
-    seen: list[RebaseStop] = []
-
-    auto_integrate_after_commit(
-        _build_config(base),
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-        rebase_stop_resolver=_stub_resolver(seen),
-    )
-
-    merges = _run(tmp_git_repo, "log", "--merges", "--oneline").stdout.strip()
+    merges = _run(landed_rebase.root, "log", "--merges", "--oneline").stdout.strip()
     assert merges == ""
 
 
 def test_the_resolver_is_told_which_commit_is_being_replayed(
-    tmp_git_repo: Path,
+    landed_rebase: _LandedRebase,
 ) -> None:
     """The rebase-scoped context that a merge conflict cannot supply."""
-    base = _one_conflicting_commit(tmp_git_repo)
-    seen: list[RebaseStop] = []
-
-    auto_integrate_after_commit(
-        _build_config(base),
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-        rebase_stop_resolver=_stub_resolver(seen),
-    )
-
-    assert [stop.subject for stop in seen] == ["feature edit"]
+    assert [stop.subject for stop in landed_rebase.stops] == ["feature edit"]
 
 
 def test_two_conflicting_commits_drive_two_stops_and_still_land(

@@ -28,12 +28,14 @@ proved here is that the plumbing carries a conflicted rebase across a
 fleet and lands it.
 
 File-level markers. ``subprocess_e2e`` keeps this file out of ``make
-test``'s budget-tracked 60 s step -- it drives real git, including
-``git worktree add``. It is wired into the ``test-auto-integrate-e2e``
-Makefile target, whose verify step is deliberately absent from
-``ralph/verify.py:_BUDGET_TRACKED_STEPS``, so it costs none of the
-immutable combined budget. ``timeout_seconds(30)`` sizes one test for a
-worktree creation plus a conflicted rebase and its fast-forward.
+test`` -- it drives real git, including ``git worktree add``. It is
+wired into the ``test-auto-integrate-e2e`` Makefile target, whose
+verify step IS in ``ralph/verify.py:_BUDGET_TRACKED_STEPS``, so the
+time spent here is charged against the same immutable 60 s combined
+budget as ``make test``: a slow real-git test here costs the whole
+gate, exactly as a slow deterministic test does.
+``timeout_seconds(30)`` sizes one test for a worktree creation plus a
+conflicted rebase and its fast-forward.
 """
 
 from __future__ import annotations

@@ -66,10 +66,13 @@ LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
 # inside the 60s per-suite cap that gates `test-subprocess-e2e`.
 #
 # This is a PER-SUITE timeout only. The 60s combined
-# `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
-# this target: its verify step is deliberately absent from
-# ralph/verify.py:_BUDGET_TRACKED_STEPS. Raising it does NOT raise the
-# verify budget.
+# `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` DOES include this
+# target: its verify step is in ralph/verify.py:_BUDGET_TRACKED_STEPS,
+# so its real-git wall-clock time is summed with `make test` against
+# the one 60s budget. Raising this per-suite value does NOT raise the
+# verify budget -- under `make verify` the step is additionally clamped
+# to whatever remains of the 60s after `make test`. If this suite is
+# too slow, make it cheaper; the budget does not move.
 AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS ?= 180
 RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
 help:

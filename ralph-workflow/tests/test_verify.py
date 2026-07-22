@@ -239,14 +239,20 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
         ("make", ("test-auto-integrate-e2e",)),
     ]
-    # The real-git end-to-end step gets its OWN per-step timeout and is
-    # never charged against the immutable combined test budget.
-    assert runner.calls[-1][3] == verify_module._AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS
+    # The real-git end-to-end step RUNS a test suite, so it is charged
+    # against the same immutable combined budget as ``make test``: its
+    # 240 s per-step ceiling is a secondary cap that the remaining
+    # budget clamps down, never a way to buy extra test time.
+    assert runner.calls[-1][3] <= verify_module._TOTAL_TEST_BUDGET_SECONDS
+    assert (
+        verify_module._AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS
+        > verify_module._TOTAL_TEST_BUDGET_SECONDS
+    ), "the clamp is only meaningful while the per-step ceiling exceeds the budget"
     assert (
         "auto-integrate end-to-end (make test-auto-integrate-e2e)"
-        not in verify_module._KNOWN_TEST_STEP_LABELS
+        in verify_module._KNOWN_TEST_STEP_LABELS
     )
-    assert len(verify_module._VERIFY_STEPS) - 1 not in verify_module._BUDGET_TRACKED_STEPS
+    assert len(verify_module._VERIFY_STEPS) - 1 in verify_module._BUDGET_TRACKED_STEPS
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS

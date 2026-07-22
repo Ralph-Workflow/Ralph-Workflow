@@ -165,7 +165,7 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
   - Renaming test targets or adding new test-related `_VERIFY_STEPS` entries without also adding to `_KNOWN_TEST_STEP_LABELS` and `_BUDGET_TRACKED_STEPS`
   - Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` in the Makefile
   - Setting environment variables (`RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`, `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`)
-  - Raising `_TOTAL_TEST_BUDGET_SECONDS` or modifying `_BUDGET_TRACKED_STEPS` in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`)
+  - Raising `_TOTAL_TEST_BUDGET_SECONDS`, or narrowing `_BUDGET_TRACKED_STEPS` / `_KNOWN_TEST_STEP_LABELS` so a step that runs a test suite stops being charged, in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`). EVERY `_VERIFY_STEPS` entry that runs tests belongs in both sets, including the real-git `make test-auto-integrate-e2e` step: a `subprocess_e2e` marker keeps tests out of `make test`, never out of the combined budget.
   - Emptying `_KNOWN_TEST_STEP_LABELS` to hide test steps from budget tracking (blocked by import-time non-empty RuntimeError check)
   - Emptying `_BUDGET_TRACKED_STEPS` to disable budget enforcement (blocked by import-time non-empty RuntimeError check)
   - Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` to silently exclude the primary test step (blocked by import-time containment RuntimeError check)

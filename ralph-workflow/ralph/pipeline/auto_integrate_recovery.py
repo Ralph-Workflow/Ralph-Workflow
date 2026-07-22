@@ -24,7 +24,10 @@ from ralph.git.merge import (
 )
 from ralph.git.rebase.rebase import abort_rebase, rebase_in_progress
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline.auto_integrate_context import record_refresh
+from ralph.pipeline.auto_integrate_context import (
+    record_refresh,
+    refresh_outcome_is_healthy,
+)
 from ralph.pipeline.auto_integrate_ff import fast_forward_target
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
@@ -33,6 +36,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record as _read_record,
 )
 from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
+from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -60,7 +64,7 @@ def _refresh_before_verdict(
     config: UnifiedConfig | None,
     workspace_root: Path,
     target: str,
-) -> str | None:
+) -> tuple[str | None, bool]:
     """Re-read the mainline pointer the recovery verdicts are taken from.
 
     Both verdicts below -- "already landed" and "target advanced
@@ -69,18 +73,36 @@ def _refresh_before_verdict(
     pointer this process has never fetched is how a perfectly landable
     integration gets discarded after a crash.
 
-    Returns the ``REFRESH_*`` outcome so the caller can stamp it on the
-    returned state, or ``None`` when no config was supplied (the caller
-    then behaves exactly as it did before this seam existed). Never
-    raises: recovery's contract is that it swallows everything.
+    Returns ``(outcome, pointer_is_fresh)``:
+
+    * ``outcome`` is the ``REFRESH_*`` verb the caller stamps on the
+      returned state, or ``None`` when no config was supplied.
+    * ``pointer_is_fresh`` says whether the target pointer the verdicts
+      are about to read can be trusted. It is ``True`` when no config
+      was supplied -- that caller opted out of the seam entirely and
+      keeps the pre-seam behaviour byte-for-byte -- and otherwise only
+      when the refresh actually returned a HEALTHY outcome
+      (:func:`~ralph.pipeline.auto_integrate_context.refresh_outcome_is_healthy`).
+      A refresh that RAISED, or that came back unreachable / diverged /
+      race-lost, establishes no fresh verdict, so the caller must fail
+      closed rather than clear the durable record from a pointer
+      nothing vouched for.
+
+    A raise is reported as
+    :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_UNREACHABLE`
+    rather than ``None`` so the skip the caller returns names why the
+    landing was deferred instead of looking like no refresh was even
+    attempted. Never raises: recovery's contract is that it swallows
+    everything.
     """
     if config is None:
-        return None
+        return None, True
     try:
-        return _refresh_target(config, workspace_root, target)
+        outcome = _refresh_target(config, workspace_root, target)
     except Exception as exc:
         logger.warning("recovery: target refresh raised: {}", exc)
-        return None
+        return REFRESH_UNREACHABLE, False
+    return outcome, refresh_outcome_is_healthy(outcome)
 
 
 def _continue_fast_forward_from_record(
@@ -103,6 +125,16 @@ def _continue_fast_forward_from_record(
     cannot resolve (no SHA to land, target diverged, ff-only
     refused). The transient failure cases -- an exception raised
     inside ``fast_forward_target`` -- retain the record.
+
+    Those "permanent" verdicts are only permanent when the pointer
+    they read is genuinely current, so when a refresh was configured
+    and could not establish one this function FAILS CLOSED: it
+    returns a retryable skip and RETAINS the record without
+    evaluating either ancestry verdict. A refresh that raised or came
+    back unreachable used to degrade to ``None`` here, after which a
+    stale local pointer could still take the "target advanced
+    concurrently" branch and discard a perfectly landable
+    integration for good.
     """
     if record.integrated_feature_sha is None:
         # Defensive: malformed record. Clear it so we stop retrying.
@@ -113,7 +145,25 @@ def _continue_fast_forward_from_record(
     feature_sha = record.integrated_feature_sha
     # ONE refresh, before either verdict: both of them are taken from the
     # target pointer, and the second one clears the record for good.
-    refresh = _refresh_before_verdict(config, workspace_root, record.target)
+    refresh, pointer_is_fresh = _refresh_before_verdict(
+        config, workspace_root, record.target
+    )
+    if not pointer_is_fresh:
+        # Fail closed. Neither ancestry verdict below may be taken from
+        # a pointer nothing vouched for, because both of them clear the
+        # durable record and one of them does so permanently. Retain it
+        # and let the next startup retry against a pointer that can be
+        # refreshed.
+        return record_refresh(
+            _record_skip(
+                reason=(
+                    "recovery: target pointer could not be refreshed,"
+                    " record retained for retry"
+                ),
+                target=record.target,
+            ),
+            refresh,
+        )
     if branch_sha(workspace_root, record.target) == feature_sha:
         # Already landed (another run / operator).
         _clear_record(workspace_root)
@@ -138,6 +188,26 @@ def _continue_fast_forward_from_record(
             ),
             refresh,
         )
+    return _land_and_reconcile(workspace_root, record, feature_sha, refresh)
+
+
+def _land_and_reconcile(
+    workspace_root: Path,
+    record: IntegrationRecord,
+    feature_sha: str,
+    refresh: str | None,
+) -> RebaseState:
+    """Run the fast-forward and decide whether the record survives it.
+
+    Split out of :func:`_continue_fast_forward_from_record` so each
+    function keeps one job: the caller decides whether the pointer may
+    be trusted at all, and this one interprets what the landing did.
+
+    Only a PERMANENT refusal ("advanced concurrently") clears the
+    record. A refusal that raised, or any other refusal text, is
+    treated as transient and RETAINS the record so the next startup
+    retries.
+    """
     ff_failed = False
     skip_reason = ""
     try:
@@ -160,9 +230,6 @@ def _continue_fast_forward_from_record(
             ),
             refresh,
         )
-    # Fast-forward was refused or raised. Only clear the record for
-    # permanent refusals (target advanced concurrently) -- retain it
-    # for transient failures so the next startup retries.
     if ff_failed or "advanced concurrently" not in skip_reason:
         # Transient failure: retain the record for retry.
         return record_refresh(
