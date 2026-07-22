@@ -14,6 +14,7 @@ import pytest
 from ralph.diagnostics import (
     SystemInfo,
 )
+from tests._diagnostics_git_probe import stub_git_probe
 
 MULTI_AGENT_COUNT = 2
 
@@ -23,6 +24,13 @@ class TestSystemInfo:
 
     @pytest.fixture(scope="class")
     def info(self) -> SystemInfo:
+        """Gather once against the REAL git probe.
+
+        This is the file's real-git coverage: it pins that the production
+        probe populates every field on a live repository. It is
+        class-scoped so the whole class pays for one gather, and the two
+        env-only tests below inject a stub instead of paying for a second.
+        """
         return SystemInfo.gather()
 
     def test_system_info_gather_returns_instance(self, info: SystemInfo) -> None:
@@ -52,12 +60,12 @@ class TestSystemInfo:
 
     def test_system_info_gather_uses_injected_env_for_shell(self) -> None:
         """Test that SystemInfo.gather() uses injected env for shell."""
-        info = SystemInfo.gather(env={"SHELL": "/bin/zsh"})
+        info = SystemInfo.gather(env={"SHELL": "/bin/zsh"}, git_probe=stub_git_probe)
         assert info.shell == "/bin/zsh"
 
     def test_system_info_gather_returns_none_shell_when_env_empty(self) -> None:
         """Test that SystemInfo.gather() returns None shell when env is empty."""
-        info = SystemInfo.gather(env={})
+        info = SystemInfo.gather(env={}, git_probe=stub_git_probe)
         assert info.shell is None
 
     def test_system_info_gather_populates_git_version(self, info: SystemInfo) -> None:

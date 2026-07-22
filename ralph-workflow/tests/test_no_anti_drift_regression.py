@@ -77,8 +77,12 @@ def _has_legacy_console_display_reference(source: str) -> bool:
     return "LegacyConsoleDisplay" in source
 
 
-def _has_legacy_console_display_classdef(source: str) -> bool:
-    tree = ast.parse(source)
+def _has_legacy_console_display_classdef(path: pathlib.Path) -> bool:
+    # Route through the cached ``_parse`` rather than re-parsing the
+    # source: every file this scan visits is parsed by other checks in
+    # this module too, so a second parse is pure duplicate CPU charged
+    # against the 60 s combined test budget.
+    tree = _parse(path)
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "LegacyConsoleDisplay":
             return True
@@ -126,7 +130,7 @@ class TestDisplayIsOnlyParallelDisplay:
         for path in _walk_python_files(RALPH_ROOT):
             if "LegacyConsoleDisplay" not in _read(path):
                 continue
-            assert not _has_legacy_console_display_classdef(_read(path)), (
+            assert not _has_legacy_console_display_classdef(path), (
                 f"{path.relative_to(RALPH_ROOT.parent)} still defines "
                 "class LegacyConsoleDisplay; Step 3 is incomplete."
             )

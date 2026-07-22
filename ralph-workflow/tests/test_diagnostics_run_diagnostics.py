@@ -26,11 +26,15 @@ from ralph.diagnostics import (
     run_diagnostics,
 )
 from ralph.diagnostics.fs_health import FsHealth
+from tests._diagnostics_git_probe import stub_git_probe
 
-# run_diagnostics() calls SystemInfo.gather(), which executes real git
-# subprocesses (rev-parse, branch, status). Wall-clock cost under
-# parallel xdist load is regularly > 1 s on busy machines, so the
-# default 1-second per-test ceiling is unsafe.
+# run_diagnostics() calls SystemInfo.gather(), which shells out to git
+# (rev-parse, branch, status) unless a probe is injected. These tests
+# assert on how the report is COMPOSED, not on git itself, so they inject
+# ``stub_git_probe`` and stay well inside the default 1-second per-test
+# ceiling. Real-probe coverage lives in
+# ``tests/test_diagnostics_system_info.py::TestSystemInfo``, which still
+# gathers once against the real repository.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 MULTI_AGENT_COUNT = 2
@@ -44,7 +48,7 @@ class TestRunDiagnostics:
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []
 
-        report = run_diagnostics(mock_registry)
+        report = run_diagnostics(mock_registry, git_probe=stub_git_probe)
         assert isinstance(report, DiagnosticReport)
         assert isinstance(report.system, SystemInfo)
         assert isinstance(report.agents, AgentDiagnostics)
@@ -55,7 +59,7 @@ class TestRunDiagnostics:
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []
 
-        report = run_diagnostics(mock_registry, workspace_root=tmp_path)
+        report = run_diagnostics(mock_registry, workspace_root=tmp_path, git_probe=stub_git_probe)
         assert report.fs_health is not None
         assert isinstance(report.fs_health, FsHealth)
 
@@ -64,7 +68,7 @@ class TestRunDiagnostics:
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []
 
-        report = run_diagnostics(mock_registry)
+        report = run_diagnostics(mock_registry, git_probe=stub_git_probe)
         assert report.system is not None
         assert isinstance(report.system.os, str)
         assert isinstance(report.system.arch, str)
@@ -82,7 +86,11 @@ class TestRunDiagnostics:
         )
         mock_registry.get.return_value = agent_config
 
-        report = run_diagnostics(mock_registry, is_available_fn=lambda cmd: True)
+        report = run_diagnostics(
+            mock_registry,
+            is_available_fn=lambda cmd: True,
+            git_probe=stub_git_probe,
+        )
 
         assert report.agents.total_agents == 1
         assert report.agents.available_agents == 1
@@ -92,6 +100,6 @@ class TestRunDiagnostics:
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []
 
-        report = run_diagnostics(mock_registry, env={"SHELL": "/bin/zsh"})
+        report = run_diagnostics(mock_registry, env={"SHELL": "/bin/zsh"}, git_probe=stub_git_probe)
 
         assert report.system.shell == "/bin/zsh"

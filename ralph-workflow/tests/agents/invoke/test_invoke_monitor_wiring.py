@@ -62,11 +62,19 @@ def _noop_command(
     *,
     options: object,
 ) -> list[str]:
-    """Return a fast Python command so the invocation completes quickly."""
+    """Return the cheapest real command that emits one stdout line.
+
+    ``echo`` is used rather than ``python -c`` deliberately: every test in
+    this file spawns this command for real, and a CPython interpreter
+    start-up costs roughly an order of magnitude more wall clock than the
+    shell builtin binary. The tests assert on the wiring captured around
+    the invocation, never on this output, so the cheaper process keeps the
+    coverage identical while returning the time to the 60 s combined test
+    budget enforced by ``ralph/verify.py``.
+    """
     return [
-        "python",
-        "-c",
-        "print('hello from agent')",
+        "echo",
+        "hello from agent",
     ]
 
 
@@ -417,9 +425,8 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
     monkeypatch.setattr(
         "ralph.agents.invoke._command_builders.OpencodeCommandBuilder.build",
         lambda self, _config, _prompt_file, *, options: [
-            "python",
-            "-c",
-            "import time; time.sleep(0.15)",
+            "sleep",
+            "0.15",
         ],
     )
     monkeypatch.setattr(

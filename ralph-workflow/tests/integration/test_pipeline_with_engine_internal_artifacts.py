@@ -135,12 +135,20 @@ def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict) -> Non
     path.write_text(json.dumps(artifact), encoding="utf-8")
 
 
-def _track_and_commit(repo_root: Path, rel_path: str) -> None:
-    """Stage a relative path in ``repo_root`` and commit it (helper)."""
+def _track_and_commit(repo_root: Path, *rel_paths: str) -> None:
+    """Stage each relative path in ``repo_root`` and commit it (helper).
+
+    The repository handle is opened ONCE for all paths. Opening a
+    GitPython ``Repo`` per commit was the dominant cost of this file's
+    fixture, and that cost is charged against the 60 s combined test
+    budget; the commits themselves are unchanged, so each path still
+    lands as its own tracked commit.
+    """
     repo = Repo(repo_root)
     try:
-        repo.index.add([rel_path])
-        repo.index.commit(f"track {rel_path}")
+        for rel_path in rel_paths:
+            repo.index.add([rel_path])
+            repo.index.commit(f"track {rel_path}")
     finally:
         repo.close()
 
@@ -151,19 +159,23 @@ def engine_internal_workspace(tmp_git_repo: Path) -> FsWorkspace:
     # checkpoint.json at the repo root
     root_checkpoint = tmp_git_repo / "checkpoint.json"
     root_checkpoint.write_text('{"phase": "development"}')
-    _track_and_commit(tmp_git_repo, "checkpoint.json")
 
     # .agent/raw/opencode.log
     raw_log = tmp_git_repo / ".agent" / "raw" / "opencode.log"
     raw_log.parent.mkdir(parents=True, exist_ok=True)
     raw_log.write_text("log content\n")
-    _track_and_commit(tmp_git_repo, ".agent/raw/opencode.log")
 
     # .agent/tmp/mcp-server.log
     tmp_log = tmp_git_repo / ".agent" / "tmp" / "mcp-server.log"
     tmp_log.parent.mkdir(parents=True, exist_ok=True)
     tmp_log.write_text("mcp log\n")
-    _track_and_commit(tmp_git_repo, ".agent/tmp/mcp-server.log")
+
+    _track_and_commit(
+        tmp_git_repo,
+        "checkpoint.json",
+        ".agent/raw/opencode.log",
+        ".agent/tmp/mcp-server.log",
+    )
 
     # Ensure the artifact directory exists so handle_commit_cleanup_phase
     # can write its loader output without crashing.
