@@ -123,12 +123,33 @@ def branch_exists(repo_root: Path | str, name: str) -> bool:
     return result.returncode == 0
 
 
-def branch_sha(repo_root: Path | str, name: str) -> str | None:
-    """Return the SHA of ``refs/heads/<name>`` or ``None`` when absent.
+#: ``git rev-parse --verify --quiet`` exits 1 for a ref that does not
+#: resolve, and 128 for a failure of the invocation itself (not a
+#: repository, a contended ref lock, a broken object store). Collapsing
+#: the two into one ``None`` is what made a transient failure caused by
+#: a concurrent agent look like a permanently absent branch.
+_REV_PARSE_REF_ABSENT_RETURNCODE = 1
 
-    The returned SHA is the value to pass as the
-    ``<oldvalue>`` argument to :func:`compare_and_swap_branch` so a
-    concurrent landing cannot be silently force-overwritten (AC-08).
+
+def observe_branch_sha(repo_root: Path | str, name: str) -> tuple[str | None, bool]:
+    """Read ``refs/heads/<name>``, distinguishing 'absent' from 'unreadable'.
+
+    Returns ``(sha, query_ok)``. ``query_ok`` is ``True`` when git gave a
+    definite answer -- either the SHA, or a confirmed 'no such ref' --
+    and ``False`` when the invocation itself failed and the ref's state
+    is therefore UNKNOWN.
+
+    This distinction is load-bearing under concurrency. Several agents
+    move ``refs/heads/<target>`` in one shared git common directory, and
+    a ref lock contended by a sibling makes ``rev-parse`` exit non-zero.
+    Reported as 'branch absent' that becomes a terminal, non-retryable
+    skip; reported as 'query failed' the bounded integration loop simply
+    tries again, which is what the situation actually calls for.
+
+    :func:`branch_sha` is the narrow legacy view of this call and keeps
+    its ``str | None`` contract byte-for-byte, so the many existing
+    callers that only ever needed 'the SHA, if there is one' are
+    untouched.
     """
     repo_root_path = Path(repo_root)
     result = run_git(
@@ -136,9 +157,25 @@ def branch_sha(repo_root: Path | str, name: str) -> str | None:
         cwd=repo_root_path,
         label="git-branch-sha",
     )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
+    if result.returncode == 0:
+        return result.stdout.strip() or None, True
+    return None, result.returncode == _REV_PARSE_REF_ABSENT_RETURNCODE
+
+
+def branch_sha(repo_root: Path | str, name: str) -> str | None:
+    """Return the SHA of ``refs/heads/<name>`` or ``None`` when absent.
+
+    The returned SHA is the value to pass as the
+    ``<oldvalue>`` argument to :func:`compare_and_swap_branch` so a
+    concurrent landing cannot be silently force-overwritten (AC-08).
+
+    A failed ``rev-parse`` is also reported as ``None`` here. Callers
+    that must tell an absent branch from an unreadable one -- the
+    fast-forward path, where the difference decides whether to retry --
+    use :func:`observe_branch_sha` instead.
+    """
+    sha, _query_ok = observe_branch_sha(repo_root, name)
+    return sha
 
 
 def is_ancestor(repo_root: Path | str, ancestor: str, descendant: str) -> bool:

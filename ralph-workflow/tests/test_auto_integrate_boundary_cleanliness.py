@@ -30,6 +30,11 @@ from typing import TYPE_CHECKING
 
 import ralph.pipeline.auto_integrate as ai
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrottle
+from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_REFRESHED,
+    REFRESH_SUPPRESSED,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -132,3 +137,46 @@ def test_dirty_boundary_records_a_skip_when_the_target_is_ahead(
     # routine boundary stays silent.
     monkeypatch.setattr(ai, "is_ancestor", lambda _root, _a, _b: True)
     assert ai.auto_integrate_on_phase_transition(config, scope, RebaseState()) is None
+
+
+def test_dirty_boundary_skip_names_a_suppressed_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deferral decided from an unrefreshed pointer says so.
+
+    Defect this pins: ``_defer_dirty_boundary`` passed ``None`` to
+    ``record_refresh`` whenever the boundary throttle declined the
+    probe, and ``record_refresh`` no-ops on ``None`` -- so the recorded
+    skip carried no ``last_refresh`` at all. The operator could see that
+    a catch-up had been suppressed but not that the pointer the decision
+    rested on had never been re-read this round, which are two different
+    problems with two different fixes.
+
+    The throttle is replaced with one that has already consumed its
+    window for this ``(root, target)`` pair, so the very first boundary
+    is the suppressed case.
+    """
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
+    monkeypatch.setattr(ai, "_worktree_is_clean", lambda _root: False)
+    monkeypatch.setattr(ai, "get_head_sha", lambda _root: _HEAD_SHA)
+    monkeypatch.setattr(ai, "branch_sha", lambda _root, _name: _TARGET_SHA)
+    monkeypatch.setattr(ai, "is_ancestor", lambda _root, _a, _b: False)
+
+    throttle = BoundaryRefreshThrottle(min_interval_seconds=30.0)
+    throttle.record_outcome(tmp_path, "main", REFRESH_REFRESHED)
+    monkeypatch.setattr(ai, "BOUNDARY_REFRESH_THROTTLE", throttle)
+
+    def _unexpected_refresh(
+        _config: UnifiedConfig, _root: Path, _target: str
+    ) -> str:
+        raise AssertionError("the throttle must have suppressed this refresh")
+
+    monkeypatch.setattr(ai, "_refresh_target", _unexpected_refresh)
+
+    result = ai.auto_integrate_on_phase_transition(
+        _dirty_boundary_config(), WorkspaceScope(tmp_path), RebaseState()
+    )
+
+    assert result is not None
+    assert result.last_refresh == REFRESH_SUPPRESSED

@@ -40,6 +40,8 @@ from ralph.pipeline.auto_integrate import (
 )
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ALREADY_CURRENT,
+    REFRESH_NO_ORIGIN,
+    REFRESH_SUPPRESSED,
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
@@ -372,6 +374,70 @@ def test_unreachable_refresh_is_recorded_on_the_resolution_failed_record(
     assert outcome.last_action == "conflict"
     assert outcome.last_reason == "conflict resolution failed; merge aborted"
     assert outcome.last_refresh == REFRESH_UNREACHABLE
+
+
+def test_no_origin_refresh_is_recorded_at_the_phase_boundary_no_op(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``no origin remote`` is the LEAST trustworthy outcome, not a healthy one.
+
+    Defect this pins (it lived in
+    ``auto_integrate_context._HEALTHY_REFRESH_OUTCOMES``): the constant
+    was left in the healthy set after its meaning changed. It used to
+    mean "local fleet, no remote configured", which really is harmless;
+    :mod:`ralph.pipeline.auto_integrate_sync` now returns
+    ``REFRESH_LOCAL_FLEET`` for that topology and reserves
+    ``REFRESH_NO_ORIGIN`` for a target that could not be observed AT ALL
+    -- remotely or locally. While it stayed in the healthy set, the one
+    outcome that can vouch for nothing silenced the very staleness
+    record that exists to expose it.
+    """
+    base = _feature_level_with_base(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_NO_ORIGIN)
+
+    outcome = auto_integrate_on_phase_transition(
+        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+    )
+
+    assert outcome is not None, (
+        "a boundary decided from an unobservable target must be recorded"
+    )
+    assert outcome.last_action == "skipped"
+    assert outcome.last_refresh == REFRESH_NO_ORIGIN
+
+
+def test_a_suppressed_refresh_is_recorded_rather_than_absent(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An absent refresh vouches for nothing, so it cannot count as healthy.
+
+    Defect this pins (it lived in
+    ``auto_integrate_context.refresh_outcome_is_healthy``, which
+    returned ``True`` for ``None``): when the boundary throttle
+    suppressed the probe no refresh happened at all, and the resulting
+    ``None`` was classified HEALTHY -- so ``record_when_stale`` returned
+    ``None`` and the whole boundary went silent. The suppression is now
+    a first-class ``REFRESH_*`` outcome, so it is recorded and rendered
+    like every other one.
+    """
+    base = _feature_level_with_base(tmp_git_repo)
+    _record_refreshes(monkeypatch, REFRESH_SUPPRESSED)
+
+    outcome = auto_integrate_on_phase_transition(
+        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert outcome.last_refresh == REFRESH_SUPPRESSED
+    message = format_auto_integrate_message(
+        outcome.last_action,
+        outcome.last_target,
+        outcome.last_reason,
+        fast_forwarded=outcome.fast_forwarded,
+        refresh=outcome.last_refresh,
+    )
+    assert REFRESH_SUPPRESSED in message
 
 
 def test_healthy_refresh_keeps_the_phase_boundary_no_op_silent(

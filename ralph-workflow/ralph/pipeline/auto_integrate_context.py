@@ -24,7 +24,6 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ALREADY_CURRENT,
     REFRESH_DISABLED,
     REFRESH_LOCAL_FLEET,
-    REFRESH_NO_ORIGIN,
     REFRESH_NO_REMOTE_BRANCH,
     REFRESH_REFRESHED,
 )
@@ -36,18 +35,25 @@ if TYPE_CHECKING:
 
 #: Refresh outcomes that leave the target pointer trustworthy: either
 #: it was just read from origin, or origin has no say over it (fetching
-#: is off, there is no origin, or origin does not carry the branch), or
-#: it was just re-read from the shared ref store a fleet of sibling
-#: worktrees advances directly. Every OTHER outcome -- unreachable,
-#: diverged, a lost refresh race, a missing local branch -- means the
-#: pointer the skip decision used could not be confirmed current, so the
-#: skip must say so.
+#: is off, or origin does not carry the branch), or it was just re-read
+#: from the shared ref store a fleet of sibling worktrees advances
+#: directly. Every OTHER outcome -- unreachable, diverged, a lost
+#: refresh race, a failed worktree query, a missing local branch, a
+#: throttle-suppressed probe -- means the pointer the skip decision used
+#: could not be confirmed current, so the skip must say so.
+#:
+#: ``REFRESH_NO_ORIGIN`` is deliberately NOT here. Its meaning changed:
+#: :mod:`ralph.pipeline.auto_integrate_sync` now returns
+#: ``REFRESH_LOCAL_FLEET`` for the 'no remote, but the shared local ref
+#: was re-read' topology, and reserves ``REFRESH_NO_ORIGIN`` for the
+#: target that could not be observed AT ALL. That is the LEAST
+#: trustworthy outcome in the vocabulary, and while it sat in this set
+#: it silenced the very staleness record it should have triggered.
 _HEALTHY_REFRESH_OUTCOMES: frozenset[str] = frozenset(
     {
         REFRESH_ALREADY_CURRENT,
         REFRESH_DISABLED,
         REFRESH_LOCAL_FLEET,
-        REFRESH_NO_ORIGIN,
         REFRESH_NO_REMOTE_BRANCH,
         REFRESH_REFRESHED,
     }
@@ -64,11 +70,15 @@ __all__ = [
 def refresh_outcome_is_healthy(refresh: str | None) -> bool:
     """Whether ``refresh`` leaves the target pointer trustworthy.
 
-    ``None`` means no refresh was attempted on this path at all, which
-    is healthy in the same sense as :data:`REFRESH_DISABLED`: nothing
-    claimed freshness and nothing failed to establish it.
+    ``None`` is NOT healthy. It means no refresh happened on this path,
+    so nothing vouched for the pointer the decision was read through --
+    the same epistemic position as a refresh that failed, and the
+    opposite of :data:`REFRESH_DISABLED`, where the local ref IS still
+    re-observed and only the network fetch is skipped. Treating ``None``
+    as healthy is what made a throttle-suppressed cross-agent catch-up
+    indistinguishable from a verified one.
     """
-    return refresh is None or refresh in _HEALTHY_REFRESH_OUTCOMES
+    return refresh is not None and refresh in _HEALTHY_REFRESH_OUTCOMES
 
 
 def record_refresh(record: RebaseState, refresh: str | None) -> RebaseState:

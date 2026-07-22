@@ -136,17 +136,19 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     assert pre_landing_base_sha != post_landing_base_sha
     _run(tmp_git_repo, "checkout", "feature")
 
-    def _stale_branch_sha(_repo_root: object, _name: str) -> str | None:
-        # The single branch_sha call inside
-        # auto_integrate_ff.fast_forward_target is the observation
-        # that decides the CAS expected-oldvalue. Returning the
-        # pre-landing SHA opens the race window deterministically,
-        # with no dependency on how many times the orchestrator
-        # called branch_sha beforehand. Every other caller keeps
-        # the real function and sees the true current SHA.
-        return pre_landing_base_sha
+    def _stale_observe_branch_sha(
+        _repo_root: object, _name: str
+    ) -> tuple[str | None, bool]:
+        # The single observe_branch_sha call inside
+        # auto_integrate_ff is the observation that decides the CAS
+        # expected-oldvalue. Returning the pre-landing SHA -- with
+        # query_ok=True, i.e. "git answered definitively" -- opens the
+        # race window deterministically, with no dependency on how many
+        # times the orchestrator read the ref beforehand. Every other
+        # caller keeps the real function and sees the true current SHA.
+        return pre_landing_base_sha, True
 
-    monkeypatch.setattr(_ai_ff_mod, "branch_sha", _stale_branch_sha)
+    monkeypatch.setattr(_ai_ff_mod, "observe_branch_sha", _stale_observe_branch_sha)
 
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
@@ -287,11 +289,9 @@ def test_fast_forward_target_missing_branch_is_reported(tmp_git_repo: Path) -> N
     ``reason='target branch missing at fast-forward time'`` -- never
     attempt a CAS or worktree ff on a missing branch.
 
-    The third reason, 'target advanced concurrently (ff-only refused)'
-    (auto_integrate_ff.py:110), is deliberately NOT covered here: it
-    is unreachable without injection because the caller's ancestor
-    guard at :68 rejects non-ancestors first; it is intentional
-    defence-in-depth behind ``git merge --ff-only``.
+    Its sibling reason for an UNREADABLE target -- the ``git rev-parse``
+    that failed rather than reporting the branch absent -- is covered by
+    :func:`test_unreadable_target_is_retryable_but_a_missing_one_is_not`.
     """
     from ralph.pipeline.auto_integrate_ff import fast_forward_target
 
@@ -309,6 +309,120 @@ def test_fast_forward_target_missing_branch_is_reported(tmp_git_repo: Path) -> N
     assert reason == "target branch missing at fast-forward time", (
         f"AC-08 ff: defensive reason for missing branch must match"
         f" the producer literal, got {reason!r}"
+    )
+
+
+def test_unreadable_target_is_retryable_but_a_missing_one_is_not(
+    tmp_path: Path, tmp_git_repo: Path
+) -> None:
+    """A FAILED target read is a concurrency signal, not an absent branch.
+
+    Defect: ``branch_sha`` returned ``None`` both when the branch did not
+    exist AND when ``git rev-parse`` itself failed, and the fast-forward
+    mapped that single ``None`` onto the NON-retryable 'target branch
+    missing'. Under concurrency the commonest cause of a failed read is a
+    ref lock held by the sibling agent currently landing on the same
+    branch, so the bounded integration loop abandoned a situation one
+    retry resolves.
+
+    ``tmp_path`` is not a git repository at all, so ``git rev-parse``
+    exits non-zero for a REASON OTHER than 'no such ref' -- the same
+    shape a contended ref lock produces, without having to contend one.
+    """
+    from ralph.pipeline.auto_integrate_ff import (
+        fast_forward_target,
+        is_retryable_fast_forward_failure,
+    )
+
+    _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
+    feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+
+    unreadable_ok, unreadable_reason = fast_forward_target(
+        tmp_path, "main", feature_sha
+    )
+    assert unreadable_ok is False
+    assert is_retryable_fast_forward_failure(unreadable_reason), (
+        f"an unreadable target must be retried, got reason={unreadable_reason!r}"
+    )
+
+    _missing_ok, missing_reason = fast_forward_target(
+        tmp_git_repo, "definitely-not-a-branch", feature_sha
+    )
+    assert missing_reason == "target branch missing at fast-forward time"
+    assert not is_retryable_fast_forward_failure(missing_reason), (
+        "a genuinely absent target must NOT burn the attempt budget"
+    )
+
+
+def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The attempt budget is spent truthfully, in the log and on the state.
+
+    Two defects are pinned here, both in
+    :func:`ralph.pipeline.auto_integrate._auto_integrate_after_commit_inner`:
+
+    1. the ``re-integrating onto the moved target`` INFO line was emitted
+       at the bottom of EVERY iteration including the last one, where the
+       range then ends and nothing re-integrates -- the operator was
+       promised a retry that never came;
+    2. nothing recorded that the budget had been spent, so the returned
+       state carried only the last fast-forward skip reason and a
+       one-off concurrent move looked identical to a target that kept
+       moving until the loop gave up.
+
+    The scenario is the same deterministic CAS race the AC-08 test uses:
+    a permanently stale observed SHA makes every compare-and-swap fail,
+    which is retryable, so all three attempts are consumed.
+    """
+    from loguru import logger
+
+    import ralph.pipeline.auto_integrate as _ai_mod
+    import ralph.pipeline.auto_integrate_ff as _ai_ff_mod
+
+    base = _base_branch(tmp_git_repo)
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
+    pre_landing_base_sha = _run(
+        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
+    ).stdout.strip()
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    monkeypatch.setattr(
+        _ai_ff_mod,
+        "observe_branch_sha",
+        lambda _root, _name: (pre_landing_base_sha, True),
+    )
+
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="INFO", format="{message}")
+    try:
+        outcome = auto_integrate_after_commit(
+            _build_config(tmp_git_repo, target=base),
+            WorkspaceScope(tmp_git_repo),
+            RebaseState(),
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert outcome is not None
+    assert outcome.fast_forwarded is False
+    assert outcome.last_reason is not None
+    assert "exhausted 3 integration attempts" in outcome.last_reason, (
+        "the recorded reason must say the attempt budget was spent, got"
+        f" {outcome.last_reason!r}"
+    )
+    # The underlying concurrency cause survives as the headline.
+    assert "advanced concurrently" in outcome.last_reason
+
+    promised_retries = [
+        line for line in lines if "re-integrating onto the moved target" in line
+    ]
+    assert len(promised_retries) == _ai_mod._MAX_INTEGRATION_ATTEMPTS - 1, (
+        "the re-integration line must be emitted only when another attempt"
+        f" will actually run, got {promised_retries!r}"
     )
 
 

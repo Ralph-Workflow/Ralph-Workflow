@@ -63,6 +63,18 @@ REFRESH_RACE_LOST = "lost a concurrent refresh race"
 #: Distinct from :data:`REFRESH_NO_ORIGIN`, which now means the target
 #: could not be observed AT ALL -- neither remotely nor locally.
 REFRESH_LOCAL_FLEET = "local fleet"
+#: The boundary refresh throttle declined this probe, so NO refresh was
+#: taken. Recorded rather than left as ``None`` because a boundary
+#: decided from a pointer nobody re-read this round is exactly as
+#: unverifiable as one whose refresh failed -- the operator has to be
+#: able to tell that case from a genuinely fresh one.
+REFRESH_SUPPRESSED = "refresh suppressed by throttle"
+#: The worktree holding the target could not be queried, so the refresh
+#: declined to move the shared ref. Distinct from
+#: :data:`REFRESH_RACE_LOST`, which means a concurrent mover WON: this
+#: one means we could not even look, and reporting it as a lost race
+#: attributed a definite verdict to a failed query.
+REFRESH_WORKTREE_QUERY_FAILED = "target worktree lookup failed"
 
 __all__ = [
     "REFRESH_ALREADY_CURRENT",
@@ -74,7 +86,9 @@ __all__ = [
     "REFRESH_NO_REMOTE_BRANCH",
     "REFRESH_RACE_LOST",
     "REFRESH_REFRESHED",
+    "REFRESH_SUPPRESSED",
     "REFRESH_UNREACHABLE",
+    "REFRESH_WORKTREE_QUERY_FAILED",
     "observe_target_sha",
     "refresh_target_from_remote",
 ]
@@ -152,9 +166,14 @@ def refresh_target_from_remote(
         return outcome if outcome is not None else REFRESH_ALREADY_CURRENT
     local_sha, remote_sha = advance
 
-    if not _advance_local_ref(repo_root, target, local_sha, remote_sha):
-        logger.debug("auto_integrate: refresh of '{}' lost a concurrent race", target)
-        return REFRESH_RACE_LOST
+    advance_failure = _advance_local_ref(repo_root, target, local_sha, remote_sha)
+    if advance_failure:
+        logger.debug(
+            "auto_integrate: refresh of '{}' did not advance the ref: {}",
+            target,
+            advance_failure,
+        )
+        return advance_failure
 
     logger.info(
         "auto_integrate: refreshed '{}' from origin ({} -> {})",
@@ -287,8 +306,16 @@ def _remote_tracking_sha(repo_root: Path, target: str) -> str | None:
 
 def _advance_local_ref(
     repo_root: Path, target: str, local_sha: str, remote_sha: str
-) -> bool:
+) -> str:
     """Move the local target ref forward using the landing primitives.
+
+    Returns ``""`` when the ref advanced, otherwise the ``REFRESH_*``
+    outcome naming why it did not. Returning an outcome rather than a
+    bare ``False`` is what lets a failed worktree query be reported as
+    :data:`REFRESH_WORKTREE_QUERY_FAILED` instead of being mislabelled
+    :data:`REFRESH_RACE_LOST`: 'I could not look' and 'somebody else
+    won' are different facts, and only the second one means the pointer
+    this boundary read is current.
 
     Reuses the same worktree-aware and compare-and-swap paths as the
     normal fast-forward, so a concurrent mover wins and this refresh
@@ -302,7 +329,10 @@ def _advance_local_ref(
     moving the shared ref under a live checkout leaves that worktree's
     index describing the freshly landed work as a local reverse diff.
     The refresh is best-effort anyway, so an unanswerable query simply
-    declines to move the ref this time round.
+    declines to move the ref this time round -- and says so, which is
+    what keeps that decline out of
+    :data:`~ralph.pipeline.auto_integrate_context._HEALTHY_REFRESH_OUTCOMES`
+    and therefore visible on the operator's ``auto-integrate:`` line.
     """
     verdict, worktree = worktree_lookup(find_main_worktree_root(repo_root), target)
     if verdict == WORKTREE_QUERY_FAILED:
@@ -311,11 +341,13 @@ def _advance_local_ref(
             "skipping the origin refresh of the shared ref",
             target,
         )
-        return False
+        return REFRESH_WORKTREE_QUERY_FAILED
     if (
         verdict == WORKTREE_FOUND
         and worktree is not None
         and fast_forward_via_worktree(worktree, remote_sha)
     ):
-        return True
-    return compare_and_swap_branch(repo_root, target, local_sha, remote_sha)
+        return ""
+    if compare_and_swap_branch(repo_root, target, local_sha, remote_sha):
+        return ""
+    return REFRESH_RACE_LOST

@@ -104,6 +104,7 @@ from ralph.pipeline.auto_integrate_recovery import (
 from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
 )
+from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -311,14 +312,19 @@ def auto_integrate_on_phase_transition(
     minutes ago reports "nothing to catch up" from stale data, and that
     silent staleness is indistinguishable from the feature being dead.
     :data:`~ralph.pipeline.auto_integrate_boundary_refresh.BOUNDARY_REFRESH_THROTTLE`
-    (default 30.0 s) therefore permits at most one refresh per interval
-    per process. The fetch is bounded by
+    (default 30.0 s) therefore permits at most one SUCCESSFUL refresh
+    per interval per ``(repository root, target)`` pair -- keyed, so two
+    worktrees or two targets sharing one process cannot steal each
+    other's window, and consume-on-success, so one unreachable-origin
+    blip does not blind the next whole interval. The fetch is bounded by
     ``general.auto_integrate_fetch_timeout_seconds`` and fails open: an
     unreachable origin yields ``REFRESH_UNREACHABLE`` and integration
     continues against the local ref. In the linked-worktree topology
     this feature exists for, ``refs/heads/<target>`` is shared across
-    every agent, so the local ref IS the authoritative pointer and the
-    refresh correctly records ``REFRESH_NO_ORIGIN``.
+    every agent, so the local ref IS the authoritative pointer, and
+    re-reading it there records ``REFRESH_LOCAL_FLEET``.
+    ``REFRESH_NO_ORIGIN`` is reserved for the target that could not be
+    observed at all, and is NOT treated as healthy.
 
     Otherwise it runs the full integration (rebase → endpoint merge →
     optional agent conflict resolution → fast-forward) and returns
@@ -422,13 +428,19 @@ def _defer_dirty_boundary(
     The ancestry probe runs against a THROTTLED refresh rather than a
     fetch-free local read: see
     :func:`auto_integrate_on_phase_transition` for the interval, the
-    bound and the fail-open behaviour.
+    bound and the fail-open behaviour. When the throttle declines, the
+    record carries
+    :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_SUPPRESSED`
+    rather than nothing at all: a boundary decided from a pointer this
+    round never re-read is exactly as unverifiable as one whose refresh
+    failed, and hiding that behind an absent ``last_refresh`` is what
+    made a suppressed cross-agent catch-up indistinguishable from a
+    verified one.
     """
-    refresh = (
-        _refresh_target(config, root, target)
-        if BOUNDARY_REFRESH_THROTTLE.should_refresh()
-        else None
-    )
+    refresh = REFRESH_SUPPRESSED
+    if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
+        refresh = _refresh_target(config, root, target)
+        BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
     target_sha = branch_sha(root, target)
     if target_sha is not None and not is_ancestor(root, target_sha, get_head_sha(root)):
         skip = _record_skip(
@@ -451,7 +463,10 @@ def _defer_dirty_boundary(
 #: only when attempt N completed a rebase/merge but the fast-forward
 #: did not land (e.g. the target advanced concurrently, AC-08); the
 #: retry re-integrates onto the moved tip instead of waiting for the
-#: next commit phase.
+#: next commit phase. Exhausting the budget is not silent: the returned
+#: record names it (see :func:`_record_attempt_budget_spent`), because
+#: "the target moved once" and "the target kept moving until I gave up"
+#: call for different operator responses.
 _MAX_INTEGRATION_ATTEMPTS = 3
 
 
@@ -521,6 +536,7 @@ def _auto_integrate_after_commit_inner(
 
     record: RebaseState | None = None
     prefer_merge = False
+    attempts_exhausted = False
     try:
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
@@ -553,10 +569,23 @@ def _auto_integrate_after_commit_inner(
             # rebase-only attempt still retries as a rebase and keeps
             # the history linear.
             prefer_merge = record is not None and record.last_action == _ACTION_MERGED
-            logger.info(
-                "auto_integrate: fast-forward did not land on attempt {}; "
-                "re-integrating onto the moved target",
-                attempt + 1,
+            if attempt + 1 < _MAX_INTEGRATION_ATTEMPTS:
+                logger.info(
+                    "auto_integrate: fast-forward did not land on attempt {}; "
+                    "re-integrating onto the moved target",
+                    attempt + 1,
+                )
+                continue
+            # Last iteration: the range ends here and NOTHING
+            # re-integrates. Promising a retry that never runs, and
+            # recording only the last fast-forward skip reason, left the
+            # operator with no way to tell "the target moved once" from
+            # "the target kept moving until I ran out of attempts".
+            attempts_exhausted = True
+            logger.warning(
+                "auto_integrate: fast-forward did not land after {} integration "
+                "attempts; giving up until the next seam",
+                _MAX_INTEGRATION_ATTEMPTS,
             )
     except Exception as exc:
         # Caught here, not only in the caller's broad guard: this is
@@ -576,12 +605,32 @@ def _auto_integrate_after_commit_inner(
         )
     if record is None:
         return None
+    if attempts_exhausted:
+        record = _record_attempt_budget_spent(record)
     return apply_conflict_budget(
         record,
         prior=state,
         target=target,
         resolver_suppressed=resolver_suppressed,
         identity=identity,
+    )
+
+
+def _record_attempt_budget_spent(record: RebaseState) -> RebaseState:
+    """Append the spent-attempt-budget fact to a record's skip reason.
+
+    The underlying concurrency reason is kept as the headline -- it is
+    what an operator needs in order to act -- and the exhaustion is
+    appended, so the ``auto-integrate:`` line says both WHY the landing
+    kept failing and that the bounded loop stopped trying.
+    """
+    base = record.last_reason or "fast-forward did not land"
+    return record.model_copy(
+        update={
+            "last_reason": (
+                f"{base}; exhausted {_MAX_INTEGRATION_ATTEMPTS} integration attempts"
+            )
+        }
     )
 
 

@@ -27,6 +27,7 @@ from ralph.git.merge import (
     is_ancestor,
     merge_in_progress,
     merge_target_into_current,
+    observe_branch_sha,
     paths_with_conflict_markers,
     reset_hard,
     resolve_origin_head_branch,
@@ -92,6 +93,38 @@ def test_branch_sha_returns_sha_or_none(tmp_git_repo: Path) -> None:
     expected = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert branch_sha(tmp_git_repo, base) == expected
     assert branch_sha(tmp_git_repo, "missing-branch") is None
+
+
+def test_observe_branch_sha_separates_an_absent_branch_from_a_failed_query(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    """A failed ``git rev-parse`` is reported distinguishably from 'absent'.
+
+    Defect this pins: ``branch_sha`` returned ``None`` on ANY non-zero
+    return code, collapsing 'the branch does not exist' (exit 1) and
+    'the invocation failed' (exit 128 -- not a repository, a contended
+    ref lock, a broken object store) into one verdict. Downstream, the
+    fast-forward mapped that single ``None`` onto a NON-retryable
+    'target branch missing', so a ref lock held by a sibling agent
+    landing on the same branch was abandoned instead of retried.
+
+    ``tmp_path`` is a directory that is not a git repository, which
+    produces the failed-invocation exit code without having to contend a
+    real lock.
+    """
+    base = _base_branch(tmp_git_repo)
+    expected = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+
+    assert observe_branch_sha(tmp_git_repo, base) == (expected, True)
+    # Definitely answered, and the answer is "no such branch".
+    assert observe_branch_sha(tmp_git_repo, "missing-branch") == (None, True)
+    # Not answered at all: the ref's state is UNKNOWN.
+    assert observe_branch_sha(tmp_path, base) == (None, False)
+
+    # ``branch_sha``'s own contract is unchanged for every existing
+    # caller: both non-SHA cases still read as ``None``.
+    assert branch_sha(tmp_git_repo, "missing-branch") is None
+    assert branch_sha(tmp_path, base) is None
 
 
 def test_is_ancestor_true_and_false(tmp_git_repo: Path) -> None:

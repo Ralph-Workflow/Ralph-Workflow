@@ -160,7 +160,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
-| `auto_integrate_enabled` | `true` | On by default: at each of the four integration seams (see [Auto-integration triggers and skips](#auto-integration-triggers-and-skips)) Ralph Workflow rebases the current feature branch onto the shared mainline (falling back to a single endpoint merge on conflict) and fast-forwards the local mainline ref to the feature tip. Never pushes to a remote and never force-moves the mainline. A no-op on single-branch workflows via the skip conditions (on the target branch, no commits beyond the target, detached HEAD, missing target). Set to `false` to keep git behaviour byte-identical to runs without auto-integration. |
+| `auto_integrate_enabled` | `true` | On by default: at each of the four live integration seams (see [Auto-integration triggers and skips](#auto-integration-triggers-and-skips)) Ralph Workflow rebases the current feature branch onto the shared mainline (falling back to a single endpoint merge on conflict) and fast-forwards the local mainline ref to the feature tip. Never pushes to a remote and never force-moves the mainline. A no-op on single-branch workflows via the skip conditions (on the target branch, no commits beyond the target, detached HEAD, missing target). Set to `false` to keep git behaviour byte-identical to runs without auto-integration. |
 | `auto_integrate_target` | (auto-detect) | Shared integration branch name. When set (e.g. `"develop"`) it is used verbatim, provided that branch exists locally or can be materialized from `refs/remotes/origin/<target>`. When unset, the target is auto-detected: the remote default branch (`origin/HEAD`) when a remote exists, otherwise `main`, otherwise `master`. If no candidate exists the step skips with a recorded reason and never guesses. |
 | `auto_integrate_fetch_enabled` | `true` | On by default: before each integration attempt Ralph Workflow runs a bounded, read-only `git fetch origin <target>` and fast-forwards the local mainline ref when the remote-tracking ref is strictly ahead. Never force-moves a ref and never pushes; a diverged remote is left alone. Set to `false` to keep the step strictly local -- appropriate when every agent shares one git common directory through linked worktrees, where the mainline ref is already shared. |
 | `auto_integrate_fetch_timeout_seconds` | `10.0` | Wall-clock budget for the auto-integration fetch (must be `> 0` and `<= 120`). On timeout or any remote failure the step falls back to local-only integration and the run is never failed by an unreachable remote. The degradation is not silent: the refresh outcome (`origin unreachable`) is recorded on the run state and rendered to the operator in the `auto-integrate:` line. |
@@ -177,7 +177,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 ### Auto-integration triggers and skips
 
 Auto-integration does **not** run only after a commit. With
-`auto_integrate_enabled = true` it runs at four seams:
+`auto_integrate_enabled = true` it runs at four live seams:
 
 1. **The commit seam.** After a commit phase that actually created a
    commit (`COMMIT_SUCCESS`). This is the full sequence: durable crash
@@ -231,11 +231,25 @@ Auto-integration does **not** run only after a commit. With
    advance, review clean, review issues found, and their siblings) run
    the same integration so the feature branch stays in lockstep with a
    mainline that moved while an analysis phase ran.
-3. **The parallel fan-out join.** After parallel work units are joined
-   back together.
-4. **Run startup.** Once per run, before the first phase, so a run that
+3. **Run startup.** Once per run, before the first phase, so a run that
    resumes onto a mainline that moved while it was stopped integrates
    before doing anything else.
+4. **Each manifest-launched parallel worker.** A worker started from a
+   parallel work-unit manifest does not enter the shared run loop, so
+   it carries its own copy of the startup seams: crash recovery of any
+   interrupted integration, a startup catch-up integration before it
+   begins work, and a boundary integration after its phase succeeds.
+   This is the topology several agents on one repository actually run
+   in, and without these hooks such a worker neither published its
+   landings to its siblings nor picked theirs up. The seam is wrapped
+   so it can never abort a worker: when its dependencies are
+   unavailable the worker simply runs with no integration.
+
+A fifth seam exists in the code at **the Ralph-managed parallel fan-out
+join**, reached when parallel work units are joined back together. It is
+**dormant** under the bundled `dispatch_mode = "agent_subagents"`, which
+suppresses the fan-out effect entirely, and applies only when an
+operator overrides `dispatch_mode`.
 
 An integration attempt can be skipped, and **how visible a skip is
 depends on the seam** -- phase boundaries fire far more often than
@@ -245,7 +259,8 @@ commits, and a routine nothing-to-do there is not a fault:
   state and surfaces it in the `auto-integrate:` log line. The dirty
   worktree check is not one of them: it exists only on the boundary
   path below.
-* **Phase boundaries and the fan-out join** run a cheap pre-check
+* **Phase boundaries, the parallel-worker seams and the fan-out join**
+  run a cheap pre-check
   first, and that pre-check returns *without recording anything* when
   the workspace root is not a git checkout, when no integration target
   can be resolved, when the worktree has uncommitted **tracked**
@@ -258,10 +273,19 @@ commits, and a routine nothing-to-do there is not a fault:
   cross-agent catch-up, so it is **recorded** as a
   `worktree not clean` skip rather than staying invisible. That
   pre-check reads the mainline pointer through a **throttled** origin
-  refresh (at most one fetch per 30 s per process) rather than a purely
+  refresh rather than a purely
   local ref read, so "nothing to catch up" is never concluded from a
   pointer another agent moved minutes ago -- while the eleven boundary
   events of one cycle still cost at most one fetch between them. The
+  throttle permits at most one **successful** refresh per 30 s per
+  *(repository root, target branch)* pair: keyed, so two worktrees or
+  two parallel workers sharing one process cannot steal each other's
+  window, and consumed only on success, so a single unreachable-origin
+  blip does not blind the whole next interval. When the throttle does
+  decline, the skip carries `refresh suppressed by throttle` rather
+  than no outcome at all -- a boundary decided from a pointer nobody
+  re-read this round is exactly as unverifiable as one whose refresh
+  failed. The
   fetch is bounded by `auto_integrate_fetch_timeout_seconds` and
   fail-open, and its `REFRESH_*` outcome is recorded on the skip.
   A repository with **no origin at all** -- the normal shape of a
@@ -279,7 +303,9 @@ commits, and a routine nothing-to-do there is not a fault:
   the commit seam. The other case that deliberately breaks the silence
   is an
   already-integrated tip read through an *unhealthy* refresh --
-  `origin unreachable`, `diverged from origin`, `no local branch`, or
+  `origin unreachable`, `diverged from origin`, `no local branch`,
+  `no origin remote`, `target worktree lookup failed`,
+  `refresh suppressed by throttle`, or
   `lost a concurrent refresh race` -- which is recorded as a
   `no commits beyond target` skip carrying that refresh outcome,
   because a no-op computed from an unverifiable pointer is
@@ -310,9 +336,21 @@ three attempts** within the same seam -- the first try plus at most two
 retries: each retry re-reads the target from origin and recomputes the
 integration onto the moved tip. Retryable
 causes are a target that advanced concurrently (not an ancestor,
-`merge --ff-only` refused, compare-and-swap mismatch) and a failed
-`git worktree list` query -- the last of which fails closed rather than
-moving the shared mainline ref while a live checkout may hold it.
+compare-and-swap mismatch), a failed
+`git worktree list` query -- which fails closed rather than
+moving the shared mainline ref while a live checkout may hold it -- and
+a `git rev-parse` of the target that FAILED rather than reporting the
+branch absent, which under concurrency usually means a sibling agent
+held the ref lock. A target branch that genuinely does not exist is
+**not** retryable: it will not exist on the retry either, and spending
+the attempt budget on it only hides the real cause.
+
+When all three attempts end with the fast-forward still not landing,
+the recorded reason names both the underlying concurrency cause and the
+spent budget (`...; exhausted 3 integration attempts`), and the
+misleading `re-integrating onto the moved target` line is emitted only
+when another attempt will actually run. The next commit or phase
+boundary re-enters the whole loop.
 
 Immediately before the fast-forward observes the target SHA, the target
 is re-read from origin a second time (the first read happens when the
@@ -320,9 +358,10 @@ integration context is resolved). This matters because the rebase, the
 endpoint merge and any agent conflict resolution can take minutes,
 during which other agents keep landing on the same mainline. The
 outcome of that refresh -- `refreshed from origin`, `already current`,
-`no origin remote`, `no remote branch`, `no local branch`,
-`origin unreachable`, `diverged from origin`,
-`lost a concurrent refresh race`, `fetch disabled` -- is recorded on
+`local fleet`, `no origin remote`, `no remote branch`,
+`no local branch`, `origin unreachable`, `diverged from origin`,
+`lost a concurrent refresh race`, `target worktree lookup failed`,
+`refresh suppressed by throttle`, `fetch disabled` -- is recorded on
 the run state and rendered in the
 `auto-integrate:` line as `[target refresh: <outcome>]`, so a landing
 computed against a stale pointer is never silent. The refresh itself

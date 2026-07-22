@@ -20,7 +20,16 @@ def _default_config() -> UnifiedConfig:
 
 def _stub_ff_environment(monkeypatch, root: Path) -> None:
     """Point every fast-forward lookup at a single in-memory worktree."""
-    monkeypatch.setattr(auto_integrate_ff, "branch_sha", lambda _root, _branch: "old-main")
+    # The fast-forward now reads the target through ``observe_branch_sha``,
+    # which reports (sha, query_ok) so a FAILED ``git rev-parse`` can be
+    # retried instead of being mistaken for an absent branch. The stub
+    # answers "read successfully", which is the environment these tests
+    # always described.
+    monkeypatch.setattr(
+        auto_integrate_ff,
+        "observe_branch_sha",
+        lambda _root, _branch: ("old-main", True),
+    )
     monkeypatch.setattr(auto_integrate_ff, "is_ancestor", lambda *_args: True)
     monkeypatch.setattr(auto_integrate_ff, "find_main_worktree_root", lambda _root: root)
     # The fast-forward now consults ``worktree_lookup``, which reports
