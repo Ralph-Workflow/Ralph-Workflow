@@ -43,12 +43,56 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Find bounds the traversal to relevant source suffixes before one grep
-# process scans the resulting file list, avoiding recursive BSD grep's
-# directory-walk overhead without a non-standard dependency.
+# Find bounds the traversal to relevant source suffixes before ONE
+# single-pass matcher process scans the resulting file list.
+#
+# Why not ``grep -lE`` here: BSD grep 2.6.0 (the macOS system grep)
+# re-scans the corpus roughly once per alternation branch, and the two
+# ``\s`` branches fall off its fast literal path entirely. Measured on
+# this tree (2,719 files / 21.5 MB): a single literal costs ~0.37s, the
+# full six-branch DRIFT_PATTERNS costs ~3.6s -- which blew the 2s bound
+# below as the tree grew. One compiled regex in a single pass does the
+# same work in ~0.3s, restoring real headroom rather than shaving the
+# margin. Do NOT raise GREP_TIMEOUT_SECONDS to accommodate a slow scan;
+# see docs/ralph-workflow-policy/gate-script-policy.md § Bounded.
+#
+# ``find`` stays the process the watchdog below kills, so the bounded and
+# fail-closed rc contract is unchanged, and the matcher keeps grep's exit
+# statuses (0 = matched, 1 = no match, 2 = error). DRIFT_PATTERNS remains
+# the single source of truth: it is passed through verbatim as argv and
+# never re-spelled in a second dialect.
+#
+# The match runs on bytes rather than decoded text. This skips a UTF-8
+# decode of the whole corpus, which is what removed the cold-cache spike
+# (``verify`` runs ``verify-drift`` FIRST, so this gate is the one that
+# pays for a cold page cache). The only semantic difference is that
+# ``\s`` matches ASCII whitespace instead of also matching exotic Unicode
+# spaces. That is inert for the invariant this gate protects: the two
+# ``\s`` branches guard ``ctx.mode <op> <mode>`` and ``force_mode =``,
+# which are Python token separators, and CPython's tokenizer rejects
+# non-ASCII whitespace between tokens -- so no reachable .py drift can
+# hide in the gap. Matching bytes also makes the scan immune to files
+# that are not valid UTF-8 at all.
 GREP_TIMEOUT_SECONDS=2
 find ralph tests docs -type f \( -name '*.py' -o -name '*.rst' -o -name '*.md' \) \
-    -not -path '*/__pycache__/*' -exec grep -lE "$DRIFT_PATTERNS" {} + \
+    -not -path '*/__pycache__/*' -exec python3 -c '
+import re
+import sys
+
+pattern = re.compile(sys.argv[1].encode("utf-8"))
+matched = False
+for path in sys.argv[2:]:
+    try:
+        with open(path, "rb") as handle:
+            blob = handle.read()
+    except OSError as exc:
+        sys.stderr.write("cannot read {0}: {1}\n".format(path, exc))
+        sys.exit(2)
+    if pattern.search(blob):
+        sys.stdout.write(path + "\n")
+        matched = True
+sys.exit(0 if matched else 1)
+' "$DRIFT_PATTERNS" {} + \
     >"$GREP_DIR/scan.out" 2>"$GREP_DIR/scan.err" &
 SCAN_PID="$!"
 (
