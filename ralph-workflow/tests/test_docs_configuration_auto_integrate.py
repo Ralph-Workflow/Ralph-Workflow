@@ -20,6 +20,7 @@ constant from :mod:`tests.doc_roots` rather than a literal
 
 from __future__ import annotations
 
+from ralph.pipeline import auto_integrate_sync
 from tests.doc_roots import PACKAGE_DOCS_SPHINX_DIR
 
 _PATH = PACKAGE_DOCS_SPHINX_DIR / "configuration.md"
@@ -111,4 +112,56 @@ def test_configuration_md_documents_false_optout_for_auto_integrate_enabled() ->
     row = _row_for_key(content, "`auto_integrate_enabled`")
     assert "false" in row.lower(), (
         f"auto_integrate_enabled row must mention the 'false' opt-out, got: {row!r}"
+    )
+
+
+def _skip_section(content: str) -> str:
+    """Return the body of the "triggers and skips" section.
+
+    Spans from the ``### Auto-integration triggers and skips`` heading to
+    the next heading, so assertions cannot accidentally satisfy
+    themselves from unrelated prose elsewhere on the page.
+    """
+    heading = "### Auto-integration triggers and skips"
+    _, sep, rest = content.partition(heading)
+    if not sep:
+        raise AssertionError(
+            f"Expected to find the {heading!r} section in configuration.md"
+        )
+    body: list[str] = []
+    for line in rest.splitlines():
+        if line.startswith("## ") or line.startswith("### "):
+            break
+        body.append(line)
+    # Collapse the markdown line wrapping so assertions can match a
+    # phrase without depending on where the source happens to wrap.
+    return " ".join(" ".join(body).split())
+
+
+def test_configuration_md_regression_documents_every_refresh_outcome() -> None:
+    """Every ``REFRESH_*`` outcome must be named in the operator reference.
+
+    Regression: the section enumerated six of the nine outcomes as if the
+    list were closed, omitting ``no remote branch``, ``no local branch``
+    and ``lost a concurrent refresh race``. All nine can reach
+    :attr:`ralph.pipeline.rebase_state.RebaseState.last_refresh` and be
+    rendered into the ``auto-integrate:`` line, and the last two are
+    *unhealthy* outcomes -- exactly the ones an operator most needs to
+    recognise -- so an undocumented outcome is an unreadable log line.
+
+    This asserts a doc-to-code contract rather than prose: adding a new
+    ``REFRESH_*`` constant without documenting it fails here, and any
+    rewording that still names every outcome keeps passing.
+    """
+    outcomes = {
+        value
+        for name, value in vars(auto_integrate_sync).items()
+        if name.startswith("REFRESH_") and isinstance(value, str)
+    }
+    assert outcomes, "expected auto_integrate_sync to define REFRESH_* outcomes"
+    section = _skip_section(_PATH.read_text())
+    undocumented = sorted(o for o in outcomes if o not in section)
+    assert not undocumented, (
+        "configuration.md must name every refresh outcome an operator can "
+        f"see in the auto-integrate line; undocumented: {undocumented}"
     )

@@ -194,12 +194,43 @@ Auto-integration does **not** run only after a commit. With
    resumes onto a mainline that moved while it was stopped integrates
    before doing anything else.
 
-An integration attempt is skipped, with the reason recorded on the run
-state and surfaced in the `auto-integrate:` log line, when:
+An integration attempt can be skipped, and **how visible a skip is
+depends on the seam** -- phase boundaries fire far more often than
+commits, and a routine nothing-to-do there is not a fault:
+
+* **The commit seam** records every skip it can produce on the run
+  state and surfaces it in the `auto-integrate:` log line. The dirty
+  worktree check is not one of them: it exists only on the boundary
+  path below.
+* **Phase boundaries and the fan-out join** run a cheap pre-check
+  first, and that pre-check returns *without recording anything* when
+  the workspace root is not a git checkout, when no integration target
+  can be resolved, when the worktree is dirty (logged at INFO), when
+  the target already sits at the feature tip **and** the origin
+  refresh that pointer was read through was healthy, or when the
+  pre-check itself raised (logged at WARNING). Anything it does not
+  short-circuit falls through to the same recorded path as the commit
+  seam. The one case that deliberately breaks the silence is an
+  already-integrated tip read through an *unhealthy* refresh --
+  `origin unreachable`, `diverged from origin`, `no local branch`, or
+  `lost a concurrent refresh race` -- which is recorded as a
+  `no commits beyond target` skip carrying that refresh outcome,
+  because a no-op computed from an unverifiable pointer is
+  indistinguishable from a healthy one.
+* **Run startup** uses the same pre-check but is never invisible: when
+  nothing is recorded it still prints one
+  `auto-integrate: startup check: nothing to integrate` line, so an
+  operator can tell the sync ran at all.
+
+The skip reasons seen most often are below. Reasons that wrap an
+underlying git error (`preconditions not met`, `HEAD read failed`)
+carry that error's text verbatim in the recorded reason, and rarer
+failure-path reasons such as `unexpected failure: ...` are recorded the
+same way.
 
 | Skip | Meaning |
 |------|---------|
-| worktree not clean | **Phase boundaries only.** `git status --porcelain` reports anything at all -- including **untracked** files. This is deliberate: a boundary rebase would rewrite `HEAD` while a development agent has uncommitted work in flight, so a stray scratch file suppresses boundary integration until the next commit seam, which catches up moments later under the relaxed rebase preconditions. Any git failure here also counts as "not clean" (fail closed). |
+| worktree not clean | **Phase boundaries, fan-out join and startup only; never recorded on run state.** `git status --porcelain` reports anything at all -- including **untracked** files. This is deliberate: a boundary rebase would rewrite `HEAD` while a development agent has uncommitted work in flight, so a stray scratch file suppresses boundary integration until the next commit seam, which catches up moments later under the relaxed rebase preconditions. Any git failure here also counts as "not clean" (fail closed). The deferral surfaces as an INFO log line (`phase-transition integration deferred; worktree dirty`) and, at the startup seam only, as the generic `startup check: nothing to integrate` line. |
 | on target branch | The checkout is already on the mainline; there is nothing to integrate. |
 | no commits beyond target | The target ref already equals `HEAD`. |
 | detached HEAD | There is no branch to integrate. |
@@ -207,9 +238,10 @@ state and surfaced in the `auto-integrate:` log line, when:
 | preconditions not met | `check_rebase_preconditions` refused -- most often a rebase left in progress on disk by an earlier interrupted attempt. |
 | HEAD read failed | `git` could not report `HEAD`; the underlying error is named in the recorded reason. |
 
-When the fast-forward itself cannot land, the attempt is **retried up
-to three times** within the same seam: the target is re-read from
-origin and the integration recomputed onto the moved tip. Retryable
+When the fast-forward itself cannot land, the integration makes **up to
+three attempts** within the same seam -- the first try plus at most two
+retries: each retry re-reads the target from origin and recomputes the
+integration onto the moved tip. Retryable
 causes are a target that advanced concurrently (not an ancestor,
 `merge --ff-only` refused, compare-and-swap mismatch) and a failed
 `git worktree list` query -- the last of which fails closed rather than
@@ -221,8 +253,10 @@ integration context is resolved). This matters because the rebase, the
 endpoint merge and any agent conflict resolution can take minutes,
 during which other agents keep landing on the same mainline. The
 outcome of that refresh -- `refreshed from origin`, `already current`,
-`no origin remote`, `origin unreachable`, `diverged from origin`,
-`fetch disabled` -- is recorded on the run state and rendered in the
+`no origin remote`, `no remote branch`, `no local branch`,
+`origin unreachable`, `diverged from origin`,
+`lost a concurrent refresh race`, `fetch disabled` -- is recorded on
+the run state and rendered in the
 `auto-integrate:` line as `[target refresh: <outcome>]`, so a landing
 computed against a stale pointer is never silent. The refresh itself
 stays fail-open: an unreachable remote degrades to local-only
