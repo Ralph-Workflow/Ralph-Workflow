@@ -33,17 +33,21 @@ from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
 )
-from ralph.pipeline.auto_integrate_record import clear_record
+from ralph.pipeline.auto_integrate_record import clear_record, set_resolving_rebase
 from ralph.pipeline.auto_integrate_resolve import (
     RESOLUTION_FAILED,
     endpoint_merge_with_resolution,
 )
+from ralph.pipeline.conflict_resolution import resolve_rebase_in_progress
+from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.git.merge import MergeResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
 
 #: ``RebaseNoOp`` reason recorded when the bounded retry deliberately
@@ -83,6 +87,8 @@ def run_rebase_or_merge(
     conflict_resolver: ConflictResolver | None,
     *,
     prefer_merge: bool = False,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    display: ParallelDisplay | None = None,
 ) -> RebaseRunResult:
     """Drive rebase_onto, fall back to endpoint merge on conflict or failure.
 
@@ -101,6 +107,12 @@ def run_rebase_or_merge(
     plain ``git rebase`` (no ``--rebase-merges``) would drop that merge
     and replay the raw feature commits back into the conflict the
     resolver just settled.
+
+    With a ``rebase_stop_resolver`` a CONFLICTED rebase is resolved in
+    place -- commit by commit, through ``git rebase --continue`` -- before
+    the abort-and-endpoint-merge fallback is considered at all.
+    ``display`` is used only to own the resolution footer for the whole
+    loop; it is optional and never required for correctness.
     """
     if prefer_merge:
         return _endpoint_merge_result(
@@ -118,8 +130,62 @@ def run_rebase_or_merge(
             short_circuit=None,
         )
 
+    if isinstance(rebase_outcome, RebaseConflicts) and rebase_stop_resolver is not None:
+        resolved = _resolve_conflicted_rebase(
+            root, target, rebase_stop_resolver, display
+        )
+        if resolved is not None:
+            return resolved
+
     return _fallback_to_endpoint_merge(
         root, target, rebase_outcome, conflict_resolver
+    )
+
+
+def _resolve_conflicted_rebase(
+    root: Path,
+    target: str,
+    rebase_stop_resolver: RebaseStopResolver,
+    display: ParallelDisplay | None,
+) -> RebaseRunResult | None:
+    """Resolve the paused rebase in place, or hand it back to the fallback.
+
+    This is the branch the whole feature turns on. Before it existed a
+    conflicted rebase was ALWAYS destroyed by
+    :func:`_abort_rebase_after_conflict` on the first stop, so the
+    rebase-conflict-resolution pipeline could only ever be reached for the
+    follow-up endpoint merge -- never for the rebase the operator was
+    actually watching fail.
+
+    Returns a :class:`RebaseRunResult` shaped like a clean rebase when the
+    replay completed, so the caller proceeds to the fast-forward and the
+    operator sees ``rebased``. Returns ``None`` when the resolution
+    declined, which routes the caller into the pre-existing
+    abort-then-endpoint-merge path completely unchanged.
+
+    The footer is captured once here and restored once, around the ENTIRE
+    loop: the per-stop pushes happen inside it, so a per-stop capture
+    would snapshot the conflict bar itself and strand it after the loop.
+    """
+    set_resolving_rebase(root, True)
+    try:
+        with conflict_status_bar_session(display, root):
+            resolved = resolve_rebase_in_progress(root, target, rebase_stop_resolver)
+    finally:
+        set_resolving_rebase(root, False)
+    if not resolved:
+        logger.info(
+            "auto_integrate: rebase conflict resolution declined for '{}'; "
+            "falling back to the endpoint merge",
+            target,
+        )
+        return None
+    logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
+    return RebaseRunResult(
+        rebase_outcome=RebaseSuccess(),
+        merge_attempted=False,
+        merge_outcome=None,
+        short_circuit=None,
     )
 
 

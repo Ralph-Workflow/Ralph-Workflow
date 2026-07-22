@@ -24,7 +24,7 @@ from ralph.display.status_bar import StatusBarModel
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
 #: Footer label shown while the resolution pipeline owns the run.
@@ -45,10 +45,38 @@ __all__ = [
     "PHASE_LABEL",
     "capture_status_bar_model",
     "clear_conflict_status_bar",
+    "conflict_status_bar_session",
     "emit_conflict_phase_line",
     "push_conflict_status_bar",
     "restore_status_bar",
 ]
+
+
+@contextlib.contextmanager
+def conflict_status_bar_session(
+    display: object, workspace_root: Path
+) -> Iterator[None]:
+    """Own the footer for a whole resolution loop: capture once, restore once.
+
+    A rebase resolution works through several stops, each of which pushes
+    its own footer model. Capturing per stop would capture the CONFLICT
+    bar pushed by the previous stop, so the final restore would put the
+    resolution label back and leave it pinned after the loop ended --
+    the display equivalent of the hang this phase label exists to rule
+    out. Entering the context once around the entire loop captures the
+    genuinely pre-resolution model.
+
+    Restores on exception too, so a loop that raises still hands the
+    footer back.
+    """
+    previous = capture_status_bar_model(display)
+    try:
+        yield
+    finally:
+        if previous is None:
+            clear_conflict_status_bar(display, workspace_root)
+        else:
+            restore_status_bar(display, previous)
 
 
 def push_conflict_status_bar(
@@ -58,6 +86,8 @@ def push_conflict_status_bar(
     target: str,
     round_index: int,
     round_cap: int,
+    stop_index: int | None = None,
+    stop_cap: int | None = None,
 ) -> None:
     """Show the resolution phase and its round counter in the footer.
 
@@ -69,11 +99,21 @@ def push_conflict_status_bar(
             so a stuck resolution is attributable.
         round_index: 1-based index of the round about to run.
         round_cap: Total rounds allowed.
+        stop_index: 1-based index of the rebase stop being resolved, when
+            the resolution is driving a rebase rather than a single
+            endpoint merge. ``None`` keeps the footer byte-identical to
+            the merge-mode label.
+        stop_cap: Total rebase stops allowed.
     """
     try:
         model = StatusBarModel(
             workspace_root=str(workspace_root),
-            phase_label=PHASE_LABEL,
+            phase_label=_phase_label(
+                round_index=round_index,
+                round_cap=round_cap,
+                stop_index=stop_index,
+                stop_cap=stop_cap,
+            ),
             phase_style=phase_style_for_phase(PHASE_RESOLUTION),
             outer_dev_iteration=round_index,
             outer_dev_cap=round_cap,
@@ -90,6 +130,27 @@ def push_conflict_status_bar(
             target,
             exc,
         )
+
+
+def _phase_label(
+    *,
+    round_index: int,
+    round_cap: int,
+    stop_index: int | None,
+    stop_cap: int | None,
+) -> str:
+    """Footer label, widened with the commit counter only in rebase mode.
+
+    A rebase resolution can span many commits, so 'round 2/3' alone tells
+    the operator nothing about how far through the replay the run is --
+    it looks identical on stop 1 and stop 9.
+    """
+    if stop_index is None or stop_cap is None:
+        return PHASE_LABEL
+    return (
+        f"{PHASE_LABEL} (commit {stop_index}/{stop_cap}, "
+        f"round {round_index}/{round_cap})"
+    )
 
 
 def capture_status_bar_model(display: object) -> object | None:

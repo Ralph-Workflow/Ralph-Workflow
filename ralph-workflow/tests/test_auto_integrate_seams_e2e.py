@@ -59,7 +59,7 @@ from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition,
 )
 from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrottle
-from ralph.pipeline.auto_integrate_sync import REFRESH_NO_ORIGIN
+from ralph.pipeline.auto_integrate_sync import REFRESH_LOCAL_FLEET
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
@@ -285,13 +285,23 @@ def test_fan_out_join_seam_rebases_and_lands(topology: _Topology) -> None:
     _assert_landed(topology)
 
 
-def test_linked_worktree_refresh_reports_no_origin(tmp_path: Path) -> None:
-    """The shared-ref layout has no origin to read, and says so.
+def test_linked_worktree_refresh_reports_the_local_fleet_outcome(
+    tmp_path: Path,
+) -> None:
+    """The shared-ref layout has no origin, but it DOES have a fresh pointer.
 
-    ``refs/heads/main`` is shared across every linked worktree, so the
-    local ref IS the authoritative pointer. Recording
-    ``REFRESH_NO_ORIGIN`` rather than a failure is what lets the landing
-    proceed on the local ref alone.
+    ``refs/heads/main`` lives in the git common directory and is shared
+    across every linked worktree, so the local ref IS the authoritative
+    pointer and re-reading it observes whatever a sibling agent landed a
+    moment ago.
+
+    This used to record ``REFRESH_NO_ORIGIN``, which conflated "there is
+    nothing to fetch" with "the pointer could not be observed" -- the
+    same token an operator sees when freshness genuinely could not be
+    established. ``REFRESH_LOCAL_FLEET`` says the pointer WAS observed,
+    just not from a remote; ``REFRESH_NO_ORIGIN`` now means the stronger
+    thing, and is covered by
+    ``tests/test_auto_integrate_local_fleet_target_e2e.py``.
     """
     layout = _linked_worktree_topology(tmp_path)
 
@@ -303,7 +313,7 @@ def test_linked_worktree_refresh_reports_no_origin(tmp_path: Path) -> None:
     )
 
     assert outcome is not None
-    assert outcome.last_refresh == REFRESH_NO_ORIGIN
+    assert outcome.last_refresh == REFRESH_LOCAL_FLEET
     _assert_landed(layout)
 
 

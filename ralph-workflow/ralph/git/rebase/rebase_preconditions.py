@@ -9,8 +9,12 @@ from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 from loguru import logger
 
+from ralph.git.merge import (
+    WORKTREE_FOUND,
+    WORKTREE_QUERY_FAILED,
+    worktree_lookup,
+)
 from ralph.git.rebase._concurrent_operation import _ConcurrentOperation
-from ralph.git.rebase._worktree_head_ref import head_file_targets_branch
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
@@ -218,35 +222,85 @@ def _check_worktree_conflicts(repo: Repo) -> None:
     except (TypeError, GitCommandError):
         return
 
-    # Worktree registrations live in the common git dir; when running
-    # from a linked worktree the repo's own registration must be
-    # skipped or the current branch would always self-conflict.
-    worktrees_dir = _common_git_dir(repo) / "worktrees"
-    if not worktrees_dir.is_dir():
+    # ONE source of truth for "who has this branch checked out":
+    # ``git worktree list --porcelain``, via the same ``worktree_lookup``
+    # the fast-forward side already trusts. The previous implementation
+    # walked ``<common_dir>/worktrees/*/HEAD``, which has no entry for the
+    # PRIMARY worktree -- so a branch checked out in the primary checkout
+    # was invisible here while being plainly visible to the landing path.
+    # Two answers to one question is a divergence waiting to strand a
+    # rebase; asking git directly removes it.
+    if not _has_linked_worktrees(repo):
+        # Provably equivalent fast path: with no LINKED worktrees the only
+        # checkout in the repository is this one, so no other worktree can
+        # be holding the branch. Worth special-casing because the general
+        # answer costs a git subprocess and single-worktree repositories
+        # are the overwhelmingly common case -- paying ~40 ms on every
+        # integration to re-learn "there is only one checkout" is real
+        # time against a hard test budget.
         return
 
-    own_git_dir = _git_dir(repo).resolve()
-    for entry in worktrees_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        if entry.resolve() == own_git_dir:
-            continue
-        head_file = entry / "HEAD"
-        if not head_file.exists():
-            continue
+    repo_root = _repo_root_for_worktree_query(repo)
+    verdict, holder = worktree_lookup(repo_root, branch_name)
+    if verdict == WORKTREE_QUERY_FAILED:
+        # Fail CLOSED, matching ``_TARGET_WORKTREE_QUERY_FAILED`` on the
+        # fast-forward side: an unanswerable query is not evidence that
+        # nobody holds the branch, and rebasing a branch another checkout
+        # is sitting on corrupts that checkout's index.
+        raise RebasePreconditionError(
+            f"Could not determine whether branch '{branch_name}' is checked "
+            "out in another worktree."
+        )
+    if verdict != WORKTREE_FOUND or holder is None:
+        return
+    if _is_same_worktree(holder, repo_root):
+        # The branch being rebased is by construction checked out HERE.
+        # Without this self-skip every rebase would fail its own
+        # precondition.
+        return
+    raise RebasePreconditionError(
+        f"Branch '{branch_name}' is already checked out in worktree '{holder.name}'. "
+        "Use 'git worktree add' to create a new worktree for this branch."
+    )
 
-        try:
-            content = head_file.read_text()
-        except OSError:
-            continue
 
-        # Exact ref identity, never a substring: a sibling worktree on a
-        # branch that merely has this branch as a prefix is not a conflict.
-        if head_file_targets_branch(content, branch_name):
-            raise RebasePreconditionError(
-                f"Branch '{branch_name}' is already checked out in worktree '{entry.name}'. "
-                "Use 'git worktree add' to create a new worktree for this branch."
-            )
+def _has_linked_worktrees(repo: Repo) -> bool:
+    """Whether the repository has any worktree beyond the primary one.
+
+    Pure filesystem check against the registration directory in the
+    common git dir. Unlike the scan this replaced, the directory's
+    CONTENTS are never interpreted -- only its emptiness -- so the fact
+    that it has no entry for the primary worktree cannot cause a wrong
+    answer here: an empty directory means the primary is the only
+    checkout, which is exactly the conclusion drawn.
+    """
+    worktrees_dir = _common_git_dir(repo) / "worktrees"
+    try:
+        return worktrees_dir.is_dir() and any(worktrees_dir.iterdir())
+    except OSError:
+        # Unreadable: fall through to the authoritative git query rather
+        # than assuming a single checkout.
+        return True
+
+
+def _repo_root_for_worktree_query(repo: Repo) -> Path:
+    """Working-tree root to run ``git worktree list`` from."""
+    if repo.working_tree_dir:
+        return Path(repo.working_tree_dir)
+    return _git_dir(repo).parent
+
+
+def _is_same_worktree(candidate: Path, repo_root: Path) -> bool:
+    """Whether two worktree paths denote the same checkout.
+
+    Resolved before comparing so a symlinked or ``/private``-prefixed
+    temporary directory -- the normal shape of a macOS test fixture --
+    does not read as a second worktree holding the branch.
+    """
+    try:
+        return candidate.resolve() == repo_root.resolve()
+    except OSError:
+        return candidate == repo_root
 
 
 def _check_sparse_checkout_state(repo: Repo) -> None:

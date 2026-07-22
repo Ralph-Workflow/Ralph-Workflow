@@ -59,6 +59,10 @@ def render_conflict_prompt(
     round_index: int,
     round_cap: int,
     surviving_marker_paths: Sequence[str],
+    replaying_commit_sha: str | None = None,
+    replaying_commit_subject: str | None = None,
+    stop_index: int | None = None,
+    stop_cap: int | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> Path | None:
     """Render and materialize the prompt for one resolution round.
@@ -72,7 +76,18 @@ def render_conflict_prompt(
         surviving_marker_paths: Paths that still carried conflict markers
             after the PREVIOUS round. Empty on round 1. This is what makes
             the loop converge instead of repeat.
+        replaying_commit_sha: SHA of the commit the rebase stopped on.
+            Setting it puts the prompt in REBASE mode; leaving it ``None``
+            renders the endpoint-merge prompt byte-identically to before.
+        replaying_commit_subject: Subject line of that commit.
+        stop_index: 1-based index of the rebase stop being resolved.
+        stop_cap: Total rebase stops allowed.
         backend: File backend seam, injected for tests.
+
+    The rebase-mode variables add the ONE fact a merge conflict does not
+    have -- which commit is being replayed -- and nothing else. The
+    context stays the conflict alone: no source prompt, no plan, no
+    artifact history, no analysis feedback.
 
     Returns:
         The path the prompt was written to, or ``None`` when it could not
@@ -86,6 +101,10 @@ def render_conflict_prompt(
         "round_index": str(round_index),
         "round_cap": str(round_cap),
         "feedback_block": _feedback_block(surviving_marker_paths),
+        "replaying_commit_sha": replaying_commit_sha or "",
+        "replaying_commit_subject": replaying_commit_subject or "",
+        "stop_index": str(stop_index) if stop_index is not None else "",
+        "stop_cap": str(stop_cap) if stop_cap is not None else "",
     }
     template_root = packaged_template_root()
     try:

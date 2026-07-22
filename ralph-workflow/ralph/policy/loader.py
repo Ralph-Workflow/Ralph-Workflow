@@ -579,6 +579,19 @@ def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolic
         drain_class="analysis",
         fallback_drain="development_analysis",
     )
+    # Auto-integration's conflict resolver runs out of graph too, and an
+    # unresolved drain here does not fail loudly: the resolver simply
+    # declines, every rebase conflict falls back to an abort, and
+    # auto-rebase silently stops working for exactly the workspaces that
+    # customised their agents. Registering the alias is what stops a
+    # user-supplied agents.toml from disabling the feature by omission.
+    _alias_out_of_graph_drain(
+        user_chains,
+        user_drains,
+        drain="rebase_conflict_resolution",
+        drain_class="development",
+        fallback_drain="development",
+    )
     return AgentsPolicy(
         agent_chains={**defaults.agent_chains, **user_chains},
         agent_drains={**defaults.agent_drains, **user_drains},

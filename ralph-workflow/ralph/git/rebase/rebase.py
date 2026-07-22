@@ -228,6 +228,20 @@ def _rebase_result_from_process(
     if _contains_up_to_date_message(result) and not rebase_in_progress(repo_root):
         return RebaseNoOp("Branch is already up-to-date with upstream")
 
+    # The INDEX is authoritative about conflicts; stderr text is only a
+    # heuristic. ``classify_rebase_error`` runs the hook-rejection,
+    # concurrent-operation and dirty-worktree classifiers BEFORE the
+    # content-conflict one and each matches on substrings, so a genuine
+    # conflict whose output also mentions an earlier classifier's keyword
+    # is reported as RebaseFailed. That misclassification now costs more
+    # than a wrong label: RebaseFailed skips the resolve-in-place path in
+    # :mod:`ralph.pipeline.auto_integrate_rebase_merge` entirely, so the
+    # conflicts most worth resolving would be the ones never offered to a
+    # resolver.
+    conflicted = _conflicted_files_if_rebasing(repo_root, executor)
+    if conflicted:
+        return RebaseConflicts(conflicted)
+
     error_kind = classify_rebase_error(result.stderr, result.stdout)
     if error_kind.kind == RebaseKind.CONTENT_CONFLICT:
         return RebaseConflicts(
@@ -235,6 +249,28 @@ def _rebase_result_from_process(
         )
 
     return RebaseFailed(error_kind)
+
+
+def _conflicted_files_if_rebasing(
+    repo_root: Path, executor: ProcessExecutor
+) -> list[str]:
+    """Unmerged paths, but ONLY while a rebase is genuinely paused.
+
+    Both conditions matter. Without the rebase-in-progress check this
+    would reclassify a rebase that git refused to start (dirty worktree,
+    concurrent operation) as a content conflict, because the unmerged
+    entries it saw would belong to some OTHER unfinished operation.
+
+    Returns an empty list rather than raising when the index cannot be
+    read: an unreadable repository must fall through to the text
+    classifier, not fail the rebase.
+    """
+    try:
+        if not rebase_in_progress(repo_root):
+            return []
+        return get_conflicted_files(repo_root=repo_root, executor=executor)
+    except RebaseOperationError:
+        return []
 
 
 def _resolve_repo_root(repo_root: Path | str | None = None) -> Path:

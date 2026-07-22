@@ -184,18 +184,39 @@ Auto-integration does **not** run only after a commit. With
    record, rebase, endpoint-merge fallback, optional agent conflict
    resolution, fast-forward.
 
+   A rebase that stops on a conflict is **resolved in place**, not
+   abandoned. Each conflicted commit the replay stops on is handed to
+   the resolution pipeline; once Ralph Workflow has proved the stop
+   resolved it stages the paths and runs `git rebase --continue`, and
+   the loop repeats for the next conflicted commit. One integration
+   attempt may work through at most **ten** such stops
+   (`MAX_REBASE_CONFLICT_STOPS`), each with the same three-round agent
+   budget, and all of them share ONE
+   `auto_integrate_resolve_timeout_seconds` ceiling rather than getting
+   one each. A resolution that lands leaves linear history and reports
+   `rebased`. Only when the resolver declines, exhausts a budget, errors
+   or is absent does the rebase get aborted and retried as the single
+   endpoint three-way merge that used to be the only behaviour.
+
    Conflict resolution runs as its own dedicated pipeline rather than a
    bare agent call. While it owns the run the persistent status bar
    shows the phase label **Rebase Conflict Resolution** with a round
-   counter, and dedicated log lines mark entry, each round and exit. The
+   counter -- widened to
+   `Rebase Conflict Resolution (commit i/N, round r/R)` while a rebase
+   is being resolved, so the operator can see how far through the replay
+   the run is -- and dedicated log lines mark entry, each round and
+   exit. The footer is captured once when the loop starts and restored
+   once when it ends, never per stop. The
    agent runs inside a real Ralph Workflow MCP session, so it must call
    `declare_complete` to finish a round and the session's exec policy
    denies it every git command -- Ralph Workflow alone stages the
    resolved paths and creates the merge commit. Its prompt carries only
    the conflict
-   (repository, target branch, conflicted paths, round counter, and the
-   files that still held markers after the previous round); it never
-   carries the run's plan or prompt. Each round ends with a
+   (repository, target branch, conflicted paths, round counter, the
+   files that still held markers after the previous round, and -- for a
+   rebase -- the commit being replayed); it never carries the run's
+   plan, prompt, artifact history or analysis feedback. Each round ends
+   with a
    deterministic re-scan for surviving conflict markers, which outranks
    the agent's own report, and the loop is bounded at three rounds
    within one seam. On exhaustion the merge is aborted and the
@@ -237,9 +258,18 @@ commits, and a routine nothing-to-do there is not a fault:
   pointer another agent moved minutes ago -- while the eleven boundary
   events of one cycle still cost at most one fetch between them. The
   fetch is bounded by `auto_integrate_fetch_timeout_seconds` and
-  fail-open, and its `REFRESH_*` outcome is recorded on the skip, so a
-  linked-worktree fleet correctly reports `no origin remote` instead of
-  appearing not to have checked. Anything it
+  fail-open, and its `REFRESH_*` outcome is recorded on the skip.
+  A repository with **no origin at all** -- the normal shape of a
+  linked-worktree fleet, where sibling agents advance the shared
+  `refs/heads/<target>` directly -- is not a failure to observe: the
+  local ref is re-read from the shared ref store and the refresh
+  reports `local fleet`. `no origin remote` now means the stronger
+  thing, that the target could not be observed remotely *or* locally.
+  For the same reason `auto_integrate_fetch_enabled = false` disables
+  **network access only** and never local-pointer freshness: with
+  fetching off the local observation still runs and still reports
+  `local fleet`, and `fetch disabled` survives only when there is no
+  such local branch to observe either. Anything it
   does not short-circuit falls through to the same recorded path as
   the commit seam. The other case that deliberately breaks the silence
   is an

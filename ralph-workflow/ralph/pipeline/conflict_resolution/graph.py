@@ -48,6 +48,50 @@ TERMINAL_ABANDONED: Final[str] = "abandoned"
 #: loader allowlist and the configuration docs for marginal benefit.
 MAX_RESOLUTION_ROUNDS: Final[int] = 3
 
+#: Separate ``git rebase --continue`` stops one integration attempt may
+#: resolve before giving up and falling back to the endpoint merge.
+#: A rebase replays N commits and can stop on a conflict at EVERY one of
+#: them, so the per-conflict round budget above cannot bound it: the two
+#: axes are independent. Ten is generous for a feature branch worth
+#: rebasing and still terminates in bounded time when a replay keeps
+#: re-conflicting; the endpoint merge remains the fallback either way.
+MAX_REBASE_CONFLICT_STOPS: Final[int] = 10
+
+#: Agent rounds allowed per rebase stop. Reuses the single-conflict
+#: budget deliberately: one rebase stop presents exactly the same problem
+#: to the agent as one merge conflict does, so a second number here would
+#: be two names for one policy.
+MAX_ROUNDS_PER_STOP: Final[int] = MAX_RESOLUTION_ROUNDS
+
+
+def route_after_stop(
+    stops_spent: int,
+    resolved: bool,
+    cap: int = MAX_REBASE_CONFLICT_STOPS,
+) -> str:
+    """Decide what happens after one ``git rebase --continue`` stop.
+
+    Mirrors :func:`route_after_round` one level up: that function bounds
+    the agent rounds spent on a single conflict, this one bounds the
+    conflicted commits a single rebase may work through.
+
+    Args:
+        stops_spent: Number of stops resolved so far, including this one.
+        resolved: Whether the rebase has finished with nothing left to
+            replay.
+        cap: Stop budget.
+
+    Returns:
+        :data:`TERMINAL_RESOLVED` when the rebase completed,
+        :data:`TERMINAL_ABANDONED` when the budget is spent, or
+        :data:`PHASE_RESOLUTION` to resolve the next stop.
+    """
+    if resolved:
+        return TERMINAL_RESOLVED
+    if stops_spent >= cap:
+        return TERMINAL_ABANDONED
+    return PHASE_RESOLUTION
+
 
 def rounds_spent(round_index: int, cap: int = MAX_RESOLUTION_ROUNDS) -> bool:
     """True when the resolution round budget is exhausted.
@@ -95,10 +139,13 @@ def route_after_round(
 
 
 __all__ = [
+    "MAX_REBASE_CONFLICT_STOPS",
     "MAX_RESOLUTION_ROUNDS",
+    "MAX_ROUNDS_PER_STOP",
     "PHASE_RESOLUTION",
     "TERMINAL_ABANDONED",
     "TERMINAL_RESOLVED",
     "rounds_spent",
     "route_after_round",
+    "route_after_stop",
 ]

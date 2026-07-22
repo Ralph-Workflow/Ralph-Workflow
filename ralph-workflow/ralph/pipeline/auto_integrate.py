@@ -100,7 +100,9 @@ from ralph.pipeline.auto_integrate_refresh import (
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
@@ -207,6 +209,8 @@ def auto_integrate_after_commit(
     state: RebaseState,
     *,
     conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    display: ParallelDisplay | None = None,
 ) -> RebaseState | None:
     """Run the auto-integration step after a successful commit.
 
@@ -221,6 +225,13 @@ def auto_integrate_after_commit(
             production a focused dev-agent invocation). The merge
             commit itself is always created deterministically here,
             never by the resolver.
+        rebase_stop_resolver: Optional callable handed ONE stopped commit
+            of a conflicted rebase. Supplying it is what lets a
+            conflicted rebase be resolved in place and land as
+            ``rebased``; without it a conflicted rebase is aborted and
+            retried as a single endpoint merge, exactly as before.
+        display: Active display, used only so the resolution loop can own
+            the status-bar footer for its whole duration.
 
     Returns:
         ``None`` when the feature is disabled (AC-01: byte-identical
@@ -235,7 +246,12 @@ def auto_integrate_after_commit(
     """
     try:
         return _auto_integrate_after_commit_inner(
-            config, workspace_scope, state, conflict_resolver
+            config,
+            workspace_scope,
+            state,
+            conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
         )
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
@@ -250,6 +266,8 @@ def auto_integrate_on_phase_transition(
     state: RebaseState,
     *,
     conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    display: ParallelDisplay | None = None,
 ) -> RebaseState | None:
     """Run the integration step at a phase boundary when it can help.
 
@@ -331,7 +349,12 @@ def auto_integrate_on_phase_transition(
         )
         return None
     return auto_integrate_after_commit(
-        config, workspace_scope, state, conflict_resolver=conflict_resolver
+        config,
+        workspace_scope,
+        state,
+        conflict_resolver=conflict_resolver,
+        rebase_stop_resolver=rebase_stop_resolver,
+        display=display,
     )
 
 
@@ -430,6 +453,9 @@ def _auto_integrate_after_commit_inner(
     workspace_scope: WorkspaceScope,
     state: RebaseState,
     conflict_resolver: ConflictResolver | None,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    display: ParallelDisplay | None = None,
 ) -> RebaseState | None:
     """Internal worker for :func:`auto_integrate_after_commit`.
 
@@ -503,6 +529,10 @@ def _auto_integrate_after_commit_inner(
                 effective_resolver,
                 prefer_merge=prefer_merge,
                 refresh=refresh,
+                rebase_stop_resolver=(
+                    rebase_stop_resolver if allowed else None
+                ),
+                display=display,
             )
             if not retry_ff:
                 break
@@ -555,6 +585,8 @@ def _integrate_once(
     *,
     prefer_merge: bool = False,
     refresh: str | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    display: ParallelDisplay | None = None,
 ) -> tuple[RebaseState | None, bool]:
     """Run one full integrate-and-fast-forward pass.
 
@@ -576,9 +608,13 @@ def _integrate_once(
     dropped by a non-``--rebase-merges`` rebase.
 
     ``refresh`` is the ``REFRESH_*`` outcome the caller resolved the
-    target pointer through. It is stamped onto every short-circuit
-    record this pass returns; the success path uses the FRESHER
-    pre-landing refresh instead.
+    target pointer through, and it is deliberately the CALLER's job to
+    have taken it immediately beforehand. Both call paths do: attempt 0
+    is entered straight after the context-resolution refresh, and every
+    retry re-refreshes at the top of the loop before calling in. A third
+    refresh here would sit between two reads that already bracket the
+    rebase, and ``rebase_onto`` resolves the target BY NAME, so git
+    re-reads the freshest ref itself when the replay actually starts.
     """
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
@@ -596,7 +632,12 @@ def _integrate_once(
     )
 
     rebase_result = _run_rebase_or_merge(
-        root, target, conflict_resolver, prefer_merge=prefer_merge
+        root,
+        target,
+        conflict_resolver,
+        prefer_merge=prefer_merge,
+        rebase_stop_resolver=rebase_stop_resolver,
+        display=display,
     )
     if rebase_result.short_circuit is not None:
         # Resolved failures clear the record; an abort that leaves a rebase
@@ -810,6 +851,16 @@ def _auto_integrate_check_skip_conditions(
     try:
         check_rebase_preconditions(root)
     except RebasePreconditionError as exc:
+        # A precondition failure disables auto-integration for the whole
+        # run, so it must not be visible only as one token on an
+        # activity line that scrolls past. WARN names the target and the
+        # precondition so the cause is greppable in the run log; the
+        # recorded skip keeps the never-crash semantics unchanged.
+        logger.warning(
+            "auto_integrate: rebase preconditions not met for target '{}': {}",
+            target,
+            exc,
+        )
         return _record_skip(reason=f"preconditions not met: {exc}", target=target)
     return None
 

@@ -143,6 +143,10 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
         round_index: int,
         round_cap: int,
         surviving_marker_paths: Sequence[str],
+        replaying_commit_sha: str | None = None,
+        replaying_commit_subject: str | None = None,
+        stop_index: int | None = None,
+        stop_cap: int | None = None,
     ) -> Path | None:
         feedback_seen.append(tuple(surviving_marker_paths))
         return real_render(
@@ -152,6 +156,10 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
             round_index=round_index,
             round_cap=round_cap,
             surviving_marker_paths=surviving_marker_paths,
+            replaying_commit_sha=replaying_commit_sha,
+            replaying_commit_subject=replaying_commit_subject,
+            stop_index=stop_index,
+            stop_cap=stop_cap,
         )
 
     monkeypatch.setattr(driver_module, "render_conflict_prompt", _spy_render)

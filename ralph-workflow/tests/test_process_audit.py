@@ -103,6 +103,8 @@ TESTS_ALLOWLIST: set[str] = {
     "test_auto_integrate_remote_refresh.py",  # real-git clone-layout regression for the bounded origin refresh
     "test_auto_integrate_fail_closed_e2e.py",  # real-git regression for the fail-closed HEAD-read and merge-state queries
     "test_auto_integrate_refresh_contract.py",  # real-git regression for the pre-landing target refresh
+    "test_auto_integrate_rebase_conflict_e2e.py",  # real-git proof that a conflicted rebase is resolved in place and landed
+    "test_auto_integrate_local_fleet_target_e2e.py",  # real-git multi-worktree proof for the no-origin fleet refresh
     "test_auto_integrate_conflict_budget.py",  # real-git regression for the bounded conflict-resolution budget
     "test_auto_integrate_conflict_e2e.py",  # real-git end-to-end proof of the production conflict-resolution chain
     "test_auto_integrate_clone_conflict_e2e.py",  # real-git clone + linked-worktree conflict/concurrency regression

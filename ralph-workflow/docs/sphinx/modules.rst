@@ -979,6 +979,13 @@ ralph.pipeline.conflict_resolution.driver
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.rebase_loop
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.rebase_loop
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_conflict_budget
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

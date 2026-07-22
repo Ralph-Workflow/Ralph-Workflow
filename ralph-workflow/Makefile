@@ -159,7 +159,7 @@ test-live-agy:
 # marker so the verify step stays bounded, and run with the same
 # work-stealing parallelism as `test-subprocess-e2e`.
 test-auto-integrate-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_auto_integrate_conflict_e2e.py tests/test_auto_integrate_clone_conflict_e2e.py tests/test_auto_integrate_worktree_prefix_e2e.py tests/test_auto_integrate_fail_closed_e2e.py tests/test_auto_integrate_end_to_end.py tests/test_auto_integrate_refresh_contract.py tests/test_auto_integrate_seams_e2e.py tests/test_auto_integrate_conflict_seams_e2e.py -q -n $(PYTEST_WORKERS) --dist worksteal
+	uv run python -m ralph.verify_timeout --suite-timeout $(AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_auto_integrate_conflict_e2e.py tests/test_auto_integrate_clone_conflict_e2e.py tests/test_auto_integrate_worktree_prefix_e2e.py tests/test_auto_integrate_fail_closed_e2e.py tests/test_auto_integrate_end_to_end.py tests/test_auto_integrate_refresh_contract.py tests/test_auto_integrate_seams_e2e.py tests/test_auto_integrate_conflict_seams_e2e.py tests/test_auto_integrate_rebase_conflict_e2e.py tests/test_auto_integrate_local_fleet_target_e2e.py -q -n $(PYTEST_WORKERS) --dist worksteal
 
 # Real-runtime budget test that runs ``make test`` to assert the 60 s combined
 # test budget. This test consumes ~25 s of wall-clock time by design (it

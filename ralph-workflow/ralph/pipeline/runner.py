@@ -79,7 +79,10 @@ from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
     auto_integrate_on_phase_transition,
 )
-from ralph.pipeline.auto_integrate_agent import build_agent_conflict_resolver
+from ralph.pipeline.auto_integrate_agent import (
+    build_agent_conflict_resolver,
+    build_agent_rebase_stop_resolver,
+)
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
@@ -164,6 +167,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.mcp.websearch.secrets import EnvGetter
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.policy.models import (
@@ -703,6 +707,16 @@ def _maybe_auto_integrate(
             workspace_scope,
             state.rebase,
             conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=_build_seam_rebase_stop_resolver(
+                policy_bundle=policy_bundle,
+                registry=registry,
+                display=display,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
+                display_context=display_context,
+            ),
+            display=display,
         )
     except Exception as auto_integrate_exc:  # pragma: no cover -- defensive
         logger.warning(
@@ -768,6 +782,37 @@ def _build_seam_conflict_resolver(
     )
 
 
+def _build_seam_rebase_stop_resolver(
+    *,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    display: ParallelDisplay,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None = None,
+    workspace_scope: WorkspaceScope | None = None,
+    display_context: DisplayContext | None = None,
+) -> RebaseStopResolver | None:
+    """Rebase-stop resolver when policy + registry are available, else None.
+
+    The counterpart of :func:`_build_seam_conflict_resolver`, and gated on
+    exactly the same availability: without it a conflicted rebase is
+    aborted and degraded to one endpoint merge, which is precisely the
+    behaviour that made auto-rebase look broken whenever a real conflict
+    appeared.
+    """
+    if policy_bundle is None or registry is None:
+        return None
+    return build_agent_rebase_stop_resolver(
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+        config=config,
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+        display_context=display_context,
+    )
+
+
 def _integrate_on_phase_transition(
     *,
     event: object,
@@ -798,6 +843,16 @@ def _integrate_on_phase_transition(
             workspace_scope,
             state.rebase,
             conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=_build_seam_rebase_stop_resolver(
+                policy_bundle=policy_bundle,
+                registry=registry,
+                display=display,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
+                display_context=display_context,
+            ),
+            display=display,
         )
     except Exception as transition_exc:  # pragma: no cover -- defensive
         logger.warning(

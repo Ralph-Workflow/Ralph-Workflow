@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ALREADY_CURRENT,
     REFRESH_DISABLED,
+    REFRESH_LOCAL_FLEET,
     REFRESH_NO_ORIGIN,
     REFRESH_NO_REMOTE_BRANCH,
     REFRESH_REFRESHED,
@@ -35,14 +36,17 @@ if TYPE_CHECKING:
 
 #: Refresh outcomes that leave the target pointer trustworthy: either
 #: it was just read from origin, or origin has no say over it (fetching
-#: is off, there is no origin, or origin does not carry the branch).
-#: Every OTHER outcome -- unreachable, diverged, a lost refresh race, a
-#: missing local branch -- means the pointer the skip decision used
-#: could not be confirmed current, so the skip must say so.
+#: is off, there is no origin, or origin does not carry the branch), or
+#: it was just re-read from the shared ref store a fleet of sibling
+#: worktrees advances directly. Every OTHER outcome -- unreachable,
+#: diverged, a lost refresh race, a missing local branch -- means the
+#: pointer the skip decision used could not be confirmed current, so the
+#: skip must say so.
 _HEALTHY_REFRESH_OUTCOMES: frozenset[str] = frozenset(
     {
         REFRESH_ALREADY_CURRENT,
         REFRESH_DISABLED,
+        REFRESH_LOCAL_FLEET,
         REFRESH_NO_ORIGIN,
         REFRESH_NO_REMOTE_BRANCH,
         REFRESH_REFRESHED,

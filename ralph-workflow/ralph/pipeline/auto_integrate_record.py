@@ -68,6 +68,13 @@ class IntegrationRecord(RalphBaseModel):
         integrated_feature_sha: The feature branch HEAD SHA captured
             AFTER the rebase/merge succeeded. Present only when
             phase='integrated'.
+        resolving_rebase: True while a rebase-conflict resolution agent
+            is working inside a PAUSED rebase. Recovery aborts such a
+            rebase exactly as it aborts any other -- an orphaned rebase
+            cannot be resumed by a process that has no agent session for
+            it -- but the flag lets recovery say which of the two it
+            found, so an operator can tell an interrupted resolution
+            from an ordinary crashed rebase without reading the code.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -77,6 +84,7 @@ class IntegrationRecord(RalphBaseModel):
     pre_feature_sha: str
     pre_target_sha: str | None
     integrated_feature_sha: str | None = None
+    resolving_rebase: bool = False
 
 
 def record_path(workspace_root: Path) -> Path:
@@ -175,6 +183,31 @@ def _parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | No
         return None
 
 
+def set_resolving_rebase(workspace_root: Path, resolving: bool) -> None:
+    """Flag (or unflag) the durable record as an in-flight rebase resolution.
+
+    Called around the resolve-and-continue loop so a run killed while an
+    agent was editing a paused rebase leaves evidence of WHY the rebase
+    was paused. A missing record is not an error: the loop can only run
+    inside an integration that already wrote one, and a record that has
+    since been cleared means the integration finished.
+
+    Never raises. This is bookkeeping for the operator, and failing an
+    integration because a flag could not be persisted would trade a real
+    capability for a diagnostic.
+    """
+    try:
+        current = read_record(workspace_root)
+        if current is None or current.resolving_rebase == resolving:
+            return
+        write_record(
+            workspace_root,
+            current.model_copy(update={"resolving_rebase": resolving}),
+        )
+    except Exception:
+        return
+
+
 def clear_record(workspace_root: Path) -> None:
     """Unlink the durable record; missing-ok."""
     record_file = record_path(workspace_root)
@@ -191,5 +224,6 @@ __all__ = [
     "clear_record",
     "read_record",
     "record_path",
+    "set_resolving_rebase",
     "write_record",
 ]

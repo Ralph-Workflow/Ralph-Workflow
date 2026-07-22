@@ -26,7 +26,10 @@ from ralph.display.parallel_display import (
 from ralph.display.status_bar import StatusBarModel
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
-from ralph.pipeline.auto_integrate_agent import build_agent_conflict_resolver
+from ralph.pipeline.auto_integrate_agent import (
+    build_agent_conflict_resolver,
+    build_agent_rebase_stop_resolver,
+)
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -511,6 +514,16 @@ def _run_startup_integration(ctx: _LoopContext) -> RebaseState | None:
             ctx.workspace_scope,
             RebaseState(),
             conflict_resolver=resolver,
+            rebase_stop_resolver=build_agent_rebase_stop_resolver(
+                policy_bundle=ctx.policy_bundle,
+                registry=ctx.registry,
+                display=ctx.active_display,
+                config=ctx.config,
+                pipeline_deps=ctx.pipeline_deps,
+                workspace_scope=ctx.workspace_scope,
+                display_context=ctx.display_context,
+            ),
+            display=ctx.active_display,
         )
     except Exception as startup_exc:  # pragma: no cover -- defensive
         logger.warning("startup auto-integrate failed: {}", startup_exc)

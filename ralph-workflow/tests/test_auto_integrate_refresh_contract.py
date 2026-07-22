@@ -134,8 +134,17 @@ def test_auto_integrate_regression_target_is_refreshed_again_before_landing(
 
     assert outcome is not None
     assert outcome.fast_forwarded is True
-    # One refresh at context resolution, one immediately before the
-    # fast-forward observes the target SHA.
+    # One refresh at context resolution, immediately before the rebase
+    # leg, and one immediately before the fast-forward observes the
+    # target SHA. Every retry adds its own pair, because the retry loop
+    # re-refreshes at the top before calling back in.
+    #
+    # Exactly two, not three: a further refresh inside the integration
+    # pass would sit between two reads that already bracket the rebase,
+    # and ``rebase_onto`` hands git the target BY NAME so the replay
+    # resolves the freshest ref itself. The extra git subprocess on every
+    # integration is real cost against the immutable 60 s test budget for
+    # no freshness this pair does not already provide.
     assert calls == [base, base]
 
 

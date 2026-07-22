@@ -84,29 +84,46 @@ def fast_forward_target(
     Never force-moves the target. The skip reasons are recorded in
     the final ``RebaseState.last_reason``.
     """
-    # Observe the target SHA FIRST. This is the single value the CAS
-    # will use; every downstream check must reference the same SHA.
+    # Observe the target SHA FIRST so a missing or already-advanced
+    # target fails before the worktree query. The observation is then
+    # REPEATED immediately before the CAS -- see _fast_forward_via_cas --
+    # because a fleet sibling can advance the target during the worktree
+    # lookup that sits between the two.
+    _, early_reason = _observe_landable_target(repo_root, target, feature_sha)
+    if early_reason:
+        return False, early_reason
+
+    return _fast_forward_target_via_worktree_or_cas(repo_root, target, feature_sha)
+
+
+def _observe_landable_target(
+    repo_root: Path,
+    target: str,
+    feature_sha: str,
+) -> tuple[str | None, str]:
+    """Read the target SHA and check it can still be moved to ``feature_sha``.
+
+    Returns ``(sha, skip_reason)`` with exactly one slot populated.
+
+    AC-08 binding contract: the ancestor decision is made against the
+    SHA this very call observed, never against the ref name, so the
+    caller can hand that same SHA to the compare-and-swap as its
+    expected-oldvalue. Splitting the read out of ``fast_forward_target``
+    is what lets the CAS repeat it against a fresh read instead of
+    reusing a value observed several git invocations ago.
+    """
     observed_target_sha = branch_sha(repo_root, target)
     if observed_target_sha is None:
-        return False, _TARGET_MISSING
-
-    # AC-08 guard: the OBSERVED SHA (not the ref name) must be an
-    # ancestor of feature_sha. This is the contract that closes the
-    # TOCTOU race: if the target moves after this check, the
-    # downstream CAS (or the worktree ff) will refuse the move.
+        return None, _TARGET_MISSING
     if not is_ancestor(repo_root, observed_target_sha, feature_sha):
-        return False, _TARGET_NOT_ANCESTOR
-
-    return _fast_forward_target_via_worktree_or_cas(
-        repo_root, target, feature_sha, observed_target_sha
-    )
+        return None, _TARGET_NOT_ANCESTOR
+    return observed_target_sha, ""
 
 
 def _fast_forward_target_via_worktree_or_cas(
     repo_root: Path,
     target: str,
     feature_sha: str,
-    observed_target_sha: str,
 ) -> tuple[bool, str]:
     """Run the worktree-aware or CAS fast-forward once ancestor + sha checks pass.
 
@@ -130,9 +147,9 @@ def _fast_forward_target_via_worktree_or_cas(
         return False, _TARGET_WORKTREE_QUERY_FAILED
     if verdict == WORKTREE_FOUND and wt is not None:
         return _fast_forward_via_target_worktree(
-            repo_root, wt, target, feature_sha, observed_target_sha
+            repo_root, wt, target, feature_sha
         )
-    return _fast_forward_via_cas(repo_root, target, feature_sha, observed_target_sha)
+    return _fast_forward_via_cas(repo_root, target, feature_sha)
 
 
 def _fast_forward_via_target_worktree(
@@ -140,7 +157,6 @@ def _fast_forward_via_target_worktree(
     worktree_root: Path,
     target: str,
     feature_sha: str,
-    observed_target_sha: str,
 ) -> tuple[bool, str]:
     """Fast-forward the target branch checked out in ``worktree_root`` (AC-09).
 
@@ -154,9 +170,7 @@ def _fast_forward_via_target_worktree(
     """
     if fast_forward_via_worktree(worktree_root, feature_sha):
         return True, ""
-    landed, reason = _fast_forward_via_cas(
-        repo_root, target, feature_sha, observed_target_sha
-    )
+    landed, reason = _fast_forward_via_cas(repo_root, target, feature_sha)
     if landed:
         logger.warning(
             "auto_integrate: advanced '{}' by ref while its worktree at {} "
@@ -171,10 +185,28 @@ def _fast_forward_via_cas(
     repo_root: Path,
     target: str,
     feature_sha: str,
-    observed_target_sha: str,
 ) -> tuple[bool, str]:
-    """Atomic CAS fast-forward of a not-checked-out target branch (AC-08)."""
-    if not compare_and_swap_branch(repo_root, target, observed_target_sha, feature_sha):
+    """Atomic CAS fast-forward of a not-checked-out target branch (AC-08).
+
+    The target is re-observed HERE rather than reusing the caller's
+    earlier read. In a fleet the target moves continuously, and the
+    worktree query between the two reads is itself a git subprocess:
+    handing the CAS a SHA observed before that query guarantees a
+    mismatch whenever a sibling landed in the meantime, burning a whole
+    retry to rediscover a value this call could simply have read.
+
+    Re-reading does NOT weaken the atomicity contract -- the ancestry
+    check and the expected-oldvalue still come from ONE observation,
+    which is the property that matters -- and it lets the doomed case
+    (target already past the feature tip) be reported as the retryable
+    :data:`_TARGET_NOT_ANCESTOR` instead of an attempted CAS.
+    """
+    fresh_target_sha, reason = _observe_landable_target(
+        repo_root, target, feature_sha
+    )
+    if fresh_target_sha is None:
+        return False, reason
+    if not compare_and_swap_branch(repo_root, target, fresh_target_sha, feature_sha):
         return False, _TARGET_CAS_MISMATCH
     return True, ""
 

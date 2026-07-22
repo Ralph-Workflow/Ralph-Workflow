@@ -42,7 +42,17 @@ def test_fan_out_join_invokes_auto_integrate_when_enabled(
         registry=None,
     )
 
-    hook.assert_called_once_with(config, workspace_scope, rebase, conflict_resolver=None)
+    # No policy bundle and no registry, so BOTH resolvers decline to build;
+    # the display is threaded through so the resolution loop can own the
+    # status-bar footer for its whole duration.
+    hook.assert_called_once_with(
+        config,
+        workspace_scope,
+        rebase,
+        conflict_resolver=None,
+        rebase_stop_resolver=None,
+        display=display,
+    )
     assert result is state
     state.copy_with.assert_called_once_with(rebase=hook.return_value)
 

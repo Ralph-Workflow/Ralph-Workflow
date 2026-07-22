@@ -189,6 +189,20 @@ def recover_incomplete_integration(
         abort_failed = False
         try:
             if rebase_in_progress(root):
+                if record.resolving_rebase:
+                    # Named distinctly so an operator can tell this apart
+                    # from an ordinary crashed rebase. The rebase is still
+                    # ABORTED, never resumed: the agent session that was
+                    # editing it died with the previous process, and a new
+                    # process resuming a half-resolved replay it never saw
+                    # would land whatever the dead agent happened to have
+                    # written when it was killed.
+                    logger.warning(
+                        "recovery: found a rebase onto '{}' interrupted while a "
+                        "conflict-resolution agent was working; aborting it "
+                        "(an orphaned resolution is never resumed)",
+                        record.target,
+                    )
                 abort_rebase(repo_root=root)
         except Exception as exc:
             abort_failed = True

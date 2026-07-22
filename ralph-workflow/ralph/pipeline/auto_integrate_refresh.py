@@ -23,7 +23,9 @@ from loguru import logger
 
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DISABLED,
+    REFRESH_LOCAL_FLEET,
     REFRESH_UNREACHABLE,
+    observe_target_sha,
     refresh_target_from_remote,
 )
 
@@ -54,7 +56,7 @@ def refresh_target(config: UnifiedConfig, root: Path, target: str) -> str:
     """
     enabled: object = getattr(config.general, "auto_integrate_fetch_enabled", True)
     if not enabled:
-        return REFRESH_DISABLED
+        return _observe_locally(root, target)
     timeout: object = getattr(
         config.general,
         "auto_integrate_fetch_timeout_seconds",
@@ -68,5 +70,31 @@ def refresh_target(config: UnifiedConfig, root: Path, target: str) -> str:
     try:
         return refresh_target_from_remote(root, target, timeout_seconds=float(seconds))
     except Exception as exc:
-        logger.warning("auto_integrate: target refresh failed: {}", exc)
+        # Fail open -- but loudly. A permanently unreachable origin used
+        # to degrade to local-only integration with no operator-visible
+        # trace naming the branch involved, so a fleet that had been
+        # integrating against a stale pointer for hours looked healthy.
+        logger.warning(
+            "auto_integrate: target refresh of '{}' failed: {}", target, exc
+        )
         return REFRESH_UNREACHABLE
+
+
+def _observe_locally(root: Path, target: str) -> str:
+    """Report freshness for a run that has the origin fetch turned off.
+
+    ``auto_integrate_fetch_enabled`` governs NETWORK access and nothing
+    else. Conflating it with pointer freshness meant an operator who
+    disabled fetching -- the natural setting for a fleet with no remote
+    at all -- also silently disabled the re-read of the very ref sibling
+    agents advance, which is a local, free, always-available operation.
+
+    So the local observation still happens; only the fetch is skipped.
+    :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_DISABLED` survives
+    for the case where there is no such local branch to observe either.
+    """
+    return (
+        REFRESH_LOCAL_FLEET
+        if observe_target_sha(root, target) is not None
+        else REFRESH_DISABLED
+    )

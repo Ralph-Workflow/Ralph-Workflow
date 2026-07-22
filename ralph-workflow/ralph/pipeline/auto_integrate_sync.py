@@ -55,19 +55,60 @@ REFRESH_ALREADY_CURRENT = "already current"
 REFRESH_DIVERGED = "diverged from origin"
 REFRESH_REFRESHED = "refreshed from origin"
 REFRESH_RACE_LOST = "lost a concurrent refresh race"
+#: The target pointer was re-observed from the SHARED ref store rather
+#: than from a remote. This is the normal outcome for Ralph's own
+#: linked-worktree fleet, where every agent's ``wt-0NN-*`` worktree
+#: shares one git common directory and sibling agents advance the local
+#: ``refs/heads/<target>`` directly, with no ``origin`` involved.
+#: Distinct from :data:`REFRESH_NO_ORIGIN`, which now means the target
+#: could not be observed AT ALL -- neither remotely nor locally.
+REFRESH_LOCAL_FLEET = "local fleet"
 
 __all__ = [
     "REFRESH_ALREADY_CURRENT",
     "REFRESH_DISABLED",
     "REFRESH_DIVERGED",
+    "REFRESH_LOCAL_FLEET",
     "REFRESH_NO_LOCAL_BRANCH",
     "REFRESH_NO_ORIGIN",
     "REFRESH_NO_REMOTE_BRANCH",
     "REFRESH_RACE_LOST",
     "REFRESH_REFRESHED",
     "REFRESH_UNREACHABLE",
+    "observe_target_sha",
     "refresh_target_from_remote",
 ]
+
+
+def observe_target_sha(repo_root: Path, target: str) -> str | None:
+    """Re-read ``refs/heads/<target>`` from the shared ref store.
+
+    Returns the SHA, or ``None`` when the branch does not exist.
+
+    Branch refs live in the git COMMON directory, not in the per-worktree
+    git dir, so this read observes updates made by any sibling worktree
+    in the fleet -- including ones that landed microseconds ago. That is
+    what makes it the correct freshness primitive for a topology with no
+    ``origin``: there is nothing to fetch, because the pointer other
+    agents advance is already the one this call reads.
+
+    Never raises; an unusable repository reports ``None`` so the
+    fail-open refresh contract is preserved.
+    """
+    try:
+        result = run_git(
+            ("rev-parse", "--verify", "--quiet", f"refs/heads/{target}"),
+            cwd=repo_root,
+            label="git-observe-target-sha",
+        )
+    except Exception as observe_exc:
+        logger.debug(
+            "auto_integrate: could not observe '{}': {}", target, observe_exc
+        )
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
 
 
 def refresh_target_from_remote(
@@ -91,8 +132,7 @@ def refresh_target_from_remote(
     healthy one.
     """
     if not _has_origin(repo_root):
-        logger.debug("auto_integrate: no origin remote; skipping target refresh")
-        return REFRESH_NO_ORIGIN
+        return _observe_without_origin(repo_root, target)
 
     if not _fetch_target(repo_root, target, timeout_seconds):
         # A cached ``refs/remotes/origin/<target>`` from an earlier,
@@ -123,6 +163,36 @@ def refresh_target_from_remote(
         remote_sha,
     )
     return REFRESH_REFRESHED
+
+
+def _observe_without_origin(repo_root: Path, target: str) -> str:
+    """Report freshness for a repository that has no ``origin`` remote.
+
+    'No origin' is not the same as 'no fresh pointer'. Ralph's own agent
+    fleet runs as linked worktrees over one git common directory with no
+    remote at all, and sibling agents advance ``refs/heads/<target>``
+    there continuously. Treating that topology as terminally unrefreshable
+    -- the previous behaviour -- meant every integration in the fleet
+    proceeded against whatever pointer it happened to have read earlier.
+
+    So the local ref is re-observed and :data:`REFRESH_LOCAL_FLEET` is
+    reported. :data:`REFRESH_NO_ORIGIN` survives for the genuinely
+    unobservable case: no remote AND no such local branch.
+    """
+    observed = observe_target_sha(repo_root, target)
+    if observed is None:
+        logger.debug(
+            "auto_integrate: no origin remote and no local '{}'; "
+            "nothing to observe",
+            target,
+        )
+        return REFRESH_NO_ORIGIN
+    logger.debug(
+        "auto_integrate: no origin remote; observed local '{}' at {}",
+        target,
+        observed,
+    )
+    return REFRESH_LOCAL_FLEET
 
 
 def _pending_advance(
