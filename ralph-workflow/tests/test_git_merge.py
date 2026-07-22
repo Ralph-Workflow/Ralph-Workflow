@@ -27,6 +27,7 @@ from ralph.git.merge import (
     is_ancestor,
     merge_in_progress,
     merge_target_into_current,
+    paths_with_conflict_markers,
     reset_hard,
     resolve_origin_head_branch,
     worktree_for_branch,
@@ -308,6 +309,50 @@ def test_resolve_origin_head_branch_returns_none_without_remote(
     """``resolve_origin_head_branch`` returns None when no origin remote is configured."""
     # The seed template repo has no remote by default.
     assert resolve_origin_head_branch(tmp_git_repo) is None
+
+
+def test_merge_regression_lone_conflict_marker_is_reported(
+    tmp_git_repo: Path,
+) -> None:
+    """A half-deleted conflict hunk is still an unresolved conflict.
+
+    The scan used to require BOTH an opening ``<<<<<<< `` and a closing
+    ``>>>>>>> `` line before reporting a path, so a resolver that
+    deleted only one of the two fences produced an empty report.
+    ``git add`` clears the unmerged bit, so that empty report was the
+    only remaining gate and the marker-bearing file was committed as a
+    resolution. Either fence alone now reports the path; a lone
+    ``=======`` in ordinary prose deliberately still does not.
+    """
+    (tmp_git_repo / "open_only.txt").write_text(
+        "<<<<<<< HEAD\nfeature version\nbase version\n", encoding="utf-8"
+    )
+    (tmp_git_repo / "close_only.txt").write_text(
+        "feature version\nbase version\n>>>>>>> main\n", encoding="utf-8"
+    )
+    (tmp_git_repo / "prose.txt").write_text(
+        "Heading\n=======\nordinary reStructuredText prose\n", encoding="utf-8"
+    )
+
+    reported = paths_with_conflict_markers(
+        tmp_git_repo, ["open_only.txt", "close_only.txt", "prose.txt"]
+    )
+
+    assert reported == ["open_only.txt", "close_only.txt"]
+
+
+def test_paths_with_conflict_markers_ignores_clean_and_unreadable_paths(
+    tmp_git_repo: Path,
+) -> None:
+    """The positive control: a resolved file and a missing file stay silent."""
+    (tmp_git_repo / "resolved.txt").write_text("merged content\n", encoding="utf-8")
+
+    assert (
+        paths_with_conflict_markers(
+            tmp_git_repo, ["resolved.txt", "never_written.txt"]
+        )
+        == []
+    )
 
 
 def test_abort_merge_is_safe_when_no_merge_in_progress(tmp_git_repo: Path) -> None:

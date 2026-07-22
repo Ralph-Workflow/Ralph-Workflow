@@ -600,6 +600,7 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
         outcome.last_target,
         outcome.last_reason,
         fast_forwarded=outcome.fast_forwarded,
+        refresh=outcome.last_refresh,
     )
     # A skip or conflict means no integration happened this commit; an
     # operator who expects continuous integration must not lose that
@@ -682,7 +683,10 @@ def _maybe_auto_integrate(
             registry=registry,
         )
     conflict_resolver = _build_seam_conflict_resolver(
-        policy_bundle=policy_bundle, registry=registry, display=display
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+        config=config,
     )
     try:
         outcome = auto_integrate_after_commit(
@@ -726,6 +730,7 @@ def _build_seam_conflict_resolver(
     policy_bundle: PolicyBundle | None,
     registry: _RegistryLike | None,
     display: ParallelDisplay,
+    config: UnifiedConfig,
 ) -> ConflictResolver | None:
     """Dev-agent resolver when policy + registry are available, else None."""
     if policy_bundle is None or registry is None:
@@ -737,6 +742,7 @@ def _build_seam_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
         display=display,
+        config=config,
     )
 
 
@@ -754,7 +760,10 @@ def _integrate_on_phase_transition(
     if event not in _PHASE_TRANSITION_INTEGRATION_EVENTS:
         return None
     conflict_resolver = _build_seam_conflict_resolver(
-        policy_bundle=policy_bundle, registry=registry, display=display
+        policy_bundle=policy_bundle,
+        registry=registry,
+        display=display,
+        config=config,
     )
     try:
         outcome = auto_integrate_on_phase_transition(

@@ -3,8 +3,11 @@
 When the endpoint merge of the mainline into the feature branch
 conflicts, the pipeline can hand the conflicted working tree to a
 conflict resolver — in production a focused dev-agent invocation whose
-ONLY job is to resolve the conflict markers and stage the results. The
-merge commit itself is always created deterministically by
+ONLY job is to rewrite the conflicted files in place. The resolver
+never runs a git command: Ralph stages the previously-conflicted paths
+itself and verifies the result, because an agent running under Ralph's
+own MCP exec policy is denied every git invocation. The merge commit
+itself is always created deterministically by
 :func:`ralph.git.merge.commit_merge_in_progress`, never by the agent,
 so the integration flow (fast-forward of the mainline, crash records,
 state receipts) stays byte-deterministic around the agent call.
@@ -17,7 +20,15 @@ Fault-tolerance contract:
   bit-identical to its pre-merge state.
 * A merge that conflicts without leaving ``MERGE_HEAD`` (refused
   pre-start) is returned as a plain conflict — there is nothing for a
-  resolver to repair.
+  resolver to repair. That verdict is read through
+  :func:`ralph.git.merge.merge_state`, never its boolean projection:
+  when the git query itself fails the merge state is UNKNOWN, which is
+  not evidence of a clean tree, so the abort is attempted rather than
+  assumed unnecessary.
+* A resolution that leaves a conflict marker in any previously
+  conflicted file is REFUSED. ``git add`` on a marker-bearing file
+  silently clears its unmerged state, so the git-authoritative
+  ``unmerged_paths`` check alone cannot prove a real resolution.
 * This module never raises.
 """
 
@@ -29,17 +40,25 @@ from pathlib import Path
 from loguru import logger
 
 from ralph.git.merge import (
+    MERGE_STATE_IN_PROGRESS,
+    MERGE_STATE_NONE,
     MergeResult,
     abort_merge,
     commit_merge_in_progress,
-    merge_in_progress,
+    merge_state,
     merge_target_into_current,
+    paths_with_conflict_markers,
+    stage_paths,
     unmerged_paths,
 )
 
+#: Sentinel :func:`unmerged_paths` reports when the git query itself
+#: failed, so a broken repository is never mistaken for "resolved".
+_UNMERGED_QUERY_FAILED = "<unmerged-path-query-failed>"
+
 #: Signature of a conflict resolver: ``(repo_root, target_branch) ->
-#: resolved``. Returning True means every conflict was resolved and
-#: staged; the caller then commits the merge deterministically.
+#: resolved``. Returning True means every conflict marker was rewritten
+#: on disk; Ralph then stages, verifies and commits the merge.
 ConflictResolver = Callable[[Path, str], bool]
 
 #: MergeResult outcome recorded when a resolver was given the conflict
@@ -72,7 +91,19 @@ def endpoint_merge_with_resolution(
         return None
     if result.outcome != "conflict" or resolver is None:
         return result
-    if not merge_in_progress(root):
+    state = merge_state(root)
+    if state != MERGE_STATE_IN_PROGRESS:
+        if state != MERGE_STATE_NONE:
+            # The git query itself failed, so "no MERGE_HEAD" is NOT
+            # established. Fail closed: attempt the abort so a merge we
+            # cannot see is never left to block later integrations.
+            logger.warning(
+                "auto_integrate: merge state unreadable in {} after a "
+                "conflicted merge; aborting rather than assuming clean",
+                root,
+            )
+            _abort_merge_safely(root)
+            return result
         # The merge refused to start (no MERGE_HEAD): there are no
         # conflict markers on disk for a resolver to repair.
         return result
@@ -89,11 +120,20 @@ def _resolve_and_commit(
 ) -> bool:
     """Run the resolver against the in-progress merge and commit it.
 
-    True only when the resolver reported success, no unmerged paths
-    remain, and the deterministic merge commit landed. The resolver is
-    fully contained: an exception is logged and treated as failure so
-    the caller can abort the merge and keep the run alive.
+    True only when the resolver reported success, Ralph staged every
+    previously-conflicted path, no conflict marker survived, no
+    unmerged path remains, and the deterministic merge commit landed.
+    The resolver is fully contained: an exception is logged and treated
+    as failure so the caller can abort the merge and keep the run
+    alive.
     """
+    conflicted = unmerged_paths(root)
+    if not conflicted or _UNMERGED_QUERY_FAILED in conflicted:
+        logger.warning(
+            "auto_integrate: no readable conflicted paths to resolve: {}",
+            conflicted,
+        )
+        return False
     try:
         resolved = bool(resolver(root, target))
     except Exception as resolver_exc:
@@ -102,6 +142,32 @@ def _resolve_and_commit(
         )
         return False
     if not resolved:
+        return False
+    return _stage_verify_and_commit(root, conflicted)
+
+
+def _stage_verify_and_commit(root: Path, conflicted: list[str]) -> bool:
+    """Stage the conflicted paths, prove the resolution, commit the merge.
+
+    Staging is scoped to exactly the paths that were unmerged BEFORE
+    the resolver ran — never ``git add -A`` — so an unrelated file the
+    agent touched is not swept into the merge commit. The marker scan
+    runs AFTER staging on purpose: ``git add`` clears the unmerged bit,
+    so the textual scan is the only remaining proof of a real
+    resolution. The git-authoritative unmerged check is retained as a
+    second gate before the deterministic commit.
+    """
+    if not stage_paths(root, conflicted):
+        logger.warning(
+            "auto_integrate: failed to stage resolved paths: {}", conflicted
+        )
+        return False
+    marked = paths_with_conflict_markers(root, conflicted)
+    if marked:
+        logger.warning(
+            "auto_integrate: conflict markers remain after resolution: {}",
+            marked,
+        )
         return False
     remaining = unmerged_paths(root)
     if remaining:
@@ -116,8 +182,26 @@ def _resolve_and_commit(
 
 
 def _abort_merge_safely(root: Path) -> None:
-    """Abort any in-progress merge; never raises."""
+    """Abort any in-progress merge; never raises.
+
+    A refused abort is reported rather than assumed successful: a
+    stranded ``MERGE_HEAD`` blocks every subsequent integration, so the
+    operator needs to see it the moment it happens. ``abort_merge``
+    also returns False for the benign "there was nothing to abort"
+    case, which is why the warning is gated on the post-abort state
+    NOT being a positive :data:`MERGE_STATE_NONE`. An unreadable state
+    warns too: it does not prove the merge is gone.
+    """
     try:
-        abort_merge(root)
+        if abort_merge(root):
+            return
+        state = merge_state(root)
+        if state != MERGE_STATE_NONE:
+            logger.warning(
+                "auto_integrate: merge not proven aborted in {} (state {}); "
+                "later integrations will be blocked until it is resolved",
+                root,
+                state,
+            )
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_merge failed: {}", abort_exc)

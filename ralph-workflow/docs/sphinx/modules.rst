@@ -930,10 +930,38 @@ ralph.pipeline.auto_integrate
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_conflict_budget
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_conflict_budget
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_budget_seam
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_budget_seam
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_context
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_context
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_ff
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate_ff
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_outcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_outcome
    :members:
    :show-inheritance:
 
@@ -962,6 +990,20 @@ ralph.pipeline.auto_integrate_recovery
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate_recovery
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_refresh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_refresh
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.auto_integrate_sync
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_sync
    :members:
    :show-inheritance:
 

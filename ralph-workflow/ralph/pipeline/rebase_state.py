@@ -42,3 +42,38 @@ class RebaseState(RalphBaseModel):
     last_reason: str | None = None
     last_target: str | None = None
     fast_forwarded: bool = False
+
+    # ``last_refresh`` records the outcome of the origin refresh that
+    # ran immediately before the fast-forward observed the target SHA
+    # (one of the ``REFRESH_*`` values in
+    # ``ralph.pipeline.auto_integrate_sync``). The refresh is fail-open
+    # -- an unreachable remote still lands locally -- so this field is
+    # the only signal that tells an operator whether the mainline
+    # pointer just landed against was actually fresh. Defaulted, so
+    # legacy checkpoints load unchanged.
+    last_refresh: str | None = None
+
+    # ``consecutive_conflicts`` counts unresolved integration conflicts
+    # against ``last_target`` in a row. It bounds how often the
+    # dev-agent conflict resolver is invoked for the same conflict (see
+    # ``ralph.pipeline.auto_integrate_conflict_budget``) and resets to 0
+    # on any successful land. Defaulted, so legacy checkpoints load
+    # unchanged.
+    consecutive_conflicts: int = 0
+
+    # Durable identity of the conflict ``consecutive_conflicts`` counts.
+    # ``last_target`` alone does not identify a conflict: a developer
+    # can add a feature commit that changes what conflicts while the
+    # mainline branch NAME stays ``main``, and other agents move the
+    # mainline tip continuously. Without these two observations the
+    # budget would keep suppressing the resolver for a conflict it has
+    # never actually seen. The pair is the feature tip and the target
+    # tip observed immediately before the integration attempt that
+    # recorded the conflict; when either differs at the next seam the
+    # budget starts fresh (see
+    # ``ralph.pipeline.auto_integrate_conflict_budget.ConflictIdentity``).
+    # Both are cleared on a successful land and both are defaulted, so
+    # legacy checkpoints load unchanged and conservatively keep their
+    # carried count.
+    last_conflict_feature_sha: str | None = None
+    last_conflict_target_sha: str | None = None

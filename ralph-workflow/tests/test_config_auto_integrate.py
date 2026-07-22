@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+from pydantic import ValidationError
+
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import pytest
 
 from ralph.config.general_config import GeneralConfig
 from ralph.config.loader import load_local_only
@@ -198,3 +199,31 @@ def test_auto_integrate_enabled_omitted_uses_default() -> None:
     config = UnifiedConfig.model_validate({})
     assert config.general.auto_integrate_enabled is True
     assert config.general.auto_integrate_target is None
+
+
+def test_default_auto_integrate_resolve_timeout_seconds() -> None:
+    """AC-05: the conflict-resolution ceiling defaults to 900 seconds."""
+    config = GeneralConfig()
+    assert config.auto_integrate_resolve_timeout_seconds == 900.0
+
+
+def test_auto_integrate_resolve_timeout_loads_from_toml(tmp_path: Path) -> None:
+    """AC-05: the key round-trips through the project-local loader."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text(
+        '[general]\nauto_integrate_resolve_timeout_seconds = 120.5\n',
+        encoding="utf-8",
+    )
+    config = load_local_only(config_path)
+    assert config.general.auto_integrate_resolve_timeout_seconds == 120.5
+
+
+def test_auto_integrate_resolve_timeout_rejects_out_of_bounds() -> None:
+    """AC-05: the bounds are ``gt=0`` and ``le=7200``.
+
+    A zero or negative ceiling would cut every resolution instantly; an
+    unbounded one would defeat the purpose of the knob.
+    """
+    for invalid in (0.0, -1.0, 7200.1):
+        with pytest.raises(ValidationError):
+            GeneralConfig(auto_integrate_resolve_timeout_seconds=invalid)

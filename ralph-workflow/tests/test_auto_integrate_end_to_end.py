@@ -29,13 +29,15 @@ def _commit(repo_root: Path) -> str:
     return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
-def test_auto_integrate_regression_remote_only_main_is_materialized_and_landed(
-    tmp_git_repo: Path,
-) -> None:
-    """Plan step 2 / AC-03: clone-style origin/main lands without local main."""
+def _build_remote_only_clone(tmp_git_repo: Path, name: str) -> tuple[Path, str]:
+    """Build a clone whose mainline exists ONLY as ``refs/remotes/origin/<main>``.
+
+    Returns ``(clone_root, main_branch_name)``. The clone is checked out
+    on ``feature`` and has no local mainline branch at all.
+    """
     main = _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
-    bare = tmp_git_repo.parent / "origin.git"
-    clone = tmp_git_repo.parent / "remote-only"
+    bare = tmp_git_repo.parent / f"{name}.git"
+    clone = tmp_git_repo.parent / name
     assert _run(tmp_git_repo, "clone", "--bare", str(tmp_git_repo), str(bare)).returncode == 0
     clone.mkdir()
     assert _run(clone, "init").returncode == 0
@@ -45,10 +47,47 @@ def test_auto_integrate_regression_remote_only_main_is_materialized_and_landed(
     assert _run(clone, "fetch", "origin", main).returncode == 0
     assert _run(clone, "checkout", "-b", "feature", f"origin/{main}").returncode == 0
     assert branch_sha(clone, main) is None
+    return clone, main
+
+
+def test_auto_integrate_regression_remote_only_main_is_materialized_and_landed(
+    tmp_git_repo: Path,
+) -> None:
+    """Plan step 2 / AC-03: clone-style origin/main lands without local main."""
+    clone, main = _build_remote_only_clone(tmp_git_repo, "remote-only")
 
     feature_sha = _commit(clone)
     outcome = auto_integrate_after_commit(
         UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}}),
+        WorkspaceScope(clone),
+        RebaseState(),
+    )
+
+    assert outcome is not None
+    assert outcome.last_action in {"rebased", "merged"}
+    assert outcome.fast_forwarded is True
+    assert branch_sha(clone, main) == feature_sha
+
+
+def test_configured_target_is_materialized_from_origin(tmp_git_repo: Path) -> None:
+    """AC-03: an explicitly PINNED target materializes exactly like auto-detect.
+
+    A clone-layout agent that sets ``auto_integrate_target`` used to never
+    integrate at all, because the configured branch was required to exist
+    locally while the auto-detect path already created it from origin.
+    """
+    clone, main = _build_remote_only_clone(tmp_git_repo, "configured-target")
+
+    feature_sha = _commit(clone)
+    outcome = auto_integrate_after_commit(
+        UnifiedConfig.model_validate(
+            {
+                "general": {
+                    "auto_integrate_enabled": True,
+                    "auto_integrate_target": main,
+                }
+            }
+        ),
         WorkspaceScope(clone),
         RebaseState(),
     )

@@ -77,8 +77,10 @@ class GeneralConfig(RalphBaseModel):
     auto_integrate_enabled: bool = Field(
         default=True,
         description=(
-            "When true (default), every commit phase that actually creates a"
-            " commit is followed by an auto-integration step: rebase the feature"
+            "When true (default), an auto-integration step runs at four seams"
+            " -- after every commit phase that creates a commit, at every"
+            " successful phase boundary with a clean worktree, at the parallel"
+            " fan-out join, and once at run startup: rebase the feature"
             " branch onto the shared mainline, fall back to an endpoint merge on"
             " rebase conflict, and fast-forward the local mainline ref to the"
             " feature tip. Set to false to keep git behavior byte-identical to"
@@ -93,12 +95,52 @@ class GeneralConfig(RalphBaseModel):
         default=None,
         description=(
             "Shared integration branch name. When set (e.g. 'develop') it is"
-            " used verbatim ONLY if the branch exists in the repository."
+            " used verbatim, provided that branch exists locally OR can be"
+            " materialized from refs/remotes/origin/<target> (the clone"
+            " topology, where an agent's checkout often has only"
+            " origin/main)."
             " When unset, the target is auto-detected: the remote's default"
             " branch (origin/HEAD) when a remote exists, otherwise 'main',"
             " otherwise 'master'. If no candidate resolves to an existing"
             " branch the step skips with a recorded reason -- it never guesses"
             " a branch that is not clearly the shared mainline."
+        ),
+    )
+    auto_integrate_fetch_enabled: bool = Field(
+        default=True,
+        description=(
+            "When true (default), the auto-integration step runs a bounded,"
+            " read-only 'git fetch origin <target>' before each attempt and"
+            " fast-forwards the local mainline ref when the remote-tracking ref"
+            " is strictly ahead. Never force-moves a ref and never pushes. Set"
+            " to false to keep the step strictly local -- appropriate when"
+            " every agent shares one git common directory through linked"
+            " worktrees, where the mainline ref is already shared."
+        ),
+    )
+    auto_integrate_fetch_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0.0,
+        le=120.0,
+        description=(
+            "Wall-clock budget for the auto-integration fetch. On timeout or"
+            " any remote failure the step falls back to local-only"
+            " integration and the run is never failed by an unreachable"
+            " remote. The degradation is not silent: the refresh outcome is"
+            " recorded on the run state and rendered to the operator in the"
+            " auto-integrate line."
+        ),
+    )
+    auto_integrate_resolve_timeout_seconds: float = Field(
+        default=900.0,
+        gt=0.0,
+        le=7200.0,
+        description=(
+            "Wall-clock ceiling for ONE conflict-resolution agent invocation"
+            " during auto-integration. On expiry the invocation is cut, the"
+            " in-progress merge is aborted and the integration records a"
+            " conflict, so a hung resolver can never stall the run with a"
+            " merge in progress."
         ),
     )
     agent_idle_timeout_seconds: float = Field(

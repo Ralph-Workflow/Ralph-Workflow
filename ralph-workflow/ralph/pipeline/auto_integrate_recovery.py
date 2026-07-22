@@ -15,10 +15,11 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import (
+    MERGE_STATE_NONE,
     abort_merge,
     branch_sha,
     is_ancestor,
-    merge_in_progress,
+    merge_state,
     reset_hard,
 )
 from ralph.git.rebase.rebase import abort_rebase, rebase_in_progress
@@ -147,7 +148,11 @@ def recover_incomplete_integration(
       anything else. If the abort itself FAILS, the durable record
       is RETAINED so the next startup can retry; the returned
       ``RebaseState`` records the abort failure as a skip with
-      the original target preserved.
+      the original target preserved. The merge check is read via
+      :func:`ralph.git.merge.merge_state`, so a FAILED git query
+      counts as a possible in-flight merge (abort attempted, record
+      retained unless a readable state later proves ``MERGE_HEAD``
+      absent) rather than as "nothing to abort".
     * If ``record.phase == 'integrating'``: the rebase/merge never
       completed → restore the feature branch to ``pre_feature_sha``
       via ``reset_hard``. The record is cleared ONLY after
@@ -189,8 +194,19 @@ def recover_incomplete_integration(
             abort_failed = True
             logger.warning("recovery: abort_rebase raised: {}", exc)
         try:
-            if merge_in_progress(root):
-                abort_merge(root)
+            # MERGE_STATE_UNKNOWN deliberately lands in this branch:
+            # "git could not be asked" is not evidence that no merge
+            # is in flight, so the abort is attempted and only a
+            # POSITIVE post-abort MERGE_STATE_NONE counts as success.
+            if merge_state(root) != MERGE_STATE_NONE:
+                aborted = abort_merge(root)
+                if not aborted and merge_state(root) != MERGE_STATE_NONE:
+                    abort_failed = True
+                    logger.warning(
+                        "recovery: merge abort did not prove MERGE_HEAD gone"
+                        " in {}",
+                        root,
+                    )
         except Exception as exc:
             abort_failed = True
             logger.warning("recovery: abort_merge raised: {}", exc)
@@ -214,7 +230,7 @@ def recover_incomplete_integration(
                 not abort_failed
                 and not reset_failed
                 and not rebase_in_progress(root)
-                and not merge_in_progress(root)
+                and merge_state(root) == MERGE_STATE_NONE
                 and _head_matches_sha(root, record.pre_feature_sha)
             )
             if not restored_ok:
@@ -235,7 +251,20 @@ def recover_incomplete_integration(
                 fast_forwarded=False,
             )
 
-        # phase == 'integrated': continue the fast-forward.
+        # phase == 'integrated': continue the fast-forward. A failed
+        # (or unprovable) abort retains the record here too -- clearing
+        # it while an owned merge may still be in flight would strand
+        # the repository with no ownership marker.
+        if abort_failed:
+            return RebaseState(
+                last_action=_ACTION_SKIPPED,
+                last_reason=(
+                    "recovery: owned merge not proven aborted, record"
+                    " retained for retry"
+                ),
+                last_target=record.target,
+                fast_forwarded=False,
+            )
         return _continue_fast_forward_from_record(root, record)
     except Exception as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)

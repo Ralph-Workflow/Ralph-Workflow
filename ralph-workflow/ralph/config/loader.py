@@ -142,6 +142,9 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
         "execution_history_limit",
         "auto_integrate_enabled",
         "auto_integrate_target",
+        "auto_integrate_fetch_enabled",
+        "auto_integrate_fetch_timeout_seconds",
+        "auto_integrate_resolve_timeout_seconds",
     )
     for field in simple_fields:
         if field in data:

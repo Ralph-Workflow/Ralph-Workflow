@@ -160,8 +160,11 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `telemetry_enabled` | `true` | Anonymous metadata-only telemetry is enabled by default. Set to `false` to opt out from user-global or project-local `ralph-workflow.toml`. |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
-| `auto_integrate_enabled` | `true` | On by default: after every commit phase that creates a commit, Ralph Workflow rebases the current feature branch onto the shared mainline (falling back to a single endpoint merge on conflict) and fast-forwards the local mainline ref to the feature tip. Never pushes to a remote and never force-moves the mainline. A no-op on single-branch workflows via the skip conditions (on the target branch, no commits beyond the target, detached HEAD, missing target). Set to `false` to keep git behaviour byte-identical to runs without auto-integration. |
-| `auto_integrate_target` | (auto-detect) | Shared integration branch name. When set (e.g. `"develop"`) it is used verbatim, and only if that branch exists. When unset, the target is auto-detected: the remote default branch (`origin/HEAD`) when a remote exists, otherwise `main`, otherwise `master`. If no candidate exists the step skips with a recorded reason and never guesses. |
+| `auto_integrate_enabled` | `true` | On by default: at each of the four integration seams (see [Auto-integration triggers and skips](#auto-integration-triggers-and-skips)) Ralph Workflow rebases the current feature branch onto the shared mainline (falling back to a single endpoint merge on conflict) and fast-forwards the local mainline ref to the feature tip. Never pushes to a remote and never force-moves the mainline. A no-op on single-branch workflows via the skip conditions (on the target branch, no commits beyond the target, detached HEAD, missing target). Set to `false` to keep git behaviour byte-identical to runs without auto-integration. |
+| `auto_integrate_target` | (auto-detect) | Shared integration branch name. When set (e.g. `"develop"`) it is used verbatim, provided that branch exists locally or can be materialized from `refs/remotes/origin/<target>`. When unset, the target is auto-detected: the remote default branch (`origin/HEAD`) when a remote exists, otherwise `main`, otherwise `master`. If no candidate exists the step skips with a recorded reason and never guesses. |
+| `auto_integrate_fetch_enabled` | `true` | On by default: before each integration attempt Ralph Workflow runs a bounded, read-only `git fetch origin <target>` and fast-forwards the local mainline ref when the remote-tracking ref is strictly ahead. Never force-moves a ref and never pushes; a diverged remote is left alone. Set to `false` to keep the step strictly local -- appropriate when every agent shares one git common directory through linked worktrees, where the mainline ref is already shared. |
+| `auto_integrate_fetch_timeout_seconds` | `10.0` | Wall-clock budget for the auto-integration fetch (must be `> 0` and `<= 120`). On timeout or any remote failure the step falls back to local-only integration and the run is never failed by an unreachable remote. The degradation is not silent: the refresh outcome (`origin unreachable`) is recorded on the run state and rendered to the operator in the `auto-integrate:` line. |
+| `auto_integrate_resolve_timeout_seconds` | `900.0` | Wall-clock ceiling for ONE conflict-resolution agent invocation during auto-integration (must be `> 0` and `<= 7200`). On expiry the invocation is cut, the in-progress merge is aborted and the integration records a conflict, so a hung resolver can never stall the run with a merge in progress. At most two CONSECUTIVE unresolved conflicts against the same target may invoke the resolver; after that the integration records an escalation naming the blocked target and stops invoking an agent until a later integration lands. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
@@ -170,6 +173,100 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
+
+### Auto-integration triggers and skips
+
+Auto-integration does **not** run only after a commit. With
+`auto_integrate_enabled = true` it runs at four seams:
+
+1. **The commit seam.** After a commit phase that actually created a
+   commit (`COMMIT_SUCCESS`). This is the full sequence: durable crash
+   record, rebase, endpoint-merge fallback, optional agent conflict
+   resolution, fast-forward.
+2. **Every successful phase boundary.** Eleven phase-transition events
+   (agent success, analysis success, analysis/phase loopback, phase
+   advance, review clean, review issues found, and their siblings) run
+   the same integration so the feature branch stays in lockstep with a
+   mainline that moved while an analysis phase ran.
+3. **The parallel fan-out join.** After parallel work units are joined
+   back together.
+4. **Run startup.** Once per run, before the first phase, so a run that
+   resumes onto a mainline that moved while it was stopped integrates
+   before doing anything else.
+
+An integration attempt can be skipped, and **how visible a skip is
+depends on the seam** -- phase boundaries fire far more often than
+commits, and a routine nothing-to-do there is not a fault:
+
+* **The commit seam** records every skip it can produce on the run
+  state and surfaces it in the `auto-integrate:` log line. The dirty
+  worktree check is not one of them: it exists only on the boundary
+  path below.
+* **Phase boundaries and the fan-out join** run a cheap pre-check
+  first, and that pre-check returns *without recording anything* when
+  the workspace root is not a git checkout, when no integration target
+  can be resolved, when the worktree has uncommitted **tracked**
+  changes *and* the resolved target is already contained in `HEAD`
+  (logged at INFO), when the target already sits at the feature tip
+  **and** the origin refresh that pointer was read through was
+  healthy, or when the pre-check itself raised (logged at WARNING).
+  A dirty pre-check whose target *does* carry commits the checkout
+  lacks is the exception: that deferral suppressed a genuine
+  cross-agent catch-up, so it is **recorded** as a
+  `worktree not clean` skip rather than staying invisible. Anything it
+  does not short-circuit falls through to the same recorded path as
+  the commit seam. The other case that deliberately breaks the silence
+  is an
+  already-integrated tip read through an *unhealthy* refresh --
+  `origin unreachable`, `diverged from origin`, `no local branch`, or
+  `lost a concurrent refresh race` -- which is recorded as a
+  `no commits beyond target` skip carrying that refresh outcome,
+  because a no-op computed from an unverifiable pointer is
+  indistinguishable from a healthy one.
+* **Run startup** uses the same pre-check but is never invisible: when
+  nothing is recorded it still prints one
+  `auto-integrate: startup check: nothing to integrate` line, so an
+  operator can tell the sync ran at all.
+
+The skip reasons seen most often are below. Reasons that wrap an
+underlying git error (`preconditions not met`, `HEAD read failed`)
+carry that error's text verbatim in the recorded reason, and rarer
+failure-path reasons such as `unexpected failure: ...` are recorded the
+same way.
+
+| Skip | Meaning |
+|------|---------|
+| worktree not clean | **Phase boundaries, fan-out join and startup only.** The probe runs `git status --porcelain --untracked-files=no`, so only uncommitted **tracked** modifications defer a boundary integration -- the same definition of "clean" the commit seam's rebase preconditions already use. Untracked scratch files no longer suppress cross-agent synchronisation: the phase boundary is the only seam that carries another agent's landing to an agent that is not committing right now, so an agent holding a stray scratch file would otherwise never receive a sibling's work. Untracked work in flight stays safe because `git rebase`/`git merge` refuse non-destructively, and only for the specific untracked path they would overwrite, which routes into the endpoint-merge fallback. Any git failure here also counts as "not clean" (fail closed). The deferral is **recorded on run state** (and surfaced in the `auto-integrate:` line) when the resolved target carried commits the checkout lacked -- a genuinely suppressed catch-up -- and otherwise remains an INFO log line only (`phase-transition integration deferred; worktree dirty`), plus at the startup seam the generic `startup check: nothing to integrate` line. |
+| on target branch | The checkout is already on the mainline; there is nothing to integrate. |
+| no commits beyond target | The target ref already equals `HEAD`. |
+| detached HEAD | There is no branch to integrate. |
+| no integration target branch resolved | Neither the configured target nor any auto-detect candidate exists. |
+| preconditions not met | `check_rebase_preconditions` refused -- most often a rebase left in progress on disk by an earlier interrupted attempt. |
+| HEAD read failed | `git` could not report `HEAD`; the underlying error is named in the recorded reason. |
+
+When the fast-forward itself cannot land, the integration makes **up to
+three attempts** within the same seam -- the first try plus at most two
+retries: each retry re-reads the target from origin and recomputes the
+integration onto the moved tip. Retryable
+causes are a target that advanced concurrently (not an ancestor,
+`merge --ff-only` refused, compare-and-swap mismatch) and a failed
+`git worktree list` query -- the last of which fails closed rather than
+moving the shared mainline ref while a live checkout may hold it.
+
+Immediately before the fast-forward observes the target SHA, the target
+is re-read from origin a second time (the first read happens when the
+integration context is resolved). This matters because the rebase, the
+endpoint merge and any agent conflict resolution can take minutes,
+during which other agents keep landing on the same mainline. The
+outcome of that refresh -- `refreshed from origin`, `already current`,
+`no origin remote`, `no remote branch`, `no local branch`,
+`origin unreachable`, `diverged from origin`,
+`lost a concurrent refresh race`, `fetch disabled` -- is recorded on
+the run state and rendered in the
+`auto-integrate:` line as `[target refresh: <outcome>]`, so a landing
+computed against a stale pointer is never silent. The refresh itself
+stays fail-open: an unreachable remote degrades to local-only
+integration and never fails the run.
 
 ### `[general.workflow]`
 

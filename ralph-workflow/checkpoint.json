@@ -13,7 +13,11 @@
     "last_action": null,
     "last_reason": null,
     "last_target": null,
-    "fast_forwarded": false
+    "fast_forwarded": false,
+    "last_refresh": null,
+    "consecutive_conflicts": 0,
+    "last_conflict_feature_sha": null,
+    "last_conflict_target_sha": null
   },
   "commit": {
     "message_prepared": false,

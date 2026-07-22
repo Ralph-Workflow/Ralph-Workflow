@@ -40,9 +40,10 @@ from ralph.git.merge import (
     MergeResult,
     branch_exists,
     branch_sha,
+    is_ancestor,
     resolve_origin_head_branch,
 )
-from ralph.git.operations import get_head_sha
+from ralph.git.operations import GitOperationError, get_head_sha
 from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
@@ -57,9 +58,37 @@ from ralph.git.rebase.rebase import (
     rebase_onto,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.auto_integrate_budget_seam import (
+    carry_budget_through_skip,
+    charge_failed_attempt,
+    observe_conflict_identity,
+)
+from ralph.pipeline.auto_integrate_conflict_budget import (
+    apply_conflict_budget,
+    resolver_allowed,
+)
+from ralph.pipeline.auto_integrate_context import (
+    current_branch_or_detached_marker as _current_branch_or_detached_marker,
+)
+from ralph.pipeline.auto_integrate_context import (
+    record_refresh,
+    record_when_stale,
+)
 from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
     is_retryable_fast_forward_failure,
+)
+from ralph.pipeline.auto_integrate_outcome import (
+    ACTION_MERGED as _ACTION_MERGED,
+)
+from ralph.pipeline.auto_integrate_outcome import (
+    record_conflict as _record_conflict,
+)
+from ralph.pipeline.auto_integrate_outcome import (
+    record_rebase_outcome as _record_rebase_outcome,
+)
+from ralph.pipeline.auto_integrate_outcome import (
+    record_skip as _record_skip,
 )
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
@@ -73,27 +102,19 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_recovery import (
     recover_incomplete_integration,
 )
+from ralph.pipeline.auto_integrate_refresh import (
+    refresh_target as _refresh_target,
+)
 from ralph.pipeline.auto_integrate_resolve import (
     RESOLUTION_FAILED,
     endpoint_merge_with_resolution,
 )
-from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
-
-
-#: Outcome verbs recorded on ``RebaseState.last_action`` so the runner
-#: can format the user-facing log line (rebased / merged /
-#: skipped / conflict / recovered). The landing result is recorded
-#: on the separate ``fast_forwarded`` boolean, not as an action verb.
-_ACTION_SKIPPED = "skipped"
-_ACTION_REBASED = "rebased"
-_ACTION_MERGED = "merged"
-_ACTION_CONFLICT = "conflict"
-_ACTION_RECOVERED = "recovered"
 
 
 #: Target branch resolution order when ``auto_integrate_target`` is unset.
@@ -110,7 +131,8 @@ def resolve_integration_target(
     Precedence:
 
     1. ``config.general.auto_integrate_target`` when set: used verbatim
-       ONLY if the branch exists in the repository (AC-13).
+       when the branch exists locally OR can be materialized from
+       ``refs/remotes/origin/<branch>`` (AC-13).
     2. Else: ``origin/HEAD`` remote default branch when it resolves.
     3. Else: the first existing branch in
        ``('main', 'master')``.
@@ -123,7 +145,10 @@ def resolve_integration_target(
     if isinstance(configured_attr, str) and configured_attr:
         configured = configured_attr
     if isinstance(configured, str) and configured:
-        if branch_exists(repo_root_path, configured):
+        # Same materialization the auto-detect path below uses: a
+        # clone-layout agent that pins its target explicitly must not be
+        # worse off than one that lets Ralph detect it.
+        if _ensure_local_origin_branch(repo_root_path, configured):
             return configured
         return None
 
@@ -164,163 +189,13 @@ def _ensure_local_origin_branch(repo_root: Path, branch: str) -> bool:
 
 
 # The record path / write_record / read_record / clear_record helpers
-# were extracted to :mod:`ralph.pipeline.auto_integrate_record` to keep
+# were extracted to :mod:`ralph.pipeline.auto_integrate_record`, and the
+# outcome branch table (action verbs, RebaseState builders, rebase/merge
+# classifiers) to :mod:`ralph.pipeline.auto_integrate_outcome`, to keep
 # this module under the repo-structure ``_MAX_FILE_LINES`` cap. The
-# module-level ``from ... import ... as _xxx_record`` aliases above
-# expose them under the original private names so the call sites in
-# this module read unchanged.
-
-
-def _record_skip(
-    *,
-    reason: str,
-    target: str | None,
-    fast_forwarded: bool = False,
-) -> RebaseState:
-    """Build a ``RebaseState`` recording a skip outcome."""
-    return RebaseState(
-        last_action=_ACTION_SKIPPED,
-        last_reason=reason,
-        last_target=target,
-        fast_forwarded=fast_forwarded,
-    )
-
-
-def _record_conflict(
-    *,
-    reason: str,
-    target: str | None,
-) -> RebaseState:
-    """Build a ``RebaseState`` recording a conflict outcome (AC-07)."""
-    return RebaseState(
-        last_action=_ACTION_CONFLICT,
-        last_reason=reason,
-        last_target=target,
-        fast_forwarded=False,
-    )
-
-
-def _record_rebase_outcome(
-    *,
-    rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed,
-    merge_attempted: bool,
-    merge_outcome: MergeResult | None,
-    target: str,
-) -> RebaseState:
-    """Build a ``RebaseState`` from the rebase + optional merge result.
-
-    Success path -> ``last_action='rebased'`` or ``'merged'`` and
-    ``fast_forwarded`` is set by the caller after the fast-forward
-    phase; the function leaves ``fast_forwarded=False`` here so the
-    caller can update it once the CAS / worktree-ff step completes.
-
-    The mapping is centralized in :func:`_classify_rebase_outcome`
-    so this function is a thin constructor over the (action, reason)
-    pair it returns.
-    """
-    action, reason = _classify_rebase_outcome(
-        rebase_outcome=rebase_outcome,
-        merge_attempted=merge_attempted,
-        merge_outcome=merge_outcome,
-    )
-    return RebaseState(
-        last_action=action,
-        last_reason=reason,
-        last_target=target,
-        fast_forwarded=False,
-    )
-
-
-def _classify_rebase_conflict_outcome(
-    *,
-    merge_attempted: bool,
-    merge_outcome: MergeResult | None,
-) -> tuple[str, str | None] | None:
-    """Sub-classifier for the ``RebaseConflicts`` branch.
-
-    Returns ``None`` when this sub-classifier cannot decide (e.g.
-    the merge was not attempted at all and we still want the
-    generic "rebase conflicts" headline to be raised by the caller).
-    Otherwise returns the ``(action, reason)`` pair to use as the
-    :func:`_record_rebase_outcome` headline.
-    """
-    if not merge_attempted or merge_outcome is None:
-        return None
-    # The rebase conflicted; the endpoint merge that followed
-    # is recorded in ``merge_outcome.outcome``. A conflicting
-    # merge is the AC-07 "both conflicted" case (headline:
-    # conflict). A clean success/noop merge is the AC-06
-    # "rebase conflicted but endpoint merge succeeded" case
-    # (headline: merged) -- the rebase-apply/rebase-merge state
-    # was already aborted by ``_resolve_rebase_conflict`` so the
-    # resulting branch state is the merged tree.
-    if merge_outcome.outcome == RESOLUTION_FAILED:
-        return _ACTION_CONFLICT, "conflict resolution failed; merge aborted"
-    if merge_outcome.outcome == "conflict":
-        return _ACTION_CONFLICT, "rebase and endpoint merge both conflicted"
-    if merge_outcome.outcome in {"success", "noop"}:
-        return _ACTION_MERGED, None
-    return None
-
-
-def _classify_rebase_outcome(
-    *,
-    rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed,
-    merge_attempted: bool,
-    merge_outcome: MergeResult | None,
-) -> tuple[str, str | None]:
-    """Map a rebase + optional merge result to a ``(action, reason)`` pair.
-
-    Split out from :func:`_record_rebase_outcome` to keep the
-    headline builder within the ruff PLR0911 return-statement cap
-    (the builder is a single-return constructor; this classifier
-    owns the branch table).
-    """
-    if isinstance(rebase_outcome, RebaseConflicts):
-        sub = _classify_rebase_conflict_outcome(
-            merge_attempted=merge_attempted,
-            merge_outcome=merge_outcome,
-        )
-        if sub is not None:
-            return sub
-        return _ACTION_CONFLICT, "rebase conflicts"
-    if isinstance(rebase_outcome, RebaseNoOp):
-        # No-op is recorded as rebased (no work done, but the
-        # branch is already aligned with target).
-        return _ACTION_REBASED, rebase_outcome.reason
-    if isinstance(rebase_outcome, RebaseFailed):
-        return _classify_rebase_failed_outcome(
-            rebase_outcome=rebase_outcome,
-            merge_attempted=merge_attempted,
-            merge_outcome=merge_outcome,
-        )
-    # RebaseSuccess or after a clean endpoint merge.
-    if merge_attempted and merge_outcome is not None:
-        return _ACTION_MERGED, None
-    return _ACTION_REBASED, None
-
-
-def _classify_rebase_failed_outcome(
-    *,
-    rebase_outcome: RebaseFailed,
-    merge_attempted: bool,
-    merge_outcome: MergeResult | None,
-) -> tuple[str, str | None]:
-    """Sub-classifier for the ``RebaseFailed`` branch.
-
-    The endpoint-merge fallback runs for failed rebases too; the same
-    sub-table applies, with the failed-rebase wording substituted into
-    the merge-conflicted headline and a skip when no merge ran.
-    """
-    sub = _classify_rebase_conflict_outcome(
-        merge_attempted=merge_attempted,
-        merge_outcome=merge_outcome,
-    )
-    if sub is None:
-        return _ACTION_SKIPPED, f"rebase failed: {rebase_outcome.kind}"
-    if sub == (_ACTION_CONFLICT, "rebase and endpoint merge both conflicted"):
-        return _ACTION_CONFLICT, "rebase failed and endpoint merge conflicted"
-    return sub
+# module-level ``from ... import ... as _xxx`` aliases above expose them
+# under the original private names so the call sites in this module read
+# unchanged.
 
 
 def _fast_forward_target(
@@ -350,7 +225,9 @@ def auto_integrate_after_commit(
     Args:
         config: Unified run configuration (enable flag + target).
         workspace_scope: Scope whose root is the feature repository.
-        state: Prior rebase state (unused today; kept for the seam).
+        state: Prior rebase state. Carries the consecutive-conflict
+            count and the conflict identity that bound how often the
+            dev-agent resolver is invoked for one unresolved conflict.
         conflict_resolver: Optional callable handed a conflicted
             in-progress endpoint merge to resolve and stage (in
             production a focused dev-agent invocation). The merge
@@ -391,13 +268,39 @@ def auto_integrate_on_phase_transition(
     The commit seam already integrates after every real commit; this
     hook keeps the feature branch in lockstep with the target between
     commits too (e.g. the target advanced while an analysis phase
-    ran). It is deliberately quiet: phase boundaries are frequent, so
-    the hook returns ``None`` without recording anything when
+    ran). This is the ONLY seam that can carry another agent's landing
+    to an agent that is not committing right now, so its own
+    short-circuits are the difference between cross-agent
+    synchronisation working and appearing dead.
 
-    * the worktree is dirty (mid-phase uncommitted work — integrating
-      would be unsafe and the next commit seam will catch up), or
+    It is deliberately quiet: phase boundaries are frequent, so the
+    hook returns ``None`` without recording anything when
+
+    * the worktree holds uncommitted TRACKED changes AND the resolved
+      target is already contained in ``HEAD`` — a routine mid-phase
+      boundary with no catch-up work to lose. When the target DOES
+      carry commits this checkout lacks, the same deferral is
+      RECORDED as a skip instead, because a suppressed cross-agent
+      sync the operator cannot see is indistinguishable from a
+      feature that does not work, or
     * the resolved target already sits at the feature tip (nothing to
-      rebase, nothing to land).
+      rebase, nothing to land) AND the origin refresh that pointer was
+      read through was healthy. When the refresh could not confirm the
+      pointer (unreachable origin, diverged remote, lost refresh race)
+      the same nothing-to-do case is RECORDED as a skip carrying
+      ``last_refresh`` instead, because a silent no-op computed from an
+      unverifiable pointer is indistinguishable from a healthy one.
+
+    The dirty-boundary ancestry probe reads the LOCAL target ref and
+    deliberately does NOT trigger an extra ``git fetch``: phase
+    boundaries fire on eleven events, and a bounded-but-real fetch on
+    every dirty one is a per-cycle cost regression. In the
+    linked-worktree topology this feature exists for,
+    ``refs/heads/<target>`` is shared across every agent, so the local
+    ref IS the authoritative pointer. In a clone topology the probe can
+    under-report (stay silent when it could have recorded), which is
+    strictly the safe direction — no integration decision is taken from
+    it, only whether to record a diagnostic.
 
     Otherwise it runs the full integration (rebase → endpoint merge →
     optional agent conflict resolution → fast-forward) and returns
@@ -411,18 +314,24 @@ def auto_integrate_on_phase_transition(
         enabled: object = getattr(config.general, "auto_integrate_enabled", True)
         if not enabled or not (root / ".git").exists():
             return None
-        if not _worktree_is_clean(root):
-            logger.debug(
-                "auto_integrate: phase-transition hook skipped (dirty worktree)"
-            )
-            return None
         target = resolve_integration_target(config, root)
         if target is None:
             return None
+        if not _worktree_is_clean(root):
+            return _defer_dirty_boundary(root, target)
+        # A stale remote pointer must not let this cheap hook conclude
+        # 'nothing to do'. Every free early return above still costs
+        # nothing.
+        refresh = _refresh_target(config, root, target)
         target_sha = branch_sha(root, target)
         if target_sha is not None and target_sha == get_head_sha(root):
             # Fully integrated and landed: the frequent-boundary case.
-            return None
+            # Quiet only while the refreshed pointer that verdict was
+            # read through can be trusted (see ``record_when_stale``).
+            return record_when_stale(
+                _record_skip(reason="no commits beyond target", target=target),
+                refresh,
+            )
     except Exception as exc:
         logger.warning(
             "auto_integrate: phase-transition pre-check failed: {}", exc
@@ -434,19 +343,73 @@ def auto_integrate_on_phase_transition(
 
 
 def _worktree_is_clean(root: Path) -> bool:
-    """True when ``git status --porcelain`` reports no changes.
+    """True when no uncommitted TRACKED modification is present.
+
+    Uses the SAME definition of "clean" as
+    :func:`ralph.git.rebase.rebase_preconditions._ensure_clean_worktree`
+    (``git status --porcelain --untracked-files=no``), and for the same
+    reason its docstring records: blocking on untracked files "turned a
+    per-file, git-detectable hazard into a run-wide outage: one scratch
+    file left by a phase disabled integration for every later commit
+    seam".
+
+    This guard used to be the one asymmetric holdout, and it sits on the
+    only seam that carries ANOTHER agent's landing to an agent that is
+    not committing right now. So the asymmetry re-created exactly that
+    outage on the seam where it hurts most: a single stray scratch file
+    silently disabled cross-agent synchronisation for the rest of the
+    run.
+
+    Untracked work in flight is still safe: ``git rebase`` and
+    ``git merge`` refuse non-destructively and per-file for any
+    untracked path they would overwrite, and that refusal already routes
+    into the endpoint-merge fallback via :func:`_run_rebase_or_merge`.
+    Uncommitted TRACKED modifications still defer the boundary.
 
     Fails closed (False) on any git failure so the phase-transition
     hook never integrates on top of a worktree it cannot prove clean.
     """
     result = run_git(
-        ("status", "--porcelain"),
+        ("status", "--porcelain", "--untracked-files=no"),
         cwd=root,
         label="git-transition-status",
     )
     if result.returncode != 0:
         return False
     return not result.stdout.strip()
+
+
+def _defer_dirty_boundary(root: Path, target: str) -> RebaseState | None:
+    """Defer a boundary integration, recording it only when it cost something.
+
+    A dirty boundary is routine and fires on eleven phase-transition
+    events, so it stays an INFO log line and returns ``None`` when the
+    resolved target is already contained in ``HEAD``: nothing was lost.
+
+    When the target carries commits this checkout LACKS, the deferral
+    suppressed a genuine cross-agent catch-up, and a suppression the
+    operator cannot see is the whole reason auto-integration reads as
+    broken. That case is recorded so it surfaces in the
+    ``auto-integrate:`` line.
+
+    The ancestry probe is deliberately fetch-free; see
+    :func:`auto_integrate_on_phase_transition` for why.
+    """
+    target_sha = branch_sha(root, target)
+    if target_sha is not None and not is_ancestor(root, target_sha, get_head_sha(root)):
+        return _record_skip(
+            reason=(
+                "worktree not clean; uncommitted tracked changes deferred "
+                "catch-up integration"
+            ),
+            target=target,
+        )
+    logger.info(
+        "auto_integrate: phase-transition integration deferred; "
+        "worktree dirty (target '{}')",
+        target,
+    )
+    return None
 
 
 #: Maximum end-to-end integration attempts per commit. Attempt N+1 runs
@@ -476,36 +439,103 @@ def _auto_integrate_after_commit_inner(
        rebase engine, fall back to the endpoint merge on conflict or
        failure (optionally agent-resolved), then fast-forward.
     3. Bounded retry -- when the fast-forward did not land because
-       the target moved concurrently, re-integrate onto the moved
-       tip up to :data:`_MAX_INTEGRATION_ATTEMPTS` times.
+       the target moved concurrently, refresh the target from origin
+       and re-integrate onto the moved tip up to
+       :data:`_MAX_INTEGRATION_ATTEMPTS` times.
+
+    The incoming ``state`` is the seam its docstring promised: it
+    carries the consecutive-unresolved-conflict count that
+    :mod:`ralph.pipeline.auto_integrate_conflict_budget` uses to stop
+    re-invoking the dev agent on a conflict it has already failed to
+    resolve.
     """
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
     early_skip, usable_ctx = _check_early_skips(ctx)
     if early_skip is not None:
-        return early_skip
+        return carry_budget_through_skip(early_skip, prior=state)
     if usable_ctx is None:
         # Disabled (AC-01) or env lookup failed: caller already
         # recorded the skip when applicable.
         return None
     root, _current_branch, target = usable_ctx
 
-    record: RebaseState | None = None
-    for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
-        record, retry_ff = _integrate_once(root, target, conflict_resolver)
-        if not retry_ff:
-            break
-        logger.info(
-            "auto_integrate: fast-forward did not land on attempt {}; "
-            "re-integrating onto the moved target",
-            attempt + 1,
+    # Budget check BEFORE any git mutation: an exhausted budget still
+    # runs the rebase and the endpoint merge (and still aborts them
+    # cleanly), it merely stops paying for another agent invocation.
+    # The identity is observed here, before the rebase moves anything,
+    # so it names the endpoints this attempt is about to reconcile.
+    identity = observe_conflict_identity(root, target)
+    allowed = resolver_allowed(state, target, identity)
+    effective_resolver = conflict_resolver if allowed else None
+    resolver_suppressed = conflict_resolver is not None and not allowed
+    if resolver_suppressed:
+        logger.warning(
+            "auto_integrate: conflict resolution budget exhausted for '{}'; "
+            "not invoking the resolver again until an integration lands",
+            target,
         )
-    return record
+
+    record: RebaseState | None = None
+    prefer_merge = False
+    try:
+        for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
+            if attempt:
+                # A retry only happens because the target moved under
+                # us: re-read it from origin (AC-03) and re-observe the
+                # identity, so a conflict recorded by a later attempt
+                # is not stamped with attempt 0's endpoint pair.
+                _refresh_target(config, root, target)
+                identity = observe_conflict_identity(root, target)
+            record, retry_ff = _integrate_once(
+                config, root, target, effective_resolver, prefer_merge=prefer_merge
+            )
+            if not retry_ff:
+                break
+            # Only a merge-producing attempt suppresses the next
+            # rebase: a plain ``git rebase`` carries no merge commits,
+            # so replaying over the merge this attempt just created
+            # would discard a resolution an agent was paid up to
+            # ``auto_integrate_resolve_timeout_seconds`` to produce and
+            # walk straight back into the same conflict. A clean
+            # rebase-only attempt still retries as a rebase and keeps
+            # the history linear.
+            prefer_merge = record is not None and record.last_action == _ACTION_MERGED
+            logger.info(
+                "auto_integrate: fast-forward did not land on attempt {}; "
+                "re-integrating onto the moved target",
+                attempt + 1,
+            )
+    except Exception as exc:
+        # Caught here, not only in the caller's broad guard: this is
+        # the first frame knowing the target/identity to scope by.
+        logger.warning("auto_integrate: integration attempt failed: {}", exc)
+        with contextlib.suppress(Exception):
+            _clear_record(root)
+        return charge_failed_attempt(
+            _record_skip(reason=f"unexpected failure: {exc}", target=target),
+            prior=state,
+            target=target,
+            identity=identity,
+            resolver_offered=effective_resolver is not None,
+        )
+    if record is None:
+        return None
+    return apply_conflict_budget(
+        record,
+        prior=state,
+        target=target,
+        resolver_suppressed=resolver_suppressed,
+        identity=identity,
+    )
 
 
 def _integrate_once(
+    config: UnifiedConfig,
     root: Path,
     target: str,
     conflict_resolver: ConflictResolver | None,
+    *,
+    prefer_merge: bool = False,
 ) -> tuple[RebaseState | None, bool]:
     """Run one full integrate-and-fast-forward pass.
 
@@ -514,6 +544,17 @@ def _integrate_once(
     the one case where an immediate re-integration onto the moved
     target can still succeed. Every skip / conflict short-circuit
     returns ``retry_ff=False``.
+
+    ``config`` is threaded in for the pre-landing target refresh: the
+    rebase, the endpoint merge and any dev-agent conflict resolution
+    (bounded at 900 s by default) all run between context resolution
+    and the fast-forward, so the pointer read at context-resolution
+    time can be minutes old by the time the landing needs it.
+
+    ``prefer_merge`` is set by the retry loop when the PREVIOUS attempt
+    produced a merge commit; it routes this pass straight to the
+    endpoint merge so that merge commit is preserved rather than
+    dropped by a non-``--rebase-merges`` rebase.
     """
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
@@ -530,7 +571,9 @@ def _integrate_once(
         ),
     )
 
-    rebase_result = _run_rebase_or_merge(root, target, conflict_resolver)
+    rebase_result = _run_rebase_or_merge(
+        root, target, conflict_resolver, prefer_merge=prefer_merge
+    )
     if rebase_result.short_circuit is not None:
         # Resolved failures clear the record; an abort that leaves a rebase
         # in progress retains it for startup recovery.
@@ -558,6 +601,13 @@ def _integrate_once(
         ),
     )
 
+    # Re-read the mainline pointer from origin IMMEDIATELY before the
+    # fast-forward observes it. Several agents land on the same
+    # mainline continuously, so binding the ancestry decision inside
+    # fast_forward_target to a pointer read seconds ago (rather than
+    # before the rebase/merge/resolution sequence) is what keeps the
+    # landing correct under concurrency.
+    refresh_outcome = _refresh_target(config, root, target)
     ok, skip_reason = _fast_forward_target(root, target, feature_sha)
     _clear_record(root)
 
@@ -566,7 +616,7 @@ def _integrate_once(
         merge_attempted=rebase_result.merge_attempted,
         merge_outcome=rebase_result.merge_outcome,
         target=target,
-    )
+    ).model_copy(update={"last_refresh": refresh_outcome})
     if not ok:
         # Fast-forward skipped: reason is appended but we keep
         # the rebase/merged action as the headline so the log line
@@ -591,7 +641,7 @@ def _integrate_once(
 
 
 def _check_early_skips(
-    ctx: tuple[Path, str | None, str | None] | None,
+    ctx: tuple[Path, str | None, str | None, str | None] | None,
 ) -> tuple[RebaseState | None, tuple[Path, str, str] | None]:
     """Apply the AC-01/AC-02/AC-13 skip table to the resolved context.
 
@@ -616,20 +666,25 @@ def _check_early_skips(
         # Disabled (AC-01) or env lookup failed: caller already
         # recorded the skip when applicable.
         return None, None
-    root, current_branch, target = ctx
+    root, current_branch, target, refresh = ctx
     if current_branch is None:
         # Detached HEAD: AC-02 requires this to be a RECORDED skip,
         # not a silent no-op. The crash record is never written in
         # this branch -- a detached HEAD is not an in-progress
         # integration.
-        return _record_skip(reason="detached HEAD", target=target), None
+        return record_refresh(
+            _record_skip(reason="detached HEAD", target=target), refresh
+        ), None
     if target is None:  # AC-13: no target resolved -> recorded skip
         return _record_skip(
             reason="no integration target branch resolved", target=None
         ), None
     skip = _auto_integrate_check_skip_conditions(root, current_branch, target)
     if skip is not None:
-        return skip, None
+        # Every skip in that table is decided FROM the target pointer
+        # the refresh above was meant to freshen, so the record carries
+        # how fresh that pointer actually was.
+        return record_refresh(skip, refresh), None
     # No skip: usable_ctx is the narrowed tuple with non-Optional
     # branch + target slots the orchestrator can unpack.
     return None, (root, current_branch, target)
@@ -655,45 +710,11 @@ def _read_post_integration_head_sha(
         return None
 
 
-def _current_branch_or_detached_marker(root: Path) -> str | None:
-    """Return the current branch name or ``None`` if HEAD is detached.
-
-    Detaches the typed-exception guard from :func:`get_current_branch`'s
-    broad fallback so the auto-integrate skip table can record a
-    DETACHED-HEAD outcome (AC-02/AC-13 skip condition: "no branch to
-    integrate"). GitPython raises ``TypeError`` from
-    ``repo.active_branch.name`` when HEAD points at a detached SHA.
-    Any other exception -- not a git repo, transport error, etc. --
-    propagates so the caller can surface the actual failure.
-
-    Returns:
-        The current branch name, or ``None`` when HEAD is detached.
-    """
-    from git import Repo
-    from git.exc import GitCommandError
-
-    repo: Repo | None = None
-    try:
-        repo = Repo(root)
-        return repo.active_branch.name
-    except (TypeError, ValueError, GitCommandError, AttributeError):
-        # TypeError is GitPython's "DetachedHead has no .name"
-        # AttributeError is the same in some GitPython versions.
-        # ValueError/GitCommandError cover "no HEAD" / "ambiguous HEAD"
-        # edge cases that are also "not on a branch".
-        return None
-    finally:
-        if repo is not None:
-            close_method: object = getattr(repo, "close", None)
-            if callable(close_method):
-                close_method()
-
-
 def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
-) -> tuple[Path, str | None, str | None] | None:
-    """Resolve the (root, current_branch, target) context or short-circuit.
+) -> tuple[Path, str | None, str | None, str | None] | None:
+    """Resolve the (root, current_branch, target, refresh) context or short-circuit.
 
     Returns ``None`` ONLY when the integration step is a no-op
     (AC-01 disabled path -- byte-identical to the pre-feature run).
@@ -723,8 +744,18 @@ def _auto_integrate_resolve_context(
     # absorbed into the broad ``except Exception`` above.
     current_branch: str | None = _current_branch_or_detached_marker(root)
     target: str | None = resolve_integration_target(config, root)
+    refresh: str | None = None
+    if target is not None:
+        # BEFORE the skip table reads branch_sha: the 'no commits
+        # beyond target' and 'on target branch' decisions must be made
+        # against the refreshed pointer, never a stale one. The outcome
+        # is carried out of here rather than discarded: those skip
+        # decisions inherit whatever staleness the refresh could not
+        # rule out, and the fail-open contract means nothing else will
+        # report it.
+        refresh = _refresh_target(config, root, target)
 
-    return root, current_branch, target
+    return root, current_branch, target, refresh
 
 
 def _auto_integrate_check_skip_conditions(
@@ -732,11 +763,22 @@ def _auto_integrate_check_skip_conditions(
     current_branch: str,
     target: str,
 ) -> RebaseState | None:
-    """Apply the AC-02 / AC-03 / preconditions skip table; return skip or None."""
+    """Apply the AC-02 / AC-03 / preconditions skip table; return skip or None.
+
+    A failed HEAD read is recorded with the underlying
+    :class:`GitOperationError` message rather than being allowed to
+    reach the caller's broad handler, where it became an opaque
+    ``unexpected failure`` that named neither the operation nor the
+    repository.
+    """
     if current_branch == target:
         return _record_skip(reason="on target branch", target=target)
     target_sha = branch_sha(root, target)
-    if target_sha is not None and target_sha == get_head_sha(root):
+    try:
+        head_sha = get_head_sha(root)
+    except GitOperationError as exc:
+        return _record_skip(reason=f"HEAD read failed: {exc}", target=target)
+    if target_sha is not None and target_sha == head_sha:
         return _record_skip(reason="no commits beyond target", target=target)
     try:
         check_rebase_preconditions(root)
@@ -763,10 +805,17 @@ class _RebaseRunResult:
     short_circuit: RebaseState | None
 
 
+#: ``RebaseNoOp`` reason recorded when the bounded retry deliberately
+#: skips ``rebase_onto`` to preserve the previous attempt's merge commit.
+_REBASE_SKIPPED_FOR_MERGE = "rebase skipped on retry to preserve the integration merge commit"
+
+
 def _run_rebase_or_merge(
     root: Path,
     target: str,
     conflict_resolver: ConflictResolver | None,
+    *,
+    prefer_merge: bool = False,
 ) -> _RebaseRunResult:
     """Drive rebase_onto, fall back to endpoint merge on conflict or failure.
 
@@ -778,7 +827,21 @@ def _run_rebase_or_merge(
     attempt while a single three-way merge could still land it. When
     aborting a conflicted rebase leaves it in progress, the durable crash
     record is retained so startup recovery can restore the repository.
+
+    With ``prefer_merge`` the rebase is skipped entirely and the
+    endpoint merge runs directly. That flag is set ONLY by the retry
+    loop, and only after an attempt that produced a merge commit: a
+    plain ``git rebase`` (no ``--rebase-merges``) would drop that merge
+    and replay the raw feature commits back into the conflict the
+    resolver just settled.
     """
+    if prefer_merge:
+        return _endpoint_merge_result(
+            root,
+            target,
+            RebaseNoOp(_REBASE_SKIPPED_FOR_MERGE),
+            conflict_resolver,
+        )
     rebase_outcome = rebase_onto(target, repo_root=root)
     if not isinstance(rebase_outcome, (RebaseConflicts, RebaseFailed)):
         return _RebaseRunResult(
@@ -821,6 +884,22 @@ def _fallback_to_endpoint_merge(
             ),
         )
 
+    return _endpoint_merge_result(root, target, rebase_outcome, conflict_resolver)
+
+
+def _endpoint_merge_result(
+    root: Path,
+    target: str,
+    rebase_outcome: RebaseConflicts | RebaseFailed | RebaseNoOp,
+    conflict_resolver: ConflictResolver | None,
+) -> _RebaseRunResult:
+    """Run the endpoint merge and map its outcome onto one branch table.
+
+    Shared by the rebase-conflict fallback and the merge-only retry so
+    both paths keep exactly one branch table; ``rebase_outcome`` is the
+    marker each caller wants preserved for
+    :func:`_classify_rebase_outcome`.
+    """
     merge_result = endpoint_merge_with_resolution(
         root, target, conflict_resolver
     )

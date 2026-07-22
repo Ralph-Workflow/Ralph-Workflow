@@ -12,7 +12,8 @@ Covers the behaviors added on top of the wt-038 baseline:
   immediate bounded re-integration instead of waiting for the next
   commit.
 * The phase-transition hook integrates at clean-worktree phase
-  boundaries and stays silent when the worktree is dirty or there is
+  boundaries, records a skip when uncommitted TRACKED changes defer a
+  catch-up the target actually had, and stays silent when there is
   nothing to do.
 
 Same conventions as :mod:`tests.test_auto_integrate` (real per-test git
@@ -356,8 +357,28 @@ def test_phase_transition_integrates_when_target_moved(tmp_git_repo: Path) -> No
     assert base_sha == head_sha
 
 
-def test_phase_transition_silent_on_dirty_worktree(tmp_git_repo: Path) -> None:
-    """A dirty worktree at a phase boundary is a silent no-op (no record)."""
+def test_phase_transition_records_a_skip_on_a_dirty_worktree(
+    tmp_git_repo: Path,
+) -> None:
+    """A dirty boundary that suppressed real catch-up work is RECORDED.
+
+    Supersedes the former ``silent_on_dirty_worktree`` expectation on
+    both halves.
+
+    * AC-01: the cleanliness probe now runs
+      ``--untracked-files=no``, so this test's original fixture (an
+      untracked ``wip.txt``) no longer makes the worktree dirty at
+      all. Deferring requires an uncommitted TRACKED modification,
+      which is what the fixture now creates.
+    * AC-02: a deferral whose resolved target carries commits this
+      checkout lacks suppressed a genuine cross-agent catch-up, so it
+      is recorded instead of returning ``None``. An invisible
+      suppression is indistinguishable from a feature that does not
+      work, which is exactly how the defect was reported.
+
+    The repository must still be byte-identical afterwards: recording a
+    diagnostic is not permission to mutate anything.
+    """
     from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
 
     base = _base_branch(tmp_git_repo)
@@ -366,14 +387,18 @@ def test_phase_transition_silent_on_dirty_worktree(tmp_git_repo: Path) -> None:
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "base.txt", "base only\n", "base moved")
     _run(tmp_git_repo, "checkout", "feature")
-    (tmp_git_repo / "wip.txt").write_text("uncommitted work\n", encoding="utf-8")
+    (tmp_git_repo / "feat.txt").write_text("uncommitted work\n", encoding="utf-8")
     before = _snapshot(tmp_git_repo)
 
     config = _build_config(tmp_git_repo, target=base)
     outcome = auto_integrate_on_phase_transition(
         config, WorkspaceScope(tmp_git_repo), RebaseState()
     )
-    assert outcome is None
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert outcome.last_target == base
+    assert outcome.last_reason is not None
+    assert "worktree not clean" in outcome.last_reason
     after = _snapshot(tmp_git_repo)
     assert before == after
 
@@ -397,3 +422,124 @@ def test_phase_transition_silent_when_nothing_to_integrate(
 
 
 # ---------------------------------------------------------------------------
+
+
+def test_resolver_that_only_edits_files_still_lands_the_merge(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-02: a resolver issuing NO git command still lands the merge.
+
+    Ralph's own MCP exec policy denies every git invocation, so a
+    resolver agent can never stage anything. Ralph must therefore stage
+    the previously-conflicted paths itself; before that fix this
+    resolver produced ``resolution_failed``.
+    """
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    feature_sha_before = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+
+    def _resolver(root: Path, target: str) -> bool:
+        (root / "shared.txt").write_text("edited only\n", encoding="utf-8")
+        return True
+
+    config = _build_config(tmp_git_repo, target=base)
+    outcome = auto_integrate_after_commit(
+        config,
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=_resolver,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "merged", (
+        f"a git-less resolver must still land the merge, got"
+        f" last_action={outcome.last_action!r} reason={outcome.last_reason!r}"
+    )
+    assert outcome.fast_forwarded is True
+    head_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    assert head_sha != feature_sha_before
+    assert (tmp_git_repo / "shared.txt").read_text() == "edited only\n"
+    base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    assert base_sha == head_sha
+
+
+def test_resolver_leaving_conflict_markers_is_rejected(tmp_git_repo: Path) -> None:
+    """AC-02: a marker-bearing "resolution" must never be committed.
+
+    ``git add`` on a file that still holds ``<<<<<<<`` markers silently
+    clears its unmerged state, so the git-authoritative unmerged-path
+    check alone cannot catch this.
+    """
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    before = _snapshot(tmp_git_repo)
+
+    def _resolver(root: Path, target: str) -> bool:
+        (root / "shared.txt").write_text(
+            "<<<<<<< HEAD\nfeature version\n=======\nbase version 1\n>>>>>>> main\n",
+            encoding="utf-8",
+        )
+        return True
+
+    config = _build_config(tmp_git_repo, target=base)
+    outcome = auto_integrate_after_commit(
+        config,
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=_resolver,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert outcome.fast_forwarded is False
+    after = _snapshot(tmp_git_repo)
+    assert after["head"] == before["head"], "no merge commit may be created"
+    before_refs = before["refs"]
+    after_refs = after["refs"]
+    assert isinstance(before_refs, dict)
+    assert isinstance(after_refs, dict)
+    assert after_refs[f"refs/heads/{base}"] == before_refs[f"refs/heads/{base}"]
+
+
+@pytest.mark.parametrize(
+    "half_resolved",
+    [
+        "<<<<<<< HEAD\nfeature version\nbase version 1\n",
+        "feature version\nbase version 1\n>>>>>>> main\n",
+    ],
+    ids=["opening-fence-only", "closing-fence-only"],
+)
+def test_resolver_regression_lone_conflict_marker_is_rejected(
+    tmp_git_repo: Path, half_resolved: str
+) -> None:
+    """A resolver that deletes only one conflict fence is still rejected.
+
+    The marker scan is the only gate left once Ralph stages the
+    previously-conflicted paths -- ``git add`` clears the unmerged bit
+    -- and it used to demand BOTH fences before reporting a file. A
+    resolution that removed just one of them therefore passed both
+    gates and was committed with the conflict text intact.
+    """
+    base = _diverged_conflicting_repo(tmp_git_repo)
+    before = _snapshot(tmp_git_repo)
+
+    def _resolver(root: Path, target: str) -> bool:
+        (root / "shared.txt").write_text(half_resolved, encoding="utf-8")
+        return True
+
+    outcome = auto_integrate_after_commit(
+        _build_config(tmp_git_repo, target=base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+        conflict_resolver=_resolver,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "conflict"
+    assert outcome.fast_forwarded is False
+    after = _snapshot(tmp_git_repo)
+    assert after["head"] == before["head"], "no merge commit may be created"
+    before_refs = before["refs"]
+    after_refs = after["refs"]
+    assert isinstance(before_refs, dict)
+    assert isinstance(after_refs, dict)
+    assert after_refs[f"refs/heads/{base}"] == before_refs[f"refs/heads/{base}"]
+    assert not (tmp_git_repo / ".git" / "MERGE_HEAD").exists()
