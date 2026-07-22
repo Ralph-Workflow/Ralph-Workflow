@@ -21,12 +21,15 @@ out-of-graph phases -- builds the session bridge and injects
 
 TIMEOUT SEAM. ``execute_agent_effect`` derives both watchdogs from
 ``config.general`` inside ``_build_attempt_invoke_options``; its ``**opts``
-surface carries no timeout keys. The per-round wall-clock share is
+surface carries no timeout keys. The per-attempt wall-clock share is
 therefore applied by handing it a config whose
 ``general.agent_max_session_seconds`` is overridden, which is the value
-that function reads. The idle watchdog needs no override: it comes from
-``general.agent_idle_timeout_seconds``, which is exactly the bound the
-old raw-invoke path had to set by hand.
+that function reads. That share is a slice of the integration-wide
+``auto_integrate_resolve_timeout_seconds`` deadline, so it is normally an
+order of magnitude SMALLER than the run-wide session defaults, and the
+two values ``GeneralConfig`` orders against the ceiling --
+``agent_idle_timeout_seconds`` and ``agent_session_soft_wrapup_seconds``
+-- are pulled down with it rather than left above it.
 """
 
 from __future__ import annotations
@@ -50,7 +53,16 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
-__all__ = ["invoke_resolution_agent", "resolution_chain_agents"]
+__all__ = [
+    "invoke_resolution_agent",
+    "resolution_chain_agents",
+    "with_session_ceiling",
+]
+
+#: Where the soft-wrapup nag lands inside a bounded attempt when the
+#: configured threshold does not fit under the ceiling. Strictly < 1.0:
+#: ``GeneralConfig`` requires ``soft_wrapup < max_session``.
+_WRAPUP_FRACTION = 0.8
 
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
@@ -114,7 +126,7 @@ def invoke_resolution_agent(
     try:
         event = _effect_executor_module.execute_agent_effect(
             effect,
-            _with_session_ceiling(config, max_session_seconds),
+            with_session_ceiling(config, max_session_seconds),
             pipeline_deps,
             workspace_scope,
             display=display,
@@ -135,28 +147,63 @@ def invoke_resolution_agent(
     return event == PipelineEvent.AGENT_SUCCESS
 
 
-def _with_session_ceiling(
+def with_session_ceiling(
     config: UnifiedConfig, max_session_seconds: float
 ) -> UnifiedConfig:
-    """Return ``config`` with this round's wall-clock ceiling applied.
+    """Return ``config`` with this attempt's wall-clock ceiling applied.
 
-    The override is skipped when the requested share would violate the
-    ordering ``agent_session_soft_wrapup_seconds < agent_max_session_seconds``
-    and ``agent_max_session_seconds >= agent_idle_timeout_seconds`` that
-    :class:`~ralph.config.general_config.GeneralConfig` validates: an
-    inconsistent ceiling is worse than the configured one, and the round
-    stays bounded either way.
+    An earlier version DECLINED the override whenever the requested share
+    sat below the run-wide idle watchdog or soft-wrapup threshold, on the
+    grounds that an inconsistent ceiling is worse than the configured
+    one. With the shipped defaults that is every share the integration
+    ever asks for -- 300 s against a 300 s idle watchdog and a 3,000 s
+    wrapup -- so the attempt silently kept the unrelated 3,300 s run-wide
+    maximum and the integration ceiling bounded nothing at all. The
+    dependent watchdogs are lowered alongside the ceiling instead, which
+    preserves the ordering
+    :class:`~ralph.config.general_config.GeneralConfig` validates
+    (``soft_wrapup < max_session`` and ``max_session >= idle``) while
+    making the share the value that actually cuts the session.
+
+    Args:
+        config: Run configuration to derive the bounded copy from.
+        max_session_seconds: This attempt's share of the pipeline
+            deadline. A non-positive share cannot be expressed as a valid
+            ceiling, so ``config`` is returned unchanged.
+
+    Returns:
+        A copy whose ``general`` section is internally consistent and
+        whose session maximum is ``max_session_seconds``.
     """
-    idle: object = getattr(config.general, "agent_idle_timeout_seconds", None)
-    wrapup: object = getattr(config.general, "agent_session_soft_wrapup_seconds", None)
-    if _is_number(idle) and max_session_seconds < float(idle):
-        return config
-    if _is_number(wrapup) and max_session_seconds <= float(wrapup):
+    if max_session_seconds <= 0.0:
         return config
     general = config.general.model_copy(
-        update={"agent_max_session_seconds": max_session_seconds}
+        update=_ceiling_updates(config.general, max_session_seconds)
     )
     return config.model_copy(update={"general": general})
+
+
+def _ceiling_updates(general: object, ceiling: float) -> dict[str, object]:
+    """Field overrides that make ``ceiling`` a VALID session maximum.
+
+    Args:
+        general: The ``general`` config section, read defensively so a
+            partially-constructed config in a test still yields a ceiling.
+        ceiling: The session maximum to impose; strictly positive.
+
+    Returns:
+        The ``GeneralConfig`` field overrides to copy in.
+    """
+    updates: dict[str, object] = {"agent_max_session_seconds": ceiling}
+    idle: object = getattr(general, "agent_idle_timeout_seconds", None)
+    if _is_number(idle) and float(idle) > ceiling:
+        updates["agent_idle_timeout_seconds"] = ceiling
+    wrapup: object = getattr(general, "agent_session_soft_wrapup_seconds", None)
+    if _is_number(wrapup) and float(wrapup) >= ceiling:
+        # Strictly below the ceiling, so the agent is still nagged to wrap
+        # up before the force-cut rather than at the same instant.
+        updates["agent_session_soft_wrapup_seconds"] = ceiling * _WRAPUP_FRACTION
+    return updates
 
 
 def _is_number(value: object) -> TypeGuard[float]:

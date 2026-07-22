@@ -19,6 +19,7 @@ abort here would double-report the same failure.
 from __future__ import annotations
 
 import contextlib
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -56,6 +57,10 @@ if TYPE_CHECKING:
 #: Injected so the default-suite tests never launch a process.
 type ResolutionInvoker = Callable[[str, "Path", int], bool]
 
+#: Reads a monotonic wall clock. Injected so the whole-pipeline deadline
+#: can be proven without sleeping through it.
+type MonotonicClock = Callable[[], float]
+
 #: Sentinel :func:`ralph.git.merge.unmerged_paths` returns when the query
 #: itself failed. A repository that cannot be read is not a repository a
 #: resolver can repair.
@@ -70,7 +75,12 @@ _MAX_RESOLVER_AGENTS = 2
 #: not carry the key (partially-constructed configs in tests).
 _DEFAULT_RESOLVE_TIMEOUT_SECONDS = 900.0
 
-__all__ = ["ResolutionInvoker", "run_conflict_resolution_pipeline"]
+#: Shortest share worth spending on one attempt. Below it the remaining
+#: budget is declined rather than used to start an agent that would be
+#: force-cut before it could read its own prompt.
+_MIN_ATTEMPT_SECONDS = 1.0
+
+__all__ = ["MonotonicClock", "ResolutionInvoker", "run_conflict_resolution_pipeline"]
 
 
 def run_conflict_resolution_pipeline(
@@ -84,6 +94,7 @@ def run_conflict_resolution_pipeline(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
     invoke: ResolutionInvoker | None = None,
+    clock: MonotonicClock | None = None,
 ) -> bool:
     """Resolve the in-progress merge's conflicts, or decline.
 
@@ -98,6 +109,8 @@ def run_conflict_resolution_pipeline(
         display_context: Display context, when there is one.
         invoke: Injected round runner; defaults to a real MCP-backed
             session.
+        clock: Injected monotonic clock the whole-pipeline deadline is
+            measured against; defaults to :func:`time.monotonic`.
 
     Returns:
         ``True`` only when every previously-conflicted path is
@@ -116,6 +129,7 @@ def run_conflict_resolution_pipeline(
             display=display,
             display_context=display_context,
             invoke=invoke,
+            clock=clock or time.monotonic,
         )
     except Exception as exc:
         logger.warning("conflict_resolution: pipeline failed: {}", exc)
@@ -136,6 +150,7 @@ def _run_rounds(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
     invoke: ResolutionInvoker | None,
+    clock: MonotonicClock,
 ) -> bool:
     """Body of the bounded loop; see :func:`run_conflict_resolution_pipeline`."""
     conflicted = tuple(unmerged_paths(root))
@@ -159,6 +174,7 @@ def _run_rounds(
         policy_bundle=policy_bundle,
         display=display,
         display_context=display_context,
+        clock=clock,
     )
     emit_conflict_phase_line(
         display,
@@ -267,16 +283,30 @@ def _default_invoker(
     policy_bundle: PolicyBundle,
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
+    clock: MonotonicClock,
 ) -> ResolutionInvoker:
     """Build the real MCP-backed round runner.
 
-    The configured ceiling is divided by the round cap so the whole
-    pipeline stays inside ``auto_integrate_resolve_timeout_seconds``
-    rather than multiplying it by the number of rounds.
+    ONE monotonic deadline is taken here and every attempt is bounded by
+    what is LEFT of it. That is what keeps the pipeline inside
+    ``auto_integrate_resolve_timeout_seconds``: a per-round division
+    alone cannot, because :func:`_run_one_round` may run up to
+    ``_MAX_RESOLVER_AGENTS`` agents SEQUENTIALLY within a single round,
+    so ``ceiling / MAX_RESOLUTION_ROUNDS`` handed out unconditionally
+    would permit ``_MAX_RESOLVER_AGENTS`` times the configured ceiling.
     """
-    per_round_seconds = _resolve_ceiling(config) / MAX_RESOLUTION_ROUNDS
+    deadline = clock() + _resolve_ceiling(config)
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        budget = _attempt_budget(deadline - clock(), round_index)
+        if budget < _MIN_ATTEMPT_SECONDS:
+            logger.warning(
+                "conflict_resolution: the auto_integrate_resolve_timeout_seconds "
+                "budget is spent; declining to invoke '{}' for round {}",
+                agent_name,
+                round_index,
+            )
+            return False
         return invoke_resolution_agent(
             agent_name=agent_name,
             prompt_path=prompt_path,
@@ -286,10 +316,31 @@ def _default_invoker(
             policy_bundle=policy_bundle,
             display=display,
             display_context=display_context,
-            max_session_seconds=per_round_seconds,
+            max_session_seconds=budget,
         )
 
     return _invoke
+
+
+def _attempt_budget(remaining_seconds: float, round_index: int) -> float:
+    """Wall-clock share ONE attempt may consume.
+
+    Bounding every attempt by the remainder of a single whole-pipeline
+    deadline is what makes the cumulative cost of all rounds and of every
+    sequential chain candidate inside them provably no greater than the
+    configured ceiling. The remainder is then spread over the rounds
+    still to come so a first round that burns everything cannot starve
+    the retries that give the bounded loop its value.
+
+    Args:
+        remaining_seconds: Seconds left before the pipeline deadline.
+        round_index: 1-based index of the round about to be attempted.
+
+    Returns:
+        A non-negative share, never larger than what is left.
+    """
+    rounds_left = max(1, MAX_RESOLUTION_ROUNDS - round_index + 1)
+    return max(0.0, remaining_seconds) / rounds_left
 
 
 def _resolve_ceiling(config: UnifiedConfig) -> float:
