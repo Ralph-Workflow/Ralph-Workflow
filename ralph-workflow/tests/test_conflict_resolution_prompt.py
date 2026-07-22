@@ -225,3 +225,52 @@ def test_rendering_is_idempotent_for_the_same_round(tmp_path: Path) -> None:
     first = _render(tmp_path)
     second = _render(tmp_path)
     assert first == second
+
+
+def test_the_shipped_skills_guidance_is_present(tmp_path: Path) -> None:
+    """The resolver is a real agent session, so it gets the standard skills block.
+
+    Every other agent-facing prompt includes a skills partial; this one
+    was the sole exception, which left the resolution session as the only
+    MCP-backed session given no skills guidance at all.
+    """
+    rendered = _render(tmp_path)
+
+    assert "SHIPPED SKILLS" in rendered
+    assert "invoke relevant available skills" in rendered.lower()
+
+
+def test_the_skills_block_does_not_displace_the_completion_contract(
+    tmp_path: Path,
+) -> None:
+    """Adding skills guidance must not weaken the two contracts around it."""
+    rendered = _render(tmp_path)
+
+    assert "declare_complete" in rendered
+    assert 'Do not modify ANY file that is not listed under "Conflicted files"' in rendered
+
+
+def test_the_skills_block_does_not_widen_the_conflict_only_context(
+    tmp_path: Path,
+) -> None:
+    """The negative scoping contract survives the new include.
+
+    A skills partial that dragged in the run's plan or task would hand
+    the resolver exactly the context it must never have, so the same
+    payload headings the other negative tests police are re-asserted
+    against the prompt that now carries skills guidance.
+    """
+    rendered = _render(tmp_path, round_index=2, surviving=("src/alpha.py",))
+
+    for forbidden in (
+        "PROMPT.md",
+        "PLAN.md",
+        ".agent/PLAN.md",
+        "## Payload",
+        "## Task",
+        "EXECUTION PLAN",
+        "ORIGINAL REQUEST",
+        "CURRENT_PROMPT.md",
+        "ANALYSIS FEEDBACK",
+    ):
+        assert forbidden not in rendered

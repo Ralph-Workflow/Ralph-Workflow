@@ -15,7 +15,10 @@ import pytest
 
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
+from ralph.pipeline import auto_integrate_agent
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.conflict_resolution.graph import MAX_REBASE_CONFLICT_STOPS
+from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
@@ -417,7 +420,7 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
 
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.recover_incomplete_integration",
-        lambda _scope: recovered,
+        lambda _scope, *, config=None: recovered,
     )
     monkeypatch.setattr(run_loop_module._runner_module, "save_checkpoint_or_log", saved)
     monkeypatch.setattr(run_loop_module._runner_module, "_checkpoint_path", lambda _scope: checkpoint_path)
@@ -427,3 +430,159 @@ def test_recovery_outcome_persisted_to_state_and_checkpoint(
     assert state.copy_with.call_args.kwargs["rebase"] is recovered
     assert saved.call_args.args[0] is state
     assert saved.call_args.kwargs["path"] == checkpoint_path
+
+
+class _RecordingDisplay:
+    """Minimal display that records the operator lines pushed at it."""
+
+    def __init__(self) -> None:
+        self.warn_lines: list[tuple[str, str, str]] = []
+
+    def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
+        self.warn_lines.append((unit_id, tag, message))
+
+
+class _MuteDisplay:
+    """A display exposing no ``emit_warn_line`` at all."""
+
+
+class _RaisingDisplay:
+    """A display whose warn-line surface is broken."""
+
+    def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
+        raise RuntimeError("terminal gone")
+
+
+class _EmptyRegistry:
+    """Registry in which no agent is installed."""
+
+    def get(self, _name: str) -> None:
+        return None
+
+
+def _resolver_messages(display: _RecordingDisplay) -> str:
+    return "\n".join(message for _unit, _tag, message in display.warn_lines)
+
+
+def _build_merge_resolver(
+    *,
+    display: object,
+    pipeline_deps: object = object(),
+    workspace_scope: object = object(),
+    registry: object | None = None,
+) -> object:
+    return runner_module.build_agent_conflict_resolver(
+        policy_bundle=_load_default_policy_bundle(),
+        registry=registry if registry is not None else MagicMock(),
+        display=display,
+        config=MagicMock(),
+        pipeline_deps=pipeline_deps,
+        workspace_scope=workspace_scope,
+    )
+
+
+def test_missing_pipeline_deps_tells_the_operator_which_dependency(
+    tmp_path: Path,
+) -> None:
+    """The reason must reach the transcript, not just the log file."""
+    display = _RecordingDisplay()
+    resolver = _build_merge_resolver(display=display, pipeline_deps=None)
+
+    assert resolver(tmp_path, "main") is False
+    assert display.warn_lines[0][0] == "run"
+    assert display.warn_lines[0][1] == "auto-integrate"
+    assert "pipeline_deps not threaded" in _resolver_messages(display)
+
+
+def test_missing_workspace_scope_tells_the_operator_which_dependency(
+    tmp_path: Path,
+) -> None:
+    """The other half of the same decline names the other dependency."""
+    display = _RecordingDisplay()
+    resolver = _build_merge_resolver(display=display, workspace_scope=None)
+
+    assert resolver(tmp_path, "main") is False
+    assert "workspace_scope not threaded" in _resolver_messages(display)
+
+
+def test_no_installed_resolution_agent_is_reported_to_the_operator(
+    tmp_path: Path,
+) -> None:
+    """'Nothing happened' is indistinguishable from a bug without this line."""
+    display = _RecordingDisplay()
+    resolver = _build_merge_resolver(display=display, registry=_EmptyRegistry())
+
+    assert resolver(tmp_path, "main") is False
+    assert "no rebase-conflict-resolution agent installed" in _resolver_messages(
+        display
+    )
+
+
+def test_a_raising_resolution_pipeline_is_reported_to_the_operator(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """The outer net still declines, and now it says why."""
+
+    def _explode(**_kwargs: object) -> bool:
+        raise RuntimeError("session bridge unavailable")
+
+    monkeypatch.setattr(
+        auto_integrate_agent, "run_conflict_resolution_pipeline", _explode
+    )
+    display = _RecordingDisplay()
+    resolver = _build_merge_resolver(display=display)
+
+    assert resolver(tmp_path, "main") is False
+    assert "resolution pipeline raised" in _resolver_messages(display)
+    assert "session bridge unavailable" in _resolver_messages(display)
+
+
+def test_a_display_without_a_warn_surface_is_a_silent_no_op(tmp_path: Path) -> None:
+    """Presentation must never be able to raise into the integration step."""
+    resolver = _build_merge_resolver(display=_MuteDisplay(), pipeline_deps=None)
+
+    assert resolver(tmp_path, "main") is False
+
+
+def test_a_display_whose_warn_surface_raises_is_swallowed(tmp_path: Path) -> None:
+    """Same contract for a display that is present but broken."""
+    resolver = _build_merge_resolver(display=_RaisingDisplay(), pipeline_deps=None)
+
+    assert resolver(tmp_path, "main") is False
+
+
+def test_the_rebase_stop_resolver_reports_its_declines_too(tmp_path: Path) -> None:
+    """The rebase twin of every branch above shares the same visibility."""
+    display = _RecordingDisplay()
+    stop = RebaseStop(
+        sha="abc1234",
+        subject="feat: alpha",
+        conflicted_files=("src/alpha.py",),
+        stop_index=1,
+        stop_cap=MAX_REBASE_CONFLICT_STOPS,
+    )
+
+    missing_deps = runner_module.build_agent_rebase_stop_resolver(
+        policy_bundle=_load_default_policy_bundle(),
+        registry=MagicMock(),
+        display=display,
+        config=MagicMock(),
+        pipeline_deps=None,
+        workspace_scope=MagicMock(),
+    )
+    assert missing_deps(tmp_path, "main", stop) is False
+    assert "pipeline_deps not threaded" in _resolver_messages(display)
+
+    display.warn_lines.clear()
+    no_agent = runner_module.build_agent_rebase_stop_resolver(
+        policy_bundle=_load_default_policy_bundle(),
+        registry=_EmptyRegistry(),
+        display=display,
+        config=MagicMock(),
+        pipeline_deps=object(),
+        workspace_scope=MagicMock(),
+    )
+    assert no_agent(tmp_path, "main", stop) is False
+    assert "no rebase-conflict-resolution agent installed" in _resolver_messages(
+        display
+    )

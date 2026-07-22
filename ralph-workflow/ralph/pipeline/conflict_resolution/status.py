@@ -88,6 +88,8 @@ def push_conflict_status_bar(
     round_cap: int,
     stop_index: int | None = None,
     stop_cap: int | None = None,
+    replay_index: int | None = None,
+    replay_total: int | None = None,
 ) -> None:
     """Show the resolution phase and its round counter in the footer.
 
@@ -104,6 +106,9 @@ def push_conflict_status_bar(
             endpoint merge. ``None`` keeps the footer byte-identical to
             the merge-mode label.
         stop_cap: Total rebase stops allowed.
+        replay_index: 1-based position of the commit the paused rebase is
+            replaying, when git's rebase state could be read.
+        replay_total: Number of commits that rebase is replaying in all.
     """
     try:
         model = StatusBarModel(
@@ -113,6 +118,8 @@ def push_conflict_status_bar(
                 round_cap=round_cap,
                 stop_index=stop_index,
                 stop_cap=stop_cap,
+                replay_index=replay_index,
+                replay_total=replay_total,
             ),
             phase_style=phase_style_for_phase(PHASE_RESOLUTION),
             outer_dev_iteration=round_index,
@@ -138,13 +145,28 @@ def _phase_label(
     round_cap: int,
     stop_index: int | None,
     stop_cap: int | None,
+    replay_index: int | None = None,
+    replay_total: int | None = None,
 ) -> str:
     """Footer label, widened with the commit counter only in rebase mode.
 
     A rebase resolution can span many commits, so 'round 2/3' alone tells
     the operator nothing about how far through the replay the run is --
     it looks identical on stop 1 and stop 9.
+
+    The commit counter prefers the REPLAY position
+    (``replay_index``/``replay_total``), which is read from git's own
+    rebase state and is what the operator means by "which commit". It
+    falls back to the bounded loop's stop counters when that state was
+    unreadable, and to the bare label when neither pair is available.
+    Those are different numbers: ``stop_cap`` is a fixed safety bound on
+    how many stops this loop will service, not the length of the rebase.
     """
+    if replay_index is not None and replay_total is not None:
+        return (
+            f"{PHASE_LABEL} (commit {replay_index}/{replay_total}, "
+            f"round {round_index}/{round_cap})"
+        )
     if stop_index is None or stop_cap is None:
         return PHASE_LABEL
     return (

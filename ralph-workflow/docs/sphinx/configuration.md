@@ -206,7 +206,27 @@ Auto-integration does **not** run only after a commit. With
    `Rebase Conflict Resolution (commit i/N, round r/R)` while a rebase
    is being resolved, so the operator can see how far through the replay
    the run is -- and dedicated log lines mark entry, each round and
-   exit. The footer is captured once when the loop starts and restored
+   exit. `N` is the number of commits the paused rebase is actually
+   replaying, read from git's own rebase state; when that state cannot
+   be read the label falls back to the bounded loop's stop counters
+   rather than failing the resolution. That bound is a **different
+   number**: the loop independently gives up after
+   `MAX_REBASE_CONFLICT_STOPS` stops no matter how long the rebase is,
+   so a `commit 2/5` label on a run with a ten-stop budget is not a
+   contradiction.
+
+   When conflict resolution cannot run at all, the reason is now printed
+   on the operator transcript as an `auto-integrate:` warn line instead
+   of only reaching the log file -- the difference between "auto rebase
+   is broken" and a namable cause. The reasons are: the pipeline
+   dependencies or workspace scope were not threaded to that seam; no
+   rebase-conflict-resolution agent is installed in this workspace; the
+   resolution pipeline itself raised; and a parallel worker that has no
+   resolution dependencies and therefore integrates with no in-place
+   conflict resolution at all. Every one of them still *declines*
+   exactly as before -- only its visibility changed.
+
+   The footer is captured once when the loop starts and restored
    once when it ends, never per stop. The
    agent runs inside a real Ralph Workflow MCP session, so it must call
    `declare_complete` to finish a round and the session's exec policy
@@ -323,7 +343,7 @@ same way.
 
 | Skip | Meaning |
 |------|---------|
-| worktree not clean | **Phase boundaries, fan-out join and startup only.** The probe runs `git status --porcelain --untracked-files=no`, so only uncommitted **tracked** modifications defer a boundary integration -- the same definition of "clean" the commit seam's rebase preconditions already use. Untracked scratch files no longer suppress cross-agent synchronisation: the phase boundary is the only seam that carries another agent's landing to an agent that is not committing right now, so an agent holding a stray scratch file would otherwise never receive a sibling's work. Untracked work in flight stays safe because `git rebase`/`git merge` refuse non-destructively, and only for the specific untracked path they would overwrite, which routes into the endpoint-merge fallback. Any git failure here also counts as "not clean" (fail closed). The deferral is **recorded on run state** (and surfaced in the `auto-integrate:` line) when the resolved target carried commits the checkout lacked -- a genuinely suppressed catch-up -- and otherwise remains an INFO log line only (`phase-transition integration deferred; worktree dirty`), plus at the startup seam the generic `startup check: nothing to integrate` line. |
+| worktree not clean | **Phase boundaries, fan-out join and startup only.** When the locally-observed target already shows commits this checkout lacks, the boundary refresh throttle is overridden for exactly one refresh, so the recorded catch-up verdict is never decided from a pointer that round never re-read; that override has a window of its own, so a target that stays ahead for a whole cycle still costs at most one extra fetch per interval. A dirty boundary with nothing to catch up performs no fetch at all. The probe runs `git status --porcelain --untracked-files=no`, so only uncommitted **tracked** modifications defer a boundary integration -- the same definition of "clean" the commit seam's rebase preconditions already use. Untracked scratch files no longer suppress cross-agent synchronisation: the phase boundary is the only seam that carries another agent's landing to an agent that is not committing right now, so an agent holding a stray scratch file would otherwise never receive a sibling's work. Untracked work in flight stays safe because `git rebase`/`git merge` refuse non-destructively, and only for the specific untracked path they would overwrite, which routes into the endpoint-merge fallback. Any git failure here also counts as "not clean" (fail closed). The deferral is **recorded on run state** (and surfaced in the `auto-integrate:` line) when the resolved target carried commits the checkout lacked -- a genuinely suppressed catch-up -- and otherwise remains an INFO log line only (`phase-transition integration deferred; worktree dirty`), plus at the startup seam the generic `startup check: nothing to integrate` line. |
 | on target branch | The checkout is already on the mainline; there is nothing to integrate. |
 | no commits beyond target | The target ref already equals `HEAD`. |
 | detached HEAD | There is no branch to integrate. |
@@ -333,8 +353,14 @@ same way.
 
 When the fast-forward itself cannot land, the integration makes **up to
 three attempts** within the same seam -- the first try plus at most two
-retries: each retry re-reads the target from origin and recomputes the
-integration onto the moved tip. Retryable
+retries: each retry waits for a bounded, jittered delay, then re-reads
+the target from origin and recomputes the integration onto the moved
+tip. The wait exists because a lost compare-and-swap means another agent
+just won the ref race: without it every loser retries in lockstep,
+re-collides, and burns the whole three-attempt budget in milliseconds,
+starving the slowest agent off the target until its next seam. The delay
+grows across attempts, is capped, and never happens before the first
+attempt. Retryable
 causes are a target that advanced concurrently (not an ancestor,
 compare-and-swap mismatch), a failed
 `git worktree list` query -- which fails closed rather than

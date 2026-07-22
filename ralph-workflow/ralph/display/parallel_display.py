@@ -254,6 +254,16 @@ _PHASE_STYLES: dict[str, str] = {
     "verification": "theme.phase.development_analysis",
     "terminal": "theme.phase.complete",
     "fanout_join": "theme.phase.development",
+    # Not declared in pipeline.toml, and deliberately so: rebase conflict
+    # resolution is not a pipeline phase but a nested resolution pipeline
+    # entered from the auto-integration seams. It therefore never resolves
+    # through the pipeline-policy branch below, and without this entry
+    # _phase_style falls through to "theme.text.muted" -- rendering the one
+    # phase the operator most needs to see as inert grey text. The name is
+    # a literal rather than an import of PHASE_RESOLUTION
+    # (ralph/pipeline/conflict_resolution/graph.py) because ralph.display
+    # must not import ralph.pipeline at runtime.
+    "rebase_conflict_resolution": "theme.phase.fix",
 }
 
 _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(

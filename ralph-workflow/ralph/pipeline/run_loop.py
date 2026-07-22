@@ -457,7 +457,9 @@ def _push_status_bar_if_changed(
     return last_sig
 
 
-def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> RebaseState | None:
+def _run_auto_integrate_recovery_preamble(
+    workspace_scope: WorkspaceScope, config: UnifiedConfig | None = None
+) -> RebaseState | None:
     """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
 
     Called from :func:`_run_inner_loop` BEFORE the pipeline starts.
@@ -480,7 +482,7 @@ def _run_auto_integrate_recovery_preamble(workspace_scope: WorkspaceScope) -> Re
     try:
         from ralph.pipeline.auto_integrate import recover_incomplete_integration
 
-        recovered = recover_incomplete_integration(workspace_scope)
+        recovered = recover_incomplete_integration(workspace_scope, config=config)
     except Exception as recover_exc:  # pragma: no cover -- defensive
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
         return None
@@ -908,7 +910,9 @@ def _apply_startup_rebase_outcomes(
     catch-up then integrates a stale branch onto the target BEFORE the
     first phase so planning never reads old code.
     """
-    recovered_rebase = _run_auto_integrate_recovery_preamble(ctx.workspace_scope)
+    recovered_rebase = _run_auto_integrate_recovery_preamble(
+        ctx.workspace_scope, ctx.config
+    )
     if recovered_rebase is not None:
         state = state.copy_with(rebase=recovered_rebase)
         _save_recovered_rebase_checkpoint(state, ctx)

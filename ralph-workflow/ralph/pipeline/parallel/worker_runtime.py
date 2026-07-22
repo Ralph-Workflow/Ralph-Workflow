@@ -44,6 +44,7 @@ from ralph.pipeline.auto_integrate import (
 from ralph.pipeline.auto_integrate_agent import (
     build_agent_conflict_resolver,
     build_agent_rebase_stop_resolver,
+    emit_integration_warn_line,
 )
 from ralph.pipeline.checkpoint import worker_checkpoint_path
 from ralph.pipeline.effect_executor import execute_agent_effect
@@ -159,10 +160,22 @@ def _worker_integration_resolvers(
         or pipeline_deps is None
         or display_context is None
     ):
-        logger.debug(
+        # WARNING, not DEBUG: a worker that integrates with no conflict
+        # resolution at all will abort on the first real conflict, and
+        # the operator needs that on the transcript rather than buried in
+        # a log file. The display is resolved defensively here because
+        # this branch is exactly the one where display_context may be the
+        # missing dependency.
+        logger.warning(
             "auto_integrate: parallel worker has no resolution dependencies; "
             "integrating without in-place conflict resolution"
         )
+        if display_context is not None:
+            emit_integration_warn_line(
+                resolve_active_display(None, display_context),
+                "conflict resolution unavailable: parallel worker has no "
+                "resolution dependencies",
+            )
         return None, None, None
     display = resolve_active_display(None, display_context)
     conflict_resolver = build_agent_conflict_resolver(
@@ -229,7 +242,9 @@ def run_worker_auto_integration(
         return None
     try:
         if recover_first:
-            recovered = recover_incomplete_integration(workspace_scope)
+            recovered = recover_incomplete_integration(
+                workspace_scope, config=config
+            )
             if recovered is not None:
                 logger.info(
                     "auto_integrate: parallel worker reconciled an interrupted "

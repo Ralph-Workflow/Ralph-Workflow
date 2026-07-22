@@ -252,3 +252,91 @@ def test_configuration_md_documents_the_untracked_tolerant_boundary_probe() -> N
         "the worktree not clean row still claims the skip is never "
         f"recorded, which is no longer true, got: {row!r}"
     )
+
+
+def test_configuration_md_documents_what_the_replay_counter_counts() -> None:
+    """``N`` in ``commit i/N`` must be named as the real replayed-commit total.
+
+    Regression: the label was documented without saying what ``N`` was,
+    while the code rendered the loop's fixed
+    ``MAX_REBASE_CONFLICT_STOPS`` safety cap -- so every rebase read
+    ``commit 1/10`` and the doc gave an operator no way to notice. The
+    two numbers are independent and the page must say so.
+    """
+    section = _skip_section(_PATH.read_text())
+    lowered = section.lower()
+    assert "number of commits the paused rebase is actually replaying" in lowered, (
+        "the page must say what N counts, got a section that does not"
+    )
+    assert "max_rebase_conflict_stops" in lowered, (
+        "the page must name the independent safety bound"
+    )
+    assert "different" in lowered, (
+        "the page must state that the replay total and the stop budget are "
+        "different numbers"
+    )
+
+
+def test_configuration_md_enumerates_the_conflict_resolution_decline_reasons() -> None:
+    """Every reason resolution cannot run must be discoverable.
+
+    These reasons used to reach only the log file, which is precisely
+    why auto-integration read as silently broken. An operator who sees
+    an `auto-integrate:` warn line needs the page to tell them what it
+    means and that the integration still declined safely.
+    """
+    section = _skip_section(_PATH.read_text())
+    lowered = section.lower()
+    for token in (
+        "not threaded",
+        "no rebase-conflict-resolution agent is installed",
+        "resolution pipeline itself raised",
+        "parallel worker",
+    ):
+        assert token in lowered, (
+            f"the page must name the {token!r} decline reason"
+        )
+    assert "warn line" in lowered, (
+        "the page must say the reasons appear on the operator transcript"
+    )
+
+
+def test_configuration_md_documents_the_one_shot_throttle_override() -> None:
+    """The ``worktree not clean`` row must record the forced refresh.
+
+    A recorded catch-up verdict is operator-facing, so it must never be
+    decided from a pointer the round never re-read -- and the row must
+    also say the cheap case stays free, or an operator would read this
+    as a fetch on every boundary event.
+    """
+    row = _row_for_key(_PATH.read_text(), "worktree not clean")
+    lowered = row.lower()
+    assert "overridden for exactly one refresh" in lowered, (
+        f"the row must document the one-shot throttle override, got: {row!r}"
+    )
+    assert "no fetch at all" in lowered, (
+        "the row must state that a boundary with nothing to catch up still "
+        f"costs no fetch, got: {row!r}"
+    )
+
+
+def test_configuration_md_documents_the_bounded_jittered_landing_backoff() -> None:
+    """The retry narrative must name the wait and why it exists.
+
+    Without it, concurrent agents that lose the same compare-and-swap
+    retry in lockstep and spend the whole three-attempt budget at once,
+    which is the opposite of the fleet synchronisation this feature is
+    for.
+    """
+    section = _skip_section(_PATH.read_text())
+    lowered = section.lower()
+    assert "three attempts" in lowered, (
+        "the page must keep naming the existing attempt budget"
+    )
+    assert "jittered" in lowered, (
+        "the page must document that the retry wait is jittered"
+    )
+    for token in ("grows across attempts", "capped", "never happens before the first"):
+        assert token in lowered, (
+            f"the page must document the backoff shape ({token!r})"
+        )

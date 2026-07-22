@@ -64,6 +64,17 @@ _UNKNOWN_SUBJECT = "(subject unavailable)"
 #: is still produced by ``--apply`` and by older gits.
 _REBASE_ONTO_FILES = ("rebase-merge/onto", "rebase-apply/onto")
 
+#: Where git records how far a paused rebase has got, as ``(current,
+#: total)`` state-file pairs, newest backend first. The ``rebase-merge``
+#: backend counts with ``msgnum``/``end``; the ``rebase-apply`` backend,
+#: still produced by ``--apply`` and by older gits, counts with
+#: ``next``/``last``. Read for the operator's benefit only -- see
+#: :func:`_read_replay_progress`.
+_REBASE_PROGRESS_FILES = (
+    ("rebase-merge/msgnum", "rebase-merge/end"),
+    ("rebase-apply/next", "rebase-apply/last"),
+)
+
 __all__ = [
     "RebaseStop",
     "RebaseStopResolver",
@@ -76,9 +87,20 @@ class RebaseStop:
     """One commit a rebase has paused on because replaying it conflicted.
 
     Carries exactly the context a resolution session is allowed to see:
-    which commit is being replayed and which paths conflicted, plus the
-    stop's position in the bounded loop so the operator can be told how
-    far through the replay the run is.
+    which commit is being replayed and which paths conflicted, plus two
+    INDEPENDENT counters that are easy to confuse.
+
+    ``stop_index``/``stop_cap`` are the bounded loop's safety counters:
+    how many stops this loop has spent out of the fixed
+    :data:`~ralph.pipeline.conflict_resolution.graph.MAX_REBASE_CONFLICT_STOPS`
+    it is allowed, which is what terminates the loop. They say nothing
+    about how long the rebase is.
+
+    ``replay_index``/``replay_total`` are the operator-facing replay
+    position: which of the rebase's own commits is being replayed, read
+    from git's rebase state by :func:`_read_replay_progress`. They are
+    display-only, both ``None`` when that state is unreadable, and must
+    never influence loop termination.
     """
 
     sha: str
@@ -86,6 +108,8 @@ class RebaseStop:
     conflicted_files: tuple[str, ...]
     stop_index: int
     stop_cap: int
+    replay_index: int | None = None
+    replay_total: int | None = None
 
 
 #: Resolves ONE rebase stop: ``(root, target, stop) -> resolved``. The
@@ -242,6 +266,57 @@ def _rebase_base_sha(root: Path) -> str | None:
     return None
 
 
+def _read_replay_progress(root: Path) -> tuple[int, int] | None:
+    """Position of the current commit within the paused rebase's replay.
+
+    Returns ``(current, total)`` -- the operator-facing "commit i/N" --
+    or ``None`` when git's own rebase state cannot be read or does not
+    describe a sensible position. Both backends are probed, because a
+    repository rebasing with ``--apply`` keeps its counters under
+    ``rebase-apply`` instead.
+
+    Paths are resolved through ``git rev-parse --git-path`` rather than
+    by joining ``.git`` onto ``root``, for exactly the reason
+    :func:`_rebase_base_sha` documents: this loop runs in LINKED
+    worktrees, whose rebase state lives under the per-worktree git dir.
+
+    Purely cosmetic. The loop's termination is governed by
+    :data:`~ralph.pipeline.conflict_resolution.graph.MAX_REBASE_CONFLICT_STOPS`
+    alone, so an unreadable counter degrades the footer label and must
+    never be able to fail a resolution.
+    """
+    for current_file, total_file in _REBASE_PROGRESS_FILES:
+        current = _read_rebase_state_int(root, current_file)
+        total = _read_rebase_state_int(root, total_file)
+        if current is None or total is None:
+            continue
+        if total >= 1 and 1 <= current <= total:
+            return current, total
+    return None
+
+
+def _read_rebase_state_int(root: Path, relative: str) -> int | None:
+    """One integer out of a rebase state file, or ``None`` if unusable.
+
+    Unreadable, absent, half-written and non-numeric all collapse to
+    ``None``: the caller has a working fallback for every one of them.
+    """
+    result = run_git(
+        ("rev-parse", "--git-path", relative),
+        cwd=root,
+        label="git-rebase-progress-path",
+    )
+    if result.returncode != 0:
+        return None
+    state_path = Path(result.stdout.strip())
+    if not state_path.is_absolute():
+        state_path = root / state_path
+    try:
+        return int(state_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
 def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
     """Describe the commit the rebase is currently stopped on.
 
@@ -274,12 +349,15 @@ def _read_stop(root: Path, stop_index: int) -> RebaseStop | None:
             "declining to resolve"
         )
         return None
+    progress = _read_replay_progress(root)
     return RebaseStop(
         sha=sha,
         subject=_rebase_head_subject(root),
         conflicted_files=conflicted,
         stop_index=stop_index,
         stop_cap=MAX_REBASE_CONFLICT_STOPS,
+        replay_index=None if progress is None else progress[0],
+        replay_total=None if progress is None else progress[1],
     )
 
 

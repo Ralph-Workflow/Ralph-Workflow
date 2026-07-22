@@ -164,6 +164,12 @@ def _session_preamble_variables() -> dict[str, str]:
     ``declare_complete`` alone, and offering it the artifact-submission
     surface would invite a ``development_result`` for work that is not a
     development iteration.
+
+    ``SKILLS_INLINE_CONTENT`` is required by ``shared/_shipped_skills.j2``
+    and the renderer uses ``StrictUndefined``, so it must be present.
+    Empty selects the generic "use whatever skills your environment
+    exposes" wording, which is the right guidance here: this session is
+    handed a conflict, not an execution plan with a skills section.
     """
     capabilities, policy_flags = default_caps_and_flags_for_drain(_RESOLUTION_DRAIN)
     variables = capability_template_variables(
@@ -172,6 +178,7 @@ def _session_preamble_variables() -> dict[str, str]:
         tool_name_prefix=claude_tool_name_prefix(),
     )
     variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
+    variables["SKILLS_INLINE_CONTENT"] = ""
     return variables
 
 

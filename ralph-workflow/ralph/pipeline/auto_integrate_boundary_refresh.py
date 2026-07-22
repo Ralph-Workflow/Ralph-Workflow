@@ -142,8 +142,20 @@ class BoundaryRefreshThrottle:
 #: mutating this singleton.
 BOUNDARY_REFRESH_THROTTLE = BoundaryRefreshThrottle()
 
+#: Second, INDEPENDENT window for the divergence-triggered override in
+#: :func:`ralph.pipeline.auto_integrate._defer_dirty_boundary`. That
+#: override deliberately bypasses the throttle above, because a verdict
+#: the operator will be shown must not be decided from a pointer the
+#: round never re-read. Bypassing an armed window every time would make
+#: a target that stays ahead for a whole cycle cost one fetch per
+#: boundary event -- precisely the storm the throttle exists to stop --
+#: so the override consumes a window of its own and fires at most once
+#: per interval per ``(root, target)``.
+FORCED_BOUNDARY_REFRESH_THROTTLE = BoundaryRefreshThrottle()
+
 __all__ = [
     "BOUNDARY_REFRESH_THROTTLE",
     "DEFAULT_MIN_REFRESH_INTERVAL_SECONDS",
+    "FORCED_BOUNDARY_REFRESH_THROTTLE",
     "BoundaryRefreshThrottle",
 ]

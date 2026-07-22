@@ -18,16 +18,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.config.models import UnifiedConfig
+from ralph.display.parallel_display import phase_style_for_phase
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import (
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_pipeline,
 )
-from ralph.pipeline.conflict_resolution.graph import MAX_RESOLUTION_ROUNDS
+from ralph.pipeline.conflict_resolution.graph import (
+    MAX_RESOLUTION_ROUNDS,
+    PHASE_RESOLUTION,
+)
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.conflict_resolution.status import (
     NEUTRAL_PHASE_LABEL,
     PHASE_LABEL,
+    push_conflict_status_bar,
 )
 from ralph.policy.loader import load_policy
 
@@ -378,3 +383,39 @@ def test_rebase_mode_success_reports_continuing_the_rebase(
     joined = "\n".join(display.warn_lines)
     assert "conflicts resolved in round 1; verifying and continuing the rebase" in joined
     assert "committing the merge" not in joined
+
+
+def test_the_resolution_phase_has_its_own_non_muted_display_style() -> None:
+    """The dedicated conflict phase must not render as inert grey text.
+
+    ``rebase_conflict_resolution`` is not declared in ``pipeline.toml``
+    -- it is a nested pipeline entered from the integration seams -- so
+    it only resolves through ``_PHASE_STYLES``. Without an entry there
+    ``_phase_style`` falls through to ``theme.text.muted`` and the phase
+    banner and status bar go silent at exactly the moment the operator
+    needs to see them.
+    """
+    assert phase_style_for_phase(PHASE_RESOLUTION) != "theme.text.muted"
+    assert phase_style_for_phase(PHASE_RESOLUTION) == "theme.phase.fix"
+
+
+def test_the_pushed_footer_carries_that_non_muted_style(tmp_path: Path) -> None:
+    """The model actually pushed at the display must carry the style.
+
+    Asserted through the real push rather than the lookup helper, so a
+    change that styles the phase banner but leaves the persistent footer
+    grey cannot pass.
+    """
+    display = _FakeDisplay()
+
+    push_conflict_status_bar(
+        display,
+        tmp_path,
+        target="main",
+        round_index=1,
+        round_cap=3,
+    )
+
+    pushed = display.models[-1]
+    assert pushed.phase_style == phase_style_for_phase(PHASE_RESOLUTION)
+    assert pushed.phase_style != "theme.text.muted"

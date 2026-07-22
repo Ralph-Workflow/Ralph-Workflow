@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -102,3 +103,58 @@ def test_fan_out_join_skip_emits_warn_line_with_reason(monkeypatch: MonkeyPatch)
 
     display.emit_warn_line.assert_called_once()
     assert reason in display.emit_warn_line.call_args.args[2]
+
+
+class _RecordingDisplay:
+    """Minimal display that records the operator lines pushed at it."""
+
+    def __init__(self) -> None:
+        self.warn_lines: list[tuple[str, str, str]] = []
+
+    def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
+        self.warn_lines.append((unit_id, tag, message))
+
+
+def test_worker_without_resolution_dependencies_warns_the_operator(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A worker integrating with NO conflict resolution must say so.
+
+    This was the quietest of the decline branches -- a ``logger.debug``
+    -- yet it is the one that silently turns auto-integration into
+    "aborts on the first conflict" for every parallel worker.
+    """
+    display = _RecordingDisplay()
+    monkeypatch.setattr(
+        worker_runtime, "resolve_active_display", lambda _d, _ctx: display
+    )
+
+    resolvers = worker_runtime._worker_integration_resolvers(
+        config=_config(enabled=True),
+        workspace_scope=MagicMock(),
+        policy_bundle=None,
+        registry=None,
+        pipeline_deps=None,
+        display_context=MagicMock(),
+    )
+
+    assert resolvers == (None, None, None)
+    assert display.warn_lines[0][0] == "run"
+    assert display.warn_lines[0][1] == "auto-integrate"
+    assert (
+        "parallel worker has no resolution dependencies" in display.warn_lines[0][2]
+    )
+
+
+def test_worker_without_a_display_context_declines_without_raising() -> None:
+    """The missing dependency may BE the display; that must stay a no-op."""
+    resolvers = worker_runtime._worker_integration_resolvers(
+        config=_config(enabled=True),
+        workspace_scope=MagicMock(),
+        policy_bundle=None,
+        registry=None,
+        pipeline_deps=None,
+        display_context=None,
+    )
+
+    assert resolvers == (None, None, None)

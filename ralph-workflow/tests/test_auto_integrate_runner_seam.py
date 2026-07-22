@@ -8,7 +8,12 @@ from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import WORKTREE_FOUND
-from ralph.pipeline import auto_integrate, auto_integrate_ff, runner
+from ralph.pipeline import (
+    auto_integrate,
+    auto_integrate_backoff,
+    auto_integrate_ff,
+    runner,
+)
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
@@ -138,3 +143,164 @@ def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:
     assert actual is outcome
     assert config.general.auto_integrate_target is None
     assert integrate.call_args.args == (config, workspace_scope, state.rebase)
+
+
+# ---------------------------------------------------------------------------
+# Bounded jittered backoff between landing retries
+# ---------------------------------------------------------------------------
+#
+# Every seam here is injected -- no wait ever happens, and this file never
+# imports ``random``. The production defaults (``time.sleep`` /
+# ``random.random``) are only exercised by the real-git e2e suite.
+
+
+def _install_retry_loop(
+    monkeypatch,
+    root: Path,
+    *,
+    retries: list[bool],
+    events: list[str] | None = None,
+) -> None:
+    """Drive the bounded landing loop with a scripted retry verdict.
+
+    ``retries[i]`` is what attempt ``i`` reports as ``retry_ff`` -- True
+    meaning the fast-forward lost the compare-and-swap and the loop must
+    re-integrate onto the moved tip.
+    """
+    verdicts = iter(retries)
+    monkeypatch.setattr(
+        auto_integrate,
+        "_auto_integrate_resolve_context",
+        lambda _config, _scope: (root, "feature", "main", "refreshed"),
+    )
+    monkeypatch.setattr(
+        auto_integrate,
+        "_auto_integrate_check_skip_conditions",
+        lambda _root, _branch, _target: None,
+    )
+    monkeypatch.setattr(
+        auto_integrate, "observe_conflict_identity", lambda _root, _target: "id"
+    )
+    monkeypatch.setattr(
+        auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True
+    )
+
+    def _refresh(_config, _root, _target) -> str:
+        if events is not None:
+            events.append("refresh")
+        return "refreshed"
+
+    def _integrate_once(
+        *_args: object, **_kwargs: object
+    ) -> tuple[RebaseState, bool]:
+        if events is not None:
+            events.append("integrate")
+        record = RebaseState(
+            last_action="rebased", last_target="main", fast_forwarded=True
+        )
+        return record, next(verdicts, False)
+
+    monkeypatch.setattr(auto_integrate, "_refresh_target", _refresh)
+    monkeypatch.setattr(auto_integrate, "_integrate_once", _integrate_once)
+
+
+def _recorder(monkeypatch, root: Path, *, retries: list[bool], events=None):
+    """Run one integration and return the delays the loop asked to sleep."""
+    delays: list[float] = []
+    _install_retry_loop(monkeypatch, root, retries=retries, events=events)
+
+    def _sleep(seconds: float) -> None:
+        if events is not None:
+            events.append("sleep")
+        delays.append(seconds)
+
+    auto_integrate.auto_integrate_after_commit(
+        _default_config(),
+        SimpleNamespace(root=str(root)),
+        RebaseState(),
+        sleep=_sleep,
+        jitter=lambda: 1.0,
+    )
+    return delays
+
+
+def test_a_first_attempt_that_lands_never_waits(monkeypatch, tmp_path: Path) -> None:
+    """The common case must cost nothing: no collision, no backoff."""
+    assert _recorder(monkeypatch, tmp_path, retries=[False]) == []
+
+
+def test_a_lost_compare_and_swap_waits_once_before_retrying(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """One collision, one bounded wait, inside the documented schedule."""
+    delays = _recorder(monkeypatch, tmp_path, retries=[True, False])
+
+    assert len(delays) == 1
+    assert 0 < delays[0] <= auto_integrate_backoff.RETRY_MAX_DELAY_SECONDS
+    assert delays[0] >= auto_integrate_backoff.RETRY_BASE_DELAY_SECONDS * 0.5
+
+
+def test_the_delay_grows_across_attempts_and_stays_capped(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Exponential, so two agents that keep colliding spread further apart."""
+    delays = _recorder(monkeypatch, tmp_path, retries=[True, True, True])
+
+    assert len(delays) == 2
+    assert delays[1] > delays[0], "the backoff must grow, not repeat"
+    assert all(d <= auto_integrate_backoff.RETRY_MAX_DELAY_SECONDS for d in delays)
+
+
+def test_the_wait_happens_before_the_pointer_is_re_read(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Ordering is the point: the retry must observe a POST-wait pointer.
+
+    Refreshing first and then sleeping would land the retry on a pointer
+    read before the collision had time to settle, which is exactly the
+    lockstep the backoff exists to break.
+    """
+    events: list[str] = []
+    _recorder(monkeypatch, tmp_path, retries=[True, False], events=events)
+
+    assert events == ["integrate", "sleep", "refresh", "integrate"]
+
+
+def test_a_sleep_that_raises_never_escapes_the_integration_step(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Integration never raises into the run -- the backoff is no exception."""
+
+    def _explode(_seconds: float) -> None:
+        raise RuntimeError("interrupted")
+
+    _install_retry_loop(monkeypatch, tmp_path, retries=[True, False])
+
+    outcome = auto_integrate.auto_integrate_after_commit(
+        _default_config(),
+        SimpleNamespace(root=str(tmp_path)),
+        RebaseState(),
+        sleep=_explode,
+        jitter=lambda: 0.0,
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "rebased"
+
+
+def test_full_jitter_shortens_the_wait_rather_than_fixing_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A deterministic backoff would re-synchronise the agents it separated."""
+    long_wait = _recorder(monkeypatch, tmp_path, retries=[True, False])
+    delays: list[float] = []
+    _install_retry_loop(monkeypatch, tmp_path, retries=[True, False])
+    auto_integrate.auto_integrate_after_commit(
+        _default_config(),
+        SimpleNamespace(root=str(tmp_path)),
+        RebaseState(),
+        sleep=delays.append,
+        jitter=lambda: 0.0,
+    )
+
+    assert delays[0] < long_wait[0], "jitter must actually vary the delay"

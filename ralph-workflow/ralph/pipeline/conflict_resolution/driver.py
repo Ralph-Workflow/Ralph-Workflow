@@ -327,6 +327,8 @@ def _run_rounds(
                 round_cap=round_cap,
                 stop_index=stop.stop_index if stop is not None else None,
                 stop_cap=stop.stop_cap if stop is not None else None,
+                replay_index=stop.replay_index if stop is not None else None,
+                replay_total=stop.replay_total if stop is not None else None,
             )
             prompt_path = render_conflict_prompt(
                 root=root,

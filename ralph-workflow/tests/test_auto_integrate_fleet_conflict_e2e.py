@@ -47,6 +47,7 @@ import pytest
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.conflict_resolution.graph import MAX_REBASE_CONFLICT_STOPS
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -285,3 +286,91 @@ def test_a_declining_resolver_leaves_both_refs_bit_for_bit_unchanged(
     assert branch_sha(fleet.agent_a, fleet.target) == target_before, (
         "the shared mainline ref must not move when resolution declines"
     )
+
+
+def _build_multi_commit_conflicting_fleet(
+    tmp_git_repo: Path, tmp_path: Path
+) -> _Fleet:
+    """The same fleet, but agent A carries THREE commits to replay.
+
+    Only the MIDDLE one touches the shared file, so exactly one stop is
+    conflicted while the replay total is unambiguously three -- and
+    unambiguously different from ``MAX_REBASE_CONFLICT_STOPS``.
+    """
+    target = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, _SHARED_FILE, "seed\n", "seed the shared file")
+    seed = _run(tmp_git_repo, "rev-parse", f"refs/heads/{target}").stdout.strip()
+
+    agent_a = tmp_path / "agent-a-multi"
+    _run(tmp_git_repo, "worktree", "add", "-b", "feature-multi", str(agent_a), seed)
+    _commit(agent_a, "first.txt", "one\n", "agent A commit 1")
+    _commit(agent_a, _SHARED_FILE, "agent-a intent\n", "agent A commit 2 (conflicts)")
+    _commit(agent_a, "third.txt", "three\n", "agent A commit 3")
+
+    agent_b_sha = _commit(
+        tmp_git_repo, _SHARED_FILE, "agent-b intent\n", "agent B lands on mainline"
+    )
+
+    return _Fleet(
+        agent_b=tmp_git_repo,
+        agent_a=agent_a,
+        target=target,
+        agent_b_sha=agent_b_sha,
+    )
+
+
+def test_the_replay_counter_reports_the_real_commit_total_not_the_safety_cap(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    """The stop handed to the resolver must say where in the REPLAY it is.
+
+    The regression: every stop used to be built with
+    ``stop_cap=MAX_REBASE_CONFLICT_STOPS``, and the status bar rendered
+    that directly, so the operator always read ``commit 1/10`` no matter
+    how long the rebase was. Three commits replayed here, so a truthful
+    counter says 3 and a broken one says 10.
+
+    The safety bound is asserted alongside it, because the fix must add
+    a display counter WITHOUT widening the bound that terminates the
+    loop.
+    """
+    fleet = _build_multi_commit_conflicting_fleet(tmp_git_repo, tmp_path)
+    seen: list[RebaseStop] = []
+
+    outcome = auto_integrate_after_commit(
+        _build_config(fleet.target),
+        WorkspaceScope(fleet.agent_a),
+        RebaseState(),
+        rebase_stop_resolver=_resolving_stop_resolver(seen),
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "rebased", (
+        f"got last_action={outcome.last_action!r} reason={outcome.last_reason!r}"
+    )
+    assert seen, "the conflicted stop must have reached the resolver"
+
+    stop = seen[0]
+    assert stop.replay_total == 3, (
+        "the counter must report the commits actually being replayed, not "
+        f"the {MAX_REBASE_CONFLICT_STOPS}-stop safety cap; got "
+        f"{stop.replay_total!r}"
+    )
+    assert stop.replay_index is not None
+    assert 1 <= stop.replay_index <= stop.replay_total
+    assert stop.stop_cap == MAX_REBASE_CONFLICT_STOPS, (
+        "the loop's termination bound must be untouched by the display counter"
+    )
+
+    # The landing itself, proved from git: replay finished, mainline
+    # advanced, history stayed linear, worktree clean.
+    assert _rebase_in_progress(fleet.agent_a) is False
+    assert _run(fleet.agent_a, "status", "--porcelain").stdout.strip() == ""
+    agent_a_tip = _run(fleet.agent_a, "rev-parse", "HEAD").stdout.strip()
+    assert branch_sha(fleet.agent_a, fleet.target) == agent_a_tip
+    assert _parent_count(fleet.agent_a) == 1
+    assert _run(fleet.agent_a, "log", "--merges", "--oneline").stdout.strip() == ""
+    assert (
+        _run(fleet.agent_a, "show", f"HEAD~1:{_SHARED_FILE}").stdout
+        == _RESOLVED_CONTENT
+    ), "the resolved content must be carried by the replayed middle commit"

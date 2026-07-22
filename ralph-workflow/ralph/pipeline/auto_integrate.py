@@ -37,6 +37,8 @@ which runs at startup and reconciles any durable, atomically-written
 from __future__ import annotations
 
 import contextlib
+import random
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -54,8 +56,10 @@ from ralph.git.rebase import (
     check_rebase_preconditions,
 )
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_boundary_refresh import (
     BOUNDARY_REFRESH_THROTTLE,
+    FORCED_BOUNDARY_REFRESH_THROTTLE,
 )
 from ralph.pipeline.auto_integrate_budget_seam import (
     carry_budget_through_skip,
@@ -107,6 +111,8 @@ from ralph.pipeline.auto_integrate_refresh import (
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.config.models import UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
@@ -219,6 +225,8 @@ def auto_integrate_after_commit(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Run the auto-integration step after a successful commit.
 
@@ -240,6 +248,10 @@ def auto_integrate_after_commit(
             retried as a single endpoint merge, exactly as before.
         display: Active display, used only so the resolution loop can own
             the status-bar footer for its whole duration.
+        sleep: Wait seam used between bounded landing retries. Injected
+            so deterministic tests assert the schedule without waiting.
+        jitter: Uniform ``[0, 1)`` source for the retry backoff, injected
+            for the same reason.
 
     Returns:
         ``None`` when the feature is disabled (AC-01: byte-identical
@@ -260,6 +272,8 @@ def auto_integrate_after_commit(
             conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
+            sleep=sleep,
+            jitter=jitter,
         )
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
@@ -276,6 +290,8 @@ def auto_integrate_on_phase_transition(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Run the integration step at a phase boundary when it can help.
 
@@ -368,6 +384,8 @@ def auto_integrate_on_phase_transition(
         conflict_resolver=conflict_resolver,
         rebase_stop_resolver=rebase_stop_resolver,
         display=display,
+        sleep=sleep,
+        jitter=jitter,
     )
 
 
@@ -409,6 +427,18 @@ def _worktree_is_clean(root: Path) -> bool:
     return not result.stdout.strip()
 
 
+def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
+    """Whether ``target_sha`` carries commits ``HEAD`` does not have.
+
+    An unreadable target pointer is NOT divergence: there is nothing to
+    catch up on that this function can prove, and the caller's quiet
+    path is the right answer for a question git could not be asked.
+    """
+    if target_sha is None:
+        return False
+    return not is_ancestor(root, target_sha, get_head_sha(root))
+
+
 def _defer_dirty_boundary(
     config: UnifiedConfig, root: Path, target: str
 ) -> RebaseState | None:
@@ -436,13 +466,38 @@ def _defer_dirty_boundary(
     failed, and hiding that behind an absent ``last_refresh`` is what
     made a suppressed cross-agent catch-up indistinguishable from a
     verified one.
+
+    One case overrides the throttle: when it declined AND the local
+    pointer ALREADY shows the target carrying commits this checkout
+    lacks, a single refresh runs and the verdict is retaken from the
+    re-read pointer. That is the only case where the answer matters --
+    an operator-visible catch-up is about to be recorded -- and gating
+    it on local evidence of divergence keeps the common dirty boundary
+    free of any fetch at all.
+
+    The override has a window of its own
+    (:data:`~ralph.pipeline.auto_integrate_boundary_refresh.FORCED_BOUNDARY_REFRESH_THROTTLE`)
+    rather than no window: a target that stays ahead for a whole cycle
+    would otherwise cost one fetch per boundary event, which is exactly
+    the storm the first throttle exists to prevent.
     """
     refresh = REFRESH_SUPPRESSED
     if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
         refresh = _refresh_target(config, root, target)
         BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
     target_sha = branch_sha(root, target)
-    if target_sha is not None and not is_ancestor(root, target_sha, get_head_sha(root)):
+    diverged = _target_is_ahead(root, target_sha)
+    if (
+        diverged
+        and refresh == REFRESH_SUPPRESSED
+        and FORCED_BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target)
+    ):
+        refresh = _refresh_target(config, root, target)
+        BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
+        FORCED_BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
+        target_sha = branch_sha(root, target)
+        diverged = _target_is_ahead(root, target_sha)
+    if diverged:
         skip = _record_skip(
             reason=(
                 "worktree not clean; uncommitted tracked changes deferred "
@@ -469,7 +524,6 @@ def _defer_dirty_boundary(
 #: call for different operator responses.
 _MAX_INTEGRATION_ATTEMPTS = 3
 
-
 def _auto_integrate_after_commit_inner(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -478,6 +532,8 @@ def _auto_integrate_after_commit_inner(
     *,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
     """Internal worker for :func:`auto_integrate_after_commit`.
 
@@ -540,6 +596,10 @@ def _auto_integrate_after_commit_inner(
     try:
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
+                # Wait BEFORE the re-read, never after: the point of the
+                # delay is that the retry observes a pointer read once
+                # the collision has had time to settle.
+                wait_before_retry(attempt, sleep=sleep, jitter=jitter)
                 # A retry only happens because the target moved under
                 # us: re-read it from origin (AC-03) and re-observe the
                 # identity, so a conflict recorded by a later attempt

@@ -213,8 +213,10 @@ def _record_seams(
     events: list[str] = []
     calls: list[_IntegrationCall] = []
 
-    def _fake_recover(workspace_scope: object) -> RebaseState | None:
-        del workspace_scope
+    def _fake_recover(
+        workspace_scope: object, *, config: object = None
+    ) -> RebaseState | None:
+        del workspace_scope, config
         events.append("recover")
         return None
 
@@ -429,8 +431,10 @@ def test_a_raising_seam_never_aborts_the_worker(
     """
     module = _worker_module()
 
-    def _explode(workspace_scope: object) -> RebaseState | None:
-        del workspace_scope
+    def _explode(
+        workspace_scope: object, *, config: object = None
+    ) -> RebaseState | None:
+        del workspace_scope, config
         raise RuntimeError("simulated recovery failure")
 
     monkeypatch.setattr(

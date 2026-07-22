@@ -44,9 +44,9 @@ _FORBIDDEN_DIRS = (
     _RALPH_DIR / "runtime",
 )
 _CONSTRUCTOR_FILE = "parallel_display.py"
-_START_LINE_NUMBER = 1407
-_STOP_LINE_NUMBER = 1415
-_CTOR_LINE_NUMBER = 521
+_START_LINE_NUMBER = 1417
+_STOP_LINE_NUMBER = 1425
+_CTOR_LINE_NUMBER = 531
 
 
 @lru_cache(maxsize=1)
@@ -140,7 +140,7 @@ def test_status_bar_only_instantiated_inside_parallel_display() -> None:
     """``StatusBar(...)`` constructor sites appear ONLY in parallel_display.py.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.__init__``
-    at line 521 (``self._status_bar: StatusBar = StatusBar(self)``). No
+    at ``_CTOR_LINE_NUMBER`` (``self._status_bar: StatusBar = StatusBar(self)``). No
     other module under ``ralph/display/``, ``ralph/pipeline/``, or
     ``ralph/cli/`` may construct ``StatusBar``.
     """

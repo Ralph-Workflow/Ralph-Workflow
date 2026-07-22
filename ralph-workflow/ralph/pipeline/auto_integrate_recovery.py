@@ -24,6 +24,7 @@ from ralph.git.merge import (
 )
 from ralph.git.rebase.rebase import abort_rebase, rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.auto_integrate_context import record_refresh
 from ralph.pipeline.auto_integrate_ff import fast_forward_target
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
@@ -31,9 +32,11 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_record import (
     read_record as _read_record,
 )
+from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.workspace.scope import WorkspaceScope
 
@@ -53,9 +56,37 @@ def _record_skip(*, reason: str, target: str | None) -> RebaseState:
     )
 
 
+def _refresh_before_verdict(
+    config: UnifiedConfig | None,
+    workspace_root: Path,
+    target: str,
+) -> str | None:
+    """Re-read the mainline pointer the recovery verdicts are taken from.
+
+    Both verdicts below -- "already landed" and "target advanced
+    concurrently" -- are decided from ``branch_sha``, and the second one
+    CLEARS the durable record permanently. Taking that decision from a
+    pointer this process has never fetched is how a perfectly landable
+    integration gets discarded after a crash.
+
+    Returns the ``REFRESH_*`` outcome so the caller can stamp it on the
+    returned state, or ``None`` when no config was supplied (the caller
+    then behaves exactly as it did before this seam existed). Never
+    raises: recovery's contract is that it swallows everything.
+    """
+    if config is None:
+        return None
+    try:
+        return _refresh_target(config, workspace_root, target)
+    except Exception as exc:
+        logger.warning("recovery: target refresh raised: {}", exc)
+        return None
+
+
 def _continue_fast_forward_from_record(
     workspace_root: Path,
     record: IntegrationRecord,
+    config: UnifiedConfig | None = None,
 ) -> RebaseState:
     """Best-effort continue of an unfinished fast-forward (phase='integrated').
 
@@ -80,22 +111,32 @@ def _continue_fast_forward_from_record(
             reason="recovery: malformed integrated record", target=record.target
         )
     feature_sha = record.integrated_feature_sha
+    # ONE refresh, before either verdict: both of them are taken from the
+    # target pointer, and the second one clears the record for good.
+    refresh = _refresh_before_verdict(config, workspace_root, record.target)
     if branch_sha(workspace_root, record.target) == feature_sha:
         # Already landed (another run / operator).
         _clear_record(workspace_root)
-        return RebaseState(
-            last_action=_ACTION_RECOVERED,
-            last_reason="already fast-forwarded",
-            last_target=record.target,
-            fast_forwarded=True,
+        return record_refresh(
+            RebaseState(
+                last_action=_ACTION_RECOVERED,
+                last_reason="already fast-forwarded",
+                last_target=record.target,
+                fast_forwarded=True,
+            ),
+            refresh,
         )
     if not is_ancestor(workspace_root, record.target, feature_sha):
         # Target advanced and is no longer an ancestor of the feature
         # SHA: this is a permanent state. Clear the record so we
         # don't keep retrying an impossible land.
         _clear_record(workspace_root)
-        return _record_skip(
-            reason="recovery: target advanced concurrently", target=record.target
+        return record_refresh(
+            _record_skip(
+                reason="recovery: target advanced concurrently",
+                target=record.target,
+            ),
+            refresh,
         )
     ff_failed = False
     skip_reason = ""
@@ -110,33 +151,44 @@ def _continue_fast_forward_from_record(
         ok = False
     if ok:
         _clear_record(workspace_root)
-        return RebaseState(
-            last_action=_ACTION_RECOVERED,
-            last_reason=None,
-            last_target=record.target,
-            fast_forwarded=True,
+        return record_refresh(
+            RebaseState(
+                last_action=_ACTION_RECOVERED,
+                last_reason=None,
+                last_target=record.target,
+                fast_forwarded=True,
+            ),
+            refresh,
         )
     # Fast-forward was refused or raised. Only clear the record for
     # permanent refusals (target advanced concurrently) -- retain it
     # for transient failures so the next startup retries.
     if ff_failed or "advanced concurrently" not in skip_reason:
         # Transient failure: retain the record for retry.
-        return RebaseState(
-            last_action=_ACTION_SKIPPED,
-            last_reason=(
-                f"recovery: {skip_reason}; record retained for retry"
+        return record_refresh(
+            RebaseState(
+                last_action=_ACTION_SKIPPED,
+                last_reason=(
+                    f"recovery: {skip_reason}; record retained for retry"
+                ),
+                last_target=record.target,
+                fast_forwarded=False,
             ),
-            last_target=record.target,
-            fast_forwarded=False,
+            refresh,
         )
     # Permanent refusal (target advanced concurrently): clear the
     # record -- a retry won't change the outcome.
     _clear_record(workspace_root)
-    return _record_skip(reason=f"recovery: {skip_reason}", target=record.target)
+    return record_refresh(
+        _record_skip(reason=f"recovery: {skip_reason}", target=record.target),
+        refresh,
+    )
 
 
 def recover_incomplete_integration(
     workspace_scope: WorkspaceScope,
+    *,
+    config: UnifiedConfig | None = None,
 ) -> RebaseState | None:
     """Recover from an interrupted integration at run-loop startup.
 
@@ -169,6 +221,13 @@ def recover_incomplete_integration(
       phase='integrating') OR the fast-forward reconciled cleanly
       (for phase='integrated'). Any failure retains the record so
       the next run can retry the recovery.
+
+    Args:
+        workspace_scope: Scope whose root holds the durable record.
+        config: Run configuration, used ONLY to re-read the mainline
+            pointer before the phase='integrated' ancestry verdicts.
+            Optional, and ``None`` reproduces the pre-seam behaviour
+            exactly, so a caller that holds no config keeps working.
 
     Any unexpected exception inside this function is logged and
     swallowed; it must never abort the run.
@@ -279,7 +338,7 @@ def recover_incomplete_integration(
                 last_target=record.target,
                 fast_forwarded=False,
             )
-        return _continue_fast_forward_from_record(root, record)
+        return _continue_fast_forward_from_record(root, record, config)
     except Exception as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)
         return _record_skip(

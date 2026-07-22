@@ -36,7 +36,7 @@ defect this module exists to remove.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -48,6 +48,7 @@ from ralph.pipeline.conflict_resolution import (
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
     from typing import Protocol
 
@@ -64,6 +65,38 @@ if TYPE_CHECKING:
         """Structural registry surface: ``get(name) -> AgentConfig | None``."""
 
         def get(self, name: str) -> AgentConfig | None: ...
+
+
+#: Channel the decline lines are attributed to on the operator transcript.
+_WARN_CHANNEL = "auto-integrate"
+
+
+def emit_integration_warn_line(display: object, message: str) -> None:
+    """Put a decline reason where the OPERATOR can see it, not just the log.
+
+    Every branch below already logs, and the log file is exactly where
+    the reason used to die: a run whose auto-integration silently stopped
+    resolving conflicts looks, from the transcript, like a feature that
+    does not work. One line on the transcript is the difference between
+    "auto rebase is broken" and "no resolution agent is installed".
+
+    Duck-typed and defensive, exactly as
+    :func:`ralph.pipeline.conflict_resolution.status.emit_conflict_phase_line`
+    is: a display exposing no ``emit_warn_line`` is a silent no-op, and a
+    display that raises is swallowed. Presentation must never be able to
+    raise into the integration step.
+    """
+    try:
+        emit = cast(
+            "Callable[[str, str, str], None] | None",
+            getattr(display, "emit_warn_line", None),
+        )
+        if emit is not None:
+            emit("run", _WARN_CHANNEL, message)
+    except Exception as exc:
+        logger.debug(
+            "auto_integrate: operator warn line failed (non-fatal): {}", exc
+        )
 
 
 def build_agent_conflict_resolver(
@@ -110,11 +143,21 @@ def build_agent_conflict_resolver(
                 "agent without a Ralph MCP session",
                 missing,
             )
+            emit_integration_warn_line(
+                display,
+                f"conflict resolution unavailable: {missing} not threaded "
+                "to this seam",
+            )
             return False
         if not _any_chain_agent_installed(policy_bundle, registry):
             logger.warning(
                 "auto_integrate: no agent of the rebase-conflict-resolution "
                 "chain is installed; declining to resolve"
+            )
+            emit_integration_warn_line(
+                display,
+                "conflict resolution unavailable: no rebase-conflict-resolution "
+                "agent installed",
             )
             return False
         try:
@@ -134,6 +177,9 @@ def build_agent_conflict_resolver(
             # a conflict resolver never raises into it, it only declines.
             logger.warning(
                 "auto_integrate: conflict-resolution pipeline raised: {}", exc
+            )
+            emit_integration_warn_line(
+                display, f"conflict resolution failed: resolution pipeline raised {exc}"
             )
             return False
 
@@ -190,11 +236,21 @@ def build_agent_rebase_stop_resolver(
                 "agent without a Ralph MCP session",
                 missing,
             )
+            emit_integration_warn_line(
+                display,
+                f"rebase conflict resolution unavailable: {missing} not threaded "
+                "to this seam",
+            )
             return False
         if not _any_chain_agent_installed(policy_bundle, registry):
             logger.warning(
                 "auto_integrate: no agent of the rebase-conflict-resolution "
                 "chain is installed; declining to resolve the rebase"
+            )
+            emit_integration_warn_line(
+                display,
+                "rebase conflict resolution unavailable: no "
+                "rebase-conflict-resolution agent installed",
             )
             return False
         if stop.stop_index <= 1 or not deadline:
@@ -217,6 +273,10 @@ def build_agent_rebase_stop_resolver(
             logger.warning(
                 "auto_integrate: rebase conflict-resolution pipeline raised: {}",
                 exc,
+            )
+            emit_integration_warn_line(
+                display,
+                f"rebase conflict resolution failed: resolution pipeline raised {exc}",
             )
             return False
 

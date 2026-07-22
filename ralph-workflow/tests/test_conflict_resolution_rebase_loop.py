@@ -18,12 +18,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.git.git_run_result import GitRunResult
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
     RebaseContinuationError,
 )
 from ralph.pipeline.conflict_resolution import rebase_loop as loop_module
+from ralph.pipeline.conflict_resolution import status as status_module
 from ralph.pipeline.conflict_resolution.graph import (
     MAX_REBASE_CONFLICT_STOPS,
     PHASE_RESOLUTION,
@@ -75,6 +77,7 @@ def _install_seams(
     verified: bool = True,
     dirty_after_resolution: Sequence[str] | None = None,
     dirty_query_fails: bool = False,
+    replay_progress: tuple[int, int] | None = None,
 ) -> None:
     """Replace every git call the loop makes with a scripted fake.
 
@@ -111,6 +114,9 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _r: list(unmerged))
     monkeypatch.setattr(loop_module, "continue_rebase_at", repo.continue_rebase)
     monkeypatch.setattr(loop_module, "_rebase_base_sha", lambda _root: _BASE_SHA)
+    monkeypatch.setattr(
+        loop_module, "_read_replay_progress", lambda _root: replay_progress
+    )
     monkeypatch.setattr(
         loop_module, "verify_rebase_completed_at", lambda _r, _t: verified
     )
@@ -581,3 +587,186 @@ def test_route_after_stop_resolves_continues_and_abandons() -> None:
     assert route_after_stop(1, True) == TERMINAL_RESOLVED
     assert route_after_stop(1, False) == PHASE_RESOLUTION
     assert route_after_stop(MAX_REBASE_CONFLICT_STOPS, False) == TERMINAL_ABANDONED
+
+
+def _install_progress_git_seam(
+    monkeypatch: pytest.MonkeyPatch,
+    root: Path,
+    files: dict[str, str],
+) -> None:
+    """Answer ``rev-parse --git-path`` for scripted rebase state files.
+
+    ``files`` maps the relative state path git is asked to resolve onto
+    the text that file contains; anything absent resolves to a path that
+    is simply not there, which is what a rebase using the OTHER backend
+    looks like from here.
+    """
+    state_dir = root / "state"
+    state_dir.mkdir(exist_ok=True)
+    for relative, text in files.items():
+        state_file = state_dir / relative.replace("/", "_")
+        state_file.write_text(text, encoding="utf-8")
+
+    def _fake_run_git(
+        args: Sequence[str], *, cwd: Path, label: str
+    ) -> GitRunResult:
+        assert cwd == root
+        assert label == "git-rebase-progress-path"
+        relative = args[-1]
+        resolved = state_dir / relative.replace("/", "_")
+        return GitRunResult(
+            args=tuple(args),
+            returncode=0,
+            stdout=f"{resolved}\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(loop_module, "run_git", _fake_run_git)
+
+
+def test_the_merge_backend_replay_counter_is_read_and_rendered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``rebase-merge/msgnum``+``end`` become the operator's ``commit 2/5``."""
+    _install_progress_git_seam(
+        monkeypatch,
+        tmp_path,
+        {"rebase-merge/msgnum": "2\n", "rebase-merge/end": "5\n"},
+    )
+
+    assert loop_module._read_replay_progress(tmp_path) == (2, 5)
+    assert (
+        status_module._phase_label(
+            round_index=1,
+            round_cap=3,
+            stop_index=1,
+            stop_cap=MAX_REBASE_CONFLICT_STOPS,
+            replay_index=2,
+            replay_total=5,
+        )
+        == "Rebase Conflict Resolution (commit 2/5, round 1/3)"
+    )
+
+
+def test_the_apply_backend_replay_counter_is_read_equivalently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A ``rebase --apply`` replay counts in different files, same meaning."""
+    _install_progress_git_seam(
+        monkeypatch,
+        tmp_path,
+        {"rebase-apply/next": "2", "rebase-apply/last": "5"},
+    )
+
+    assert loop_module._read_replay_progress(tmp_path) == (2, 5)
+
+
+def test_unreadable_or_nonsensical_replay_state_reads_as_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Absent, garbage and out-of-range counters are all just ``None``.
+
+    The counter is cosmetic, so every one of these must degrade the
+    label rather than raise into a resolution that would otherwise land.
+    """
+    _install_progress_git_seam(monkeypatch, tmp_path, {})
+    assert loop_module._read_replay_progress(tmp_path) is None
+
+    _install_progress_git_seam(
+        monkeypatch,
+        tmp_path,
+        {"rebase-merge/msgnum": "two", "rebase-merge/end": "5"},
+    )
+    assert loop_module._read_replay_progress(tmp_path) is None
+
+    _install_progress_git_seam(
+        monkeypatch,
+        tmp_path,
+        {"rebase-merge/msgnum": "7", "rebase-merge/end": "5"},
+    )
+    assert loop_module._read_replay_progress(tmp_path) is None
+
+    _install_progress_git_seam(
+        monkeypatch,
+        tmp_path,
+        {"rebase-merge/msgnum": "1", "rebase-merge/end": "0"},
+    )
+    assert loop_module._read_replay_progress(tmp_path) is None
+
+
+def test_a_failing_git_path_lookup_reads_as_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """git refusing to resolve the state path is just an unreadable counter."""
+
+    def _failing_run_git(
+        args: Sequence[str], *, cwd: Path, label: str
+    ) -> GitRunResult:
+        return GitRunResult(
+            args=tuple(args), returncode=128, stdout="", stderr="not a git repo"
+        )
+
+    monkeypatch.setattr(loop_module, "run_git", _failing_run_git)
+
+    assert loop_module._read_replay_progress(tmp_path) is None
+
+
+def test_an_unreadable_counter_falls_back_to_the_stop_counters(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No replay pair on the stop, and the label degrades to the old one."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo, replay_progress=None)
+    seen: list[RebaseStop] = []
+
+    resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
+
+    assert seen[0].replay_index is None
+    assert seen[0].replay_total is None
+    assert (
+        status_module._phase_label(
+            round_index=1,
+            round_cap=3,
+            stop_index=seen[0].stop_index,
+            stop_cap=seen[0].stop_cap,
+            replay_index=seen[0].replay_index,
+            replay_total=seen[0].replay_total,
+        )
+        == f"Rebase Conflict Resolution (commit 1/{MAX_REBASE_CONFLICT_STOPS}, "
+        "round 1/3)"
+    )
+
+
+def test_the_stop_carries_the_replay_position_when_it_is_readable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The resolver is handed the real replay position, not the safety cap."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo, replay_progress=(2, 5))
+    seen: list[RebaseStop] = []
+
+    resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
+
+    assert (seen[0].replay_index, seen[0].replay_total) == (2, 5)
+
+
+def test_a_readable_replay_total_never_widens_the_stop_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The safety bound stays MAX_REBASE_CONFLICT_STOPS, whatever git reports.
+
+    ``stop_cap`` feeds :func:`route_after_stop`, which terminates the
+    loop. Letting the replay total reach it would replace a fixed bound
+    with an accident-controlled number of agent invocations.
+    """
+    repo = _FakeRepo(stops=0, never_finishes=True)
+    _install_seams(monkeypatch, repo, replay_progress=(1, 40))
+    seen: list[RebaseStop] = []
+
+    resolved = resolve_rebase_in_progress(
+        tmp_path, _TARGET, _accepting_resolver(seen)
+    )
+
+    assert resolved is False
+    assert len(seen) == MAX_REBASE_CONFLICT_STOPS
+    assert {stop.stop_cap for stop in seen} == {MAX_REBASE_CONFLICT_STOPS}

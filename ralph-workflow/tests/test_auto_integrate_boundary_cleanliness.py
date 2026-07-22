@@ -152,9 +152,14 @@ def test_dirty_boundary_skip_names_a_suppressed_refresh(
     rested on had never been re-read this round, which are two different
     problems with two different fixes.
 
-    The throttle is replaced with one that has already consumed its
-    window for this ``(root, target)`` pair, so the very first boundary
-    is the suppressed case.
+    BOTH throttles are replaced with ones that have already consumed
+    their window for this ``(root, target)`` pair, so the very first
+    boundary is the suppressed case. Arming the second one is what makes
+    this the genuinely unrefreshable state: a divergent target whose
+    override window is still open takes ONE forced refresh instead (see
+    ``tests/test_auto_integrate_boundary_refresh.py``), because a
+    catch-up verdict shown to the operator must not be decided from a
+    pointer the round never re-read.
     """
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(ai, "resolve_integration_target", lambda _config, _root: "main")
@@ -166,6 +171,9 @@ def test_dirty_boundary_skip_names_a_suppressed_refresh(
     throttle = BoundaryRefreshThrottle(min_interval_seconds=30.0)
     throttle.record_outcome(tmp_path, "main", REFRESH_REFRESHED)
     monkeypatch.setattr(ai, "BOUNDARY_REFRESH_THROTTLE", throttle)
+    forced = BoundaryRefreshThrottle(min_interval_seconds=30.0)
+    forced.record_outcome(tmp_path, "main", REFRESH_REFRESHED)
+    monkeypatch.setattr(ai, "FORCED_BOUNDARY_REFRESH_THROTTLE", forced)
 
     def _unexpected_refresh(
         _config: UnifiedConfig, _root: Path, _target: str
