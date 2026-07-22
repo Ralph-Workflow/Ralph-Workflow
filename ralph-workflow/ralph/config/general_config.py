@@ -136,11 +136,15 @@ class GeneralConfig(RalphBaseModel):
         gt=0.0,
         le=7200.0,
         description=(
-            "Wall-clock ceiling for ONE conflict-resolution agent invocation"
-            " during auto-integration. On expiry the invocation is cut, the"
-            " in-progress merge is aborted and the integration records a"
-            " conflict, so a hung resolver can never stall the run with a"
-            " merge in progress."
+            "ONE wall-clock ceiling SHARED by the complete"
+            " conflict-resolution operation during auto-integration. Every"
+            " rebase stop, every round within a stop, and every sequential"
+            " candidate agent invocation draw down this single budget --"
+            " none of them is granted a fresh ceiling of its own. On expiry"
+            " the in-flight invocation is cut, the in-progress rebase or"
+            " merge is aborted and the integration records a conflict, so a"
+            " hung resolver can never stall the run with a rebase or merge"
+            " in progress."
         ),
     )
     agent_idle_timeout_seconds: float = Field(

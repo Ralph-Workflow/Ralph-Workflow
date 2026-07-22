@@ -46,9 +46,14 @@ def refresh_target(config: UnifiedConfig, root: Path, target: str) -> str:
 
     Returns the ``REFRESH_*`` outcome so the caller can record it on
     :class:`ralph.pipeline.rebase_state.RebaseState` and the operator can
-    see whether the pointer just landed against was fresh. A no-op
-    returning :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_DISABLED`
-    when fetching is turned off. Never raises: an unreachable remote
+    see whether the pointer just landed against was fresh. When
+    fetching is turned off only the NETWORK fetch is skipped: the local
+    target ref is still re-observed, so a fleet sharing one git common
+    directory still sees a sibling-advanced pointer and the outcome is
+    :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_LOCAL_FLEET`.
+    :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_DISABLED`
+    survives only for the case where no such local branch exists to
+    observe either. Never raises: an unreachable remote
     must degrade to local-only integration, not fail the run, so an
     exception is reported as
     :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_UNREACHABLE`

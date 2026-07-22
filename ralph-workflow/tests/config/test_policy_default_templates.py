@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.config.general_config import GeneralConfig
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_PATH = REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow.toml"
 LOCAL_TEMPLATE_PATH = REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow-local.toml"
@@ -76,6 +78,63 @@ def test_local_template_does_not_contain_new_key() -> None:
         "ralph-workflow-local.toml must NOT contain the new key"
         " (only the user-global template is updated in this iteration)"
     )
+
+
+_OBSOLETE_CEILING_WORDING = "ceiling for one conflict-resolution agent invocation"
+
+
+def test_resolve_timeout_semantics_agree_across_every_operator_source() -> None:
+    """Every source that states resolve-timeout semantics must say SHARED.
+
+    Regression: the Sphinx ``configuration.md`` row was corrected to say
+    one ceiling is shared across all rebase stops, rounds and sequential
+    candidate invocations -- which is what
+    :func:`ralph.pipeline.conflict_resolution.driver.resolution_deadline`
+    actually implements -- but the two OTHER operator-facing sources for
+    the same key still described a per-invocation ceiling.
+
+    That mattered because ``configuration.md`` explicitly points readers
+    at this template as "the canonical defaults and inline ``# comment``
+    lines documenting the semantics of each key", and the Pydantic
+    ``description`` is the machine-readable schema an operator's tooling
+    reads. A fix applied to only one of the three leaves an operator one
+    hop away from the wording that was wrong, so this pins all of them
+    together rather than any single file's prose.
+    """
+    template_line = next(
+        (
+            line
+            for line in _read_template().splitlines()
+            if "auto_integrate_resolve_timeout_seconds" in line
+        ),
+        None,
+    )
+    assert template_line is not None, (
+        "ralph-workflow.toml must document auto_integrate_resolve_timeout_seconds"
+    )
+    schema_description = GeneralConfig.model_fields[
+        "auto_integrate_resolve_timeout_seconds"
+    ].description
+    assert schema_description is not None, (
+        "the auto_integrate_resolve_timeout_seconds field must carry a description"
+    )
+    for source_name, text in (
+        ("ralph-workflow.toml", template_line),
+        ("GeneralConfig field description", schema_description),
+    ):
+        lowered = text.lower()
+        assert _OBSOLETE_CEILING_WORDING not in lowered, (
+            f"{source_name} still documents a per-invocation ceiling, which "
+            f"contradicts driver.resolution_deadline, got: {text!r}"
+        )
+        assert "shared" in lowered, (
+            f"{source_name} must say the ceiling is shared, got: {text!r}"
+        )
+        for token in ("stop", "round", "invocation"):
+            assert token in lowered, (
+                f"{source_name} must name what shares the ceiling ({token!r}), "
+                f"got: {text!r}"
+            )
 
 
 def test_policy_template_new_key_comment_mentions_all_kinds() -> None:

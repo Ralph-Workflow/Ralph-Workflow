@@ -7,10 +7,14 @@ durable record helpers moved to
 to :mod:`ralph.pipeline.auto_integrate_outcome`.
 
 Everything here belongs to one phase of an integration attempt: run the
-rebase engine, and when it conflicts or fails, abort it cleanly and fall
-back to a single endpoint three-way merge (optionally agent-resolved).
-The caller owns the phases either side of it -- the durable crash
-record, the fast-forward, and the retry loop.
+rebase engine; when it conflicts, resolve it IN PLACE stop by stop --
+Ralph stages each proved-resolved stop and runs ``git rebase
+--continue``, leaving linear history and no merge commit -- and only
+when that resolution declines, exhausts a budget, errors or is
+unavailable abort the rebase cleanly and fall back to a single endpoint
+three-way merge (itself optionally agent-resolved). The caller owns the
+phases either side of it -- the durable crash record, the fast-forward,
+and the retry loop.
 """
 
 from __future__ import annotations
@@ -90,12 +94,13 @@ def run_rebase_or_merge(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
 ) -> RebaseRunResult:
-    """Drive rebase_onto, fall back to endpoint merge on conflict or failure.
+    """Drive rebase_onto, resolving conflicts in place before any fallback.
 
     On success returns a ``RebaseRunResult`` with ``short_circuit``
     ``None`` and the ``rebase_outcome`` / ``merge_outcome`` the
-    caller uses to build the final :class:`RebaseState`. Both a
-    conflicted AND a failed rebase fall back to the endpoint merge —
+    caller uses to build the final :class:`RebaseState`. A rebase that
+    FAILS, and a conflicted rebase whose in-place resolution does not
+    land, both fall back to the endpoint merge —
     a rebase that fails for any reason must never end the integration
     attempt while a single three-way merge could still land it. When
     aborting a conflicted rebase leaves it in progress, the durable crash

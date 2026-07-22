@@ -104,6 +104,70 @@ def test_configuration_md_documents_auto_integrate_resolve_timeout_key() -> None
     )
 
 
+def test_configuration_md_documents_the_resolve_ceiling_as_shared() -> None:
+    """The resolve-timeout row must document ONE ceiling shared by the whole
+    conflict-resolution operation.
+
+    Regression: the row read "Wall-clock ceiling for ONE conflict-resolution
+    agent invocation", which is the per-invocation semantics the code
+    deliberately does NOT implement.
+    :func:`ralph.pipeline.conflict_resolution.driver.resolution_deadline`
+    computes one absolute deadline that every rebase stop, every round
+    within a stop and every sequential candidate invocation shares, so an
+    operator sizing the knob from the old wording would budget a single
+    agent call and get a ceiling on the entire replay instead -- off by a
+    factor of ``MAX_REBASE_CONFLICT_STOPS`` times the round cap.
+    """
+    row = _row_for_key(_PATH.read_text(), "`auto_integrate_resolve_timeout_seconds`")
+    lowered = row.lower()
+    assert "ceiling for one conflict-resolution agent invocation" not in lowered, (
+        "the resolve-timeout row still documents a per-invocation ceiling, "
+        f"which contradicts driver.resolution_deadline, got: {row!r}"
+    )
+    assert "shared" in lowered, (
+        f"the row must say the ceiling is shared, got: {row!r}"
+    )
+    for token in ("stop", "round", "invocation"):
+        assert token in lowered, (
+            f"the row must name what shares the ceiling ({token!r}), got: {row!r}"
+        )
+
+
+def test_configuration_md_distinguishes_rebase_continue_from_merge_commit() -> None:
+    """The dedicated conflict phase must document per-mode completion.
+
+    Regression: the section said Ralph "stages the resolved paths and
+    creates the merge commit" for the rebase phase.
+    :mod:`ralph.pipeline.conflict_resolution.rebase_loop` stages the paths
+    and runs ``git rebase --continue``, producing a replayed commit and
+    linear history; only the endpoint-merge mode creates a merge commit.
+    An operator reading the old text would expect a merge commit that the
+    rebase path never produces, and would misread a linear history as a
+    failed integration.
+    """
+    section = _skip_section(_PATH.read_text())
+    assert "resolved paths and creates the merge commit" not in section, (
+        "the rebase conflict phase must not claim it creates a merge commit"
+    )
+    assert "git rebase --continue" in section, (
+        "the rebase conflict phase must document that Ralph completes a "
+        "resolved stop with `git rebase --continue`"
+    )
+    # Load-bearing: both halves of the distinction must be stated, not
+    # merely the vocabulary. A section that mentions `git rebase
+    # --continue` and "endpoint-merge" somewhere already passed BEFORE
+    # the correction, so assert the two claims themselves.
+    assert "no merge commit is created" in section, (
+        "the section must state that the rebase path creates no merge commit"
+    )
+    assert "endpoint-merge** conflict resolution finishes by creating a merge commit" in (
+        section
+    ), (
+        "the section must attribute merge-commit creation to the "
+        "endpoint-merge mode specifically"
+    )
+
+
 def test_configuration_md_documents_false_optout_for_auto_integrate_enabled() -> None:
     """The ``auto_integrate_enabled`` row must mention ``false`` so an
     operator can discover how to opt out of auto-integration.

@@ -164,7 +164,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `auto_integrate_target` | (auto-detect) | Shared integration branch name. When set (e.g. `"develop"`) it is used verbatim, provided that branch exists locally or can be materialized from `refs/remotes/origin/<target>`. When unset, the target is auto-detected: the remote default branch (`origin/HEAD`) when a remote exists, otherwise `main`, otherwise `master`. If no candidate exists the step skips with a recorded reason and never guesses. |
 | `auto_integrate_fetch_enabled` | `true` | On by default: before each integration attempt Ralph Workflow runs a bounded, read-only `git fetch origin <target>` and fast-forwards the local mainline ref when the remote-tracking ref is strictly ahead. Never force-moves a ref and never pushes; a diverged remote is left alone. Set to `false` to keep the step strictly local -- appropriate when every agent shares one git common directory through linked worktrees, where the mainline ref is already shared. |
 | `auto_integrate_fetch_timeout_seconds` | `10.0` | Wall-clock budget for the auto-integration fetch (must be `> 0` and `<= 120`). On timeout or any remote failure the step falls back to local-only integration and the run is never failed by an unreachable remote. The degradation is not silent: the refresh outcome (`origin unreachable`) is recorded on the run state and rendered to the operator in the `auto-integrate:` line. |
-| `auto_integrate_resolve_timeout_seconds` | `900.0` | Wall-clock ceiling for ONE conflict-resolution agent invocation during auto-integration (must be `> 0` and `<= 7200`). On expiry the invocation is cut, the in-progress merge is aborted and the integration records a conflict, so a hung resolver can never stall the run with a merge in progress. At most two CONSECUTIVE unresolved conflicts against the same target may invoke the resolver; after that the integration records an escalation naming the blocked target and stops invoking an agent until a later integration lands. |
+| `auto_integrate_resolve_timeout_seconds` | `900.0` | ONE wall-clock ceiling SHARED by the complete conflict-resolution operation during auto-integration (must be `> 0` and `<= 7200`). Every rebase stop, every round within a stop, and every sequential candidate agent invocation draw down this single budget -- none of them is granted a fresh ceiling of its own. On expiry the in-flight invocation is cut, the in-progress rebase or merge is aborted and the integration records a conflict, so a hung resolver can never stall the run with a rebase or merge in progress. At most two CONSECUTIVE unresolved conflicts against the same target may invoke the resolver; after that the integration records an escalation naming the blocked target and stops invoking an agent until a later integration lands. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
@@ -181,8 +181,9 @@ Auto-integration does **not** run only after a commit. With
 
 1. **The commit seam.** After a commit phase that actually created a
    commit (`COMMIT_SUCCESS`). This is the full sequence: durable crash
-   record, rebase, endpoint-merge fallback, optional agent conflict
-   resolution, fast-forward.
+   record, rebase, in-place agent resolution of each conflicted rebase
+   stop, endpoint-merge fallback (itself optionally agent-resolved) only
+   if that resolution does not land, fast-forward.
 
    A rebase that stops on a conflict is **resolved in place**, not
    abandoned. Each conflicted commit the replay stops on is handed to
@@ -210,8 +211,12 @@ Auto-integration does **not** run only after a commit. With
    agent runs inside a real Ralph Workflow MCP session, so it must call
    `declare_complete` to finish a round and the session's exec policy
    denies it every git command -- Ralph Workflow alone stages the
-   resolved paths and creates the merge commit. Its prompt carries only
-   the conflict
+   resolved paths and then advances the integration itself. How it
+   advances depends on the mode: for a **rebase** it runs
+   `git rebase --continue`, so the replayed commit lands and history
+   stays linear -- no merge commit is created; only **endpoint-merge**
+   conflict resolution finishes by creating a merge commit. Its prompt
+   carries only the conflict
    (repository, target branch, conflicted paths, round counter, the
    files that still held markers after the previous round, and -- for a
    rebase -- the commit being replayed); it never carries the run's
@@ -219,8 +224,8 @@ Auto-integration does **not** run only after a commit. With
    with a
    deterministic re-scan for surviving conflict markers, which outranks
    the agent's own report, and the loop is bounded at three rounds
-   within one seam. On exhaustion the merge is aborted and the
-   integration records a conflict, exactly as before.
+   within one seam. On exhaustion the in-progress rebase or merge is
+   aborted and the integration records a conflict, exactly as before.
 2. **Every successful phase boundary.** Eleven phase-transition events
    (agent success, analysis success, analysis/phase loopback, phase
    advance, review clean, review issues found, and their siblings) run

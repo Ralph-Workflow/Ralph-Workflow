@@ -19,11 +19,16 @@ true now: the pipeline runs every round through
 ``effect_executor.execute_agent_effect``, which builds the session
 bridge, so ``ralph.mcp.tools.exec.apply_exec_policy`` actually binds and
 the agent cannot commit, abort or move a ref. Ralph alone stages the
-previously-conflicted paths and creates the merge commit.
+previously-conflicted paths and then advances the integration itself:
+for a REBASE stop it runs ``git rebase --continue``, replaying the
+commit and leaving linear history; only the endpoint-merge mode
+finishes by creating a merge commit.
 
 Fault-tolerance contract, unchanged: every failure mode returns ``False``
-so the integration step aborts the merge and records a conflict instead
-of crashing the run. A MISSING dependency (no ``pipeline_deps``, no
+so the integration step aborts the operation in progress -- the rebase
+for a declined stop, the merge for a declined endpoint merge -- and
+records a conflict instead of crashing the run. A MISSING dependency
+(no ``pipeline_deps``, no
 ``workspace_scope``) is one of those failures -- it declines rather than
 falling back to an MCP-less invocation, because that fallback is the
 defect this module exists to remove.

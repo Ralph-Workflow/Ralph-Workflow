@@ -6,13 +6,20 @@ feature branch and the local mainline ref in lockstep:
 
 1. **Rebase first.** Rebase the feature branch onto the resolved
    target tip.
-2. **Merge on conflict.** If the rebase conflicts, abort it cleanly
-   and attempt one merge of the target branch into the feature
-   branch. A single endpoint three-way merge often succeeds where
-   commit-by-commit replay conflicts, and it still makes the
-   target an ancestor of the feature branch, preserving
+2. **Resolve the rebase in place.** A rebase that stops on a
+   conflict is not abandoned. Each conflicted stop is handed to the
+   conflict-resolution pipeline; once Ralph has proved the stop
+   resolved it stages the paths itself and runs
+   ``git rebase --continue``, then repeats for the next stop. A
+   resolution that lands leaves linear history and no merge commit.
+3. **Merge on unresolved conflict.** Only when resolution declines,
+   exhausts a budget, errors or is unavailable is the rebase
+   aborted cleanly and one merge of the target branch into the
+   feature branch attempted. A single endpoint three-way merge often
+   succeeds where commit-by-commit replay conflicts, and it still
+   makes the target an ancestor of the feature branch, preserving
    fast-forwardability.
-3. **Give up gracefully.** If the merge also conflicts, abort it,
+4. **Give up gracefully.** If the merge also conflicts, abort it,
    leave the feature branch bit-for-bit untouched, record the
    outcome, and let the run continue. The step retries after the
    next commit phase.
@@ -467,8 +474,9 @@ def _auto_integrate_after_commit_inner(
        ``enabled`` / env-lookup / on-target / no-commits-beyond /
        preconditions skip conditions.
     2. :func:`_integrate_once` -- write the crash record, run the
-       rebase engine, fall back to the endpoint merge on conflict or
-       failure (optionally agent-resolved), then fast-forward.
+       rebase engine, resolve any conflicted rebase stop in place,
+       fall back to the endpoint merge (optionally agent-resolved)
+       only when that resolution does not land, then fast-forward.
     3. Bounded retry -- when the fast-forward did not land because
        the target moved concurrently, refresh the target from origin
        and re-integrate onto the moved tip up to
