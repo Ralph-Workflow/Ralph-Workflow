@@ -958,6 +958,13 @@ ralph.pipeline.auto_integrate_ff
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_outcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_outcome
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_record
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

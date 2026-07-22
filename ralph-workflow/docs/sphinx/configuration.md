@@ -205,12 +205,18 @@ commits, and a routine nothing-to-do there is not a fault:
 * **Phase boundaries and the fan-out join** run a cheap pre-check
   first, and that pre-check returns *without recording anything* when
   the workspace root is not a git checkout, when no integration target
-  can be resolved, when the worktree is dirty (logged at INFO), when
-  the target already sits at the feature tip **and** the origin
-  refresh that pointer was read through was healthy, or when the
-  pre-check itself raised (logged at WARNING). Anything it does not
-  short-circuit falls through to the same recorded path as the commit
-  seam. The one case that deliberately breaks the silence is an
+  can be resolved, when the worktree has uncommitted **tracked**
+  changes *and* the resolved target is already contained in `HEAD`
+  (logged at INFO), when the target already sits at the feature tip
+  **and** the origin refresh that pointer was read through was
+  healthy, or when the pre-check itself raised (logged at WARNING).
+  A dirty pre-check whose target *does* carry commits the checkout
+  lacks is the exception: that deferral suppressed a genuine
+  cross-agent catch-up, so it is **recorded** as a
+  `worktree not clean` skip rather than staying invisible. Anything it
+  does not short-circuit falls through to the same recorded path as
+  the commit seam. The other case that deliberately breaks the silence
+  is an
   already-integrated tip read through an *unhealthy* refresh --
   `origin unreachable`, `diverged from origin`, `no local branch`, or
   `lost a concurrent refresh race` -- which is recorded as a
@@ -230,7 +236,7 @@ same way.
 
 | Skip | Meaning |
 |------|---------|
-| worktree not clean | **Phase boundaries, fan-out join and startup only; never recorded on run state.** `git status --porcelain` reports anything at all -- including **untracked** files. This is deliberate: a boundary rebase would rewrite `HEAD` while a development agent has uncommitted work in flight, so a stray scratch file suppresses boundary integration until the next commit seam, which catches up moments later under the relaxed rebase preconditions. Any git failure here also counts as "not clean" (fail closed). The deferral surfaces as an INFO log line (`phase-transition integration deferred; worktree dirty`) and, at the startup seam only, as the generic `startup check: nothing to integrate` line. |
+| worktree not clean | **Phase boundaries, fan-out join and startup only.** The probe runs `git status --porcelain --untracked-files=no`, so only uncommitted **tracked** modifications defer a boundary integration -- the same definition of "clean" the commit seam's rebase preconditions already use. Untracked scratch files no longer suppress cross-agent synchronisation: the phase boundary is the only seam that carries another agent's landing to an agent that is not committing right now, so an agent holding a stray scratch file would otherwise never receive a sibling's work. Untracked work in flight stays safe because `git rebase`/`git merge` refuse non-destructively, and only for the specific untracked path they would overwrite, which routes into the endpoint-merge fallback. Any git failure here also counts as "not clean" (fail closed). The deferral is **recorded on run state** (and surfaced in the `auto-integrate:` line) when the resolved target carried commits the checkout lacked -- a genuinely suppressed catch-up -- and otherwise remains an INFO log line only (`phase-transition integration deferred; worktree dirty`), plus at the startup seam the generic `startup check: nothing to integrate` line. |
 | on target branch | The checkout is already on the mainline; there is nothing to integrate. |
 | no commits beyond target | The target ref already equals `HEAD`. |
 | detached HEAD | There is no branch to integrate. |

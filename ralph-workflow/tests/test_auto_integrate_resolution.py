@@ -12,7 +12,8 @@ Covers the behaviors added on top of the wt-038 baseline:
   immediate bounded re-integration instead of waiting for the next
   commit.
 * The phase-transition hook integrates at clean-worktree phase
-  boundaries and stays silent when the worktree is dirty or there is
+  boundaries, records a skip when uncommitted TRACKED changes defer a
+  catch-up the target actually had, and stays silent when there is
   nothing to do.
 
 Same conventions as :mod:`tests.test_auto_integrate` (real per-test git
@@ -356,8 +357,28 @@ def test_phase_transition_integrates_when_target_moved(tmp_git_repo: Path) -> No
     assert base_sha == head_sha
 
 
-def test_phase_transition_silent_on_dirty_worktree(tmp_git_repo: Path) -> None:
-    """A dirty worktree at a phase boundary is a silent no-op (no record)."""
+def test_phase_transition_records_a_skip_on_a_dirty_worktree(
+    tmp_git_repo: Path,
+) -> None:
+    """A dirty boundary that suppressed real catch-up work is RECORDED.
+
+    Supersedes the former ``silent_on_dirty_worktree`` expectation on
+    both halves.
+
+    * AC-01: the cleanliness probe now runs
+      ``--untracked-files=no``, so this test's original fixture (an
+      untracked ``wip.txt``) no longer makes the worktree dirty at
+      all. Deferring requires an uncommitted TRACKED modification,
+      which is what the fixture now creates.
+    * AC-02: a deferral whose resolved target carries commits this
+      checkout lacks suppressed a genuine cross-agent catch-up, so it
+      is recorded instead of returning ``None``. An invisible
+      suppression is indistinguishable from a feature that does not
+      work, which is exactly how the defect was reported.
+
+    The repository must still be byte-identical afterwards: recording a
+    diagnostic is not permission to mutate anything.
+    """
     from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
 
     base = _base_branch(tmp_git_repo)
@@ -366,14 +387,18 @@ def test_phase_transition_silent_on_dirty_worktree(tmp_git_repo: Path) -> None:
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "base.txt", "base only\n", "base moved")
     _run(tmp_git_repo, "checkout", "feature")
-    (tmp_git_repo / "wip.txt").write_text("uncommitted work\n", encoding="utf-8")
+    (tmp_git_repo / "feat.txt").write_text("uncommitted work\n", encoding="utf-8")
     before = _snapshot(tmp_git_repo)
 
     config = _build_config(tmp_git_repo, target=base)
     outcome = auto_integrate_on_phase_transition(
         config, WorkspaceScope(tmp_git_repo), RebaseState()
     )
-    assert outcome is None
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    assert outcome.last_target == base
+    assert outcome.last_reason is not None
+    assert "worktree not clean" in outcome.last_reason
     after = _snapshot(tmp_git_repo)
     assert before == after
 

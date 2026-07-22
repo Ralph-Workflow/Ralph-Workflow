@@ -165,3 +165,26 @@ def test_configuration_md_regression_documents_every_refresh_outcome() -> None:
         "configuration.md must name every refresh outcome an operator can "
         f"see in the auto-integrate line; undocumented: {undocumented}"
     )
+
+
+def test_configuration_md_documents_the_untracked_tolerant_boundary_probe() -> None:
+    """The ``worktree not clean`` row must describe the current probe.
+
+    Regression: the row documented ``git status --porcelain`` with no
+    flag and asserted the skip was "never recorded on run state". Both
+    became false when the boundary probe was relaxed to
+    ``--untracked-files=no`` and taught to record a skip whenever the
+    deferral suppressed a genuine cross-agent catch-up. An operator
+    reading the old row would conclude a stray scratch file still
+    disables boundary integration, which is exactly the symptom this
+    change removes.
+    """
+    row = _row_for_key(_PATH.read_text(), "worktree not clean")
+    assert "--untracked-files=no" in row, (
+        "the worktree not clean row must document the untracked-tolerant "
+        f"probe, got: {row!r}"
+    )
+    assert "never recorded on run state" not in row, (
+        "the worktree not clean row still claims the skip is never "
+        f"recorded, which is no longer true, got: {row!r}"
+    )
