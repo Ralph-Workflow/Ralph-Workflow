@@ -73,14 +73,15 @@ def test_write_prompt_regression_skips_byte_identical_rewrite() -> None:
     root = Path("/virtual-workspace")
     write_prompt = _auto_integrate_prompt_writer()
 
-    first_path = write_prompt(root, "main", backend=backend)
-    second_path = write_prompt(root, "main", backend=backend)
+    first_path = write_prompt(root, "main", ("shared.txt",), backend=backend)
+    second_path = write_prompt(root, "main", ("shared.txt",), backend=backend)
 
     expected_path = root / ".agent" / "auto_integrate_conflict_prompt.md"
     assert first_path == expected_path
     assert second_path == expected_path
     assert backend.write_text_calls == 1
     assert "main" in backend.files[expected_path]
+    assert "shared.txt" in backend.files[expected_path]
 
 
 def test_write_prompt_regression_writes_on_changed_content() -> None:
@@ -89,13 +90,19 @@ def test_write_prompt_regression_writes_on_changed_content() -> None:
     root = Path("/virtual-workspace")
     write_prompt = _auto_integrate_prompt_writer()
 
-    prompt_path = write_prompt(root, "main", backend=backend)
-    changed_path = write_prompt(root, "release", backend=backend)
+    prompt_path = write_prompt(root, "main", ("shared.txt",), backend=backend)
+    changed_path = write_prompt(root, "release", ("shared.txt",), backend=backend)
 
     assert prompt_path is not None
     assert changed_path == prompt_path
     assert backend.write_text_calls == 2
     assert "release" in backend.files[prompt_path]
+
+    # A changed conflicted-path list is changed content too, so it must
+    # persist rather than be skipped as a byte-identical rewrite.
+    write_prompt(root, "release", ("other.txt",), backend=backend)
+    assert backend.write_text_calls == 3
+    assert "other.txt" in backend.files[prompt_path]
 
 
 def test_parallel_worker_prompt_regression_skips_byte_identical_rewrite() -> None:

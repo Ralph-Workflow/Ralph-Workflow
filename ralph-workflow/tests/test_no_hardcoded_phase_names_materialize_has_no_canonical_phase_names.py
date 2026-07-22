@@ -65,20 +65,31 @@ def _string_literals_in_function(source: str, function_name: str) -> set[str]:
     return set()
 
 
+@pytest.fixture(scope="session")
+def materialize_literals() -> frozenset[str]:
+    """Every string literal in ``materialize.py``, parsed once per session.
+
+    Reading and ``ast.parse``-ing a ~1 kloc module is not free, and doing
+    it inside the test body charged it to the 1.0 s per-test budget that
+    ``tests/conftest.py`` enforces with SIGALRM. Under ``pytest -n 4
+    --dist worksteal`` that occasionally tipped this guard over the
+    budget even though nothing about the guard had changed. Fixture
+    setup runs outside the timed call phase, and session scope means one
+    parse per xdist worker instead of one per test.
+    """
+    source = (RALPH_ROOT / "prompts" / "materialize.py").read_text(encoding="utf-8")
+    return frozenset(_string_literals_in_source(source))
+
+
 class TestMaterializeHasNoCanonicalPhaseNames:
     """materialize.py prompt dispatch must not hardcode canonical phase names."""
 
-    @pytest.fixture(scope="class")
-    def materialize_source(self) -> str:
-        return (RALPH_ROOT / "prompts" / "materialize.py").read_text(encoding="utf-8")
-
     def test_materialize_module_has_no_canonical_phase_literals(
-        self, materialize_source: str
+        self, materialize_literals: frozenset[str]
     ) -> None:
-        literals = _string_literals_in_source(materialize_source)
         # Use CANONICAL_PHASE_NAMES (not RUNNER_BANNED_PHASE_NAMES) because
         # "review" is also a valid role value used in phase_role checks.
-        violations = CANONICAL_PHASE_NAMES & literals
+        violations = CANONICAL_PHASE_NAMES & materialize_literals
         assert not violations, (
             f"materialize.py contains canonical phase name literal(s): {sorted(violations)}. "
             "Prompt dispatch must be driven by role and artifact-type from policy only."

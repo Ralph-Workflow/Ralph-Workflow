@@ -3,11 +3,23 @@
 While the connectivity monitor reports OFFLINE, the runner must not invoke any
 agent and must not debit any budget. When connectivity is restored, the runner
 must resume and complete normally with no false-positive FailureEvents.
+
+Both tests drive the runner on the CALLING thread. ``_apply_connectivity_check``
+registers a connectivity listener and then blocks on a
+:class:`threading.Event` *only* on the offline path, so listener registration
+is itself the observable "the runner has paused" edge, and it is the seam this
+module injects on: the fake monitor's ``add_listener`` records the state of the
+world at the pause and then restores connectivity, which fires the listener
+synchronously and lets the runner continue. That keeps the proof identical --
+no agent may have run at the pause, and the run must complete after it -- while
+removing the real daemon thread and the ``Event.wait`` handshake the previous
+version needed. Those made the test depend on the OS scheduler, which under a
+loaded ``pytest -n 4`` run pushed it past the 1.0 s per-test budget even though
+nothing about the runner had changed.
 """
 
 from __future__ import annotations
 
-import threading
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -33,11 +45,10 @@ from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     import pytest
-
-_ONLINE_WAIT_TIMEOUT_S = 10.0
 
 
 def _make_policy_bundle() -> PolicyBundle:
@@ -70,23 +81,8 @@ def _make_policy_bundle() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={}))
 
 
-def test_offline_pauses_agent_invocation_and_resume_completes(
-    tmp_git_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Runner pauses while OFFLINE and auto-resumes when connectivity returns.
-
-    Proof of behavior:
-    1. Runner starts with monitor OFFLINE → blocks in _apply_connectivity_check.
-    2. No agent is invoked during the offline window (invocation_count == 0).
-    3. Calling go_online() unblocks the runner.
-    4. Runner completes successfully (exit code 0).
-    5. No FailureEvents are emitted during the offline window.
-    """
-
-    bundle = _make_policy_bundle()
-
-    initial_state = PipelineState(
+def _make_initial_state() -> PipelineState:
+    return PipelineState(
         phase="development",
         phase_chains={
             "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
@@ -95,13 +91,15 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
         recovery_cycle_cap=10,
     )
 
-    invocation_count = 0
 
-    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
-        nonlocal invocation_count
-        invocation_count += 1
-        return PipelineEvent.AGENT_SUCCESS
-
+def _patch_runner_seams(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    tmp_git_repo: Path,
+    bundle: PolicyBundle,
+    execute: Callable[..., PipelineEvent],
+) -> None:
+    """Neutralise every seam the offline contract does not depend on."""
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
@@ -116,7 +114,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", _fake_execute)
+    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", execute)
     monkeypatch.setattr(
         runner_module,
         "phase_event_after_agent_run",
@@ -128,74 +126,94 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     # ``tests/test_runner_auto_integrate_seam.py``: replacing the function
     # on both ``runner_module`` (used by the per-step hook) and
     # ``run_loop_module`` (used by the startup integration preamble)
-    # eliminates the ~75 ms of real subprocess + psutil work that the
-    # offline tests were paying per run. The offline/online assertions
-    # do not depend on auto-integrate behaviour, so neutralising it here
-    # keeps the test deterministic within the 1.0 s per-test policy
-    # limit without weakening the black-box contract.
+    # eliminates the real subprocess + psutil work that the offline tests
+    # were paying per run. The offline/online assertions do not depend on
+    # auto-integrate behaviour, so neutralising it here keeps the test
+    # deterministic within the 1.0 s per-test policy limit without
+    # weakening the black-box contract.
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
     monkeypatch.setattr(run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
 
-    # Monitor starts OFFLINE so the runner will block on first loop iteration
-    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.OFFLINE)
 
-    # Signal set when the runner thread has started blocking (listener was registered)
-    listener_registered = threading.Event()
+def _monitor_that_reconnects_on_pause(
+    on_pause: Callable[[], None],
+) -> FakeConnectivityMonitor:
+    """An OFFLINE monitor that comes back online the moment the runner pauses.
+
+    ``_apply_connectivity_check`` registers its listener only after it has
+    decided the pipeline is offline, so ``add_listener`` is exactly the
+    "runner has paused" edge. Restoring connectivity from inside that call
+    dispatches the ONLINE event to the just-registered listener
+    synchronously, so the runner's wake event is already set when it looks,
+    and it never blocks.
+    """
+    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.OFFLINE)
     original_add_listener = monitor.add_listener
+    paused = False
 
     def _intercepted_add_listener(cb: object) -> object:
+        nonlocal paused
         unsub = original_add_listener(cb)
-        listener_registered.set()
+        if not paused:
+            paused = True
+            on_pause()
+            monitor.go_online("test connectivity restored")
         return unsub
 
     monitor.add_listener = _intercepted_add_listener
+    return monitor
 
-    runner_result: list[int] = []
-    runner_exc: list[BaseException] = []
 
-    def _run_in_thread() -> None:
-        try:
-            rc = runner_module.run(
-                MagicMock(),
-                initial_state=initial_state,
-                verbosity=Verbosity.QUIET,
-                connectivity_monitor=monitor,
-                _recovery_sleep=lambda _: None,
-            )
-            runner_result.append(rc)
-        except BaseException as exc:
-            runner_exc.append(exc)
+def test_offline_pauses_agent_invocation_and_resume_completes(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runner pauses while OFFLINE and auto-resumes when connectivity returns.
 
-    thread = threading.Thread(target=_run_in_thread, daemon=True)
-    thread.start()
+    Proof of behavior:
+    1. Runner starts with monitor OFFLINE → reaches _apply_connectivity_check
+       and registers a connectivity listener (the pause).
+    2. No agent has been invoked at that point (invocations_at_pause == 0).
+    3. Restoring connectivity unblocks the runner.
+    4. Runner completes successfully (exit code 0).
+    5. The agent runs exactly once, after connectivity returned.
+    """
+    invocation_count = 0
 
-    # Wait until the runner has registered its listener (it is now blocking)
-    assert listener_registered.wait(timeout=_ONLINE_WAIT_TIMEOUT_S), (
-        "Runner never registered a connectivity listener — it did not reach the offline check"
+    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
+        nonlocal invocation_count
+        invocation_count += 1
+        return PipelineEvent.AGENT_SUCCESS
+
+    _patch_runner_seams(
+        monkeypatch,
+        tmp_git_repo=tmp_git_repo,
+        bundle=_make_policy_bundle(),
+        execute=_fake_execute,
     )
 
-    # At this point the runner is blocked in _apply_connectivity_check.
-    # No agent invocation should have occurred.
-    assert invocation_count == 0, (
-        f"Agent was invoked {invocation_count} time(s) while monitor was OFFLINE"
+    invocations_at_pause: list[int] = []
+    monitor = _monitor_that_reconnects_on_pause(
+        lambda: invocations_at_pause.append(invocation_count)
     )
 
-    # Restore connectivity — the runner should unblock and complete
-    monitor.go_online("test connectivity restored")
-
-    thread.join(timeout=_ONLINE_WAIT_TIMEOUT_S)
-    assert not thread.is_alive(), "Runner thread did not complete after going online"
-
-    if runner_exc:
-        raise runner_exc[0]
-
-    assert runner_result == [0], (
-        f"Runner exited with code {runner_result} instead of 0 after coming online"
+    exit_code = runner_module.run(
+        MagicMock(),
+        initial_state=_make_initial_state(),
+        verbosity=Verbosity.QUIET,
+        connectivity_monitor=monitor,
+        _recovery_sleep=lambda _: None,
     )
-    # Agent was invoked exactly once after coming online
+
+    assert invocations_at_pause == [0], (
+        "Runner must reach the offline check exactly once and invoke no agent "
+        f"while the monitor is OFFLINE; saw {invocations_at_pause}"
+    )
+    assert exit_code == 0, f"Runner exited with code {exit_code} instead of 0 after coming online"
     assert invocation_count == 1, (
         f"Expected 1 agent invocation after going online, got {invocation_count}"
     )
+    assert monitor.current_state is ConnectivityState.ONLINE
 
 
 def test_offline_window_produces_no_failure_events(
@@ -207,18 +225,6 @@ def test_offline_window_produces_no_failure_events(
     The offline period must be completely silent — no budget debits,
     no failure events, no fallover records.
     """
-
-    bundle = _make_policy_bundle()
-
-    initial_state = PipelineState(
-        phase="development",
-        phase_chains={
-            "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
-        },
-        policy_entry_phase="development",
-        recovery_cycle_cap=10,
-    )
-
     captured_failure_events: list[FailureEvent] = []
 
     class _CapturingBus(FailureEventBus):
@@ -232,80 +238,32 @@ def test_offline_window_produces_no_failure_events(
 
     monkeypatch.setattr(recovery_controller_module, "FailureEventBus", _CapturingBus)
 
-    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
-        return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
+    _patch_runner_seams(
+        monkeypatch,
+        tmp_git_repo=tmp_git_repo,
+        bundle=_make_policy_bundle(),
+        execute=lambda *args, **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
-    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
-    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: bundle)
-    monkeypatch.setattr(
-        runner_module,
-        "AgentRegistry",
-        MagicMock(from_config=MagicMock(return_value=MagicMock())),
+
+    events_at_pause: list[int] = []
+    monitor = _monitor_that_reconnects_on_pause(
+        lambda: events_at_pause.append(len(captured_failure_events))
     )
-    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", _fake_execute)
-    monkeypatch.setattr(
-        runner_module,
-        "phase_event_after_agent_run",
-        lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
+
+    exit_code = runner_module.run(
+        MagicMock(),
+        initial_state=_make_initial_state(),
+        verbosity=Verbosity.QUIET,
+        connectivity_monitor=monitor,
+        _recovery_sleep=lambda _: None,
     )
-    # Skip the post-commit auto-integrate step so the runner does not shell
-    # out to ``git`` during the test. The seam mirrors the one in
-    # ``test_offline_pauses_agent_invocation_and_resume_completes`` and the
-    # standalone ``test_auto_integrate_*`` suites: replacing the function
-    # on both ``runner_module`` and ``run_loop_module`` eliminates the real
-    # subprocess + psutil work that the offline tests were paying per run,
-    # so the test stays deterministic within the 1.0 s per-test policy
-    # limit. The offline/no-failure-event assertions do not depend on
-    # auto-integrate behaviour, so neutralising it here is safe.
-    monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
-    monkeypatch.setattr(run_loop_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
 
-    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.OFFLINE)
-
-    listener_registered = threading.Event()
-    original_add_listener = monitor.add_listener
-
-    def _intercepted_add_listener(cb: object) -> object:
-        unsub = original_add_listener(cb)
-        listener_registered.set()
-        return unsub
-
-    monitor.add_listener = _intercepted_add_listener
-
-    runner_result: list[int] = []
-
-    def _run_in_thread() -> None:
-        rc = runner_module.run(
-            MagicMock(),
-            initial_state=initial_state,
-            verbosity=Verbosity.QUIET,
-            connectivity_monitor=monitor,
-            _recovery_sleep=lambda _: None,
-        )
-        runner_result.append(rc)
-
-    thread = threading.Thread(target=_run_in_thread, daemon=True)
-    thread.start()
-
-    assert listener_registered.wait(timeout=_ONLINE_WAIT_TIMEOUT_S)
-
-    # No failure events while offline
-    offline_event_count = len(captured_failure_events)
-
-    monitor.go_online("test restored")
-    thread.join(timeout=_ONLINE_WAIT_TIMEOUT_S)
-
+    assert events_at_pause == [0], (
+        f"Expected no FailureEvents during the offline window, saw {events_at_pause}"
+    )
     # No failure events should have been emitted at all (offline + online succeeded)
     assert captured_failure_events == [], (
         f"Expected no FailureEvents during offline window, "
         f"got {len(captured_failure_events)}: {captured_failure_events}"
     )
-    assert offline_event_count == 0
-    assert runner_result == [0]
+    assert exit_code == 0

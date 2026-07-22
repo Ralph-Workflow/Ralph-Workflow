@@ -36,13 +36,19 @@ def _base_branch(repo_root: Path) -> str:
     )
 
 
-def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
-    path = repo_root / filename
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-    assert _run(repo_root, "add", filename).returncode == 0
+def _commit_files(repo_root: Path, files: dict[str, str], message: str) -> str:
+    """Write every ``{filename: content}`` pair and commit them together."""
+    for filename, content in files.items():
+        path = repo_root / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        assert _run(repo_root, "add", filename).returncode == 0
     assert _run(repo_root, "commit", "-m", message).returncode == 0
     return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+
+
+def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
+    return _commit_files(repo_root, {filename: content}, message)
 
 
 def _build_config(*, target: str) -> UnifiedConfig:
@@ -468,9 +474,13 @@ def test_idle_agent_with_untracked_file_catches_up_at_phase_boundary(
         )
         assert (feature_a / "b.txt").exists()
         assert scratch.read_text(encoding="utf-8") == "noise\n"
-        assert _run(feature_a, "rev-parse", "HEAD").stdout.strip() == branch_sha(
-            tmp_git_repo, main
-        )
+
+        # AC-04 convergence: main, A and B must all name the SAME commit.
+        # Asserting only "A == main" would still pass if B had been left
+        # behind, which is the very failure this test exists to catch.
+        final_main = branch_sha(tmp_git_repo, main)
+        assert _run(feature_a, "rev-parse", "HEAD").stdout.strip() == final_main
+        assert _run(feature_b, "rev-parse", "HEAD").stdout.strip() == final_main
     finally:
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_b))
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_a))
@@ -480,13 +490,23 @@ def test_idle_agent_with_untracked_file_catches_up_at_phase_boundary(
 def test_real_sibling_landing_during_conflict_resolution_still_lands(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-05: a REAL mainline move during conflict resolution still lands.
+    """AC-03/AC-05: a REAL mainline move during conflict resolution still lands.
 
     Conflict resolution is bounded at ``auto_integrate_resolve_timeout_seconds``
     (900 s by default) -- precisely the window in which a sibling agent
     lands on the shared mainline. The sibling commit is created from
     inside the production ``conflict_resolver`` callback, so this is a
     genuine mid-integration window and not a monkeypatched seam.
+
+    The sibling lands BOTH a new file and a non-conflicting line in the
+    very file under resolution, so one fixture proves both halves at
+    once: the sibling commit is an ancestor of the final tip (AC-05),
+    and neither side's content is lost by the bounded retry (AC-03). A
+    retry that re-ran ``rebase_onto`` would replay the raw feature
+    commit -- a plain ``git rebase`` carries no merge commits -- and
+    drop one of the two sides. This scenario is deliberately ONE test
+    rather than two: it runs real git against several worktrees, and
+    the ``subprocess_e2e`` suite is capped at 60 s of wall clock.
     """
     feature, main, _ = _seed_conflicting_worktrees(tmp_git_repo, "feature-race")
     merged = "one\nfeature+main\nthree\n"
@@ -499,7 +519,14 @@ def test_real_sibling_landing_during_conflict_resolution_still_lands(
             # A sibling agent lands on the shared mainline while this
             # resolution is in flight.
             sibling_shas.append(
-                _commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landing")
+                _commit_files(
+                    tmp_git_repo,
+                    {
+                        "sibling.txt": "sibling\n",
+                        "shared.txt": "one\nmain\nthree\nfour\n",
+                    },
+                    "sibling landing",
+                )
             )
         _strip_conflict_markers(root / "shared.txt", merged)
         return True
@@ -523,66 +550,6 @@ def test_real_sibling_landing_during_conflict_resolution_still_lands(
         # The sibling's commit was integrated ONTO, never discarded.
         assert is_ancestor(tmp_git_repo, sibling_shas[0], feature_head) is True
         assert (feature / "sibling.txt").exists()
-
-        resolved = (feature / "shared.txt").read_text(encoding="utf-8")
-        assert resolved == merged
-        assert "<<<<<<<" not in resolved
-        assert _run(feature, "rev-parse", "--verify", "MERGE_HEAD").returncode != 0
-        assert len(resolver_calls) <= 2, (
-            "the retry must not silently re-pay for a resolution it already "
-            f"has; resolver ran {len(resolver_calls)} times"
-        )
-    finally:
-        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
-
-
-@pytest.mark.timeout_seconds(20)
-def test_resolution_survives_the_retry_after_a_concurrent_target_move(
-    tmp_git_repo: Path,
-) -> None:
-    """AC-03/AC-05: both sides survive the bounded retry.
-
-    Same mid-resolution race as the test above, but the sibling touches
-    the SAME file on a non-conflicting line. A retry that replayed the
-    raw feature commit (a plain ``git rebase`` carries no merge commits)
-    would drop one of the two sides; the final file must carry both.
-    """
-    feature, main, _ = _seed_conflicting_worktrees(tmp_git_repo, "feature-retry")
-    merged = "one\nfeature+main\nthree\n"
-    resolver_calls: list[str] = []
-    sibling_shas: list[str] = []
-
-    def _resolver(root: Path, target: str) -> bool:
-        resolver_calls.append(target)
-        if len(resolver_calls) == 1:
-            sibling_shas.append(
-                _commit(
-                    tmp_git_repo,
-                    "shared.txt",
-                    "one\nmain\nthree\nfour\n",
-                    "sibling landing",
-                )
-            )
-        _strip_conflict_markers(root / "shared.txt", merged)
-        return True
-
-    try:
-        outcome = auto_integrate_after_commit(
-            _build_config(target=main),
-            WorkspaceScope(feature),
-            RebaseState(),
-            conflict_resolver=_resolver,
-        )
-        feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
-
-        assert outcome is not None
-        assert sibling_shas, "the resolver must have been invoked at least once"
-        assert outcome.fast_forwarded is True, (
-            f"expected a landing, got action={outcome.last_action!r} "
-            f"reason={outcome.last_reason!r}"
-        )
-        assert branch_sha(tmp_git_repo, main) == feature_head
-        assert is_ancestor(tmp_git_repo, sibling_shas[0], feature_head) is True
 
         resolved = (feature / "shared.txt").read_text(encoding="utf-8")
         assert "<<<<<<<" not in resolved
