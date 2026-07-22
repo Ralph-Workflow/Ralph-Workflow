@@ -393,6 +393,20 @@ ralph.config.bootstrap
    :members:
    :show-inheritance:
 
+ralph.config.agent_detection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.agent_detection
+   :members:
+   :show-inheritance:
+
+ralph.config.config_error_messages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.config_error_messages
+   :members:
+   :show-inheritance:
+
 ralph.config.enums
 ~~~~~~~~~~~~~~~~~~
 
@@ -1521,6 +1535,13 @@ ralph.agents.availability
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.availability
+   :members:
+   :show-inheritance:
+
+ralph.agents.agent_install_links
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.agent_install_links
    :members:
    :show-inheritance:
 

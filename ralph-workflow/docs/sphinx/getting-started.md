@@ -24,7 +24,7 @@ Have these ready before you start:
 
 The canonical six-step install → init → diagnose → spec → run → review
 sequence lives in the repository root
-[`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md#start-your-first-run).
+[`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md#first-run).
 Run those commands from a human-operated shell outside any Ralph-managed
 agent session. For deeper operator configuration, open
 [Configuration Reference](configuration.md). For docs grouped by use

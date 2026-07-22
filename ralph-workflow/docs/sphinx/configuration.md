@@ -461,7 +461,10 @@ development_analysis = "analysis"
 development_commit = "commit"
 ```
 
-Valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, `agy`, `pi`, and `cursor`. Codex supports `codex/<model>` plus an optional `[effort=low|medium|high|xhigh]` suffix (for example, `codex/gpt-5.3-codex[effort=high]`), which maps to `--model` and Codex's reasoning-effort override. Cursor supports the same `<agent>/<model>` dynamic-alias syntax as the other model-addressable agents (e.g. `cursor/auto`, `cursor/gpt-5.3-codex-high`, `cursor/claude-sonnet-5-thinking`); the full id after `cursor/` is preserved verbatim in the `--model` flag, including bracket parameterization. Nanocoder supports the same direct-agent syntax for provider/model routing (e.g. `nanocoder/ollama/llama3.1`).
+Valid agent names include `claude`, `claude-headless`, `codex`, `opencode`,
+`nanocoder`, `agy`, `pi`, and `cursor`. Each agent's model alias has its own
+syntax; see the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
+for all eight aliases, examples, and the literal CLI flags Ralph Workflow emits.
 
 In practice: **chains** define fallback order for one kind of work; **drains** map workflow steps to those chains. Multiple drains can point at the same chain, which lets you change agent policy without rewriting the workflow itself.
 

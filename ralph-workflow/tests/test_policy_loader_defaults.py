@@ -12,6 +12,7 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
+from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.policy.loader import (
@@ -22,7 +23,7 @@ from ralph.policy.loader import (
     load_policy,
 )
 
-PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 1
+PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 0
 
 
 def _copy_default_policy_files(target_dir: Path) -> None:
@@ -30,6 +31,29 @@ def _copy_default_policy_files(target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     for filename in ("agents.toml", "pipeline.toml", "artifacts.toml"):
         shutil.copy(defaults_dir / filename, target_dir / filename)
+
+
+def test_policy_loader_unknown_top_level_table_warns_with_file(
+    tmp_path: Path,
+) -> None:
+    """A misspelled policy table must be visible while open subtables remain untouched."""
+    config_dir = tmp_path / ".agent"
+    _copy_default_policy_files(config_dir)
+    pipeline_path = config_dir / "pipeline.toml"
+    pipeline_path.write_text(
+        pipeline_path.read_text(encoding="utf-8") + "\n[loop_counterz]\nmax = 1\n",
+        encoding="utf-8",
+    )
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        load_policy(config_dir)
+    finally:
+        logger.remove(sink_id)
+
+    warning = "\n".join(records)
+    assert "loop_counterz" in warning
+    assert str(pipeline_path) in warning
 
 
 def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 from pydantic import ValidationError
 
+from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.config.loader import deep_merge as _deep_merge
 from ralph.config.mcp_models import McpConfig
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
 _TOML_DECODE_ERROR = cast("type[ValueError]", tomllib.TOMLDecodeError)
+_MCP_TOP_LEVEL_FIELDS = frozenset({"mcp_servers", "web_search", "web_visit", "media"})
 
 
 class McpConfigError(SystemExit):
@@ -126,6 +128,16 @@ def load_mcp_config(
         local_data = _load_mcp_toml(local_mcp_config_path(workspace_scope))
     else:
         local_data = {}
+
+    warn_unknown_top_level_fields(bundled, bundled_default_mcp_config_path(), _MCP_TOP_LEVEL_FIELDS)
+    warn_unknown_top_level_fields(global_data, global_mcp_config_path(), _MCP_TOP_LEVEL_FIELDS)
+    if config_path is not None:
+        local_path = config_path
+    elif workspace_scope is not None:
+        local_path = local_mcp_config_path(workspace_scope)
+    else:
+        local_path = Path(_LOCAL_MCP_FILENAME)
+    warn_unknown_top_level_fields(local_data, local_path, _MCP_TOP_LEVEL_FIELDS)
 
     merged = _deep_merge(bundled, global_data)
     merged = _deep_merge(merged, local_data)

@@ -140,7 +140,7 @@ def test_init_command_always_runs_ensure_baseline_capabilities_on_first_run(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     assert called == [tmp_path], (
         f"Expected ensure_baseline_capabilities called once with workspace_root=tmp_path; "
@@ -187,7 +187,7 @@ def test_init_command_runs_ensure_baseline_capabilities_when_configs_already_exi
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     assert "Built-in" in output, f"Expected 'Built-in' label in re-run output, got: {output!r}"
@@ -225,9 +225,9 @@ def test_init_command_runs_capability_refresh_on_every_run(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert calls == 1
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert calls == 2
 
 
@@ -263,7 +263,7 @@ def test_init_command_runs_ensure_baseline_capabilities_when_global_config_path_
         fake_ensure,
     )
 
-    init_module.init_command(template="default", config_path=config_path)
+    init_module.init_command(template=None, config_path=config_path)
 
     assert called == [tmp_path], (
         f"Expected ensure_baseline_capabilities called with workspace_root=tmp_path; got {called!r}"
@@ -287,10 +287,10 @@ def test_init_command_skill_install_failure_does_not_raise(
         fake_ensure_that_raises,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     assert (tmp_path / "PROMPT.md").exists()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
+    assert not (tmp_path / ".agent").exists()
     output = stream.getvalue()
     assert "Ralph" in output
     assert "Created" in output
@@ -324,7 +324,7 @@ def test_init_command_surfaces_skill_install_failure_codes(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     assert "Skills auto-install reported: sibling-conflict-using-superpowers" in output, (
@@ -371,7 +371,7 @@ def test_init_command_surfaces_skill_install_failure_codes_on_rerun(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     assert "Skills auto-install reported: sibling-conflict-using-superpowers" in output, (
@@ -407,7 +407,7 @@ def test_init_command_surfaces_force_init_skills_hint_in_warning(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     normalized = " ".join(output.split())

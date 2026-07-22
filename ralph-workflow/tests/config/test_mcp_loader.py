@@ -183,6 +183,25 @@ def test_load_mcp_config_workspace_scope_local_path(
 # ---------------------------------------------------------------------------
 
 
+def test_load_mcp_config_unknown_top_level_field_warns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unknown top-level tables must warn without inspecting server definitions."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfg = tmp_path / "mcp.toml"
+    cfg.write_text("[web_serch]\nenabled = false\n", encoding="utf-8")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        load_mcp_config(config_path=cfg)
+    finally:
+        logger.remove(sink_id)
+
+    warning = "\n".join(records)
+    assert "web_serch" in warning
+    assert str(cfg) in warning
+
+
 def test_load_mcp_config_malformed_local_toml_exits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

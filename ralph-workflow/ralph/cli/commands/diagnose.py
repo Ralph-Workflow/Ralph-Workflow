@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
+from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
@@ -547,7 +548,16 @@ def _check_agents_impl(
                 cmd = agent.cmd if agent else ""
                 path_status = path_by_name.get(name, Text("missing", style="theme.status.warning"))
                 config_cell = _status_text("Configured", cmd, "theme.status.success")
-                rows.append((name, config_cell, path_status, "", ""))
+                if (
+                    name in path_by_name
+                    and availability
+                    and dict(availability).get(name) != "available"
+                ):
+                    install_hint = install_url_for(name) or "No install link available"
+                    config_hint = f"edit \\[agents.{name}] in ralph-workflow.toml"
+                    rows.append((name, config_cell, path_status, install_hint, config_hint))
+                else:
+                    rows.append((name, config_cell, path_status, "", ""))
     except Exception as e:
         rows.append(("Agents", _status_text("Error", str(e), "theme.status.error"), "-", "", ""))
         _emit_simple_table(display, "Agents", rows)
@@ -776,9 +786,7 @@ def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
     else:
         journal_mb = journal_bytes / (1024 * 1024)
         style = (
-            "theme.status.warning"
-            if journal_bytes > 50 * 1024 * 1024
-            else "theme.status.success"
+            "theme.status.warning" if journal_bytes > 50 * 1024 * 1024 else "theme.status.success"
         )
         journal_cell = Text(f"{journal_mb:.1f} MB", style=style)
 
@@ -786,9 +794,7 @@ def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
     if warnings_count == 0:
         warnings_cell: Text = Text("none", style="theme.status.success")
     else:
-        warnings_cell = Text(
-            f"{warnings_count} warning(s)", style="theme.status.warning"
-        )
+        warnings_cell = Text(f"{warnings_count} warning(s)", style="theme.status.warning")
 
     rows: list[tuple[object, ...]] = [
         (

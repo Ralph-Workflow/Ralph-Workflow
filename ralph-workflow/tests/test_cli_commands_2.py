@@ -16,6 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import typer
 from rich.console import Console
 
 from ralph.cli.commands import commit as commit_module
@@ -864,12 +865,10 @@ def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     stream = _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert (tmp_path / "PROMPT.md").exists()
-    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
-    assert (tmp_path / ".agent" / "pipeline.toml").exists()
-    assert (tmp_path / ".agent" / "artifacts.toml").exists()
+    assert not (tmp_path / ".agent").exists()
+    assert (tmp_path / ".gitignore").exists()
     output = stream.getvalue()
     assert "Ralph" in output
     assert "Created" in output
@@ -903,7 +902,7 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     (agent_dir / "pipeline.toml").write_text("# pipeline", encoding="utf-8")
     (agent_dir / "artifacts.toml").write_text("# artifacts", encoding="utf-8")
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert prompt.read_text() == "existing"
     assert config.read_text() == "existing config"
     assert "Created" not in stream.getvalue()
@@ -915,7 +914,7 @@ def test_init_command_custom_config_path(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.chdir(tmp_path)
     custom = tmp_path / "custom" / "custom.toml"
     custom.parent.mkdir()
-    init_module.init_command(template="default", config_path=custom)
+    init_module.init_command(template=None, config_path=custom)
     assert custom.exists()
     assert "Created" in stream.getvalue()
 
@@ -927,27 +926,24 @@ def test_init_command_creates_prompt_in_cwd_not_template_subdir(
     _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert (tmp_path / "PROMPT.md").exists()
     assert not (tmp_path / "default").exists()
 
 
-def test_init_command_creates_agent_dir_in_cwd(
+def test_init_command_does_not_create_local_config_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _attach_console(monkeypatch, init_module)
     _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="default")
-    assert (tmp_path / ".agent").is_dir()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
-    assert (tmp_path / ".agent" / "pipeline.toml").exists()
-    assert (tmp_path / ".agent" / "artifacts.toml").exists()
-    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    init_module.init_command(template=None)
+    assert not (tmp_path / ".agent").exists()
+    assert (tmp_path / ".gitignore").exists()
 
 
-def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
+def test_init_command_fallback_next_steps_remain_concise(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -971,7 +967,7 @@ def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
     init_module.init_command()
 
     output = stream.getvalue()
-    assert "Template:" not in output
+    assert "deprecated" not in output.lower()
 
 
 def test_display_tables_render() -> None:
@@ -997,7 +993,7 @@ def test_display_tables_render() -> None:
 
 
 @pytest.mark.timeout_seconds(3)
-def test_init_command_writes_support_and_global_configs(
+def test_init_command_writes_only_global_configs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     xdg_dir = tmp_path / "xdg"
@@ -1008,18 +1004,41 @@ def test_init_command_writes_support_and_global_configs(
 
     init_module.init_command(None, None)
 
-    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
-    assert (tmp_path / ".agent" / "pipeline.toml").exists()
-    assert (tmp_path / ".agent" / "artifacts.toml").exists()
+    assert not (tmp_path / ".agent").exists()
+    assert (tmp_path / ".gitignore").exists()
     assert (xdg_dir / "ralph-workflow.toml").exists()
     assert (xdg_dir / "ralph-workflow-mcp.toml").exists()
 
-    assert isinstance(tomllib.loads((tmp_path / ".agent" / "mcp.toml").read_text()), dict)
-    assert isinstance(tomllib.loads((tmp_path / ".agent" / "pipeline.toml").read_text()), dict)
-    assert isinstance(tomllib.loads((tmp_path / ".agent" / "artifacts.toml").read_text()), dict)
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow.toml").read_text()), dict)
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow-mcp.toml").read_text()), dict)
+
+
+def test_init_command_feature_spec_writes_distinct_prompt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    init_module.init_command("feature-spec")
+
+    prompt = (tmp_path / "PROMPT.md").read_text(encoding="utf-8")
+    assert "Add <feature> to <surface>" in prompt
+    assert not (tmp_path / ".agent").exists()
+
+
+def test_init_command_unknown_template_label_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(typer.Exit) as excinfo:
+        init_module.init_command("unknown")
+
+    assert excinfo.value.exit_code == 1
+    assert "Valid templates" in stream.getvalue()
+    assert not (tmp_path / "PROMPT.md").exists()
 
 
 def test_init_command_respects_explicit_config_path(

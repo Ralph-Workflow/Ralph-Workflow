@@ -23,6 +23,7 @@ from loguru import logger
 from pydantic import TypeAdapter, ValidationError
 
 import ralph.policy
+from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.phases import register_role_handlers
 from ralph.policy.models import (
     AgentChainConfig,
@@ -68,6 +69,7 @@ def _load_toml(path: Path) -> dict[str, object]:
     try:
         with path.open("rb") as fh:
             data: dict[str, object] = tomllib.load(fh)
+        _warn_unknown_policy_top_level_fields(data, path)
         return data
     except Exception as exc:
         raise PolicyValidationError(
@@ -76,12 +78,21 @@ def _load_toml(path: Path) -> dict[str, object]:
         ) from exc
 
 
+def _warn_unknown_policy_top_level_fields(data: dict[str, object], path: Path) -> None:
+    if path.name == "pipeline.toml":
+        warn_unknown_top_level_fields(data, path, PIPELINE_POLICY_FIELDS)
+    elif path.name == "artifacts.toml":
+        warn_unknown_top_level_fields(data, path, _ARTIFACTS_TOP_LEVEL_FIELDS)
+
+
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
 _GLOBAL_POLICY_FILENAME_MAP = {
     "pipeline.toml": "ralph-workflow-pipeline.toml",
     "artifacts.toml": "ralph-workflow-artifacts.toml",
 }
+_ARTIFACTS_TOP_LEVEL_FIELDS = frozenset({"artifacts"})
+
 PIPELINE_POLICY_FIELDS = frozenset(
     {
         "blocks",
@@ -544,9 +555,7 @@ def _alias_out_of_graph_drain(
         return
     fallback_binding = user_drains.get(fallback_drain)
     if fallback_binding is not None and fallback_binding.chain in user_chains:
-        user_drains[drain] = AgentDrainConfig(
-            chain=fallback_binding.chain, drain_class=drain_class
-        )
+        user_drains[drain] = AgentDrainConfig(chain=fallback_binding.chain, drain_class=drain_class)
 
 
 def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolicy:

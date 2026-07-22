@@ -152,7 +152,7 @@ def test_init_command_skill_summary_mentions_canonical_root(
         _fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     assert "claude" in output
@@ -195,7 +195,7 @@ def test_init_command_skill_summary_reports_missing_sibling(
         _fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     assert "Skipped" in output, f"Expected 'Skipped' for the opencode sibling row, got: {output!r}"
@@ -251,7 +251,7 @@ def test_init_command_skill_summary_reports_project_skill_root(
         _fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     assert "Scope" in output, f"Expected 'Scope' column header in output, got: {output!r}"

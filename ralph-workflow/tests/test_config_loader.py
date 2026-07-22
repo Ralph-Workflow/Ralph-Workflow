@@ -10,13 +10,17 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from loguru import logger
+
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
     LOCAL_CONFIG_PATH,
+    ConfigTomlError,
     deep_merge,
     load_config,
+    load_toml,
 )
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.timeout_defaults import (
@@ -74,6 +78,67 @@ def _assert_validation_error(action: Callable[[], object]) -> None:
         action()
 
     assert exc_info.type.__name__ == "ValidationError"
+
+
+def test_load_toml_malformed_config_names_file_and_fix(tmp_path: Path) -> None:
+    """A malformed user config must not silently fall back to defaults."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text("[general\nverbosity = 2\n", encoding="utf-8")
+
+    with pytest.raises(ConfigTomlError) as exc_info:
+        load_toml(config_path)
+
+    message = str(exc_info.value)
+    assert config_path.name in message
+    assert "What failed:" in message
+    assert "Why it matters:" in message
+    assert "Fix:" in message
+
+
+def test_load_config_unknown_field_warns_with_field_and_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A misspelled config field must be visible instead of being silently ignored."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text("[general]\nverbosuty = 1\n", encoding="utf-8")
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        config = load_config(config_path=config_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert config.general.verbosity == DEFAULT_VERBOSITY
+    warning = "\n".join(records)
+    assert "verbosuty" in warning
+    assert str(config_path) in warning
+
+
+def test_load_config_missing_agent_command_logs_ralph_authored_remediation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Missing required agent fields must show a file, field, and concrete fix."""
+    config_path = tmp_path / "ralph-workflow.toml"
+    config_path.write_text("[agents.broken]\n", encoding="utf-8")
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR", format="{message}")
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            load_config(config_path=config_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert exc_info.value.code == 1
+    message = "\n".join(records)
+    assert "What failed:" in message
+    assert "Why it matters:" in message
+    assert "Fix:" in message
+    assert str(config_path) in message
+    assert "agents.broken.cmd" in message
+    assert 'cmd = "<binary>"' in message
+    assert "For further information" not in message
 
 
 def test_deep_merge_simple() -> None:

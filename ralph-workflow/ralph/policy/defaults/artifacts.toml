@@ -7,7 +7,11 @@
 #
 # REGENERATION: Run `ralph --regenerate-config` to refresh from this default.
 #
-# MINIMUM REQUIRED SECTIONS: [artifacts] must be present.
+# ============================================================
+# OPTIONAL — everything below this line has a working default.
+# Skip this file entirely unless you know you need it.
+# ============================================================
+# Edit this only if you are changing an artifact contract.
 #
 # MCP-artifact-only: Unlike the legacy Rust implementation, the Python Ralph Workflow
 # does not support XML/XSD structured output. All agent output flows through
@@ -19,6 +23,7 @@
 # "failed" are remediation outcomes, while "completed" advances forward.
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing planning or development artifacts.
 # Planning artifact
 # ---------------------------------------------------------------------------
 
@@ -37,6 +42,7 @@ prompt_template = "developer_iteration.jinja"
 markdown_summary_path = ".agent/DEVELOPMENT_RESULT.md"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing the development-analysis decision artifact.
 # Development analysis decision
 # ---------------------------------------------------------------------------
 
@@ -52,6 +58,7 @@ prompt_template = "development_analysis.jinja"
 markdown_summary_path = ".agent/DEVELOPMENT_ANALYSIS_DECISION.md"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing the planning-analysis decision artifact.
 # Planning analysis decision
 # ---------------------------------------------------------------------------
 
@@ -67,6 +74,7 @@ prompt_template = "planning_analysis.jinja"
 markdown_summary_path = ".agent/PLANNING_ANALYSIS_DECISION.md"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing commit artifacts.
 # Development commit artifact
 # ---------------------------------------------------------------------------
 
@@ -85,6 +93,7 @@ prompt_template = "commit_cleanup.jinja"
 artifact_json_path = ".agent/artifacts/commit_cleanup.json"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing the policy-remediation artifact.
 # Policy-remediation analysis decision (out-of-graph)
 # ---------------------------------------------------------------------------
 #

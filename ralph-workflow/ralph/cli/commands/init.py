@@ -21,13 +21,17 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import typer
+
 import ralph.policy
+from ralph.config.agent_detection import enable_detected_agents
 from ralph.config.bootstrap import (
     BootstrapResult,
+    auto_seed_default_git_exclude,
+    auto_seed_default_gitignore,
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_global_policy_configs,
-    ensure_local_support_configs,
 )
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.onboarding import (
@@ -36,7 +40,7 @@ from ralph.onboarding import (
 from ralph.onboarding import (
     fallback_next_steps,
     getting_started_pointer_sentence,
-    starter_prompt_template,
+    resolve_starter_template,
 )
 
 if TYPE_CHECKING:
@@ -64,7 +68,6 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills.manager import SkillManager
-from ralph.workspace.scope import resolve_workspace_scope
 
 STARTER_PROMPT_SENTINEL = _STARTER_PROMPT_SENTINEL
 
@@ -97,28 +100,27 @@ def init_command(
     """Initialize Ralph Workflow in the current working directory.
 
     Args:
-        template: Optional template name (e.g. 'default').
-              All labels currently produce the same starter content.
+        template: Optional prompt-template name.
         config_path: Optional path for config file.
         display_context: Display context for consistent rendering. If None, a default
             context is created using make_display_context().
     """
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
-    if template:
-        display.emit_warning(
-            f"Warning: --init label {template!r} is deprecated and ignored; "
-            "use `ralph --init` without a label."
-        )
-
     target = Path.cwd()
-    scope = resolve_workspace_scope(target)
-    agent_dir = scope.local_config_path.parent
 
     prompt_path = target / "PROMPT.md"
     if not prompt_path.exists():
-        prompt_path.write_text(starter_prompt_template(), encoding="utf-8")
+        try:
+            prompt = resolve_starter_template(template)
+        except ValueError as exc:
+            display.emit_warning(str(exc))
+            raise typer.Exit(code=1) from exc
+        prompt_path.write_text(prompt, encoding="utf-8")
         display.emit_status(f"Created: {prompt_path}")
+
+    auto_seed_default_gitignore(target)
+    auto_seed_default_git_exclude(target)
 
     bundled_defaults = Path(ralph.policy.__file__).parent / "defaults"
 
@@ -126,17 +128,27 @@ def init_command(
         config_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
         display.emit_status(f"Created: {config_path}")
+        newly_enabled = enable_detected_agents(config_path)
         _, failures = _ensure_baseline_capabilities(display_context=ctx)
+        if newly_enabled:
+            display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
         if failures:
             display.emit_skill_failure_warning(failures)
-    elif config_path is None:
+    elif config_path is not None:
+        newly_enabled = enable_detected_agents(config_path)
+        _, failures = _ensure_baseline_capabilities(display_context=ctx)
+        if newly_enabled:
+            display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
+        if failures:
+            display.emit_skill_failure_warning(failures)
+    else:
         global_results: list[BootstrapResult] = [
             ensure_global_config(),
             ensure_global_mcp_config(),
             *ensure_global_policy_configs(),
         ]
-        local_results = ensure_local_support_configs(agent_dir)
-        all_results = global_results + local_results
+        all_results = global_results
+        newly_enabled = enable_detected_agents()
 
         _, failures = _ensure_baseline_capabilities(display_context=ctx)
 
@@ -146,12 +158,18 @@ def init_command(
             emit_first_run_welcome(
                 all_results,
                 agent_registry=registry,
+                newly_enabled=newly_enabled,
                 display_context=ctx,
             )
             if failures:
                 display.emit_skill_failure_warning(failures)
         else:
-            _print_fallback_next_steps(target, failures=failures, display_context=ctx)
+            _print_fallback_next_steps(
+                target,
+                newly_enabled=newly_enabled,
+                failures=failures,
+                display_context=ctx,
+            )
 
 
 def _try_load_registry() -> AgentRegistry | None:
@@ -202,11 +220,17 @@ def _ensure_baseline_capabilities(
 
 
 def _print_fallback_next_steps(
-    target: Path, *, failures: list[str] | None = None, display_context: DisplayContext
+    target: Path,
+    *,
+    newly_enabled: list[str] | None = None,
+    failures: list[str] | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
     display = resolve_active_display(None, display_context)
     display.emit_status(f"Ralph Workflow initialized in: {target}")
+    if newly_enabled:
+        display.emit_status("Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled))
     display.emit_status(
         "\nRalph Workflow orchestrates AI coding agents through a"
         " planning → development loop driven by PROMPT.md."

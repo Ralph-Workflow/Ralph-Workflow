@@ -14,19 +14,24 @@ or repos without guardrails.
 
 ## First run
 
-```bash
-pipx install ralph-workflow
-cd /path/to/your/project
-ralph --init
-ralph --diagnose
-$EDITOR PROMPT.md
-ralph
-```
+1. **Install Ralph.** Use `pipx install ralph-workflow` to keep it isolated from
+   other Python tools. If you do not use pipx, `pip install ralph-workflow` also works.
+2. **Start in your project.** Run `cd /path/to/your/project` and `ralph --init`.
+   It creates your user-global config and a `PROMPT.md`; project-local config is
+   optional later with `ralph --init-local-config`.
+3. **Confirm a coding agent.** Ralph looks for supported agents already on your
+   `PATH` and enables the ones it finds. Install and authenticate an agent first
+   if none are found.
+4. **Check the setup.** Run `ralph --diagnose` and fix any reported problem before
+   starting work.
+5. **Describe the task.** Edit `PROMPT.md` with the outcome and checks you expect.
+   For a task-shaped starter, use `ralph --init feature-spec`, `guardrail`,
+   `refactor`, `test-coverage`, or `docs` before a prompt file exists.
+6. **Run Ralph.** Run `ralph`, then read the finish-receipt artifact: it names the
+   change, checks run, and review focus before you decide what to do next.
 
-The long-form walkthrough — including the trust boundaries, the
-prose-intent of each step, and what success looks like — lives in
-[`START_HERE.md`](START_HERE.md) and the maintained
-[`Getting started`](ralph-workflow/docs/sphinx/getting-started.md) page.
+For the full walkthrough, see
+[`Getting started`](ralph-workflow/docs/sphinx/getting-started.md).
 
 ## Supported agents
 

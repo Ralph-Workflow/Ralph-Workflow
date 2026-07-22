@@ -7,14 +7,18 @@
 #
 # REGENERATION: Run `ralph --regenerate-config` to refresh from this default.
 #
-# MINIMUM REQUIRED SECTIONS: [agent_chains] and [agent_drains] must both be present.
-# Chains are ordered fallback lists. Ralph Workflow tries agents in order;
-# on failure it retries up to max_retries times before advancing to the next agent.
-# After all agents in a chain are exhausted, the pipeline fails.
+# ============================================================
+# OPTIONAL — everything below this line has a working default.
+# Skip this file entirely unless you know you need it.
+# ============================================================
+# Edit this only if you want to change which agent handles a role.
 
 # ---------------------------------------------------------------------------
 # Agent chains
 # ---------------------------------------------------------------------------
+# A drain is the step of the run an agent handles, such as planning,
+# development, analysis, or commit. The bundled defaults work out of the box;
+# this OPTIONAL section only needs editing when you want to swap an agent or model.
 
 [agent_chains.planning]
 agents = ["claude"]
@@ -88,6 +92,7 @@ agents = ["claude", "opencode"]
 max_retries = 2
 retry_delay_ms = 1000
 
+# Edit this only if you are changing which chain handles a pipeline role.
 # ---------------------------------------------------------------------------
 # Drain bindings
 # ---------------------------------------------------------------------------

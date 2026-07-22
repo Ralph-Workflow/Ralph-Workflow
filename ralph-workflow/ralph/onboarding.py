@@ -49,11 +49,11 @@ def init_help_text() -> str:
     """Return top-level help text for the canonical init command."""
     explanation = init_local_config_override_explanation()
     return (
-        "Initialize Ralph Workflow in the current directory (scaffolds PROMPT.md plus "
-        "project-local MCP/pipeline/artifact files copied from the user-global config set). "
+        "Initialize Ralph Workflow in the current directory (creates user-global config and "
+        "PROMPT.md). Use `--init feature-spec`, `guardrail` (or `bug-fix`), `refactor`, "
+        "`test-coverage`, or `docs` to choose a prompt shape. "
         f"Use `{INIT_LOCAL_CONFIG_COMMAND}` only when you want an {explanation}. "
-        "Also seeds project-scope skills and the batteries-included `.gitignore` when missing. "
-        "Labels are deprecated and ignored; use `--init` without a label."
+        "Also seeds project-scope skills and the batteries-included `.gitignore` when missing."
     )
 
 
@@ -67,7 +67,7 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
     """Return the minimal next steps for a completely fresh workspace."""
     return (
         "From a human-operated shell outside any Ralph-managed agent session, "
-        f"run {INIT_COMMAND} to scaffold {PROMPT_FILE} and .agent/ configs",
+        f"run {INIT_COMMAND} to scaffold {PROMPT_FILE} and user-global config",
         f"Edit {PROMPT_FILE} with your task",
         f"From that same human-operated shell, run {RUN_COMMAND} to start the pipeline",
     )
@@ -131,6 +131,65 @@ def fallback_next_steps() -> tuple[str, ...]:
     )
 
 
+def resolve_starter_template(label: str | None) -> str:
+    """Return the requested starter PROMPT.md template.
+
+    ``bug-fix`` is an alias for the guardrail template.  The bare init path
+    keeps the established general-purpose template.
+    """
+    if not label:
+        return starter_prompt_template()
+    templates = {
+        "feature-spec": (
+            "# Goal\n\nAdd <feature> to <surface>. Keep the rest of the flow unchanged.\n\n"
+            "## Acceptance criteria\n\n- <user action> now produces <expected result>\n"
+            "- Existing behavior for <adjacent flow> stays unchanged\n"
+            "- Tests cover the new behavior\n"
+            "- Documentation or help text is updated if user-visible behavior changed\n"
+        ),
+        "guardrail": (
+            "# Goal\n\nReject or block <invalid input / unsafe action> before <bad outcome> happens. "
+            "Keep the normal success path unchanged.\n\n## Acceptance criteria\n\n"
+            "- <invalid input> fails with a clear error or message\n"
+            "- <bad side effect> does not happen for invalid input\n"
+            "- Existing valid behavior stays unchanged\n"
+            "- Tests cover the new validation or guardrail\n"
+        ),
+        "refactor": (
+            "# Goal\n\nRefactor <module / component / command> to improve "
+            "<maintainability / duplication / structure> without changing external behavior.\n\n"
+            "## Acceptance criteria\n\n- Behavior stays the same for existing supported inputs\n"
+            "- The targeted duplication or structural problem is reduced\n"
+            "- Existing tests still pass\n"
+            "- New or updated tests cover the area if needed to lock behavior in place\n"
+        ),
+        "test-coverage": (
+            "# Goal\n\nAdd or improve automated tests for <feature / module / workflow>. "
+            "Do not change production behavior unless a small testability fix is required.\n\n"
+            "## Acceptance criteria\n\n- Tests cover the key success path for <feature>\n"
+            "- Tests cover at least one important failure or edge case\n"
+            "- Production changes stay minimal and scoped to testability if needed\n"
+            "- The relevant test command passes\n"
+        ),
+        "docs": (
+            "# Goal\n\nImprove <doc / README / onboarding page> so a new user can complete "
+            "<specific outcome> without guessing.\n\n## Acceptance criteria\n\n"
+            "- The doc clearly explains <specific concept or setup path>\n"
+            "- Steps are ordered and runnable\n"
+            "- Ambiguous wording or missing prerequisites are removed\n"
+            "- The updated doc matches current behavior in the codebase\n"
+        ),
+    }
+    selected = templates.get("guardrail" if label == "bug-fix" else label)
+    if selected is None:
+        raise ValueError(
+            "Unknown PROMPT.md template "
+            f"{label!r}. Valid templates: feature-spec, guardrail/bug-fix, refactor, "
+            "test-coverage, docs."
+        )
+    return f"{STARTER_PROMPT_SENTINEL}\n\n{selected}"
+
+
 def starter_prompt_template() -> str:
     """Return the canonical starter PROMPT.md template."""
     return (
@@ -170,7 +229,7 @@ def missing_prompt_validation_hint() -> str:
     """Return canonical validation guidance when PROMPT.md is missing."""
     return (
         "PROMPT.md is the goal/acceptance-criteria document Ralph Workflow reads as its "
-        f"task input. Run `{INIT_COMMAND}` to scaffold PROMPT.md and project config files, "
+        f"task input. Run `{INIT_COMMAND}` to scaffold PROMPT.md and user-global config, "
         "then edit PROMPT.md with the task you want Ralph Workflow to run. "
         f"{getting_started_pointer_sentence()}"
     )

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from rich.text import Text
 
 from ralph import __version__
+from ralph.agents.agent_install_links import AGENT_INSTALL_URLS
 from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.display.context import DisplayContext
 from ralph.onboarding import (
@@ -21,13 +22,6 @@ if TYPE_CHECKING:
 
     from ralph.config.bootstrap import BootstrapResult
     from ralph.display.context import DisplayContext
-
-_KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
-    "claude": "https://docs.claude.com/claude-code",
-    "opencode": "https://opencode.ai",
-    "nanocoder": "https://docs.nanocollective.org/nanocoder/docs",
-    "agy": "https://github.com/google-antigravity/antigravity-cli",
-}
 
 
 def _build_agent_availability_content(
@@ -49,7 +43,7 @@ def _build_agent_availability_content(
                     t.append("on PATH", style="theme.status.success")
                     avail_lines.append(t)
                 elif status == "missing_on_path":
-                    install_url = _KNOWN_AGENT_INSTALL_URLS.get(registry_name.lower())
+                    install_url = AGENT_INSTALL_URLS.get(registry_name.lower())
                     t = Text(f"  • {label}: ")
                     t.append("⚠ missing (not on PATH)", style="theme.status.warning")
                     if install_url:
@@ -127,6 +121,7 @@ def emit_first_run_welcome(
     results: list[BootstrapResult],
     *,
     agent_registry: HasListAgents | None = None,
+    newly_enabled: list[str] | None = None,
     is_regenerate: bool = False,
     display_context: DisplayContext,
 ) -> None:
@@ -135,6 +130,7 @@ def emit_first_run_welcome(
     Args:
         results: Bootstrap results from a bootstrap operation.
         agent_registry: Optional agent registry for availability checking.
+        newly_enabled: Agents automatically enabled because their CLI was found on PATH.
         is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
         display_context: Display context for adaptive layout (required).
             The banner and panel are both emitted on ``display_context.console``.
@@ -179,6 +175,13 @@ def emit_first_run_welcome(
             content.append(summary)
             content.append(Text())  # blank line
 
+    if newly_enabled:
+        content.append(
+            Text(
+                "Auto-enabled agents (found on PATH): " + ", ".join(newly_enabled),
+                style="theme.status.success",
+            )
+        )
     if not is_regenerate:
         content.extend(_build_agent_availability_content(agent_registry))
 

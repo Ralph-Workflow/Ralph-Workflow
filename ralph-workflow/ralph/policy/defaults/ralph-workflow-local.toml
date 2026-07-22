@@ -34,11 +34,6 @@
 # max_cycles = 3                        # max full fallback cycles through a drain (>=1)
 # execution_history_limit = 1000        # max execution history entries in memory (>=1)
 
-# [general.provider_fallback] — Provider/model fallbacks keyed by agent name
-# Uncomment and list agents as keys; each value is an ordered list of fallback models/providers
-# Example: { claude = ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"] }
-# provider_fallback = {}
-
 # [general.workflow] — Workflow automation flags
 [general.workflow]
 # checkpoint_enabled = true     # enable checkpoint/resume functionality

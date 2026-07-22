@@ -249,6 +249,35 @@ def test_diagnose_alias_path_status_rendered_in_cli(
         )
 
 
+def test_diagnose_missing_agent_shows_install_link_and_config_section(
+    clean_env: dict[str, str],
+) -> None:
+    """Each missing agent row must name its install page and TOML section."""
+    del clean_env
+    agent = AgentConfig(cmd="codex")
+    registry = AgentRegistry.from_config(UnifiedConfig())
+    registry.register("codex", agent)
+    output = StringIO()
+    ctx = make_display_context(
+        console=Console(file=output, force_terminal=False, theme=RALPH_THEME, width=200), env={}
+    )
+
+    with (
+        patch("ralph.cli.commands.diagnose.load_config", return_value=UnifiedConfig()),
+        patch("ralph.cli.commands.diagnose.AgentRegistry.from_config", return_value=registry),
+        patch(
+            "ralph.cli.commands.diagnose.check_agent_availability",
+            return_value=[("codex", "missing")],
+        ),
+    ):
+        assert check_agents(None, display_context=ctx) is True
+
+    rendered = output.getvalue()
+    assert "https://codex.openai.com" in rendered
+    assert "edit [agents.codex]" in rendered
+    assert "ralph-workflow.toml" in rendered
+
+
 def test_build_next_steps_no_prompt_recommends_init() -> None:
     """_build_next_steps must recommend ralph --init when PROMPT.md is absent."""
     steps = build_next_steps(

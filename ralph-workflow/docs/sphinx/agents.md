@@ -44,29 +44,11 @@ phases to:
 | `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent; `pi --mode json <prompt>`       |
 | `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; headless `--print` mode; opt-in     |
 
-Beyond the eight built-ins, the registry resolves dynamic `<agent>/<model>`
-aliases through `_resolve_dynamic_agent`. So `agy/Gemini 3.5 Flash (Medium)`
-is a valid agent spec that resolves at runtime to the AGY binary with the
-named model. The eight canonical `agy models` display names accepted by
-`agy models` are:
-
-- `Gemini 3.5 Flash (Medium)`
-- `Gemini 3.5 Flash (High)`
-- `Gemini 3.5 Flash (Low)`
-- `Gemini 3.1 Pro (Low)`
-- `Gemini 3.1 Pro (High)`
-- `Claude Sonnet 4.6 (Thinking)`
-- `Claude Opus 4.6 (Thinking)`
-- `GPT-OSS 120B (Medium)`
-
-Codex aliases use `codex/<model>` (for example,
-`codex/gpt-5.3-codex`). Add `[effort=low]`, `[effort=medium]`,
-`[effort=high]`, or `[effort=xhigh]` to set that invocation's Codex reasoning
-effort, such as `codex/gpt-5.3-codex[effort=high]`. Ralph Workflow passes the model via
-`--model` and the effort through Codex's `model_reasoning_effort` configuration
-override. This support selects Codex models; it does not introduce a generic
-third-party provider router. Codex's configured OpenAI or supported local OSS
-provider settings remain owned by Codex.
+The registry resolves dynamic aliases such as
+`agy/Gemini 3.5 Flash (Medium)` at runtime. Their syntax differs by agent;
+use the complete [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
+rather than assuming one shared provider/model format. It includes every
+built-in agent, a working example, and the literal CLI flags Ralph Workflow emits.
 
 For chain and drain routing — using one agent's output as the next agent's
 input across phases — see [Configuration](configuration.md).
@@ -175,7 +157,8 @@ unattended execution. Codex has no Ralph-managed resume/session flag.
 ### OpenCode
 
 The OpenCode builder uses `--approve` for unattended approval plus
-provider-specific flags forwarded through `--provider`.
+`-m <provider>/<model>` when a model alias is selected. See the complete
+[model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference).
 
 ### Nanocoder
 

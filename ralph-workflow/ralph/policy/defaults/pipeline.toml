@@ -2,11 +2,17 @@
 #
 # This bundled default is authored as explicit blocks and compiled by the loader
 # into the flat runtime phase graph used by reducer/checkpoint/display code.
+# ============================================================
+# OPTIONAL — everything below this line has a working default.
+# Skip this file entirely unless you know you need it.
+# ============================================================
+# Edit this only if you are changing which checks or phases run in the pipeline.
 
 entry_block = "developer_iteration"
 terminal_phase = "complete"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you need to tune how often a loop can run.
 # Loop counters
 # ---------------------------------------------------------------------------
 
@@ -15,7 +21,9 @@ default_max = 10
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]
-default_max = 1
+# Raise above 0 only when a smaller planning model needs extra passes to self-correct;
+# capable planners usually do not need it, and each pass costs more.
+default_max = 0
 description = "Planning analysis loop iteration counter"
 
 [loop_counters.commit_cleanup_iteration]
@@ -23,6 +31,7 @@ default_max = 3
 description = "Commit cleanup loop iteration counter"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you need to change the total development-cycle budget.
 # Budget counters
 # ---------------------------------------------------------------------------
 
@@ -32,6 +41,7 @@ tracks_budget = true
 default_max = 5
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing the workflow phases or their order.
 # Block-authored default workflow
 # ---------------------------------------------------------------------------
 
@@ -246,6 +256,7 @@ on_success = "failed_terminal"
 on_loopback = "failed_terminal"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing what happens after a commit.
 # Post-commit budget-guarded routing
 # ---------------------------------------------------------------------------
 
@@ -268,6 +279,7 @@ phase = "development_final_commit"
 budget_state = "no_review"
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing retry behavior.
 # Default retry policy
 # ---------------------------------------------------------------------------
 
@@ -277,6 +289,7 @@ retry_delay_ms = 1000
 retry_in_session = false
 
 # ---------------------------------------------------------------------------
+# Edit this only if you are changing recovery after an agent failure.
 # Recovery policy
 # ---------------------------------------------------------------------------
 

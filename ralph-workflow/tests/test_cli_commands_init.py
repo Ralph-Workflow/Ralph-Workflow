@@ -83,7 +83,7 @@ def test_init_command_calls_ensure_baseline_capabilities(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     assert called, "ensure_baseline_capabilities was not called"
 
@@ -115,7 +115,7 @@ def test_init_command_prints_capability_summary(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
     output = stream.getvalue()
     assert "Built-in" in output, "Expected 'Built-in' label in init output"
@@ -139,11 +139,11 @@ def test_init_command_skill_failure_does_not_block_init(
     )
 
     # Should not raise
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
 
-    # Files should still be created
+    # Prompt and global configuration setup still complete.
     assert (tmp_path / "PROMPT.md").exists()
-    assert (tmp_path / ".agent" / "mcp.toml").exists()
+    assert not (tmp_path / ".agent").exists()
 
     # Error should be silently swallowed (no crash)
     output = stream.getvalue()
@@ -178,11 +178,11 @@ def test_init_command_runs_capability_refresh_on_every_run(
         fake_ensure,
     )
 
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert calls == 1
 
     # Re-run also runs the capability refresh.
-    init_module.init_command(template="default")
+    init_module.init_command(template=None)
     assert calls == 2
 
     output = stream.getvalue()

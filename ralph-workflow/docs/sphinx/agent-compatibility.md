@@ -8,6 +8,28 @@ Ralph Workflow's review phase is agent-agnostic in its prompts. Different agents
 
 Eight built-in agents ship with Ralph Workflow. The list below covers their CLI, transport, parser, and known caveats in a uniform shape.
 
+### Model and provider syntax reference
+
+Use the alias exactly as shown in an `[agent_chains]` list. The syntax is
+agent-specific: Ralph Workflow does not translate one shared provider/model format.
+The bundled chains work without any change; use this table only when choosing
+which model an agent should run.
+
+| Agent | Alias to type | Worked example | Literal CLI flag(s) Ralph Workflow emits |
+| --- | --- | --- | --- |
+| Claude Code (`claude`) | `claude/<model>` | `claude/opus` | `--model opus` |
+| Claude Code headless (`claude-headless`) | `claude-headless/<model>` | `claude-headless/sonnet` | `--model sonnet` |
+| Codex (`codex`) | `codex/<model>[effort=<level>]` | `codex/gpt-5.4[effort=high]` | `--model gpt-5.4 -c 'model_reasoning_effort = "high"'` |
+| OpenCode (`opencode`) | `opencode/<provider>/<model>` | `opencode/openai/gpt-5.4` | `-m openai/gpt-5.4` |
+| Nanocoder (`nanocoder`) | `nanocoder/<provider>/<model>` | `nanocoder/ollama/llama3.1` | `--provider ollama --model llama3.1` |
+| Google Anti Gravity (`agy`) | `agy/<display name>` | `agy/Claude Sonnet 4.6 (Thinking)` | `--model 'Claude Sonnet 4.6 (Thinking)'` |
+| Pi (`pi`) | `pi/<provider/model[:thinking]>` | `pi/anthropic/claude-sonnet-4:high` | `--model anthropic/claude-sonnet-4:high` |
+| Cursor (`cursor`) | `cursor/<model id>` | `cursor/claude-opus-4-8[context=1m,effort=high,fast=false]` | `--model 'claude-opus-4-8[context=1m,effort=high,fast=false]'` |
+
+OpenCode is the only built-in agent that uses the short `-m` flag. Nanocoder
+is the only one that sends provider and model as separate flags. Cursor keeps
+its full model ID, including bracket parameters, unchanged.
+
 ### Claude Code
 
 - **CLI**: `claude`
@@ -43,7 +65,7 @@ json_parser = "codex"
 
 - **CLI**: `opencode`
 - **Transport**: `opencode`
-- **Args**: `--json`, `<PROMPT>`, plus `--approve` for unattended approval and provider-specific flags forwarded through `--provider`.
+- **Args**: `--json`, `<PROMPT>`, plus `--approve` for unattended approval and `-m <provider>/<model>` when a model alias is selected.
 - **Parser**: `opencode` (required, not interchangeable with the generic parser)
 
 ```toml

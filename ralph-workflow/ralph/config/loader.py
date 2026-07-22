@@ -23,6 +23,9 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 from pydantic import ValidationError
 
+from ralph.config.agent_config import AgentConfig
+from ralph.config.config_error_messages import format_config_validation_error
+from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
 
 if TYPE_CHECKING:
@@ -30,6 +33,10 @@ if TYPE_CHECKING:
 
 GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
+
+
+class ConfigTomlError(ValueError):
+    """A malformed main configuration file that needs user correction."""
 
 
 def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
@@ -66,11 +73,38 @@ def load_toml(path: Path) -> dict[str, object]:
     try:
         with path.open("rb") as fh:
             data: dict[str, object] = tomllib.load(fh)
-        logger.debug("Loaded config from {}", path)
-        return data
-    except Exception as exc:
-        logger.warning("Failed to parse config at {}: {}", path, exc)
-        return {}
+    except cast("type[ValueError]", tomllib.TOMLDecodeError) as exc:
+        raise ConfigTomlError(
+            f"What failed: Ralph could not read {path}: {exc}.\n"
+            "Why it matters: settings in a malformed file are not safe to use.\n"
+            f"Fix: correct the TOML syntax in {path}, then run `ralph --check-config`."
+        ) from exc
+    logger.debug("Loaded config from {}", path)
+    return data
+
+
+def warn_unknown_fields(data: dict[str, object], path: Path) -> None:
+    """Warn about misspelled fields in the closed main-config schema."""
+    _warn_unknown_mapping_fields(data, UnifiedConfig.model_fields, path, "")
+    general = data.get("general")
+    if isinstance(general, dict):
+        _warn_unknown_mapping_fields(general, GeneralConfig.model_fields, path, "general.")
+    agents = data.get("agents")
+    if isinstance(agents, dict):
+        for name, agent in agents.items():
+            if isinstance(name, str) and isinstance(agent, dict):
+                _warn_unknown_mapping_fields(
+                    agent, AgentConfig.model_fields, path, f"agents.{name}."
+                )
+
+
+def _warn_unknown_mapping_fields(
+    data: dict[str, object], known_fields: object, path: Path, prefix: str
+) -> None:
+    field_names = set(cast("dict[str, object]", known_fields))
+    for field in data:
+        if field not in field_names:
+            logger.warning("Unknown configuration field `{}` in {}.", f"{prefix}{field}", path)
 
 
 def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
@@ -193,6 +227,8 @@ def load_config(
     global_data = _convert_legacy_config(global_data)
     propagated_data = _convert_legacy_config(propagated_data)
     local_data = _convert_legacy_config(local_data)
+    warn_unknown_fields(global_data, _global_config_path())
+    warn_unknown_fields(local_data, local_path)
 
     # Merge: global -> propagated -> local
     merged = deep_merge(global_data, propagated_data)
@@ -207,7 +243,7 @@ def load_config(
         logger.debug("Configuration validated successfully")
         return config
     except ValidationError as exc:
-        logger.error("Configuration validation failed:\n{}", exc)
+        logger.error(format_config_validation_error(exc, local_path))
         raise SystemExit(1) from exc
 
 
@@ -222,8 +258,9 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
     """
     data = load_toml(config_path)
     data = _convert_legacy_config(data)
+    warn_unknown_fields(data, config_path)
     try:
         return UnifiedConfig.model_validate(data)
     except ValidationError as exc:
-        logger.error("Configuration validation failed:\n{}", exc)
+        logger.error(format_config_validation_error(exc, config_path))
         raise SystemExit(1) from exc
