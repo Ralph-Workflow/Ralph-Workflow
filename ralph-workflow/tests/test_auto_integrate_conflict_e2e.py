@@ -40,6 +40,7 @@ import pytest
 
 from ralph.agents.registry import AgentRegistry
 from ralph.config.models import UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.git.merge import branch_sha
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
@@ -48,6 +49,7 @@ from ralph.pipeline.auto_integrate_record import record_path
 from ralph.pipeline.conflict_resolution import driver as resolution_driver
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
@@ -61,13 +63,6 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 _PROMPT_RELATIVE_PATH = (
     Path(".agent") / "tmp" / "rebase_conflict_resolution_prompt.md"
 )
-
-#: Stand-in for the pipeline dependency bundle. The resolver refuses to
-#: run without one (an MCP-less invocation is the defect this pipeline
-#: exists to remove); the real bundle is only consumed by the agent
-#: launch, which these tests replace.
-_PIPELINE_DEPS_SENTINEL = "pipeline-deps-sentinel"
-
 
 def _run(
     repo_root: Path, *args: str, timeout: float = 20.0
@@ -142,6 +137,11 @@ def _commit_phase_def() -> PhaseDefinition:
     raise AssertionError(message)
 
 
+def _pipeline_deps() -> PipelineDeps:
+    """Return a real dependency bundle with the runner resolver unset."""
+    return PipelineDeps(display_context=make_display_context())
+
+
 def _install_editing_agent(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
     """Stub the agent LAUNCH with a file-editing, git-free resolver agent.
 
@@ -200,7 +200,7 @@ def test_production_resolver_factory_resolves_a_real_conflict_end_to_end(
         registry=AgentRegistry.from_config(config),
         display=MagicMock(),
         config=config,
-        pipeline_deps=_PIPELINE_DEPS_SENTINEL,
+        pipeline_deps=_pipeline_deps(),
         workspace_scope=WorkspaceScope(tmp_git_repo),
     )
 
@@ -243,7 +243,7 @@ def test_runner_commit_seam_drives_the_full_conflict_chain(
         display=MagicMock(),
         policy_bundle=_default_policy_bundle(),
         registry=AgentRegistry.from_config(config),
-        pipeline_deps=_PIPELINE_DEPS_SENTINEL,
+        pipeline_deps=_pipeline_deps(),
     )
 
     assert outcome is not None

@@ -48,12 +48,14 @@ import pytest
 
 from ralph.agents.registry import AgentRegistry
 from ralph.config.models import UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.git.merge import branch_sha
 from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
 from ralph.pipeline.auto_integrate_agent import build_agent_conflict_resolver
 from ralph.pipeline.auto_integrate_record import record_path
 from ralph.pipeline.conflict_resolution import driver as resolution_driver
+from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
@@ -64,12 +66,6 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 _CONFLICT_MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
-
-#: Stand-in for the pipeline dependency bundle. The resolver refuses to
-#: run without one (an MCP-less invocation is the defect the resolution
-#: pipeline exists to remove); the real bundle is only consumed by the
-#: agent launch, which these tests replace.
-_PIPELINE_DEPS_SENTINEL = "pipeline-deps-sentinel"
 
 _MERGED_CONTENT = "feature version\nbase version 1\n"
 _UNRESOLVED_CONTENT = (
@@ -136,6 +132,11 @@ def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
 def _default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
+
+
+def _pipeline_deps() -> PipelineDeps:
+    """Return a real dependency bundle with the runner resolver unset."""
+    return PipelineDeps(display_context=make_display_context())
 
 
 def _install_editing_agent(
@@ -211,7 +212,7 @@ def _production_resolver(
         registry=AgentRegistry.from_config(config),
         display=MagicMock(),
         config=config,
-        pipeline_deps=_PIPELINE_DEPS_SENTINEL,
+        pipeline_deps=_pipeline_deps(),
         workspace_scope=WorkspaceScope(repo_root),
     )
 
@@ -227,7 +228,7 @@ def _startup_context(repo_root: Path, config: UnifiedConfig) -> MagicMock:
     ctx.workspace_scope = WorkspaceScope(repo_root)
     ctx.policy_bundle = _default_policy_bundle()
     ctx.registry = AgentRegistry.from_config(config)
-    ctx.pipeline_deps = _PIPELINE_DEPS_SENTINEL
+    ctx.pipeline_deps = _pipeline_deps()
     return ctx
 
 
