@@ -45,7 +45,11 @@ def _render_pi_mcp_extension(endpoint: str) -> str:
 
 const ENDPOINT = {endpoint_literal};
 const FALLBACK_SCHEMA = {{ type: "object", additionalProperties: true }};
-const TERMINAL_TOOLS = new Set(["declare_complete", "ralph_submit_artifact", "ralph_finalize_plan"]);
+const TERMINAL_TOOLS = new Set([
+  "declare_complete",
+  "ralph_submit_md_artifact",
+  "ralph_finalize_md_artifact",
+]);
 
 let nextId = 1;
 let sessionId: string | undefined;

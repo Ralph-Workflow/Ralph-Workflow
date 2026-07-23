@@ -43,10 +43,9 @@ class ReceiptPersistenceError(RuntimeError):
     Without this guard, ``write_artifact_receipt`` returns successfully even
     when no durable receipt was written \u2014 letting artifact submission
     continue against a missing receipt and producing a silent failure
-    downstream when the completion gate reads it. ``execute_ops_with_rollback``
-    already propagates this exception upward to rollback the in-flight
-    submit (the receipt op is the last step, so the artifact and its
-    handoff would also be unrolled).
+    downstream when the completion gate reads it. Canonical submission
+    propagates this exception upward and rolls back the in-flight artifact
+    and handoff writes.
     """
 
 

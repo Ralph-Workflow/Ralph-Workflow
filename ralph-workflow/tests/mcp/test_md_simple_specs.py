@@ -28,7 +28,8 @@ def test_specs_register_all_simple_artifact_types() -> None:
     }
 
     assert expected <= {spec.artifact_type for spec in registered_specs()}
-    assert len(ANALYSIS_DECISION_SPECS) == 3
+    assert len(ANALYSIS_DECISION_SPECS) == 4
+    assert get_spec("policy_remediation_analysis_decision") in ANALYSIS_DECISION_SPECS
     assert FIX_RESULT_SPEC.artifact_type == "fix_result"
     assert ISSUES_SPEC.artifact_type == "issues"
     assert PRODUCT_SPEC.artifact_type == "product_spec"

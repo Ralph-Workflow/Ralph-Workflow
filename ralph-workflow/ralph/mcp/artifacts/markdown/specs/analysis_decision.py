@@ -22,6 +22,7 @@ _ANALYSIS_TYPES = (
     "planning_analysis_decision",
     "development_analysis_decision",
     "review_analysis_decision",
+    "policy_remediation_analysis_decision",
 )
 
 

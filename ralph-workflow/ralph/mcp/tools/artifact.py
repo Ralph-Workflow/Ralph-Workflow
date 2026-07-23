@@ -7,7 +7,6 @@ share with canonical submission.
 
 from __future__ import annotations
 
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -16,24 +15,12 @@ from ralph.mcp.artifacts._artifact_persistence import (
     DEFAULT_ARTIFACT_PERSISTENCE,
     ArtifactPersistence,
 )
-from ralph.mcp.artifacts.commit_message import normalize_commit_message_content
-from ralph.mcp.artifacts.development_result import normalize_development_result_content
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-from ralph.mcp.artifacts.plan import normalize_plan_artifact_content
-from ralph.mcp.artifacts.product_spec import normalize_product_spec_content
-from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
-from ralph.mcp.artifacts.typed_artifacts import (
-    normalize_analysis_decision_content,
-    normalize_commit_cleanup_content,
-    normalize_fix_result_content,
-    normalize_issues_content,
-)
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.mcp.tools._submit_op import SubmitOp
     from ralph.mcp.tools.coordination import CoordinationSessionLike, WorkspaceLike
 
 
@@ -63,20 +50,6 @@ _KNOWN_ARTIFACT_TYPES = frozenset({
     "review_analysis_decision", "development_result", "product_spec", "issues",
     "fix_result", "smoke_test_result", "commit_cleanup", "commit_message",
 })
-
-
-def execute_ops_with_rollback(ops: list[SubmitOp]) -> None:
-    """Run operations atomically enough for the canonical writer."""
-    completed: list[SubmitOp] = []
-    try:
-        for op in ops:
-            op.run()
-            completed.append(op)
-    except Exception:
-        for op in reversed(completed):
-            with suppress(Exception):
-                op.undo()
-        raise
 
 
 def _artifact_dir(workspace: WorkspaceLike) -> Path:
@@ -120,25 +93,6 @@ def _resolve_history_enabled(artifact_type: str, workspace_root: Path, drain: st
         return False
 
 
-def _normalize_artifact_payload(artifact_type: str, parsed_content: dict[str, object], **_: object) -> dict[str, object]:
-    """Compatibility normalizer for trusted markdown-parser output and legacy reads."""
-    normalizers = {
-        "plan": normalize_plan_artifact_content,
-        "development_result": normalize_development_result_content,
-        "commit_message": normalize_commit_message_content,
-        "commit_cleanup": normalize_commit_cleanup_content,
-        "issues": normalize_issues_content,
-        "fix_result": normalize_fix_result_content,
-        "smoke_test_result": normalize_smoke_test_result_content,
-        "product_spec": normalize_product_spec_content,
-        "planning_analysis_decision": normalize_analysis_decision_content,
-        "development_analysis_decision": normalize_analysis_decision_content,
-        "review_analysis_decision": normalize_analysis_decision_content,
-    }
-    normalizer = normalizers.get(artifact_type)
-    return normalizer(parsed_content) if normalizer is not None else parsed_content
-
-
 __all__ = [
     "DEFAULT_ARTIFACT_HANDLER_DEPS",
     "ArtifactHandlerDeps",
@@ -147,5 +101,4 @@ __all__ = [
     "_session_drain",
     "_session_run_id",
     "_workspace_root",
-    "execute_ops_with_rollback",
 ]

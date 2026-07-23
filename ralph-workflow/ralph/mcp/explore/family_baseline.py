@@ -175,7 +175,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
         name="submit_development_result",
         current_operation_script=(
             "read_file",
-            "ralph_submit_artifact",
+            "ralph_submit_md_artifact",
         ),
         counters=_counters(
             transcript_tokens=376,
@@ -185,7 +185,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_precision=1.0,
         ),
         catalog_token_evidence=(
-            "read_file + ralph_submit_artifact schema tokens (Phase 0): "
+            "read_file + ralph_submit_md_artifact schema tokens (Phase 0): "
             "~376 transcript tokens, ~1 KB returned bytes per scripted call."
         ),
     ),
