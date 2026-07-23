@@ -32,9 +32,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
-
-import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import runner
@@ -47,15 +46,10 @@ from ralph.pipeline.effects import (
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
+from ralph.policy.models import PolicyBundle
 
-pytestmark = [
-    # The runner-seam tests in this file drive
-    # ``_run_pipeline_step`` with the real default policy bundle;
-    # they belong with the real-git auto-integrate suite and are
-    # excluded from the 60s make-test budget (kept on the
-    # test-auto-integrate-e2e budget-tracked step instead).
-    pytest.mark.subprocess_e2e,
-]
+if TYPE_CHECKING:
+    from ralph.policy.models import AgentsPolicy, ArtifactsPolicy, PipelinePolicy
 
 
 def _default_config() -> UnifiedConfig:
@@ -71,6 +65,17 @@ def _stub_state() -> PipelineState:
     is otherwise opaque to the assertions below.
     """
     return PipelineState(phase="development", rebase=RebaseState())
+
+
+def _policy_bundle(
+    default_policy: tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy],
+) -> PolicyBundle:
+    agents, pipeline, artifacts = default_policy
+    return PolicyBundle.model_construct(
+        agents=agents,
+        pipeline=pipeline,
+        artifacts=artifacts,
+    )
 
 
 def test_phase_transition_integration_events_cover_every_non_commit_event() -> None:
@@ -231,6 +236,7 @@ def test_inline_path_threads_outcome_into_returned_state(monkeypatch) -> None:
 
 def test_run_pipeline_step_inline_path_runs_boundary_integration(
     monkeypatch,
+    default_policy,
 ) -> None:
     """Step 3: ``_run_pipeline_step``'s inline-effect early-return
     path runs the boundary integration once and threads the outcome.
@@ -243,12 +249,7 @@ def test_run_pipeline_step_inline_path_runs_boundary_integration(
     """
     from ralph.config.enums import Verbosity
     from ralph.display.context import make_display_context
-    from ralph.policy.loader import load_policy
-
-    defaults_dir = (
-        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    )
-    bundle = load_policy(defaults_dir)
+    bundle = _policy_bundle(default_policy)
     state = _stub_state()
     expected_outcome = RebaseState(
         last_action="rebased", last_target="main", fast_forwarded=True
@@ -270,7 +271,7 @@ def test_run_pipeline_step_inline_path_runs_boundary_integration(
     registry.get.return_value = None
 
     workspace_scope = MagicMock()
-    workspace_scope.root = Path("/tmp/no-such-workspace-for-this-test")
+    workspace_scope.root = Path("/workspace")
 
     result = runner._run_pipeline_step(
         state=state,
@@ -334,6 +335,7 @@ def test_boundary_integration_does_not_change_state_phase(monkeypatch) -> None:
 
 def test_non_state_returning_inline_effect_does_not_attempt_copy(
     monkeypatch,
+    default_policy,
 ) -> None:
     """``ExitSuccessEffect`` returns an int, not a PipelineState. The
     inline path must run the integration for its git side-effect
@@ -346,12 +348,7 @@ def test_non_state_returning_inline_effect_does_not_attempt_copy(
     """
     from ralph.config.enums import Verbosity
     from ralph.display.context import make_display_context
-    from ralph.policy.loader import load_policy
-
-    defaults_dir = (
-        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    )
-    bundle = load_policy(defaults_dir)
+    bundle = _policy_bundle(default_policy)
     state = _stub_state()
     expected_outcome = RebaseState(
         last_action="rebased", last_target="main", fast_forwarded=True
@@ -375,7 +372,7 @@ def test_non_state_returning_inline_effect_does_not_attempt_copy(
     registry.get.return_value = None
 
     workspace_scope = MagicMock()
-    workspace_scope.root = Path("/tmp/no-such-workspace-for-this-test")
+    workspace_scope.root = Path("/workspace")
 
     # The call MUST NOT raise ``AttributeError`` on the int return;
     # the int is returned untouched, the integration outcome is
