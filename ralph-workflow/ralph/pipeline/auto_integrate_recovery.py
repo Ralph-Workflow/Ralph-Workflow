@@ -433,62 +433,18 @@ def _lock_holder_is_dead(lock_path: Path) -> bool:
     whitespace-only file is treated as "no PID", which the
     spec resolves as dead (A9: "liveness check, not age").
 
-    Implementation note: each branch delegates to one of the
-    small helpers below so the top-level function keeps the
-    ruff PLR0911 (too-many-return-statements) cap while the
-    verdict logic stays testable per edge case.
+    Implementation lives in
+    :mod:`ralph.pipeline.auto_integrate_recovery_lock`; this
+    wrapper preserves the ``recovery._lock_holder_is_dead``
+    seam referenced from
+    :mod:`ralph.pipeline.auto_integrate_catalog_rationales`
+    and the test suite.
     """
-    pid = _read_lock_pid(lock_path)
-    if pid is None:
-        # Missing / unreadable / non-numeric / non-positive:
-        # nothing observable, so treat as dead per A9.
-        return True
-    return not _pid_is_alive(pid)
+    from ralph.pipeline.auto_integrate_recovery_lock import (
+        _lock_holder_is_dead as _impl,
+    )
 
-
-def _read_lock_pid(lock_path: Path) -> int | None:
-    """Return the parsed PID from ``lock_path`` or ``None`` when absent.
-
-    Reads the standard ``git`` lock convention: a single line of plain
-    text holding the writing process's PID. ``None`` covers every
-    shape that should be treated as "no PID" -- file unreadable,
-    empty, whitespace-only, non-numeric, or non-positive.
-    """
-    try:
-        raw = lock_path.read_text(encoding="utf-8", errors="replace").strip()
-    except OSError:
-        return None
-    if not raw:
-        return None
-    try:
-        pid = int(raw.splitlines()[0])
-    except ValueError:
-        return None
-    if pid <= 0:
-        return None
-    return pid
-
-
-def _pid_is_alive(pid: int) -> bool:
-    """True when ``os.kill(pid, 0)`` confirms ``pid`` is a live process.
-
-    ``ProcessLookupError`` is the canonical "no such process" signal
-    and means the PID is dead; ``PermissionError`` means a different
-    process owns the PID and is therefore LIVE; any other ``OSError``
-    is treated as LIVE so a missed reclaim costs one backoff rather
-    than a corrupt checkout.
-    """
-    import os
-
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return True
-    return True
+    return _impl(lock_path)
 
 
 def _rebase_state_dir_is_corrupt(state_dir: Path) -> bool:

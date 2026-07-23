@@ -81,10 +81,15 @@ class TestDisplayContextRefreshed:
         assert refreshed.console is ctx.console
 
     def test_refreshed_preserves_columns_env(self) -> None:
-        """refreshed() must preserve the COLUMNS env override after refresh."""
+        """refreshed() must preserve the COLUMNS env override after refresh.
+
+        When the caller does NOT pass an explicit ``console=``
+        argument, ``injected_console`` is False and ``COLUMNS``
+        wins; ``refreshed()`` must keep that contract across a
+        resize by re-reading the env on every recompute.
+        """
         forced_narrow_width = self.NARROW_WIDTH
-        console = Console(width=120, force_terminal=True)
-        ctx = make_display_context(console=console, env={"COLUMNS": str(forced_narrow_width)})
+        ctx = make_display_context(env={"COLUMNS": str(forced_narrow_width)})
         assert ctx.width == forced_narrow_width
 
         refreshed = ctx.refreshed()

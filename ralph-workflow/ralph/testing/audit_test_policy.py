@@ -99,6 +99,12 @@ _IO_ALLOWLIST: set[str] = {
     "test_doc_adding_a_new_agent",
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
+    # AC-08 silent-skip audit that reads auto_integrate.py source to
+    # enforce that the AC-01 disabled-path and the
+    # phase-transition-pre-check surface both remain byte-identical
+    # (the production source IS the subject under test; a tmp_path
+    # copy would defeat the structural invariant the test pins).
+    "test_auto_integrate_no_silent_skip",
     # Agent spawn site guard that drives the (sync) invoke reader and
     # the (async) SubprocessAgentExecutor.run() paths RUNTIME via
     # recording sync/async fake factories on a real ``ProcessManager``.

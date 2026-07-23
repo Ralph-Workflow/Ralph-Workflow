@@ -173,7 +173,7 @@ def _compute_width(
             ``console=`` argument), the console's own width is
             AUTHORITATIVE: a host ``COLUMNS=200`` inherited from the
             test runner must NOT override the test's explicit
-            ``Console(width=40)``. The previous precedence order
+            40-column Console fixture. The previous precedence order
             consulted ``COLUMNS`` first and silently widened a
             40-column test fixture to whatever the host terminal
             reported, breaking the

@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 import ralph.pipeline.auto_integrate as ai
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import auto_integrate_worktree_state as ai_worktree
 from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrottle
 from ralph.pipeline.auto_integrate_sync import REFRESH_REFRESHED
 from ralph.pipeline.rebase_state import RebaseState
@@ -53,7 +54,13 @@ class _StubGitResult:
 def _record_status_argv(
     monkeypatch: pytest.MonkeyPatch, *, returncode: int
 ) -> list[tuple[str, ...]]:
-    """Replace ``ai.run_git`` with a recorder returning a fixed exit code."""
+    """Replace ``ai_worktree.run_git`` with a recorder returning a fixed exit code.
+
+    ``_worktree_is_clean`` was extracted to
+    :mod:`ralph.pipeline.auto_integrate_worktree_state`, so the
+    helper now reads ``run_git`` from that module's namespace;
+    patching it on ``ai`` would no longer affect the helper.
+    """
     seen: list[tuple[str, ...]] = []
 
     def _fake_run_git(
@@ -62,7 +69,7 @@ def _record_status_argv(
         seen.append(tuple(argv))
         return _StubGitResult(returncode=returncode, stdout="")
 
-    monkeypatch.setattr(ai, "run_git", _fake_run_git)
+    monkeypatch.setattr(ai_worktree, "run_git", _fake_run_git)
     return seen
 
 

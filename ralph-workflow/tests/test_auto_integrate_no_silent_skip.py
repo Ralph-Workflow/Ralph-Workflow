@@ -185,7 +185,11 @@ def _is_no_record_guard(test: ast.expr) -> bool:
     )
 
 
-def _return_node_violates(node: ast.Return, allow_none_paths: tuple[str, ...]) -> bool:
+def _return_node_violates(
+    node: ast.Return,
+    allow_none_paths: tuple[str, ...],
+    parents: dict[int, ast.AST],
+) -> bool:
     """True when ``node`` is a forbidden ``return None`` for this entry point.
 
     Walks up the AST to the nearest enclosing IF / TRY
@@ -198,23 +202,39 @@ def _return_node_violates(node: ast.Return, allow_none_paths: tuple[str, ...]) -
     The exception check is structural: any enclosing
     ``ast.ExceptHandler`` makes the return value safe. The
     other sentinels require a matching guard expression.
+
+    ``parents`` is the pre-built ``id(child) -> parent``
+    map produced by :func:`_build_parent_map`. Threading
+    the map through the helper keeps the AST nodes
+    untouched (stdlib ``ast.AST`` does not declare a
+    ``parent`` attribute, so attaching one dynamically
+    would require an ``attr-defined`` suppression).
     """
     if node.value is None:
         # Bare ``return`` (no value).
         return True
     if isinstance(node.value, ast.Constant) and node.value.value is None:
-        return _check_guard_for_none(node, allow_none_paths)
+        return _check_guard_for_none(node, allow_none_paths, parents)
     return False
 
 
-def _check_guard_for_none(node: ast.Return, allow_none_paths: tuple[str, ...]) -> bool:
-    """Decide whether the surrounding guard covers a ``return None``."""
+def _check_guard_for_none(
+    node: ast.Return,
+    allow_none_paths: tuple[str, ...],
+    parents: dict[int, ast.AST],
+) -> bool:
+    """Decide whether the surrounding guard covers a ``return None``.
+
+    ``parents`` is the ``id(child) -> parent`` map produced
+    by :func:`_build_parent_map`; looking the parent up by
+    identity keeps the AST nodes immutable.
+    """
     # Walk up to the nearest IF / TRY. If we hit the function
     # body without finding one, the return is at the END of the
     # function and there is no guard -- this is a definite
     # silent skip UNLESS the function itself is allowed to
     # return None unconditionally (none currently are).
-    parent: ast.AST | None = node.parent  # type: ignore[attr-defined]
+    parent: ast.AST | None = parents.get(id(node))
     while parent is not None:
         if isinstance(parent, ast.If):
             guard = parent.test
@@ -225,24 +245,31 @@ def _check_guard_for_none(node: ast.Return, allow_none_paths: tuple[str, ...]) -
             # Inside a try/except block -- the exception path
             # is the silent-skip-safe escape.
             return "exception" not in allow_none_paths
-        parent = getattr(parent, "parent", None)
+        parent = parents.get(id(parent))
     # No enclosing branch -- the return is unconditional.
     # That is never allowed under AC-08 (the ONE exception is
     # the disabled path, which is gated on a conditional).
     return True
 
 
-def _attach_parents(tree: ast.AST) -> None:
-    """Walk every node in ``tree`` and set ``node.parent``.
+def _build_parent_map(tree: ast.AST) -> dict[int, ast.AST]:
+    """Build an ``id(child) -> parent`` map for every node in ``tree``.
 
     Python's stdlib AST does not expose parent pointers, so
     the audit must build them itself. The traversal is a
     single DFS over ``ast.iter_child_nodes`` so it stays
     cheap even for functions with thousands of nodes.
+
+    Returning a typed map (instead of attaching a
+    ``parent`` attribute to each node) keeps the AST nodes
+    immutable and avoids the ``attr-defined`` suppression
+    that flagging the dynamic attribute would require.
     """
+    parents: dict[int, ast.AST] = {}
     for node in ast.walk(tree):
         for child in ast.iter_child_nodes(node):
-            child.parent = node  # type: ignore[attr-defined]
+            parents[id(child)] = node
+    return parents
 
 
 @pytest.mark.parametrize(
@@ -267,7 +294,7 @@ def test_public_entry_points_never_return_silently(entry: EntryPoint) -> None:
     except (OSError, TypeError) as exc:
         pytest.fail(f"could not read source for {entry.module}.{entry.name}: {exc}")
     tree = ast.parse(source)
-    _attach_parents(tree)
+    parents = _build_parent_map(tree)
     forbidden: list[str] = []
     for node in ast.walk(tree):
         # Restrict to direct (top-level) returns inside this
@@ -276,7 +303,7 @@ def test_public_entry_points_never_return_silently(entry: EntryPoint) -> None:
         # to this entry point's AC-08 contract.
         if not isinstance(node, ast.Return):
             continue
-        if not _return_node_violates(node, entry.allow_none_paths):
+        if not _return_node_violates(node, entry.allow_none_paths, parents):
             continue
         forbidden.append(
             f"line {node.lineno}: return {'None' if node.value is None or (isinstance(node.value, ast.Constant) and node.value.value is None) else node.value!r}"
@@ -334,7 +361,7 @@ def _auto_integrate_with_a_silent_skip(target: str) -> None:
     return None
 '''
     tree = ast.parse(synthetic)
-    _attach_parents(tree)
+    parents = _build_parent_map(tree)
     fn = tree.body[0]
     violations = []
     for node in ast.walk(fn):
@@ -349,13 +376,13 @@ def _auto_integrate_with_a_silent_skip(target: str) -> None:
             and node.value.value is None
         ):
             # Check the enclosing guard.
-            parent: ast.AST | None = node.parent  # type: ignore[attr-defined]
+            parent: ast.AST | None = parents.get(id(node))
             guarded = False
             while parent is not None:
                 if isinstance(parent, ast.If):
                     guarded = True
                     break
-                parent = getattr(parent, "parent", None)
+                parent = parents.get(id(parent))
             if not guarded:
                 violations.append(f"line {node.lineno}: unconditional return None")
             # If the synthetic had a guard, the test still
@@ -363,7 +390,7 @@ def _auto_integrate_with_a_silent_skip(target: str) -> None:
             # allowed sentinels. We can detect that via the
             # _is_disabled_guard / _is_no_record_guard checks.
             if guarded:
-                inner_parent: ast.AST | None = node.parent  # type: ignore[attr-defined]
+                inner_parent: ast.AST | None = parents.get(id(node))
                 if (
                     isinstance(inner_parent, ast.If)
                     and not _is_disabled_guard(inner_parent.test)

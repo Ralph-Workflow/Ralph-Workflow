@@ -122,6 +122,24 @@ TESTS_ALLOWLIST: set[str] = {
     # real-git fixtures for the conflict chain at the phase-transition
     # and startup seams
     "test_auto_integrate_conflict_seams_e2e.py",
+    # real-git fixtures proving AC-11: hostile user git config (rerere,
+    # gpgsign, autostash, autosquash, updateRefs) is neutralized before
+    # the rebase argv runs. Uses subprocess.run to drive git config +
+    # integration in the per-test repo.
+    "test_auto_integrate_env_pinning.py",
+    # real-git fixtures proving the markerless-conflict path lands the
+    # auto-merge without leaving AUTO_MERGE / MERGE_MSG behind. Uses
+    # subprocess.run to build the conflicted repo and run the resolver.
+    "test_auto_integrate_markerless_conflicts.py",
+    # real-git fixtures proving integration onto a non-``main`` target
+    # branch (release candidate / release branch) lands unchanged. Uses
+    # subprocess.run to set up the alternate-target repo and the
+    # integration argv.
+    "test_auto_integrate_non_main_target.py",
+    # real-git fixtures proving the rung-4 self-resume path lands after
+    # a crash leaves an in-progress rebase. Uses subprocess.run to set
+    # up the crashed state and drive the recovery + resume argv.
+    "test_auto_integrate_rung4_self_resume.py",
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
 }
 

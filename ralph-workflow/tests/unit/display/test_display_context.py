@@ -44,8 +44,17 @@ def test_force_width_overrides_console_width() -> None:
 
 
 def test_columns_env_overrides_console_width() -> None:
-    console = Console(width=120, force_terminal=True)
-    ctx = make_display_context(console=console, env={"COLUMNS": str(_NARROW_TEST_WIDTH)})
+    """Env ``COLUMNS`` overrides the default console width when Ralph built the console.
+
+    When the caller does NOT pass an explicit ``console=`` argument,
+    ``injected_console`` is False and ``COLUMNS`` wins over the
+    console's default width. When the caller DOES pass an explicit
+    ``console=`` argument, the console's own width is AUTHORITATIVE
+    (see ``_compute_width_uncached`` -- ``test_force_width_overrides_console_width``
+    pins the explicit-console case); mixing the two would silently
+    widen a 40-column test fixture under a host ``COLUMNS=200``.
+    """
+    ctx = make_display_context(env={"COLUMNS": str(_NARROW_TEST_WIDTH)})
     assert ctx.width == _NARROW_TEST_WIDTH
 
 

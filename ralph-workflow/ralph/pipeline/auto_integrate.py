@@ -55,7 +55,6 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
-from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
 from ralph.pipeline.auto_integrate_budget_seam import (
@@ -108,6 +107,9 @@ from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
+from ralph.pipeline.auto_integrate_worktree_state import (
+    _worktree_is_clean,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -375,50 +377,21 @@ def auto_integrate_on_phase_transition(
     )
 
 
-def _worktree_is_clean(root: Path) -> bool:
-    """True when no uncommitted TRACKED modification is present.
-
-    Uses the SAME definition of "clean" as
-    :func:`ralph.git.rebase.rebase_preconditions._ensure_clean_worktree`
-    (``git status --porcelain --untracked-files=no``), and for the same
-    reason its docstring records: blocking on untracked files "turned a
-    per-file, git-detectable hazard into a run-wide outage: one scratch
-    file left by a phase disabled integration for every later commit
-    seam".
-
-    This guard used to be the one asymmetric holdout, and it sits on the
-    only seam that carries ANOTHER agent's landing to an agent that is
-    not committing right now. So the asymmetry re-created exactly that
-    outage on the seam where it hurts most: a single stray scratch file
-    silently disabled cross-agent synchronisation for the rest of the
-    run.
-
-    Untracked work in flight is still safe: ``git rebase`` and
-    ``git merge`` refuse non-destructively and per-file for any
-    untracked path they would overwrite, and that refusal already routes
-    into the endpoint-merge fallback via
-    :func:`ralph.pipeline.auto_integrate_rebase_merge.run_rebase_or_merge`.
-    Uncommitted TRACKED modifications still defer the boundary.
-
-    Fails closed (False) on any git failure so the phase-transition
-    hook never integrates on top of a worktree it cannot prove clean.
-    """
-    result = run_git(
-        ("status", "--porcelain", "--untracked-files=no"),
-        cwd=root,
-        label="git-transition-status",
-    )
-    if result.returncode != 0:
-        return False
-    return not result.stdout.strip()
-
-
 def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
     """Whether ``target_sha`` carries commits ``HEAD`` does not have.
 
     An unreadable target pointer is NOT divergence: there is nothing to
     catch up on that this function can prove, and the caller's quiet
     path is the right answer for a question git could not be asked.
+
+    Kept in this module (not extracted to
+    :mod:`ralph.pipeline.auto_integrate_worktree_state` with
+    :func:`_worktree_is_clean`) because the test suite patches
+    ``is_ancestor`` / ``get_head_sha`` on the
+    ``ralph.pipeline.auto_integrate`` namespace to drive this
+    helper; moving it would silently bypass the existing
+    monkeypatch seams in
+    ``tests/test_auto_integrate_boundary_refresh.py``.
     """
     if target_sha is None:
         return False
