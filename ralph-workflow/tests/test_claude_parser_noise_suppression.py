@@ -155,6 +155,39 @@ def test_non_empty_thinking_delta_is_still_emitted() -> None:
     assert thinking[0].content == "deep reasoning"
 
 
+def test_headless_system_plumbing_subtypes_are_suppressed() -> None:
+    """Top-level ``system`` events that carry no agent-authored content must
+    not surface as bare, content-less lines. ``claude -p --output-format
+    =stream-json`` emits ``init``/``hook_started``/``hook_response``/
+    ``thinking_tokens`` system events dozens of times per turn; each one
+    previously fell through to the generic dispatch fallback and emitted an
+    empty ``type="system"`` line, flooding operator-visible output with
+    blank noise while burying the real semantic content.
+    """
+    parser = ClaudeParser()
+    lines = [
+        json.dumps({"type": "system", "subtype": "init", "session_id": "abc"}),
+        json.dumps({"type": "system", "subtype": "hook_started", "hook_id": "h1"}),
+        json.dumps({"type": "system", "subtype": "hook_response", "output": "huge payload"}),
+        json.dumps({"type": "system", "subtype": "thinking_tokens", "estimated_tokens": 4}),
+    ]
+    results = list(parser.parse(iter(lines)))
+    assert results == [], f"Expected pure plumbing system events suppressed, got: {results}"
+
+
+def test_headless_system_compact_boundary_surfaces_with_content() -> None:
+    """A ``system`` subtype outside the known-noise set must still surface,
+    and must carry the subtype as content rather than an empty line, so an
+    operator can see it happened without it being dropped or blank.
+    """
+    parser = ClaudeParser()
+    line = json.dumps({"type": "system", "subtype": "compact_boundary"})
+    results = list(parser.parse(iter([line])))
+    assert len(results) == 1
+    assert results[0].type == "system"
+    assert results[0].content == "compact_boundary"
+
+
 def test_whitespace_only_thinking_in_assistant_message_is_suppressed() -> None:
     """assistant message with whitespace-only thinking block must not produce thinking lines."""
 

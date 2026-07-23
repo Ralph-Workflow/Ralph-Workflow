@@ -23,6 +23,21 @@ _CLAUDE_TOP_LEVEL_LIFECYCLE: Final[frozenset[str]] = frozenset(
     {"message_start", "message_stop", "content_block_stop"}
 )
 
+# ``claude -p --output-format=stream-json`` top-level ``system`` subtypes
+# that carry no agent-authored content -- pure transport/session plumbing
+# (session init metadata, SessionStart hook execution echoes, and periodic
+# thinking-token progress ticks). These fire many times per turn (e.g. one
+# ``thinking_tokens`` event per ~15-20 estimated tokens of reasoning) and
+# must be suppressed at the source, the same way lifecycle events are,
+# rather than falling through to the generic dispatch fallback where each
+# one would surface as a bare, content-less ``type="system"`` line and
+# flood operator-visible output. Session-ID capture for these subtypes
+# already happens independently via ``extract_transport_session_id`` on the
+# raw line, so suppressing them here does not lose any signal.
+_CLAUDE_NOISE_SYSTEM_SUBTYPES: Final[frozenset[str]] = frozenset(
+    {"init", "hook_started", "hook_response", "thinking_tokens"}
+)
+
 
 class ClaudeParser(NdjsonParserBase):
     """Parser for Claude's NDJSON streaming output with robust delta accumulation.
@@ -182,30 +197,39 @@ class ClaudeParser(NdjsonParserBase):
                 yield from self._parse_stream_inner(event, raw)
             else:
                 yield AgentOutputLine(type="stream_event", raw=raw, metadata=obj)
-            return
-
-        if event_type == "content_block_delta":
+        elif event_type == "content_block_delta":
             yield from self._parse_content_block_delta(obj, raw)
-            return
-
-        if event_type == "content_block_start":
+        elif event_type == "content_block_start":
             self._track_content_block_start(obj)
             yield from self._parse_content_block_start(obj, raw)
-            return
-
-        if event_type == "assistant":
+        elif event_type == "assistant":
             yield from self._parse_assistant_message(obj, raw)
-            return
-
-        if event_type == "result":
+        elif event_type == "result":
             yield from self._parse_result_event(obj, raw)
-            return
-
-        if event_type == "error":
+        elif event_type == "error":
             yield from self._parse_error_event(obj, raw)
-            return
+        elif event_type == "system":
+            yield from self._parse_system_event(obj, raw)
+        else:
+            yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
 
-        yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
+    def _parse_system_event(
+        self,
+        obj: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Classify a top-level ``system`` event by its ``subtype``.
+
+        Pure plumbing subtypes (see :data:`_CLAUDE_NOISE_SYSTEM_SUBTYPES`)
+        are suppressed entirely. Any other subtype -- known (e.g.
+        ``compact_boundary``) or a future one this parser has not seen yet
+        -- still surfaces so operators are not left blind to it, but with
+        the subtype as its content instead of an empty line.
+        """
+        subtype = str(obj.get("subtype", ""))
+        if subtype in _CLAUDE_NOISE_SYSTEM_SUBTYPES:
+            return
+        yield AgentOutputLine(type="system", content=subtype or "unknown", raw=raw, metadata=obj)
 
     def _track_content_block_start(self, obj: dict[str, object]) -> None:
         content_block = obj.get("content_block")
