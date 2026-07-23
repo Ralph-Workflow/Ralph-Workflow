@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.artifacts.markdown import parse_and_validate, parse_markdown_document
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.recovery.classifier import FailureCategory
 
@@ -21,19 +24,47 @@ class PhaseArtifactError(ValueError):
 
 
 def load_phase_artifact(workspace: Workspace, path: str) -> dict[str, object]:
-    """Load a persisted MCP artifact wrapper from the workspace."""
+    """Load a legacy JSON artifact or validate a markdown artifact into its envelope."""
     try:
-        content = workspace.read(path)
+        text = workspace.read(path)
     except (FileNotFoundError, OSError) as exc:
         raise PhaseArtifactError(f"Artifact not found at {path}") from exc
 
+    if path.endswith(".json"):
+        return _load_legacy_json_artifact(text, path)
+    return _load_markdown_artifact(text, path)
+
+
+def _load_legacy_json_artifact(text: str, path: str) -> dict[str, object]:
+    """Read the historical JSON envelope without changing its shape."""
     try:
-        raw_obj: object = json.loads(content)
+        raw_obj: object = json.loads(text)
     except (TypeError, json.JSONDecodeError) as exc:
         raise PhaseArtifactError(f"Artifact at {path} must be valid JSON text") from exc
     if not isinstance(raw_obj, dict):
         raise PhaseArtifactError(f"Artifact at {path} must be a JSON object")
     return cast("dict[str, object]", raw_obj)
+
+
+def _load_markdown_artifact(text: str, path: str) -> dict[str, object]:
+    """Validate markdown with its registered spec and retain the legacy envelope."""
+    document, _ = parse_markdown_document(text)
+    artifact_type = document.frontmatter.get("type")
+    if not artifact_type:
+        raise PhaseArtifactError(f"Markdown artifact at {path} must declare frontmatter 'type'")
+
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    try:
+        content, diagnostics = parse_and_validate(text, get_spec(artifact_type))
+    except ValueError as exc:
+        raise PhaseArtifactError(f"Unsupported markdown artifact type {artifact_type!r} at {path}") from exc
+    errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    if errors:
+        first = errors[0]
+        raise PhaseArtifactError(
+            f"Markdown artifact at {path} is invalid at line {first.line}: {first.message}"
+        )
+    return {"type": artifact_type, "content": content}
 
 
 def unwrap_phase_artifact_content(

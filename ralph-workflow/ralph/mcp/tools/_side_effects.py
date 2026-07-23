@@ -67,6 +67,7 @@ REGISTRY: dict[str, SideEffectContract] = {
     "copy_file": _contract("copy_file", "mutate"),
     "delete_path": _contract("delete_path", "mutate"),
     "ralph_submit_artifact": _contract("ralph_submit_artifact", "mutate"),
+    "ralph_submit_md_artifact": _contract("ralph_submit_md_artifact", "mutate"),
     "ralph_submit_plan_section": _contract("ralph_submit_plan_section", "mutate"),
     "ralph_submit_plan_sections": _contract("ralph_submit_plan_sections", "mutate"),
     "ralph_insert_plan_step": _contract("ralph_insert_plan_step", "mutate"),
@@ -96,6 +97,7 @@ REGISTRY: dict[str, SideEffectContract] = {
     "git_show": _contract("git_show", "read"),
     "ralph_get_plan_draft": _contract("ralph_get_plan_draft", "read"),
     "ralph_validate_draft": _contract("ralph_validate_draft", "read"),
+    "ralph_verify_md_artifact": _contract("ralph_verify_md_artifact", "read"),
     "read_image": _contract("read_image", "read"),
     "read_media": _contract("read_media", "read"),
     # Indexed exploration tools (Phase 1).

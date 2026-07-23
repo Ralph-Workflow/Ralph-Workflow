@@ -32,7 +32,9 @@ from ralph.mcp.tools.names import (
     READ_ENV_TOOL,
     REPORT_PROGRESS_TOOL,
     SUBMIT_ARTIFACT_TOOL,
+    SUBMIT_MD_ARTIFACT_TOOL,
     UNSAFE_EXEC_TOOL,
+    VERIFY_MD_ARTIFACT_TOOL,
 )
 
 # Each tool -> the capability string its HANDLER passes to require_capability.
@@ -47,6 +49,8 @@ _HANDLER_CAPABILITY: dict[object, str] = {
     UNSAFE_EXEC_TOOL: "ProcessExecUnbounded",
     RAW_EXEC_TOOL: "ProcessExecUnbounded",
     SUBMIT_ARTIFACT_TOOL: "artifact.submit",
+    SUBMIT_MD_ARTIFACT_TOOL: "artifact.submit",
+    VERIFY_MD_ARTIFACT_TOOL: "artifact.plan_read",
     REPORT_PROGRESS_TOOL: "run.report_progress",
     DECLARE_COMPLETE_TOOL: "artifact.submit",
     COORDINATE_TOOL: "artifact.plan_write",

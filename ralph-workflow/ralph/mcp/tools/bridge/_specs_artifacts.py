@@ -25,9 +25,11 @@ from ralph.mcp.tools.names import (
     REPLACE_PLAN_STEP_TOOL,
     REPORT_PROGRESS_TOOL,
     SUBMIT_ARTIFACT_TOOL,
+    SUBMIT_MD_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
     SUBMIT_PLAN_SECTIONS_TOOL,
     VALIDATE_PLAN_DRAFT_TOOL,
+    VERIFY_MD_ARTIFACT_TOOL,
 )
 
 
@@ -122,6 +124,47 @@ def artifact_specs() -> list[ToolSpec]:
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_submit_artifact",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=SUBMIT_MD_ARTIFACT_TOOL,
+                description=(
+                    "Validate and submit one markdown artifact. Required: artifact_type and "
+                    "content (the complete markdown document). Invalid documents return "
+                    "line-anchored diagnostics and are not persisted."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "artifact_type": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["artifact_type", "content"],
+                },
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
+            ),
+            module_name="ralph.mcp.tools.md_artifact",
+            handler_name="handle_submit_md_artifact",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=VERIFY_MD_ARTIFACT_TOOL,
+                description=(
+                    "Check a markdown artifact without submitting it. Returns the same "
+                    "line-anchored diagnostics as ralph_submit_md_artifact."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "artifact_type": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["artifact_type", "content"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_READ.value,
+            ),
+            module_name="ralph.mcp.tools.md_artifact",
+            handler_name="handle_verify_md_artifact",
         ),
         ToolSpec(
             metadata=_metadata(
