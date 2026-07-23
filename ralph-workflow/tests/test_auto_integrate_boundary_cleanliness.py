@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 import ralph.pipeline.auto_integrate as ai
 from ralph.config.models import UnifiedConfig
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.pipeline import auto_integrate_worktree_state as ai_worktree
 from ralph.pipeline.auto_integrate_boundary_refresh import BoundaryRefreshThrottle
 from ralph.pipeline.auto_integrate_sync import REFRESH_REFRESHED
@@ -87,7 +88,9 @@ def test_boundary_cleanliness_probe_ignores_untracked_files(
     seen = _record_status_argv(monkeypatch, returncode=0)
 
     assert ai._worktree_is_clean(tmp_path) is True
-    assert seen == [("status", "--porcelain", "--untracked-files=no")]
+    assert seen == [
+        (*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no")
+    ]
 
     # Any git failure still counts as "not clean" (fail closed).
     _record_status_argv(monkeypatch, returncode=1)

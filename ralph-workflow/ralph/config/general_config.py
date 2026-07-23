@@ -89,24 +89,16 @@ class GeneralConfig(RalphBaseModel):
     auto_integrate_enabled: bool = Field(
         default=True,
         description=(
-            "When true (default), an auto-integration step runs at four live"
-            " seams -- after every commit phase that creates a commit, at every"
-            " successful phase boundary with a clean worktree, once at run"
-            " startup, and inside each manifest-launched parallel worker (its"
-            " own crash recovery plus a startup catch-up and a per-phase"
-            " boundary): rebase the feature"
-            " branch onto the shared mainline, fall back to an endpoint merge on"
-            " rebase conflict, and fast-forward the local mainline ref to the"
-            " feature tip. A fifth seam at the Ralph-managed parallel fan-out"
-            " join is wired but DORMANT under the bundled"
-            " dispatch_mode = 'agent_subagents', which suppresses the fan-out"
-            " effect; it applies only when an operator overrides dispatch_mode."
-            " Set to false to keep git behavior byte-identical to"
-            " runs without auto-integration (no rebase, no merge, no ref"
-            " movement) -- useful when an operator manages integration"
-            " manually. The step is a no-op in single-branch workflows via the"
-            " existing skip conditions (on-target, no-commits-beyond-target,"
-            " detached HEAD, missing target branch)."
+            "When true (default), auto-integration is re-evaluated statelessly"
+            " at every seam: startup, pre/post planning, before/after development,"
+            " after commit, phase boundaries, parallel workers, and background"
+            " catch-up. It rebases the feature branch onto the current local target,"
+            " falls back to an endpoint merge when needed, and fast-forwards the"
+            " target to the integrated feature tip. Equality and ancestor cases are"
+            " fast-forward-or-noop outcomes, not feature-disabling skips. Only"
+            " auto_integrate_enabled=false disables integration; false keeps git"
+            " behavior byte-identical to runs without auto-integration (no rebase,"
+            " merge, or ref movement), for operators managing integration manually."
         ),
     )
     auto_integrate_target: str | None = Field(

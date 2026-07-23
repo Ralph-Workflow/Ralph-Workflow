@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.git_run_result import GitRunResult
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge import (
     MERGE_STATE_IN_PROGRESS,
     MERGE_STATE_NONE,
@@ -92,10 +93,15 @@ def _install_git_stub(
         label: str = "",
         options: GitRunOptions | None = None,
     ) -> GitRunResult:
-        argv = tuple(args)
+        raw_argv = tuple(args)
+        argv = (
+            raw_argv[len(COMMIT_PIN_CONFIG_ARGS) :]
+            if raw_argv[: len(COMMIT_PIN_CONFIG_ARGS)] == COMMIT_PIN_CONFIG_ARGS
+            else raw_argv
+        )
         calls.append(argv)
         returncode, stdout = responses.get(argv, (0, ""))
-        return _result(argv, returncode, stdout)
+        return _result(raw_argv, returncode, stdout)
 
     monkeypatch.setattr("ralph.git.merge.run_git", _fake_run_git)
     return calls
@@ -412,13 +418,18 @@ def _install_sequenced_git_stub(
         label: str = "",
         options: GitRunOptions | None = None,
     ) -> GitRunResult:
-        argv = tuple(args)
+        raw_argv = tuple(args)
+        argv = (
+            raw_argv[len(COMMIT_PIN_CONFIG_ARGS) :]
+            if raw_argv[: len(COMMIT_PIN_CONFIG_ARGS)] == COMMIT_PIN_CONFIG_ARGS
+            else raw_argv
+        )
         calls.append(argv)
         queue = queues.get(argv)
         if not queue:
-            return _result(argv, 0, "")
+            return _result(raw_argv, 0, "")
         returncode, stdout = queue.pop(0) if len(queue) > 1 else queue[0]
-        return _result(argv, returncode, stdout)
+        return _result(raw_argv, returncode, stdout)
 
     monkeypatch.setattr("ralph.git.merge.run_git", _fake_run_git)
     return calls

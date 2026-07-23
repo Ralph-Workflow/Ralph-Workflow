@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
@@ -55,7 +56,7 @@ def _worktree_is_clean(root: Path) -> bool:
     hook never integrates on top of a worktree it cannot prove clean.
     """
     result = run_git(
-        ("status", "--porcelain", "--untracked-files=no"),
+        (*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no"),
         cwd=root,
         label="git-transition-status",
     )

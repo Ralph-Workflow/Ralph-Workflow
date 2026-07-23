@@ -961,7 +961,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/registry.py", 318),
         ("ralph/pydantic_validation_errors.py", 168),
         ("ralph/supervising.py", 209),
-        ("ralph/testing/audit_lint_bypass.py", 504),
+        ("ralph/testing/audit_lint_bypass.py", 499),
         ("ralph/testing/audit_test_policy.py", 315),
         ("ralph/testing/audit_test_policy.py", 597),
         ("ralph/testing/audit_test_policy.py", 664),

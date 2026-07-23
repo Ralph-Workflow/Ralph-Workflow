@@ -28,7 +28,8 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.subprocess_e2e
+# Each test imports a patched module in a child interpreter; Python 3.14 startup exceeds 1s.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 def _get_verify_path() -> str:
@@ -181,22 +182,14 @@ def _run_label_patched_import(
     patched = original
 
     if known_test_step_labels is not None:
-        old = (
-            "_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(\n"
-            '    {"make test", "auto-integrate end-to-end '
-            '(make test-auto-integrate-e2e)"}\n'
-            ")"
-        )
+        old = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
         # Build replacement with the given labels sorted.
         labels_repr = sorted(known_test_step_labels)
         new = f"_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({labels_repr!r})"
         patched = _replace_once(patched, old, new)
 
     if budget_tracked_steps is not None:
-        # Replace the literal defined in ralph/verify.py. Both test
-        # steps are tracked, so the source form names the e2e step by
-        # its position rather than repeating a bare index.
-        old = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 1})"
+        old = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})"
         new = f"_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({sorted(budget_tracked_steps)!r})"
         patched = _replace_once(patched, old, new)
 

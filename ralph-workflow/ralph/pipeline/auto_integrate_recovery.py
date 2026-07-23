@@ -208,17 +208,41 @@ def _collect_blocking_markers(git_dir: Path, root: Path) -> list[str] | None:
     the holder is provably dead) that justify a reclaim.
     """
     blocking: list[str] = [name for name in _TERMINAL_MARKER_FILES if (git_dir / name).exists()]
-    index_lock = git_dir / "index.lock"
-    if not index_lock.exists():
-        return blocking
-    if _lock_holder_is_dead(index_lock):
-        blocking.append("index.lock")
-        return blocking
-    logger.warning(
-        "recovery: live index.lock holder PID in {}; leaving it",
-        git_dir,
-    )
-    return None
+    lock_paths = [git_dir / "index.lock", *_common_dir_lock_paths(root)]
+    for lock_path in lock_paths:
+        if not lock_path.exists():
+            continue
+        if not _lock_holder_is_dead(lock_path):
+            logger.warning(
+                "recovery: live lock holder in {}; leaving it for retry",
+                lock_path,
+            )
+            return None
+        _remove_path(lock_path)
+        blocking.append(str(lock_path))
+        logger.warning("recovery: reclaimed dead-holder lock {}", lock_path)
+    return blocking
+
+
+def _common_dir_lock_paths(root: Path) -> tuple[Path, ...]:
+    """Return shared ref-lock paths without guessing linked-worktree layout."""
+    try:
+        result = run_git(
+            ("rev-parse", "--git-common-dir"), cwd=root, label="recovery-git-common-dir"
+        )
+    except OSError:
+        return ()
+    if result.returncode != 0 or not result.stdout.strip():
+        return ()
+    common_dir = Path(result.stdout.strip())
+    if not common_dir.is_absolute():
+        common_dir = (root / common_dir).resolve()
+    ref_dir = common_dir / "refs"
+    try:
+        ref_locks = tuple(ref_dir.rglob("*.lock")) if ref_dir.is_dir() else ()
+    except OSError:
+        ref_locks = ()
+    return (common_dir / "HEAD.lock", common_dir / "packed-refs.lock", *ref_locks)
 
 
 def _recover_rebase_state(root: Path, git_dir: Path) -> None:
@@ -238,6 +262,8 @@ def _recover_rebase_state(root: Path, git_dir: Path) -> None:
     if rebase_state_dir is not None:
         if _rebase_state_dir_is_corrupt(rebase_state_dir):
             _remove_path(rebase_state_dir)
+        elif rebase_state_dir.name == "rebase-apply" and (rebase_state_dir / "applying").exists():
+            run_git(("am", "--abort"), cwd=root, label="recovery:git-am-abort")
         else:
             abort_rebase(repo_root=root)
     if (git_dir / "REBASE_HEAD").exists() and not rebase_in_progress(root):

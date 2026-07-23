@@ -87,6 +87,7 @@ REBASE_SKIPPED_FOR_MERGE = "rebase skipped on retry to preserve the integration 
 _REASON_MERGE_COMMITS = "branch contains merge commits; routing to endpoint merge"
 _REASON_ROOT_COMMITS = "branch contains root commits; routing to endpoint merge"
 _REASON_ALL_EMPTY = "branch has no replayable commits; routing to endpoint merge"
+_REASON_CASE_COLLISION = "branch range has case-folding path collision; routing to endpoint merge"
 
 __all__ = [
     "REBASE_SKIPPED_FOR_MERGE",
@@ -244,7 +245,27 @@ def _range_routing_reason(root: Path, target: str) -> str | None:
         return _REASON_ROOT_COMMITS
     if _all_empty_replay(root, target, total):
         return _REASON_ALL_EMPTY
+    if _range_has_case_collision(root, target):
+        return _REASON_CASE_COLLISION
     return None
+
+
+def _range_has_case_collision(root: Path, target: str) -> bool:
+    """True only for distinct replay paths that collide on case-folding filesystems."""
+    result = run_git(
+        ("diff", "--name-only", "-z", f"{target}..HEAD"),
+        cwd=root,
+        label="auto-integrate:case-collision-paths",
+    )
+    if result.returncode != 0:
+        return False
+    seen: set[str] = set()
+    for path in (item for item in result.stdout.split("\0") if item):
+        folded = path.casefold()
+        if folded in seen:
+            return True
+        seen.add(folded)
+    return False
 
 
 def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> int | None:

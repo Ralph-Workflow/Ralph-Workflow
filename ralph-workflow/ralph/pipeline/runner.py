@@ -808,6 +808,7 @@ def _maybe_auto_integrate(
             display=display,
         )
     except Exception as auto_integrate_exc:  # pragma: no cover -- defensive
+        # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
         logger.warning(
             "auto_integrate_after_commit raised unexpectedly: {}",
             auto_integrate_exc,
@@ -946,6 +947,8 @@ def _integrate_on_phase_transition(
 ) -> RebaseState | None:
     """Run the boundary integration hook for successful phase events."""
     if event not in _PHASE_TRANSITION_INTEGRATION_EVENTS:
+        # R2/AC8: ladder rung 3 -- this helper is called only for pipeline
+        # transitions; non-seam events are retried at their next real seam.
         return None
     conflict_resolver = _build_seam_conflict_resolver(
         policy_bundle=policy_bundle,
@@ -974,6 +977,7 @@ def _integrate_on_phase_transition(
             display=display,
         )
     except Exception as transition_exc:  # pragma: no cover -- defensive
+        # R2/AC8: ladder rung 3 -- a clean abort is retried at the next seam.
         logger.warning(
             "auto_integrate_on_phase_transition raised unexpectedly: {}",
             transition_exc,

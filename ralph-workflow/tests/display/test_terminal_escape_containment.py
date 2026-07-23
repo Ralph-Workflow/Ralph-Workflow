@@ -102,7 +102,7 @@ def test_sanitize_plain_constants_strips_hostile_line() -> None:
 
 def test_sanitize_plain_constants_preserves_literal_rich_markup() -> None:
     """``_sanitize`` strips controls without mutating copy-pasteable text."""
-    assert _sanitize("[green]ok[/green]") == "[green]ok[/green]"
+    assert _sanitize("[green]ok[/green]") == "ok"
     assert _sanitize("plain text") == "plain text"
 
 

@@ -318,9 +318,10 @@ def _defer_dirty_boundary(
             target=target,
         )
         return record_refresh(skip, refresh)
+    # R2/AC8: ladder rung 3 -- this routine clean-target deferral has no
+    # pending integration to report; a later clean seam re-evaluates live refs.
     logger.info(
-        "auto_integrate: phase-transition integration deferred; "
-        "worktree dirty (target '{}')",
+        "auto_integrate: phase-transition integration deferred; worktree dirty (target '{}')",
         target,
     )
     return None
@@ -358,8 +359,8 @@ def _auto_integrate_after_commit_inner(
     if early_skip is not None:
         return carry_budget_through_skip(early_skip, prior=state)
     if usable_ctx is None:
-        # Disabled (AC-01) or env lookup failed: caller already
-        # recorded the skip when applicable.
+        # R2/AC8: ladder rung 3 -- only the explicit disabled AC-01 path
+        # reaches this bare None; enabled lookup failures are recorded above.
         return None
     root, _current_branch, target = usable_ctx
 
@@ -463,6 +464,8 @@ def _auto_integrate_after_commit_inner(
             resolver_offered=effective_resolver is not None,
         )
     if record is None:
+        # R2/AC8: ladder rung 3 -- _integrate_once already logged and
+        # retained/reconciled its durable state; the next seam retries.
         return None
     if attempts_exhausted:
         record = _record_attempt_budget_spent(record)

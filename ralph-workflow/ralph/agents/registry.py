@@ -447,7 +447,7 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
     )
 
 
-def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per-prefix branches each return early on validation failure
+def _resolve_dynamic_agent(
     name: str,
     ccs_defaults: CcsConfig,
     *,
@@ -492,46 +492,6 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
 
     if name.startswith("codex/"):
         resolved = _resolve_dynamic_codex_agent(name, _base("codex"))
-    elif name.startswith("opencode/"):
-        if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
-            return None
-
-        base_config = _base("opencode")
-        if base_config is None:
-            return None
-        dynamic_overrides: dict[str, object] = {
-            "model_flag": f"-m {_normalize_opencode_model_id(name)}",
-            "can_commit": True,
-        }
-        resolved = base_config.model_copy(update=dynamic_overrides)
-    elif name.startswith("nanocoder/"):
-        if len(segments) < _MIN_NANOCODER_PROVIDER_SEGMENTS or not all(segments[1:]):
-            return None
-
-        base_config = _base("nanocoder")
-        if base_config is None:
-            return None
-        provider, model = _normalize_nanocoder_provider_and_model(name)
-        model_flag = f"--provider {shlex.quote(provider)}"
-        if model is not None:
-            model_flag += f" --model {shlex.quote(model)}"
-        nanocoder_overrides: dict[str, object] = {"model_flag": model_flag, "can_commit": True}
-        resolved = base_config.model_copy(update=nanocoder_overrides)
-    elif name.startswith("agy/"):
-        if len(segments) < _MIN_AGY_SEGMENTS or not segments[1]:
-            return None
-
-        base_config = _base("agy")
-        if base_config is None:
-            return None
-        # AGY model IDs from `agy models` are display names and may contain
-        # spaces/parentheses (e.g. "Claude Sonnet 4.6 (Thinking)"). Quote the
-        # value so shlex.split in the command builder keeps it as one argument.
-        agy_overrides: dict[str, object] = {
-            "model_flag": f"--model {shlex.quote(segments[1])}",
-            "can_commit": True,
-        }
-        resolved = base_config.model_copy(update=agy_overrides)
     elif name.startswith("pi/"):
         model_id = name.removeprefix("pi/")
         if len(segments) < _MIN_PI_SEGMENTS or not _is_valid_pi_model_id(model_id):
@@ -581,10 +541,54 @@ def _resolve_dynamic_agent(  # noqa: PLR0911, PLR0912  # reason: dispatcher; per
             "can_commit": True,
         }
         resolved = base_config.model_copy(update=cursor_overrides)
+    elif name.startswith(("opencode/", "nanocoder/", "agy/")):
+        resolved = _resolve_dynamic_simple_prefixed_agent(name, segments, _base)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
         resolved = _resolve_dynamic_claude_family(name, ccs_defaults, _base)
 
     return resolved
+
+
+def _resolve_dynamic_simple_prefixed_agent(
+    name: str,
+    segments: list[str],
+    base_lookup: Callable[[str], AgentConfig | None],
+) -> AgentConfig | None:
+    """Resolve dynamic aliases whose model suffixes need only basic validation."""
+    if name.startswith("opencode/"):
+        if len(segments) >= _MIN_OPENCODE_SEGMENTS and all(segments[1:]):
+            base_config = base_lookup("opencode")
+            if base_config is not None:
+                return base_config.model_copy(
+                    update={
+                        "model_flag": f"-m {_normalize_opencode_model_id(name)}",
+                        "can_commit": True,
+                    }
+                )
+    elif name.startswith("nanocoder/"):
+        if len(segments) >= _MIN_NANOCODER_PROVIDER_SEGMENTS and all(segments[1:]):
+            base_config = base_lookup("nanocoder")
+            if base_config is not None:
+                provider, model = _normalize_nanocoder_provider_and_model(name)
+                model_flag = f"--provider {shlex.quote(provider)}"
+                if model is not None:
+                    model_flag += f" --model {shlex.quote(model)}"
+                return base_config.model_copy(
+                    update={"model_flag": model_flag, "can_commit": True}
+                )
+    elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS and segments[1]:
+        base_config = base_lookup("agy")
+        if base_config is not None:
+            # AGY model IDs from `agy models` are display names and may contain
+            # spaces/parentheses (e.g. "Claude Sonnet 4.6 (Thinking)"). Quote the
+            # value so shlex.split in the command builder keeps it as one argument.
+            return base_config.model_copy(
+                update={
+                    "model_flag": f"--model {shlex.quote(segments[1])}",
+                    "can_commit": True,
+                }
+            )
+    return None
 
 
 def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:

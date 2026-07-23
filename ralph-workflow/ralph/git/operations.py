@@ -18,6 +18,7 @@ from git import Actor, InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 from loguru import logger
 
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
@@ -245,7 +246,7 @@ def is_repo_clean(repo_root: Path | str) -> bool:
     repo_root_path = Path(repo_root)
     try:
         result = run_git(
-            ("status", "--porcelain", "--untracked-files=no"),
+            (*COMMIT_PIN_CONFIG_ARGS, "status", "--porcelain", "--untracked-files=no"),
             cwd=repo_root_path,
             label="git-status",
         )

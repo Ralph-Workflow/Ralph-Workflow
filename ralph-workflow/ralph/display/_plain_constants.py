@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from rich.text import Text
+
 from ralph.display.line_sanitizer import strip_terminal_control
 
 LEVELS: Final[dict[str, str]] = {
@@ -162,4 +164,7 @@ def _sanitize(text: str) -> str:
     every transcript sink. Terminal CSI / OSC / C0 sequences are always removed,
     preventing terminal control in scrollback.
     """
-    return strip_terminal_control(text)
+    try:
+        return strip_terminal_control(Text.from_markup(text).plain)
+    except ValueError:
+        return strip_terminal_control(text)

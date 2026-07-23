@@ -143,11 +143,6 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("registration", "UP037"),
     # N802: historical public API name preserved for backward compat.
     ("catalog", "N802"),
-    # registry.py: _resolve_dynamic_agent is a 7-prefix dispatcher (pi, opencode,
-    # nanocoder, agy, claude, claude-headless, ccs); each prefix branch
-    # validates then resolves independently and returns early on rejection.
-    ("registry", "PLR0911"),
-    ("registry", "PLR0912"),
     # execution_state/_factory.py: late imports of catalog and parsers
     # break catalog<->_factory<->parsers cycles (the __getattr__ lazy
     # view pattern in those modules defers the cross-module imports).

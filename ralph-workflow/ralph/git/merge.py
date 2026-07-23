@@ -67,6 +67,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
@@ -270,7 +271,7 @@ def merge_target_into_current(
     """
     repo_root_path = Path(repo_root)
     result = run_git(
-        ("merge", "--no-edit", "--", target),
+        (*COMMIT_PIN_CONFIG_ARGS, "merge", "--no-edit", "--", target),
         cwd=repo_root_path,
         label="git-merge",
     )
@@ -430,7 +431,7 @@ def commit_merge_in_progress(repo_root: Path | str) -> bool:
     if merge_state(repo_root_path) != MERGE_STATE_IN_PROGRESS:
         return False
     result = run_git(
-        ("commit", "--no-edit"),
+        (*COMMIT_PIN_CONFIG_ARGS, "commit", "--no-edit"),
         cwd=repo_root_path,
         label="git-merge-commit",
     )
@@ -503,7 +504,7 @@ def fast_forward_via_worktree(worktree_root: Path | str, feature_sha: str) -> bo
     """
     worktree_root_path = Path(worktree_root)
     result = run_git(
-        ("merge", "--ff-only", feature_sha),
+        (*COMMIT_PIN_CONFIG_ARGS, "merge", "--ff-only", feature_sha),
         cwd=worktree_root_path,
         label="git-merge-ff-only",
     )
@@ -527,7 +528,7 @@ def compare_and_swap_branch(
     """
     repo_root_path = Path(repo_root)
     result = run_git(
-        ("update-ref", f"refs/heads/{target}", new_sha, expected_old_sha),
+        (*COMMIT_PIN_CONFIG_ARGS, "update-ref", f"refs/heads/{target}", new_sha, expected_old_sha),
         cwd=repo_root_path,
         label="git-update-ref-cas",
     )

@@ -23,14 +23,12 @@ your path work.
 
 Two helpers are exposed:
 
-* :data:`PINNED_CONFIG_ARGS` — the tuple of ``-c KEY=VAL`` flags every
-  caller splices immediately after ``git`` in its argv.  Adding a flag
-  here makes the auto-integration pipeline as a whole honor it on every
-  call; missing one in a single caller is no longer a gap because the
-  audit (in :mod:`ralph.testing.audit_lint_bypass`-style: the
-  ``inappropriate-ruff-config`` audit already covers per-file ignores,
-  and the same one path can be extended to gate on bare ``git`` calls
-  outside :func:`run_git`).
+* :data:`PINNED_CONFIG_ARGS` — the complete rebase-engine tuple of
+  ``-c KEY=VAL`` flags. Rebase callers splice it after ``git``; generic
+  :func:`run_git` deliberately does not, because it serves non-integration
+  callers too.
+* :data:`COMMIT_PIN_CONFIG_ARGS` — the smaller merge/commit/status tuple
+  used by the auto-integration call sites outside the rebase engine.
 * :data:`GIT_DIR_ENV_KEYS` — the set of GIT_DIR-family environment
   variables :func:`scrub_git_env` strips from a caller-supplied env.
   Per the spec (D13), inherited ``GIT_DIR``, ``GIT_WORK_TREE`` and
@@ -118,6 +116,20 @@ PINNED_CONFIG_ARGS: tuple[str, ...] = (
     "core.fsmonitor=false",
 )
 
+#: Pins that matter to endpoint merges, merge commits, CAS updates and
+#: cleanliness probes. ``rebase.backend`` is intentionally absent: these
+#: operations do not run a rebase.
+COMMIT_PIN_CONFIG_ARGS: tuple[str, ...] = (
+    "-c",
+    "rerere.enabled=false",
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "tag.gpgsign=false",
+    "-c",
+    "core.fsmonitor=false",
+)
+
 #: Set of GIT_-prefixed environment variables that must NOT be
 #: inherited from a parent process. A fleet agent that ran with
 #: ``GIT_DIR=`` pointed somewhere else would silently redirect every
@@ -172,12 +184,9 @@ def pinned_argv(args: Iterable[str]) -> tuple[str, ...]:
 
     that is, the leading ``git`` is supplied by :func:`run_git`
     itself, and the caller's tuple starts with the sub-command. The
-    pinned config is a property of the BINARIES we are running, not
-    of the SUB-COMMAND, so it is spliced in :func:`run_git` itself
-    via :data:`PINNED_CONFIG_ARGS`. Callers do not need this helper
-    in the steady state — it exists so a caller that builds its argv
-    as a list (e.g. for ``subprocess.run``) can splice the same
-    tuple in the same place.
+    pinned config is scoped to auto-integration and is deliberately
+    NOT spliced by :func:`run_git`, which has unrelated callers.
+    Callers use this helper when they need the complete rebase tuple.
     """
     return (*PINNED_CONFIG_ARGS, *args)
 

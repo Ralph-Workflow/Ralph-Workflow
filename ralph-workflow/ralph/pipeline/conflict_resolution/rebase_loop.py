@@ -239,6 +239,7 @@ def _resolve_one_stop(
     return (
         _touched_nothing_unexpected(root, stop, before)
         and _stage_and_prove(root, stop)
+        and _remove_ort_residue(root, stop.conflicted_files)
         and _continue_past(root, stop)
     )
 
@@ -604,6 +605,32 @@ def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
             remaining,
         )
         return False
+    return True
+
+
+def _remove_ort_residue(root: Path, paths: tuple[str, ...]) -> bool:
+    """Remove only untracked ``path~label`` files left by an ort D/F conflict."""
+    for path in paths:
+        candidate_parent = (root / path).parent
+        try:
+            candidates = tuple(candidate_parent.glob(f"{Path(path).name}~*"))
+        except OSError:
+            return False
+        for candidate in candidates:
+            relative = candidate.relative_to(root).as_posix()
+            tracked = run_git(
+                ("ls-files", "--error-unmatch", "--", relative),
+                cwd=root,
+                label="git-ort-residue-tracked",
+            )
+            if tracked.returncode == 0:
+                continue
+            try:
+                if candidate.is_dir():
+                    return False
+                candidate.unlink()
+            except OSError:
+                return False
     return True
 
 

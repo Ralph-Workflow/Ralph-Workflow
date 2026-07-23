@@ -15,6 +15,8 @@ from ralph.testing.audit_repo_structure import collect_violations
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
+# This full-tree audit measured 3.93s alone and exceeds the 5s default under xdist contention.
+@pytest.mark.timeout_seconds(30)
 def test_repo_structure_policies_hold() -> None:
     violations = collect_violations()
 
