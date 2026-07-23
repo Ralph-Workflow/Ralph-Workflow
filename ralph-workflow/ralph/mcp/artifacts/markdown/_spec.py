@@ -7,31 +7,15 @@ from dataclasses import dataclass, field
 
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._document import ParsedDocument
+from ralph.mcp.artifacts.markdown._lenient import LenientEnum
 from ralph.mcp.artifacts.markdown._parser import parse_markdown_document
 from ralph.mcp.artifacts.markdown._references import validate_unique_ids
+from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 
 type Content = dict[str, object]
 type DocumentMapper = Callable[[ParsedDocument], Content]
 type ContentNormalizer = Callable[[Content], Content]
 type DocumentValidator = Callable[[ParsedDocument], list[Diagnostic]]
-
-
-@dataclass(frozen=True)
-class LenientEnum:
-    """A frontmatter token that may be safely coerced to a documented default."""
-
-    allowed: frozenset[str]
-    default: str
-
-
-@dataclass(frozen=True)
-class SectionRule:
-    """Closed grammar rules for one named section."""
-
-    required: bool = True
-    require_items: bool = False
-    max_items: int | None = None
-    case_sensitive_ids: bool = True
 
 
 @dataclass(frozen=True)

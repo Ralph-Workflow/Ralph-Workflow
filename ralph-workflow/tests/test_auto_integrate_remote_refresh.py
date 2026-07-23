@@ -123,7 +123,11 @@ def test_remote_advance_never_affects_the_local_integration(
 
     _commit(agent, "feature.txt", "feature\n", "feature change")
     outcome = auto_integrate_after_commit(
-        _build_config(), WorkspaceScope(agent), RebaseState()
+        _build_config(),
+        WorkspaceScope(agent),
+        RebaseState(),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
     )
     feature_head = _run(agent, "rev-parse", "HEAD").stdout.strip()
 

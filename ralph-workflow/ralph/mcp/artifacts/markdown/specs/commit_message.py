@@ -6,11 +6,13 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.commit_message import normalize_commit_message_content
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
-from ralph.mcp.artifacts.markdown._spec import MdArtifactSpec, SectionRule
+from ralph.mcp.artifacts.markdown._section_rule import SectionRule
+from ralph.mcp.artifacts.markdown._spec import MdArtifactSpec
 from ralph.mcp.artifacts.markdown.registry import register_spec
 
 if TYPE_CHECKING:
-    from ralph.mcp.artifacts.markdown._document import ParsedDocument, ParsedSection
+    from ralph.mcp.artifacts.markdown._document import ParsedDocument
+    from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 
 def _to_content(document: ParsedDocument) -> dict[str, object]:

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from _pytest.unraisableexception import gc_collect_iterations_key
 from git import Repo
 from typer.testing import CliRunner
 
@@ -39,6 +40,19 @@ from ralph.workspace.memory import MemoryWorkspace
 from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Disable pytest's unraisableexception teardown gc passes.
+
+    The unraisableexception plugin runs ``gc_collect_harder(5)`` (five full
+    ``gc.collect`` passes) in every xdist worker at session teardown. On this
+    ~12k-test suite that was measured at 5.7s+ per worker, accounting for
+    ~11.5s of the 48.87s baseline ``make test`` wall-clock. Setting the
+    plugin's stash key to 0 keeps the unraisable hook fully active while
+    skipping only those end-of-session gc passes.
+    """
+    config.stash[gc_collect_iterations_key] = 0
 
 if TYPE_CHECKING:
     from collections.abc import Generator

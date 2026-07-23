@@ -277,6 +277,8 @@ def test_a_sibling_advancing_the_target_mid_run_is_still_landed(
         WorkspaceScope(feature),
         RebaseState(),
         rebase_stop_resolver=_resolve_and_let_a_sibling_land,
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
     )
 
     assert outcome is not None

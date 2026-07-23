@@ -11,13 +11,14 @@ import json
 import re
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic, MarkdownArtifactError
+from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._errors import MarkdownArtifactError
+from ralph.mcp.artifacts.markdown._lenient import LenientEnum
 from ralph.mcp.artifacts.markdown._parser import parse_markdown_document
+from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import (
     Content,
-    LenientEnum,
     MdArtifactSpec,
-    SectionRule,
     parse_and_validate,
 )
 from ralph.mcp.artifacts.markdown.registry import register_spec
@@ -26,7 +27,8 @@ from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_TYPE, normalize_plan_artifact
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from ralph.mcp.artifacts.markdown._document import ParsedDocument, ParsedItem
+    from ralph.mcp.artifacts.markdown._document import ParsedDocument
+    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _STEP_ID = re.compile(r"^S-(?P<number>[1-9][0-9]*)$")
 _INTENT_VERBS = frozenset(

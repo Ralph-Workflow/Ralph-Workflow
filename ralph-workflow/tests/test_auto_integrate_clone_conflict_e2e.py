@@ -226,6 +226,8 @@ def test_sibling_worktree_landing_is_reintegrated_and_lands_both_commits(
             _build_config(fetch_enabled=False),
             WorkspaceScope(feature),
             RebaseState(),
+            sleep=lambda _seconds: None,
+            jitter=lambda: 0.0,
         )
         feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
 

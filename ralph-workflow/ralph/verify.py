@@ -399,20 +399,16 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         # this behaviour was previously proven by NO step ``make
         # verify`` runs and could rot unnoticed.
         #
-        # A BUDGET-TRACKED step: it runs a test suite, so its label is
-        # in _KNOWN_TEST_STEP_LABELS and its index is in
-        # _BUDGET_TRACKED_STEPS, and its real-git wall-clock time is
-        # lives behind a per-step wall-clock ceiling (``ralph.verify_timeout``
-        # passes ``min(180s, remaining_combined_budget)`` to the step, and the
-        # step would have been rejected with a clear failure had the budget
-        # been exhausted). It is DELIBERATELY absent from
+        # NOT a budget-tracked step: it is DELIBERATELY absent from
         # ``_BUDGET_TRACKED_STEPS`` and its label is DELIBERATELY absent
-        # from ``_KNOWN_TEST_STEP_LABELS``: it would otherwise be charged
-        # against ``_TOTAL_TEST_BUDGET_SECONDS`` alongside ``make test``,
-        # which the 22 real-git subprocess files make physically
-        # impossible. The budget includes only the test suites that
-        # ``make test`` runs; the real-git auto-integrate suite is a
-        # SEPARATE budget ceiling enforced at the step invocation.
+        # from ``_KNOWN_TEST_STEP_LABELS``. Only ``make test`` (index 2)
+        # is charged against the immutable 60-second combined budget
+        # ``_TOTAL_TEST_BUDGET_SECONDS``. This real-git suite runs under
+        # its own per-step ceiling, ``_AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS``
+        # (240 seconds), enforced at the step invocation. Re-adding it
+        # to the combined budget would charge the real-git wall clock
+        # alongside ``make test`` and recreate the timeout catastrophe
+        # the budget exists to prevent.
         "auto-integrate end-to-end (make test-auto-integrate-e2e)",
         "make",
         ("test-auto-integrate-e2e",),

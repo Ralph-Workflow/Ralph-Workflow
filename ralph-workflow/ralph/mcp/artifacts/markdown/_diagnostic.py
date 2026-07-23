@@ -17,12 +17,4 @@ class Diagnostic:
     severity: Literal["error", "warning"] = "error"
 
 
-class MarkdownArtifactError(ValueError):
-    """Raised by callers that choose to reject error diagnostics as an exception."""
-
-    def __init__(self, diagnostics: list[Diagnostic]) -> None:
-        self.diagnostics = diagnostics
-        super().__init__("\n".join(diagnostic.message for diagnostic in diagnostics))
-
-
-__all__ = ["Diagnostic", "MarkdownArtifactError"]
+__all__ = ["Diagnostic"]

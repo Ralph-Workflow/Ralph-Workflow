@@ -3,26 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-
-@dataclass(frozen=True)
-class ParsedItem:
-    """A stable-ID list item from one section."""
-
-    identifier: str
-    text: str
-    line: int
-    checked: bool | None
-
-
-@dataclass(frozen=True)
-class ParsedSection:
-    """A named document section and its closed-grammar items."""
-
-    name: str
-    line: int
-    raw_lines: tuple[str, ...]
-    items: tuple[ParsedItem, ...]
+if TYPE_CHECKING:
+    from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 
 @dataclass(frozen=True)
@@ -38,4 +22,4 @@ class ParsedDocument:
         return next((section for section in self.sections if section.name == name), None)
 
 
-__all__ = ["ParsedDocument", "ParsedItem", "ParsedSection"]
+__all__ = ["ParsedDocument"]

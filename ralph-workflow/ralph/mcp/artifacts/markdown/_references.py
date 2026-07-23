@@ -10,7 +10,7 @@ from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from ralph.mcp.artifacts.markdown._document import ParsedItem
+    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 

@@ -1014,7 +1014,9 @@ def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
 
     config = _build_config(tmp_git_repo, target=base)
     scope = WorkspaceScope(tmp_git_repo)
-    outcome = auto_integrate_after_commit(config, scope, RebaseState())
+    outcome = auto_integrate_after_commit(
+        config, scope, RebaseState(), sleep=lambda _seconds: None, jitter=lambda: 0.0
+    )
     assert outcome is not None
     assert outcome.fast_forwarded is True, (
         f"B11/E5 happy-path setup failed: integration did not land; "

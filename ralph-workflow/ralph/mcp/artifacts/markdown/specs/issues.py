@@ -10,7 +10,8 @@ from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_issues_content
 
 if TYPE_CHECKING:
-    from ralph.mcp.artifacts.markdown._document import ParsedDocument, ParsedItem
+    from ralph.mcp.artifacts.markdown._document import ParsedDocument
+    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _SEVERITIES = frozenset({"high", "medium", "low"})
 _ISSUE_PARTS = 3

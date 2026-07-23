@@ -203,6 +203,8 @@ def test_a_conflicted_fleet_rebase_is_resolved_in_place_and_lands(
         WorkspaceScope(fleet.agent_a),
         RebaseState(),
         rebase_stop_resolver=_resolving_stop_resolver(seen),
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
     )
 
     assert outcome is not None
