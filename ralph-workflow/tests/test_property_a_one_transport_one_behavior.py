@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from functools import cache
 from pathlib import Path
 from typing import cast
 
@@ -36,17 +37,15 @@ FORBIDDEN_TOKEN_BYTES = tuple(token.encode("utf-8") for token in FORBIDDEN_TOKEN
 INCLUDED_SUFFIXES = (".py", ".md")
 
 
-def _iter_source_files(root: Path) -> list[Path]:
-    out: list[Path] = []
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.suffix not in INCLUDED_SUFFIXES:
-            continue
-        if any(part == "__pycache__" for part in path.parts):
-            continue
-        out.append(path)
-    return out
+@cache
+def _source_bytes(root: Path) -> tuple[tuple[Path, bytes], ...]:
+    return tuple(
+        (path, path.read_bytes())
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix in INCLUDED_SUFFIXES
+        and "__pycache__" not in path.parts
+    )
 
 
 def test_runtime_module_contains_no_fastmcp_symbols() -> None:
@@ -61,8 +60,7 @@ def test_runtime_module_contains_no_fastmcp_symbols() -> None:
 def test_grep_audit_finds_zero_fastmcp_hits_in_ralph() -> None:
     """The file-walk audit must find no hits in ralph/ outside the absence-asserting test."""
     hits: list[str] = []
-    for path in _iter_source_files(REPO / "ralph"):
-        content = path.read_bytes()
+    for path, content in _source_bytes(REPO / "ralph"):
         for token, token_bytes in zip(FORBIDDEN_TOKENS, FORBIDDEN_TOKEN_BYTES, strict=True):
             if token_bytes in content:
                 rel = path.relative_to(REPO)
@@ -189,11 +187,10 @@ def test_grep_audit_finds_zero_fastmcp_hits_in_tests() -> None:
     """
     usage_hits: list[str] = []
     absent_files: list[str] = []
-    for path in _iter_source_files(REPO / "tests"):
+    for path, content in _source_bytes(REPO / "tests"):
         if path.suffix != ".py":
             continue
         rel = path.relative_to(REPO).as_posix()
-        content = path.read_bytes()
         if not any(token_bytes in content for token_bytes in FORBIDDEN_TOKEN_BYTES):
             continue
         text = content.decode("utf-8", errors="ignore")

@@ -581,9 +581,9 @@ class ParallelDisplay:
         """Collect developer agent+model tokens for the run-start agents line."""
         parts: list[str] = []
         if orientation.developer_agent is not None:
-            parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+            parts.append(f"developer={strip_markup(orientation.developer_agent)}")
         if orientation.developer_model is not None:
-            parts.append(f"model={_sanitize(orientation.developer_model)}")
+            parts.append(f"model={strip_markup(orientation.developer_model)}")
         return parts
 
     @classmethod
@@ -625,7 +625,10 @@ class ParallelDisplay:
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
         cat = TAG_CATEGORY.get(base_tag, "META")
-        sanitized = _sanitize(content)
+        # raw kind is the transcript/log sink path: preserve literal markup
+        # so copy-pasteable raw payloads survive verbatim. Other kinds render
+        # to the visible console and reduce valid Rich markup to plain text.
+        sanitized = _sanitize(content) if kind == "raw" else strip_markup(content)
         if opts.condensed_ref is not None and opts.condensed_flag:
             sanitized = f"{sanitized} [see {opts.condensed_ref}]"
 
@@ -1521,7 +1524,11 @@ class ParallelDisplay:
             return
         if _is_bare_lifecycle(line):
             return
-        sanitized_line = _sanitize(line)
+        # Visible transcript content is normalized via strip_markup so the
+        # subscriber snapshot and rendered transcript both carry plain text
+        # (Rich markup reduced). The transcript sink path (emit_log_line /
+        # kind="raw") still preserves literal brackets for raw log payloads.
+        sanitized_line = strip_markup(line)
         if unit_id is not None:
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
@@ -1628,9 +1635,9 @@ class ParallelDisplay:
         """Emit the run-start orientation body (single default-mode layout)."""
         pw_parts: list[str] = []
         if orientation.prompt_path is not None:
-            pw_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
+            pw_parts.append(f"prompt={strip_markup(orientation.prompt_path)}")
         if orientation.workspace_root is not None:
-            pw_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
+            pw_parts.append(f"workspace={strip_markup(orientation.workspace_root)}")
         if pw_parts:
             self._console.print(
                 self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"),
@@ -1765,7 +1772,7 @@ class ParallelDisplay:
         opts = options or PhaseCloseOptions()
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
-        clean_produced = _sanitize(produced).strip()
+        clean_produced = strip_markup(produced).strip()
         counters = self._phase_counters
         if counters is not None:
             elapsed_s = round(max(0.0, self._monotonic() - counters.start_time), 1)
@@ -1955,7 +1962,7 @@ class ParallelDisplay:
             if pr_url is not None:
                 self._console.print(
                     self._build_line(
-                        timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
+                        timestamp, "INFO", "META", f"[run-end] pr={strip_markup(pr_url)}"
                     ),
                     markup=False,
                     highlight=False,

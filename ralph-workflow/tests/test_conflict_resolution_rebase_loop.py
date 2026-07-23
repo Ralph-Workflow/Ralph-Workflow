@@ -102,6 +102,7 @@ def _install_seams(
     monkeypatch.setattr(
         loop_module, "_rebase_head_subject", lambda _root: "feature edit"
     )
+    monkeypatch.setattr(loop_module, "conflict_stage_entries", lambda _root, _paths: {})
 
     def _stage(_root: Path, paths: Sequence[str]) -> bool:
         repo.staged.append(list(paths))

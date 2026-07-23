@@ -54,6 +54,11 @@ def _read(path: pathlib.Path) -> str:
 
 
 @cache
+def _read_bytes(path: pathlib.Path) -> bytes:
+    return path.read_bytes()
+
+
+@cache
 def _parse(path: pathlib.Path) -> ast.AST:
     return ast.parse(_read(path))
 
@@ -722,7 +727,7 @@ class TestInterruptPathReliable:
                 rel = path.relative_to(RALPH_ROOT.parent)
                 if rel in whitelisted:
                     continue
-                source_bytes = path.read_bytes()
+                source_bytes = _read_bytes(path)
                 if b"dispatcher_from_process_manager()" not in source_bytes:
                     continue
                 if b"begin_interrupt(block=True)" not in source_bytes:

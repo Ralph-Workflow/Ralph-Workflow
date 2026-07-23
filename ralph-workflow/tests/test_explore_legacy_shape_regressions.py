@@ -31,6 +31,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.mcp.explore.handlers import build_explore_index
 from ralph.mcp.tools.workspace import (
     WORKSPACE_DELETE_CAPABILITY,
@@ -50,6 +52,12 @@ from tests.mock_session import MockSession
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.coordination import ToolContent
+
+
+@pytest.fixture(scope="module")
+def explore_handle() -> object:
+    with tempfile.TemporaryDirectory() as tmp:
+        yield build_explore_index(Path(tmp))
 
 
 def _make_handle(tmp_path: Path):
@@ -285,114 +293,68 @@ class TestListDirectoryLegacyShape:
 class TestDirectoryTreeLegacyShape:
     """AC-09 backward compatibility for ``handle_directory_tree``."""
 
-    def test_default_preserves_legacy_tree_with_handle(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            handle = build_explore_index(tmp_path)
-            session = MockSession(WORKSPACE_READ_CAPABILITY)
-            session.explore_index = handle
-            ws = MagicMock()
-
-            def list_dir_effect(p: str) -> list[str]:
-                if p in (".", ""):
-                    return ["file.txt", "subdir"]
-                return []
-
-            ws.is_dir.side_effect = lambda p: p in (".", "")
-            ws.list_dir.side_effect = list_dir_effect
-            ws.is_file.side_effect = lambda p: p == "file.txt"
-            ws.exists.return_value = False
-            result = handle_directory_tree(session, ws, {"path": "."})
-            assert result.is_error is False
-            body = json.loads(cast("ToolContent", result.content[0]).text)
-            # Legacy shape: top-level ``name``/``type``/``children``.
-            assert set(body.keys()) >= {"name", "type", "path"}
-            assert body["type"] == "dir"
-            assert "children" in body
-            # No ``index_used`` / ``is_stale`` wrapper when caller did
-            # not ask for an indexed view.
-            assert "index_used" not in body
-            assert "is_stale" not in body
+    def test_default_preserves_legacy_tree_with_handle(self, explore_handle: object) -> None:
+        session = MockSession(WORKSPACE_READ_CAPABILITY)
+        session.explore_index = explore_handle
+        ws = MagicMock()
+        ws.is_dir.side_effect = lambda p: p in (".", "")
+        ws.list_dir.side_effect = lambda p: ["file.txt", "subdir"] if p in (".", "") else []
+        ws.is_file.side_effect = lambda p: p == "file.txt"
+        ws.exists.return_value = False
+        result = handle_directory_tree(session, ws, {"path": "."})
+        assert result.is_error is False
+        body = json.loads(cast("ToolContent", result.content[0]).text)
+        assert set(body.keys()) >= {"name", "type", "path"}
+        assert body["type"] == "dir"
+        assert "children" in body
+        assert "index_used" not in body
+        assert "is_stale" not in body
 
     def test_use_index_never_returns_legacy_tree_for_every_view(
-        self,
+        self, explore_handle: object
     ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            handle = build_explore_index(tmp_path)
-            session = MockSession(WORKSPACE_READ_CAPABILITY)
-            session.explore_index = handle
-            ws = MagicMock()
-            ws.is_dir.side_effect = lambda p: p in (".", "")
-            ws.list_dir.side_effect = lambda p: ["file.txt"] if p in (".", "") else []
-            ws.is_file.side_effect = lambda p: p == "file.txt"
-            ws.exists.return_value = False
-            for view in ("raw", "compact", "ranked", "outline"):
-                result = handle_directory_tree(
-                    session,
-                    ws,
-                    {"path": ".", "view": view, "use_index": "never"},
-                )
-                assert result.is_error is False
-                body = json.loads(cast("ToolContent", result.content[0]).text)
-                # Legacy shape preserved.
-                assert "name" in body
-                assert "type" in body
-                assert "children" in body
-                # No indexed wrapper.
-                assert "index_used" not in body
-
-    def test_compact_view_decorates_non_changed_only_children(
-        self,
-    ) -> None:
-        """AC-09: when ``include_counts`` is requested, every child
-        must receive its counts regardless of ``changed_only``."""
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            handle = build_explore_index(tmp_path)
-            session = MockSession(WORKSPACE_READ_CAPABILITY)
-            session.explore_index = handle
-            ws = MagicMock()
-
-            def list_dir_effect(p: str) -> list[str]:
-                if p in (".", ""):
-                    return ["file.txt", "subdir"]
-                if p == "subdir":
-                    return ["nested.txt"]
-                return []
-
-            ws.is_dir.side_effect = lambda p: p in (".", "", "subdir")
-            ws.list_dir.side_effect = list_dir_effect
-            ws.is_file.side_effect = lambda p: p in (
-                "file.txt", "subdir/nested.txt"
-            )
-            ws.exists.return_value = False
+        session = MockSession(WORKSPACE_READ_CAPABILITY)
+        session.explore_index = explore_handle
+        ws = MagicMock()
+        ws.is_dir.side_effect = lambda p: p in (".", "")
+        ws.list_dir.side_effect = lambda p: ["file.txt"] if p in (".", "") else []
+        ws.is_file.side_effect = lambda p: p == "file.txt"
+        ws.exists.return_value = False
+        for view in ("raw", "compact", "ranked", "outline"):
             result = handle_directory_tree(
-                session,
-                ws,
-                {
-                    "path": ".",
-                    "view": "compact",
-                    "include_counts": True,
-                },
+                session, ws, {"path": ".", "view": view, "use_index": "never"}
             )
             assert result.is_error is False
             body = json.loads(cast("ToolContent", result.content[0]).text)
-            # Decorate must have happened on every node, not just the
-            # root. Subdirectory children must have counts too.
-            tree = body["tree"]
-            children = tree.get("children", [])
-            assert isinstance(children, list)
-            for child in children:
-                if isinstance(child, dict):
-                    assert "counts" in child, (
-                        f"child {child.get('name')!r} missing counts"
-                    )
-                    grandchildren = child.get("children", [])
-                    if isinstance(grandchildren, list):
-                        for grandchild in grandchildren:
-                            if isinstance(grandchild, dict):
-                                assert "counts" in grandchild
+            assert "name" in body
+            assert "type" in body
+            assert "children" in body
+            assert "index_used" not in body
+
+    def test_compact_view_decorates_non_changed_only_children(
+        self, explore_handle: object
+    ) -> None:
+        """AC-09: requested counts decorate every child."""
+        session = MockSession(WORKSPACE_READ_CAPABILITY)
+        session.explore_index = explore_handle
+        ws = MagicMock()
+        ws.is_dir.side_effect = lambda p: p in (".", "", "subdir")
+        ws.list_dir.side_effect = lambda p: (
+            ["file.txt", "subdir"] if p in (".", "") else ["nested.txt"] if p == "subdir" else []
+        )
+        ws.is_file.side_effect = lambda p: p in ("file.txt", "subdir/nested.txt")
+        ws.exists.return_value = False
+        result = handle_directory_tree(
+            session, ws, {"path": ".", "view": "compact", "include_counts": True}
+        )
+        assert result.is_error is False
+        tree = json.loads(cast("ToolContent", result.content[0]).text)["tree"]
+        for child in tree.get("children", []):
+            if isinstance(child, dict):
+                assert "counts" in child
+                for grandchild in child.get("children", []):
+                    if isinstance(grandchild, dict):
+                        assert "counts" in grandchild
 
     def test_use_index_always_without_handle_fails_closed(self) -> None:
         ws = MagicMock()

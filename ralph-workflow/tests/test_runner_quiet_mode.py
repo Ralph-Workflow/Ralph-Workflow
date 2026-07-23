@@ -40,6 +40,11 @@ pytestmark = pytest.mark.timeout_seconds(5)
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
 
 
+@pytest.fixture(scope="module")
+def policy_bundle() -> object:
+    return load_policy(DEFAULT_POLICY_DIR)
+
+
 def _install_runner_display_context(monkeypatch: MonkeyPatch, console: Console) -> None:
     ctx = make_display_context(
         console=console,
@@ -87,12 +92,10 @@ def _install_runner_stubs(
 
 
 def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
-    monkeypatch: MonkeyPatch, tmp_path: Path
+    monkeypatch: MonkeyPatch, tmp_path: Path, policy_bundle: object
 ) -> None:
     """In quiet mode no dashboard header or phase-transition banner appears."""
     monkeypatch.setenv("CI", "1")
-    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
-
     captured_console = Console(record=True, force_terminal=False, width=120, color_system=None)
     _install_runner_display_context(monkeypatch, captured_console)
 
@@ -131,7 +134,7 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
 
 
 def test_quiet_mode_renders_completion_summary_on_failure(
-    monkeypatch: MonkeyPatch, tmp_path: Path
+    monkeypatch: MonkeyPatch, tmp_path: Path, policy_bundle: object
 ) -> None:
     """When the pipeline ends in 'failed' phase, quiet mode still renders a Failed panel."""
     monkeypatch.setenv("CI", "1")

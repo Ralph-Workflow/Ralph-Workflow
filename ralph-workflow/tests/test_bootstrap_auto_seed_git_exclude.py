@@ -120,13 +120,15 @@ def test_resolve_git_exclude_path_returns_none_for_non_git_directory(tmp_path: P
     assert _resolve_git_exclude_path(repo_root) is None
 
 
-def test_resolve_git_exclude_path_returns_real_gitdir_in_worktree(tmp_path: Path) -> None:
+def test_resolve_git_exclude_path_returns_real_gitdir_in_worktree(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
     """In a worktree the top-level ``.git`` is a gitfile -- the resolver must find the real gitdir.
 
     Regression for the worktree bug where the previous implementation
     called ``mkdir`` on the gitfile and failed with ``NotADirectoryError``.
     """
-    worktree = _make_main_repo_and_worktree(tmp_path)
+    worktree = _make_main_repo_and_worktree(tmp_git_repo, tmp_path)
 
     # ``.git`` in the worktree is a file, not a directory.
     assert (worktree / ".git").is_file(), (
@@ -143,7 +145,9 @@ def test_resolve_git_exclude_path_returns_real_gitdir_in_worktree(tmp_path: Path
     assert str(resolved).endswith("/info/exclude"), f"Got: {resolved!r}"
 
 
-def test_auto_seed_default_git_exclude_works_in_git_worktree(tmp_path: Path) -> None:
+def test_auto_seed_default_git_exclude_works_in_git_worktree(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
     """Regression test: ``auto_seed_default_git_exclude`` succeeds in a real git worktree.
 
     The previous implementation built ``repo_root / '.git' / 'info' / 'exclude'``
@@ -152,7 +156,7 @@ def test_auto_seed_default_git_exclude_works_in_git_worktree(tmp_path: Path) -> 
     ``NotADirectoryError``. The fix uses ``Repo(repo_root).git_dir`` to
     resolve the real gitdir.
     """
-    worktree = _make_main_repo_and_worktree(tmp_path)
+    worktree = _make_main_repo_and_worktree(tmp_git_repo, tmp_path)
 
     # Sanity: ``.git`` is a gitfile in the worktree.
     assert (worktree / ".git").is_file()
@@ -185,9 +189,11 @@ def test_auto_seed_default_git_exclude_works_in_git_worktree(tmp_path: Path) -> 
         assert pattern in content_lines, f"Missing default pattern: {pattern!r}"
 
 
-def test_auto_seed_default_git_exclude_is_idempotent_in_worktree(tmp_path: Path) -> None:
+def test_auto_seed_default_git_exclude_is_idempotent_in_worktree(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
     """Idempotency works in a worktree: second call returns ``[]`` and does not duplicate."""
-    worktree = _make_main_repo_and_worktree(tmp_path)
+    worktree = _make_main_repo_and_worktree(tmp_git_repo, tmp_path)
 
     first = auto_seed_default_git_exclude(worktree)
     assert first == list(_DEFAULT_GIT_EXCLUDE_PATTERNS)
@@ -226,36 +232,12 @@ def test_auto_seed_default_git_exclude_uses_atomic_helper(
     )
 
 
-def _make_main_repo_and_worktree(tmp_path: Path) -> Path:
-    """Helper: create a main git repo with one commit and a linked worktree.
-
-    Returns the worktree path (inside ``tmp_path``). The function
-    configures a local user identity so the initial commit succeeds
-    without a global git config.
-    """
-    main_repo = tmp_path / "main"
-    main_repo.mkdir()
-    main = Repo.init(main_repo)
+def _make_main_repo_and_worktree(main_repo: Path, tmp_path: Path) -> Path:
+    """Create a linked worktree from the shared initialized repository."""
+    worktree = tmp_path / "wt"
+    main = Repo(main_repo)
     try:
-        writer = main.config_writer()
-        try:
-            writer.set_value("user", "name", "Test User")
-            writer.set_value("user", "email", "test@example.com")
-        finally:
-            writer.release()
-        (main_repo / "README.md").write_text("hello", encoding="utf-8")
-        main.index.add(["README.md"])
-        main.index.commit("init")
+        main.git.worktree("add", str(worktree), "HEAD")
     finally:
         main.close()
-
-    worktree = tmp_path / "wt"
-    worktree.mkdir()
-    main2 = Repo(main_repo)
-    try:
-        main2.git.worktree("add", str(worktree), "HEAD")
-    finally:
-        main2.close()
-    # ``main_repo`` is required as the source of the worktree; the
-    # caller only needs the worktree path itself.
     return worktree

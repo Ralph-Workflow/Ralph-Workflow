@@ -1110,6 +1110,7 @@ ralph.pipeline.auto_integrate_recovery_terminal
 
 .. automodule:: ralph.pipeline.auto_integrate_recovery_terminal
    :members:
+   :no-index:
    :show-inheritance:
 
 ralph.pipeline.auto_integrate_refresh
@@ -1124,6 +1125,7 @@ ralph.pipeline.auto_integrate_terminal
 
 .. automodule:: ralph.pipeline.auto_integrate_terminal
    :members:
+   :no-index:
    :show-inheritance:
 
 ralph.pipeline.auto_integrate_sync

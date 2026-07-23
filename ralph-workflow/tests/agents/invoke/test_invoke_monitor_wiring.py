@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import io
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -10,9 +11,11 @@ from ralph.agents.idle_watchdog import IdleWatchdog
 from ralph.agents.invoke import invoke_agent
 from ralph.agents.invoke._invoke_options import InvokeOptions
 from ralph.agents.invoke._types import ResolvedInvocationRuntime
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.child_liveness import ChildLivenessSubagentPidSource
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 from ralph.process.monitor import (
     DefaultProcessMonitor,
     NullDiscoveryStrategy,
@@ -21,6 +24,12 @@ from ralph.process.monitor import (
     ProcessRole,
     SubagentOutputCapture,
     role_classifier_for_transport,
+)
+from ralph.testing.fake_process import (
+    FakePopen,
+    FakePsutil,
+    ProcessState,
+    ProcessStreams,
 )
 
 if TYPE_CHECKING:
@@ -56,22 +65,31 @@ def _capture_idle_watchdog_args(
     monkeypatch.setattr(IdleWatchdog, "__init__", _patched_init)
 
 
+@pytest.fixture(autouse=True)
+def _fake_process_manager(monkeypatch: MonkeyPatch) -> None:
+    """Keep monitor-wiring tests inside the injected process boundary."""
+    def factory(_command: object, _options: object) -> FakePopen:
+        return FakePopen(
+            1,
+            state=ProcessState(returncode=0),
+            streams=ProcessStreams(stdout=cast("object", io.StringIO(""))),
+        )
+
+    manager = ProcessManager(
+        policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False),
+        sync_process_factory=factory,
+        psutil=FakePsutil(),
+    )
+    monkeypatch.setattr("ralph.agents.invoke._process_reader.get_process_manager", lambda: manager)
+
+
 def _noop_command(
     _config: AgentConfig,
     _prompt_file: str,
     *,
     options: object,
 ) -> list[str]:
-    """Return the cheapest real command that emits one stdout line.
-
-    ``echo`` is used rather than ``python -c`` deliberately: every test in
-    this file spawns this command for real, and a CPython interpreter
-    start-up costs roughly an order of magnitude more wall clock than the
-    shell builtin binary. The tests assert on the wiring captured around
-    the invocation, never on this output, so the cheaper process keeps the
-    coverage identical while returning the time to the 60 s combined test
-    budget enforced by ``ralph/verify.py``.
-    """
+    """Return a placeholder command; the autouse fixture injects the process."""
     return [
         "echo",
         "hello from agent",
@@ -449,5 +467,5 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
         process_exit_wait_seconds=2.0,
     )
 
-    lines = list(invoke_agent(config, str(prompt_file), options=options))
+    lines = list(invoke_agent(config, str(prompt_file), options=options, _clock=FakeClock()))
     assert lines == []

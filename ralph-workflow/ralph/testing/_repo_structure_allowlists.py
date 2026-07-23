@@ -991,7 +991,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/parsers/__init__.py", 175),
         ("ralph/agents/parsers/__init__.py", 188),
         ("ralph/agents/parsers/__init__.py", 234),
-        ("ralph/agents/registry.py", 447),
+        ("ralph/agents/registry.py", 450),
         ("ralph/git/commit_cleanup.py", 189),
         ("ralph/mcp/tools/artifact.py", 381),
         ("ralph/mcp/tools/artifact.py", 691),
