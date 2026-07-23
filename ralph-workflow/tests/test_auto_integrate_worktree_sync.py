@@ -3,8 +3,10 @@
 Equivalent happy-path, untracked-file, prefix-collision, conflict fallback,
 declined-resolution, and retry-policy cases were deleted from this file because
 their behavior is already pinned at faster public seams elsewhere in the suite.
-These tests retain only interactions that require Git's linked-worktree state:
-landing through a checked-out dirty target and convergence across two agents.
+This test retains only the interaction that requires Git's linked-worktree
+state: landing through a checked-out dirty target. Cross-agent convergence is
+covered through the injected phase-boundary seam and the dedicated catch-up
+proofs.
 """
 
 from __future__ import annotations
@@ -16,10 +18,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
-from ralph.pipeline.auto_integrate import (
-    auto_integrate_after_commit,
-    auto_integrate_on_phase_transition,
-)
+from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -87,35 +86,3 @@ def test_dirty_checked_out_target_lands_without_losing_operator_changes(
     ).stdout
     assert "tracked.txt" in status
     assert "feature.txt" not in status
-
-
-def test_two_linked_agents_converge_at_the_phase_boundary(
-    tmp_git_repo: Path,
-) -> None:
-    """A previously landed agent catches up to a sibling through shared refs."""
-    main = _base_branch(tmp_git_repo)
-    feature_a = tmp_git_repo.parent / "feature-a"
-    feature_b = tmp_git_repo.parent / "feature-b"
-    _add_worktree(tmp_git_repo, feature_a, "feature-a")
-    _add_worktree(tmp_git_repo, feature_b, "feature-b")
-
-    _commit(feature_a, "a.txt", "a\n", "feature a")
-    first = auto_integrate_after_commit(
-        _config(main), WorkspaceScope(feature_a), RebaseState()
-    )
-    _commit(feature_b, "b.txt", "b\n", "feature b")
-    second = auto_integrate_after_commit(
-        _config(main), WorkspaceScope(feature_b), RebaseState()
-    )
-    catch_up = auto_integrate_on_phase_transition(
-        _config(main), WorkspaceScope(feature_a), RebaseState()
-    )
-
-    assert first is not None and first.fast_forwarded is True
-    assert second is not None and second.fast_forwarded is True
-    assert catch_up is not None and catch_up.fast_forwarded is True
-    final_main = branch_sha(tmp_git_repo, main)
-    assert _run(feature_a, "rev-parse", "HEAD").stdout.strip() == final_main
-    assert _run(feature_b, "rev-parse", "HEAD").stdout.strip() == final_main
-    assert (feature_a / "b.txt").exists()
-    assert (feature_b / "a.txt").exists()
