@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from ralph.mcp.artifacts.markdown._spec import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
 from ralph.mcp.tools.names import RalphToolName
+from ralph.prompts.template_context import TemplateContext
+from ralph.skills import get_skill_content
 
-ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = ROOT / "ralph" / "skills" / "content"
-TEMPLATE_DIR = ROOT / "ralph" / "prompts" / "templates"
 ARTIFACT_SKILLS = (
     "submit-artifact.md",
     "submit-plan-artifact.md",
@@ -23,7 +21,7 @@ ARTIFACT_SKILLS = (
 
 
 def _read(name: str) -> str:
-    return (SKILL_DIR / name).read_text(encoding="utf-8")
+    return get_skill_content(name.removesuffix(".md"))
 
 
 def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None:
@@ -71,8 +69,17 @@ def test_plan_edit_skill_teaches_stable_id_targeted_repair() -> None:
 
 
 def test_prompt_templates_use_markdown_tools_without_retired_json_vocabulary() -> None:
-    planning_templates = tuple(TEMPLATE_DIR.glob("planning*.jinja"))
-    combined = "\n".join(path.read_text(encoding="utf-8") for path in planning_templates)
+    registry = TemplateContext.default().registry
+    combined = "\n".join(
+        registry.get_template(name)
+        for name in (
+            "planning",
+            "planning_analysis",
+            "planning_edit",
+            "planning_edit_fallback",
+            "planning_fallback",
+        )
+    )
 
     for variable in (
         "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE",

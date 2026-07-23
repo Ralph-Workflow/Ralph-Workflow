@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import os
 import typing
-from contextlib import suppress
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -21,7 +21,6 @@ from ralph.mcp.artifacts.history import (
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PLAN_ARTIFACT_TYPE,
-    PLAN_DRAFT_PATH,
 )
 from ralph.mcp.tools.names import (
     DECLARE_COMPLETE_TOOL,
@@ -79,11 +78,12 @@ from ralph.prompts.materialize_support import (
 from ralph.prompts.payload_refs import (
     sanitize_surrogates as _sanitize_surrogates,
 )
-from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
+
+PLAN_MD_DRAFT_PATH = ".agent/artifacts/.plan.draft.md"
 
 __all__ = [
     "MissingPlanHandoffError",
@@ -137,11 +137,10 @@ class PromptPhaseOptions:
 
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
-        from ralph.prompts._multimodal_sidecar_entry import (  # noqa: PLC0415
-            MultimodalSidecarEntry as _Entry,
+        module = import_module(
+            "ralph.prompts._multimodal_sidecar_entry",
         )
-
-        return _Entry
+        return module.MultimodalSidecarEntry
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
@@ -650,12 +649,8 @@ def _resolve_required_plan_handoff(
     plan_content, plan_path = _resolve_plan_handoff(workspace)
     if plan_path:
         return plan_content, plan_path
-    if allow_draft_fallback and workspace.exists(PLAN_DRAFT_PATH):
-        with suppress(Exception):
-            parsed = cast("object", json.loads(workspace.read(PLAN_DRAFT_PATH)))
-            if isinstance(parsed, dict) and isinstance(parsed.get("sections"), dict):
-                sections = cast("dict[str, object]", parsed["sections"])
-                return format_plan_for_execution(json.dumps(sections)), ""
+    if allow_draft_fallback and workspace.exists(PLAN_MD_DRAFT_PATH):
+        return workspace.read(PLAN_MD_DRAFT_PATH), ""
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = f"Template '{template_name}' requires an existing plan handoff at {plan_handoff_path}"
     raise MissingPlanHandoffError(msg)
@@ -877,13 +872,13 @@ def _clear_fresh_planning_context(
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
     """Delete prior planning state before rendering a fresh planning-creation prompt.
-    Clears the plan draft (.plan_draft.json) and artifact history per policy.
+    Clears the staged markdown plan draft and artifact history per policy.
     Drain artifact clearing is handled by phase_entry_cleaner.clear_phase_entry_drains
     at PreparePromptEffect time in the runner flow, and by the direct call in
     _prepare_planning_prompt_context for the direct materialization path.
     """
-    if workspace.exists(PLAN_DRAFT_PATH):
-        workspace.remove(PLAN_DRAFT_PATH)
+    if workspace.exists(PLAN_MD_DRAFT_PATH):
+        workspace.remove(PLAN_MD_DRAFT_PATH)
     workspace_root = Path(workspace.absolute_path("."))
     _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
 

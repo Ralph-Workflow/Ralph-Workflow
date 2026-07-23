@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
+from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.markdown._spec import parse_and_validate
 from ralph.mcp.artifacts.markdown.specs.plan import PLAN_SPEC
-
-ROOT = Path(__file__).resolve().parents[1]
-TEMPLATES = ROOT / "ralph" / "prompts" / "templates"
-PLAN_FORMAT_DOC = ROOT / "ralph" / "mcp" / "artifacts" / "format_docs" / "plan.md"
+from ralph.prompts.template_context import TemplateContext
 
 PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE = (
     "Infer the complete user-visible workflow required by the request"
@@ -30,11 +27,20 @@ PLANNING_STABLE_ID_GUIDANCE = "stable ID"
 
 
 def _template(name: str) -> str:
-    return (TEMPLATES / name).read_text(encoding="utf-8")
+    return TemplateContext.default().registry.get_template(name)
 
 
 def test_planning_templates_name_only_the_markdown_artifact_surface() -> None:
-    text = "\n".join(_template(path.name) for path in TEMPLATES.glob("planning*.jinja"))
+    text = "\n".join(
+        _template(name)
+        for name in (
+            "planning",
+            "planning_analysis",
+            "planning_edit",
+            "planning_edit_fallback",
+            "planning_fallback",
+        )
+    )
 
     assert "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE" in text
     assert "VERIFY_MD_ARTIFACT_TOOL_REFERENCE" in text
@@ -84,7 +90,8 @@ def test_planning_prompts_use_author_facing_plan_vocabulary() -> None:
 
 
 def test_plan_format_doc_embedded_examples_validate() -> None:
-    text = PLAN_FORMAT_DOC.read_text(encoding="utf-8")
+    text = load_bundled_format_doc("plan")
+    assert text is not None
     examples = re.findall(r"```markdown\n(---\ntype: plan\n.*?)(?:\n```)", text, re.DOTALL)
 
     assert examples

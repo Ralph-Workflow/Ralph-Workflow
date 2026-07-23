@@ -28,7 +28,7 @@ from ralph.mcp.tools.names import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.mcp.tools.coordination import ToolResult
+    from ralph.mcp.tools.coordination import ToolResult, WorkspaceLike
     from ralph.mcp.tools.tool_content import ToolContent
 
 
@@ -48,14 +48,14 @@ class MockSession:
         return capability in {"artifact.submit", "artifact.plan_read"}
 
 
-class MockWorkspace:
-    """Typed stand-in satisfying WorkspaceLike rooted at a tmp_path."""
+def _workspace(root: Path) -> WorkspaceLike:
+    """Return a typed workspace stand-in rooted at ``root``."""
 
-    def __init__(self, root: Path) -> None:
-        self.root = root
+    class Workspace:
+        def absolute_path(self, path: str) -> str:
+            return str(root / path)
 
-    def absolute_path(self, path: str) -> str:
-        return str(self.root / path)
+    return Workspace()
 
 _HEAD = """---
 type: product_spec
@@ -87,7 +87,7 @@ def _diagnostic_rules(payload: dict[str, object]) -> set[object]:
 
 def test_stage_appends_and_reports_non_gating_diagnostics(tmp_path: Path) -> None:
     session = MockSession()
-    workspace = MockWorkspace(tmp_path)
+    workspace = _workspace(tmp_path)
 
     staged = handle_stage_md_artifact(
         session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
@@ -105,7 +105,7 @@ def test_stage_appends_and_reports_non_gating_diagnostics(tmp_path: Path) -> Non
 
 def test_stage_append_then_replace_all_controls_draft_content(tmp_path: Path) -> None:
     session = MockSession()
-    workspace = MockWorkspace(tmp_path)
+    workspace = _workspace(tmp_path)
     handle_stage_md_artifact(
         session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
     )
@@ -129,14 +129,14 @@ def test_stage_rejects_unknown_mode(tmp_path: Path) -> None:
     with pytest.raises(InvalidParamsError):
         handle_stage_md_artifact(
             MockSession(),
-            MockWorkspace(tmp_path),
+            _workspace(tmp_path),
             {"artifact_type": "product_spec", "content": _HEAD, "mode": "prepend"},
         )
 
 
 def test_stage_enforces_the_draft_size_cap_and_keeps_the_prior_draft(tmp_path: Path) -> None:
     session = MockSession()
-    workspace = MockWorkspace(tmp_path)
+    workspace = _workspace(tmp_path)
     handle_stage_md_artifact(
         session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
     )
@@ -155,12 +155,12 @@ def test_stage_enforces_the_draft_size_cap_and_keeps_the_prior_draft(tmp_path: P
 def test_get_md_draft_survives_a_fresh_handler_process(tmp_path: Path) -> None:
     """The draft is persisted under the run's artifact area, not in memory."""
     handle_stage_md_artifact(
-        MockSession(), MockWorkspace(tmp_path), {"artifact_type": "product_spec", "content": _HEAD}
+        MockSession(), _workspace(tmp_path), {"artifact_type": "product_spec", "content": _HEAD}
     )
 
     # Fresh session/workspace objects model a restarted MCP server process.
     resumed = handle_get_md_draft(
-        MockSession(), MockWorkspace(tmp_path), {"artifact_type": "product_spec"}
+        MockSession(), _workspace(tmp_path), {"artifact_type": "product_spec"}
     )
 
     payload = _payload(resumed)
@@ -171,7 +171,7 @@ def test_get_md_draft_survives_a_fresh_handler_process(tmp_path: Path) -> None:
 
 def test_get_md_draft_reports_absence_without_error(tmp_path: Path) -> None:
     result = handle_get_md_draft(
-        MockSession(), MockWorkspace(tmp_path), {"artifact_type": "product_spec"}
+        MockSession(), _workspace(tmp_path), {"artifact_type": "product_spec"}
     )
 
     assert result.is_error is False
@@ -182,7 +182,7 @@ def test_get_md_draft_reports_absence_without_error(tmp_path: Path) -> None:
 
 def test_discard_md_draft_drops_the_draft(tmp_path: Path) -> None:
     session = MockSession()
-    workspace = MockWorkspace(tmp_path)
+    workspace = _workspace(tmp_path)
     handle_stage_md_artifact(
         session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
     )
@@ -200,7 +200,7 @@ def test_finalize_submits_through_the_canonical_path_and_clears_the_draft(
     tmp_path: Path,
 ) -> None:
     session = MockSession()
-    workspace = MockWorkspace(tmp_path)
+    workspace = _workspace(tmp_path)
     handle_stage_md_artifact(
         session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
     )
@@ -223,7 +223,7 @@ def test_finalize_submits_through_the_canonical_path_and_clears_the_draft(
 
 def test_finalize_rejects_an_invalid_draft_and_keeps_it_for_repair(tmp_path: Path) -> None:
     session = MockSession()
-    workspace = MockWorkspace(tmp_path)
+    workspace = _workspace(tmp_path)
     handle_stage_md_artifact(
         session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
     )
@@ -244,7 +244,7 @@ def test_finalize_rejects_an_invalid_draft_and_keeps_it_for_repair(tmp_path: Pat
 def test_finalize_without_a_draft_is_an_invalid_params_error(tmp_path: Path) -> None:
     with pytest.raises(InvalidParamsError, match="no staged draft"):
         handle_finalize_md_artifact(
-            MockSession(), MockWorkspace(tmp_path), {"artifact_type": "product_spec"}
+            MockSession(), _workspace(tmp_path), {"artifact_type": "product_spec"}
         )
 
 

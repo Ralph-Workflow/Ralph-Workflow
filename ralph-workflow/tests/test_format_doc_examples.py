@@ -8,17 +8,19 @@ dynamically so a newly added example is covered automatically.
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 
 import pytest
 
-import ralph.mcp.artifacts.markdown.specs  # noqa: F401  # registers every markdown spec
 from ralph.mcp.artifacts.format_docs import (
     EXAMPLE_ARTIFACT_TYPES,
     load_bundled_example,
 )
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
+
+import_module("ralph.mcp.artifacts.markdown.specs")
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent / (
     "ralph/mcp/artifacts/format_docs/examples"

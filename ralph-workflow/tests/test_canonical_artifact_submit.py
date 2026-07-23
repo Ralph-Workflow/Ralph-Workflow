@@ -26,8 +26,8 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
+from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-from ralph.mcp.tools.coordination import _write_completion_sentinel
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
@@ -457,7 +457,7 @@ def test_completion_sentinel_returns_false_when_db_and_file_writes_fail(
         lambda *_args, **_kwargs: False,
     )
 
-    assert not _write_completion_sentinel(workspace, "run-x")
+    assert not coordination_module._write_completion_sentinel(workspace, "run-x")
 
 
 def test_completion_sentinel_uses_legacy_fallback_when_db_fails(
@@ -470,7 +470,7 @@ def test_completion_sentinel_uses_legacy_fallback_when_db_fails(
 
     monkeypatch.setattr("ralph.mcp.tools.coordination.RunStateDB", _raise_sqlite_open)
 
-    assert _write_completion_sentinel(workspace, "run-y")
+    assert coordination_module._write_completion_sentinel(workspace, "run-y")
     assert _check_completion_sentinel(tmp_path, "run-y")
 
 
