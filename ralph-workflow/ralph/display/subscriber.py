@@ -151,14 +151,21 @@ def _format_waiting_status_line(event: object) -> str:
 
 
 _SUBAGENT_ACTIVITY_MAX = 80
+#: Maximum byte length of the ``subagent=`` suffix body. Mirrors the
+#: legacy 80-char contract that operators learned to recognize; the
+#: cell-aware truncation in :mod:`ralph.display.content_condenser`
+#: owns the long-content overflow path separately so this stays as a
+#: fixed cap on the inline suffix.
+_SUBAGENT_ACTIVITY_TRUNCATE_CELL_WIDTH: int = _SUBAGENT_ACTIVITY_MAX
 
 
 def _format_subagent_activity_suffix(text: str | None) -> str:
     """Return a ``subagent=<truncated>`` suffix when ``text`` is non-empty.
 
-    Truncates to 80 chars plus an ellipsis when longer. Returns an empty
-    string when ``text`` is ``None`` or whitespace-only so callers can
-    append the result unconditionally without producing empty parens.
+    Truncates to ``_SUBAGENT_ACTIVITY_MAX`` chars plus an ellipsis when
+    longer. Returns an empty string when ``text`` is ``None`` or
+    whitespace-only so callers can append the result unconditionally
+    without producing empty parens.
 
     Used by ``_format_waiting_status_line`` for the PROGRESS,
     SUSPECTED_FROZEN, and HARD_STOP event kinds. ENTERED and EXITED are

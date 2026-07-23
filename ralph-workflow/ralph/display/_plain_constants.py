@@ -165,12 +165,20 @@ def _strip_markup(text: str) -> str:
 
 
 def _sanitize(text: str) -> str:
-    """Strip both Rich markup and full terminal control sequences for copy-paste safety.
+    """Strip terminal control sequences for copy-paste safety.
 
-    Applies ``_strip_markup`` first (so rich markup like ``[green]x[/green]``
-    becomes ``"x"``) and then :func:`strip_terminal_control` so every hostile
-    CSI/OSC/C0 sequence (``ESC[?1049h`` alternate screen, ``ESC[2J`` erase
-    display, ``ESC[>0c`` device attributes reply, ``ESC[<35;1;2M`` SGR mouse
-    report, SGR colour, OSC title, C0 controls) is removed.
+    After the wt-028-display consolidation, every ``_sanitize`` consumer
+    in :mod:`ralph.display.parallel_display` prints the sanitized text
+    through a Console with ``markup=False`` (Rich therefore does NOT
+    interpret ``[green]x[/green]`` as a style sequence), so stripping
+    Rich markup here would mutate literal agent content such as
+    ``[result] ok`` into ``ok`` -- the exact class of escape the
+    analysis-feedback contract calls out. The function therefore keeps
+    only the terminal-control strip (:func:`strip_terminal_control`)
+    so every hostile CSI/OSC/C0 sequence (``ESC[?1049h`` alternate
+    screen, ``ESC[2J`` erase display, ``ESC[>0c`` device attributes
+    reply, ``ESC[<35;1;2M`` SGR mouse report, SGR colour, OSC title,
+    C0 controls) is removed while literal ``[bracket]`` content
+    surfaces verbatim.
     """
-    return strip_terminal_control(_strip_markup(text))
+    return strip_terminal_control(text)

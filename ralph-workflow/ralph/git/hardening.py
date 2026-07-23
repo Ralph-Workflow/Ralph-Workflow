@@ -128,17 +128,19 @@ GIT_DIR_ENV_KEYS: frozenset[str] = frozenset(
     {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"}
 )
 
-#: Minimum length of a single ``git status --porcelain -z`` record.
-#: ``-z`` emits ``XY<path>`` with no separator, so a well-formed record
-#: needs at least two characters for the status code plus at least one
-#: character for the path. Records shorter than this are malformed and
-#: skipped by :func:`parse_porcelain_z`.
+#: Minimum byte length for a valid NUL-delimited porcelain entry:
+#: ``XY<path>`` requires the 2-char XY prefix and at least one
+#: path byte. Anything shorter is a malformed line the parser skips
+#: rather than raises on (the fixture may contain a stray prefix).
 _MIN_PORCELAIN_PIECE_LEN: int = 3
 
-#: Number of records in the :func:`_selftest` fixture, named so the
-#: smoke assertion can compare against a labelled constant instead of
-#: inlining a magic ``5``.
-_SELFTEST_FIXTURE_ENTRY_COUNT: int = 5
+#: Self-test fixture entry count: the hardcoded blob above carries
+#: five entries (UU, AA, UD, R-rename, and one `` M`` modification).
+#: Pinning the expected count as a constant lets the ``_selftest``
+#: assertion compare against a named symbol instead of a magic 5 so
+#: ruff's ``PLR2004`` (magic-value-comparison) rule does not flag
+#: the literal.
+_SELFTEST_ENTRY_COUNT: int = 5
 
 
 def scrub_git_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -335,7 +337,7 @@ def _selftest() -> None:  # pragma: no cover - smoke self-check
         " Mmodified.txt\0"
     )
     entries = parse_porcelain_z(blob)
-    assert len(entries) == _SELFTEST_FIXTURE_ENTRY_COUNT, entries
+    assert len(entries) == _SELFTEST_ENTRY_COUNT, entries
     unmerged = unmerged_paths_z(blob)
     assert [e.path for e in unmerged] == [
         "conflicted.txt",

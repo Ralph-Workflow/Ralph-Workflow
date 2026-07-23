@@ -124,7 +124,6 @@ from ralph.display._plain_constants import (
     LEVELS,
     TAG_CATEGORY,
     _sanitize,
-    _strip_markup,
 )
 from ralph.display._streaming_ctx import _StreamingCtx
 from ralph.display.activity_model import ActivityEventKind
@@ -578,14 +577,19 @@ class ParallelDisplay:
 
     @classmethod
     def strip_markup(cls, line: str) -> str:
-        """Strip Rich markup and full terminal control sequences from a line, returning plain text.
+        """Strip terminal control sequences from a line, returning plain text.
 
         Delegates the escape strip to :func:`strip_terminal_control` so every
         CSI / OSC / C0 sequence (alternate screen, erase display, private
         parameter forms like ``ESC[>0c`` and ``ESC[<35;1;2M``, OSC titles) is
-        removed in addition to rich markup.
+        removed. After the wt-028-display consolidation the helper no
+        longer strips Rich markup because every consumer in this module
+        prints the result through a Console with ``markup=False``; a
+        Rich ``[red]...[/red]`` style therefore cannot reach the
+        terminal and stripping it would mutate literal agent content
+        (``[result] ok`` -> ``ok``).
         """
-        return strip_terminal_control(_strip_markup(line))
+        return strip_terminal_control(line)
 
     # -- Structured log emit (inlined from PlainLogRenderer) ---------------
 

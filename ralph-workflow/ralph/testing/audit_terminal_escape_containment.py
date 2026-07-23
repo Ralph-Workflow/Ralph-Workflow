@@ -520,11 +520,21 @@ _INVARIANTS: tuple[
         ),
     ),
     # parallel_display.ParallelDisplay.strip_markup: the rewrite target.
-    # The body MUST delegate to strip_terminal_control(_strip_markup(line)).
+    # After the wt-028-display consolidation, ``strip_markup`` strips
+    # ONLY terminal control sequences (not Rich markup) because every
+    # consumer prints the result through a Console with ``markup=False``
+    # -- literal ``[green]ok[/green]`` cannot reach the terminal as
+    # markup, and stripping it here would mutate agent output
+    # (``[result] ok`` -> ``ok``). The body MUST delegate to
+    # ``strip_terminal_control(line)`` so hostile CSI/OSC/C0 sequences
+    # are still removed. The previous requirement
+    # (``strip_terminal_control(_strip_markup(line))``) was retired
+    # because the Rich-markup strip was the bug the analysis-feedback
+    # contract called out.
     FunctionBodyInvariant(
         rel_path="display/parallel_display.py",
         qualname="ParallelDisplay.strip_markup",
-        present=("strip_terminal_control(_strip_markup(line))",),
+        present=("strip_terminal_control(line)",),
     ),
     # parallel_display._render_titled_lines: the artifact/handoff body
     # sink -- each line must be sanitized via strip_terminal_control

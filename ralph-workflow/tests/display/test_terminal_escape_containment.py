@@ -100,10 +100,20 @@ def test_sanitize_plain_constants_strips_hostile_line() -> None:
     _assert_no_escape_leak(sanitized, sink_label="_sanitize")
 
 
-def test_sanitize_plain_constants_strips_rich_markup_too() -> None:
-    """``_sanitize`` also handles rich markup ([green]...[/green])."""
+def test_sanitize_plain_constants_preserves_literal_brackets() -> None:
+    """``_sanitize`` strips terminal control sequences but PRESERVES literal Rich markup.
+
+    After the wt-028-display consolidation, every ``_sanitize`` consumer
+    in :mod:`ralph.display.parallel_display` prints the result through
+    a Console with ``markup=False`` -- Rich therefore does NOT
+    interpret ``[green]ok[/green]`` as a style sequence, and stripping
+    it here would mutate literal agent content (``[result] ok`` ->
+    ``ok``). The function therefore keeps only the terminal-control
+    strip; literal ``[bracket]`` content surfaces verbatim to the
+    operator.
+    """
     sanitized = _sanitize("[green]ok[/green]")
-    assert sanitized == "ok"
+    assert sanitized == "[green]ok[/green]"
 
 
 # ---------------------------------------------------------------------------
@@ -126,9 +136,16 @@ def test_parallel_display_strip_markup_strips_hostile_line() -> None:
     _assert_no_escape_leak(stripped, sink_label="strip_markup")
 
 
-def test_parallel_display_strip_markup_handles_rich_markup() -> None:
-    """The existing rich-markup contract is preserved."""
-    assert strip_markup("[green]ok[/green]") == "ok"
+def test_parallel_display_strip_markup_preserves_literal_brackets() -> None:
+    """``strip_markup`` strips terminal control sequences only.
+
+    After the wt-028-display consolidation the helper no longer strips
+    Rich markup -- every consumer prints through ``markup=False`` so a
+    literal ``[green]ok[/green]`` cannot reach the terminal as
+    markup. The function therefore keeps the literal brackets
+    verbatim; only the terminal control sequences are removed.
+    """
+    assert strip_markup("[green]ok[/green]") == "[green]ok[/green]"
     assert strip_markup("plain text") == "plain text"
 
 
@@ -235,11 +252,23 @@ def test_render_event_line_strips_hostile_line() -> None:
     )
 
 
-def test_render_event_line_keeps_rich_markup_escaping() -> None:
-    """Truncation + markup escape contract is preserved (AC-04 / step 10)."""
+def test_render_event_line_preserves_literal_brackets() -> None:
+    """Plain-text path keeps literal Rich markup unchanged (AC-05 / AC-09).
+
+    After the wt-028-display consolidation, :func:`render_event_line`
+    delegates to :func:`ralph.display.agent_event_renderer.render_event`
+    with ``escape_body=False`` because plain-text consumers
+    (``ParallelDisplay`` with ``markup=False``) print the returned
+    string verbatim. Escaping literal ``[red]`` content into
+    ``\\[red]`` mutates agent output (analysis-feedback contract). The
+    rich-Text path's escape contract is enforced separately via
+    :func:`test_content_escape_strips_rich_markup` in
+    :mod:`tests.display.test_agent_event_renderer`.
+    """
     rendered = render_event_line(
         kind=ActivityEventKind.TEXT,
         content="[red]injected[/red]",
         timestamp="2026-01-01T00:00:00+00:00",
     )
-    assert "\\[red]injected\\[/red]" in rendered
+    assert "[red]injected[/red]" in rendered
+    assert "\\[red]" not in rendered

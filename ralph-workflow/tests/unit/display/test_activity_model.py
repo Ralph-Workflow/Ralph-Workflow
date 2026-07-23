@@ -70,14 +70,27 @@ def test_make_event_is_thread_safe_for_unique_sequences() -> None:
     assert max(sequences) == EXPECTED_SEQUENCES
 
 
-def test_render_event_line_escapes_markup() -> None:
+def test_render_event_line_preserves_literal_brackets() -> None:
+    """Plain-text path must NOT escape literal Rich markup.
+
+    After the wt-028-display consolidation the plain-text renderer
+    (``render_event_line`` -> ``render_event_kind_text``) calls the
+    canonical registry with ``escape_body=False``. Plain-text
+    consumers (e.g. ``ParallelDisplay`` with ``markup=False``) print
+    the returned string verbatim, so escaping would mutate literal
+    content such as ``[result]`` into ``\\[result]``. The plain-text
+    path therefore leaves the body unchanged; escaping remains the
+    rich-Text path's contract (see ``test_content_escape_strips_rich_markup``
+    in :mod:`tests.display.test_agent_event_renderer`).
+    """
     rendered = render_event_line(
         ActivityEventKind.TEXT,
         "[red]injected[/red]",
         timestamp="2026-04-18T12:00:00+00:00",
     )
 
-    assert "\\[red]injected\\[/red]" in rendered
+    assert "[red]injected[/red]" in rendered
+    assert "\\[red]" not in rendered
 
 
 def test_render_event_line_uses_tool_use_icon() -> None:

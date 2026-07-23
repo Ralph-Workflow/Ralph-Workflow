@@ -399,8 +399,15 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert isinstance(rendered, Text)
-        assert "result" in rendered.plain
+        # After wt-028-display the pipeline-runner path delegates to
+        # the canonical registry; a successful TOOL_RESULT carries the
+        # PASS carrier (✓ + "PASS" label) and the agent prefix. The
+        # legacy "result <content>" prefix word is replaced by the
+        # carrier label which carries the same semantic meaning
+        # (success-state tool result) under the redundant label
+        # contract (AC-10).
         assert "{'matches': 3, 'path': 'src'}" in rendered.plain
+        assert "PASS" in rendered.plain or "✓" in rendered.plain
 
     def test_claude_assistant_text_renders_without_extra_assistant_summary_line(self) -> None:
         parser = ClaudeParser()

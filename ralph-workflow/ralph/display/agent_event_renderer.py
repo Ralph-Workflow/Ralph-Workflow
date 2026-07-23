@@ -57,16 +57,15 @@ from rich.text import Text
 
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_model import make_event
+from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_router import map_parser_type_to_kind
+from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.theme import STATUS_STYLES
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
-
     from ralph.agents.parsers.agent_output_line import AgentOutputLine
-    from ralph.display.activity_provider import ActivityProvider
-    from ralph.display.agent_activity_event import AgentActivityEvent
     from ralph.display.context import DisplayContext
 
 
@@ -108,50 +107,76 @@ class EventRenderer(Protocol):
     event rendered by the same renderer MUST return text whose plain
     representation is identical regardless of which agent backend
     produced the source line.
+
+    ``escape_body`` controls whether the body segment is Rich-``escape()``'d
+    before being appended to the returned ``Text``. The default
+    (``True``) is the rich-Text path's contract: the body is printed
+    through a Console with ``markup=True`` so literal ``[red]`` markers
+    must be escaped. The plain-text path (:func:`render_event_kind_text`)
+    passes ``False`` so the body surfaces verbatim through ``markup=False``
+    consumer contexts (literal ``[result]`` content reaches the user
+    unchanged).
     """
 
     def __call__(
         self,
         event: AgentActivityEvent,
-        ctx: DisplayContext,
+        ctx: DisplayContext | None = None,
         *,
         unit_id: str | None = None,
+        escape_body: bool = True,
     ) -> Text: ...
 
 
 # --- Per-kind renderer implementations ---
 
 
+def _format_body_with_unit(body: str, unit_id: str | None) -> str:
+    """Prefix ``body`` with the unit identity when ``unit_id`` is set.
+
+    Used by every per-kind renderer so the per-unit identity threads
+    into the visible body, matching the legacy plain-text path's
+    ``agent_name`` prefix contract (which existing tests rely on).
+    """
+    if not unit_id:
+        return body
+    return f"{unit_id} {body}"
+
+
 def _render_text_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render a plain-text agent message.
 
     Carries an icon + label redundant prefix so the meaning survives
     when color is disabled (AC-10); the timestamp is muted, the body
-    is the content string (sanitized + escaped).
+    is the content string (sanitized; escaped when ``escape_body``
+    is True so the rich Text path can safely print through a Console
+    with ``markup=True``).
     """
     style_name = "info"
     if event.kind is ActivityEventKind.THINKING:
         style_name = "running"
     style, icon, label = _state_payload(style_name)
-    body = _safe_str(event.content)
+    body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
     text.append(" ", style="theme.text.muted")
-    text.append(escape(body), style=DEFAULT_STYLE)
+    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
     return text
 
 
 def _render_status_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render a status / progress / heartbeat event.
 
@@ -161,19 +186,21 @@ def _render_status_event(
     progress uses ``running``; subagent_progress uses ``info``.
     """
     style, icon, label = _state_payload("info")
+    body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
     text.append(" ", style="theme.text.muted")
-    text.append(escape(_safe_str(event.content)), style=DEFAULT_STYLE)
+    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
     return text
 
 
 def _render_tool_use_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render a tool call.
 
@@ -182,48 +209,62 @@ def _render_tool_use_event(
     ``ralph.read_file``) and the formatted input come from
     :mod:`ralph.display.tool_args` so the agent-specific quirks are
     removed BEFORE rendering. State carried as ``running`` (the tool
-    call is in flight).
+    call is in flight). When ``unit_id`` is set the unit prefix
+    threads into the body so the plain-text path matches the legacy
+    ``agent_name`` contract.
     """
     style, icon, label = _state_payload("running")
     raw_name = _safe_str(event.content) or "tool"
     tool_name = friendly_tool_name(raw_name)
     args_str = _format_event_input(event.metadata)
+    body_segments: list[str] = []
+    if unit_id:
+        body_segments.append(f"{unit_id}")
+    body_segments.append(tool_name)
+    if args_str:
+        body_segments.append(args_str)
+    body = " ".join(body_segments)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(tool_name, style=style)
-    if args_str:
-        text.append(f" {args_str}", style="theme.text.muted")
+    text.append(escape(body) if escape_body else body, style=style)
     return text
 
 
 def _render_tool_result_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render a tool result.
 
     Layout: ``<icon><label> <sanitized-result>``. Success uses the
     ``success`` carrier; a tool result carrying ``is_error`` true (or
     a non-empty ``error`` in metadata) flips to the ``error`` carrier
-    while keeping the body content.
+    while keeping the body content. The ``is_error`` check is the
+    SAME check the registry applies, so the plain-text path derived
+    via :func:`render_event_kind_text` honors it byte-for-byte.
     """
     is_error = _metadata_truthy(event.metadata.get("is_error"))
     state = "error" if is_error else "success"
     style, icon, label = _state_payload(state)
-    body = _safe_str(event.content)
+    body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body), style="theme.text.muted" if not is_error else style)
+    text.append(
+        escape(body) if escape_body else body,
+        style="theme.text.muted" if not is_error else style,
+    )
     return text
 
 
 def _render_error_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render an error event.
 
@@ -231,33 +272,35 @@ def _render_error_event(
     body so the meaning persists with color disabled.
     """
     style, icon, label = _state_payload("error")
-    body = _safe_str(event.content) or "unknown error"
+    body = _format_body_with_unit(_safe_str(event.content) or "unknown error", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body), style=style)
+    text.append(escape(body) if escape_body else body, style=style)
     return text
 
 
 def _render_lifecycle_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render a lifecycle event (phase transitions, run start / end)."""
     style, icon, label = _state_payload("info")
-    body = _safe_str(event.content)
+    body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body), style=DEFAULT_STYLE)
+    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
     return text
 
 
 def _render_progress_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render a ``PROGRESS`` / ``SUBAGENT_PROGRESS`` event.
 
@@ -265,33 +308,35 @@ def _render_progress_event(
     in-progress signal never accidentally reads as success/failure.
     """
     style, icon, label = _state_payload("running")
-    body = _safe_str(event.content)
+    body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body), style=DEFAULT_STYLE)
+    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
     return text
 
 
 def _render_heartbeat_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render a heartbeat event (idle-waitdog liveness ping)."""
     style, icon, label = _state_payload("info")
-    body = _safe_str(event.content) or "alive"
+    body = _format_body_with_unit(_safe_str(event.content) or "alive", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body), style="theme.text.muted")
+    text.append(escape(body) if escape_body else body, style="theme.text.muted")
     return text
 
 
 def _render_unknown_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render an unknown / unclassified event without crashing.
 
@@ -304,14 +349,17 @@ def _render_unknown_event(
     key=value context.
     """
     style, icon, label = _state_payload("warning")
-    body = _safe_str(event.content)
+    body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     if body:
-        text.append(escape(body), style=DEFAULT_STYLE)
+        text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
     summary = _metadata_summary(event.metadata)
     if summary:
-        text.append(f" ({escape(summary)})", style="theme.text.muted")
+        text.append(
+            f" ({escape(summary) if escape_body else summary})",
+            style="theme.text.muted",
+        )
     return text
 
 
@@ -339,9 +387,10 @@ EVENT_RENDERERS: dict[ActivityEventKind, EventRenderer] = {  # bounded-accumulat
 
 def render_event(
     event: AgentActivityEvent,
-    ctx: DisplayContext,
+    ctx: DisplayContext | None = None,
     *,
     unit_id: str | None = None,
+    escape_body: bool = True,
 ) -> Text:
     """Render ``event`` via the registry into a rich ``Text``.
 
@@ -352,18 +401,25 @@ def render_event(
 
     Args:
         event: The canonical agent event to render.
-        ctx: Display context providing theme / glyphs / width.
-        unit_id: Optional unit identifier; present so callers can
-            thread the per-unit identity into the rendered line for
-            audit (the registry itself does not currently consume it,
-            but the parameter is part of the stable contract).
+        ctx: Display context providing theme / glyphs / width. The
+            canonical renderers do not currently consume ``ctx`` (they
+            read ``STATUS_STYLES`` directly) but the parameter is part
+            of the stable contract so future renderers can pick it up
+            without breaking call sites.
+        unit_id: Optional unit identifier; threads into the rendered
+            line so the per-unit identity surfaces in both the rich-Text
+            and the plain-text paths.
+        escape_body: When ``True`` (default) the body segment is
+            Rich-``escape()``'d before being appended. The plain-text
+            path (:func:`render_event_kind_text`) passes ``False`` so
+            literal content reaches the consumer unchanged.
 
     Returns:
         A :class:`rich.text.Text` instance whose plain string carries
         a non-color redundancy (icon + ASCII label) for every kind.
     """
     renderer = EVENT_RENDERERS.get(event.kind, _render_unknown_event)
-    return renderer(event, ctx, unit_id=unit_id)
+    return renderer(event, ctx, unit_id=unit_id, escape_body=escape_body)
 
 
 def render_event_kind_text(
@@ -378,125 +434,68 @@ def render_event_kind_text(
     """Render a stable plain-text line for a single kind + content.
 
     Used by non-rich code paths (the ring-buffer / activity-router
-    path whose consumers don't carry a Console, and the legacy
+    path whose consumers don't carry a Console, and the
     :func:`ralph.pipeline.activity_stream._render_agent_activity_line`
-    pipeline-runnner shim, plus tests that want to assert on a stable
-    plain-text line). The format is:
+    pipeline-runner shim, plus tests that want to assert on a stable
+    plain-text line). After the wt-028-display consolidation, this
+    function is a thin adapter over the canonical
+    :func:`render_event` registry: it builds the same
+    ``AgentActivityEvent`` the registry expects, calls the registry
+    with ``escape_body=False`` (so literal ``[result]`` content
+    reaches the plain-text consumer unchanged -- :data:`escape()` is
+    only needed when the Text will be printed through a Console with
+    ``markup=True``), then extracts ``text.plain`` and applies
+    cell-aware truncation. The icon + ASCII label + state carrier
+    all flow from :data:`ralph.display.theme.STATUS_STYLES` via the
+    registry, so the plain-text path cannot drift from the rich-Text
+    path. The ``agent_name`` prefix threads through the registry's
+    ``unit_id`` parameter so legacy tests asserting ``bash`` /
+    ``command=pytest -q`` / ``workdir=/tmp/project`` substrings
+    continue to pass through the registry's single source of
+    formatting.
 
-    * ``TEXT`` / ``THINKING`` / ``STATUS`` / ``HEARTBEAT`` / ``LIFECYCLE``:
-      ``<icon> [HH:MM:SS] [<agent>] <content>``
-    * ``TOOL_USE``: ``<icon> [HH:MM:SS] <agent> tool <name> (<args>)``
-      - the args are formatted by
-      :func:`ralph.display.tool_args.format_tool_input` so the
-      parity with the legacy tool_use line is preserved.
-    * ``TOOL_RESULT``: ``<icon> [HH:MM:SS] <agent> result <content>``
-    * ``ERROR``: ``<icon> [HH:MM:SS] <agent> ✗ <content>``
-    * ``PROGRESS`` / ``SUBAGENT_PROGRESS``: ``<icon> [HH:MM:SS] <content>``
-
-    The icon + ASCII label come from ``STATUS_STYLES`` so every state
-    carries a non-color carrier even at this minimal-info endpoint
-    (AC-10). The agent_name prefix is the same ``<agent>`` per-unit
-    identity the legacy pipeline runner format used, so the existing
-    tests asserting ``bash`` / ``command=pytest -q`` /
-    ``workdir=/tmp/project`` substrings continue to pass through
-    the registry's single source of formatting.
+    A ``TOOL_RESULT`` event carrying ``is_error=True`` metadata
+    renders with the ``error`` carrier (e.g. ``✗ FAIL``) so an
+    error never accidentally reads as success (AC-10, AC-05).
     """
-    icon = _icon_for_kind_text(kind)
-    time_str = _format_time_str(timestamp)
-    agent_prefix = f"{agent_name} " if agent_name else ""
-
-    body = _body_for_kind(kind, content, metadata or {}, agent_prefix)
-    sanitized = strip_terminal_control(body or "")
-    truncated = _truncate_to_cells(sanitized, max_chars)
-    escaped = escape(truncated)
-    if time_str:
-        return f"{icon} [{time_str}] {escaped}".strip()
-    return f"{icon} {escaped}".strip()
-
-
-def _icon_for_kind_text(kind: ActivityEventKind) -> str:
-    """Return the icon for the kind's carrier state in the plain-text path."""
-    state_for_kind = {
-        ActivityEventKind.TOOL_USE: "running",
-        ActivityEventKind.ERROR: "error",
-        ActivityEventKind.TOOL_RESULT: "success",
-    }
-    state = state_for_kind.get(kind, "info")
-    _, icon, _ = _state_payload(state)
-    return icon
+    event = _build_plain_event(
+        kind,
+        content,
+        timestamp=timestamp,
+        metadata=metadata,
+        source=agent_name,
+    )
+    text = render_event(event, ctx=None, unit_id=agent_name, escape_body=False)
+    plain = text.plain
+    return _truncate_to_cells(plain, max_chars)
 
 
-def _format_time_str(timestamp: str | None) -> str:
-    """Format an ISO-8601 timestamp string as ``HH:MM:SS`` for the icon prefix."""
-    raw = timestamp or datetime.now(UTC).isoformat()
-    try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
-        return ""
-    return parsed.strftime("%H:%M:%S")
-
-
-def _body_for_kind(
+def _build_plain_event(
     kind: ActivityEventKind,
     content: str,
-    metadata: dict[str, object],
-    agent_prefix: str,
-) -> str:
-    """Compute the body segment for the given kind + content + metadata.
+    *,
+    timestamp: str | None,
+    metadata: dict[str, object] | None,
+    source: str | None,
+) -> AgentActivityEvent:
+    """Construct an ``AgentActivityEvent`` for the plain-text path.
 
-    Split out of ``render_event_kind_text`` so the per-kind branching is
-    readable (PLR0912 stays below the cap) and each kind has one place
-    to define its body shape.
+    Normalizes the (kind, content, metadata) tuple the plain-text
+    callers pass into the canonical :class:`AgentActivityEvent`
+    shape the registry expects. Uses ``UNKNOWN`` as the
+    ``ActivityProvider`` because the plain-text path is provider-
+    agnostic: it is the canonical registry's job to keep the same
+    rendered string across providers (AC-07).
     """
-    if kind is ActivityEventKind.TOOL_USE:
-        return _body_for_tool_use(content, metadata, agent_prefix)
-    if kind is ActivityEventKind.ERROR:
-        return _body_for_error(content, agent_prefix)
-    if kind is ActivityEventKind.TOOL_RESULT:
-        return f"{agent_prefix}result {content}".rstrip()
-    if kind in (
-        ActivityEventKind.STATUS,
-        ActivityEventKind.LIFECYCLE,
-        ActivityEventKind.PROGRESS,
-        ActivityEventKind.SUBAGENT_PROGRESS,
-    ) or kind is ActivityEventKind.THINKING:
-        return f"{agent_prefix}{content}".strip()
-    if kind is ActivityEventKind.UNKNOWN:
-        return _body_for_unknown(content, metadata, agent_prefix)
-    return f"{agent_prefix}{content}".strip()
-
-
-def _body_for_tool_use(
-    content: str, metadata: dict[str, object], agent_prefix: str
-) -> str:
-    """Body for ``TOOL_USE``: ``<agent> tool <name> <args>``."""
-    tool_name = friendly_tool_name(content or "tool")
-    args_str = format_tool_input(metadata.get("input", metadata.get("args")))
-    body_parts = [f"{agent_prefix}tool {tool_name}"]
-    if args_str:
-        body_parts.append(args_str)
-    return " ".join(body_parts)
-
-
-def _body_for_error(content: str, agent_prefix: str) -> str:
-    """Body for ``ERROR``: ``<agent> ✗ <content>``."""
-    marker = f"{agent_prefix}✗ " if agent_prefix else "✗ "
-    return f"{marker}{content}".strip()
-
-
-def _body_for_unknown(
-    content: str, metadata: dict[str, object], agent_prefix: str
-) -> str:
-    """Body for ``UNKNOWN``: prefer content, fall back to metadata summary."""
-    summary = _metadata_summary(metadata)
-    prefix_body = f"{agent_prefix}{content}".strip() if content else ""
-    if prefix_body and summary:
-        return f"{prefix_body} ({summary})"
-    if prefix_body:
-        return prefix_body
-    if summary:
-        return f"{agent_prefix}{summary}".strip()
-    return ""
+    return AgentActivityEvent(
+        provider=ActivityProvider.UNKNOWN,
+        kind=kind,
+        content=content,
+        metadata=metadata or {},
+        source=source or "",
+        sequence=0,
+        timestamp=timestamp or datetime.now(UTC).isoformat(),
+    )
 
 
 # --- Helpers ---

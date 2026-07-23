@@ -118,13 +118,24 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     ]
 
 
-def test_emit_log_line_strips_markup_for_copy_paste() -> None:
+def test_emit_log_line_preserves_literal_brackets_for_copy_paste() -> None:
+    """Plain-text emit keeps literal Rich markup unchanged.
+
+    After the wt-028-display consolidation, ``emit_log_line`` (which
+    flows through ``_sanitize`` -> ``strip_terminal_control``) no
+    longer strips Rich markup because the consumer prints the result
+    through a Console with ``markup=False``; a literal
+    ``[bold magenta]hello[/bold magenta]`` therefore cannot reach
+    the terminal as markup, and stripping it here would mutate the
+    operator-visible content. The terminal-control strip remains
+    (escape sequences still get cleaned).
+    """
     pd, stream = _make_display()
 
     pd.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
     assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] hello"
+        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] [bold magenta]hello[/bold magenta]"
     ]
 
 

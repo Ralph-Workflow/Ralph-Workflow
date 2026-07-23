@@ -216,6 +216,13 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
     Returns ``None`` when there is nothing to reclaim or the state is
     protected (dirty tree); a ``recovered`` state after a successful
     reclaim; a ``skipped`` state when the reclaim itself failed.
+
+    Implementation note: the actual reclaim work is delegated to a
+    sequence of small helpers (``_recover_rebase_state``,
+    ``_recover_merge_marker``, ``_recover_sequencer_state``,
+    ``_recover_detached_head``) so this orchestrator stays below the
+    ruff PLR0912 (too-many-branches) cap while each branch lives in
+    a focused helper that can be unit-tested in isolation.
     """
     git_dir = _rebase_bookkeeping_dir(root)
     if git_dir is None:
@@ -223,8 +230,11 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         # reclaim, and the pre-fix contract for the no-record branch --
         # return ``None``, never a synthesized outcome -- must hold.
         return None
-    blocking = _collect_blocking_state(root, git_dir)
+    blocking = _collect_blocking_markers(git_dir, root)
     if blocking is None:
+        # ``None`` here means "live contention, do not reclaim".
+        return None
+    if not blocking:
         return None
     if not is_repo_clean(root):
         # AC-11 case 4: unmerged paths / tracked modifications mean an
@@ -242,11 +252,10 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         root,
     )
     try:
-        _clear_stale_rebase_state(root, git_dir)
-        _clear_lone_rebase_head(root, git_dir)
-        _clear_stale_merge_state(root, git_dir)
-        _clear_stale_sequencer_state(root, git_dir)
-        _reattach_detached_head(root, git_dir)
+        _recover_rebase_state(root, git_dir)
+        _recover_merge_marker(root, git_dir)
+        _recover_sequencer_state(root, git_dir)
+        _recover_detached_head(root, git_dir)
         # A9: the live-PID guard already cleared the index.lock for
         # us; nothing more to do.
     except Exception as exc:
@@ -265,88 +274,94 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
     )
 
 
-def _collect_blocking_state(root: Path, git_dir: Path) -> list[str] | None:
-    """Return the list of blocking state files, or None when reclaim is impossible.
+def _collect_blocking_markers(git_dir: Path, root: Path) -> list[str] | None:
+    """Collect the blocking markers ``git_dir`` carries.
 
-    ``None`` means "do not reclaim" (live ``index.lock`` contention or
-    no blocking state at all). The caller preserves the pre-fix
-    contract for the no-record branch by returning ``None`` to its
-    caller instead of synthesizing an outcome.
+    Returns ``None`` when a LIVE ``index.lock`` holder means the
+    reclaim must defer (E9 contention, NOT staleness). Returns an
+    empty list when there is nothing to reclaim at all. Otherwise
+    returns the list of marker names (``"index.lock"`` included when
+    the holder is provably dead) that justify a reclaim.
     """
     blocking: list[str] = [name for name in _TERMINAL_MARKER_FILES if (git_dir / name).exists()]
-    # A live ``index.lock`` (E9) is contention, not staleness -- the
-    # reclaim refuses to delete it and returns ``None`` so the
-    # bounded retry can back off.
     index_lock = git_dir / "index.lock"
-    if index_lock.exists():
-        if _lock_holder_is_dead(index_lock):
-            blocking.append("index.lock")
-        else:
-            logger.warning(
-                "recovery: live index.lock holder PID in {}; leaving it",
-                git_dir,
-            )
-            return None
-    return blocking if blocking else None
+    if not index_lock.exists():
+        return blocking
+    if _lock_holder_is_dead(index_lock):
+        blocking.append("index.lock")
+        return blocking
+    logger.warning(
+        "recovery: live index.lock holder PID in {}; leaving it",
+        git_dir,
+    )
+    return None
 
 
-def _clear_stale_rebase_state(root: Path, git_dir: Path) -> None:
-    """Clear a stale ``rebase-merge``/``rebase-apply`` state dir.
+def _recover_rebase_state(root: Path, git_dir: Path) -> None:
+    """Clear rebase bookkeeping under ``git_dir``.
 
     A3: a corrupted state dir cannot be aborted with git's own
-    commands because git refuses ``--abort``/``--continue`` when
-    ``head-name``/``onto``/``todo`` are missing. The recover
-    strategy trusts the local ``refs/heads/<branch>`` rather than
-    git's state files, so a corrupt dir is deleted outright while a
-    well-formed one is handed to ``git rebase --abort``.
+    commands because git refuses --abort/--continue when
+    ``head-name``/``onto``/``todo`` are missing. We trust the
+    local ``refs/heads/<branch>`` rather than git's state
+    files, so the recover strategy is "delete the state dir,
+    then leave the ref alone". A lone ``REBASE_HEAD`` marker
+    (no state dir) is removed directly -- ``git rebase --abort``
+    is not available for it but the precondition check blocks
+    on its presence.
     """
-    rebase_state_dir: Path | None = None
-    if (git_dir / "rebase-merge").exists():
-        rebase_state_dir = git_dir / "rebase-merge"
-    elif (git_dir / "rebase-apply").exists():
-        rebase_state_dir = git_dir / "rebase-apply"
-    if rebase_state_dir is None:
-        return
-    if _rebase_state_dir_is_corrupt(rebase_state_dir):
-        _remove_path(rebase_state_dir)
-    else:
-        abort_rebase(repo_root=root)
-
-
-def _clear_lone_rebase_head(root: Path, git_dir: Path) -> None:
-    """Remove a lone ``REBASE_HEAD`` marker with no active rebase.
-
-    ``git rebase --abort`` is not available for a lone marker file;
-    git itself treats a bare ``REBASE_HEAD`` as disposable bookkeeping
-    but the precondition check blocks on it, so the marker is
-    removed directly when no rebase is actually in progress.
-    """
+    rebase_state_dir = _select_rebase_state_dir(git_dir)
+    if rebase_state_dir is not None:
+        if _rebase_state_dir_is_corrupt(rebase_state_dir):
+            _remove_path(rebase_state_dir)
+        else:
+            abort_rebase(repo_root=root)
     if (git_dir / "REBASE_HEAD").exists() and not rebase_in_progress(root):
         _remove_path(git_dir / "REBASE_HEAD")
 
 
-def _clear_stale_merge_state(root: Path, git_dir: Path) -> None:
-    """Clear a stale ``MERGE_HEAD`` marker.
+def _select_rebase_state_dir(git_dir: Path) -> Path | None:
+    """Return the active rebase state dir under ``git_dir`` if any.
+
+    Prefers ``rebase-merge`` (the merge backend's directory) and
+    falls back to ``rebase-apply`` (the apply backend). Returns
+    ``None`` when neither exists so callers skip the per-dir
+    cleanup.
+    """
+    if (git_dir / "rebase-merge").exists():
+        return git_dir / "rebase-merge"
+    if (git_dir / "rebase-apply").exists():
+        return git_dir / "rebase-apply"
+    return None
+
+
+def _recover_merge_marker(root: Path, git_dir: Path) -> None:
+    """Clear a stale ``MERGE_HEAD`` after attempting ``git merge --abort``.
 
     ``git merge --abort`` can refuse a synthetic / truncated
     ``MERGE_HEAD``; on a clean tree the marker itself is the only
-    thing blocking preconditions, so the marker is removed directly
-    when ``git merge --abort`` declines to act.
+    thing blocking preconditions, so we remove it directly when
+    ``--abort`` could not.
     """
-    if (git_dir / "MERGE_HEAD").exists() and merge_state(root) != MERGE_STATE_NONE:
-        aborted = abort_merge(root)
-        if not aborted and (git_dir / "MERGE_HEAD").exists():
-            _remove_path(git_dir / "MERGE_HEAD")
+    if not (git_dir / "MERGE_HEAD").exists():
+        return
+    if merge_state(root) == MERGE_STATE_NONE:
+        return
+    aborted = abort_merge(root)
+    if aborted:
+        return
+    if (git_dir / "MERGE_HEAD").exists():
+        _remove_path(git_dir / "MERGE_HEAD")
 
 
-def _clear_stale_sequencer_state(root: Path, git_dir: Path) -> None:
-    """Clear stale cherry-pick/revert sequencer residue.
+def _recover_sequencer_state(root: Path, git_dir: Path) -> None:
+    """Clear cherry-pick / revert residue under ``git_dir``.
 
-    A6: sequencer operations (cherry-pick / revert) leave
-    ``CHERRY_PICK_HEAD`` / ``REVERT_HEAD`` / ``.git/sequencer`` on
-    disk. ``sequencer/todo`` exists iff a sequencer op is paused.
-    The recovery strategy runs ``git <op> --quit`` defensively then
-    deletes any remaining markers and the sequencer dir.
+    A6: sequencer operations leave ``CHERRY_PICK_HEAD`` /
+    ``REVERT_HEAD`` / ``.git/sequencer`` on disk. ``sequencer/todo``
+    exists iff a sequencer op is paused. Each marker is removed
+    individually so partial residue does not leak across recovery
+    attempts.
     """
     sequencer_todo = git_dir / "sequencer" / "todo"
     if not (
@@ -367,13 +382,13 @@ def _clear_stale_sequencer_state(root: Path, git_dir: Path) -> None:
         _remove_path(sequencer_dir)
 
 
-def _reattach_detached_head(root: Path, git_dir: Path) -> None:
-    """Re-attach a detached HEAD that has no rebase/sequencer state dir.
+def _recover_detached_head(root: Path, git_dir: Path) -> None:
+    """Re-attach a detached HEAD residue to its original branch.
 
-    A11: detached-HEAD residue (no state dir, HEAD on a raw OID) is
-    re-attached to the original branch. The local ref still holds
-    the branch tip; HEAD is just detached, so updating HEAD back to
-    ``refs/heads/<branch>`` is enough.
+    A11: detached-HEAD residue (no state dir, HEAD on a raw
+    OID) is re-attached to the original branch. The local ref
+    still holds the branch tip; the HEAD is just detached, so
+    updating HEAD back to ``refs/heads/<branch>`` is enough.
     """
     if not _detached_head_no_state(root, git_dir):
         return
@@ -417,53 +432,61 @@ def _lock_holder_is_dead(lock_path: Path) -> bool:
     file itself. Older gits wrote nothing here, so an empty /
     whitespace-only file is treated as "no PID", which the
     spec resolves as dead (A9: "liveness check, not age").
+
+    Implementation note: each branch delegates to one of the
+    small helpers below so the top-level function keeps the
+    ruff PLR0911 (too-many-return-statements) cap while the
+    verdict logic stays testable per edge case.
     """
-    raw = _read_lock_pid_text(lock_path)
-    if raw is None:
-        return False
-    if raw == "":
+    pid = _read_lock_pid(lock_path)
+    if pid is None:
+        # Missing / unreadable / non-numeric / non-positive:
+        # nothing observable, so treat as dead per A9.
         return True
-    pid = _parse_lock_pid(raw)
-    if pid is None or pid <= 0:
-        return True
-    return _pid_is_alive(pid) is False
+    return not _pid_is_alive(pid)
 
 
-def _read_lock_pid_text(lock_path: Path) -> str | None:
-    """Read the lock file's PID text, returning None on read error.
+def _read_lock_pid(lock_path: Path) -> int | None:
+    """Return the parsed PID from ``lock_path`` or ``None`` when absent.
 
-    ``None`` distinguishes an I/O failure from an empty file (which
-    the spec treats as "no PID recorded"). The caller maps I/O failure
-    to ``live`` so a missed reclaim costs one backoff, not a corrupt
-    checkout.
+    Reads the standard ``git`` lock convention: a single line of plain
+    text holding the writing process's PID. ``None`` covers every
+    shape that should be treated as "no PID" -- file unreadable,
+    empty, whitespace-only, non-numeric, or non-positive.
     """
     try:
-        return lock_path.read_text(encoding="utf-8", errors="replace").strip()
+        raw = lock_path.read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
         return None
-
-
-def _parse_lock_pid(raw: str) -> int | None:
-    """Parse the first line of the lock file as an integer PID.
-
-    Returns ``None`` when the line is not a valid positive integer;
-    the caller treats that as "no PID recorded" (dead).
-    """
+    if not raw:
+        return None
     try:
-        return int(raw.splitlines()[0])
+        pid = int(raw.splitlines()[0])
     except ValueError:
         return None
+    if pid <= 0:
+        return None
+    return pid
 
 
 def _pid_is_alive(pid: int) -> bool:
-    """True when the OS reports the PID is alive (signal 0 succeeded)."""
+    """True when ``os.kill(pid, 0)`` confirms ``pid`` is a live process.
+
+    ``ProcessLookupError`` is the canonical "no such process" signal
+    and means the PID is dead; ``PermissionError`` means a different
+    process owns the PID and is therefore LIVE; any other ``OSError``
+    is treated as LIVE so a missed reclaim costs one backoff rather
+    than a corrupt checkout.
+    """
     import os
 
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
-    except (PermissionError, OSError):
+    except PermissionError:
+        return True
+    except OSError:
         return True
     return True
 
