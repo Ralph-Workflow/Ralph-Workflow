@@ -107,17 +107,29 @@ trap cleanup EXIT
 # scanning its stride -- also fails with rc=2 rather than being read as
 # "no drift here".
 GREP_TIMEOUT_SECONDS=2
-git ls-files -co --exclude-standard -z -- ralph tests docs | python3 -c '
+python3 -c '
 import re
+import subprocess
 import sys
 import threading
 
 READ_WORKERS = 64
 
 pattern = re.compile(sys.argv[1].encode("utf-8"))
+try:
+    listing = subprocess.run(
+        ["git", "ls-files", "-co", "--exclude-standard", "-z", "--", "ralph", "tests", "docs"],
+        check=False,
+        stdout=subprocess.PIPE,
+        timeout=1.5,
+    )
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+if listing.returncode != 0:
+    sys.exit(2)
 paths = [
     raw.decode(sys.getfilesystemencoding(), errors="surrogateescape")
-    for raw in sys.stdin.buffer.read().split(b"\0")
+    for raw in listing.stdout.split(b"\0")
     if raw.endswith((b".py", b".rst", b".md")) and b"/__pycache__/" not in raw
 ]
 results = [None] * len(paths)
@@ -183,7 +195,11 @@ if [ -e "$GREP_DIR/timed_out" ]; then
     exit 124
 fi
 
-if [ "$GREP_RC" -eq 1 ]; then
+if [ "$GREP_RC" -eq 124 ]; then
+    echo "FAIL: drift scan exceeded ${GREP_TIMEOUT_SECONDS}s and was stopped" >&2
+    echo "Fix the slow scan; do not raise the gate timeout. Governing policy: docs/ralph-workflow-policy/gate-script-policy.md § Bounded." >&2
+    exit 124
+elif [ "$GREP_RC" -eq 1 ]; then
     GREP_RC=0
 elif [ "$GREP_RC" -ne 0 ]; then
     GREP_RC=2
