@@ -63,7 +63,13 @@ if TYPE_CHECKING:
 # need ~160 s and four reach only ~50 % of the suite before the 60 s cap
 # fires. Eight workers complete the same suite (12111 passed, 26 skipped)
 # in 38.09 s with zero per-test SIGALRM failures, so the cap is 8.
-# ``loadfile`` scheduling preserves file isolation.
+# ``worksteal`` scheduling balances the slowest files (the multi-second
+# integration / recovery / pipeline-runner tests) across workers once the
+# fast files drain, keeping wall-clock under the immutable 60 s budget;
+# ``loadfile`` pinned a file to one worker and could not rebalance the
+# slowest files, pushing the suite past 60 s under contention. This
+# matches the ``make test-unit`` target's scheduling, so both targets now
+# agree.
 #
 # This is a concurrency cap, not a budget change:
 # ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
@@ -112,7 +118,7 @@ def _verification_command() -> tuple[str, ...]:
         "-n",
         workers,
         "--dist",
-        "loadfile",
+        "worksteal",
         "-m",
         "not subprocess_e2e and not smoke",
     )

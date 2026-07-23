@@ -446,6 +446,56 @@ Configuration for the interactive prompt-refinement helper launched by `ralph --
 
 The helper does not expose drain configuration, fallback chains, or agent chains — it uses a single interactive agent with an internal standalone session only. See the [CLI Reference](cli.md) for usage.
 
+(ccs_aliases)=
+### `[ccs]` and `[ccs_aliases]`
+
+The `[ccs]` table is the Claude Code Switch (CCS) headless-Claude defaults.
+CCS is the explicitly-headless Claude path — useful when you want to drive
+Claude non-interactively (e.g. from a script or remote shell) with the
+exact CLI flags below instead of through the built-in `claude` or
+`claude-headless` agents.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `print_flag` | `"--print"` | Flag that tells CCS to print the model's reply and exit. |
+| `output_flag` | `"--output-format=stream-json"` | Flag that switches CCS into stream-json output mode. |
+| `streaming_flag` | `"--include-partial-messages"` | Flag that turns on CCS's per-message streaming. |
+| `yolo_flag` | `"--permission-mode auto"` | Flag that puts CCS in autonomous (no confirmation prompts) mode. |
+| `verbose_flag` | `"--verbose"` | Flag that increases CCS log verbosity. |
+| `session_flag` | `"--resume {}"` | Flag template used to resume a CCS session by id (the `{}` is replaced at call time). |
+| `json_parser` | `"claude"` | Which built-in JSON parser strategy Ralph Workflow uses to interpret CCS output. CCS always emits Claude's stream-json, so the Claude parser is correct for every CCS provider (GLM, Gemini, etc.). |
+| `can_commit` | `true` | Whether the CCS run is allowed to create git commits on Ralph Workflow's behalf. |
+
+The `[ccs_aliases]` table maps a friendly alias name to a CCS invocation.
+The string form uses the built-in CCS defaults for the named alias; the
+table form lets you override the per-alias settings (different `cmd`,
+custom `model_flag`, separate `can_commit`, etc.). The alias name is what
+you write in `[agent_chains]` (for example `ccs/glm`).
+
+```toml
+# Simple string form (uses built-in defaults for the named alias):
+ccs_aliases = { glm = "ccs glm" }
+
+# Table form (override per-alias CCS settings):
+[ccs_aliases.glm]
+cmd = "ccs"
+model_flag = "--model glm-4.6"
+can_commit = false
+```
+
+After adding an alias, point a chain at it from `[agent_chains]`:
+
+```toml
+[agent_chains]
+planning = ["claude/opus", "ccs/glm"]
+```
+
+You only need to edit `[ccs]` or `[ccs_aliases]` if you are using Claude
+Code Switch. A first-run user with the built-in `claude` agent does not
+need to touch either table. The per-agent flag tables for the eight
+built-in agents (claude, claude-headless, codex, opencode, nanocoder,
+agy, pi, cursor) live on [Agent Compatibility](agent-compatibility.md).
+
 ## Agent chains and drains
 
 Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`:

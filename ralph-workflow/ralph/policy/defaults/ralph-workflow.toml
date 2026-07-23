@@ -295,7 +295,7 @@ commit = ["claude/haiku"]
 # After you install codex:
 #   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
 # CCS alternative example: planning = ["ccs/work"]
-# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
+# See docs/sphinx/configuration.md#ccs-aliases for CCS details.
 
 # Edit this only if you are changing which chain handles a role.
 # ---------------------------------------------------------------------------

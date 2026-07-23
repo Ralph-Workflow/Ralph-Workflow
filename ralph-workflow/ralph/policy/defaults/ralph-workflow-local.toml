@@ -168,7 +168,7 @@ commit = ["claude/haiku"]
 # After you install codex:
 #   development = ["claude/sonnet", "codex"]
 # CCS alternative example: planning = ["ccs/work"]
-# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
+# See docs/sphinx/configuration.md#ccs-aliases for CCS details.
 
 # ---------------------------------------------------------------------------
 # [agent_drains.*] — Drain-to-chain bindings for pipeline drains

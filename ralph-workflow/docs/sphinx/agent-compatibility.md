@@ -253,7 +253,7 @@ analysis = "analysis"
 commit = "commit"
 ```
 
-The bundled defaults ship with only the `claude` agent active so a first-run user has a satisfiable configuration out of the box. To add `opencode` once it is on `PATH`, extend the relevant chain list (`development = ["claude/sonnet", "opencode/openai/gpt-5.4"]`). To add `codex`, append it the same way. CCS aliases are configured under `[ccs_aliases]` — see [Configuration Reference](configuration.md#ccs_aliases) for the CCS plumbing.
+The bundled defaults ship with only the `claude` agent active so a first-run user has a satisfiable configuration out of the box. To add `opencode` once it is on `PATH`, extend the relevant chain list (`development = ["claude/sonnet", "opencode/openai/gpt-5.4"]`). To add `codex`, append it the same way. CCS aliases are configured under `[ccs_aliases]` — see [Configuration Reference](configuration.md#ccs-aliases) for the CCS plumbing.
 
 ### Fallback Behavior by Role
 
