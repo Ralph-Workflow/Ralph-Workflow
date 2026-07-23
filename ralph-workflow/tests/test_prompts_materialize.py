@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.history import history_dir_for_artifact, history_index_path
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import (
     ArtifactContract,
     ArtifactHistoryPolicy,
@@ -35,17 +35,38 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) -> None:
+FIX_RESULT_DOC = """---
+type: fix_result
+---
+## Summary
+- [S1] Applied fixes
+## Files Changed
+- [F1] ralph/example.py
+"""
+
+
+def test_resolve_fix_result_content_reads_markdown_handoff(tmp_path: Path) -> None:
+    """The submitted handoff markdown is consumed directly — no JSON derivation."""
+    workspace = FsWorkspace(tmp_path)
+    handoff = tmp_path / ".agent" / "FIX_RESULT.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text(FIX_RESULT_DOC, encoding="utf-8")
+
+    content, path = resolve_fix_result_content(workspace)
+    assert content == FIX_RESULT_DOC
+    assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
+
+
+def test_resolve_fix_result_content_falls_back_to_markdown_artifact(tmp_path: Path) -> None:
+    """When the handoff copy is absent, the markdown artifact itself is the source."""
     workspace = FsWorkspace(tmp_path)
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    expected = '{"summary": "Applied fixes"}'
-    (artifact_dir / "fix_result.json").write_text(expected, encoding="utf-8")
+    (artifact_dir / "fix_result.md").write_text(FIX_RESULT_DOC, encoding="utf-8")
 
     content, path = resolve_fix_result_content(workspace)
-    assert "# Fix Result" in content
-    assert "Applied fixes" in content
-    assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
+    assert content == FIX_RESULT_DOC
+    assert path == str(artifact_dir / "fix_result.md")
 
 
 def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: Path) -> None:
@@ -70,7 +91,7 @@ def test_tool_name_prefix_for_opencode_matches_server_namespacing() -> None:
 def test_submit_artifact_tool_name_for_opencode_is_server_prefixed() -> None:
     assert (
         submit_artifact_tool_name_for_transport(AgentTransport.OPENCODE)
-        == f"ralph_{SUBMIT_ARTIFACT_TOOL}"
+        == f"ralph_{SUBMIT_MD_ARTIFACT_TOOL}"
     )
 
 
@@ -82,21 +103,21 @@ def test_tool_name_prefix_for_codex_uses_claude_style_namespacing() -> None:
 
 def test_submit_artifact_tool_name_for_codex_is_claude_namespaced() -> None:
     assert submit_artifact_tool_name_for_transport(AgentTransport.CODEX) == claude_tool_name(
-        SUBMIT_ARTIFACT_TOOL
+        SUBMIT_MD_ARTIFACT_TOOL
     )
 
 
 def test_submit_artifact_tool_name_for_transport_returns_claude_namespaced_for_claude() -> None:
     assert submit_artifact_tool_name_for_transport(AgentTransport.CLAUDE) == claude_tool_name(
-        SUBMIT_ARTIFACT_TOOL
+        SUBMIT_MD_ARTIFACT_TOOL
     )
     assert submit_artifact_tool_name_for_transport(
         AgentTransport.CLAUDE_INTERACTIVE
-    ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+    ) == claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
 
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_agy() -> None:
-    assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_ARTIFACT_TOOL
+    assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_MD_ARTIFACT_TOOL
 
 
 class TestCursorToolNameMatchesClaudeStyle:
@@ -113,7 +134,7 @@ class TestCursorToolNameMatchesClaudeStyle:
         ``"mcp__ralph__"`` for ``AgentTransport.CURSOR`` (the prefix
         every prompt template uses to construct tool names).
       * :func:`submit_artifact_tool_name_for_transport` returns
-        ``claude_tool_name(SUBMIT_ARTIFACT_TOOL)`` (== ``mcp__ralph__submit_artifact``)
+        ``claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)`` (== ``mcp__ralph__submit_artifact``)
         for ``AgentTransport.CURSOR`` (the canonical submit-artifact
         tool name materialized into Cursor prompts).
     """
@@ -126,10 +147,10 @@ class TestCursorToolNameMatchesClaudeStyle:
     def test_submit_artifact_tool_name_for_cursor_is_claude_namespaced(self) -> None:
         assert submit_artifact_tool_name_for_transport(
             AgentTransport.CURSOR
-        ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+        ) == claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_none() -> None:
-    assert submit_artifact_tool_name_for_transport(None) == SUBMIT_ARTIFACT_TOOL
+    assert submit_artifact_tool_name_for_transport(None) == SUBMIT_MD_ARTIFACT_TOOL
 
 
 def test_development_analysis_loopback_preserves_development_artifact_history(
@@ -976,4 +997,4 @@ def test_commit_cleanup_phase_renders_prompt_successfully(tmp_path: Path) -> Non
             PromptPhaseOptions(artifacts_policy=ArtifactsPolicy(artifacts={}), previous_phase=None),
         )
     )
-    assert "ralph_submit_artifact" in rendered and "DIFF" in rendered
+    assert "ralph_submit_md_artifact" in rendered and "DIFF" in rendered

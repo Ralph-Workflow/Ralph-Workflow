@@ -13,10 +13,7 @@ from typing import TYPE_CHECKING, cast
 from ralph.config.enums import AgentTransport
 from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.handoffs import (
-    ensure_markdown_handoff_from_artifact,
-    handoff_path_for_artifact,
-)
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.history import (
     clear_artifact_history,
     history_index_path,
@@ -637,7 +634,6 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
         workspace,
         artifact_type="plan",
         artifact_path=PLAN_ARTIFACT_PATH,
-        fallback_formatter=format_plan_for_execution,
     )
 
 
@@ -913,31 +909,16 @@ def _resolve_agent_handoff(
     *,
     artifact_type: str,
     artifact_path: str,
-    fallback_formatter: Callable[[str], str] | None = None,
 ) -> tuple[str | None, str]:
     """Return the Markdown handoff for an agent-consumed artifact.
-    JSON artifacts are Ralph's machine-readable source of truth; prompts should
-    point agents at mirrored Markdown handoffs whenever one is defined.
+
+    Markdown artifacts are the source of truth: submission already writes the
+    handoff file as identical bytes, so resolution reads the existing handoff
+    (or the artifact document itself) directly — no derivation step.
     """
     relative_handoff_path = handoff_path_for_artifact(artifact_type)
-    handoff_path = workspace.absolute_path(relative_handoff_path) if relative_handoff_path else ""
-    artifact_content = _read_optional(workspace, artifact_path)
-    if artifact_content:
-        created_path = ensure_markdown_handoff_from_artifact(
-            Path(workspace.absolute_path(".")),
-            artifact_type,
-            artifact_content,
-        )
-        if created_path is not None:
-            try:
-                markdown = Path(created_path).read_text(encoding="utf-8")
-            except OSError:
-                markdown = None
-            if markdown:
-                return markdown, created_path
-        if fallback_formatter is not None:
-            return fallback_formatter(artifact_content), ""
     if relative_handoff_path:
+        handoff_path = workspace.absolute_path(relative_handoff_path)
         markdown = _read_optional(workspace, relative_handoff_path)
         if markdown:
             return markdown, handoff_path
@@ -948,6 +929,9 @@ def _resolve_agent_handoff(
                 markdown = None
             if markdown:
                 return markdown, handoff_path
+    artifact_content = _read_optional(workspace, artifact_path)
+    if artifact_content:
+        return artifact_content, workspace.absolute_path(artifact_path)
     return None, ""
 
 
@@ -955,7 +939,7 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="issues",
-        artifact_path=".agent/artifacts/issues.json",
+        artifact_path=".agent/artifacts/issues.md",
     )
     return content or "(no review issues available)", path
 
@@ -965,7 +949,7 @@ def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",
-        artifact_path=".agent/artifacts/fix_result.json",
+        artifact_path=".agent/artifacts/fix_result.md",
     )
     return content or "(no fix result available)", path
 

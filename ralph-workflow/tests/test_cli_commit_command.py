@@ -30,13 +30,25 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.git.operations import GitOperationError
-from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import AgentsPolicy
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+
+
+def _write_commit_message_doc(repo_root: Path, message: str) -> None:
+    """Write the markdown commit_message artifact the way MCP submission does."""
+    if message.upper().startswith("SKIP:"):
+        reason = message[len("SKIP:"):].strip()
+        document = f"---\ntype: skip\nreason: {reason}\n---\n"
+    else:
+        document = f"---\ntype: commit\nsubject: {message}\n---\n"
+    path = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
+
 
 _OUTPUT_BATCH = 80
 #: ``collect_commit_agent_output`` uses deques bounded at 256 lines (see
@@ -122,7 +134,7 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
 def test_submit_artifact_tool_name_claude_interactive() -> None:
     assert commit_module.submit_artifact_tool_name_for_transport(
         AgentTransport.CLAUDE_INTERACTIVE
-    ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+    ) == claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
 
 
 def test_commit_tool_render_escapes_markup_like_input_before_console_render() -> None:
@@ -271,7 +283,7 @@ def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> N
     opts = captured_options[0]
     assert opts.required_artifact is not None
     assert opts.required_artifact.artifact_type == "commit_message"
-    assert opts.required_artifact.json_path == ".agent/tmp/commit_message.json"
+    assert opts.required_artifact.json_path == ".agent/artifacts/commit_message.md"
     assert opts.required_artifact.artifact_required is True
 
 
@@ -346,7 +358,7 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
         calls.append(getattr(options, "session_id", None))
         if len(calls) == 1:
             raise failure
-        write_commit_message_artifact(tmp_path, "fix: recovered after retry")
+        _write_commit_message_doc(tmp_path, "fix: recovered after retry")
         return iter([])
 
     with (
@@ -411,7 +423,7 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         calls.append(getattr(options, "session_id", None))
         if len(calls) < 3:
             raise failure
-        write_commit_message_artifact(tmp_path, "fix: recovered after repeated retry")
+        _write_commit_message_doc(tmp_path, "fix: recovered after repeated retry")
         return iter([])
 
     with (
@@ -479,7 +491,7 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
                 )
 
             return _failing_iter()
-        write_commit_message_artifact(tmp_path, "fix: recovered after midstream retry")
+        _write_commit_message_doc(tmp_path, "fix: recovered after midstream retry")
         return iter([])
 
     with (

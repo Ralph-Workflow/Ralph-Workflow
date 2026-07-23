@@ -17,7 +17,6 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
-from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.session_plan import build_session_mcp_plan
@@ -30,12 +29,24 @@ if TYPE_CHECKING:
     import pytest
 
 
+def _write_commit_message_doc(repo_root: Path, message: str) -> None:
+    """Write the markdown commit_message artifact the way MCP submission does."""
+    if message.upper().startswith("SKIP:"):
+        reason = message[len("SKIP:"):].strip()
+        document = f"---\ntype: skip\nreason: {reason}\n---\n"
+    else:
+        document = f"---\ntype: commit\nsubject: {message}\n---\n"
+    path = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
+
+
 _SUMMARY_RETRY_FAILURES = 2
 
 
 def _artifact_invoke(tmp_path: Path, message: str) -> object:
     def _fake(agent: object, prompt_file: str, *, options: object = None) -> object:
-        write_commit_message_artifact(tmp_path, message)
+        _write_commit_message_doc(tmp_path, message)
         return iter([])
 
     return _fake
@@ -336,7 +347,7 @@ def test_generate_commit_uses_commit_drain_agent_chain(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_agents.append(agent_config.cmd)
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
@@ -383,7 +394,7 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_model_flags.append(agent_config.model_flag)
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -443,7 +454,7 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
         seen_session_ids.append(None if options is None else options.session_id)
         if len(seen_session_ids) == 1:
             return iter(['{"type":"session","session_id":"claude-session-1"}'])
-        write_commit_message_artifact(tmp_path, "fix: retried in session")
+        _write_commit_message_doc(tmp_path, "fix: retried in session")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -499,7 +510,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         invoked_agents.append((agent_config.cmd, None if options is None else options.session_id))
         if len(invoked_agents) <= _SUMMARY_RETRY_FAILURES:
             return iter(["claude: This is a commit prompt file requesting a commit message"])
-        write_commit_message_artifact(tmp_path, "fix: fallback agent message")
+        _write_commit_message_doc(tmp_path, "fix: fallback agent message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -518,8 +529,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
     # commit-specific prompt.
     assert any("required artifact 'commit_message'" in body for body in prompt_bodies[1:])
     assert any('artifact_type="commit_message"' in body for body in prompt_bodies[1:])
-    assert any(".agent/tmp/commit_message.json" in body for body in prompt_bodies[1:])
-    assert any("Do not use content_path for this retry" in body for body in prompt_bodies[1:])
+    assert any(".agent/artifacts/commit_message.md" in body for body in prompt_bodies[1:])
     assert any("Submit the artifact now" in body for body in prompt_bodies[1:])
     output = stream.getvalue()
     assert "Generated commit message" in output
@@ -567,7 +577,7 @@ def test_generate_commit_skips_locally_unsupported_opencode_commit_agents(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_model_flags.append(agent_config.model_flag)
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -617,7 +627,7 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
         options = kwargs.get("options")
         seen_extra_env.append(None if options is None else options.extra_env)
         assert options is not None and options.pure is True
-        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        _write_commit_message_doc(tmp_path, "fix: commit drain message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
@@ -739,9 +749,8 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     # procedure's wording. The macro's step 6 wraps onto two lines in
     # the rendered output; match the substrings separately to avoid
     # line-break brittleness.
-    assert "raw inner" in captured_prompt[0].lower()
-    assert "payload json" in captured_prompt[0].lower()
-    assert ".agent/tmp/commit_message.json" in captured_prompt[0]
+    assert "raw markdown" in captured_prompt[0].lower()
+    assert ".agent/tmp/commit_message.md" in captured_prompt[0]
 
 
 def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
@@ -775,7 +784,7 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
 
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_commands.append(agent_config.cmd)
-        write_commit_message_artifact(tmp_path, "fix: review fallback message")
+        _write_commit_message_doc(tmp_path, "fix: review fallback message")
         return iter([])
 
     monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
@@ -820,7 +829,7 @@ def test_generate_commit_appends_default_fallback_after_configured_chain(
     def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_commands.append(agent_config.cmd)
         if agent_config.cmd == "claude":
-            write_commit_message_artifact(tmp_path, "fix: default fallback message")
+            _write_commit_message_doc(tmp_path, "fix: default fallback message")
             return iter([])
         if len(invoked_commands) <= 2:
             return iter([])

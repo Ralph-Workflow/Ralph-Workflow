@@ -1,144 +1,109 @@
-"""Tests for ralph/mcp/commit_message.py — structured commit artifact helpers."""
+"""Tests for ralph/mcp/artifacts/commit_message.py — markdown commit artifact helpers."""
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.mcp.artifacts.commit_message import (
+    COMMIT_MESSAGE_ARTIFACT,
+    delete_commit_message_artifacts,
     normalize_commit_message_content,
     read_commit_message_artifact,
     read_commit_message_from_path,
-    write_commit_message_artifact,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+COMMIT_DOC = """---
+type: commit
+subject: feat(api): add report export
+---
 
-class FakeFileBackend:
-    def __init__(self) -> None:
-        self.files: dict[Path, str] = {}
-        self.directories: set[Path] = set()
+## Body Summary
 
-    def exists(self, path: Path) -> bool:
-        return path in self.files or path in self.directories
+- [S-1] Add CSV export for reports.
 
-    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
-        self.directories.add(path)
+## Body Details
 
-    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
-        return self.files[path]
+- [D-1] Supports filtered exports and keeps column order stable.
 
-    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-        self.files[path] = content
+## Body Footer
 
-    def replace(self, source: Path, destination: Path) -> None:
-        self.files[destination] = self.files.pop(source)
+- [F-1] Fixes #42
+"""
 
-    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
-        self.files.pop(path, None)
-
-    def glob(self, path: Path, pattern: str) -> list[Path]:
-        return []
+SKIP_DOC = """---
+type: skip
+reason: No relevant diff
+---
+"""
 
 
-def test_read_commit_message_artifact_formats_structured_commit_payload(tmp_path: Path) -> None:
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+def test_commit_message_artifact_is_the_markdown_submission_path() -> None:
+    """The commit phase must look where markdown submission writes the artifact."""
+    assert COMMIT_MESSAGE_ARTIFACT == ".agent/artifacts/commit_message.md"
+
+
+def test_read_commit_message_artifact_renders_markdown_commit_document(tmp_path: Path) -> None:
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     artifact_file.parent.mkdir(parents=True, exist_ok=True)
-    artifact_file.write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {
-                    "type": "commit",
-                    "subject": "feat(api): add report export",
-                    "body_summary": "Add CSV export for reports.",
-                    "body_details": "- Supports filtered exports\n- Keeps column order stable",
-                    "body_footer": "Fixes #42",
-                },
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
-        encoding="utf-8",
-    )
+    artifact_file.write_text(COMMIT_DOC, encoding="utf-8")
 
     assert read_commit_message_artifact(tmp_path) == (
         "feat(api): add report export\n\n"
         "Add CSV export for reports.\n\n"
-        "- Supports filtered exports\n- Keeps column order stable\n\n"
+        "Supports filtered exports and keeps column order stable.\n\n"
         "Fixes #42"
     )
 
 
-def test_read_commit_message_from_path_formats_structured_skip_payload(tmp_path: Path) -> None:
-    message_file = tmp_path / "commit_message.json"
-    message_file.write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {"type": "skip", "reason": "No relevant diff"},
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
+def test_read_commit_message_artifact_returns_none_when_absent(tmp_path: Path) -> None:
+    assert read_commit_message_artifact(tmp_path) is None
+
+
+def test_read_commit_message_artifact_returns_none_for_invalid_document(tmp_path: Path) -> None:
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+    artifact_file.parent.mkdir(parents=True, exist_ok=True)
+    artifact_file.write_text(
+        "---\ntype: commit\nsubject: not a conventional subject\n---\n",
         encoding="utf-8",
     )
+
+    assert read_commit_message_artifact(tmp_path) is None
+
+
+def test_read_commit_message_from_path_formats_markdown_skip_document(tmp_path: Path) -> None:
+    message_file = tmp_path / "commit_message.md"
+    message_file.write_text(SKIP_DOC, encoding="utf-8")
 
     assert read_commit_message_from_path(message_file) == "SKIP: No relevant diff"
 
 
-def test_read_commit_message_artifact_accepts_raw_commit_payload_json(tmp_path: Path) -> None:
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+def test_read_commit_message_from_path_returns_none_when_missing(tmp_path: Path) -> None:
+    assert read_commit_message_from_path(tmp_path / "commit_message.md") is None
+
+
+def test_delete_commit_message_artifacts_removes_markdown_and_legacy_files(
+    tmp_path: Path,
+) -> None:
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     artifact_file.parent.mkdir(parents=True, exist_ok=True)
-    artifact_file.write_text(
-        json.dumps(
-            {
-                "type": "commit",
-                "subject": "fix(cli): recover commit fallback payload",
-                "body": "Accept raw commit payloads when MCP submission falls back to disk.",
-            }
-        ),
-        encoding="utf-8",
-    )
+    artifact_file.write_text(COMMIT_DOC, encoding="utf-8")
+    legacy_dir = tmp_path / ".agent" / "tmp"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    legacy_json = legacy_dir / "commit_message.json"
+    legacy_json.write_text("{}", encoding="utf-8")
+    legacy_text = legacy_dir / "commit-message.txt"
+    legacy_text.write_text("stale", encoding="utf-8")
 
-    assert read_commit_message_artifact(tmp_path) == (
-        "fix(cli): recover commit fallback payload\n\n"
-        "Accept raw commit payloads when MCP submission falls back to disk."
-    )
+    delete_commit_message_artifacts(tmp_path)
 
-
-def test_write_commit_message_artifact_uses_injected_backend(tmp_path: Path) -> None:
-    backend = FakeFileBackend()
-
-    write_commit_message_artifact(
-        tmp_path,
-        {"type": "commit", "subject": "feat(core): test"},
-        backend=backend,
-        now_iso=lambda: "STATIC-TIME",
-    )
-
-    artifact_path = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    payload = json.loads(backend.read_text(artifact_path))
-    assert payload["created_at"] == "STATIC-TIME"
-
-
-def test_write_commit_message_artifact_rejects_non_conventional_subject(tmp_path: Path) -> None:
-    backend = FakeFileBackend()
-
-    with pytest.raises(ValueError, match="conventional commit format"):
-        write_commit_message_artifact(
-            tmp_path,
-            {"type": "commit", "subject": "update files"},
-            backend=backend,
-        )
+    assert not artifact_file.exists()
+    assert not legacy_json.exists()
+    assert not legacy_text.exists()
 
 
 def test_normalize_commit_message_content_accepts_excluded_files_payload() -> None:
@@ -151,6 +116,11 @@ def test_normalize_commit_message_content_accepts_excluded_files_payload() -> No
     )
 
     assert normalized["excluded_files"] == [{"path": "docs/guide.md", "reason": "internal_ignore"}]
+
+
+def test_normalize_commit_message_content_rejects_non_conventional_subject() -> None:
+    with pytest.raises(ValueError, match="conventional commit format"):
+        normalize_commit_message_content({"type": "commit", "subject": "update files"})
 
 
 @pytest.mark.parametrize(

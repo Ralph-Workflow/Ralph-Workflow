@@ -324,49 +324,18 @@ def test_materialize_commit_phase_with_oversized_surrogate_diff(
 def test_development_analysis_prompt_renders_without_development_result(
     tmp_path: Path,
 ) -> None:
-    """development_analysis prompt must render even when development_result.json is absent.
+    """development_analysis prompt must render even when development_result is absent.
 
     development_result is required by default policy, but prompt generation must not
     crash when the artifact is absent on disk. This test exercises template rendering
     only, not artifact validation — the analysis agent must still receive a complete
-    prompt even when development_result.json is missing.
+    prompt even when the development_result markdown artifact is missing.
     """
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "implement the feature")
-    workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "ctx",
-                        "scope_items": [
-                            {"text": "item one"},
-                            {"text": "item two"},
-                            {"text": "item three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "step", "content": "do it"}],
-                    "critical_files": {"primary_files": [{"path": "src/a.py", "action": "modify"}]},
-                    "risks_mitigations": [{"risk": "r", "mitigation": "m"}],
-                    "verification_strategy": [{"method": "run tests", "expected_outcome": "pass"}],
-                    "work_units": [
-                        {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}
-                    ],
-                },
-            }
-        ),
-    )
-    # Intentionally do NOT write development_result.json
+    _write_plan_handoff(workspace)
+    # Intentionally do NOT write a development_result artifact
 
     with patch.object(materialize_module, "_git_diff", return_value="diff --git a/x.py"):
         prompt_path = materialize_prompt_for_phase(
@@ -476,57 +445,13 @@ def test_planning_loopback_from_analysis_preserves_history(
     workspace.write("PROMPT.md", "Plan the new feature")
 
     # Write plan + analysis feedback so the loopback prompt can render
-    plan_artifact = {
-        "type": "plan",
-        "content": {
-            "summary": {
-                "context": "ctx",
-                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
-            },
-            "skills_mcp": {
-                "skills": [
-                    "test-driven-development",
-                    "verification-before-completion",
-                ],
-                "mcps": [],
-            },
-            "steps": [
-                {
-                    "number": 1,
-                    "title": "t",
-                    "content": "c",
-                    "step_type": "file_change",
-                    "priority": "high",
-                    "targets": [{"path": "f.py", "action": "modify"}],
-                    "depends_on": [],
-                }
-            ],
-            "critical_files": {
-                "primary_files": [{"path": "f.py", "action": "modify"}],
-                "reference_files": [],
-            },
-            "risks_mitigations": [{"risk": "r", "mitigation": "m", "severity": "low"}],
-            "verification_strategy": [{"method": "make test", "expected_outcome": "green"}],
-        },
-    }
-    analysis_artifact = {
-        "type": "planning_analysis_decision",
-        "content": {
-            "status": "request_changes",
-            "summary": "Revise the plan.",
-            "what_came_up_short": ["Verification is weak."],
-            "how_to_fix": ["Add exact commands."],
-        },
-    }
-
-    workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(plan_artifact),
+    _write_plan_handoff(workspace)
+    feedback_doc = (
+        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S1] Revise the plan.\n"
     )
-    workspace.write(
-        ".agent/artifacts/planning_analysis_decision.json",
-        json.dumps(analysis_artifact),
-    )
+    workspace.write(".agent/artifacts/planning_analysis_decision.md", feedback_doc)
+    workspace.write(".agent/PLANNING_ANALYSIS_DECISION.md", feedback_doc)
 
     # Create history files on disk (bypass MemoryWorkspace)
     artifact_dir = tmp_path / ".agent" / "artifacts"

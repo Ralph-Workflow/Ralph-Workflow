@@ -153,10 +153,7 @@ from ralph.display.phase_status import (
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
-from ralph.mcp.artifacts.handoffs import (
-    ensure_markdown_handoff_from_artifact,
-    handoff_path_for_artifact,
-)
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -2366,7 +2363,6 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "plan",
-                workspace_root / _ARTIFACTS_DIR / "plan.json",
             )
             if markdown:
                 self._render_text_block("PLAN", markdown, "execution")
@@ -2400,7 +2396,6 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "development_result",
-                workspace_root / _ARTIFACTS_DIR / "development_result.json",
             )
             if markdown:
                 self._render_text_block("DEVELOPMENT RESULT", markdown, "execution")
@@ -2428,7 +2423,6 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "issues",
-                workspace_root / _ARTIFACTS_DIR / "issues.json",
             )
             if markdown:
                 self._render_text_block("REVIEW ISSUES", markdown, "review")
@@ -2454,7 +2448,6 @@ class ParallelDisplay:
             markdown = self._resolve_authoritative_markdown_handoff(
                 workspace_root,
                 "fix_result",
-                workspace_root / _ARTIFACTS_DIR / "fix_result.json",
             )
             if markdown:
                 self._render_text_block("FIX", markdown, "fix")
@@ -2482,7 +2475,6 @@ class ParallelDisplay:
                 markdown = self._resolve_authoritative_markdown_handoff(
                     workspace_root,
                     artifact_type,
-                    workspace_root / _ARTIFACTS_DIR / f"{artifact_type}.json",
                 )
                 if markdown:
                     self._render_text_block(f"ANALYSIS: {drain}", markdown, "analysis")
@@ -2553,42 +2545,25 @@ class ParallelDisplay:
         return stripped or None
 
     @staticmethod
-    def _regenerated_markdown_handoff(
-        workspace_root: Path,
-        artifact_type: str,
-        artifact_path: Path,
-    ) -> str | None:
-        artifact_content = ParallelDisplay._read_text_defensive(artifact_path)
-        if artifact_content is None:
-            return None
-        try:
-            created_path = ensure_markdown_handoff_from_artifact(
-                workspace_root,
-                artifact_type,
-                artifact_content,
-            )
-        except (json.JSONDecodeError, OSError, PermissionError, TypeError, ValueError):
-            return None
-        if created_path is None:
-            return None
-        regenerated = ParallelDisplay._read_text_defensive(Path(created_path))
-        if regenerated is None:
-            return None
-        stripped = regenerated.strip()
-        return stripped or None
-
-    @staticmethod
     def _resolve_authoritative_markdown_handoff(
         workspace_root: Path,
         artifact_type: str,
-        artifact_path: Path,
     ) -> str | None:
-        regenerated = ParallelDisplay._regenerated_markdown_handoff(
-            workspace_root, artifact_type, artifact_path
-        )
-        if regenerated is not None:
-            return regenerated
-        return ParallelDisplay._read_markdown_handoff(workspace_root, artifact_type)
+        """Return the submitted markdown for an artifact type.
+
+        Markdown artifacts are the source of truth; submission writes the
+        handoff copy as identical bytes, so this reads the handoff first and
+        falls back to the artifact document itself. No derivation happens here.
+        """
+        handoff = ParallelDisplay._read_markdown_handoff(workspace_root, artifact_type)
+        if handoff is not None:
+            return handoff
+        artifact_path = workspace_root / _ARTIFACTS_DIR / f"{artifact_type}.md"
+        markdown = ParallelDisplay._read_text_defensive(artifact_path)
+        if markdown is None:
+            return None
+        stripped = markdown.strip()
+        return stripped or None
 
     def _render_titled_lines(self, title: str, style_phase: str, lines: list[str]) -> None:
         """Render a title rule, the body lines, and a closing rule.

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.history import history_dir_for_artifact, history_index_path
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import (
     ArtifactContract,
     ArtifactHistoryPolicy,
@@ -37,31 +37,30 @@ def test_tool_name_prefix_for_claude_interactive() -> None:
 
 def test_submit_artifact_tool_name_for_transport_returns_claude_namespaced_for_claude() -> None:
     assert submit_artifact_tool_name_for_transport(AgentTransport.CLAUDE) == claude_tool_name(
-        SUBMIT_ARTIFACT_TOOL
+        SUBMIT_MD_ARTIFACT_TOOL
     )
     assert submit_artifact_tool_name_for_transport(
         AgentTransport.CLAUDE_INTERACTIVE
-    ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+    ) == claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
 
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_agy() -> None:
-    assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_ARTIFACT_TOOL
+    assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_MD_ARTIFACT_TOOL
 
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_none() -> None:
-    assert submit_artifact_tool_name_for_transport(None) == SUBMIT_ARTIFACT_TOOL
+    assert submit_artifact_tool_name_for_transport(None) == SUBMIT_MD_ARTIFACT_TOOL
 
 
 def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) -> None:
     workspace = FsWorkspace(tmp_path)
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    expected = '{"summary": "Applied fixes"}'
-    (artifact_dir / "fix_result.json").write_text(expected, encoding="utf-8")
+    fix_result_doc = "---\ntype: fix_result\n---\n## Summary\n- [S1] Applied fixes\n"
+    handoff = tmp_path / ".agent" / "FIX_RESULT.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text(fix_result_doc, encoding="utf-8")
 
     content, path = resolve_fix_result_content(workspace)
-    assert "# Fix Result" in content
-    assert "Applied fixes" in content
+    assert content == fix_result_doc
     assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
 
 

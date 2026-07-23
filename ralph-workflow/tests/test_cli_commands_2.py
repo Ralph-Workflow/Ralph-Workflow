@@ -28,7 +28,6 @@ from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.theme import RALPH_THEME
-from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
@@ -38,6 +37,18 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.policy.loader import default_dir as _policy_default_dir
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.skills._capability_state import CapabilityState
+
+
+def _write_commit_message_doc(repo_root: Path, message: str) -> None:
+    """Write the markdown commit_message artifact the way MCP submission does."""
+    if message.upper().startswith("SKIP:"):
+        reason = message[len("SKIP:"):].strip()
+        document = f"---\ntype: skip\nreason: {reason}\n---\n"
+    else:
+        document = f"---\ntype: commit\nsubject: {message}\n---\n"
+    path = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
 
 
 def _stub_baseline_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,7 +81,7 @@ _POLICY_VALIDATION_EXIT_CODE = 2
 
 def _artifact_invoke(tmp_path: Path, message: str) -> object:
     def _fake(agent: object, prompt_file: str, *, options: object = None) -> object:
-        write_commit_message_artifact(tmp_path, message)
+        _write_commit_message_doc(tmp_path, message)
         return iter([])
 
     return _fake

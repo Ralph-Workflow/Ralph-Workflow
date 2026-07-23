@@ -24,7 +24,9 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.executor.process import run_process_async
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
-from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
@@ -54,7 +56,7 @@ from ralph.policy.validation import PolicyValidationError
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
     from rich.console import Console
@@ -205,7 +207,77 @@ def write_parallel_development_summary(
         s=all_succeeded,
     )
 
-    sync_markdown_handoff(workspace_scope.root, "parallel_development_summary", summary)
+    write_parallel_summary_handoff(workspace_scope.root, summary)
+
+
+def write_parallel_summary_handoff(
+    workspace_root: Path,
+    summary: Mapping[str, object],
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> str | None:
+    """Write the markdown handoff for the internally generated parallel summary.
+
+    The summary is engine-generated (never an agent-submitted markdown
+    artifact), so fan-out renders the handoff itself. It reuses the
+    development-result handoff path so the analysis phase picks it up through
+    the same fallback path without code changes.
+    """
+    relative_path = handoff_path_for_artifact("parallel_development_summary")
+    if relative_path is None:
+        return None
+    destination = workspace_root / relative_path
+    backend.mkdir(destination.parent, parents=True, exist_ok=True)
+    write_text_if_changed(
+        backend, destination, _render_parallel_summary_markdown(summary), encoding="utf-8"
+    )
+    return relative_path
+
+
+def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
+    """Render the parallel development summary for analysis agent consumption."""
+    lines = ["# Parallel Development Summary"]
+
+    workers = content.get("workers")
+    if isinstance(workers, list) and workers:
+        lines.extend(["", "## Workers"])
+        for w in workers:
+            if not isinstance(w, dict):
+                continue
+            uid = w.get("unit_id", "?")
+            status = w.get("status", "unknown")
+            artifact_count = w.get("artifact_count", 0)
+            final_message = w.get("final_message")
+            entry = f"- **{uid}**: {status} ({artifact_count} artifact(s))"
+            if final_message:
+                entry += f" — {final_message}"
+            lines.append(entry)
+
+    any_failed = content.get("any_failed", False)
+    all_succeeded = content.get("all_succeeded", False)
+    lines.extend(
+        [
+            "",
+            "## Status",
+            "",
+            f"- any_failed: {str(any_failed).lower()}",
+            f"- all_succeeded: {str(all_succeeded).lower()}",
+        ]
+    )
+
+    verification = content.get("verification")
+    if isinstance(verification, dict):
+        ran = verification.get("ran", False)
+        passed = verification.get("passed")
+        exit_code = verification.get("exit_code")
+        lines.extend(["", "## Verification"])
+        if ran:
+            result = "passed" if passed else f"failed (exit code {exit_code})"
+            lines.extend(["", f"Ran: yes — {result}"])
+        else:
+            lines.extend(["", "Ran: no"])
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:

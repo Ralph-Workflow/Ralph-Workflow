@@ -14,15 +14,22 @@ for all commit-role phases declared in the active pipeline policy.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError
 from loguru import logger
 
 from ralph.git.operations import GitOperationError, has_uncommitted_changes
-from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT, read_commit_message_artifact
-from ralph.phases.artifacts import artifact_validation_failure_event
+from ralph.mcp.artifacts.commit_message import (
+    COMMIT_MESSAGE_ARTIFACT,
+    COMMIT_MESSAGE_TYPE,
+    render_commit_message_content,
+)
+from ralph.phases.artifacts import (
+    artifact_validation_failure_event,
+    load_phase_artifact,
+    unwrap_phase_artifact_content,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 
@@ -54,14 +61,19 @@ def _has_no_diff(ctx: PhaseContext) -> bool:
 
 
 def _read_commit_message(ctx: PhaseContext) -> str | None:
-    """Read the commit message artifact content from the workspace.
+    """Read the markdown commit_message artifact and render the plain-text message.
 
-    Returns None when the artifact is absent, the workspace does not support
-    absolute paths (e.g., mock), or the artifact is unreadable.
+    Returns None when the artifact is absent, invalid, or the workspace cannot
+    read it (e.g., mock workspaces without file support).
     """
     try:
-        root = ctx.workspace.absolute_path(".")
-        return read_commit_message_artifact(Path(root))
+        artifact = load_phase_artifact(
+            ctx.workspace,
+            COMMIT_MESSAGE_ARTIFACT,
+            artifact_type=COMMIT_MESSAGE_TYPE,
+        )
+        content = unwrap_phase_artifact_content(artifact, expected_type=COMMIT_MESSAGE_TYPE)
+        return render_commit_message_content(content)
     except Exception:
         return None
 

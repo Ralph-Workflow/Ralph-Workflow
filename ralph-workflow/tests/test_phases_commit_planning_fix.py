@@ -7,10 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.artifacts.commit_message import (
-    COMMIT_MESSAGE_ARTIFACT,
-    write_commit_message_artifact,
-)
+from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import (
     HANDLERS,
     PhaseContext,
@@ -54,22 +51,30 @@ def _mk_policy_context(workspace: object = None) -> PhaseContext:
     )
 
 
+_COMMIT_MESSAGE_DOC = """---
+type: commit
+subject: fix(test): validate commit artifact
+---
+"""
+
+
+def _write_commit_message_doc(root: Path, document: str = _COMMIT_MESSAGE_DOC) -> None:
+    commit_msg_path = root / COMMIT_MESSAGE_ARTIFACT
+    commit_msg_path.parent.mkdir(parents=True, exist_ok=True)
+    commit_msg_path.write_text(document, encoding="utf-8")
+
+
+def _write_skip_commit_message_doc(root: Path, reason: str) -> None:
+    _write_commit_message_doc(root, f"---\ntype: skip\nreason: {reason}\n---\n")
+
+
 def _stub_context(*, commit_message_present: bool = False) -> PhaseContext:
     workspace = MagicMock()
     workspace.exists.side_effect = lambda path: (
         commit_message_present and path == COMMIT_MESSAGE_ARTIFACT
     )
     workspace.read.side_effect = lambda path: (
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {"type": "commit", "subject": "fix(test): validate commit artifact"},
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        )
+        _COMMIT_MESSAGE_DOC
         if commit_message_present and path == COMMIT_MESSAGE_ARTIFACT
         else ""
     )
@@ -100,21 +105,7 @@ def _stub_context_no_exists() -> PhaseContext:
 def _fs_context(root: Path, *, write_commit_message: bool = False) -> PhaseContext:
     workspace = FsWorkspace(root)
     if write_commit_message:
-        commit_msg_path = root / COMMIT_MESSAGE_ARTIFACT
-        commit_msg_path.parent.mkdir(parents=True, exist_ok=True)
-        commit_msg_path.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {"type": "commit", "subject": "fix(test): validate commit artifact"},
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
-            encoding="utf-8",
-        )
+        _write_commit_message_doc(root)
     return PhaseContext.construct(
         workspace=workspace,
         registry=object(),
@@ -206,9 +197,10 @@ def test_development_commit_invalid_commit_message_emits_retry_in_session(
     tmp_git_repo: Path,
 ) -> None:
     (tmp_git_repo / "README.md").write_text("dirty")
-    commit_msg_path = tmp_git_repo / COMMIT_MESSAGE_ARTIFACT
-    commit_msg_path.parent.mkdir(parents=True, exist_ok=True)
-    commit_msg_path.write_text("{not json", encoding="utf-8")
+    _write_commit_message_doc(
+        tmp_git_repo,
+        "---\ntype: commit\nsubject: not a conventional subject\n---\n",
+    )
     ctx = _fs_context(tmp_git_repo)
     effect = InvokeAgentEffect(
         agent_name="dev",
@@ -279,7 +271,7 @@ def test_development_commit_emits_skip_when_agent_submits_skip_artifact(
     """
     (tmp_git_repo / "dirty.py").write_text("untracked_only = True\n")
     ctx = _fs_context(tmp_git_repo)  # worktree is dirty (untracked file)
-    write_commit_message_artifact(tmp_git_repo, {"type": "skip", "reason": "no diff available"})
+    _write_skip_commit_message_doc(tmp_git_repo, "no diff available")
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -296,7 +288,7 @@ def test_review_commit_emits_skip_when_agent_submits_skip_artifact(
     """Same as above but for a review-role commit phase."""
     (tmp_git_repo / "dirty.py").write_text("untracked_only = True\n")
     ctx = _fs_context(tmp_git_repo)
-    write_commit_message_artifact(tmp_git_repo, {"type": "skip", "reason": "no pending changes"})
+    _write_skip_commit_message_doc(tmp_git_repo, "no pending changes")
     effect = InvokeAgentEffect(
         agent_name="review",
         phase="review_commit",

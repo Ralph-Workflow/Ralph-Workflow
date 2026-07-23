@@ -72,6 +72,59 @@ type: fix_result
         load_phase_artifact(workspace, ".agent/FIX_RESULT.md")
 
 
+def test_load_phase_artifact_with_explicit_artifact_type_loads_commit_message_markdown() -> None:
+    """commit_message docs declare their variant ('commit'/'skip') in frontmatter,
+    so the caller must be able to name the artifact type explicitly."""
+    workspace = MemoryWorkspace()
+    workspace.write(
+        ".agent/artifacts/commit_message.md",
+        """---
+type: commit
+subject: fix(auth): prevent token expiry race
+---
+""",
+    )
+
+    artifact = load_phase_artifact(
+        workspace,
+        ".agent/artifacts/commit_message.md",
+        artifact_type="commit_message",
+    )
+
+    assert artifact == {
+        "type": "commit_message",
+        "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"},
+    }
+
+
+def test_load_phase_artifact_with_explicit_artifact_type_still_reports_validation_errors() -> None:
+    """An explicit artifact type must not bypass spec validation."""
+    workspace = MemoryWorkspace()
+    workspace.write(
+        ".agent/artifacts/commit_message.md",
+        """---
+type: commit
+subject: not a conventional subject
+---
+""",
+    )
+
+    with pytest.raises(PhaseArtifactError, match=r"Markdown artifact .* is invalid"):
+        load_phase_artifact(
+            workspace,
+            ".agent/artifacts/commit_message.md",
+            artifact_type="commit_message",
+        )
+
+
+def test_load_phase_artifact_with_unknown_explicit_artifact_type_raises() -> None:
+    workspace = MemoryWorkspace()
+    workspace.write(".agent/artifacts/mystery.md", "---\ntype: commit\n---\n")
+
+    with pytest.raises(PhaseArtifactError, match="Unsupported markdown artifact type"):
+        load_phase_artifact(workspace, ".agent/artifacts/mystery.md", artifact_type="mystery")
+
+
 def test_phase_artifacts_regression_keeps_legacy_json_artifacts_readable() -> None:
     """PLAN step 15: existing JSON artifacts remain valid phase input."""
     workspace = MemoryWorkspace()

@@ -22,8 +22,18 @@ class PhaseArtifactError(ValueError):
     """Raised when a phase artifact is missing or malformed."""
 
 
-def load_phase_artifact(workspace: Workspace, path: str) -> dict[str, object]:
-    """Load a legacy JSON artifact or validate a markdown artifact into its envelope."""
+def load_phase_artifact(
+    workspace: Workspace,
+    path: str,
+    *,
+    artifact_type: str | None = None,
+) -> dict[str, object]:
+    """Load a legacy JSON artifact or validate a markdown artifact into its envelope.
+
+    ``artifact_type`` selects the markdown spec explicitly for documents whose
+    frontmatter ``type`` is not the artifact type (commit_message declares its
+    commit/skip variant there); when omitted the document's frontmatter decides.
+    """
     try:
         text = workspace.read(path)
     except (FileNotFoundError, OSError) as exc:
@@ -31,7 +41,7 @@ def load_phase_artifact(workspace: Workspace, path: str) -> dict[str, object]:
 
     if path.endswith(".json"):
         return _load_legacy_json_artifact(text, path)
-    return _load_markdown_artifact(text, path)
+    return _load_markdown_artifact(text, path, artifact_type=artifact_type)
 
 
 def _load_legacy_json_artifact(text: str, path: str) -> dict[str, object]:
@@ -44,14 +54,24 @@ def _load_legacy_json_artifact(text: str, path: str) -> dict[str, object]:
         raise PhaseArtifactError(str(exc)) from exc
 
 
-def _load_markdown_artifact(text: str, path: str) -> dict[str, object]:
+def _load_markdown_artifact(
+    text: str,
+    path: str,
+    *,
+    artifact_type: str | None = None,
+) -> dict[str, object]:
     """Validate markdown with its registered spec and retain the legacy envelope."""
-    document, _ = parse_markdown_document(text)
-    artifact_type = document.frontmatter.get("type")
-    if not artifact_type:
-        raise PhaseArtifactError(f"Markdown artifact at {path} must declare frontmatter 'type'")
-
     import_module("ralph.mcp.artifacts.markdown.specs")
+    document, _ = parse_markdown_document(text)
+    declared = document.frontmatter.get("type")
+    if artifact_type is None:
+        if not declared:
+            raise PhaseArtifactError(f"Markdown artifact at {path} must declare frontmatter 'type'")
+        artifact_type = str(declared)
+    elif declared and str(declared) != artifact_type and _is_registered_spec(str(declared)):
+        raise PhaseArtifactError(
+            f"Markdown artifact at {path} declares type {declared!r}, expected {artifact_type!r}"
+        )
     try:
         content, diagnostics = parse_and_validate(text, get_spec(artifact_type))
     except ValueError as exc:
@@ -63,6 +83,14 @@ def _load_markdown_artifact(text: str, path: str) -> dict[str, object]:
             f"Markdown artifact at {path} is invalid at line {first.line}: {first.message}"
         )
     return {"type": artifact_type, "content": content}
+
+
+def _is_registered_spec(artifact_type: str) -> bool:
+    try:
+        get_spec(artifact_type)
+    except ValueError:
+        return False
+    return True
 
 
 def unwrap_phase_artifact_content(
@@ -97,7 +125,11 @@ def validate_artifact_on_disk(
     cannot drift between callers.
     """
     try:
-        artifact = load_phase_artifact(workspace, required_artifact.json_path)
+        artifact = load_phase_artifact(
+            workspace,
+            required_artifact.json_path,
+            artifact_type=required_artifact.artifact_type,
+        )
         content = unwrap_phase_artifact_content(
             artifact, expected_type=required_artifact.artifact_type
         )

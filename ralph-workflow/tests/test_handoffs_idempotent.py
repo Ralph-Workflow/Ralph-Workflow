@@ -1,13 +1,13 @@
-"""Black-box tests for sync_markdown_handoff idempotent-write guard.
+"""Black-box tests for the parallel-summary handoff writer's idempotent-write guard.
 
-Satisfies AC-02: sync_markdown_handoff skips the physical write when
-the destination already contains byte-identical rendered markdown,
-while still guaranteeing the file contains render_markdown_handoff
-output; the first write and any changed re-render still write.
+The parallel_development_summary is an internally generated record (not an
+agent-authored markdown artifact), so fan-out renders its own markdown handoff
+directly. The writer must skip the physical write when the destination already
+contains byte-identical markdown, while still guaranteeing the file reflects
+the rendered summary; the first write and any changed re-render still write.
 
-The handoff writer is exercised end-to-end through a counting
-in-memory FileBackend so no real filesystem I/O is performed (no
-``tmp_path``, no ``Path.read_text``/``Path.write_text``, no patching).
+The writer is exercised end-to-end through a counting in-memory FileBackend so
+no real filesystem I/O is performed.
 """
 
 from __future__ import annotations
@@ -16,20 +16,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import FileBackend
-from ralph.mcp.artifacts.handoffs import (
-    render_markdown_handoff,
-    sync_markdown_handoff,
-)
+from ralph.pipeline.fan_out import write_parallel_summary_handoff
 
 if TYPE_CHECKING:
-    from collections.abc import Dict, Mapping
+    from collections.abc import Mapping
 
 
 class _CountingBackend(FileBackend):
     """In-memory FileBackend that records write_text invocations."""
 
     def __init__(self) -> None:
-        self._files: Dict[Path, str] = {}
+        self._files: dict[Path, str] = {}
         self.write_text_calls: list[tuple[Path, str]] = []
         self.mkdir_calls: list[Path] = []
 
@@ -63,62 +60,63 @@ class _CountingBackend(FileBackend):
         return []
 
 
-def test_markdown_handoff_regression_skips_write_when_content_identical() -> None:
-    """AC-02: identical re-submit of the per-artifact Markdown handoff performs zero additional writes.
+_SUMMARY: Mapping[str, object] = {
+    "workers": [
+        {
+            "unit_id": "u1",
+            "status": "succeeded",
+            "artifact_count": 2,
+            "final_message": None,
+        },
+        {
+            "unit_id": "u2",
+            "status": "failed",
+            "artifact_count": 0,
+            "final_message": "boom",
+        },
+    ],
+    "any_failed": True,
+    "all_succeeded": False,
+    "verification": {"ran": True, "passed": False, "exit_code": 2},
+}
 
-    Verifies the skip half of AC-02: ``sync_markdown_handoff`` skips the
-    physical write when the destination already contains byte-identical
-    rendered markdown. The first call writes; the second identical call
-    is a skip. The final ``_files[destination]`` equals
-    ``render_markdown_handoff`` output.
-    """
+
+def test_parallel_summary_handoff_renders_workers_and_verification() -> None:
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
-    content: Mapping[str, object] = {
-        "summary": "s",
-        "status": "request_changes",
-        "issues": [],
-    }
-    destination = workspace_root / ".agent" / "ISSUES.md"
-    expected = render_markdown_handoff("issues", content)
 
-    first = sync_markdown_handoff(workspace_root, "issues", content, backend=backend)
-    second = sync_markdown_handoff(workspace_root, "issues", content, backend=backend)
+    relative = write_parallel_summary_handoff(workspace_root, _SUMMARY, backend=backend)
 
-    assert first == ".agent/ISSUES.md"
-    assert second == ".agent/ISSUES.md"
-    # Exactly one write_text total \u2014 the second identical call is a skip.
+    assert relative == ".agent/DEVELOPMENT_RESULT.md"
+    rendered = backend.read_text(workspace_root / ".agent" / "DEVELOPMENT_RESULT.md")
+    assert "# Parallel Development Summary" in rendered
+    assert "- **u1**: succeeded (2 artifact(s))" in rendered
+    assert "- **u2**: failed (0 artifact(s)) — boom" in rendered
+    assert "- any_failed: true" in rendered
+    assert "- all_succeeded: false" in rendered
+    assert "Ran: yes — failed (exit code 2)" in rendered
+
+
+def test_parallel_summary_handoff_skips_write_when_content_identical() -> None:
+    backend = _CountingBackend()
+    workspace_root = Path("/virtual-ws")
+
+    write_parallel_summary_handoff(workspace_root, _SUMMARY, backend=backend)
+    write_parallel_summary_handoff(workspace_root, _SUMMARY, backend=backend)
+
     assert len(backend.write_text_calls) == 1
-    assert backend.write_text_calls[0] == (destination, expected)
-    assert backend._files[destination] == expected
 
 
-def test_markdown_handoff_regression_writes_when_content_changed() -> None:
-    """AC-02: changed handoff content re-fires the write so the file reflects the new render.
-
-    Verifies the changed-content half of AC-02: any re-submit whose
-    rendered markdown differs triggers a fresh ``write_text`` call, and
-    the final stored content equals ``render_markdown_handoff`` of the
-    changed payload.
-    """
+def test_parallel_summary_handoff_writes_when_content_changed() -> None:
     backend = _CountingBackend()
     workspace_root = Path("/virtual-ws")
-    initial: Mapping[str, object] = {
-        "summary": "first",
-        "status": "request_changes",
-        "issues": [],
-    }
-    changed: Mapping[str, object] = {
-        "summary": "second",
-        "status": "request_changes",
-        "issues": [],
-    }
-    destination = workspace_root / ".agent" / "ISSUES.md"
-    expected = render_markdown_handoff("issues", changed)
+    changed = dict(_SUMMARY)
+    changed["any_failed"] = False
+    changed["all_succeeded"] = True
 
-    sync_markdown_handoff(workspace_root, "issues", initial, backend=backend)
-    sync_markdown_handoff(workspace_root, "issues", changed, backend=backend)
+    write_parallel_summary_handoff(workspace_root, _SUMMARY, backend=backend)
+    write_parallel_summary_handoff(workspace_root, changed, backend=backend)
 
     assert len(backend.write_text_calls) == 2
-    assert backend.write_text_calls[1] == (destination, expected)
-    assert backend._files[destination] == expected
+    rendered = backend.read_text(workspace_root / ".agent" / "DEVELOPMENT_RESULT.md")
+    assert "- all_succeeded: true" in rendered

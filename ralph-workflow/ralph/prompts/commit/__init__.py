@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, WRITE_FILE_TOOL
+from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL, WRITE_FILE_TOOL
 
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ..template_engine import render_template
@@ -31,7 +31,7 @@ class CommitPromptPayloadConfig:
 
 
 DEFAULT_COMMIT_TEMPLATE_NAME = "commit_message"
-DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME = "ralph_submit_artifact"
+DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME = str(SUBMIT_MD_ARTIFACT_TOOL)
 
 
 def prompt_commit_message(

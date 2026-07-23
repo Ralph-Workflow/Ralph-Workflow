@@ -9,10 +9,6 @@ from ralph.prompts.commit import (
 )
 from ralph.prompts.template_registry import TemplateRegistry
 
-VALID_COMMIT_SUBJECT_JSON = (
-    '\\"type\\":\\"commit\\",\\"subject\\":\\"fix(auth): prevent token expiry race\\"'
-)
-
 
 def test_commit_prompt_includes_diff_and_guidance() -> None:
     diff = "diff --git a/app.py b/app.py\n@@ -1 +1 @@\n-foo\n+bar"
@@ -22,14 +18,11 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert diff in prompt
     assert "<ralph-commit>" not in prompt
     assert "<ralph-subject>" not in prompt
-    assert "plain text" in prompt.lower()
-    assert "mcp artifact is the authoritative output" in prompt.lower()
     assert "## COMMIT MESSAGE FORMAT" in prompt
     assert "## WHEN TO USE A BODY" in prompt
     assert "most commits need a body" in prompt.lower()
-    assert "call the tool before emitting any final text" in prompt.lower()
-    assert "commit artifact" in prompt.lower()
-    assert "skip artifact" in prompt.lower()
+    assert "commit document" in prompt.lower()
+    assert "skip document" in prompt.lower()
     # Architectural fix (2026-06-14): the template MUST NOT carry a
     # "REQUIRED PROCEDURE" that duplicates the shared artifact submission
     # macro. A duplicate procedure (e.g. "output only the commit subject
@@ -39,32 +32,26 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "output only the commit subject line" not in prompt.lower()
     assert "artifact submission procedure above is authoritative" in prompt.lower()
     assert "declare_complete" in prompt.lower()
-    assert '"type": "commit"' in prompt
-    assert '"subject": "fix(auth): prevent token expiry race"' in prompt
-    assert '"type": "skip"' in prompt
-    assert '"reason": "Reason why no commit is needed"' in prompt
-    assert '"files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]' in prompt
-    assert '"excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]' in prompt
+    # The artifact is a markdown document: the decision lives in frontmatter.
+    assert "type: commit" in prompt
+    assert "subject: fix(auth): prevent token expiry race" in prompt
+    assert "type: skip" in prompt
+    assert "## Files" in prompt
+    assert "## Excluded Files" in prompt
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()
     assert "do not call bash" in prompt.lower()
-    assert "submit-artifact mcp tool is unavailable" in prompt.lower()
-    # Macro wording replaces the old duplicate "REQUIRED PROCEDURE 5"
-    # text. The macro is the single source of truth.
-    assert "raw inner" in prompt.lower() and "payload json" in prompt.lower()
-    assert '"artifact_type":"commit_message"' in prompt
-    assert VALID_COMMIT_SUBJECT_JSON in prompt
-    assert "do not use `content_path` for this task" in prompt.lower()
+    # The write-file fallback promotes a validated markdown document, not JSON.
+    assert ".agent/tmp/commit_message.md" in prompt
+    assert "raw markdown" in prompt.lower()
     assert "edit the json file on disk" not in prompt.lower()
     assert "use `chore` only for repo maintenance" in prompt.lower()
     assert "omit the scope when the change spans multiple subsystems" in prompt.lower()
-    assert "most commits need a body" in prompt.lower()
     assert "one-liner subjects (no body) are only acceptable for" in prompt.lower()
     assert "common mistakes to avoid" in prompt.lower()
     assert "bad: chore: update files" in prompt.lower()
     assert "bad: fix: stuff" in prompt.lower()
-    assert "most commits need a body" in prompt.lower()
     assert "changes not yet committed" in prompt.lower()
     assert "current worktree vs the last commit" in prompt.lower()
 
@@ -96,39 +83,28 @@ def test_commit_prompt_includes_prefixed_submit_artifact_aliases() -> None:
 def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     prompt = prompt_commit_message_for_opencode(
         "diff --git a/app.py b/app.py\n+hello",
-        submit_artifact_tool_name="ralph_submit_artifact",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
     )
 
     assert "current pending work" in prompt
     assert "current worktree vs the last commit" in prompt
     assert "Do not analyze anything" in prompt
-    assert "call `ralph_submit_artifact` when it is available" in prompt
-    assert VALID_COMMIT_SUBJECT_JSON in prompt
-    assert (
-        '{"type":"commit","subject":"fix(auth): prevent token expiry race",'
-        '"excluded_files":[{"path":"notes/todo.md","reason":"not_task_related"}]}' in prompt
-    )
-    assert "json string" in prompt.lower()
-    assert '{"type":"skip","reason":"Reason why no commit is needed"}' in prompt
+    assert "`ralph_submit_md_artifact`" in prompt
+    # The artifact is a markdown document: the decision lives in frontmatter.
+    assert "type: commit" in prompt
+    assert "subject: fix(auth): prevent token expiry race" in prompt
+    assert "type: skip" in prompt
+    assert "path | reason" in prompt
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only state-changing tools you may call" in prompt
     assert "declare_complete" in prompt
     assert "write_file" in prompt
     assert "Do not call bash" in prompt
-    # Architectural fix (2026-06-14): the unavailable-tool fallback
-    # guidance lives in the SHARED artifact submission macro (step 6),
-    # not in a duplicate "REQUIRED PROCEDURE" section. The template is
-    # no longer the source of that text; the macro is. Assert against
-    # the macro's wording so a refactor of either side fails.
-    assert "submit-artifact MCP tool is unavailable" in prompt
-    assert ".agent/tmp/commit_message.json" in prompt
-    # The macro's step 6 wraps onto two lines in the rendered output;
-    # strip whitespace before substring-matching.
-    assert "raw inner" in prompt and "payload JSON" in prompt
-    assert "no outer envelope" in prompt
-    assert '"artifact_type":"commit_message"' in prompt
-    assert VALID_COMMIT_SUBJECT_JSON in prompt
-    assert "Do not use `content_path` for this task" in prompt
+    # The unavailable-tool fallback lives in the SHARED artifact submission
+    # macro, not in a duplicate procedure section, and promotes a validated
+    # markdown document — never JSON.
+    assert ".agent/tmp/commit_message.md" in prompt
+    assert "raw markdown" in prompt.lower()
     assert "Use `chore` only for repo maintenance" in prompt
     assert "Omit the scope when the change spans multiple subsystems" in prompt
     assert "Most commits need a body" in prompt
@@ -140,19 +116,16 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
 def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None:
     prompt = prompt_commit_message_for_opencode(
         "diff --git a/app.py b/app.py\n+hello",
-        submit_artifact_tool_name="ralph_submit_artifact",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
     )
 
     # The old "<subject>" placeholder caused models to output "<skip>" for skip artifacts.
     # The instruction must now be explicit for both commit and skip cases.
     assert "<subject>" not in prompt
-    # Architectural fix (2026-06-14): the skip-output instruction is no
-    # longer a duplicate "REQUIRED PROCEDURE 4" — it's a post-submit
-    # "you may optionally echo" line. The shared macro (step 5) is the
-    # authoritative completion contract. The template just needs to
-    # NOT carry conflicting duplicate procedure.
+    # The skip-output instruction is not a duplicate procedure; the shared
+    # artifact submission macro is the authoritative completion contract.
     assert "output only the commit subject line" not in prompt.lower()
-    assert "artifact submission procedure above is authoritative" in prompt.lower()
+    assert "follow the artifact submission procedure above" in prompt.lower()
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
