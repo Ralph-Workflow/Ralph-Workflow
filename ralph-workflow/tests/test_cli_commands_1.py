@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from io import StringIO
 from pathlib import Path
@@ -129,7 +128,7 @@ def test_start_commit_bridge_exposes_write_file_for_commit_session(tmp_path: Pat
     registry = build_ralph_tool_registry(session, FsWorkspace(tmp_path))
     tool_names = {definition.name for definition in registry.list_definitions()}
 
-    assert {"write_file", "read_file", "ralph_submit_artifact"}.issubset(tool_names)
+    assert {"write_file", "read_file", "ralph_submit_md_artifact"}.issubset(tool_names)
 
 
 def test_commit_plumbing_reports_missing_repository(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -276,9 +275,9 @@ def test_commit_bridge_session_plan_grants_write_ephemeral(tmp_path: Path) -> No
     """The MCP session built for commit plumbing must expose workspace.write_ephemeral.
 
     Commit prompts instruct the agent to fall back to write_file when
-    artifact.submit is unavailable. That fallback only works if the commit
-    session grants workspace.write_ephemeral so the MCP server allows the
-    write_file tool call to .agent/tmp/commit_message.json.
+    markdown artifact submission is unavailable. That fallback only works if
+    the commit session grants workspace.write_ephemeral so the MCP server
+    allows the write_file tool call to .agent/tmp/commit_message.md.
     """
     agents_policy = AgentsPolicy(
         agent_chains={"commit_chain": AgentChainConfig(agents=["claude"])},
@@ -689,8 +688,8 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
     )
 
     assert captured_prompt
-    assert "ralph_submit_artifact" in captured_prompt[0]
-    assert "ralph_ralph_submit_artifact" not in captured_prompt[0]
+    assert "ralph_submit_md_artifact" in captured_prompt[0]
+    assert "ralph_ralph_submit_md_artifact" not in captured_prompt[0]
 
 
 def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
@@ -736,20 +735,9 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     )
 
     assert captured_prompt
-    assert "ralph_submit_artifact" in captured_prompt[0]
-    assert "mcp__ralph__ralph_submit_artifact" in captured_prompt[0]
-    # Architectural fix (2026-06-14): the template's REQUIRED PROCEDURE
-    # section (which carried the original "write the raw commit payload"
-    # text) was removed. The shared artifact submission macro is now
-    # the single source of truth for the unavailable-tool fallback;
-    # it uses the wording "raw inner payload" rather than "raw commit
-    # payload". Both surfaces point at the same
-    # ``.agent/tmp/commit_message.json`` path, so the test must assert
-    # against the macro's wording, not the (now-removed) duplicate
-    # procedure's wording. The macro's step 6 wraps onto two lines in
-    # the rendered output; match the substrings separately to avoid
-    # line-break brittleness.
-    assert "raw markdown" in captured_prompt[0].lower()
+    assert "ralph_submit_md_artifact" in captured_prompt[0]
+    assert "mcp__ralph__ralph_submit_md_artifact" in captured_prompt[0]
+    assert "same complete markdown document" in captured_prompt[0].lower()
     assert ".agent/tmp/commit_message.md" in captured_prompt[0]
 
 
@@ -887,22 +875,19 @@ def test_generate_commit_msg_writes_commit_message_artifact(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert artifact_file.exists()
-    artifact = json.loads(artifact_file.read_text(encoding="utf-8"))
-    assert artifact["type"] == "commit_message"
-    assert artifact["content"] == {
-        "type": "commit",
-        "subject": "feat: persist generated commit message",
-    }
-    assert commit_file.exists()
-    assert commit_file.read_text(encoding="utf-8") == "feat: persist generated commit message"
+    assert artifact_file.read_text(encoding="utf-8") == (
+        "---\n"
+        "type: commit\n"
+        "subject: feat: persist generated commit message\n"
+        "---\n"
+    )
     output = stream.getvalue()
     assert "Generated commit message" in output
 
 
-def test_generate_commit_msg_extracts_commit_subject_from_markdown_wrapper(
+def test_generate_commit_msg_reads_subject_from_markdown_artifact(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
@@ -942,8 +927,13 @@ def test_generate_commit_msg_extracts_commit_subject_from_markdown_wrapper(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
-    assert commit_file.read_text(encoding="utf-8") == "fix: normalize commit subject"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+    assert artifact_file.read_text(encoding="utf-8") == (
+        "---\n"
+        "type: commit\n"
+        "subject: fix: normalize commit subject\n"
+        "---\n"
+    )
     output = stream.getvalue()
     assert "fix: normalize commit subject" in output
     assert "Generated commit message" in output

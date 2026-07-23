@@ -8,7 +8,6 @@ per-test 1 s budget without losing the end-to-end contract they assert.
 from __future__ import annotations
 
 import dataclasses
-import json
 import shutil
 import tomllib
 from io import StringIO
@@ -23,7 +22,7 @@ from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.cli.commands.check_policy import check_policy_command
-from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
@@ -198,10 +197,11 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
 
     commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
 
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert artifact_file.exists()
-    assert commit_file.exists()
+    assert "subject: fix: preserve artifacts on failure" in artifact_file.read_text(
+        encoding="utf-8"
+    )
     assert "Commit failed" in stream.getvalue()
 
 
@@ -209,21 +209,7 @@ def test_show_commit_msg_reads_artifact_without_staged_changes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    artifact_file.parent.mkdir(parents=True, exist_ok=True)
-    artifact_file.write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {"message": "fix: read stored commit message"},
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
-        encoding="utf-8",
-    )
+    _write_commit_message_doc(tmp_path, "fix: read stored commit message")
 
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
@@ -523,68 +509,6 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
     assert "ralph_submit_artifact" in output
     assert 'result={"reason": "invalid' in output
     assert 'payload", "status": "failed"}' in output
-
-
-def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    stream = _attach_console(monkeypatch, commit_module)
-    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
-    monkeypatch.setattr(
-        commit_module,
-        "working_tree_diff",
-        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
-    )
-    monkeypatch.setattr(
-        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
-    )
-    _stub_commit_bridge(monkeypatch)
-
-    class FakeRegistry:
-        @classmethod
-        def from_config(cls, _config: object) -> object:
-            return cls()
-
-        def get(self, _name: str) -> object:
-            return AgentConfig(
-                cmd="claude -p",
-                output_flag="--output-format=stream-json",
-                can_commit=True,
-                json_parser=JsonParserType.CLAUDE,
-                transport=AgentTransport.CLAUDE,
-            )
-
-    def fake_invoke_agent(*_args: object, **_kwargs: object) -> object:
-        artifact_path = tmp_path / ".agent" / "tmp" / "commit_message.json"
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(
-            json.dumps(
-                {
-                    "type": "commit",
-                    "subject": "fix(cli): salvage commit fallback",
-                }
-            ),
-            encoding="utf-8",
-        )
-        line = json.dumps(
-            {
-                "type": "response.output_text.delta",
-                "delta": "tool unavailable; wrote raw payload",
-            }
-        )
-        return iter([f"{line}\n"])
-
-    monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
-    monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
-
-    commit_module.commit_plumbing(
-        options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
-    )
-
-    output = stream.getvalue()
-    assert "Generated commit message" in output
-    assert "fix(cli): salvage commit fallback" in output
 
 
 def test_check_git_repo_errors(monkeypatch: pytest.MonkeyPatch) -> None:
