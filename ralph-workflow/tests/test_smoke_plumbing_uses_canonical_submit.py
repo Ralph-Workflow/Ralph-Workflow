@@ -2,8 +2,8 @@
 
 The smoke harness has two submission paths:
 
-- Claude branch: the agent calls ``handle_submit_artifact``.
-- AGY branch: the agent writes ``.agent/artifacts/smoke_test_result.json`` directly
+- Claude branch: the agent calls ``handle_submit_md_artifact``.
+- AGY branch: the agent writes ``.agent/tmp/smoke_test_result.md`` directly
   because AGY headless mode does not reliably call Ralph's MCP tools.
 
 Both paths must end with a run-scoped canonical receipt so the completion gate
@@ -12,7 +12,6 @@ has a single source of truth.
 
 from __future__ import annotations
 
-import json
 from collections import deque
 from typing import TYPE_CHECKING
 
@@ -27,7 +26,7 @@ from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
 )
-from ralph.mcp.tools.artifact import handle_submit_artifact
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunParams, _run_smoke_agent
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
@@ -40,23 +39,24 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.smoke
 
 
-def _smoke_payload() -> dict[str, object]:
-    return {
-        "status": "passed",
-        "output_file": "tmp/interactive-claude-smoke/todo-list.js",
-        "observed_working": ["created todo-list.js"],
-        "observed_breaks": [],
-        "headless_guide_checks": ["tool activity"],
-        "summary": "Smoke test passed",
-    }
+def _smoke_markdown() -> str:
+    return """---
+type: smoke_test_result
+status: passed
+output_file: tmp/interactive-claude-smoke/todo-list.js
+---
+## Summary
 
+- [SUM-1] Smoke test passed
 
-def _outer_envelope() -> dict[str, object]:
-    return {
-        "name": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-        "type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-        "content": _smoke_payload(),
-    }
+## Observed Working
+
+- [OK-1] created todo-list.js
+
+## Headless Guide Checks
+
+- [HG-1] tool activity
+"""
 
 
 def _claude_config() -> AgentConfig:
@@ -138,12 +138,12 @@ def test_smoke_plumbing_claude_branch_stamps_canonical_receipt(
         if isinstance(rendered_sink, deque):
             rendered_sink.append("tool_use: submit_artifact")
             rendered_sink.append("tool_result: submit_artifact")
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             _SmokeSession(),
             workspace,
             {
                 "artifact_type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-                "content": json.dumps(_smoke_payload()),
+                "content": _smoke_markdown(),
             },
         )
         return PipelineEvent.AGENT_SUCCESS
@@ -170,9 +170,9 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         artifact_type = SMOKE_TEST_RESULT_ARTIFACT_TYPE
-        artifact_path = tmp_path / ".agent" / "artifacts" / f"{artifact_type}.json"
+        artifact_path = tmp_path / ".agent" / "tmp" / f"{artifact_type}.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(json.dumps(_outer_envelope()), encoding="utf-8")
+        artifact_path.write_text(_smoke_markdown(), encoding="utf-8")
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -219,11 +219,11 @@ def test_smoke_artifact_submitted_false_when_artifact_malformed(
 ) -> None:
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     run_id = "interactive-claude-smoke"
-    artifact_path = tmp_path / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.json"
+    artifact_path = tmp_path / ".agent" / "tmp" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        artifact_path.write_text("not valid json", encoding="utf-8")
+        artifact_path.write_text("not valid markdown", encoding="utf-8")
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -244,12 +244,12 @@ def test_smoke_artifact_submitted_true_when_artifact_present_and_valid(
     run_id = "interactive-claude-smoke"
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             _SmokeSession(),
             workspace,
             {
                 "artifact_type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-                "content": json.dumps(_smoke_payload()),
+                "content": _smoke_markdown(),
             },
         )
         return PipelineEvent.AGENT_SUCCESS
@@ -287,12 +287,12 @@ def test_smoke_artifact_submitted_uses_canonical_helper_not_raw_file_presence(
     run_id = "interactive-claude-smoke"
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             _SmokeSession(),
             MockWorkspace(tmp_path),
             {
                 "artifact_type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-                "content": json.dumps(_smoke_payload()),
+                "content": _smoke_markdown(),
             },
         )
         return PipelineEvent.AGENT_SUCCESS
@@ -319,11 +319,11 @@ def test_smoke_tmp_fallback_promotion_consistent_with_errors(
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     run_id = "interactive-claude-smoke"
     artifact_type = SMOKE_TEST_RESULT_ARTIFACT_TYPE
-    tmp_artifact_path = tmp_path / ".agent" / "tmp" / f"{artifact_type}.json"
+    tmp_artifact_path = tmp_path / ".agent" / "tmp" / f"{artifact_type}.md"
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         tmp_artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_artifact_path.write_text(json.dumps(_outer_envelope()), encoding="utf-8")
+        tmp_artifact_path.write_text(_smoke_markdown(), encoding="utf-8")
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -367,7 +367,7 @@ def test_agy_tool_activity_must_not_come_from_artifact(
     """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     # The ``_make_params`` helper pre-creates the output file so the
     # smoke harness's ``file_created`` check has a path to inspect. The
@@ -391,20 +391,14 @@ def test_agy_tool_activity_must_not_come_from_artifact(
             rendered_sink.append("I am just talking, not invoking a tool.")
             rendered_sink.append("I would have written a file but I did not.")
         # Artifact self-reports tool activity. The harness must NOT trust this.
-        payload = {
-            "status": "passed",
-            "output_file": "tmp/interactive-agy-smoke/todo-list.js",
-            "observed_working": ["created todo-list.js"],
-            "observed_breaks": [],
-            "headless_guide_checks": ["tool activity", "parser events"],
-            "summary": "self-certified",
-        }
-        envelope = {
-            "name": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-            "type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-            "content": payload,
-        }
-        artifact_path.write_text(json.dumps(envelope), encoding="utf-8")
+        markdown = _smoke_markdown().replace(
+            "[SUM-1] Smoke test passed",
+            "[SUM-1] self-certified",
+        ).replace(
+            "[HG-1] tool activity",
+            "[HG-1] tool activity\n- [HG-2] parser events",
+        )
+        artifact_path.write_text(markdown, encoding="utf-8")
         # CRUCIALLY: do NOT write the workspace output file. The harness
         # must NOT trust the self-reported tool activity in the artifact.
         return PipelineEvent.AGENT_SUCCESS
@@ -455,7 +449,7 @@ def test_agy_smoke_completion_requires_receipt_not_transcript_marker(
     """
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         raw_sink = kwargs.get("raw_output_sink")

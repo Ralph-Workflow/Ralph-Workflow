@@ -3,7 +3,7 @@ canonical path (receipt → sentinel → artifact file).
 
 The commit plumbing uses ``run_id="commit-plumbing"``. This test exercises
 the full agent-attempt-with-recovery loop end-to-end with a fake agent that
-calls ``handle_submit_artifact`` (the real canonical entry point), then checks
+calls ``handle_submit_md_artifact`` (the real canonical entry point), then checks
 that every expected side-effect is present and that the plumbing module itself
 does not contain any ad-hoc writes to ``.agent/receipts/`` or
 ``.agent/completion_seen_*.json``.
@@ -12,7 +12,6 @@ does not contain any ad-hoc writes to ``.agent/receipts/`` or
 from __future__ import annotations
 
 import importlib
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,7 +22,8 @@ from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
-from ralph.mcp.tools.artifact import ArtifactHandlerDeps, handle_submit_artifact
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
@@ -78,12 +78,12 @@ def test_generate_commit_end_to_end_uses_canonical_submit(
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         del args, kwargs
         session = _CommitSession()
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             session,
             workspace,
             {
                 "artifact_type": "commit_message",
-                "content": '{"type": "commit", "subject": "feat: test"}',
+                "content": "---\ntype: commit\nsubject: feat: test\n---\n",
             },
             deps=ArtifactHandlerDeps(backend=backend),
         )
@@ -125,18 +125,16 @@ def test_generate_commit_end_to_end_uses_canonical_submit(
     # completion-signal check which honors both DB and legacy file.
     assert _check_completion_sentinel(tmp_path, plumbing_module._COMMIT_RUN_ID) is True
 
-    artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.json"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert backend.exists(artifact_path)
-    stored = json.loads(backend.read_text(artifact_path))
-    assert stored["type"] == "commit_message"
-    assert stored["content"] == {"type": "commit", "subject": "feat: test"}
+    assert backend.read_text(artifact_path) == "---\ntype: commit\nsubject: feat: test\n---\n"
 
     source = Path(plumbing_module.__file__).read_text()
     assert ".agent/receipts/" not in source, (
         "plumbing module must not write receipts directly — "
-        "use handle_submit_artifact / canonical path"
+        "use handle_submit_md_artifact / canonical path"
     )
     assert "completion_seen_" not in source, (
         "plumbing module must not write completion sentinels directly — "
-        "use handle_submit_artifact / canonical path"
+        "use handle_submit_md_artifact / canonical path"
     )

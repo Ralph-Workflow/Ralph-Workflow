@@ -1,7 +1,7 @@
 """Commit plumbing must use canonical artifact submission.
 
 The commit CLI has a single canonical path for artifact submission
-through the MCP tool handle_submit_artifact. No direct writes to
+through the MCP tool handle_submit_md_artifact. No direct writes to
 .agent/receipts/ or .agent/completion_seen_*.json are permitted.
 """
 
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ast
 import importlib
-import json
 import re
 from collections import deque
 from pathlib import Path
@@ -24,7 +23,7 @@ from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_TYPE
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
-from ralph.mcp.tools.artifact import handle_submit_artifact
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
@@ -213,7 +212,7 @@ def test_commit_plumbing_attempt_stamps_receipt_and_sentinel(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """A commit attempt that calls handle_submit_artifact stamps receipt and sentinel."""
+    """A markdown commit submission stamps its canonical receipt and sentinel."""
 
     def _fake_execute_agent_effect(
         effect: object,
@@ -232,17 +231,18 @@ def test_commit_plumbing_attempt_stamps_receipt_and_sentinel(
         if isinstance(rendered_sink, deque):
             rendered_sink.append("tool_use: submit_artifact")
             rendered_sink.append("tool_result: submit_artifact")
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             _CommitSession(),
             MockWorkspace(tmp_path),
             {
                 "artifact_type": COMMIT_MESSAGE_TYPE,
-                "content": json.dumps(
-                    {
-                        "type": "commit",
-                        "subject": "fix(plumbing): test commit",
-                        "body": "test",
-                    }
+                "content": (
+                    "---\n"
+                    "type: commit\n"
+                    "subject: fix(plumbing): test commit\n"
+                    "---\n"
+                    "## Body\n\n"
+                    "- [B-1] test\n"
                 ),
             },
         )
@@ -306,17 +306,18 @@ def test_commit_plumbing_attempt_uses_default_backend_when_not_injected(
         if isinstance(rendered_sink, deque):
             rendered_sink.append("tool_use: submit_artifact")
             rendered_sink.append("tool_result: submit_artifact")
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             _CommitSession(),
             MockWorkspace(tmp_path),
             {
                 "artifact_type": COMMIT_MESSAGE_TYPE,
-                "content": json.dumps(
-                    {
-                        "type": "commit",
-                        "subject": "fix(plumbing): test commit",
-                        "body": "test body",
-                    }
+                "content": (
+                    "---\n"
+                    "type: commit\n"
+                    "subject: fix(plumbing): test commit\n"
+                    "---\n"
+                    "## Body\n\n"
+                    "- [B-1] test body\n"
                 ),
             },
         )

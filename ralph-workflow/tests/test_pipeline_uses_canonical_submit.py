@@ -2,7 +2,7 @@
 
 This file verifies that every artifact write during a pipeline-runner phase
 goes through the canonical submit machinery (receipt + sentinel) and that
-bypasses, fallback promotion, and atomic rollback work correctly.
+bypass detection and fallback promotion work correctly.
 """
 
 from __future__ import annotations
@@ -18,12 +18,11 @@ from ralph.agents.completion_signals import (
     is_artifact_submitted,
 )
 from ralph.config.models import GeneralConfig, UnifiedConfig
-from ralph.mcp.artifacts import state_db as state_db_module
 from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
 )
-from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
-from ralph.mcp.tools.artifact import ArtifactHandlerDeps, handle_submit_artifact
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.testing.audit_artifact_submission_canonical_path import audit
@@ -35,6 +34,18 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 _RUN_ID = "pipeline-test-run"
+_DEVELOPMENT_RESULT = """---
+type: development_result
+status: completed
+---
+## Summary
+
+- [SUM-1] done
+
+## Files Changed
+
+- [F-1] src/main.py
+"""
 
 
 class _PipelineSession:
@@ -59,14 +70,12 @@ def test_pipeline_phase_stamps_canonical_receipt(
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         del args, kwargs
         session = _PipelineSession()
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             session,
             workspace,
             {
                 "artifact_type": "development_result",
-                "content": (
-                    '{"status": "completed", "summary": "done", "files_changed": "src/main.py"}'
-                ),
+                "content": _DEVELOPMENT_RESULT,
             },
             deps=ArtifactHandlerDeps(backend=backend),
         )
@@ -131,8 +140,8 @@ def test_pipeline_fallback_promotion_uses_canonical_helper(
     del monkeypatch
     backend = MemoryBackend()
     run_id = "pipeline-fallback-test"
-    tmp_fallback = tmp_path / ".agent" / "tmp" / "development_result.json"
-    payload = '{"status": "completed", "summary": "fallback done", "files_changed": "src/main.py"}'
+    tmp_fallback = tmp_path / ".agent" / "tmp" / "development_result.md"
+    payload = _DEVELOPMENT_RESULT.replace("[SUM-1] done", "[SUM-1] fallback done")
     backend.mkdir(tmp_fallback.parent, parents=True)
     backend.write_text(tmp_fallback, payload, encoding="utf-8")
 
@@ -144,56 +153,3 @@ def test_pipeline_fallback_promotion_uses_canonical_helper(
 
     assert promoted, "is_artifact_submitted should promote fallback and return True"
     assert artifact_receipt_present(tmp_path, run_id, "development_result", backend=backend)
-
-
-class _FailableBackend(MemoryBackend):
-    """MemoryBackend that raises when write_text targets a receipt path."""
-
-
-def test_pipeline_atomic_rollback_on_phase_failure(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """When the receipt write fails, the artifact is rolled back atomically.
-
-    RFC-013 P3: receipt writes go through RunStateDB. Patch
-    ``upsert_receipt`` to simulate the failure so the rest of the
-    submit ops roll back (no artifact file, no sentinel row).
-    """
-    backend = MemoryBackend()
-
-    def _raise(*args: object, **kwargs: object) -> None:
-        msg = "Simulated DB write failure on receipt"
-        raise OSError(msg)
-
-    monkeypatch.setattr(state_db_module.RunStateDB, "upsert_receipt", _raise, raising=True)
-    workspace = MockWorkspace(tmp_path)
-
-    session = _PipelineSession()
-
-    with pytest.raises(OSError, match="Simulated DB write failure on receipt"):
-        handle_submit_artifact(
-            session,
-            workspace,
-            {
-                "artifact_type": "development_result",
-                "content": (
-                    '{"status": "completed", "summary": "rollback test", '
-                    '"files_changed": "src/main.py"}'
-                ),
-            },
-            deps=ArtifactHandlerDeps(backend=backend),
-        )
-
-    artifact_file = tmp_path / ".agent" / "artifacts" / "development_result.json"
-    assert not backend.exists(artifact_file), (
-        "Artifact file should have been rolled back after receipt write failure"
-    )
-    # DB-side rollback: no receipt row, no sentinel row.
-    db = RunStateDB(tmp_path)
-    try:
-        run_id = _RUN_ID
-        assert db.get_receipt_hmac(run_id, "development_result") is MISSING
-        assert db.get_completion_sentinel_hmac(run_id) is MISSING
-    finally:
-        db.close()

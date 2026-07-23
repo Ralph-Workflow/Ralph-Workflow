@@ -1,13 +1,12 @@
 """Smoke plumbing end-to-end canonical receipt tests.
 
-Tests both the Claude branch (through handle_submit_artifact) and the AGY
+Tests both the Claude branch (through handle_submit_md_artifact) and the AGY
 branch (through direct file write + promotion) to ensure the canonical receipt
 path is stamped in both cases.
 """
 
 from __future__ import annotations
 
-import json
 from collections import deque
 from typing import TYPE_CHECKING
 
@@ -20,7 +19,7 @@ from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.smoke_test_result import SMOKE_TEST_RESULT_ARTIFACT_TYPE
-from ralph.mcp.tools.artifact import handle_submit_artifact
+from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunParams, _run_smoke_agent
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
@@ -33,23 +32,24 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 
-def _smoke_payload() -> dict[str, object]:
-    return {
-        "status": "passed",
-        "output_file": "tmp/interactive-claude-smoke/todo-list.js",
-        "observed_working": ["created todo-list.js"],
-        "observed_breaks": [],
-        "headless_guide_checks": ["tool activity"],
-        "summary": "Smoke test passed",
-    }
+def _smoke_markdown() -> str:
+    return """---
+type: smoke_test_result
+status: passed
+output_file: tmp/interactive-claude-smoke/todo-list.js
+---
+## Summary
 
+- [SUM-1] Smoke test passed
 
-def _outer_envelope() -> dict[str, object]:
-    return {
-        "name": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-        "type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-        "content": _smoke_payload(),
-    }
+## Observed Working
+
+- [OK-1] created todo-list.js
+
+## Headless Guide Checks
+
+- [HG-1] tool activity
+"""
 
 
 def _claude_config() -> AgentConfig:
@@ -125,7 +125,7 @@ def test_smoke_claude_branch_end_to_end_uses_canonical_submit(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Claude branch: agent calls handle_submit_artifact, receipt is stamped."""
+    """Claude branch: markdown submission stamps the canonical receipt."""
     workspace = MockWorkspace(tmp_path)
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     run_id = "interactive-claude-smoke"
@@ -141,12 +141,12 @@ def test_smoke_claude_branch_end_to_end_uses_canonical_submit(
         if isinstance(rendered_sink, deque):
             rendered_sink.append("tool_use: submit_artifact")
             rendered_sink.append("tool_result: submit_artifact")
-        handle_submit_artifact(
+        handle_submit_md_artifact(
             _SmokeSession(),
             workspace,
             {
                 "artifact_type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-                "content": json.dumps(_smoke_payload()),
+                "content": _smoke_markdown(),
             },
         )
         return PipelineEvent.AGENT_SUCCESS
@@ -173,9 +173,9 @@ def test_smoke_agy_fallback_end_to_end_uses_canonical_submit(
 
     def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
         artifact_type = SMOKE_TEST_RESULT_ARTIFACT_TYPE
-        artifact_path = tmp_path / ".agent" / "artifacts" / f"{artifact_type}.json"
+        artifact_path = tmp_path / ".agent" / "tmp" / f"{artifact_type}.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(json.dumps(_outer_envelope()), encoding="utf-8")
+        artifact_path.write_text(_smoke_markdown(), encoding="utf-8")
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
