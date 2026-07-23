@@ -28,6 +28,7 @@ from ralph.git.operations import (
     push,
     stage_all,
 )
+from ralph.git.remote_push import push_branch_to_all_remotes
 from ralph.git.subprocess_runner import run_git
 
 from .wrapper import (
@@ -57,6 +58,7 @@ __all__ = [
     "is_repo_clean",
     "merge_base",
     "push",
+    "push_branch_to_all_remotes",
     "reinstall_hooks_if_tampered",
     "run_git",
     "stage_all",

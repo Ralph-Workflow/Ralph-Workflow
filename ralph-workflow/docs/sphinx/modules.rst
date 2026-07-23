@@ -2675,6 +2675,13 @@ ralph.git.subprocess_runner
    :members:
    :show-inheritance:
 
+ralph.git.remote_push
+~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.remote_push
+   :members:
+   :show-inheritance:
+
 ralph.git.wrapper
 ~~~~~~~~~~~~~~~~~
 

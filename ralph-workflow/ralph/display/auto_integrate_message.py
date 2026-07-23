@@ -49,6 +49,18 @@ def _refresh_suffix(refresh: str | None) -> str:
     return f" [target refresh: {refresh}]" if refresh else ""
 
 
+def _push_suffix(push: str | None) -> str:
+    """Append the opt-in multi-remote push summary, when one was recorded.
+
+    The push is fail-open and best-effort; without this clause a
+    partial push (one remote down, one up) is indistinguishable from
+    a successful land-and-no-push, which is the exact symptom that
+    made the auto-integrate line look healthy while the operator's
+    backup mirror silently fell out of date.
+    """
+    return f" [push: {push}]" if push else ""
+
+
 def format_auto_integrate_message(
     action: str | None,
     target: str | None,
@@ -56,6 +68,7 @@ def format_auto_integrate_message(
     *,
     fast_forwarded: bool = False,
     refresh: str | None = None,
+    push: str | None = None,
 ) -> str:
     """Render the auto-integrate outcome into a single human-readable phrase.
 
@@ -81,6 +94,14 @@ def format_auto_integrate_message(
     target SHA. It is appended as ``[target refresh: <outcome>]`` when
     present, and omitted entirely when ``None`` (no refresh was recorded,
     e.g. a skip that short-circuited before the landing phase).
+
+    ``push`` is the ``RebaseState.last_push`` summary produced by the
+    opt-in multi-remote push that ran after a successful local
+    landing (see :func:`ralph.git.remote_push.push_branch_to_all_remotes`).
+    It is appended as ``[push: <summary>]`` when present, and omitted
+    entirely when ``None`` (push disabled, no remotes, or the prior
+    integration did not produce a record). The push is fail-open, so
+    the landing is unchanged regardless of what the push reported.
 
     The unknown-verb fallback returns a bare ``f"{action}"`` rather than
     ``f"auto-integrate: {action}"``; the single ``auto-integrate:`` prefix
@@ -113,7 +134,7 @@ def format_auto_integrate_message(
     else:
         message = f"{normalized}"
 
-    return message + _refresh_suffix(refresh)
+    return message + _refresh_suffix(refresh) + _push_suffix(push)
 
 
 __all__ = ["format_auto_integrate_message"]

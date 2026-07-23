@@ -53,6 +53,17 @@ class RebaseState(RalphBaseModel):
     # legacy checkpoints load unchanged.
     last_refresh: str | None = None
 
+    # ``last_push`` records the outcome of the OPT-IN multi-remote
+    # push that runs AFTER a successful local landing (the summary
+    # string produced by
+    # :func:`ralph.git.remote_push.push_branch_to_all_remotes`). The
+    # push is fail-open and best-effort, so a partial push is recorded
+    # as the operator-visible summary, not as a skipped landing. The
+    # field is None when push is disabled, when there is no remote,
+    # or when the previous integration did not produce a record, so
+    # legacy checkpoints load unchanged.
+    last_push: str | None = None
+
     # ``consecutive_conflicts`` counts unresolved integration conflicts
     # against ``last_target`` in a row. It bounds how often the
     # dev-agent conflict resolver is invoked for the same conflict (see

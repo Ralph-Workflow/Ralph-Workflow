@@ -605,6 +605,7 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
         outcome.last_reason,
         fast_forwarded=outcome.fast_forwarded,
         refresh=outcome.last_refresh,
+        push=outcome.last_push,
     )
     # A skip or conflict means no integration happened this commit; an
     # operator who expects continuous integration must not lose that
@@ -620,6 +621,94 @@ def _log_auto_integrate_outcome(display: ParallelDisplay, outcome: RebaseState) 
         display.emit_warn_line("run", "auto-integrate", message)
         return
     emit_activity_line(display, None, f"[cyan]auto-integrate:[/cyan] {message}")
+
+
+def _inline_event_for_effect(effect: object) -> PipelineEvent | None:
+    """Map an inline-effect handle to the phase-transition event the
+    boundary integration hook should treat it as.
+
+    The mapping mirrors what :func:`_execute_effect` returns for the
+    SAME effect when it routes through the normal path; without it,
+    the inline early-return would route every SaveCheckpointEffect
+    through the no-op ``PHASE_LOOPBACK`` path, so a checkpoint save
+    could never carry a catch-up landing to this checkout. Returns
+    ``None`` only for effects the boundary integration is not
+    equipped to handle (currently none of the inline ones; the
+    fallback is conservative).
+    """
+    if isinstance(effect, SaveCheckpointEffect):
+        return PipelineEvent.CHECKPOINT_SAVED
+    if isinstance(effect, PreparePromptEffect):
+        return PipelineEvent.PROMPT_PREPARED
+    if isinstance(effect, ExitSuccessEffect):
+        return PipelineEvent.COMPLETE
+    if isinstance(effect, ExitFailureEffect):
+        return PipelineEvent.FAILED
+    if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
+        return PipelineEvent.PHASE_ADVANCE
+    return None
+
+
+def _integrate_inline_effect(
+    *,
+    effect: Effect,
+    inline_result: PipelineState | int,
+    state: PipelineState,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle | None,
+    registry: _RegistryLike | None,
+    pipeline_deps: PipelineDeps | None,
+    display_context: DisplayContext | None,
+) -> PipelineState | int:
+    """Run the boundary integration hook for an inline-effect return and
+    thread the outcome back through a state-shaped result.
+
+    The helper owns the early-return-on-inline-effect path in
+    :func:`_run_pipeline_step` so the orchestrator function keeps a
+    sensible branch / statement count and the test surface is
+    narrowly scoped to this contract. Returns ``inline_result``
+    unchanged when:
+
+    * the effect is not one of the mapped inline effects (the helper
+      returns ``None`` for the event), OR
+    * the integration returns ``None`` (disabled / no work to do),
+      OR
+    * ``inline_result`` is not a :class:`PipelineState` (e.g. the
+      ``int`` return of :class:`ExitSuccessEffect`): the integration
+      is run for its git side-effect but cannot be threaded onto a
+      non-state value.
+    """
+    inline_event = _inline_event_for_effect(effect)
+    if inline_event is None:
+        return inline_result
+    try:
+        outcome = _integrate_on_phase_transition(
+            event=inline_event,
+            config=config,
+            workspace_scope=workspace_scope,
+            state=state,
+            display=display,
+            policy_bundle=policy_bundle,
+            registry=registry,
+            pipeline_deps=pipeline_deps,
+            display_context=display_context,
+        )
+    except Exception as inline_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate inline-effect boundary raised: {}",
+            inline_exc,
+        )
+        return inline_result
+    if outcome is not None and isinstance(inline_result, PipelineState):
+        # PipelineState-shaped result: thread the integration
+        # outcome into the persisted checkpoint so the catch-up
+        # survives a crash right after the inline effect. The
+        # reducer/phase on the returned state is left untouched;
+        # ``copy_with(rebase=...)`` only updates the rebase slot.
+        return inline_result.copy_with(rebase=outcome)
+    return inline_result
 
 
 def _maybe_auto_integrate(
@@ -729,22 +818,52 @@ def _maybe_auto_integrate(
     return outcome
 
 
-#: Events that mark a successfully completed (or cleanly advancing)
-#: phase step. Only these trigger the boundary integration — failures,
-#: retries, and interrupts must never move refs under a phase that is
-#: about to be re-run.
-_PHASE_TRANSITION_INTEGRATION_EVENTS = (
-    PipelineEvent.AGENT_SUCCESS,
-    PipelineEvent.ANALYSIS_SUCCESS,
-    PipelineEvent.ANALYSIS_LOOPBACK,
-    PipelineEvent.PHASE_LOOPBACK,
-    PipelineEvent.PHASE_ADVANCE,
-    PipelineEvent.REVIEW_CLEAN,
-    PipelineEvent.REVIEW_ISSUES_FOUND,
-    PipelineEvent.FIX_SUCCESS,
-    PipelineEvent.COMMIT_SKIPPED,
-    PipelineEvent.ALL_WORKERS_COMPLETE,
-    PipelineEvent.COMPLETE,
+#: Events that trigger the boundary integration hook.
+#:
+#: The hook is STATELESS and EVENT-AGNOSTIC. It runs for EVERY
+#: ``PipelineEvent`` reaching the phase-transition boundary other
+#: than :data:`PipelineEvent.COMMIT_SUCCESS` (which has its own
+#: commit-boundary path via :func:`auto_integrate_after_commit`).
+#: Whether the integration actually moves a ref is decided downstream
+#: by the same guards the commit seam already trusts:
+#: :func:`ralph.pipeline.auto_integrate._worktree_is_clean` defers
+#: (records a skip, mutates nothing) on any uncommitted TRACKED change,
+#: and :func:`ralph.git.rebase.check_rebase_preconditions` blocks when
+#: a rebase / merge / cherry-pick is already in progress. A clean
+#: worktree means no in-progress phase work can be lost, so a catch-up
+#: is safe regardless of which event fired.
+#:
+#: The hook is the SINGLE place that carries another agent's landing
+#: to a feature branch that is not committing right now, so restricting
+#: it to a success-only whitelist was the asymmetry that broke
+#: cross-agent synchronisation on every non-success seam. The whitelist
+#: used to be the gate; the worktree/preconditions guards below are the
+#: gate now, and they enforce the same invariant on every event.
+_PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
+    {
+        PipelineEvent.AGENT_SUCCESS,
+        PipelineEvent.AGENT_FAILURE,
+        PipelineEvent.AGENT_RETRY,
+        PipelineEvent.ANALYSIS_SUCCESS,
+        PipelineEvent.ANALYSIS_LOOPBACK,
+        PipelineEvent.PHASE_LOOPBACK,
+        PipelineEvent.PHASE_ADVANCE,
+        PipelineEvent.REVIEW_CLEAN,
+        PipelineEvent.REVIEW_ISSUES_FOUND,
+        PipelineEvent.FIX_SUCCESS,
+        PipelineEvent.FIX_FAILURE,
+        PipelineEvent.COMMIT_SKIPPED,
+        PipelineEvent.COMMIT_FAILURE,
+        PipelineEvent.CHECKPOINT_SAVED,
+        PipelineEvent.CONTEXT_CLEANED,
+        PipelineEvent.INTERRUPTED,
+        PipelineEvent.PROMPT_PREPARED,
+        PipelineEvent.FAN_OUT_STARTED,
+        PipelineEvent.WORKERS_RESUMED,
+        PipelineEvent.ALL_WORKERS_COMPLETE,
+        PipelineEvent.COMPLETE,
+        PipelineEvent.FAILED,
+    }
 )
 
 
@@ -944,6 +1063,32 @@ def _run_pipeline_step(
             pipeline_subscriber=pipeline_subscriber,
         )
         if inline_result is not None:
+            # Inline-effect early-return path: a phase transition realized
+            # purely as an inline effect (SaveCheckpointEffect /
+            # PreparePromptEffect / ExitSuccessEffect / ExitFailureEffect /
+            # ExhaustedAnalysisPhaseAdvanceEffect) would otherwise BYPASS the
+            # boundary integration the normal path runs at the bottom of
+            # the step, so a checkpoint save or a prompt-prepared
+            # transition could never carry another agent's landing to
+            # this checkout. The hook is the single seam that catches
+            # up an advanced target between commits, so it MUST fire on
+            # every inline transition too. The integration logic
+            # lives in ``_integrate_inline_effect`` to keep this
+            # orchestrator's branch / statement count under the
+            # project caps; the helper is best-effort and fail-closed
+            # so an exception never escapes.
+            inline_result = _integrate_inline_effect(
+                effect=effect,
+                inline_result=inline_result,
+                state=state,
+                config=config,
+                workspace_scope=workspace_scope,
+                display=display,
+                policy_bundle=policy_bundle,
+                registry=registry,
+                pipeline_deps=pipeline_deps,
+                display_context=display_context,
+            )
             _phase_outcome = "skipped"
             return inline_result
 

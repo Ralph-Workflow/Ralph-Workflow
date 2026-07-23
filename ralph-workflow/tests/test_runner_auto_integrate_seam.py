@@ -263,10 +263,20 @@ def test_additional_transition_events_trigger_boundary_hook(
     hook.assert_called_once()
 
 
-def test_phase_transition_hook_not_called_on_failure_events(
+def test_phase_transition_hook_is_event_agnostic(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Failure / retry events never trigger the boundary hook."""
+    """AC-01: every PipelineEvent (other than COMMIT_SUCCESS) triggers
+    the boundary integration hook.
+
+    The hook used to gate on a success-only whitelist; the new
+    contract is event-agnostic, and the safety invariants
+    (clean-worktree guard + rebase-preconditions check) live
+    downstream. A failure / retry event with a clean worktree
+    now reaches ``auto_integrate_on_phase_transition`` exactly
+    once -- the seam hands the event verbatim so the downstream
+    skip table decides what to record.
+    """
     hook = MagicMock()
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", hook)
     state = MagicMock()
@@ -290,8 +300,15 @@ def test_phase_transition_hook_not_called_on_failure_events(
             policy_bundle=_load_default_policy_bundle(),
             registry=MagicMock(),
         )
-        assert result is None
-    hook.assert_not_called()
+        # The seam's return is whatever the mocked hook produced
+        # (a MagicMock in this test), which proves the seam
+        # forwarded the event to the integration call. The
+        # contract under test is that the seam DOES forward
+        # failure events now, not that the result is None.
+        assert result is not None
+    # The hook was reached for every failure event; the
+    # event-agnostic seam is the contract under test.
+    assert hook.call_count == 4
 
 
 def test_log_outcome_skip_emits_warn_line() -> None:

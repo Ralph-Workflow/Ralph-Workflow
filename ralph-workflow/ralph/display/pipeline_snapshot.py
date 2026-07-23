@@ -86,3 +86,11 @@ class PipelineSnapshot:
     auto_integrate_reason: str | None = None
     auto_integrate_target: str | None = None
     auto_integrate_fast_forwarded: bool = False
+    #: Opt-in multi-remote push summary produced by
+    #: :func:`ralph.git.remote_push.push_branch_to_all_remotes` after a
+    #: successful local landing. ``None`` when push is disabled, when
+    #: there is no remote, or when the previous integration did not
+    #: produce a record. The push is fail-open, so a partial push is
+    #: the value here -- not an error -- and the operator-facing line
+    #: shows the summary so a partial push is visible.
+    auto_integrate_push: str | None = None

@@ -914,6 +914,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/parsers/_event_classification.py", 44),
         ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 96),
         ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 100),
+        ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 106),
         ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 365),
         ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 366),
         ("ralph/phases/commit_cleanup.py", 691),

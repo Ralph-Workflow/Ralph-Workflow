@@ -158,6 +158,37 @@ class GeneralConfig(RalphBaseModel):
             " in progress."
         ),
     )
+    auto_integrate_push_enabled: bool = Field(
+        default=False,
+        description=(
+            "Off by default: when false, auto-integration is strictly local"
+            " and the local mainline ref is never pushed to a remote."
+            " When true, EVERY successful advance of the target branch"
+            " (the local rebase/merge/endpoint-merge/fast-forward landing"
+            " the auto-integrate step performed) is also pushed to EVERY"
+            " configured remote, best-effort per remote and fail-open:"
+            " the push runs ONLY after the local landing already"
+            " succeeded, a remote failure never fails the run, never"
+            " reverts the local ref, and never changes the (record,"
+            " retry_ff) landing result. The push never force-pushes and"
+            " never moves any branch the operator did not ask for. The"
+            " summary is recorded on the run state and rendered in the"
+            " `auto-integrate:` line, so a partial push (e.g. one remote"
+            " down, one up) is operator-visible."
+        ),
+    )
+    auto_integrate_push_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        le=300.0,
+        description=(
+            "Per-remote wall-clock budget for an auto-integrate push (must be"
+            " > 0 and <= 300). On timeout the remote is skipped and the"
+            " outcome recorded; the run is never failed by an unreachable"
+            " remote. Applied independently per remote, so a slow remote"
+            " does not consume the budget of a fast one."
+        ),
+    )
     agent_idle_timeout_seconds: float = Field(
         default=IDLE_TIMEOUT_SECONDS,
         gt=0.0,

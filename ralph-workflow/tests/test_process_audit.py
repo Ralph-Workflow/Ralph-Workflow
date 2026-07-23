@@ -101,6 +101,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_auto_integrate_end_to_end.py",  # clone-layout real-git integration regression
     "test_auto_integrate_stale_merge_marker.py",  # real-git worktree regression for the stale AUTO_MERGE marker
     "test_auto_integrate_remote_refresh.py",  # real-git clone-layout regression for the bounded origin refresh
+    "test_auto_integrate_remote_push.py",  # real-git multi-remote push regression (push-to-every-remote + never-affect-local)
     "test_auto_integrate_fail_closed_e2e.py",  # real-git regression for the fail-closed HEAD-read and merge-state queries
     "test_auto_integrate_refresh_contract.py",  # real-git regression for the pre-landing target refresh
     "test_auto_integrate_rebase_conflict_e2e.py",  # real-git proof that a conflicted rebase is resolved in place and landed

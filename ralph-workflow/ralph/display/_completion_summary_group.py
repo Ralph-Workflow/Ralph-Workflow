@@ -213,6 +213,7 @@ def _auto_integrate_items(snapshot: PipelineSnapshot) -> list[Text]:
         snapshot.auto_integrate_target,
         snapshot.auto_integrate_reason,
         fast_forwarded=snapshot.auto_integrate_fast_forwarded,
+        push=snapshot.auto_integrate_push,
     )
     return [Text(f"  auto-integrate: {phrase}")]
 

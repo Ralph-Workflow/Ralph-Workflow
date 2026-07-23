@@ -55,6 +55,7 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
+from ralph.git.remote_push import push_branch_to_all_remotes
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
@@ -797,6 +798,36 @@ def _integrate_once(
     record = record.model_copy(
         update={"fast_forwarded": True, "last_reason": None}
     )
+    # Opt-in multi-remote push. Runs ONLY after the local fast-forward
+    # already landed -- a remote failure cannot undo a local ref
+    # advance. The push is fail-open and best-effort by contract; the
+    # helper never raises, the record is updated to carry the summary
+    # so a partial push is operator-visible, and the (ok, retry_ff)
+    # landing tuple returned above is unchanged. When push is disabled
+    # (default) or the local config has no such flag at all, the field
+    # is left as the inherited None, so legacy checkpoints stay clean.
+    push_enabled_raw: object = getattr(config.general, "auto_integrate_push_enabled", False)
+    if isinstance(push_enabled_raw, bool) and push_enabled_raw:
+        push_timeout_raw: object = getattr(
+            config.general, "auto_integrate_push_timeout_seconds", 30.0
+        )
+        push_timeout_seconds: float = (
+            push_timeout_raw if isinstance(push_timeout_raw, (int, float)) else 30.0
+        )
+        try:
+            push_summary = push_branch_to_all_remotes(
+                root,
+                target,
+                timeout_seconds=float(push_timeout_seconds),
+            )
+        except Exception as push_exc:  # pragma: no cover -- defensive
+            logger.warning(
+                "auto_integrate: push hook raised unexpectedly: {}",
+                push_exc,
+            )
+            push_summary = None
+        if push_summary is not None:
+            record = record.model_copy(update={"last_push": push_summary})
     return record, False
 
 
