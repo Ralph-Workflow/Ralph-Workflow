@@ -6,7 +6,9 @@ import re
 from typing import cast
 
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
-from ralph.mcp.artifacts.markdown._document import ParsedDocument, ParsedItem, ParsedSection
+from ralph.mcp.artifacts.markdown._document import ParsedDocument
+from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
+from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 _FRONTMATTER_FIELD = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_-]*): (?P<value>\S(?:.*\S)?)$")
 _HEADING = re.compile(r"^## (?P<name>[A-Za-z][A-Za-z0-9 _-]*)$")

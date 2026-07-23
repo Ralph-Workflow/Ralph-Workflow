@@ -1,6 +1,6 @@
 """Behavior tests for stable markdown reference integrity."""
 
-from ralph.mcp.artifacts.markdown._document import ParsedItem
+from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 from ralph.mcp.artifacts.markdown._references import (
     validate_acyclic_dependencies,
     validate_references,

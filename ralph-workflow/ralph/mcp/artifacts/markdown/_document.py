@@ -1,28 +1,11 @@
-"""Immutable parse result types for the markdown artifact grammar."""
+"""Immutable parse result type for the markdown artifact grammar."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-
-@dataclass(frozen=True)
-class ParsedItem:
-    """A stable-ID list item from one section."""
-
-    identifier: str
-    text: str
-    line: int
-    checked: bool | None
-
-
-@dataclass(frozen=True)
-class ParsedSection:
-    """A named document section and its closed-grammar items."""
-
-    name: str
-    line: int
-    raw_lines: tuple[str, ...]
-    items: tuple[ParsedItem, ...]
+from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
+from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 
 @dataclass(frozen=True)

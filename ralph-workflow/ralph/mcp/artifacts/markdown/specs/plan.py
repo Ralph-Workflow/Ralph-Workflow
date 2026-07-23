@@ -11,7 +11,8 @@ import json
 import re
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic, MarkdownArtifactError
+from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
+from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._parser import parse_markdown_document
 from ralph.mcp.artifacts.markdown._spec import (
     Content,
