@@ -160,7 +160,7 @@ class PhaseIterationContext:
 
     Attributes:
         outer_dev: Outer development cycle number (None if not in outer loop).
-        outer_dev_cap: Budget cap for outer dev cycles (shows Dev N/cap when set).
+        outer_dev_cap: Budget cap for outer dev cycles (shows Cycle N/cap when set).
         inner_analysis: Inner analysis cycle number (None if not in analysis).
         inner_analysis_cap: Max inner analysis cycles (None if unknown).
     """

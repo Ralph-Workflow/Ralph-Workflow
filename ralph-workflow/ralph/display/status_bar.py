@@ -66,7 +66,7 @@ Default rendering
 The single default layout renders (in order)::
 
     [phase_marker] {phase_label} [milestone] {workspace_root}
-                              [milestone] {outer_dev} Dev N/cap
+                              [milestone] {outer_dev} Cycle N/cap
                               [milestone] {inner_analysis} Analysis N/cap
                               [milestone] Time mm:ss [milestone] Agent name
 
@@ -171,9 +171,9 @@ def _safe_single_line(text: str) -> str:
     cleaned = _SAFE_LINE_NEWLINE_RE.sub(" ", cleaned)
     return cleaned.strip()
 
-# Canonical label widths (full form: ``Dev 1/3`` / ``Analysis 2/5``).
+# Canonical label widths (full form: ``Cycle 1/3`` / ``Analysis 2/5``).
 # These reflect the WORST-CASE actual label length with multi-digit
-# caps (e.g. ``Dev 99/999`` is 10 chars; ``Analysis 99/999`` is 14
+# caps (e.g. ``Cycle 99/999`` is 12 chars; ``Analysis 99/999`` is 14
 # chars). The budget allocator reserves exactly these widths, so the
 # canonical form fits even at the narrowest AC-03 width (40 cols)
 # where the label MUST render (only path/phase truncation adapts to
@@ -370,7 +370,7 @@ class _FieldBudgets:
 
     AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40
     cols) the iteration label form is ALWAYS the canonical
-    (``Dev 1/3`` / ``Analysis 2/5``) form regardless of how much
+    (``Cycle 1/3`` / ``Analysis 2/5``) form regardless of how much
     phase/path truncation is needed. Only path middle-truncation and
     phase tail-truncation budgets adapt to width at those widths.
 
@@ -389,7 +389,7 @@ class _FieldBudgets:
     and the per-iteration glyphs (``render_marker=False``,
     ``render_iter_glyph=False``) to keep both iteration labels
     visible: a 14-col bar may render as ``1/3 2/5`` instead of the
-    canonical ``■ Dev 1/3 ◆ ◎ Analysis 2/5`` at 100+ cols.
+    canonical ``■ Cycle 1/3 ◆ ◎ Analysis 2/5`` at 100+ cols.
     """
 
     phase_budget: int
@@ -410,7 +410,7 @@ def _field_overhead_and_label_budgets(
     """Derive width-aware budgets that always fit ``ctx.width``.
 
     AC-03 invariant: at widths >= ``_CANONICAL_FIT_THRESHOLD`` (40 cols)
-    the iteration label form is ALWAYS canonical (``Dev N/cap`` /
+    the iteration label form is ALWAYS canonical (``Cycle N/cap`` /
     ``Analysis N/cap``); only path middle-truncation and phase
     tail-truncation budgets adapt to width. Below the threshold the
     implementation may degrade to compact (``D1/3`` / ``A2/5``) or
@@ -432,7 +432,7 @@ def _field_overhead_and_label_budgets(
     layout that fits ``ctx.width``:
 
     1. At widths ``>= _CANONICAL_FIT_THRESHOLD`` the canonical
-       ``Dev N/cap`` / ``Analysis N/cap`` labels ALWAYS render in full
+       ``Cycle N/cap`` / ``Analysis N/cap`` labels ALWAYS render in full
        with the marker and per-iteration glyphs (phase/path truncate
        to absorb any remaining width pressure).
     2. Below the canonical-fit threshold, the compact form
@@ -710,7 +710,7 @@ def _outer_label_canonical_chars(outer_label: str | None) -> int:
     """Return the canonical-form width the Status Bar needs for the outer label.
 
     The default ``Cycle`` label is bounded by
-    :data:`_OUTER_DEV_LABEL_MAX_CHARS` (10 chars; ``Dev 99/999`` /
+    :data:`_OUTER_DEV_LABEL_MAX_CHARS` (12 chars; ``Cycle 99/999`` /
     ``Cycle #N`` worst case). When the caller supplies a custom
     ``outer_label`` (e.g. ``Remediation`` / ``Round``), the canonical
     form is ``<outer_label> <suffix>`` where ``suffix`` is the same
@@ -767,7 +767,7 @@ def render_status_bar(
     The single default-mode layout renders phase + dir + (any applicable
     outer_dev) + (any applicable inner_analysis) at every width where
     the iteration segments fit. When ``ctx.width`` is too narrow to fit
-    the canonical forms (``Dev 1/3`` / ``Analysis 2/5``) the labels
+    the canonical forms (``Cycle 1/3`` / ``Analysis 2/5``) the labels
     degrade through compact (``D1/3`` / ``A2/5``) and minimal
     (``1/3`` / ``2/5``) forms, the phase marker and per-iteration
     glyphs are dropped at the marker-fit / glyph-fit thresholds, and
