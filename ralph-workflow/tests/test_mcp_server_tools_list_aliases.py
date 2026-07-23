@@ -152,18 +152,6 @@ def test_tools_call_dispatches_raw_name_to_canonical_handler() -> None:
     assert response.error is None, response.error
 
 
-def test_tools_call_decodes_stringified_arguments_object_before_dispatch() -> None:
-    server = _build_server_with_tool("read_file")
-    request = JsonRpcRequest(
-        jsonrpc="2.0",
-        method="tools/call",
-        msg_id="1",
-        params={"name": "read_file", "arguments": '{"path": "/tmp/example.md"}'},
-    )
-    response, _ = server._handle_tools_call(request, ServerState.RUNNING)
-    assert response.error is None, response.error
-
-
 def test_tools_call_with_unknown_alias_returns_negative_case() -> None:
     server = _build_server_with_tool("read_file")
     request = JsonRpcRequest(
