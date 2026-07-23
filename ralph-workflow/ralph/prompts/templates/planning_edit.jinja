@@ -81,7 +81,7 @@ Recommended edit flow:
 5. Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before you decide the revision is ready.
 6. When subagents are available, fan out one scout per analyzer finding to verify its closure against the repository, plus one reviewer per rubric dimension to hunt for the next rejection (see ## PLANNING WITH SUBAGENTS); without subagents, run the same checks sequentially yourself.
 7. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then rewrite every affected section in the document.
-8. For a fix confined to individual steps, call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`content` = the document, `action` = replace/insert/remove/move, `step_id` like `S-3`); it reindexes step IDs and `depends_on` automatically and returns the edited document. Do NOT renumber steps by hand.
+8. For a fix confined to individual steps, call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`content` = the document, `action` = replace/insert/remove/move, `step_id` like `S-3`; `replacement` = one complete matching `### [S-3] Title` block for insert/replace). IDs are stable and never renumbered; the tool returns the edited document.
 9. Validate the revised document with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document); each diagnostic names the line, section, and rule — repair them all in one pass.
 10. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same two arguments) only after the revised plan passes the self-audit below.
 

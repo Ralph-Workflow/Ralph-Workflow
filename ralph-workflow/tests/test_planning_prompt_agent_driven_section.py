@@ -16,6 +16,13 @@ from pathlib import Path
 _PLANNING_TEMPLATE = (
     Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates" / "planning.jinja"
 )
+_PLANNING_ANALYSIS_TEMPLATE = (
+    Path(__file__).resolve().parents[1]
+    / "ralph"
+    / "prompts"
+    / "templates"
+    / "planning_analysis.jinja"
+)
 
 
 def _read_planning_template() -> str:
@@ -42,13 +49,28 @@ def test_planning_prompt_new_section_warns_about_fan_out() -> None:
     )
 
 
-def test_planning_prompt_keeps_unchanged_sections() -> None:
-    """Sanity: the rework must not have removed the legacy rules' underlying
-    contract — the planning prompt must still mention allowed_directories
-    disjointness (the contract for any parallelization shape, agent-driven
-    or fan-out).
-    """
+def test_planning_prompts_use_author_facing_markdown_labels() -> None:
     source = _read_planning_template()
-    assert "allowed_directories" in source
+    analysis_source = _PLANNING_ANALYSIS_TEMPLATE.read_text(encoding="utf-8")
+    combined = source + analysis_source
+
+    for label in ("## Critical Files", "## Parallel Plan", "## Work Units", "Directories:"):
+        assert label in combined
+    for internal_name in (
+        "critical_files",
+        "summary.coverage_areas",
+        "summary.intent",
+        "work_units",
+        "parallel_plan",
+        "allowed_directories",
+        "edit_area",
+        "expected_evidence",
+        "verify_command",
+        "plan_items_proven",
+        "unit_id",
+        "Pydantic model is the source of truth",
+        "JSON Schema for the plan artifact",
+    ):
+        assert internal_name not in combined
     assert ".agent" in source
     assert ".git" in source

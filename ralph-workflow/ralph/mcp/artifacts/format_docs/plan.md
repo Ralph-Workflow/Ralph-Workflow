@@ -1,19 +1,16 @@
 # plan artifact format
 
-You are writing the implementation plan a development agent will execute
-without re-planning. The plan is one markdown document; each list item's
-text is a single-line compact JSON object carrying that entry's fields.
+Write one executor-ready markdown plan. Use prose for explanations, labeled
+fields for structured values, and stable IDs for references. Validate with
+`ralph_verify_md_artifact`, then submit with `ralph_submit_md_artifact`
+(`artifact_type: plan`). Large plans may use the stage/get/finalize tools.
 
-Author the markdown, lint with `ralph_verify_md_artifact`, and submit with
-`ralph_submit_md_artifact` (`artifact_type: plan`). For a large plan,
-stage drafts with `ralph_stage_md_artifact`, read them back with
-`ralph_get_md_draft`, drop them with `ralph_discard_md_draft`, and submit
-with `ralph_finalize_md_artifact`. To change one step later, call
-`ralph_edit_md_plan_step` (actions: replace, insert, remove, move) — it
-renumbers step IDs to `S-1..S-n` and remaps `depends_on` for you.
+To edit one step, call `ralph_edit_md_plan_step` with its stable `S-n` ID.
+Insert, move, replace, and remove never renumber IDs. A replacement is one
+complete `### [S-n] Title` block whose ID matches `step_id`.
 
-See the complete sample artifact — valid format and a model of the craft:
-`.agent/artifact-formats/examples/plan.md`
+See the complete opinionated sample:
+`.agent/artifact-formats/examples/plan.md`.
 
 ## Complete minimal example
 
@@ -21,100 +18,135 @@ See the complete sample artifact — valid format and a model of the craft:
 ---
 type: plan
 ---
-
 ## Summary
+foo() crashes on out-of-range indexes.
 
-- [SUM-1] {"context":"foo() crashes on out-of-range indexes; clamp them without changing the public signature.","scope_items":[{"text":"Add a regression test for out-of-range indexes","category":"test"},{"text":"Clamp negative and oversized indexes in src/foo.py","category":"bugfix"},{"text":"Run the focused test to prove the fix","category":"test"}]}
+Intent: Clamp indexes without changing the public signature.
+Coverage: bugfix, test
+
+## Scope
+- [SC-1] Add a regression test for invalid indexes
+  Category: test
+- [SC-2] Clamp indexes in src/foo.py
+  Category: bugfix
+- [SC-3] Run focused verification
+  Category: test
 
 ## Skills MCP
-
-- [SK-1] {"skills":["test-driven-development"]}
+Skills: test-driven-development
 
 ## Steps
 
-- [S-1] {"title":"Add regression test","content":"Write tests/test_foo.py::test_clamp_out_of_range covering negative and oversized indexes.","step_type":"file_change","targets":[{"path":"tests/test_foo.py","action":"modify"}]}
-- [S-2] {"title":"Clamp indexes in foo()","content":"Clamp the index into range at the top of foo() in src/foo.py.","step_type":"file_change","targets":[{"path":"src/foo.py","action":"modify"}],"depends_on":["S-1"]}
-- [S-3] {"title":"Run the focused test","content":"Run the regression test and confirm it passes.","step_type":"verify","verify_command":"pytest tests/test_foo.py -q","depends_on":["S-2"]}
+### [S-1] Add the regression test
+Add tests/test_foo.py::test_clamp_out_of_range before production changes.
+
+Type: file_change
+Files:
+- modify tests/test_foo.py
+Satisfies: AC-01
+
+### [S-2] Clamp indexes in foo()
+Clamp negative and oversized indexes while preserving foo()'s signature.
+
+Type: file_change
+Files:
+- modify src/foo.py
+Depends on: S-1
+Satisfies: AC-01
+
+### [S-3] Run the focused test
+Prove the regression is fixed.
+
+Type: verify
+Depends on: S-2
+Verify: pytest tests/test_foo.py -q
 
 ## Critical Files
+- [CF-1] src/foo.py
+  Action: modify
+  Changes: clamp the lookup index
+- [CF-2] tests/test_foo.py
+  Action: modify
+  Changes: add one regression test
 
-- [CF-1] {"primary_files":[{"path":"src/foo.py","action":"modify"},{"path":"tests/test_foo.py","action":"modify"}]}
+## Acceptance Criteria
+- [AC-01] Invalid indexes no longer crash foo()
+  Satisfied by: S-1, S-2
+  Verify: pytest tests/test_foo.py -q
 
-## Risks Mitigations
-
-- [R-1] {"risk":"Clamping could mask a caller bug.","mitigation":"Log a warning when clamping fires and assert the regression test covers both bounds."}
+## Risks
+- [R-1] Clamping could mask a caller bug
+  Severity: medium
+  Mitigation: Assert the exact boundary behavior in the regression test.
 
 ## Verification
-
-- [V-1] {"method":"pytest tests/test_foo.py -q","expected_outcome":"test_clamp_out_of_range passes with exit code 0"}
+- [V-1] pytest tests/test_foo.py -q
+  Expect: test_clamp_out_of_range passes with exit code 0
+  Timeout: 60
 ```
 
-## Frontmatter
+## Grammar
 
-- `type` — required; `plan`.
-- `schema_version` — optional integer.
-- `intent_verb` — optional; one of add, fix, refactor, migrate, document,
-  investigate, improve, configure, remove. Unknown values are coerced to
-  `add` with a warning.
+Frontmatter requires `type: plan`. Optional fields are `schema_version` and
+`intent_verb` (add, fix, refactor, migrate, document, investigate, improve,
+configure, or remove).
 
-## Sections
+Required sections:
 
-Required (item counts in parentheses):
+- `## Summary`: prose plus optional `Intent:` and comma-separated `Coverage:`.
+- `## Scope`: at least three `- [SC-n] text` items; indented `Category:` and
+  `Count:` fields are optional.
+- `## Skills MCP`: `Skills:` must name at least one skill; `MCPs:` is optional.
+- `## Steps`: one or more `### [S-n] Title` blocks. Each block needs
+  description prose. Fields may include `Type:`, `Priority:`, `Files:` bullets,
+  `Depends on:`, `Satisfies:`, `Verify:`, `Location:`, `Rationale:`, and
+  `Evidence:` bullets.
+- `## Critical Files`: `- [CF-n] path` items. Primary files use `Action:` and
+  optional `Changes:`; reference files use `Purpose:` instead.
+- `## Risks`: `- [R-n] risk` items with `Mitigation:` and optional `Severity:`.
+- `## Verification`: `- [V-n] command` items with `Expect:` and optional
+  `Timeout:` / `Cwd:`.
 
-- `## Summary` (exactly 1) — object with `scope_items` (at least 3, each
-  `{"text": ...}` plus optional `count` and `category`) and optional
-  `context` and `intent`.
-- `## Skills MCP` (exactly 1) — object with non-empty `skills` list and
-  optional `mcps` list.
-- `## Steps` (1 or more) — one object per step; see below.
-- `## Critical Files` (exactly 1) — object with `primary_files` (at least
-  one `{"path", "action"}` where action is create/modify/delete) and
-  optional `reference_files` (`{"path", "purpose"}`).
-- `## Risks Mitigations` (1 or more) — `{"risk", "mitigation"}` plus
-  optional `severity` (low/medium/high/critical).
-- `## Verification` (1 or more) — `{"method", "expected_outcome"}` plus
-  optional `timeout_seconds` (1-3600) and `cwd`. Give a concrete expected
-  outcome, never a vague "all tests pass". `method` must not start with
-  `bash -c `, `sh -c `, or `eval ` (shell-invocation guard; `bash
-  ./script.sh` is fine).
+Optional sections use these closed shapes:
 
-Optional: `## Constraints` (exactly 1 object), `## Design` (exactly 1
-object, including acceptance criteria for larger tasks), `## Parallel
-Plan` and `## Work Units` (1+ objects each; mutually exclusive —
-agent-facing parallelization intent only).
+- `## Constraints` contains only `Must not break:` and `Must keep working:`
+  bullet lists, plus scalar `Performance budget:` and `Security posture:`.
+- `## Design` allows prose and these labeled fields: `Profile:`, `Outcome:`,
+  `Constraints:`, `Invariants:` bullets, `Architecture:`, `Non-goals:` bullets,
+  `Black box: yes|no`, `Forbidden in tests:`, `Test layers:`,
+  `Clock injection: yes|no`, `Max unit test seconds:`, `DI required: yes|no`,
+  `DI preferred:`, `DI forbidden:`, `DI notes:`, `Guard commands:` bullets,
+  `Expected outputs:` bullets, `Drift sources:`, `On drift:`,
+  `Refactor approach:`, `Dead code:`, `Preserve API: yes|no`, and
+  `Temporary hacks: yes|no`. `Invariants:` / `Architecture:` require
+  `Constraints:`; testability fields require `Black box:`; DI fields require
+  `DI required:`; refactor fields require `Refactor approach:`.
+- `## Acceptance Criteria` uses `- [AC-nn] text` items with optional
+  `Satisfied by: S-1, S-2`, `Verify:`, and `Evidence:` scalar fields.
+- `## Parallel Plan` uses `- [ID] description` items with optional
+  `Paths:`, `Directories:`, and `Depends on:` comma-separated fields.
+- `## Work Units` uses `- [unit-ID] description` items with optional
+  `Directories:` and `Depends on:` comma-separated fields.
 
-## Steps
+Use either `## Parallel Plan` or `## Work Units`, not both. For example:
 
-Step IDs are the stable references every other artifact uses (the
-development result proves each step by its `S-n` ID), so they must use the
-form `S-1`, `S-2`, … (no leading zeros), unique within the section.
+    ## Work Units
+    - [backend] Implement and test the API changes
+      Directories: src/api/, tests/api/
 
-Each step object requires `title` and `content`. Optional fields:
+## Step and reference rules
 
-- `step_type` — file_change / action / research / verify (default action).
-  A `file_change` step must declare at least one `targets` entry
-  (`{"path", "action"}` with action create/modify/delete/read/reference);
-  a `verify` step must declare `verify_command` or `location`.
-- `depends_on` — list of step IDs, e.g. `["S-1"]`. Unknown IDs and
-  dependency cycles are rejected.
-- `priority`, `rationale`, `location`, `satisfies` (acceptance-criterion
-  IDs shaped `AC-01`, only valid when `## Design` declares them),
-  `expected_evidence` (`{"kind": file|command_output|test_name, "ref"}`).
+- Step IDs match `S-<positive-number>`, are unique, and are stable identifiers;
+  order does not determine identity.
+- `Type: file_change` requires one or more `Files:` bullets such as
+  `- modify src/foo.py`.
+- `Type: verify` requires `Verify:` or `Location:`.
+- `Depends on:` is a comma-separated list of existing step IDs. Dangling
+  references and cycles are errors.
+- `Satisfies:` names criteria declared as `- [AC-01] ...`; each criterion's
+  `Satisfied by:` field names existing step IDs.
+- Verification commands must not start with `bash -c`, `sh -c`, or `eval`.
 
-## Hard errors vs warnings
-
-Hard errors: a missing required section or wrong item count; an item whose
-text is not a JSON object; malformed or duplicate item IDs; a step ID not
-shaped `S-<number>`; `depends_on` naming an unknown step ID or forming a
-cycle; a file_change step without targets or a verify step without
-verify_command/location; empty `skills`, `scope_items` < 3, empty
-`primary_files`; dangling `satisfies`/acceptance-criteria references;
-declaring both Parallel Plan and Work Units; an `intent_verb` incompatible
-with the scope categories it covers; the shell-invocation guard;
-and size caps (4 MB document, 500 steps, 200 risks, 100 verification
-steps, and per-field caps reported as `plan size violation: field=...`).
-
-Warnings (value coerced, document accepted): unknown `intent_verb` (to
-add), scope `category` (to other), `step_type` (to action), `priority`
-(to medium), target `action` (to modify), evidence `kind` (to file), and
-risk `severity` (to medium).
+Unknown closed-vocabulary values produce warnings and safe coercions. Missing
+sections, malformed IDs, broken references, invalid step contracts, and size
+limit violations are hard errors.

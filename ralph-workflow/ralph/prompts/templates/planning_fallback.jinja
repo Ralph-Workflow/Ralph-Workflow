@@ -28,54 +28,107 @@ Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for 
 Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during planning.
 {% endif %}
 
-Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools. If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead. If your runtime provides a subagent mechanism, fan out read-only discovery scouts before drafting and a per-dimension review pass before finalizing; otherwise run the same checks sequentially yourself.
+Before committing to a path, pattern, dependency, or command, inspect it with
+non-mutating tools. If it is not verified, add an explicit discovery step.
+When subagents are available, fan out read-only discovery and independent
+review; otherwise perform those checks sequentially.
 
-Fallback still needs an executor-grade plan. Include: summary context and scope items; skills_mcp with at least one task-relevant skill; concrete ordered steps; critical files with actions/reasons; risks with mitigations; verification strategy with expected outcomes; work_units if parallel work is safe; an optional `design` section listing the seven SE-opinionated sub-sections (Design Constraints, Non-Goals, Dependency Injection, Drift Detection, Testability, Refactor Strategy, Acceptance Criteria), even if some are empty.
+Produce an executor-grade plan: concrete scope, task-relevant skills, ordered
+steps, critical files, risks, acceptance criteria when useful, and exact
+verification commands with expected outcomes. Do not say "follow the existing
+pattern" without naming its verified reference, or "run tests" without the
+exact command.
 
-Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern. Do not use phrases like "run tests" unless you provide the exact command and the expected passing result. If the executor would need to stop and research basic repository structure, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
+For a non-trivial `## Design`, cover Design Constraints, Non-Goals,
+Dependency Injection, Drift Detection, Testability, Refactor Strategy, and
+Acceptance Criteria; omit empty ceremony when a subsection adds no decision.
 
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
-## Plan-artifact canonical contract
+## Plan artifact contract
 
-The full schema, per-section shapes, per-list caps, and string-length tiers for the plan artifact live in `.agent/artifact-formats/plan.md`. The bullets below point at the matching format-doc section for the topic that previously had an inlined pointer in this template:
+The complete grammar and limits live in
+`.agent/artifact-formats/plan.md`. Native file and shell tools are disabled in
+this brokered fallback; native orchestration tools remain enabled.
 
-- Plan size limits → `.agent/artifact-formats/plan.md` §`Plan size limits` (4 MB hard cap, per-list caps, `PlanArtifactSizeError` before Pydantic).
-- Planning quality → `.agent/artifact-formats/plan.md` §`Planning quality guidance` (analysis-ready criteria, exact verification, acceptance criteria, evidence, and risk coverage).
-- Depends-on DAG guard → `.agent/artifact-formats/plan.md` §`Cross-section invariants` (`depends_on` DAG contract; diamond-shaped DAGs accepted).
+Submit one native-markdown document:
 
-Native file and shell tools are disabled in this brokered fallback; native orchestration tools remain enabled.
+1. Use `type: plan` frontmatter. Write context as prose and structured values
+   as labeled fields. Required sections are `## Summary`, `## Scope`,
+   `## Skills MCP`, `## Steps`, `## Critical Files`, `## Risks`, and
+   `## Verification`.
+2. Write each step as a complete `### [S-n] Title` block with description
+   prose and fields such as `Type:`, `Files:`, `Depends on:`, and `Verify:`.
+   IDs are stable and never renumbered.
+3. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}}
+   (`artifact_type="plan"`, `content` = the document), then repair every
+   line/section/rule diagnostic.
+4. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same arguments).
+   Targeted insert/replace edits pass one complete matching step block as
+   `replacement` to {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}}.
+5. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
+   {{GET_MD_DRAFT_TOOL_REFERENCE}}, and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}};
+   {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} intentionally restarts the draft.
 
-Submit the plan as ONE markdown document:
-1. Author the document: `---` frontmatter with `type: plan`, then `## Summary`, `## Skills MCP`, `## Steps`, `## Critical Files`, `## Risks Mitigations`, `## Verification` (add `## Design` for non-trivial plans). Each section entry is one line `- [ID] {...}` whose text is a JSON object. Steps use stable IDs `S-1`, `S-2`, ...; `depends_on` lists step IDs.
-2. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document). Each diagnostic names the line, section, and rule — repair them all in one pass.
-3. Submit the corrected document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same two arguments). For a targeted step change, {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`action` = replace/insert/remove/move, `step_id` like `S-2`) returns the edited document to submit; it reindexes IDs and `depends_on` for you.
-4. For a long plan, stage chunks with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the next chunk), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then validate-and-submit the assembled draft with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}; {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} restarts the draft.
-
-Worked example document (fill with concrete executor-ready detail):
+Worked example:
 
 ```markdown
 ---
 type: plan
 ---
-
 ## Summary
-- [SUM-1] {"context":"Fix the foo() off-by-one regression and prove it with a focused unit test.","intent":"Clamp foo() index so the regression cannot recur.","intent_verb":"improve","scope_items":[{"text":"Add a regression test for the out-of-range foo() index","category":"test"},{"text":"Modify src/foo.py to clamp the index before lookup","category":"file_change"},{"text":"Run the focused pytest command that proves the regression is fixed","category":"test"}]}
+foo() crashes on out-of-range indexes.
+
+Intent: Clamp indexes without changing the public signature.
+Coverage: bugfix, test
+
+## Scope
+- [SC-1] Add a failing regression test
+  Category: test
+- [SC-2] Clamp indexes in src/foo.py
+  Category: bugfix
+- [SC-3] Run focused verification
+  Category: test
 
 ## Skills MCP
-- [SK-1] {"skills":["test-driven-development","systematic-debugging"],"mcps":[]}
+Skills: test-driven-development, systematic-debugging
 
 ## Steps
-- [S-1] {"title":"Add the foo() regression test","content":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.","step_type":"file_change","priority":"high","targets":[{"path":"tests/test_foo.py","action":"modify"}],"expected_evidence":[{"kind":"test_name","ref":"tests/test_foo.py::test_clamp_handles_out_of_range_index"}],"depends_on":[]}
-- [S-2] {"title":"Clamp the foo() index","content":"Update src/foo.py so the lookup index is clamped while preserving the public foo() signature.","step_type":"file_change","priority":"high","targets":[{"path":"src/foo.py","action":"modify"}],"expected_evidence":[{"kind":"file","ref":"src/foo.py"}],"depends_on":["S-1"]}
-- [S-3] {"title":"Run the focused regression test","content":"Run pytest tests/test_foo.py -q from the repository root and confirm it passes.","step_type":"verify","verify_command":"pytest tests/test_foo.py -q","expected_evidence":[{"kind":"command_output","ref":"pytest tests/test_foo.py -q"}],"depends_on":["S-2"]}
+
+### [S-1] Add the regression test
+Add test_clamp_out_of_range before changing production code.
+
+Type: file_change
+Files:
+- modify tests/test_foo.py
+
+### [S-2] Clamp the index
+Clamp negative and oversized indexes while preserving foo()'s signature.
+
+Type: file_change
+Files:
+- modify src/foo.py
+Depends on: S-1
+
+### [S-3] Run the focused suite
+Prove the regression is fixed.
+
+Type: verify
+Depends on: S-2
+Verify: pytest tests/test_foo.py -q
 
 ## Critical Files
-- [CF-1] {"primary_files":[{"path":"src/foo.py","action":"modify"},{"path":"tests/test_foo.py","action":"modify"}],"reference_files":[]}
+- [CF-1] src/foo.py
+  Action: modify
+- [CF-2] tests/test_foo.py
+  Action: modify
 
-## Risks Mitigations
-- [R-1] {"risk":"Clamping could hide a caller bug that should remain visible in behavior expectations.","mitigation":"Preserve the public signature and add focused assertions documenting the intended clamping behavior.","severity":"medium"}
+## Risks
+- [R-1] Clamping could mask a caller bug
+  Mitigation: Assert the exact boundary result.
 
 ## Verification
-- [V-1] {"method":"pytest tests/test_foo.py -q","expected_outcome":"The focused regression test passes.","timeout_seconds":60,"cwd":"."}
+- [V-1] pytest tests/test_foo.py -q
+  Expect: test_clamp_out_of_range passes
+  Timeout: 60
 ```

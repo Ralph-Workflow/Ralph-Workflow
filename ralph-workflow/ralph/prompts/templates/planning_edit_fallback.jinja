@@ -40,7 +40,7 @@ Not submitting the revised plan is a FAILURE.
 
 Revise the plan as ONE markdown document (grammar: `.agent/artifact-formats/plan.md`):
 1. Read the current plan at `.agent/artifacts/plan.md` with read-only tools and rewrite every section the feedback invalidates.
-2. For a fix confined to individual steps, call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`content` = the document, `action` = replace/insert/remove/move, `step_id` like `S-3`); it reindexes step IDs and `depends_on` and returns the edited document.
+2. For a fix confined to individual steps, call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`content` = the document, `action` = replace/insert/remove/move, `step_id` like `S-3`; `replacement` = one complete matching `### [S-3] Title` block for insert/replace). IDs are stable and never renumbered; the tool returns the edited document.
 3. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document); repair every line/section/rule-anchored diagnostic in one pass.
 4. Submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same two arguments) — resubmission replaces the prior plan.
 Your target is a revised plan that returns `completed` on the next planning-analysis pass.
