@@ -23,7 +23,11 @@ from ralph.mcp.tools.bridge._specs_git_exec import git_exec_specs
 from ralph.mcp.tools.names import (
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
+    DISCARD_MD_DRAFT_TOOL,
+    EDIT_MD_PLAN_STEP_TOOL,
     EXEC_TOOL,
+    FINALIZE_MD_ARTIFACT_TOOL,
+    GET_MD_DRAFT_TOOL,
     GIT_DIFF_TOOL,
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
@@ -31,7 +35,7 @@ from ralph.mcp.tools.names import (
     RAW_EXEC_TOOL,
     READ_ENV_TOOL,
     REPORT_PROGRESS_TOOL,
-    SUBMIT_ARTIFACT_TOOL,
+    STAGE_MD_ARTIFACT_TOOL,
     SUBMIT_MD_ARTIFACT_TOOL,
     UNSAFE_EXEC_TOOL,
     VERIFY_MD_ARTIFACT_TOOL,
@@ -48,8 +52,12 @@ _HANDLER_CAPABILITY: dict[object, str] = {
     EXEC_TOOL: "ProcessExecBounded",
     UNSAFE_EXEC_TOOL: "ProcessExecUnbounded",
     RAW_EXEC_TOOL: "ProcessExecUnbounded",
-    SUBMIT_ARTIFACT_TOOL: "artifact.submit",
     SUBMIT_MD_ARTIFACT_TOOL: "artifact.submit",
+    STAGE_MD_ARTIFACT_TOOL: "artifact.submit",
+    GET_MD_DRAFT_TOOL: "artifact.plan_read",
+    DISCARD_MD_DRAFT_TOOL: "artifact.submit",
+    FINALIZE_MD_ARTIFACT_TOOL: "artifact.submit",
+    EDIT_MD_PLAN_STEP_TOOL: "artifact.submit",
     VERIFY_MD_ARTIFACT_TOOL: "artifact.plan_read",
     REPORT_PROGRESS_TOOL: "run.report_progress",
     DECLARE_COMPLETE_TOOL: "artifact.submit",
@@ -95,9 +103,7 @@ def test_every_handler_capability_is_covered() -> None:
     gated = {
         name
         for name, cap in specs.items()
-        # Plan-draft tools (artifact.plan_*) are intentionally covered elsewhere;
-        # this guard tracks the exec/git/coordination capability surface.
-        if not str(cap).startswith("artifact.plan")
+        if cap
     }
     missing = gated - set(_HANDLER_CAPABILITY)
     assert not missing, f"gated tools missing a handler-capability assertion: {missing}"

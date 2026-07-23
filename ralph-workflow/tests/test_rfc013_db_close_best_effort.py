@@ -29,12 +29,10 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.completion_signals import _check_completion_sentinel, _db_sentinel_lookup
 from ralph.agents.invoke import _clear_session_completion_sentinel
+from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
-from ralph.mcp.tools.artifact import (
-    ArtifactHandlerDeps,
-    _submit_ops_for_artifact_with_options,
-    execute_ops_with_rollback,
-)
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.workspace.agent_dir_retention import _sweep_run_state_db_rows
 
 if TYPE_CHECKING:
@@ -286,27 +284,17 @@ class _DeleteRaisingDB:
             self._real_db = None
 
 
-def test_run_write_sentinel_falls_back_to_legacy_file_on_db_upsert_failure(
+def test_canonical_submit_survives_completion_db_upsert_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``_run_write_sentinel`` must write the legacy sentinel file when the
-    DB ``upsert_completion_sentinel`` raises ``sqlite3.OperationalError``.
-
-    Pinned contract: a transient ``sqlite3.Error`` on the DB write
-    path (locked / corrupt / unsupported WAL) must NOT propagate
-    through ``execute_ops_with_rollback``; instead the durable
-    fallback path writes ``.agent/completion_seen_<run_id>.json`` so
-    the completion gate still has evidence the run reached the
-    artifact-submit phase. Mirrors the contract in
-    ``coordination._write_completion_sentinel``.
-    """
+    """A transient completion-state DB failure must not lose the artifact."""
 
     def _factory(workspace: Path) -> _RaisingUpsertDB:
         return _RaisingUpsertDB(workspace)
 
     _patch_db_close(
         monkeypatch,
-        "ralph.mcp.tools.artifact",
+        "ralph.mcp.artifacts.canonical_submit",
         db_factory=_factory,
     )
 
@@ -314,31 +302,36 @@ def test_run_write_sentinel_falls_back_to_legacy_file_on_db_upsert_failure(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     run_id = "run-write-sentinel-dbfail"
-    parsed_content = {
-        "status": "completed",
-        "summary": "Durable fallback regression",
-        "files_changed": "- ralph/x.py",
-    }
+    markdown = """---
+status: completed
+---
 
-    ops = _submit_ops_for_artifact_with_options(
-        "development_result",
+## Summary
+
+- [S-1] Durable fallback regression
+
+## Files Changed
+
+- [F-1] ralph/x.py
+
+## Verification
+
+- [V-1] Focused regression passed.
+"""
+    result = submit_artifact_canonical(
         workspace_root,
-        artifact_dir,
-        parsed_content,
+        "development_result",
+        {},
+        markdown=markdown,
         deps=ArtifactHandlerDeps(),
         run_id=run_id,
+        artifact_dir=artifact_dir,
     )
 
-    # The whole sequence must complete cleanly: the DB upsert failure
-    # is degraded into a legacy-file write, not propagated.
-    execute_ops_with_rollback(ops)
-
-    legacy_sentinel = workspace_root / ".agent" / f"completion_seen_{run_id}.json"
-    assert legacy_sentinel.exists(), (
-        "Legacy sentinel file MUST exist after a transient DB upsert "
-        "failure so the completion gate has durable evidence."
-    )
-    assert legacy_sentinel.read_text(encoding="utf-8").strip() != ""
+    assert result.artifact_path == artifact_dir / "development_result.md"
+    assert result.artifact_path.read_text(encoding="utf-8") == markdown
+    assert result.receipt_path is not None
+    assert artifact_receipt_present(workspace_root, run_id, "development_result")
 
 
 def test_clear_session_completion_sentinel_tombstones_on_delete_failure(

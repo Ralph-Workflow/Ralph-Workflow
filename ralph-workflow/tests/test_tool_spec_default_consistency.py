@@ -13,7 +13,6 @@ from __future__ import annotations
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.tools import _exec_output_spill, unsafe_exec
 from ralph.mcp.tools import exec as exec_tool
-from ralph.mcp.tools.artifact import _section_mode
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
 from ralph.mcp.tools.bridge._specs_file_list import file_list_specs
 from ralph.mcp.tools.bridge._specs_file_read import file_read_specs
@@ -25,7 +24,7 @@ from ralph.mcp.tools.names import (
     GREP_FILES_TOOL,
     READ_FILE_TOOL,
     SEARCH_FILES_TOOL,
-    SUBMIT_PLAN_SECTION_TOOL,
+    STAGE_MD_ARTIFACT_TOOL,
     WEB_SEARCH_TOOL,
 )
 from ralph.mcp.tools.websearch import _DEFAULT_LIMIT, MAX_LIMIT, MIN_LIMIT
@@ -154,7 +153,7 @@ def test_read_multiple_files_schema_models_oneof_paths_or_items() -> None:
     assert ("items",) in required_keys
 
 
-def test_submit_plan_section_mode_default_matches_handler() -> None:
-    default = _prop(artifact_specs(), SUBMIT_PLAN_SECTION_TOOL, "mode")["default"]
-    # The handler defaults an absent mode to this value.
-    assert default == _section_mode({})
+def test_stage_markdown_artifact_mode_schema_matches_handler_default() -> None:
+    mode = _prop(artifact_specs(), STAGE_MD_ARTIFACT_TOOL, "mode")
+    assert mode["enum"] == ["append", "replace_all"]
+    assert mode.get("default", "append") == "append"
