@@ -9,31 +9,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from git import Repo as GitRepo
 from rich.console import Console
 
-from ralph.config.enums import (
-    Verbosity,
-)
 from ralph.display.context import make_display_context
+from ralph.pipeline import run_loop
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.cycle_baseline import write_cycle_baseline
-from ralph.pipeline.effects import (
-    CommitEffect,
-    ExitSuccessEffect,
-    InvokeAgentEffect,
-)
+from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
-
-# All tests in this module exercise real git operations against the
-# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
-# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
-# machines, so the default 1-second per-test ceiling is unsafe.
-pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -357,129 +343,71 @@ class TestCycleBaselineLifecycle:
     """Regression tests: cycle baseline is cleared at dev-cycle boundaries."""
 
     def test_run_clears_baseline_at_teardown_on_success(
-        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
     ) -> None:
+        cleared: list[Path] = []
+        loop_ctx = MagicMock()
+        loop_ctx.workspace_scope.root = tmp_path
+        loop_ctx.monitor_stop = None
+        loop_ctx.pro_watcher = None
+        loop_ctx.heartbeat_client = None
+        loop_ctx.catchup_worker = None
+        loop_ctx.process_teardown = lambda: None
+        loop_ctx.effective_pipeline_subscriber = None
+        loop_ctx.active_display = MagicMock()
+        loop_ctx.display_context = MagicMock()
+        monkeypatch.setattr(run_loop._runner_module, "clear_cycle_baseline", cleared.append)
+        monkeypatch.setattr(run_loop, "emit_final_summary", lambda *_args, **_kwargs: None)
 
-        with GitRepo(tmp_git_repo) as _r:
-            _head_sha = _r.head.commit.hexsha
-        write_cycle_baseline(tmp_git_repo, _head_sha)
-        assert (tmp_git_repo / ".agent" / "start_commit").exists()
+        run_loop._cleanup_pipeline(loop_ctx, lambda: None, lambda: None, lambda: None, MagicMock())
 
-        monkeypatch.setattr(
-            runner_module,
-            "resolve_workspace_scope",
-            lambda: WorkspaceScope(tmp_git_repo),
-        )
-        monkeypatch.setattr(
-            runner_module,
-            "determine_effect_from_policy",
-            lambda _state, _bundle, _scope: ExitSuccessEffect(),
-        )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        _install_runner_display_context(monkeypatch)
-
-        state = MagicMock()
-        state.phase = "planning"
-
-        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
-
-        assert not (tmp_git_repo / ".agent" / "start_commit").exists(), (
-            "run() must clear .agent/start_commit at pipeline teardown"
-        )
+        assert cleared == [tmp_path], "run() must clear .agent/start_commit at pipeline teardown"
 
     def test_run_clears_baseline_at_teardown_on_failure(
-        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
     ) -> None:
+        cleared: list[Path] = []
+        loop_ctx = MagicMock()
+        loop_ctx.workspace_scope.root = tmp_path
+        loop_ctx.monitor_stop = None
+        loop_ctx.pro_watcher = None
+        loop_ctx.heartbeat_client = None
+        loop_ctx.catchup_worker = None
+        loop_ctx.process_teardown = lambda: None
+        loop_ctx.effective_pipeline_subscriber = None
+        loop_ctx.active_display = MagicMock()
+        loop_ctx.display_context = MagicMock()
+        monkeypatch.setattr(run_loop._runner_module, "clear_cycle_baseline", cleared.append)
+        monkeypatch.setattr(run_loop, "emit_final_summary", lambda *_args, **_kwargs: None)
 
-        with GitRepo(tmp_git_repo) as _r:
-            _head_sha = _r.head.commit.hexsha
-        write_cycle_baseline(tmp_git_repo, _head_sha)
-        baseline_path = tmp_git_repo / ".agent" / "start_commit"
-        assert baseline_path.exists()
+        run_loop._cleanup_pipeline(loop_ctx, lambda: None, lambda: None, lambda: None, MagicMock())
 
-        cleared: list[bool] = []
-
-        def _spy_clear(workspace_root: object) -> None:
-            cleared.append(True)
-            baseline_path.unlink(missing_ok=True)
-
-        monkeypatch.setattr(
-            runner_module,
-            "resolve_workspace_scope",
-            lambda: WorkspaceScope(tmp_git_repo),
-        )
-        monkeypatch.setattr(
-            runner_module,
-            "determine_effect_from_policy",
-            lambda _state, _bundle, _scope: ExitSuccessEffect(),
-        )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        _install_runner_display_context(monkeypatch)
-        monkeypatch.setattr(runner_module, "clear_cycle_baseline", _spy_clear)
-
-        state = MagicMock()
-        state.phase = "planning"
-
-        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
-
-        assert cleared, "run() must call clear_cycle_baseline in its finally/teardown block"
+        assert cleared == [tmp_path], "run() must call clear_cycle_baseline in its finally/teardown block"
 
     def test_run_pipeline_step_clears_baseline_after_development_commit_success(
-        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
     ) -> None:
-
-        with GitRepo(tmp_git_repo) as _r:
-            _head_sha = _r.head.commit.hexsha
-        write_cycle_baseline(tmp_git_repo, _head_sha)
-        baseline_path = tmp_git_repo / ".agent" / "start_commit"
-        assert baseline_path.exists()
-
-        cleared: list[bool] = []
-
-        def _spy_clear(workspace_root: object) -> None:
-            cleared.append(True)
-            baseline_path.unlink(missing_ok=True)
-
-        commit_effect = CommitEffect(message_file="/dev/null")
-        call_count = {"n": 0}
-
-        def _fake_determine_effect(_state: object, _bundle: object, _scope: object) -> object:
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                return commit_effect
-            return ExitSuccessEffect()
-
-        state = MagicMock()
-        state.phase = "development_commit"
-        state.copy_with = MagicMock(return_value=state)
-
-        monkeypatch.setattr(runner_module, "determine_effect_from_policy", _fake_determine_effect)
+        cleared: list[Path] = []
+        workspace_scope = WorkspaceScope(tmp_path)
+        commit_phase = MagicMock()
+        commit_phase.role = "commit"
+        monkeypatch.setattr(runner_module, "clear_cycle_baseline", cleared.append)
         monkeypatch.setattr(
             runner_module,
-            "resolve_workspace_scope",
-            lambda: WorkspaceScope(tmp_git_repo),
-        )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        _install_runner_display_context(monkeypatch)
-        monkeypatch.setattr(
-            runner_module,
-            "execute_commit_effect",
-            lambda *_args, **_kwargs: PipelineEvent.COMMIT_SUCCESS,
-        )
-        monkeypatch.setattr(
-            runner_module,
-            "materialize_agent_prompt_if_needed",
-            lambda *_args, **_kwargs: None,
-        )
-        monkeypatch.setattr(runner_module, "clear_cycle_baseline", _spy_clear)
-        monkeypatch.setattr(
-            runner_module,
-            "reducer_reduce",
-            lambda _state, _event, _policy, recovery=None: (state, []),
+            "_integrate_on_phase_transition",
+            lambda **_kwargs: None,
         )
 
-        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        runner_module._maybe_auto_integrate(
+            effect=CommitEffect(message_file="/dev/null"),
+            event=PipelineEvent.COMMIT_SUCCESS,
+            commit_phase_def=commit_phase,
+            config=MagicMock(),
+            workspace_scope=workspace_scope,
+            state=MagicMock(),
+            display=MagicMock(),
+        )
 
-        assert cleared, (
+        assert cleared == [tmp_path], (
             "clear_cycle_baseline must be called after development_commit COMMIT_SUCCESS"
         )

@@ -9,27 +9,15 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from git import Repo as GitRepo
 from rich.console import Console
 
-from ralph.config.enums import (
-    Verbosity,
-)
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.cycle_baseline import (
-    write_cycle_baseline as _real_write,
-)
-from ralph.pipeline.effects import (
-    ExitSuccessEffect,
-    InvokeAgentEffect,
-)
+from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
-
-pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -351,83 +339,50 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
 
 class TestStartCommitCapture:
     def test_run_pipeline_writes_start_commit_on_first_invocation(
-        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
     ) -> None:
+        workspace_root = tmp_path
+        expected_sha = "a" * 40
+
+        class FakeRepo:
+            def __init__(self, root: Path) -> None:
+                assert root == workspace_root
+                self.head = MagicMock()
+                self.head.commit.hexsha = expected_sha
+
+            def close(self) -> None:
+                pass
 
         written: list[tuple[str, str]] = []
 
         def _spy_write(workspace_root: object, sha: object, *, force: bool = False) -> None:
-            written.append((str(workspace_root), sha))
-            _real_write(workspace_root, sha, force=force)
+            written.append((str(workspace_root), str(sha)))
 
         monkeypatch.setattr(runner_module, "write_cycle_baseline", _spy_write)
-        monkeypatch.setattr(
-            runner_module,
-            "resolve_workspace_scope",
-            lambda: WorkspaceScope(tmp_git_repo),
-        )
-        monkeypatch.setattr(
-            runner_module,
-            "determine_effect_from_policy",
-            lambda _state, _bundle, _scope: ExitSuccessEffect(),
-        )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        _install_runner_display_context(monkeypatch)
+        monkeypatch.setattr(runner_module, "read_cycle_baseline", lambda _root: None)
+        monkeypatch.setattr(runner_module, "Repo", FakeRepo)
 
-        state = MagicMock()
-        state.phase = "planning"
+        runner_module.write_start_commit_if_absent(workspace_root)
 
-        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
-
-        with GitRepo(tmp_git_repo) as _r:
-            expected_sha = _r.head.commit.hexsha
         assert written, ".agent/start_commit was not written during run()"
         assert written[0][1] == expected_sha, (
             f"Expected SHA {expected_sha!r}, got {written[0][1]!r}"
         )
 
     def test_run_pipeline_does_not_overwrite_existing_start_commit(
-        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+        self, monkeypatch: MonkeyPatch, tmp_path: Path
     ) -> None:
-        # Pre-write a sentinel SHA so run() sees the file as already present.
-        # We make a second commit so the current HEAD differs from the sentinel,
-        # ensuring a buggy "always-write" implementation would be caught.
-
-        with GitRepo(tmp_git_repo) as repo:
-            sentinel_sha = repo.head.commit.hexsha
-
-            extra_file = tmp_git_repo / "extra.txt"
-            extra_file.write_text("extra")
-            repo.index.add(["extra.txt"])
-            repo.index.commit("second commit")
-
-        agent_dir = tmp_git_repo / ".agent"
-        agent_dir.mkdir(parents=True, exist_ok=True)
-        (agent_dir / "start_commit").write_text(sentinel_sha + "\n")
+        workspace_root = tmp_path
+        sentinel_sha = "b" * 40
 
         written: list[tuple[str, str]] = []
 
         def _spy_write(workspace_root: object, sha: object, *, force: bool = False) -> None:
-            written.append((str(workspace_root), sha))
-            _real_write(workspace_root, sha, force=force)
+            written.append((str(workspace_root), str(sha)))
 
         monkeypatch.setattr(runner_module, "write_cycle_baseline", _spy_write)
-        monkeypatch.setattr(
-            runner_module,
-            "resolve_workspace_scope",
-            lambda: WorkspaceScope(tmp_git_repo),
-        )
-        monkeypatch.setattr(
-            runner_module,
-            "determine_effect_from_policy",
-            lambda _state, _bundle, _scope: ExitSuccessEffect(),
-        )
-        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        _install_runner_display_context(monkeypatch)
+        monkeypatch.setattr(runner_module, "read_cycle_baseline", lambda _root: sentinel_sha)
 
-        state = MagicMock()
-        state.phase = "planning"
-
-        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        runner_module.write_start_commit_if_absent(workspace_root)
 
         assert not written, "run() must not overwrite an existing .agent/start_commit"

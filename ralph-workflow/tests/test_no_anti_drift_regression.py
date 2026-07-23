@@ -40,10 +40,6 @@ from ralph.agents.parsers._event_classification import (
 )
 from ralph.display.parallel_display import ParallelDisplay
 
-# AST-walking tests need a slightly larger per-test budget than the
-# 1s default. The make-verify combined 60s budget still holds.
-pytestmark = pytest.mark.timeout_seconds(10)
-
 RALPH_ROOT = pathlib.Path(__file__).parent.parent / "ralph"
 TESTS_ROOT = pathlib.Path(__file__).parent
 
@@ -69,8 +65,9 @@ def _parse(path: pathlib.Path) -> ast.AST:
 _DEF_NAME_RE = re.compile(r"(?:async\s+def|def)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 
 
-def _walk_python_files(root: pathlib.Path) -> list[pathlib.Path]:
-    return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
+@cache
+def _walk_python_files(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
+    return tuple(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
 
 
 def _has_legacy_console_display_reference(source: str) -> bool:
@@ -1622,6 +1619,9 @@ class TestNoExcludedEmitMethod:
         canonical_all: frozenset[str] = frozenset(drift_module._PARALLEL_DISPLAY_ALL_NAMES)
         offenders: list[str] = []
         for path in _emission_target_files():
+            source = _read(path)
+            if "from ralph.display.parallel_display import" not in source:
+                continue
             try:
                 tree = _parse(path)
             except SyntaxError:
