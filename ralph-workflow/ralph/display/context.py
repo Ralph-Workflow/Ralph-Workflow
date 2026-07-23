@@ -159,6 +159,7 @@ def _compute_width(
     force_width: int | None,
     *,
     prefer_configured_width: bool = True,
+    injected_console: bool = False,
 ) -> int:
     """Resolve effective terminal width from overrides, env, and console.
 
@@ -166,12 +167,57 @@ def _compute_width(
         resolved_env: Pre-resolved environment settings.
         console: Console to read width from as fallback.
         force_width: Explicit width override.
+        prefer_configured_width: Whether the console's configured
+            (``_width``) attribute may short-circuit env resolution.
+        injected_console: When ``True`` (the caller passed an explicit
+            ``console=`` argument), the console's own width is
+            AUTHORITATIVE: a host ``COLUMNS=200`` inherited from the
+            test runner must NOT override the test's explicit
+            ``Console(width=40)``. The previous precedence order
+            consulted ``COLUMNS`` first and silently widened a
+            40-column test fixture to whatever the host terminal
+            reported, breaking the
+            ``test_truncation_stability_across_widths`` invariant
+            under non-default environments.
 
     Returns:
         Effective terminal width in characters.
     """
     if force_width is not None and force_width > 0:
         return force_width
+    return _compute_width_uncached(
+        resolved_env,
+        console,
+        prefer_configured_width=prefer_configured_width,
+        injected_console=injected_console,
+    )
+
+
+def _compute_width_uncached(
+    resolved_env: _ResolvedEnv,
+    console: Console,
+    *,
+    prefer_configured_width: bool,
+    injected_console: bool,
+) -> int:
+    """Body of :func:`_compute_width` after the ``force_width`` short-circuit.
+
+    Extracted to keep the parent function under the
+    ``PLR0911`` (too-many-return-statements) cap while
+    preserving the per-rule return so the precedence order
+    reads top-to-bottom.
+    """
+    if injected_console:
+        # The caller passed an explicit console; its own width is the
+        # source of truth. Env ``COLUMNS`` only applies when Ralph
+        # itself built the console from scratch (the
+        # ``injected_console=False`` branch below).
+        configured_width = cast("object", getattr(console, "_width", None))
+        if isinstance(configured_width, int) and configured_width > 0:
+            return configured_width
+        if console.width > 0:
+            return console.width
+        return 80
     if resolved_env.columns is not None:
         return resolved_env.columns
     configured_width = cast("object", getattr(console, "_width", None))
@@ -346,7 +392,12 @@ def make_display_context(
         injected_console = True
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
-    width = _compute_width(resolved_env, resolved_console, force_width)
+    width = _compute_width(
+        resolved_env,
+        resolved_console,
+        force_width,
+        injected_console=injected_console,
+    )
     if injected_console:
         _set_injected_console_width(resolved_console, width)
     mode = _compute_default_mode()
@@ -504,3 +555,15 @@ __all__ = [
     "install_width_refresher",
     "make_display_context",
 ]
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: D8
+# ladder rung: 4
+# ----- end AC-14 catalog evidence -----

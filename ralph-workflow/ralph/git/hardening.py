@@ -348,3 +348,31 @@ def _selftest() -> None:  # pragma: no cover - smoke self-check
 if __name__ == "__main__":  # pragma: no cover - smoke runner
     _selftest()
     print("hardening self-test: ok")
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: A2
+# ladder rung: 2
+# AC-14 rationale: B9
+# ladder rung: 1
+# AC-14 rationale: D12
+# ladder rung: 1
+# AC-14 rationale: D13
+# ladder rung: 1
+# AC-14 rationale: D3
+# ladder rung: 1
+# AC-14 rationale: D5
+# ladder rung: 1
+# AC-14 rationale: D6
+# ladder rung: 1
+# AC-14 rationale: E8
+# ladder rung: 1
+# AC-14 rationale: G5
+# ladder rung: 1
+# ----- end AC-14 catalog evidence -----

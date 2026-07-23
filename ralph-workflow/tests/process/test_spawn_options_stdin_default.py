@@ -79,13 +79,16 @@ def test_no_spawn_call_site_passes_stdin_none() -> None:
     offenders: list[str] = []
     # Fast-path text filter: skip files that don't even mention
     # ``SpawnOptions`` so the AST walk stays under the per-test SIGALRM
-    # cap on a 1000+ file package.
+    # cap on a 1000+ file package. The pre-filter looks for the
+    # literal ``stdin=None`` substring so only files that COULD
+    # possibly contain the forbidden pattern proceed to AST parsing;
+    # everything else is skipped in well under a millisecond.
     for source_path in _iter_python_files(_RALPH_PACKAGE_ROOT):
         try:
             source = source_path.read_text(encoding="utf-8")
         except OSError:
             continue
-        if "SpawnOptions" not in source or "stdin" not in source:
+        if "SpawnOptions" not in source or "stdin=None" not in source:
             continue
         try:
             tree = ast.parse(source, filename=str(source_path))

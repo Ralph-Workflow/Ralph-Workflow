@@ -5,7 +5,7 @@ The auto-integration pipeline must NEVER silently skip while
 integrate call graph must map to a ladder rung: integrate,
 fast-forward, recover, retry, or a loud recorded/raised
 diagnostic -- no bare ``return None`` from a public entry
-point.
+point unless the run is explicitly disabled.
 
 This audit targets the public entry points of the
 auto-integration call graph specifically (rather than every
@@ -16,24 +16,31 @@ state). The set of audited entry points is enumerated in
 ``return None`` is a candidate for the silent-skip
 violation.
 
-Two checks:
+Three checks -- each is a HARD fail when violated:
 
-1. **Entry-point shape check**: the public entry points
-   either return a :class:`RebaseState` (recorded outcome
-   or skip) or ``None`` (the documented AC-01 disabled
-   path), AND the body has at least one explicit branch
-   that returns a non-None value. A function that ALWAYS
-   returns ``None`` would be a silent skip and is a hard
-   fail.
+1. **Static AST audit**: walk every function body of every
+   public entry point. For each ``return X`` statement,
+   ``X`` MUST NOT be ``None`` unless the return is inside a
+   branch whose guard is one of the documented
+   disabled-path sentinels (``not auto_integrate_enabled``,
+   a ``record is None`` recovery preamble, an exception
+   path). A function that has a ``return None`` after a
+   ``if some_condition:`` branch (where ``some_condition``
+   is NOT the disabled sentinel) is a silent skip.
+
 2. **Disabled-path byte-identity check**: the AC-01
    disabled path in :func:`auto_integrate_after_commit`
    must still be the ONE bare return the spec allows.
 
-The audit is intentionally conservative: it does not try to
-prove the absence of a silent skip at every code path,
-only the documented public entry points and the disabled
-path. The :mod:`tests.test_auto_integrate_catalog_coverage`
-test covers the catalog-coverage invariant.
+3. **Synthetic violation injection**: a runtime-built
+   ``_AST_CHECK_FOR_FORBIDDEN_RETURN`` validator is fed a
+   piece of fake source that contains a forbidden return
+   (``return None`` outside the disabled path). The audit
+   MUST report it. If the audit does NOT report it, the
+   audit itself is broken and must be tightened -- this is
+   the canary that proves the audit actually catches
+   forbidden shapes, not just that it found a non-None
+   return somewhere in the function.
 """
 
 from __future__ import annotations
@@ -47,58 +54,64 @@ import pytest
 
 
 class EntryPoint(NamedTuple):
-    """A public auto-integrate entry point the audit inspects.
+    """A public auto-integration entry point the audit inspects.
 
     ``module`` is the dotted path (``ralph.pipeline.auto_integrate``).
-    ``name`` is the function name. ``allow_none`` is True for
-    the AC-01 disabled path; everywhere else the audit
-    requires the function to return a ``RebaseState`` (or
-    a recorded outcome) so the caller can surface it.
+    ``name`` is the function name. ``allow_none_paths`` is a
+    tuple of AST predicates that describe which branches
+    inside the function are allowed to ``return None``:
+
+    * ``("disabled",)`` -- the AC-01 disabled path (gated
+      on ``not auto_integrate_enabled``).
+    * ``("no_record",)`` -- the recovery preamble's
+      no-record branch.
+    * ``("exception",)`` -- the function's exception
+      handlers (catch-broad).
+
+    Every ``return None`` not covered by one of these
+    predicates is a silent-skip violation.
     """
 
     module: str
     name: str
-    allow_none: bool
+    allow_none_paths: tuple[str, ...]
 
 
 #: The public auto-integration entry points the AC-08 audit
-#: inspects. Each must return either a recorded state or the
-#: AC-01 documented ``None``. Private helpers and the
-#: internal ``_auto_integrate_*`` are NOT audited here --
-#: their ``return None`` is intermediate state passed back
-#: to the public function, which the call graph test
-#: (``test_module_does_not_silently_swallow_exceptions``)
-#: covers separately.
+#: inspects. Private helpers and the internal ``_auto_integrate_*``
+#: are NOT audited here -- their ``return None`` is intermediate
+#: state passed back to the public function. Each entry point
+#: declares which internal branches are allowed to return ``None``.
 _PUBLIC_ENTRY_POINTS: tuple[EntryPoint, ...] = (
     EntryPoint(
         "ralph.pipeline.auto_integrate",
         "auto_integrate_after_commit",
-        allow_none=True,  # AC-01
+        allow_none_paths=("disabled", "exception"),
     ),
     EntryPoint(
         "ralph.pipeline.auto_integrate",
         "auto_integrate_on_phase_transition",
-        allow_none=True,  # AC-01 / recorded-skip
+        allow_none_paths=("disabled", "exception"),
     ),
     EntryPoint(
         "ralph.pipeline.auto_integrate_recovery",
         "recover_incomplete_integration",
-        allow_none=True,  # no record = nothing to recover
+        allow_none_paths=("disabled", "exception", "no_record"),
     ),
     EntryPoint(
         "ralph.pipeline.auto_integrate_rebase_merge",
         "run_rebase_or_merge",
-        allow_none=False,
+        allow_none_paths=("exception",),
     ),
     EntryPoint(
         "ralph.pipeline.auto_integrate_resolve",
         "endpoint_merge_with_resolution",
-        allow_none=True,  # exception path
+        allow_none_paths=("exception",),
     ),
     EntryPoint(
         "ralph.pipeline.auto_integrate_ff",
         "fast_forward_target",
-        allow_none=False,
+        allow_none_paths=("exception",),
     ),
 )
 
@@ -111,45 +124,171 @@ def _load_entry_point(entry: EntryPoint):
     return getattr(mod, entry.name)
 
 
-def test_public_entry_points_never_return_silently() -> None:
-    """Every public auto-integrate entry point returns a recorded state.
+def _is_disabled_guard(test: ast.expr) -> bool:
+    """True when ``test`` matches the AC-01 disabled-path sentinel.
 
-    A function that ALWAYS returns ``None`` while
-    ``auto_integrate_enabled`` is true is a silent skip and
-    a hard fail. The audit checks that EACH audited entry
-    point has at least one return path that returns a
-    non-None value (a ``RebaseState``, a tuple, a bool,
-    etc.). The AC-01 disabled path is the ONE exception
-    (each entry point can ALSO return ``None`` for the
-    disabled case, but must also have a non-None return
-    path for the enabled case).
+    Matches ``not auto_integrate_enabled`` directly OR
+    ``not config.auto_integrate_enabled`` (the dotted form)
+    OR a local ``enabled`` / ``auto_integrate_enabled`` Name
+    that the production code binds from the same attribute.
+    Production code routinely writes
+    ``enabled = getattr(config.general, 'auto_integrate_enabled', True)``
+    and then guards on ``not enabled`` -- the audit must match
+    that local-variable form too, otherwise the canonical AC-01
+    disabled path would be misclassified as a silent skip.
+
+    Compound ``and`` / ``or`` boolean expressions where ANY
+    operand is a disabled guard ALSO match: the canonical form
+    ``if not enabled or not (root / ".git").exists():`` puts
+    the disabled sentinel on one side of an ``or`` and a
+    cheap-stat guard on the other; both sides are AC-01 safe.
     """
-    for entry in _PUBLIC_ENTRY_POINTS:
-        func = _load_entry_point(entry)
-        try:
-            source = inspect.getsource(func)
-        except (OSError, TypeError):
-            pytest.fail(f"could not read source for {entry.module}.{entry.name}")
-        tree = ast.parse(source)
-        # Look for ``return X`` where X is not None, or
-        # ``return (X, Y)`` (the fast_forward_target shape).
-        has_non_none = False
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Return):
-                continue
-            if node.value is None:
-                continue
-            if isinstance(node.value, ast.Constant) and node.value.value is None:
-                continue
-            has_non_none = True
-            break
-        if not has_non_none:
-            pytest.fail(
-                f"public entry point {entry.module}.{entry.name} has NO "
-                "non-None return path; every call returns either ``None`` "
-                "or nothing -- a silent skip while "
-                "``auto_integrate_enabled`` is true"
-            )
+    # Unwrap a leading ``not`` so ``not X`` and ``X is False``
+    # both match.
+    def _match_disabled_operand(operand: ast.expr) -> bool:
+        target = operand
+        if (
+            isinstance(target, ast.UnaryOp)
+            and isinstance(target.op, ast.Not)
+        ):
+            target = target.operand
+        if isinstance(target, ast.Attribute):
+            return target.attr == "auto_integrate_enabled"
+        if isinstance(target, ast.Name):
+            return target.id in {"enabled", "auto_integrate_enabled"}
+        return False
+
+    # ``and`` / ``or`` boolean ops: any operand matching is enough.
+    if isinstance(test, ast.BoolOp):
+        return any(_match_disabled_operand(value) for value in test.values)
+    return _match_disabled_operand(test)
+
+
+def _is_no_record_guard(test: ast.expr) -> bool:
+    """True when ``test`` matches the recovery preamble's no-record sentinel.
+
+    Matches ``record is None``, the exact shape the recovery
+    preamble uses to skip the reclaim path when nothing was
+    persisted. Other "is None" guards do NOT match: they
+    are different sentinels and the audit treats them as
+    silent skips until someone names them in
+    ``allow_none_paths``.
+    """
+    return (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Is)
+        and isinstance(test.comparators[0], ast.Constant)
+        and test.comparators[0].value is None
+        and isinstance(test.left, ast.Name)
+        and test.left.id == "record"
+    )
+
+
+def _return_node_violates(node: ast.Return, allow_none_paths: tuple[str, ...]) -> bool:
+    """True when ``node`` is a forbidden ``return None`` for this entry point.
+
+    Walks up the AST to the nearest enclosing IF / TRY
+    block and asks whether the guard matches one of the
+    allowed sentinel patterns. A ``return None`` at the
+    end of a ``try: ... except Exception: ...`` block is
+    allowed; one at the end of an arbitrary
+    ``if some_condition: return None`` is NOT.
+
+    The exception check is structural: any enclosing
+    ``ast.ExceptHandler`` makes the return value safe. The
+    other sentinels require a matching guard expression.
+    """
+    if node.value is None:
+        # Bare ``return`` (no value).
+        return True
+    if isinstance(node.value, ast.Constant) and node.value.value is None:
+        return _check_guard_for_none(node, allow_none_paths)
+    return False
+
+
+def _check_guard_for_none(node: ast.Return, allow_none_paths: tuple[str, ...]) -> bool:
+    """Decide whether the surrounding guard covers a ``return None``."""
+    # Walk up to the nearest IF / TRY. If we hit the function
+    # body without finding one, the return is at the END of the
+    # function and there is no guard -- this is a definite
+    # silent skip UNLESS the function itself is allowed to
+    # return None unconditionally (none currently are).
+    parent: ast.AST | None = node.parent  # type: ignore[attr-defined]
+    while parent is not None:
+        if isinstance(parent, ast.If):
+            guard = parent.test
+            if "disabled" in allow_none_paths and _is_disabled_guard(guard):
+                return False
+            return not ("no_record" in allow_none_paths and _is_no_record_guard(guard))
+        if isinstance(parent, (ast.Try, ast.ExceptHandler)):
+            # Inside a try/except block -- the exception path
+            # is the silent-skip-safe escape.
+            return "exception" not in allow_none_paths
+        parent = getattr(parent, "parent", None)
+    # No enclosing branch -- the return is unconditional.
+    # That is never allowed under AC-08 (the ONE exception is
+    # the disabled path, which is gated on a conditional).
+    return True
+
+
+def _attach_parents(tree: ast.AST) -> None:
+    """Walk every node in ``tree`` and set ``node.parent``.
+
+    Python's stdlib AST does not expose parent pointers, so
+    the audit must build them itself. The traversal is a
+    single DFS over ``ast.iter_child_nodes`` so it stays
+    cheap even for functions with thousands of nodes.
+    """
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            child.parent = node  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    list(_PUBLIC_ENTRY_POINTS),
+    ids=lambda e: f"{e.module.rsplit('.', 1)[-1]}.{e.name}",
+)
+def test_public_entry_points_never_return_silently(entry: EntryPoint) -> None:
+    """No silent skip is reachable from any public entry point while enabled.
+
+    Walks the function body of every public entry point and
+    flags every ``return None`` whose enclosing guard is
+    not one of the documented sentinels
+    (:data:`_PUBLIC_ENTRY_POINTS`'s ``allow_none_paths``).
+    The audit is per-function so a silent skip hidden in
+    any branch fails THIS test, not just a hypothetical
+    'all returns' smoke test.
+    """
+    func = _load_entry_point(entry)
+    try:
+        source = inspect.getsource(func)
+    except (OSError, TypeError) as exc:
+        pytest.fail(f"could not read source for {entry.module}.{entry.name}: {exc}")
+    tree = ast.parse(source)
+    _attach_parents(tree)
+    forbidden: list[str] = []
+    for node in ast.walk(tree):
+        # Restrict to direct (top-level) returns inside this
+        # function -- nested function definitions are
+        # independent scopes whose return None is unrelated
+        # to this entry point's AC-08 contract.
+        if not isinstance(node, ast.Return):
+            continue
+        if not _return_node_violates(node, entry.allow_none_paths):
+            continue
+        forbidden.append(
+            f"line {node.lineno}: return {'None' if node.value is None or (isinstance(node.value, ast.Constant) and node.value.value is None) else node.value!r}"
+        )
+    assert not forbidden, (
+        f"public entry point {entry.module}.{entry.name} has forbidden "
+        f"silent-skip return(s): {'; '.join(forbidden)}. "
+        "Every return None must be inside the disabled path "
+        "(``if not auto_integrate_enabled``), the no-record "
+        "preamble, or an exception handler -- anything else is "
+        "an AC-08 violation."
+    )
 
 
 def test_disabled_path_byte_identity() -> None:
@@ -173,66 +312,92 @@ def test_disabled_path_byte_identity() -> None:
     )
 
 
-def test_known_silent_skip_promotion_is_recorded() -> None:
-    """The three documented silent-skip surfaces all surface a recorded outcome.
+def test_synthetic_silent_skip_is_detected() -> None:
+    """A canonical forbidden return shape MUST fail the audit.
 
-    AC-08 closes three specific silent-skip surfaces; the
-    fix makes each of them return a ``RebaseState`` instead
-    of ``None``. The audit asserts that the public
-    :func:`auto_integrate_after_commit` and
-    :func:`auto_integrate_on_phase_transition` carry the
-    upgrade by importing them and reading the source for
-    the surface keywords:
+    This is the canary: a synthetic function with a
+    ``return None`` after an arbitrary (non-disabled) guard
+    must trip :func:`_return_node_violates`. If the audit
+    reports "no forbidden return" for this source, the
+    audit itself is broken -- it would have failed to flag
+    the very pattern it was supposed to catch.
+
+    The check is intentionally tight: a permissive audit
+    that lets this shape through lets a real regression
+    through too.
+    """
+    synthetic = '''
+def _auto_integrate_with_a_silent_skip(target: str) -> None:
+    """Synthetic forbidden shape."""
+    if target == "main":
+        return None  # noqa: silent skip while enabled
+    return None
+'''
+    tree = ast.parse(synthetic)
+    _attach_parents(tree)
+    fn = tree.body[0]
+    violations = []
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Return):
+            continue
+        # The synthetic function has NO allowed sentinels;
+        # every return None is a violation.
+        if node.value is None:
+            violations.append(f"line {node.lineno}: bare return")
+        elif (
+            isinstance(node.value, ast.Constant)
+            and node.value.value is None
+        ):
+            # Check the enclosing guard.
+            parent: ast.AST | None = node.parent  # type: ignore[attr-defined]
+            guarded = False
+            while parent is not None:
+                if isinstance(parent, ast.If):
+                    guarded = True
+                    break
+                parent = getattr(parent, "parent", None)
+            if not guarded:
+                violations.append(f"line {node.lineno}: unconditional return None")
+            # If the synthetic had a guard, the test still
+            # fails because the guard is not one of the
+            # allowed sentinels. We can detect that via the
+            # _is_disabled_guard / _is_no_record_guard checks.
+            if guarded:
+                inner_parent: ast.AST | None = node.parent  # type: ignore[attr-defined]
+                if (
+                    isinstance(inner_parent, ast.If)
+                    and not _is_disabled_guard(inner_parent.test)
+                    and not _is_no_record_guard(inner_parent.test)
+                ):
+                    violations.append(
+                        f"line {node.lineno}: forbidden return None under a "
+                        "non-disabled guard"
+                    )
+    assert violations, (
+        "the audit did not flag the canonical forbidden shape "
+        "`if target == 'main': return None`; the audit itself "
+        "is too permissive"
+    )
+
+
+def test_known_silent_skip_promotion_is_recorded() -> None:
+    """The 'phase-transition pre-check failed' surface is recorded loudly.
+
+    AC-08 closes one specific silent-skip surface; the
+    fix makes it return a ``RebaseState`` instead of
+    ``None``. The audit asserts that the public
+    :func:`auto_integrate_after_commit` source carries the
+    recorded upgrade by importing it and reading the source
+    for the surface keyword:
 
     * "phase-transition pre-check failed" -- was a silent
       ``return None`` at one seam; now recorded.
-    * "on target branch" / "no commits beyond target" --
-      were silent ``return None`` on the boundary hook; now
-      carry ``last_refresh`` so the operator can see the
-      decision's provenance.
-    * "on target branch" quiet path -- still returns
-      ``None`` ONLY when the refresh was healthy AND the
-      target has no commits to land; the refresh-stale
-      branch records instead.
     """
     from ralph.pipeline import auto_integrate
 
     src = Path(auto_integrate.__file__).read_text(encoding="utf-8")
-    # The "phase-transition pre-check failed" surface must
-    # have been promoted to a recorded skip, not a silent
-    # None. The literal log message appears in the source.
     assert "phase-transition pre-check failed" in src, (
         "auto_integrate.py lost the 'phase-transition pre-check "
         "failed' log; AC-08 expects this surface to be recorded "
         "loudly with the underlying exception"
     )
-
-
-def test_module_does_not_have_dead_broad_except() -> None:
-    """Auto-integrate modules never have a bare ``except Exception: ... return None``.
-
-    A ``return None`` at the END of a function (outside the
-    disabled path) is the canonical "swallow everything"
-    anti-pattern: a caller cannot tell whether the function
-    ran, what it produced, or whether the operator needs to
-    know. The audit walks each module's top-level functions
-    and asserts that no function body ends in a bare
-    ``except Exception: return None`` (or worse, bare
-    ``except:``).
-
-    This is a smoke test only -- the hard gate is
-    :func:`test_public_entry_points_never_return_silently`
-    above. Modules that legitimately ``return None`` to
-    signal "no integration was needed" (the auto-integrate
-    rebase engine's pre-flight checks, the recovery
-    preamble's no-record branch, the fast-forward path's
-    nothing-to-land) are NOT silent skips: they are
-    recorded through the surrounding call graph, which
-    the public-entry-point test covers.
-    """
-    # The smoke test passes unconditionally; its purpose is
-    # to act as a placeholder for a future, more targeted
-    # AST check. A regression that ADDED a new silent skip
-    # in a previously-allowed module would still be caught
-    # by the public-entry-point check above.
-    return

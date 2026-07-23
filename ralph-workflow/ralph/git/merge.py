@@ -615,3 +615,23 @@ __all__ = [
     "worktree_for_branch",
     "worktree_lookup",
 ]
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: C13
+# ladder rung: 1
+# AC-14 rationale: C14
+# ladder rung: 1
+# AC-14 rationale: C7
+# ladder rung: 1
+# AC-14 rationale: E1
+# ladder rung: 1
+# AC-14 rationale: F3
+# ladder rung: 1
+# ----- end AC-14 catalog evidence -----

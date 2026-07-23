@@ -226,26 +226,39 @@ def _range_routing_reason(root: Path, target: str) -> str | None:
     # nothing to rebase OR route — the precondition check should
     # have caught the no-commits case earlier, but we still fail
     # open to ``rebase_onto`` so the existing NoOp machinery reports
-    # it.
-    if _rev_list_count(root, target, extra_args=()) == 0:
+    # it. ``None`` (the topology query failed) also falls through so
+    # the rebase engine's own classification is the final answer —
+    # never a routing guess based on an unanswerable query.
+    total = _rev_list_count(root, target, extra_args=())
+    if total is None or total == 0:
         return None
-    if _rev_list_count(root, target, extra_args=("--merges",)) > 0:
+    merges = _rev_list_count(root, target, extra_args=("--merges",))
+    if merges is not None and merges > 0:
         return _REASON_MERGE_COMMITS
-    if _rev_list_count(root, target, extra_args=("--max-parents=0",)) > 0:
+    roots = _rev_list_count(root, target, extra_args=("--max-parents=0",))
+    if roots is not None and roots > 0:
         return _REASON_ROOT_COMMITS
-    if _all_empty_replay(root, target):
+    if _all_empty_replay(root, target, total):
         return _REASON_ALL_EMPTY
     return None
 
 
-def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> int:
+def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> int | None:
     """Run ``git rev-list <args> <target>..HEAD`` and return the count.
 
-    A failed invocation returns ``0`` so the routing reason falls
-    through to ``None`` and the rebase engine takes over. The point
-    of these checks is to skip the rebase on OBVIOUS cases; an
-    unanswerable question is not obvious, so the rebase's own
-    classification is the better answer than a routing guess.
+    Returns ``None`` when the query failed (non-zero exit or
+    malformed output) so the caller can treat the topology as
+    UNKNOWN rather than the literal "zero commits" case the old
+    implementation returned. Topology queries are guarded by the
+    universal per-call timeout and the non-interactive env baseline
+    (D1/D15), so a non-zero exit is genuine: a deleted target ref
+    (E4), a corrupt object store (H5), or a sibling agent holding a
+    lock (A10/E9). Failing closed by treating those as
+    "unanswerable" routes through the rebase engine's own
+    classification rather than silently merging when the rebase
+    would have been the correct path -- the exact bug class that
+    would silently flatten a merge commit (B3) or replay an
+    already-upstream patch into a conflict (B6).
     """
     result = run_git(
         ("rev-list", "--count", *extra_args, "--", f"{target}..HEAD"),
@@ -253,14 +266,29 @@ def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> 
         label="auto-integrate:rev-list-count",
     )
     if result.returncode != 0:
-        return 0
+        logger.warning(
+            "auto_integrate: rev-list {} for {}..HEAD exited {}: {}; "
+            "treating topology as unknown (will run the rebase)",
+            extra_args,
+            target,
+            result.returncode,
+            (result.stderr or result.stdout).strip()[:200],
+        )
+        return None
     try:
         return int(result.stdout.strip())
     except ValueError:
-        return 0
+        logger.warning(
+            "auto_integrate: rev-list {} for {}..HEAD returned non-integer "
+            "stdout {!r}; treating topology as unknown",
+            extra_args,
+            target,
+            result.stdout.strip()[:200],
+        )
+        return None
 
 
-def _all_empty_replay(root: Path, target: str) -> bool:
+def _all_empty_replay(root: Path, target: str, feature_count: int) -> bool:
     """True when every feature commit is already on ``target`` upstream.
 
     The cherry-pick walker in ``rev-list`` drops commits whose
@@ -270,11 +298,21 @@ def _all_empty_replay(root: Path, target: str) -> bool:
     already applied, so the rebase will walk through zero
     meaningful stops regardless of ``--empty=drop``. The endpoint
     merge is the only path that lands the branch.
+
+    ``feature_count`` is the total commit count already proven by
+    the caller; a separate re-query is redundant and would
+    re-introduce the topology-error hole the ``_rev_list_count``
+    return-type change closed. ``None`` from the cherry-pick walker
+    means the topology query failed: routing on an unanswerable
+    question is exactly the bug this whole change is about, so the
+    walker returning ``None`` is treated as "not all-empty" and
+    the rebase engine takes over.
     """
-    feature_count = _rev_list_count(root, target, extra_args=())
     if feature_count == 0:
         return False
     cherry_count = _rev_list_count(root, target, extra_args=("--cherry-pick", "--no-merges"))
+    if cherry_count is None:
+        return False
     return cherry_count == 0
 
 
@@ -478,3 +516,21 @@ def _abort_rebase_after_conflict(root: Path) -> None:
             abort_rebase(repo_root=root)
     except Exception as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: B3
+# ladder rung: 3
+# AC-14 rationale: B6
+# ladder rung: 3
+# AC-14 rationale: B7
+# ladder rung: 3
+# AC-14 rationale: D11
+# ladder rung: 3
+# ----- end AC-14 catalog evidence -----

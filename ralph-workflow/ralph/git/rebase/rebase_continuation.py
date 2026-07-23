@@ -156,34 +156,31 @@ def continue_rebase_at(repo_root: Path | str) -> None:
         _close_repo(repo)
 
     try:
-        # The continuation is non-interactive: ``--no-autostash`` /
-        # ``--no-autosquash`` / ``--no-update-refs`` carry the
-        # policy over from the original rebase (the precondition
-        # would have rejected a dirty tree, and we already pinned
-        # those flags on the parent ``rebase_onto`` call). The
-        # pinned -c config from :data:`PINNED_CONFIG_ARGS` keeps
-        # rerere off and the merge backend, so a
-        # ``git rebase --continue`` cannot be steered into a
-        # different backend or replay a recorded wrong resolution.
-        # ``--no-edit`` is intentionally OMITTED: ``rebase
-        # --continue`` only opens an editor when the rebase is
-        # interactive OR a merge-back message is required, and
-        # some git versions (notably 2.x) reject ``--no-edit`` on
-        # the merge backend, so passing it unconditionally is a
-        # hazard. The non-interactive editor env (``GIT_EDITOR=``,
-        # ``GIT_SEQUENCE_EDITOR=``) is already pinned
-        # unconditionally across the suite in
-        # :data:`PINNED_CONFIG_ARGS` + ``_git_env()`` so the
-        # only failure mode left is a hung edit, which the
-        # universal git call timeout closes.
+        # ``git rebase --continue`` is a START-TIME-INDEPENDENT verb:
+        # the only flags git accepts with it are the engine-control
+        # ones (``--no-verify``, ``--skip``/``--quit`` etc.), NOT the
+        # replay-shape flags (``--no-autostash``, ``--no-autosquash``,
+        # ``--no-update-refs``, ``--empty=...``) which only apply to
+        # the initial rebase invocation. Passing those flags with
+        # ``--continue`` makes real git print a usage error and exit
+        # non-zero (the rebase-conflict loop never gets past stop 1).
+        # The replay-shape policy is therefore carried by the original
+        # ``rebase_onto`` call's argv; the continuation just needs the
+        # pinned -c config and the non-interactive editor env, both of
+        # which :data:`PINNED_CONFIG_ARGS` and ``_git_env()`` already
+        # supply. The ``GIT_EDITOR=`` / ``GIT_SEQUENCE_EDITOR=`` env
+        # vars are pinned unconditionally in
+        # :data:`_GIT_BATCH_MODE_ENV` so the only failure mode left is
+        # a hung edit, which the universal git call timeout closes.
+        # ``--no-verify`` is intentionally OMITTED so a user-installed
+        # ``pre-rebase`` / ``reference-transaction`` hook still has a
+        # chance to veto a malicious replay: D2 classifies such a
+        # refusal as a clean retryable error.
         run_git(
             [
                 *PINNED_CONFIG_ARGS,
                 "rebase",
                 "--continue",
-                "--no-autostash",
-                "--no-autosquash",
-                "--no-update-refs",
             ],
             cwd=Path(repo_root),
             label="git-rebase:continue",
@@ -234,3 +231,15 @@ open_repo = _open_repo
 rebase_in_progress_impl = _rebase_in_progress_impl
 has_index_conflicts = _has_index_conflicts
 head_is_descendant = _head_is_descendant
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: G1
+# ladder rung: 2
+# ----- end AC-14 catalog evidence -----

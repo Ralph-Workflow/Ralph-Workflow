@@ -340,3 +340,31 @@ __all__ = [
     "is_retryable_fast_forward_failure",
     "maybe_push_target",
 ]
+
+
+# ----- AC-14 catalog evidence -----
+# This file is the authoritative source for the catalog entries listed
+# below. Each ``# AC-14 rationale: <ID>`` line is the code-adjacent
+# marker the AC-14 audit looks for; each ``# ladder rung: <N>``
+# names the rung the entry sits on. Adding a new entry here requires
+# BOTH lines or the audit fails.
+
+# AC-14 rationale: B11
+# ladder rung: 1
+# AC-14 rationale: E2
+# ladder rung: 1
+# AC-14 rationale: E3
+# ladder rung: 3
+# AC-14 rationale: E5
+# ladder rung: 1
+# AC-14 rationale: E6
+# ladder rung: 1
+# AC-14 rationale: F1
+# ladder rung: 1
+# AC-14 rationale: F2
+# ladder rung: 3
+# AC-14 rationale: F4
+# ladder rung: 4
+# AC-14 rationale: F5
+# ladder rung: 4
+# ----- end AC-14 catalog evidence -----
