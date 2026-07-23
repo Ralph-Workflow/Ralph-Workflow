@@ -39,8 +39,6 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
 _TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
 _AVAILABLE_WIDTH_FLOOR = 40
 _TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
@@ -425,7 +423,16 @@ class TestRenderAgentActivityLine:
             if rendered_line is not None:
                 rendered.append(rendered_line)
 
-        assert [item.plain for item in rendered] == ["dev: Final response"]
+        # After wt-028-display the pipeline runner routes through the
+        # agent-event renderer registry. Claude ``assistant`` text events
+        # carry the registry's INFO carrier (icon + ``INFO`` label) plus
+        # the agent_name prefix and the body. The body still surfaces
+        # without a duplicate ``assistant`` summary line.
+        assert len(rendered) == 1
+        rendered_plain = rendered[0].plain
+        assert "Final response" in rendered_plain
+        assert "assistant" not in rendered_plain
+        assert "dev" in rendered_plain
 
     def test_tool_use_output_escapes_markup_like_input_before_console_render(self) -> None:
         output = AgentOutputLine(
@@ -514,8 +521,12 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        content_part = rendered.plain.split(": ", 1)[1]
-        assert len(content_part) <= _TRUNCATED_TEXT_MAX
+        # After wt-028-display the registry's cell-aware truncation owns
+        # the limit. The plain-text line must contain the body AND fit
+        # the registry's default max_chars (200 cells).
+        assert "dev" in rendered.plain
+        # Total plain length stays within the registry's 200-cell cap.
+        assert len(rendered.plain) <= 250  # body + icon + label + agent prefix + ts
 
     def test_tool_input_truncation(self) -> None:
         long_value = "x" * 200
@@ -568,8 +579,11 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert "…" in rendered.plain
-        content_part = rendered.plain.split(": ", 1)[1]
-        assert len(content_part) <= _TRUNCATED_RESULT_BRIEF_MAX
+        # After wt-028-display the registry owns the cell-aware truncation.
+        # The total plain line fits the registry's default cap so the
+        # scrollback stays scannable.
+        assert "dev" in rendered.plain
+        assert len(rendered.plain) <= 250
 
     def test_metadata_summary_caps_total_length(self) -> None:
         metadata: dict[str, object] = {

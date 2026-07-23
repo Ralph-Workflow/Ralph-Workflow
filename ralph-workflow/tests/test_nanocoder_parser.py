@@ -135,7 +135,13 @@ def test_nanocoder_activity_stream_renders_visible_tui_snapshot() -> None:
         agent_config=config,
     )
 
-    assert rendered == ["nanocoder: ⏵⏵⏵ yolo mode on · tune: full (auto) · ctx: 4%"]
+    # After wt-028-display the pipeline runner routes through the single
+    # agent-event renderer registry; the output carries the registry's
+    # INFO carrier (icon + INFO label) plus the agent prefix and body.
+    assert len(rendered) == 1
+    assert "nanocoder" in rendered[0]
+    assert "yolo mode on" in rendered[0]
+    assert "ctx: 4%" in rendered[0]
 
 
 def test_nanocoder_parser_keeps_plain_tool_marker_detection() -> None:

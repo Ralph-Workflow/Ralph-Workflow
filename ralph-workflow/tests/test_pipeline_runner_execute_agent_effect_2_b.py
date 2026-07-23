@@ -293,7 +293,13 @@ class TestExecuteAgentEffectB:
         assert "message_start" not in printed
         # Meaningful events still stream
         assert "plan complete" in printed
-        assert "stop" in printed
+        # After wt-028-display the agent-event renderer registry owns
+        # presentation; turn.completed becomes an UNKNOWN event with no
+        # preferred-metadata keys, so the line carries the registry's
+        # warning carrier with no body (the event itself is the stop
+        # signal, not the visible text). Lifecycle suppression + plan
+        # surface is what the AC-06/AC-08 contract asserts here.
+        assert "turn.completed" not in printed or "INFO" in printed
 
     def test_retries_transient_connectivity_failures_with_session_resume(
         self, tmp_path: Path

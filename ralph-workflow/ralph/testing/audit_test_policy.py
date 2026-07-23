@@ -88,6 +88,12 @@ _IO_ALLOWLIST: set[str] = {
     "test_no_hardcoded_phase_names_register_role_handlers_is_generic",
     "test_no_hardcoded_phase_names_runner_artifact_handoff_is_generic",
     "test_no_hardcoded_phase_names_runner_has_no_canonical_phase_names",
+    # Static analysis test that reads agent_event_renderer.py to enforce
+    # the no-literal-hex invariant (the renderer must reference
+    # STATUS_STYLES, not inline hex colours). The read target IS the
+    # subject under test — replacing with mocked content would defeat
+    # the purpose.
+    "test_agent_event_renderer_has_no_literal_hex_outside_theme",
     # Static analysis tests that read Python source or documentation files
     # from the repo to enforce structural invariants.
     "test_doc_adding_a_new_agent",

@@ -76,6 +76,13 @@ def _not_ready(findings: list[PolicyFinding], reason: str) -> ReadinessResult:
     )
 
 
+AttemptCallback = Callable[[int], None]
+
+
+def _noop_attempt_callback(attempt: int) -> None:
+    """Default ``on_remediation_attempt`` no-op (no status bar to push)."""
+
+
 def run_policy_pipeline(
     workspace: Workspace,
     stack: ProjectStack,
@@ -85,6 +92,7 @@ def run_policy_pipeline(
     entry_phase: str = PHASE_REMEDIATION,
     analysis_cap: int = DEFAULT_ANALYSIS_CAP,
     emit: EmitFn = _noop_emit,
+    on_remediation_attempt: AttemptCallback = _noop_attempt_callback,
 ) -> ReadinessResult:
     """Run the policy pipeline to a terminal state. Never blocks the run.
 
@@ -102,6 +110,11 @@ def run_policy_pipeline(
             and only rewrites it if analysis routes ``request_changes``.
         analysis_cap: The analysis loop budget.
         emit: Display callback.
+        on_remediation_attempt: Callback invoked BEFORE each remediation
+            attempt with the 1-indexed attempt number so the persistent
+            status bar can surface the live ``Remediation N/Max`` label
+            instead of a hardcoded ``Dev 1/N`` placeholder. Defaults to a
+            no-op so existing callers/tests are unaffected.
 
     Returns:
         READY when the deterministic validator passes AND the analysis agent
@@ -120,6 +133,10 @@ def run_policy_pipeline(
     try:
         while phase != TERMINAL_DONE:
             if phase == PHASE_REMEDIATION:
+                # Notify the status bar of the upcoming attempt BEFORE the
+                # agent runs so the footer reflects the live progress (and
+                # not a hardcoded ``Dev 1/N`` placeholder).
+                on_remediation_attempt(iteration + 1)
                 current = remediation.run_remediation_phase(
                     workspace,
                     stack,

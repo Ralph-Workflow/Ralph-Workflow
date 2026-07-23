@@ -372,7 +372,14 @@ class TestRegisterAgentSupport:
             agent_config=config,
         )
 
-        assert rendered == ["fake-stream: hello"]
+        # After wt-028-display the pipeline runner routes through the single
+        # agent-event renderer registry; the output carries the registry's
+        # INFO carrier icon plus the agent prefix and body.
+        assert len(rendered) == 1
+        assert "fake-stream" in rendered[0]
+        assert "hello" in rendered[0]
+        # Plain-text path uses the icon (\u2139 for info) so meaning survives color-off.
+        assert "\u2139" in rendered[0]
 
     def test_custom_cmd_and_session_flag_override_defaults(self) -> None:
         registry = AgentRegistry()

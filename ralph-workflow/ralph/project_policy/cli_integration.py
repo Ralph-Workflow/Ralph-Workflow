@@ -783,8 +783,16 @@ def _dispatch_preflight_result(
     invoke_agent = _track_authored_paths(invoke_agent, workspace_scope, authored)
 
     # Drive the SAME display lifecycle the pipeline run loop uses: a started
-    # display (live status bar) for the duration of the agent work.
+    # display (live status bar) for the duration of the agent work. The
+    # callback below updates the persistent status bar with the live attempt
+    # before each remediation iteration so the footer shows
+    # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
     with display:
+        def _on_remediation_attempt(attempt: int) -> None:
+            _push_remediation_status_bar(
+                display, workspace_scope, DEFAULT_ANALYSIS_CAP, attempt=attempt
+            )
+
         _push_remediation_status_bar(display, workspace_scope, DEFAULT_ANALYSIS_CAP)
         final = run_policy_pipeline(
             workspace,
@@ -794,6 +802,7 @@ def _dispatch_preflight_result(
             entry_phase=mode.entry_phase(),
             analysis_cap=DEFAULT_ANALYSIS_CAP,
             emit=emit,
+            on_remediation_attempt=_on_remediation_attempt,
         )
     if final.is_ready():
         _finalize_ready_state(

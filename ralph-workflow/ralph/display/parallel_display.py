@@ -129,6 +129,7 @@ from ralph.display._plain_constants import (
 from ralph.display._streaming_ctx import _StreamingCtx
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
+from ralph.display.agent_event_renderer import render_event_kind_text
 from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
@@ -149,7 +150,6 @@ from ralph.display.phase_status import (
 )
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
-from ralph.display.tool_args import format_tool_input, friendly_tool_name
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import (
     ensure_markdown_handoff_from_artifact,
@@ -1331,53 +1331,71 @@ class ParallelDisplay:
         formatting decision lives in
         :mod:`ralph.display.agent_event_renderer`. This function owns
         the *delivery* of the event (overflow tracking, badge
-        wrapping, drop-warning): it normalizes the parser-shaped input
-        into an :class:`AgentActivityEvent` via the registry's
-        boundary, runs the renderer's text through the existing
-        content condenser, and forwards the visible text into
-        ``emit_activity_line`` so the standard timestamp + level + cat
-        badge contract is preserved.
-
-        The previous inline body in this method (friendly_tool_name +
-        format_tool_input + manual ``text = f"{name} {args}"`` join)
-        was the third competing agent-output formatter; it is
-        consolidated into the registry here.
+        wrapping, drop-warning, subscriber metadata): it routes the
+        presentation through :func:`agent_event_renderer.render_event_kind_text`
+        and forwards the visible text into ``emit_activity_line`` so
+        the standard timestamp + level + cat badge contract is
+        preserved. The same registry powers the pipeline runner's
+        ``_render_agent_activity_line`` and the activity-router's
+        ``render_event_line`` so the same logical event renders
+        identically regardless of which path produced it (AC-06/AC-07).
         """
         metadata = {} if metadata is None else metadata
-        text = content or ""
+        text_content = content or ""
 
         tool_signature: tuple[str, str] | None = None
 
         if kind is ActivityEventKind.TOOL_USE:
-            original_name = text
-            # Normalize through the registry's tool-quirk helpers so
-            # the friendly name / formatted input format comes from a
-            # single source.
+            # Subscriber delivery still needs the raw tool name +
+            # structured input fields so audit/recap paths keep
+            # working. Rendering flows through the registry; delivery
+            # decisions (record_activity) stay here.
             input_obj = metadata.get("input", metadata.get("args"))
             input_dict: dict[str, object] = (
                 cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
             )
-            args_str = format_tool_input(input_obj)
-            text = (
-                f"{friendly_tool_name(original_name)} {args_str}"
-                if args_str
-                else friendly_tool_name(original_name)
-            )
+            original_name = text_content
             tool_path = str(input_dict.get("path", "") or "")
             tool_workdir = str(input_dict.get("workdir", "") or "")
             tool_command = str(input_dict.get("command", "") or "")
             tool_pattern = str(input_dict.get("pattern", "") or "")
             tool_signature = (original_name, tool_path)
+            # Subscriber receives the registry-rendered text so the
+            # recorded line matches what the operator sees in the log.
+            sub_line = render_event_kind_text(
+                kind,
+                text_content,
+                metadata=metadata,
+                agent_name=unit_id,
+            )
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
-                    line=text,
+                    line=sub_line,
                     tool_name=original_name,
                     path=tool_path or None,
                     workdir=tool_workdir or None,
                     command=tool_command or None,
                     pattern=tool_pattern or None,
                 )
+
+        # ALL formatting goes through the registry -- the friendly name,
+        # formatted input, agent prefix, and non-color icon + label
+        # carrier all come from ``render_event_kind_text`` so this
+        # path cannot drift from the pipeline runner's path. Use a
+        # large ``max_chars`` so the registry's own cell-aware
+        # truncation never fires here: the condenser owns the
+        # soft/hard overflow path (so an over-soft-limit line still
+        # picks up the ``[see .agent/raw/unit-N.log]`` ref), and the
+        # registry's default 200-cell cap would otherwise pre-truncate
+        # short of ``soft_limit`` and silently bypass overflow tracking.
+        text = render_event_kind_text(
+            kind,
+            text_content,
+            metadata=metadata,
+            agent_name=unit_id,
+            max_chars=self._ctx.condenser_hard_limit + 256,
+        )
 
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)

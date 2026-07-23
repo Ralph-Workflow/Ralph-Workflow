@@ -157,7 +157,14 @@ def test_stream_parsed_agent_activity_renders_raw_content_verbatim() -> None:
         rendered_output_sink=rendered,
     )
 
-    assert rendered == ["provider/model: meaningful provider output"]
+    # After wt-028-display the pipeline runner routes through the single
+    # agent-event renderer registry; the output carries the registry's
+    # INFO carrier icon plus the agent prefix and body.
+    assert len(rendered) == 1
+    assert "provider/model" in rendered[0]
+    assert "meaningful provider output" in rendered[0]
+    # Plain-text path uses the icon (\u2139 for info) so meaning survives color-off.
+    assert "\u2139" in rendered[0]
 
 
 def test_stream_parsed_agent_activity_does_not_invoke_sink_when_none_set(

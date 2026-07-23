@@ -5,9 +5,6 @@ from __future__ import annotations
 import threading
 from datetime import UTC, datetime
 
-from rich.cells import cell_len
-from rich.markup import escape
-
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_visibility_hint import ActivityVisibilityHint
@@ -53,54 +50,6 @@ def make_event(
     )
 
 
-_ICON_BY_KIND: dict[ActivityEventKind, str] = {
-    ActivityEventKind.TEXT: "│",
-    ActivityEventKind.THINKING: "∴",
-    ActivityEventKind.STATUS: "▸",
-    ActivityEventKind.TOOL_USE: "▸",
-    ActivityEventKind.TOOL_RESULT: "✓",
-    ActivityEventKind.ERROR: "✗",
-    ActivityEventKind.LIFECYCLE: "◆",
-    ActivityEventKind.HEARTBEAT: "·",
-    ActivityEventKind.PROGRESS: "⏵",
-    ActivityEventKind.SUBAGENT_PROGRESS: "⏵",
-    ActivityEventKind.UNKNOWN: "?",
-}
-
-
-def _icon_for_kind(kind: ActivityEventKind) -> str:
-    """Return the canonical icon for a kind, falling back to STATUS_STYLES.
-
-    After the wt-028-display consolidation, agent-event iconography
-    lives in the single registry (:mod:`ralph.display.agent_event_renderer`).
-    :func:`render_event_line` keeps a local copy so the
-    ring-buffer/activity-router path (which doesn't carry a
-    ``DisplayContext``) can still produce a non-color carrier without
-    importing the registry and pulling in its rich dependencies. New
-    code should call :func:`ralph.display.agent_event_renderer.render_event_kind_text`
-    or build a :class:`DisplayContext` and call
-    :func:`ralph.display.agent_event_renderer.render_event`.
-    """
-    if kind in _ICON_BY_KIND:
-        return _ICON_BY_KIND[kind]
-    return "?"
-
-
-def _truncate_to_cells(content: str, max_cells: int = 200) -> str:
-    if cell_len(content) <= max_cells:
-        return content
-
-    truncated: list[str] = []
-    used = 0
-    for char in content:
-        char_cells = cell_len(char)
-        if used + char_cells > max_cells:
-            break
-        truncated.append(char)
-        used += char_cells
-    return "".join(truncated) + "…"
-
-
 def render_event_line(
     kind: ActivityEventKind,
     content: str | None,
@@ -114,14 +63,28 @@ def render_event_line(
     BEFORE the cell-width truncation (so an escape sequence can never be
     split in half) and BEFORE rich ``escape`` (so rich markup like
     ``[red]...[/red]`` is still neutralised to ``\\[red]...\\[/red]``).
+
+    After the wt-028-display consolidation this function delegates to
+    :func:`ralph.display.agent_event_renderer.render_event_kind_text`
+    so every event kind routes through the single registry. The
+    pre-render sanitization call is kept here so the
+    :mod:`ralph.testing.audit_terminal_escape_containment` literal-string
+    invariant that pins this function as a containment sink stays
+    satisfied: a regression that drops the strip is detected as a
+    verify-gate failure. The literal also stays here so the body keeps
+    a defence-in-depth sanitization pass for callers that build
+    ``content`` outside the registry's normalizer (e.g. raw router
+    lines).
     """
-    icon = _ICON_BY_KIND.get(kind, "?")
-    raw_timestamp = timestamp or datetime.now(UTC).isoformat()
-    parsed_timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+    # Defence-in-depth strip (audit_terminal_escape_containment pinned).
     safe_content = strip_terminal_control(content or "")
-    truncated_content = _truncate_to_cells(safe_content)
-    escaped_content = escape(truncated_content)
-    return f"{icon} [theme.text.muted]{parsed_timestamp:%H:%M:%S}[/] {escaped_content}"
+    from ralph.display.agent_event_renderer import render_event_kind_text
+
+    return render_event_kind_text(
+        kind,
+        safe_content,
+        timestamp=timestamp,
+    )
 
 
 __all__ = [

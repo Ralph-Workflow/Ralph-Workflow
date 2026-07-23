@@ -238,20 +238,26 @@ def test_normalize_event_maps_unknown_parser_type_to_unknown_kind() -> None:
 
 
 def test_agent_event_renderer_has_no_literal_hex_outside_theme() -> None:
-    """The renderer must reference STATUS_STYLES, not literal hex."""
-    module_text = Path(__file__).parent.parent.parent.joinpath(
+    """The renderer must reference STATUS_STYLES, not literal hex.
+
+    AST-walks the production module looking for any string literal that
+    resembles a CSS hex colour (``#RGB`` / ``#RRGGBB``) outside docstrings
+    and comments. Anything that survives this filter is a literal hex
+    string in source code that must reference ``STATUS_STYLES`` instead.
+    """
+    import ast
+
+    source_path = Path(__file__).parent.parent.parent.joinpath(
         "ralph/display/agent_event_renderer.py"
-    ).read_text(encoding="utf-8")
+    )
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
     offenders: list[str] = []
-    for raw in module_text.splitlines():
-        stripped = raw.strip()
-        if stripped.startswith("#"):
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
             continue
-        if any(
-            token.startswith("#") and len(token) in (4, 7)
-            for token in stripped.split()
-        ):
-            offenders.append(stripped)
+        value = node.value
+        if value.startswith("#") and len(value) in (4, 7):
+            offenders.append(f"line {node.lineno}: {value!r}")
     assert offenders == [], (
         f"literal hex string(s) found in agent_event_renderer.py -- "
         f"reference STATUS_STYLES from ralph.display.theme instead: {offenders}"

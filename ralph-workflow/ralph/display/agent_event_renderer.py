@@ -298,13 +298,20 @@ def _render_unknown_event(
     This is the registry's safety net -- a kind that escaped
     ``map_parser_type_to_kind`` (a brand-new provider feeding an
     unknown parser type) must still render something readable so the
-    operator knows something happened.
+    operator knows something happened. When the event carries
+    metadata but no body (e.g. ``item_plan_result``), the metadata
+    summary is rendered instead so the operator still sees the
+    key=value context.
     """
     style, icon, label = _state_payload("warning")
-    body = _safe_str(event.content) or ""
+    body = _safe_str(event.content)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body), style=DEFAULT_STYLE)
+    if body:
+        text.append(escape(body), style=DEFAULT_STYLE)
+    summary = _metadata_summary(event.metadata)
+    if summary:
+        text.append(f" ({escape(summary)})", style="theme.text.muted")
     return text
 
 
@@ -394,48 +401,11 @@ def render_event_kind_text(
     ``workdir=/tmp/project`` substrings continue to pass through
     the registry's single source of formatting.
     """
-    style, icon, _label = _state_payload("info")
-    del style
-    if kind is ActivityEventKind.TOOL_USE:
-        _, icon, _ = _state_payload("running")
-    elif kind is ActivityEventKind.ERROR:
-        _, icon, _ = _state_payload("error")
-    elif kind is ActivityEventKind.TOOL_RESULT:
-        _, icon, _ = _state_payload("success")
-    elif kind is ActivityEventKind.HEARTBEAT:
-        _, icon, _ = _state_payload("info")
-
-    ts = timestamp or datetime.now(UTC).isoformat()
-    try:
-        parsed_ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
-        time_str = ""
-    else:
-        time_str = parsed_ts.strftime("%H:%M:%S")
+    icon = _icon_for_kind_text(kind)
+    time_str = _format_time_str(timestamp)
     agent_prefix = f"{agent_name} " if agent_name else ""
 
-    if kind is ActivityEventKind.TOOL_USE:
-        tool_name = friendly_tool_name(content or "tool")
-        meta = metadata or {}
-        args_str = format_tool_input(meta.get("input", meta.get("args")))
-        body_parts = [f"{agent_prefix}tool {tool_name}"]
-        if args_str:
-            body_parts.append(args_str)
-        body = " ".join(body_parts)
-    elif kind is ActivityEventKind.ERROR:
-        marker = f"{agent_prefix}✗ " if agent_prefix else "✗ "
-        body = f"{marker}{content}".strip()
-    elif kind is ActivityEventKind.TOOL_RESULT:
-        body = f"{agent_prefix}result {content}".rstrip()
-    elif kind in (
-        ActivityEventKind.STATUS,
-        ActivityEventKind.LIFECYCLE,
-        ActivityEventKind.PROGRESS,
-        ActivityEventKind.SUBAGENT_PROGRESS,
-    ) or kind is ActivityEventKind.THINKING:
-        body = f"{agent_prefix}{content}".strip()
-    else:
-        body = f"{agent_prefix}{content}".strip()
+    body = _body_for_kind(kind, content, metadata or {}, agent_prefix)
     sanitized = strip_terminal_control(body or "")
     truncated = _truncate_to_cells(sanitized, max_chars)
     escaped = escape(truncated)
@@ -444,7 +414,145 @@ def render_event_kind_text(
     return f"{icon} {escaped}".strip()
 
 
+def _icon_for_kind_text(kind: ActivityEventKind) -> str:
+    """Return the icon for the kind's carrier state in the plain-text path."""
+    state_for_kind = {
+        ActivityEventKind.TOOL_USE: "running",
+        ActivityEventKind.ERROR: "error",
+        ActivityEventKind.TOOL_RESULT: "success",
+    }
+    state = state_for_kind.get(kind, "info")
+    _, icon, _ = _state_payload(state)
+    return icon
+
+
+def _format_time_str(timestamp: str | None) -> str:
+    """Format an ISO-8601 timestamp string as ``HH:MM:SS`` for the icon prefix."""
+    raw = timestamp or datetime.now(UTC).isoformat()
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    return parsed.strftime("%H:%M:%S")
+
+
+def _body_for_kind(
+    kind: ActivityEventKind,
+    content: str,
+    metadata: dict[str, object],
+    agent_prefix: str,
+) -> str:
+    """Compute the body segment for the given kind + content + metadata.
+
+    Split out of ``render_event_kind_text`` so the per-kind branching is
+    readable (PLR0912 stays below the cap) and each kind has one place
+    to define its body shape.
+    """
+    if kind is ActivityEventKind.TOOL_USE:
+        return _body_for_tool_use(content, metadata, agent_prefix)
+    if kind is ActivityEventKind.ERROR:
+        return _body_for_error(content, agent_prefix)
+    if kind is ActivityEventKind.TOOL_RESULT:
+        return f"{agent_prefix}result {content}".rstrip()
+    if kind in (
+        ActivityEventKind.STATUS,
+        ActivityEventKind.LIFECYCLE,
+        ActivityEventKind.PROGRESS,
+        ActivityEventKind.SUBAGENT_PROGRESS,
+    ) or kind is ActivityEventKind.THINKING:
+        return f"{agent_prefix}{content}".strip()
+    if kind is ActivityEventKind.UNKNOWN:
+        return _body_for_unknown(content, metadata, agent_prefix)
+    return f"{agent_prefix}{content}".strip()
+
+
+def _body_for_tool_use(
+    content: str, metadata: dict[str, object], agent_prefix: str
+) -> str:
+    """Body for ``TOOL_USE``: ``<agent> tool <name> <args>``."""
+    tool_name = friendly_tool_name(content or "tool")
+    args_str = format_tool_input(metadata.get("input", metadata.get("args")))
+    body_parts = [f"{agent_prefix}tool {tool_name}"]
+    if args_str:
+        body_parts.append(args_str)
+    return " ".join(body_parts)
+
+
+def _body_for_error(content: str, agent_prefix: str) -> str:
+    """Body for ``ERROR``: ``<agent> ✗ <content>``."""
+    marker = f"{agent_prefix}✗ " if agent_prefix else "✗ "
+    return f"{marker}{content}".strip()
+
+
+def _body_for_unknown(
+    content: str, metadata: dict[str, object], agent_prefix: str
+) -> str:
+    """Body for ``UNKNOWN``: prefer content, fall back to metadata summary."""
+    summary = _metadata_summary(metadata)
+    prefix_body = f"{agent_prefix}{content}".strip() if content else ""
+    if prefix_body and summary:
+        return f"{prefix_body} ({summary})"
+    if prefix_body:
+        return prefix_body
+    if summary:
+        return f"{agent_prefix}{summary}".strip()
+    return ""
+
+
 # --- Helpers ---
+
+
+#: Maximum number of preferred-metadata keys surfaced in the unknown-event
+#: metadata summary. Beyond the first N pairs, the trailing keys are dropped
+#: to keep the line scannable.
+_METADATA_SUMMARY_MAX_PARTS: int = 3
+
+#: Maximum cell width of the metadata summary suffix. Mirrors the legacy
+#: ``_MAX_METADATA_SUMMARY_LENGTH`` so the registry's plain-text line stays
+#: within the operator's eye-line width.
+_METADATA_SUMMARY_MAX_CHARS: int = 120
+
+#: Preferred metadata keys in display order. The unknown-event renderer
+#: surfaces these in this order so the operator sees the most meaningful
+#: context first (status, summary, then phase/decision/message/event/tool/
+#: path/workdir/command).
+_METADATA_SUMMARY_PREFERRED_KEYS: tuple[str, ...] = (
+    "status",
+    "summary",
+    "phase",
+    "decision",
+    "message",
+    "event",
+    "tool",
+    "path",
+    "workdir",
+    "command",
+)
+
+
+def _metadata_summary(metadata: dict[str, object] | None) -> str:
+    """Return a stable ``key=value, ...`` summary of preferred metadata keys.
+
+    Used by the unknown-event renderer (and any future kind that carries
+    metadata-only context) so an event with no body still surfaces the
+    most-meaningful operator-visible fields. Mirrors the legacy
+    ``_metadata_summary_impl`` so the pipeline-runner tests that assert
+    ``status=completed`` / ``summary=Plan submitted`` substrings continue
+    to pass through the registry's single source of formatting.
+    """
+    if not metadata:
+        return ""
+    parts: list[str] = []
+    for key in _METADATA_SUMMARY_PREFERRED_KEYS:
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            parts.append(f"{key}={value}")
+            if len(parts) >= _METADATA_SUMMARY_MAX_PARTS:
+                break
+    if not parts:
+        return ""
+    joined = ", ".join(parts)
+    return _truncate_to_cells(joined, _METADATA_SUMMARY_MAX_CHARS)
 
 
 def _format_event_input(metadata: dict[str, object]) -> str:

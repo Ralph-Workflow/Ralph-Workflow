@@ -240,10 +240,24 @@ def test_claude_interactive_activity_stream_regression_renders_tool_result() -> 
         rendered_output_sink=rendered,
     )
 
-    assert rendered == [
-        "claude/haiku tool: ralph.read_file ((path=PROMPT.md))",
-        "claude/haiku result: prompt contents",
-    ]
+    # After wt-028-display the pipeline runner routes through the
+    # single agent-event renderer registry. The output carries the
+    # registry's icon + INFO/RUN label prefix and the friendly tool
+    # name + formatted args.
+    assert len(rendered) == 2
+    tool_line = rendered[0]
+    assert "claude/haiku" in tool_line
+    assert "ralph.read_file" in tool_line
+    assert "path=PROMPT.md" in tool_line
+    # The plain-text path carries the icon (◐ for running) so the
+    # meaning survives color-off rendering.
+    assert "◐" in tool_line
+    result_line = rendered[1]
+    assert "claude/haiku" in result_line
+    assert "prompt contents" in result_line
+    # The plain-text path carries the icon (✓ for success) so the
+    # meaning survives color-off rendering.
+    assert "✓" in result_line
 
 
 def test_interactive_parser_extracts_tool_result_from_assistant_message_content() -> None:

@@ -269,3 +269,53 @@ def test_an_analysis_entry_with_a_spent_budget_still_terminates() -> None:
 
     assert agent.phases == [], "a spent budget must invoke no analysis agent at all"
     assert result.status is ReadinessStatus.BLOCKED
+def test_on_remediation_attempt_callback_receives_live_attempt_numbers() -> None:
+    """AC-01 / AC-03: the persistent status bar must see the LIVE attempt value.
+
+    ``on_remediation_attempt`` is invoked BEFORE each remediation with the
+    1-indexed attempt number so the caller can push the right
+    ``Remediation N/Max`` label. Two consecutive remediation attempts
+    must produce ``1`` then ``2`` -- not ``1`` for both (the regression
+    that motivated the callback).
+    """
+    ws = MemoryWorkspace()
+    agent = _Recorder(ws, decisions=["request_changes", "completed"])
+
+    seen_attempts: list[int] = []
+
+    def _on_attempt(attempt: int) -> None:
+        seen_attempts.append(attempt)
+
+    result = pipeline_driver.run_policy_pipeline(
+        ws,
+        stack(),
+        [_finding()],
+        invoke_agent=agent,
+        on_remediation_attempt=_on_attempt,
+    )
+
+    assert result.status is ReadinessStatus.READY
+    remediation_count = agent.phases.count(PHASE_REMEDIATION)
+    assert remediation_count >= 2, (
+        "the test fixture must drive at least two remediation attempts"
+    )
+    # One callback per remediation, in 1-indexed order.
+    assert len(seen_attempts) == remediation_count
+    assert seen_attempts == list(range(1, remediation_count + 1))
+    # Specifically: the first attempt is 1, the second is 2 (the regression).
+    assert seen_attempts[0] == 1
+    assert seen_attempts[1] == 2
+
+
+def test_on_remediation_attempt_callback_defaults_to_noop() -> None:
+    """Existing callers (no callback) keep working unchanged (AC-01)."""
+    ws = MemoryWorkspace()
+    agent = _Recorder(ws, decisions=["completed"])
+
+    # No on_remediation_attempt kwarg.
+    result = pipeline_driver.run_policy_pipeline(
+        ws, stack(), [_finding()], invoke_agent=agent
+    )
+
+    assert result.status is ReadinessStatus.READY
+
