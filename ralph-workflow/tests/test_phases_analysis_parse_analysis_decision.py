@@ -19,6 +19,26 @@ def _default_policy_bundle() -> object:
         return load_policy(Path(tmp) / ".agent")
 
 
+def _analysis_decision_markdown(artifact_type: str, status: str) -> str:
+    feedback = (
+        "\n## What Came Up Short\n\n"
+        "- [W-1] The implementation needs another development pass.\n"
+        "\n## How To Fix\n\n"
+        "- [FIX-1] Address the remaining implementation gap.\n"
+        if status in {"request_changes", "failed"}
+        else ""
+    )
+    return (
+        "---\n"
+        f"type: {artifact_type}\n"
+        f"status: {status}\n"
+        "---\n"
+        "\n## Summary\n\n"
+        "- [SUM-1] Analysis reached a decision.\n"
+        f"{feedback}"
+    )
+
+
 @pytest.mark.timeout_seconds(5)
 class TestParseAnalysisDecision:
     def _default_pipeline_policy(self) -> object:
@@ -43,8 +63,8 @@ class TestParseAnalysisDecision:
     def test_completed_status_maps_to_proceed(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"development_analysis_decision","content":{"status":"completed"}}'
+        workspace.read.return_value = _analysis_decision_markdown(
+            "development_analysis_decision", "completed"
         )
         ctx = self._make_context(workspace)
 
@@ -54,8 +74,8 @@ class TestParseAnalysisDecision:
     def test_request_changes_status_maps_to_revise(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"review_analysis_decision","content":{"status":"request_changes"}}'
+        workspace.read.return_value = _analysis_decision_markdown(
+            "review_analysis_decision", "request_changes"
         )
         ctx = self._make_context(workspace)
 
@@ -65,40 +85,40 @@ class TestParseAnalysisDecision:
     def test_failed_status_is_a_valid_decision(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"development_analysis_decision","content":{"status":"failed"}}'
+        workspace.read.return_value = _analysis_decision_markdown(
+            "development_analysis_decision", "failed"
         )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision_status(ctx, "development_analysis")
         assert result == "failed"
 
-    def test_invalid_synonym_returns_none(self) -> None:
+    def test_invalid_synonym_uses_lenient_completed_fallback(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"development_analysis_decision","content":{"status":"loopback"}}'
+        workspace.read.return_value = _analysis_decision_markdown(
+            "development_analysis_decision", "loopback"
         )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision_status(ctx, "development_analysis")
-        assert result is None
+        assert result == "completed"
 
-    def test_unknown_status_returns_none(self) -> None:
+    def test_unknown_status_uses_lenient_completed_fallback(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"development_analysis_decision","content":{"status":"escalate"}}'
+        workspace.read.return_value = _analysis_decision_markdown(
+            "development_analysis_decision", "escalate"
         )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision_status(ctx, "development_analysis")
-        assert result is None
+        assert result == "completed"
 
-    def test_malformed_json_returns_none(self) -> None:
+    def test_malformed_markdown_returns_none(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = "not valid json"
+        workspace.read.return_value = "not valid markdown"
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision_status(ctx, "development_analysis")
@@ -116,7 +136,9 @@ class TestParseAnalysisDecision:
     def test_rejects_invalid_artifact_type_for_drain(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = '{"type":"plan","content":{"status":"completed"}}'
+        workspace.read.return_value = _analysis_decision_markdown(
+            "review_analysis_decision", "completed"
+        )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision_status(ctx, "development_analysis")
@@ -126,8 +148,8 @@ class TestParseAnalysisDecision:
     def test_rejects_status_not_allowed_by_policy_vocabulary(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = (
-            '{"type":"review_analysis_decision","content":{"status":"approve"}}'
+        workspace.read.return_value = _analysis_decision_markdown(
+            "review_analysis_decision", "approve"
         )
         ctx = self._make_context(workspace)
         contract = MagicMock()

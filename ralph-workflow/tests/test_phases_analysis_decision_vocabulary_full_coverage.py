@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tempfile
-from functools import lru_cache
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -12,16 +11,30 @@ from ralph.phases.artifacts import decision_vocabulary_for_drain
 from ralph.policy.loader import load_policy
 
 
-@lru_cache(maxsize=1)
-def _default_policy_bundle() -> object:
-    with tempfile.TemporaryDirectory() as tmp:
-        return load_policy(Path(tmp) / ".agent")
-
-
 def _load_default_pipeline_policy() -> object:
     with tempfile.TemporaryDirectory() as tmp:
         bundle = load_policy(Path(tmp) / ".agent")
         return bundle.pipeline
+
+
+def _development_analysis_markdown(status: str) -> str:
+    feedback = (
+        "\n## What Came Up Short\n\n"
+        "- [W-1] The implementation needs another development pass.\n"
+        "\n## How To Fix\n\n"
+        "- [FIX-1] Address the remaining implementation gap.\n"
+        if status in {"request_changes", "failed"}
+        else ""
+    )
+    return (
+        "---\n"
+        "type: development_analysis_decision\n"
+        f"status: {status}\n"
+        "---\n"
+        "\n## Summary\n\n"
+        "- [SUM-1] Development analysis reached a policy-defined decision.\n"
+        f"{feedback}"
+    )
 
 
 class TestDecisionVocabularyFullCoverage:
@@ -43,17 +56,14 @@ class TestDecisionVocabularyFullCoverage:
         for status in vocab:
             workspace = MagicMock()
             workspace.exists.return_value = True
-            workspace.read.return_value = (
-                f'{{"type":"development_analysis_decision",'
-                f'"content":{{"status":"{status}","summary":"test"}}}}'
-            )
+            workspace.read.return_value = _development_analysis_markdown(status)
             ctx = MagicMock()
             ctx.workspace = workspace
             ctx.artifacts_policy = MagicMock()
             ctx.artifacts_policy.artifacts = {}
             ctx.pipeline_policy = _load_default_pipeline_policy()
             result = parse_analysis_decision_status(ctx, "development_analysis")
-            assert result is not None, (
+            assert result == status, (
                 f"Vocabulary entry '{status}' for development_analysis "
-                "must parse to a non-None status"
+                "must round-trip through the canonical Markdown artifact"
             )
