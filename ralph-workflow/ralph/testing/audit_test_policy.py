@@ -94,6 +94,12 @@ _IO_ALLOWLIST: set[str] = {
     # subject under test — replacing with mocked content would defeat
     # the purpose.
     "test_agent_event_renderer_has_no_literal_hex_outside_theme",
+    # Production-caller AST inspection tests that read production source files
+    # (activity_stream.py, parallel_display.py, activity_model.py) to enforce
+    # that the canonical render_event + typed-normalizer contract is wired
+    # in at every ingestion site. The read target IS the subject under test
+    # -- replacing with mocked content would defeat the regression guard.
+    "test_production_callers_use_typed_event_api",
     # Static analysis tests that read Python source or documentation files
     # from the repo to enforce structural invariants.
     "test_doc_adding_a_new_agent",
@@ -131,6 +137,11 @@ _IO_ALLOWLIST: set[str] = {
     # Git integration tests using the tmp_git_repo fixture (which wraps
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",
+    # AST inspection tests that read auto_integrate.py source to enforce
+    # the AC-01 disabled-path byte-identity and AC-08 silent-skip
+    # promotion contracts. The source file IS the subject under test --
+    # replacing with mocked content would defeat the regression assertion.
+    "test_auto_integrate_no_silent_skip",
     "test_git_wrapper",
     # Helper backend classes: write_text is a method on a custom backend
     # object (MemoryBackend subclass), not a Path.write_text() call.

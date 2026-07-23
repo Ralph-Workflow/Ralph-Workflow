@@ -60,6 +60,7 @@ from ralph.display.activity_model import make_event
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.agent_activity_event import AgentActivityEvent
+from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.theme import STATUS_STYLES
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
@@ -143,6 +144,75 @@ def _format_body_with_unit(body: str, unit_id: str | None) -> str:
     return f"{unit_id} {body}"
 
 
+def _has_explicit_unit_prefix(body: str, unit_id: str) -> bool:
+    """Return True when ``body`` already starts with the ``unit_id`` prefix.
+
+    Tool results sometimes arrive with the unit identity already
+    baked into the body (e.g. the parser concatenates ``agent_name``
+    into ``content`` upstream). The renderer's own
+    :func:`_format_body_with_unit` would otherwise double-print
+    ``bash bash /tmp/x``. Mirrors the legacy plain-text path's
+    duplication guard.
+    """
+    if not unit_id or not body:
+        return False
+    prefix = f"{unit_id} "
+    return body.startswith(prefix) or body == unit_id
+
+
+def _tool_name_for_result(event: AgentActivityEvent) -> str:
+    """Return the tool name to render on a TOOL_RESULT line, or ``""`` when unknown.
+
+    The result renderer uses this to embed the friendly tool name
+    so the operator can pair the result with the TOOL_USE call
+    even when the two lines are separated by intervening output
+    (other tools, status messages). The friendly-name normalization
+    in :mod:`ralph.display.tool_args` is applied so the same
+    ``mcp__ralph__read_file`` -> ``ralph.read_file`` mapping the
+    TOOL_USE renderer uses is also applied here.
+    """
+    metadata = event.metadata or {}
+    for key in ("tool_name", "name", "tool"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            return friendly_tool_name(value)
+    return ""
+
+
+#: Bounded fallback limits for :func:`_condense_for_display` when no
+#: :class:`DisplayContext` is supplied. The canonical ``ctx`` path uses
+#: ``ctx.condenser_soft_limit`` / ``ctx.condenser_hard_limit`` so the
+#: limits stay aligned with the consumer's terminal width; the fallback
+#: values match :mod:`ralph.display.content_condenser`'s module defaults
+#: (``400`` soft / ``4000`` hard) so tests and the ring-buffer path
+#: behave identically without having to fabricate a ``ctx``.
+_DEFAULT_TOOL_RESULT_SOFT_LIMIT: int = 400
+_DEFAULT_TOOL_RESULT_HARD_LIMIT: int = 4000
+
+
+def _condense_for_display(body: str, ctx: DisplayContext | None) -> str:
+    """Pass ``body`` through :func:`condense_content` with ``ctx``-aware limits.
+
+    Falls back to bounded module-default limits when ``ctx`` is
+    ``None`` so callers without a :class:`DisplayContext` (the
+    ring-buffer / activity-router path, plus the
+    :func:`render_event_kind_text` plain-text adapter) cannot leak an
+    unbounded line. The condenser emits a visible ``(truncated)``
+    suffix when it drops content so the operator sees the
+    truncation marker even when no overflow reference is configured.
+    """
+    soft_limit = ctx.condenser_soft_limit if ctx is not None else _DEFAULT_TOOL_RESULT_SOFT_LIMIT
+    hard_limit = ctx.condenser_hard_limit if ctx is not None else _DEFAULT_TOOL_RESULT_HARD_LIMIT
+    result = condense_content(
+        body,
+        options=CondenseOptions(soft_limit=soft_limit, hard_limit=hard_limit),
+    )
+    # condense_content returns either a 2-tuple (visible, condensed) or
+    # a 4-tuple (visible, condensed, summary_line, ai_summary_line)
+    # depending on options.summary; we only need the visible body.
+    return result[0]
+
+
 def _render_text_event(
     event: AgentActivityEvent,
     ctx: DisplayContext | None = None,
@@ -195,6 +265,25 @@ def _render_status_event(
     return text
 
 
+#: Stable correlation marker so the operator can visually group a TOOL_USE
+#: line with its TOOL_RESULT follow-up. Renders as a Unicode triangle (so
+#: it is detectable on both UTF-8 terminals and ASCII fallbacks via the
+#: carrier prefix the registry already prints) and survives color
+#: disabling because the icon/label prefix on each line is itself the
+#: non-color carrier.
+#: The marker is intentionally stable (no per-event random suffix) so a
+#: caller that wants to feed TOOL_USE / TOOL_RESULT pairs into a grep can
+#: use a literal ``\u21b3`` to recover both lines of every tool pair in
+#: order, regardless of which agent backend emitted them.
+_TOOL_PAIR_MARKER: str = "\u21b3"
+
+#: Indentation prefix for the TOOL_RESULT body so the result visually nests
+#: under its TOOL_USE call. Two spaces + the correlation marker keeps the
+#: group identifiable even when the icon column is stripped (e.g. by a
+#: downstream ANSI / markup stripper).
+_TOOL_RESULT_INDENT: str = "  " + _TOOL_PAIR_MARKER + " "
+
+
 def _render_tool_use_event(
     event: AgentActivityEvent,
     ctx: DisplayContext | None = None,
@@ -204,14 +293,21 @@ def _render_tool_use_event(
 ) -> Text:
     """Render a tool call.
 
-    Layout: ``<icon><label> <friendly-tool-name> (<formatted-input>)``.
+    Layout: ``<icon><label> <ts> <unit_id> <friendly-tool-name> (<args>)``.
+
     The friendly tool name (e.g. ``mcp__ralph__read_file`` ->
     ``ralph.read_file``) and the formatted input come from
     :mod:`ralph.display.tool_args` so the agent-specific quirks are
     removed BEFORE rendering. State carried as ``running`` (the tool
-    call is in flight). When ``unit_id`` is set the unit prefix
-    threads into the body so the plain-text path matches the legacy
-    ``agent_name`` contract.
+    call is in flight). The line carries the same timestamp cue as the
+    text/status paths so a tool call is identifiable in scrollback
+    without the operator having to inspect the registry kind, and
+    ends with the stable :data:`_TOOL_PAIR_MARKER` so the operator
+    can pair this line with its follow-up TOOL_RESULT in grep /
+    scrollback.
+
+    When ``unit_id`` is set the unit prefix threads into the body so
+    the plain-text path matches the legacy ``agent_name`` contract.
     """
     style, icon, label = _state_payload("running")
     raw_name = _safe_str(event.content) or "tool"
@@ -226,7 +322,13 @@ def _render_tool_use_event(
     body = " ".join(body_segments)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body) if escape_body else body, style=style)
+    text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
+    text.append(" ", style="theme.text.muted")
+    text.append(
+        escape(body) if escape_body else body,
+        style=style,
+    )
+    text.append(f" {_TOOL_PAIR_MARKER}", style=style)
     return text
 
 
@@ -239,21 +341,57 @@ def _render_tool_result_event(
 ) -> Text:
     """Render a tool result.
 
-    Layout: ``<icon><label> <sanitized-result>``. Success uses the
-    ``success`` carrier; a tool result carrying ``is_error`` true (or
-    a non-empty ``error`` in metadata) flips to the ``error`` carrier
-    while keeping the body content. The ``is_error`` check is the
-    SAME check the registry applies, so the plain-text path derived
-    via :func:`render_event_kind_text` honors it byte-for-byte.
+    Layout:
+    ``<icon><label> <ts> <unit_id> [<tool_name>] <condensed-result>``.
+
+    Success uses the ``success`` carrier; a tool result carrying
+    ``is_error`` true (or a non-empty ``error`` in metadata) flips to
+    the ``error`` carrier while keeping the body content. The
+    ``is_error`` check is the SAME check the registry applies, so the
+    plain-text path derived via :func:`render_event_kind_text` honors
+    it byte-for-byte.
+
+    The body is passed through :func:`content_condenser.condense_content`
+    using the limits the :class:`DisplayContext` provides so an
+    oversized tool result (a 10k-char JSON dump, a giant stack trace)
+    never reaches the operator's terminal verbatim. The same registry
+    is also called from the plain-text path; the body is condensed
+    with bounded fallback limits when no ``ctx`` is supplied so
+    callers without a context (the ring-buffer / activity-router
+    path, plus tests) still get bounded output. A visible ``(truncated)``
+    suffix is appended whenever the condenser drops content, so the
+    operator sees the truncation marker whether or not an overflow
+    reference is configured.
+
+    The line opens with the same icon + label carrier as the
+    ``TOOL_USE`` renderer, carries the same timestamp cue, and
+    prepends the result body with the :data:`_TOOL_RESULT_INDENT`
+    group marker so the result visually nests under its paired
+    tool call (AC-05 / grouping).
     """
     is_error = _metadata_truthy(event.metadata.get("is_error"))
     state = "error" if is_error else "success"
     style, icon, label = _state_payload(state)
-    body = _format_body_with_unit(_safe_str(event.content), unit_id)
+    raw_body = _safe_str(event.content)
+    if unit_id and not _has_explicit_unit_prefix(raw_body, unit_id):
+        body = _format_body_with_unit(raw_body, unit_id)
+    else:
+        body = raw_body
+    condensed_body = _condense_for_display(body, ctx)
+    tool_ref = _tool_name_for_result(event)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
+    text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
+    text.append(" ", style="theme.text.muted")
+    text.append(_TOOL_RESULT_INDENT, style=style)
+    if tool_ref:
+        text.append(
+            escape(tool_ref) if escape_body else tool_ref,
+            style=style,
+        )
+        text.append(" ", style=style)
     text.append(
-        escape(body) if escape_body else body,
+        escape(condensed_body) if escape_body else condensed_body,
         style="theme.text.muted" if not is_error else style,
     )
     return text
