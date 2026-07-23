@@ -877,3 +877,131 @@ def test_final_text_not_contaminated_by_exit_banner_end_to_end() -> None:
     texts = [line for line in parsed if line.type == "text"]
     assert len(texts) == 1
     assert texts[0].content == "The sum of alpha (41) and beta (7) is 48."
+
+
+def test_parallel_same_tool_calls_in_one_message_all_emitted() -> None:
+    # Two tool_use blocks with the same tool name but distinct ids in a
+    # single assistant message must both surface; the consecutive-duplicate
+    # guard must key on tool_use_id, not just (kind, text).
+    parser = ClaudeInteractiveTranscriptParser()
+    payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "tu_1", "name": "Bash", "input": {"command": "ls"}},
+                    {"type": "tool_use", "id": "tu_2", "name": "Bash", "input": {"command": "pwd"}},
+                ]
+            },
+        }
+    )
+
+    events = parser.feed(payload + "\n")
+
+    tool_uses = [event for event in events if event.kind == "tool_use"]
+    assert [event.metadata.get("tool_use_id") for event in tool_uses] == ["tu_1", "tu_2"]
+
+
+def test_repeated_identical_tool_use_line_still_suppressed() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+    payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "tu_1", "name": "Bash", "input": {"command": "ls"}}
+                ]
+            },
+        }
+    )
+
+    first = parser.feed(payload + "\n")
+    second = parser.feed(payload + "\n")
+
+    assert [event.kind for event in first] == ["tool_use"]
+    assert second == []
+
+
+def test_identical_result_text_from_distinct_tool_calls_both_emitted() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+
+    def result_payload(tool_use_id: str) -> str:
+        return json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": [{"type": "text", "text": "48"}],
+                        }
+                    ]
+                },
+            }
+        )
+
+    first = parser.feed(result_payload("tu_1") + "\n")
+    second = parser.feed(result_payload("tu_2") + "\n")
+
+    assert [event.kind for event in first] == ["tool_result"]
+    assert [event.kind for event in second] == ["tool_result"]
+
+
+def test_is_error_tool_result_surfaces_as_error_with_tool_identity() -> None:
+    # Parity with the headless Claude parser (and Cursor/Pi/Generic): a
+    # failed tool call is an error, not a routine tool_result.
+    parser = ClaudeInteractiveParser()
+    tool_use = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "tu_1", "name": "Bash", "input": {"command": "x"}}
+                ]
+            },
+        }
+    )
+    failed_result = json.dumps(
+        {
+            "type": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tu_1",
+                        "is_error": True,
+                        "content": [{"type": "text", "text": "command failed: exit 1"}],
+                    }
+                ]
+            },
+        }
+    )
+
+    parsed = list(parser.parse(iter([tool_use + "\n", failed_result + "\n"])))
+
+    assert [line.type for line in parsed] == ["tool_use", "error"]
+    assert parsed[1].content == "command failed: exit 1"
+    assert parsed[1].metadata is not None
+    assert parsed[1].metadata.get("tool") == "Bash"
+    assert parsed[1].metadata.get("tool_use_id") == "tu_1"
+
+
+def test_assistant_string_content_emitted_as_output() -> None:
+    # Defensive future-proofing: an assistant message whose content is a
+    # plain string (instead of a content-block list) must not be dropped.
+    parser = ClaudeInteractiveTranscriptParser()
+    payload = json.dumps({"type": "assistant", "message": {"content": "plain string answer"}})
+
+    events = parser.feed(payload + "\n")
+
+    assert [(event.kind, event.text) for event in events] == [("output", "plain string answer")]
+
+
+def test_error_event_with_string_error_payload_is_surfaced() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+    payload = json.dumps({"type": "error", "error": "boom: rate limited"})
+
+    events = parser.feed(payload + "\n")
+
+    assert [(event.kind, event.text) for event in events] == [("error", "boom: rate limited")]

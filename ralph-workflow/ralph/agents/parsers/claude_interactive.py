@@ -141,8 +141,12 @@ class ClaudeInteractiveParser:
                         tool_name = self._last_tool_name or "unknown"
                     metadata["tool"] = tool_name
                     content = event.text.removeprefix("claude result:").lstrip()
+                    # Wire-format is_error parity with the headless Claude
+                    # parser: a failed tool call surfaces as an error, not a
+                    # routine result, while keeping the tool correlation.
+                    result_type = "error" if metadata.get("is_error") else "tool_result"
                     yield AgentOutputLine(
-                        type="tool_result",
+                        type=result_type,
                         content=content,
                         raw=raw,
                         metadata=metadata,

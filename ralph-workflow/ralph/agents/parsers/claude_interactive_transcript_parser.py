@@ -162,6 +162,8 @@ def _extract_message_text(value: object) -> str:
 
 
 def _extract_error_text(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
     if isinstance(value, dict):
         error = value.get("message")
         if isinstance(error, str) and error.strip():
@@ -170,6 +172,30 @@ def _extract_error_text(value: object) -> str:
         if isinstance(error_type, str) and error_type.strip():
             return error_type.strip()
     return ""
+
+
+def _tool_result_event(item: dict[str, object]) -> InteractiveTranscriptEvent | None:
+    """Build a tool_result event from a content block, or None if empty.
+
+    Honors the wire-format ``is_error`` flag (matching the headless Claude,
+    Cursor, Pi, and Generic parsers) by carrying it in metadata so the
+    downstream parser can surface a failed tool call as an error instead of
+    a routine result.
+    """
+    text = _extract_message_text(item.get("content")).strip()
+    if not text:
+        return None
+    metadata: dict[str, object] = {}
+    tool_use_id = item.get("tool_use_id")
+    if isinstance(tool_use_id, str) and tool_use_id:
+        metadata["tool_use_id"] = tool_use_id
+    if bool(item.get("is_error")):
+        metadata["is_error"] = True
+    return InteractiveTranscriptEvent(
+        kind="tool_result",
+        text=f"claude result: {text}",
+        metadata=metadata,
+    )
 
 
 _IDLE_SINGLE_WORD_MAX_LEN = 15
@@ -196,7 +222,7 @@ class ClaudeInteractiveTranscriptParser:
 
     def __init__(self) -> None:
         self.session_id: str | None = None
-        self._last_emitted_signature: tuple[str, str] | None = None
+        self._last_emitted_signature: tuple[str, str, object] | None = None
         self._buffer = ""
         self._current_content_mode: str | None = None
 
@@ -233,7 +259,10 @@ class ClaudeInteractiveTranscriptParser:
     def _append_if_new(
         self, events: list[InteractiveTranscriptEvent], event: InteractiveTranscriptEvent
     ) -> None:
-        signature = (event.kind, event.text)
+        # tool_use_id participates in the signature so parallel same-tool
+        # calls (and identical result texts from distinct calls) all emit;
+        # only a literal re-read of the same transcript line is suppressed.
+        signature = (event.kind, event.text, event.metadata.get("tool_use_id"))
         if signature == self._last_emitted_signature:
             return
         events.append(event)
@@ -272,19 +301,9 @@ class ClaudeInteractiveTranscriptParser:
             if text and not self._is_tui_thinking_garbage(text):
                 result.append(InteractiveTranscriptEvent(kind="thinking", text=text))
         elif item_type == "tool_result":
-            text = _extract_message_text(item.get("content")).strip()
-            if text:
-                metadata = {}
-                tool_use_id = item.get("tool_use_id")
-                if isinstance(tool_use_id, str) and tool_use_id:
-                    metadata["tool_use_id"] = tool_use_id
-                result.append(
-                    InteractiveTranscriptEvent(
-                        kind="tool_result",
-                        text=f"claude result: {text}",
-                        metadata=metadata,
-                    )
-                )
+            event = _tool_result_event(item)
+            if event is not None:
+                result.append(event)
         elif item_type == "text":
             self._current_content_mode = "output"
             text = str(item.get("text", "")).strip()
@@ -298,6 +317,15 @@ class ClaudeInteractiveTranscriptParser:
         if not isinstance(message, dict):
             return []
         content = message.get("content")
+        if isinstance(content, str):
+            # Defensive future-proofing: assistant text delivered as a plain
+            # string instead of a content-block list is still agent output.
+            text = content.strip()
+            if not text:
+                return []
+            self._current_content_mode = "output"
+            event = self._event_for_text(text)
+            return [event] if event is not None else []
         if not isinstance(content, list):
             return []
         events: list[InteractiveTranscriptEvent] = []
@@ -319,19 +347,9 @@ class ClaudeInteractiveTranscriptParser:
             item_dict = cast("dict[str, object]", item)
             if item_dict.get("type") != "tool_result":
                 continue
-            text = _extract_message_text(item_dict.get("content")).strip()
-            if text:
-                metadata: dict[str, object] = {}
-                tool_use_id = item_dict.get("tool_use_id")
-                if isinstance(tool_use_id, str) and tool_use_id:
-                    metadata["tool_use_id"] = tool_use_id
-                events.append(
-                    InteractiveTranscriptEvent(
-                        kind="tool_result",
-                        text=f"claude result: {text}",
-                        metadata=metadata,
-                    )
-                )
+            event = _tool_result_event(item_dict)
+            if event is not None:
+                events.append(event)
         return events
 
     def _events_from_json(self, raw_text: str) -> list[InteractiveTranscriptEvent] | None:
