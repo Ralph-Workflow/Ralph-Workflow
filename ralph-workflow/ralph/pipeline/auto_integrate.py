@@ -130,13 +130,20 @@ def resolve_integration_target(
 ) -> str | None:
     """Resolve the integration target branch name from config and the repo.
 
+    Resolution is a STATELESS, local-refs-only check, re-derived from
+    the repository at every seam. Remote metadata (``origin/HEAD``) may
+    at most pick BETWEEN branches that already exist locally; it never
+    creates a local branch from a remote-tracking ref and never moves
+    one, so remote state cannot influence the base of a local rebase --
+    including at the very first seam of a fresh checkout.
+
     Precedence:
 
     1. ``config.general.auto_integrate_target`` when set: used verbatim
-       when the branch exists locally OR can be materialized from
-       ``refs/remotes/origin/<branch>`` (AC-13).
-    2. Else: ``origin/HEAD`` remote default branch when it resolves.
-    3. Else: the first existing branch in
+       when the branch exists locally (AC-13).
+    2. Else: the ``origin/HEAD`` default-branch NAME, when a local
+       branch of that name exists.
+    3. Else: the first existing local branch in
        ``('main', 'master')``.
     4. Else: ``None`` — the step skips with a recorded reason and
        mutates nothing.
@@ -147,47 +154,19 @@ def resolve_integration_target(
     if isinstance(configured_attr, str) and configured_attr:
         configured = configured_attr
     if isinstance(configured, str) and configured:
-        # Same materialization the auto-detect path below uses: a
-        # clone-layout agent that pins its target explicitly must not be
-        # worse off than one that lets Ralph detect it.
-        if _ensure_local_origin_branch(repo_root_path, configured):
+        if branch_exists(repo_root_path, configured):
             return configured
         return None
 
     origin_default = resolve_origin_head_branch(repo_root_path)
-    if origin_default and _ensure_local_origin_branch(repo_root_path, origin_default):
+    if origin_default and branch_exists(repo_root_path, origin_default):
         return origin_default
 
     for candidate in _AUTO_DETECT_TARGET_CANDIDATES:
-        if _ensure_local_origin_branch(repo_root_path, candidate):
+        if branch_exists(repo_root_path, candidate):
             return candidate
 
     return None
-
-
-def _ensure_local_origin_branch(repo_root: Path, branch: str) -> bool:
-    """Return whether ``branch`` is local, materializing ``origin/branch`` if needed.
-
-    A clone-style agent worktree commonly has only ``origin/main``.  The
-    local mainline ref is required for the later CAS/fast-forward contract,
-    so create it from that remote-tracking ref before integration.  Git
-    refuses an already-created branch; re-checking makes that race harmless.
-    """
-    if branch_exists(repo_root, branch):
-        return True
-    remote_ref = f"refs/remotes/origin/{branch}"
-    if run_git(
-        ("show-ref", "--verify", "--quiet", remote_ref),
-        cwd=repo_root,
-        label="git-origin-target-exists",
-    ).returncode != 0:
-        return False
-    run_git(
-        ("branch", "--", branch, remote_ref),
-        cwd=repo_root,
-        label="git-create-local-origin-target",
-    )
-    return branch_exists(repo_root, branch)
 
 
 # The record path / write_record / read_record / clear_record helpers

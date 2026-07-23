@@ -50,13 +50,19 @@ def _build_remote_only_clone(tmp_git_repo: Path, name: str) -> tuple[Path, str]:
     return clone, main
 
 
-def test_auto_integrate_regression_remote_only_main_is_materialized_and_landed(
+def test_remote_only_main_is_never_materialized_into_a_local_branch(
     tmp_git_repo: Path,
 ) -> None:
-    """Plan step 2 / AC-03: clone-style origin/main lands without local main."""
+    """A mainline that exists only on origin must stay on origin.
+
+    Target resolution is a stateless, local-refs-only check: a
+    remote-tracking ref must never be turned into a local branch, or
+    remote state would decide the base of the very first local rebase.
+    With no local candidate the step records a skip and mutates nothing.
+    """
     clone, main = _build_remote_only_clone(tmp_git_repo, "remote-only")
 
-    feature_sha = _commit(clone)
+    _commit(clone)
     outcome = auto_integrate_after_commit(
         UnifiedConfig.model_validate({"general": {"auto_integrate_enabled": True}}),
         WorkspaceScope(clone),
@@ -64,21 +70,24 @@ def test_auto_integrate_regression_remote_only_main_is_materialized_and_landed(
     )
 
     assert outcome is not None
-    assert outcome.last_action in {"rebased", "merged"}
-    assert outcome.fast_forwarded is True
-    assert branch_sha(clone, main) == feature_sha
+    assert outcome.last_action == "skipped"
+    assert branch_sha(clone, main) is None, (
+        "a local branch was created from a remote-tracking ref"
+    )
 
 
-def test_configured_target_is_materialized_from_origin(tmp_git_repo: Path) -> None:
-    """AC-03: an explicitly PINNED target materializes exactly like auto-detect.
+def test_configured_target_missing_locally_records_a_skip(
+    tmp_git_repo: Path,
+) -> None:
+    """An explicitly PINNED target follows the same local-only rule.
 
-    A clone-layout agent that sets ``auto_integrate_target`` used to never
-    integrate at all, because the configured branch was required to exist
-    locally while the auto-detect path already created it from origin.
+    A configured ``auto_integrate_target`` that does not exist as a
+    local branch is a recorded skip -- it is never created from
+    ``refs/remotes/origin/<target>``, exactly like the auto-detect path.
     """
     clone, main = _build_remote_only_clone(tmp_git_repo, "configured-target")
 
-    feature_sha = _commit(clone)
+    _commit(clone)
     outcome = auto_integrate_after_commit(
         UnifiedConfig.model_validate(
             {
@@ -93,6 +102,7 @@ def test_configured_target_is_materialized_from_origin(tmp_git_repo: Path) -> No
     )
 
     assert outcome is not None
-    assert outcome.last_action in {"rebased", "merged"}
-    assert outcome.fast_forwarded is True
-    assert branch_sha(clone, main) == feature_sha
+    assert outcome.last_action == "skipped"
+    assert branch_sha(clone, main) is None, (
+        "a local branch was created from a remote-tracking ref"
+    )

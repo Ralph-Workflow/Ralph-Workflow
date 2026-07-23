@@ -101,15 +101,16 @@ class GeneralConfig(RalphBaseModel):
         default=None,
         description=(
             "Shared integration branch name. When set (e.g. 'develop') it is"
-            " used verbatim, provided that branch exists locally OR can be"
-            " materialized from refs/remotes/origin/<target> (the clone"
-            " topology, where an agent's checkout often has only"
-            " origin/main)."
-            " When unset, the target is auto-detected: the remote's default"
-            " branch (origin/HEAD) when a remote exists, otherwise 'main',"
-            " otherwise 'master'. If no candidate resolves to an existing"
-            " branch the step skips with a recorded reason -- it never guesses"
-            " a branch that is not clearly the shared mainline."
+            " used verbatim, provided that branch exists as a LOCAL branch."
+            " Resolution is a stateless local-refs-only check: a branch is"
+            " never created from refs/remotes/origin/<target>, so remote"
+            " state can never decide the base of a local rebase."
+            " When unset, the target is auto-detected: the origin/HEAD"
+            " default-branch name when a local branch of that name exists,"
+            " otherwise 'main', otherwise 'master'. If no candidate resolves"
+            " to an existing local branch the step skips with a recorded"
+            " reason -- it never guesses a branch that is not clearly the"
+            " shared mainline."
         ),
     )
     auto_integrate_fetch_enabled: bool = Field(
