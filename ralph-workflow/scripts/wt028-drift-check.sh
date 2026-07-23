@@ -43,8 +43,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Find bounds the traversal to relevant source suffixes before ONE
-# single-pass matcher process scans the resulting file list.
+# Git enumerates tracked and non-ignored untracked files before ONE
+# single-pass matcher process scans the relevant source suffixes. This avoids
+# a cold metadata walk across thousands of files on external worktree volumes.
 #
 # Why not ``grep -lE`` here: BSD grep 2.6.0 (the macOS system grep)
 # re-scans the corpus roughly once per alternation branch, and the two
@@ -56,8 +57,8 @@ trap cleanup EXIT
 # margin. Do NOT raise GREP_TIMEOUT_SECONDS to accommodate a slow scan;
 # see docs/ralph-workflow-policy/gate-script-policy.md § Bounded.
 #
-# ``find`` stays the process the watchdog below kills, so the bounded and
-# fail-closed rc contract is unchanged, and the matcher keeps grep's exit
+# The pipeline stays under the watchdog below, so the bounded and fail-closed
+# rc contract is unchanged, and the matcher keeps grep's exit
 # statuses (0 = matched, 1 = no match, 2 = error). DRIFT_PATTERNS remains
 # the single source of truth: it is passed through verbatim as argv and
 # never re-spelled in a second dialect.
@@ -106,8 +107,7 @@ trap cleanup EXIT
 # scanning its stride -- also fails with rc=2 rather than being read as
 # "no drift here".
 GREP_TIMEOUT_SECONDS=2
-find ralph tests docs -type f \( -name '*.py' -o -name '*.rst' -o -name '*.md' \) \
-    -not -path '*/__pycache__/*' -exec python3 -c '
+git ls-files -co --exclude-standard -z -- ralph tests docs | python3 -c '
 import re
 import sys
 import threading
@@ -115,7 +115,11 @@ import threading
 READ_WORKERS = 64
 
 pattern = re.compile(sys.argv[1].encode("utf-8"))
-paths = sys.argv[2:]
+paths = [
+    raw.decode(sys.getfilesystemencoding(), errors="surrogateescape")
+    for raw in sys.stdin.buffer.read().split(b"\0")
+    if raw.endswith((b".py", b".rst", b".md")) and b"/__pycache__/" not in raw
+]
 results = [None] * len(paths)
 
 
@@ -157,7 +161,7 @@ for path, hit in zip(paths, results):
         sys.stdout.write(path + "\n")
         matched = True
 sys.exit(0 if matched else 1)
-' "$DRIFT_PATTERNS" {} + \
+' "$DRIFT_PATTERNS" \
     >"$GREP_DIR/scan.out" 2>"$GREP_DIR/scan.err" &
 SCAN_PID="$!"
 (
