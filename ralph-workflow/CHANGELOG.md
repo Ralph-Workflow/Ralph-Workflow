@@ -47,6 +47,10 @@ and open a fresh `[Unreleased]`.
 
 ### Fixed
 
+- **fix(claude-interactive): stop TUI exit banner and escape residue leaking into agent text** — commit `cb287b112`. `normalize_vt_text` now strips the generic ECMA-35/48 escape forms (charset designations like `ESC(B`, cursor save/restore `ESC7`/`ESC8`, SO/SI shift bytes) and the two-line Claude Code ≥ 2.1.x resume banner plus slash-command echoes are TUI chrome; regression-guarded by `tests/test_claude_interactive_parser.py`.
+
+- **fix(claude-interactive): emit parallel same-tool calls, surface `is_error` tool results as errors, and harden string-shaped JSON payloads** — commit `03ee17139`. The consecutive-duplicate guard now keys on `tool_use_id`, failed tool calls surface as `type=error` with tool identity (parity with the headless Claude, Cursor, Pi, and Generic parsers), and string-typed assistant content / error payloads are no longer dropped; pinned by `tests/test_claude_interactive_parser.py`.
+
 - **fix(telemetry): keep one random user identity across terminal-specific XDG environments and add queryable session timing plus safe logical-agent, pipeline-profile, and drain-class metrics** — pinned by `tests/test_telemetry_user_identity.py` and `tests/test_telemetry_sentry.py`.
 
 - **fix(claude-interactive): preserve structured transcript envelopes so parallel tool results retain their tool identity and inputs, repeated session IDs stay suppressed, and result labels render once** — regression-guarded by `tests/test_claude_interactive_parser.py` and `tests/test_pty_transcript_tool_result.py`.
