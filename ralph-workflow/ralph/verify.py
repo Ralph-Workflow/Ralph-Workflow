@@ -97,14 +97,6 @@ _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 #: budget. Pinned to a minimum of 5 seconds by an import-time invariant
 #: so a step cannot be silently disabled by lowering this constant.
 
-_AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS: Final = 240.0
-#: PER-STEP ceiling for the real-git auto-integration end-to-end step.
-#: It is a SECONDARY cap only and can never extend the combined test
-#: budget: the step IS budget-tracked, so ``run_verify`` passes it
-#: ``min(this, remaining_budget)`` and charges its elapsed time against
-#: ``_TOTAL_TEST_BUDGET_SECONDS`` exactly like ``make test``. Raising
-#: it buys nothing once the cumulative total reaches 60 seconds.
-
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
 #: ABSOLUTE and IMMUTABLE combined wall-clock budget for **all** test
 #: suites running sequentially under ``make verify``. Enforced by
@@ -386,33 +378,6 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
-    ),
-    (
-        # Real-git end-to-end proof of auto-integration across all four
-        # seams (startup, after-commit, phase-transition, fan-out join)
-        # and both topologies multiple agents actually run in (linked
-        # worktrees sharing one common git dir, and clones sharing an
-        # origin). Wired here because AGENTS.md forbids a check that
-        # lives only in an opt-in suite the default gate excludes:
-        # every auto-integrate e2e file is marked ``subprocess_e2e``,
-        # which ``make test`` (ralph.test_suites) does not collect, so
-        # this behaviour was previously proven by NO step ``make
-        # verify`` runs and could rot unnoticed.
-        #
-        # NOT a budget-tracked step: it is DELIBERATELY absent from
-        # ``_BUDGET_TRACKED_STEPS`` and its label is DELIBERATELY absent
-        # from ``_KNOWN_TEST_STEP_LABELS``. Only ``make test`` (index 2)
-        # is charged against the immutable 60-second combined budget
-        # ``_TOTAL_TEST_BUDGET_SECONDS``. This real-git suite runs under
-        # its own per-step ceiling, ``_AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS``
-        # (240 seconds), enforced at the step invocation. Re-adding it
-        # to the combined budget would charge the real-git wall clock
-        # alongside ``make test`` and recreate the timeout catastrophe
-        # the budget exists to prevent.
-        "auto-integrate end-to-end (make test-auto-integrate-e2e)",
-        "make",
-        ("test-auto-integrate-e2e",),
-        _AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS,
     ),
 )
 

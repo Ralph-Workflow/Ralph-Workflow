@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import signal
 import threading
@@ -36,10 +37,16 @@ from ralph.runtime import (
     TEST_TIMEOUT_ENV,
     timeout_seconds_from_env,
 )
+from ralph.test_suites import (
+    REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+    REQUIRED_AUTO_INTEGRATE_SELECTION_ENV,
+    validate_required_auto_integrate_selection,
+)
 from ralph.workspace.memory import MemoryWorkspace
 from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
+_REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -53,6 +60,26 @@ def pytest_configure(config: pytest.Config) -> None:
     skipping only those end-of-session gc passes.
     """
     config.stash[gc_collect_iterations_key] = 0
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Select the explicit required auto-integrate files for verification."""
+    for item in items:
+        relative_path = item.path.relative_to(Path.cwd()).as_posix()
+        if relative_path in _REQUIRED_AUTO_INTEGRATE_E2E_PATHS:
+            item.add_marker("required_auto_integrate_e2e")
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """Fail closed if combined verification did not select every required file."""
+    if os.getenv(REQUIRED_AUTO_INTEGRATE_SELECTION_ENV) != "1":
+        return
+    selected_files = {
+        item.path.relative_to(Path.cwd()).as_posix()
+        for item in session.items
+    }
+    validate_required_auto_integrate_selection(selected_files)
 
 if TYPE_CHECKING:
     from collections.abc import Generator

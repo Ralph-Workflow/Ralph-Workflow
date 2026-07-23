@@ -28,7 +28,7 @@ from ralph.verify_timeout import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from typing import Protocol
 
     from ralph.executor.process import ProcessResult
@@ -80,6 +80,53 @@ if TYPE_CHECKING:
 _DEFAULT_PYTEST_WORKERS = "auto"
 _MAX_PYTEST_WORKERS = 8
 
+#: Exact subprocess-E2E files required by the authoritative verification
+#: profile. This registry also drives the focused Make target, so the two
+#: selections cannot drift.
+REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
+    "tests/test_auto_integrate_conflict_e2e.py",
+    "tests/test_auto_integrate_clone_conflict_e2e.py",
+    "tests/test_auto_integrate_catchup_e2e.py",
+    "tests/test_auto_integrate_worktree_prefix_e2e.py",
+    "tests/test_auto_integrate_fail_closed_e2e.py",
+    "tests/test_auto_integrate_end_to_end.py",
+    "tests/test_auto_integrate_refresh_contract.py",
+    "tests/test_auto_integrate_seams_e2e.py",
+    "tests/test_auto_integrate_conflict_seams_e2e.py",
+    "tests/test_auto_integrate_rebase_conflict_e2e.py",
+    "tests/test_auto_integrate_real_agent_resolution_e2e.py",
+    "tests/test_auto_integrate_fleet_conflict_e2e.py",
+    "tests/test_auto_integrate_local_fleet_target_e2e.py",
+    "tests/test_auto_integrate_remote_push.py",
+    "tests/test_auto_integrate_remote_refresh.py",
+    "tests/test_auto_integrate_stateless_seam.py",
+    "tests/test_auto_integrate_env_pinning.py",
+    "tests/test_auto_integrate_markerless_conflicts.py",
+    "tests/test_auto_integrate_non_main_target.py",
+    "tests/test_auto_integrate_rung4_self_resume.py",
+    "tests/test_auto_integrate_recovery.py",
+    "tests/test_auto_integrate_race.py",
+    "tests/test_auto_integrate_worktree_sync.py",
+    "tests/test_auto_integrate_catalog_e2e.py",
+)
+REQUIRED_AUTO_INTEGRATE_SELECTION_ENV = "RALPH_VERIFY_REQUIRED_AUTO_INTEGRATE_E2E"
+
+if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
+    raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not be empty")
+if len(REQUIRED_AUTO_INTEGRATE_E2E_FILES) != len(set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)):
+    raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not contain duplicates")
+
+
+def validate_required_auto_integrate_selection(selected_files: Iterable[str]) -> None:
+    """Fail when combined pytest selection omits a required E2E file."""
+    selected = frozenset(selected_files)
+    missing = tuple(path for path in REQUIRED_AUTO_INTEGRATE_E2E_FILES if path not in selected)
+    if missing:
+        raise RuntimeError(
+            "combined pytest selection omitted required auto-integrate E2E files: "
+            + ", ".join(missing)
+        )
+
 
 def _pytest_workers() -> str:
     raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
@@ -120,7 +167,22 @@ def _verification_command() -> tuple[str, ...]:
         "--dist",
         "worksteal",
         "-m",
-        "not subprocess_e2e and not smoke",
+        "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e",
+    )
+
+
+def _auto_integrate_e2e_command() -> tuple[str, ...]:
+    workers = _pytest_workers()
+    return (
+        sys.executable,
+        "-m",
+        "pytest",
+        *REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+        "-q",
+        "-n",
+        workers,
+        "--dist",
+        "worksteal",
     )
 
 
@@ -129,6 +191,7 @@ def run_test_suites(
     cwd: Path,
     suite_timeout_seconds: float = DEFAULT_SUITE_TIMEOUT_SECONDS,
     runner: SuiteRunner = _default_runner,
+    auto_integrate_e2e_only: bool = False,
 ) -> int:
     """Run the maintained pytest verification suite and return its exit code.
 
@@ -164,9 +227,13 @@ def run_test_suites(
         ),
         suite_timeout_seconds=suite_timeout_seconds,
     )
+    if not auto_integrate_e2e_only:
+        env[REQUIRED_AUTO_INTEGRATE_SELECTION_ENV] = "1"
     try:
         result = runner(
-            _verification_command(),
+            _auto_integrate_e2e_command()
+            if auto_integrate_e2e_only
+            else _verification_command(),
             cwd=cwd,
             env=env,
             suite_timeout_seconds=suite_timeout_seconds,
@@ -185,8 +252,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments are rejected with ``SystemExit`` to surface silent
     misuse.
     """
-    if argv:
-        raise SystemExit("ralph.test_suites does not accept positional arguments")
+    arguments = tuple(argv or ())
+    if arguments == ("--auto-integrate-e2e",):
+        return run_test_suites(cwd=Path.cwd(), auto_integrate_e2e_only=True)
+    if arguments:
+        raise SystemExit(
+            "ralph.test_suites accepts only the optional --auto-integrate-e2e profile"
+        )
     return run_test_suites(cwd=Path.cwd())
 
 

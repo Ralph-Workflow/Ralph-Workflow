@@ -230,60 +230,8 @@ def test_makefile_exposes_explicit_twine_upload_targets() -> None:
     assert test_pypi_body == twine_upload_testpypi_body
 
 
-def test_test_auto_integrate_e2e_lists_every_required_subprocess_e2e_file() -> None:
-    """The ``test-auto-integrate-e2e`` target MUST list every required subprocess_e2e file.
-
-    Auto-integration is wired into the verify gate via the
-    ``test-auto-integrate-e2e`` make target, which is enumerated by
-    hand in the Makefile. A file that is ``subprocess_e2e``-marked
-    but missing from the target runs in CI but is excluded from
-    the verify budget the wt-23+wt-040 contract depends on; the
-    analysis-feedback rotation documented this as a rot class
-    (AGENTS.md: "behavior proven by no step make verify runs").
-    This test pins the contract: every file in the canonical
-    required set is enumerated by the target, and a synthetic
-    file added to the required set that is missing from the
-    target body fails the audit.
-    """
-    # Canonical set of subprocess_e2e auto-integrate files that
-    # the verify budget MUST charge. The set is the union of:
-    #   - the 18 files the prior pass registered
-    #   - the 3 files the analysis feedback explicitly named
-    #     (recovery, race, worktree_sync)
-    #   - test_auto_integrate_remote_refresh (e2e test for the
-    #     local-only-fetch contract)
-    #   - test_auto_integrate_catalog_e2e (the AC-14 checklist
-    #     real-git proof required by the PLAN)
-    required_files: tuple[str, ...] = (
-        "tests/test_auto_integrate_conflict_e2e.py",
-        "tests/test_auto_integrate_clone_conflict_e2e.py",
-        "tests/test_auto_integrate_worktree_prefix_e2e.py",
-        "tests/test_auto_integrate_fail_closed_e2e.py",
-        "tests/test_auto_integrate_end_to_end.py",
-        "tests/test_auto_integrate_refresh_contract.py",
-        "tests/test_auto_integrate_seams_e2e.py",
-        "tests/test_auto_integrate_conflict_seams_e2e.py",
-        "tests/test_auto_integrate_rebase_conflict_e2e.py",
-        "tests/test_auto_integrate_real_agent_resolution_e2e.py",
-        "tests/test_auto_integrate_fleet_conflict_e2e.py",
-        "tests/test_auto_integrate_local_fleet_target_e2e.py",
-        "tests/test_auto_integrate_remote_push.py",
-        "tests/test_auto_integrate_remote_refresh.py",
-        "tests/test_auto_integrate_stateless_seam.py",
-        "tests/test_auto_integrate_env_pinning.py",
-        "tests/test_auto_integrate_markerless_conflicts.py",
-        "tests/test_auto_integrate_non_main_target.py",
-        "tests/test_auto_integrate_rung4_self_resume.py",
-        "tests/test_auto_integrate_recovery.py",
-        "tests/test_auto_integrate_race.py",
-        "tests/test_auto_integrate_worktree_sync.py",
-        "tests/test_auto_integrate_catalog_e2e.py",
-    )
-    target_body = _target_body("test-auto-integrate-e2e")
-    target_text = "\n".join(target_body)
-    missing = [path for path in required_files if path not in target_text]
-    assert not missing, (
-        "test-auto-integrate-e2e target is missing the following "
-        "subprocess_e2e files; the verify gate will not run them and "
-        f"the behaviour will rot unnoticed: {missing}"
-    )
+def test_test_auto_integrate_e2e_delegates_to_canonical_registry() -> None:
+    """The focused target must use the same explicit registry as ``make test``."""
+    assert _target_body("test-auto-integrate-e2e") == [
+        "$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e"
+    ]

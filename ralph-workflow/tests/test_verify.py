@@ -190,11 +190,6 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             args=("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
             returncode=0, stdout="idempotent write adoption audit ok\n",
         ),
-        ("make", ("test-auto-integrate-e2e",)): _result(
-            command="make",
-            args=("test-auto-integrate-e2e",),
-            returncode=0, stdout="auto-integrate end-to-end ok\n",
-        ),
     }
 
 
@@ -237,24 +232,11 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
-        ("make", ("test-auto-integrate-e2e",)),
     ]
-    # The real-git end-to-end step is NOT charged against the immutable
-    # 60 s combined budget: its 240 s per-step ceiling is enforced by
-    # ``ralph.verify_timeout`` independently of the cumulative tracker.
-    # The cumulative tracker covers only the test suites ``make test``
-    # itself runs; this design is what makes ``make verify`` physically
-    # achievable on the 22 real-git subprocess files in the suite.
-    assert runner.calls[-1][3] == verify_module._AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS
-    assert (
-        verify_module._AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS
-        > verify_module._TOTAL_TEST_BUDGET_SECONDS
-    ), "the per-step ceiling must exceed the combined budget to give the suite headroom"
-    assert (
-        "auto-integrate end-to-end (make test-auto-integrate-e2e)"
-        not in verify_module._KNOWN_TEST_STEP_LABELS
+    assert all(
+        args != ("test-auto-integrate-e2e",)
+        for _command, args, *_rest in runner.calls
     )
-    assert len(verify_module._VERIFY_STEPS) - 1 not in verify_module._BUDGET_TRACKED_STEPS
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS

@@ -59,22 +59,6 @@ PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
 # `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
 # this target. Raising it does NOT raise the verify budget.
 LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
-# AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS is the per-suite timeout for
-# the `test-auto-integrate-e2e` target. That target drives real git
-# (clones, worktrees, rebases, conflicted merges) across four
-# integration seams and two repository topologies, so it does not fit
-# inside the 60s per-suite cap that gates `test-subprocess-e2e`.
-#
-# This is a PER-SUITE timeout only. The 60s combined
-# `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
-# this target: its verify step is deliberately absent from
-# ralph/verify.py:_BUDGET_TRACKED_STEPS and
-# _KNOWN_TEST_STEP_LABELS, so its real-git wall-clock time is NOT
-# summed with `make test`. It runs under its own per-step ceiling
-# (`_AUTO_INTEGRATE_E2E_TIMEOUT_SECONDS`, 240s). Raising this
-# per-suite value does NOT raise the verify budget. If this suite is
-# too slow, make it cheaper; the budget does not move.
-AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS ?= 180
 RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -161,17 +145,10 @@ test-subprocess-e2e:
 test-live-agy:
 	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
 
-# Real-git end-to-end proof of auto-integration. Every file here is
-# marked `subprocess_e2e`, which `make test` (ralph.test_suites) does
-# not collect, so this behaviour would otherwise be proven by no step
-# `make verify` runs -- the rot condition AGENTS.md forbids. The
-# matching verify step is defined in ralph/verify.py:_VERIFY_STEPS.
-#
-# Scoped to a named file list rather than the whole `subprocess_e2e`
-# marker so the verify step stays bounded, and run with the same
-# work-stealing parallelism as `test-subprocess-e2e`.
+# Focused profile over the same explicit 24-file registry used by
+# the combined ``make test`` invocation.
 test-auto-integrate-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(AUTO_INTEGRATE_E2E_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_auto_integrate_conflict_e2e.py tests/test_auto_integrate_clone_conflict_e2e.py tests/test_auto_integrate_catchup_e2e.py tests/test_auto_integrate_worktree_prefix_e2e.py tests/test_auto_integrate_fail_closed_e2e.py tests/test_auto_integrate_end_to_end.py tests/test_auto_integrate_refresh_contract.py tests/test_auto_integrate_seams_e2e.py tests/test_auto_integrate_conflict_seams_e2e.py tests/test_auto_integrate_rebase_conflict_e2e.py tests/test_auto_integrate_real_agent_resolution_e2e.py tests/test_auto_integrate_fleet_conflict_e2e.py tests/test_auto_integrate_local_fleet_target_e2e.py tests/test_auto_integrate_remote_push.py tests/test_auto_integrate_remote_refresh.py tests/test_auto_integrate_stateless_seam.py tests/test_auto_integrate_env_pinning.py tests/test_auto_integrate_markerless_conflicts.py tests/test_auto_integrate_non_main_target.py tests/test_auto_integrate_rung4_self_resume.py tests/test_auto_integrate_recovery.py tests/test_auto_integrate_race.py tests/test_auto_integrate_worktree_sync.py tests/test_auto_integrate_catalog_e2e.py -q -n $(PYTEST_WORKERS) --dist worksteal
+	$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e
 
 # Real-runtime budget test that runs ``make test`` to assert the 60 s combined
 # test budget. This test consumes ~25 s of wall-clock time by design (it
