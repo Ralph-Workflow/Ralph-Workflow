@@ -5,7 +5,7 @@ This page documents the artifacts Ralph Workflow produces and the contract each 
 
 > **New to Ralph Workflow?** See [Getting Started](getting-started.md) first — it walks you through the full pipeline before these internals make sense.
 
-Artifacts are the structured files Ralph Workflow leaves behind so later phases — and you — can understand what happened in a run. Instead of relying on terminal output alone, each phase submits a typed payload that Ralph Workflow validates and stores.
+Artifacts are the structured files Ralph Workflow leaves behind so later phases — and you — can understand what happened in a run. Instead of relying on terminal output alone, each phase submits a complete markdown document that Ralph Workflow validates against a per-type spec and stores as-is. The artifact **is** the readable markdown file — there is no separate machine-readable JSON envelope.
 
 ## Artifact types
 
@@ -25,7 +25,7 @@ Artifacts are the structured files Ralph Workflow leaves behind so later phases 
 
 > **Required artifacts:** When *Required?* is **yes**, the phase must submit the artifact before completion. A submitted artifact is still fully validated against its schema. `development_result` is policy-controlled: whether a phase requires it is set by `pipeline.toml` on the phase definition. Artifact contracts in `artifacts.toml` only describe the artifact itself.
 
-See `ralph.mcp.artifacts.typed_artifacts` for Pydantic schema definitions for each type.
+Each type's markdown grammar is declared as an `MdArtifactSpec` in `ralph/mcp/artifacts/markdown/specs/` and registered in `ralph.mcp.artifacts.markdown.registry`.
 
 ## Format docs
 
@@ -43,26 +43,41 @@ An index doc (`artifact_formats_index.md`) is also materialized at `.agent/artif
 
 ## MCP submission tools
 
-Agents submit artifacts through these MCP tools. `ralph_submit_artifact`, the plan-draft
-read/finalize helpers, and batch section submit live in `ralph.mcp.tools.artifact`.
-The step-edit tools live in `ralph.mcp.tools.plan_draft_edit`:
+Agents submit artifacts through the markdown artifact tools. The handlers live in
+`ralph.mcp.tools.md_artifact`:
 
 | Tool | Purpose |
 |---|---|
-| `ralph_submit_artifact` | Submit any artifact type as a JSON string |
-| `ralph_submit_plan_section` | Submit one section of a `plan` artifact incrementally |
-| `ralph_submit_plan_sections` | Submit multiple plan sections atomically in one batch |
-| `ralph_validate_draft` | Run the full read-only validator against the staged plan draft |
-| `ralph_insert_plan_step` | Insert one numbered step into the staged plan draft |
-| `ralph_replace_plan_step` | Replace one numbered step in the staged plan draft |
-| `ralph_remove_plan_step` | Remove one numbered step from the staged plan draft |
-| `ralph_move_plan_step` | Move one numbered step within the staged plan draft |
-| `ralph_patch_step` | Patch one numbered step while preserving the other fields |
-| `ralph_finalize_plan` | Validate the staged plan draft and write `plan.json` |
-| `ralph_get_plan_draft` | Read the currently staged plan draft |
-| `ralph_discard_plan_draft` | Delete the staged plan draft to start fresh |
+| `ralph_submit_md_artifact` | Validate one complete markdown artifact document and persist it canonically |
+| `ralph_verify_md_artifact` | Run the same validation without persisting anything; returns the same diagnostics submission would |
+| `ralph_stage_md_artifact` | Append to (or replace) a persisted markdown draft for one artifact type, without gating on validity |
+| `ralph_get_md_draft` | Return the staged draft and its current diagnostics (resume after interruption) |
+| `ralph_discard_md_draft` | Delete the staged draft for one artifact type |
+| `ralph_finalize_md_artifact` | Validate the assembled draft with the submission gate and submit it canonically |
+| `ralph_edit_md_plan_step` | Edit one plan step by stable `S-<n>` ID (`insert`, `replace`, `remove`, `move`) and return the updated document |
 
-The plan tools exist because plans are large and submitted section-by-section to avoid agent context window pressure. All other artifact types are submitted as single JSON blobs via `ralph_submit_artifact`.
+Every artifact type — including `plan` — is submitted as one markdown document via
+`ralph_submit_md_artifact` (parameters: `artifact_type`, `content`).
+`ralph_verify_md_artifact` takes the same parameters and lets an agent check a draft
+cheaply before submitting. `ralph_edit_md_plan_step` operates on plan documents passed
+in as `content`: it applies one ID-addressed step edit, renumbers step IDs to a
+contiguous `S-1..S-n` sequence, rewrites `depends_on` references accordingly,
+revalidates the result, and returns the edited markdown — it does not persist anything.
+
+### Staging large documents
+
+Large artifacts (plans in particular) can be authored incrementally instead of in one
+tool call. `ralph_stage_md_artifact` accumulates markdown into a persisted draft file
+(`.<artifact_type>.draft.md` in the artifact directory; `mode` is `append`, the
+default, or `replace_all`). Each staging call reports the draft length, a section
+outline, and the same diagnostics submission would produce — but never fails on them,
+since a partial document is expected to be incomplete. The draft survives an MCP
+server restart; `ralph_get_md_draft` returns it with fresh diagnostics for resumption.
+`ralph_finalize_md_artifact` runs the full submission gate over the assembled draft:
+on success it persists the artifact canonically and deletes the draft, on validation
+failure it keeps the draft intact for repair. A draft that would exceed the type's
+character cap is rejected without modifying the existing draft. Draft persistence
+lives in `ralph.mcp.artifacts.md_draft_io`.
 
 ## Proof policy
 
@@ -79,31 +94,65 @@ The bundled defaults enable both checks. Omitting the block in a project-local p
 - `require_plan_proof` controls whether `plan_items_proven` must cover the plan's canonical step refs or assigned work unit ids.
 - `require_analysis_proof` controls whether `analysis_items_addressed` must cover prior `how_to_fix` items when analysis feedback exists.
 
-## Schema validation
+## Validation
 
-Submitted artifacts are parsed and validated by `ralph.mcp.artifacts.typed_artifacts`. Each `artifact_type` maps to a Pydantic model. If validation fails, the MCP server returns an error that includes the validation detail plus a pointer to `.agent/artifact-formats/<type>.md` for payload-shape failures, or `.agent/artifact-formats/artifact_formats_index.md` for artifact-type selection failures. The agent is expected to read the referenced file, rebuild the payload or artifact_type, and retry the same tool. The planning artifact additionally runs through a staging layer (`ralph_submit_plan_section`, `ralph_submit_plan_sections`, the step-edit tools, `ralph_validate_draft`, then `ralph_finalize_plan`) before final validation. If `ralph_validate_draft` or `ralph_finalize_plan` fails, the repair loop is: use the staging tools to fix the draft, then rerun `ralph_validate_draft` or `ralph_finalize_plan`.
+Submitted markdown is parsed and validated by `parse_and_validate` in
+`ralph.mcp.artifacts.markdown` against the `MdArtifactSpec` registered for the
+`artifact_type`. The result is a list of line-anchored diagnostics; both
+`ralph_submit_md_artifact` and `ralph_verify_md_artifact` return the same payload:
+
+```json
+{
+  "artifact_type": "plan",
+  "valid": false,
+  "diagnostics": [
+    {"line": 12, "section": "Steps", "rule_id": "SPEC006",
+     "message": "section requires list items", "severity": "error"}
+  ]
+}
+```
+
+Each diagnostic carries the source `line`, the `section` it applies to (when known),
+a stable `rule_id`, a `message`, and a `severity`:
+
+- **`error`** — hard failure. Structural rules (`SPEC001`–`SPEC008`: character limit,
+  missing/unknown frontmatter, unknown/duplicate/missing sections, item-count limits,
+  duplicate IDs) and per-type document rules produce errors. Any error rejects the
+  submission: nothing is persisted, and the agent is expected to fix the document and
+  retry the same tool.
+- **`warning`** — the document is accepted as submitted. For example, `SPEC009` reports
+  a lenient-enum frontmatter value that was coerced to its default.
+
+The repair loop for a failed submission is: read the diagnostics (each names the line,
+section, and rule), fix the markdown, and re-run `ralph_verify_md_artifact` or
+`ralph_submit_md_artifact`. The bundled format docs under `.agent/artifact-formats/`
+describe the expected document shape for each type.
 
 ## File backend and storage
 
-Validated artifacts are persisted by `ralph.mcp.artifacts.file_backend` to the `.agent/artifacts/` directory in the workspace root:
+Validated artifacts are persisted by `submit_artifact_canonical`
+(`ralph.mcp.artifacts.canonical_submit`) through `ralph.mcp.artifacts.file_backend`
+to the `.agent/artifacts/` directory in the workspace root. The stored file is the
+submitted markdown, byte for byte:
 
 ```
 .agent/
   artifacts/
-    plan.json
-    development_result.json
-    issues.json
-    fix_result.json
-    commit_message.json
-    development_analysis_decision.json
-    review_analysis_decision.json
+    plan.md
+    development_result.md
+    issues.md
+    fix_result.md
+    commit_message.md
+    development_analysis_decision.md
+    review_analysis_decision.md
 ```
-
-The store layer (`ralph.mcp.artifacts.store`) wraps the file backend and provides read/write helpers used by the pipeline phases.
 
 ## Markdown handoffs
 
-Each validated artifact is also written as a human-readable Markdown file directly under `.agent/`. These handoff files let the next agent (or a human reviewer) inspect the artifact without parsing JSON:
+For selected artifact types, the same markdown is also written directly under `.agent/`
+at a stable, well-known path. The handoff is a byte-identical copy of the canonical
+artifact, written in the same canonical submission step, so downstream agents and human
+reviewers always find the latest artifact at a predictable location:
 
 | Artifact | Handoff file |
 |---|---|
@@ -115,30 +164,30 @@ Each validated artifact is also written as a human-readable Markdown file direct
 | `development_analysis_decision` | `.agent/DEVELOPMENT_ANALYSIS_DECISION.md` |
 | `review_analysis_decision` | `.agent/REVIEW_ANALYSIS_DECISION.md` |
 
-Handoff rendering is handled by `ralph.mcp.artifacts.handoffs`.
+The handoff paths are declared in `ralph.mcp.artifacts.handoffs` (`HANDOFF_PATHS`);
+`parallel_development_summary` reuses `.agent/DEVELOPMENT_RESULT.md` so the analysis
+phase picks it up through the same path.
 
 ### Plan handoff precondition
 
-`.agent/PLAN.md` is the authoritative human- and agent-readable form of the finalized plan. Every downstream prompt (planning loopback/edit, planning analysis, development, development analysis, review, and any other non-fresh-planning template) **must** have either a `plan.json` artifact or an existing `.agent/PLAN.md` before prompt materialization runs. If neither is present, `materialize_prompt_for_phase` raises `MissingPlanHandoffError`.
+`.agent/PLAN.md` is the human- and agent-readable form of the finalized plan. Every downstream prompt (planning loopback/edit, planning analysis, development, development analysis, review, and any other non-fresh-planning template) **must** have a plan handoff available before prompt materialization runs. If none is present, `materialize_prompt_for_phase` raises `MissingPlanHandoffError` naming `.agent/PLAN.md`.
 
 The only templates that are allowed to run without a plan are `planning.jinja` and `planning_fallback.jinja`, because those are the phases that *create* the plan in the first place. All other templates — including `planning_edit.jinja`, `planning_analysis.jinja`, `developer_iteration.jinja`, `development_analysis.jinja`, and `review.jinja` — require the plan to already exist.
 
-When `plan.json` is present but `.agent/PLAN.md` is absent, the materialization layer regenerates the Markdown handoff automatically from the JSON artifact before rendering the prompt.
+Because the canonical submission step writes `.agent/artifacts/plan.md` and `.agent/PLAN.md` together, a successfully submitted plan always satisfies this precondition.
 
 ## Artifact history
 
-When a phase has `artifact_history.enabled = true` in its `pipeline.toml` policy, the artifact layer archives the current canonical artifact and its Markdown handoff **before** overwriting them with the new submission. Archives are stored under `.agent/artifacts/history/<artifact_type>/` with a timestamped filename:
+When a phase has `artifact_history.enabled = true` in its `pipeline.toml` policy, the artifact layer archives the current canonical artifact (and its Markdown handoff, when one exists) **before** overwriting them with the new submission. Archives are stored under `.agent/artifacts/history/<artifact_type>/` with a timestamped filename:
 
 ```
 .agent/
   artifacts/
-    plan.json          ← canonical latest
+    plan.md            ← canonical latest
     history/
       plan/
-        20260415T120000_plan.json
-        20260415T120000_PLAN.md
-        20260416T093000_plan.json
-        20260416T093000_PLAN.md
+        20260415T120000_plan.md
+        20260416T093000_plan.md
         index.md       ← chronological index rebuilt after each archive
 ```
 
@@ -182,11 +231,11 @@ This applies to both planning prompts (`planning.jinja`, `planning_edit.jinja`, 
 
 ### Implementation
 
-Archival is handled by `ralph.mcp.artifacts.history`. The `archive_artifact_before_overwrite` function copies the current `.agent/artifacts/<type>.json` and `.agent/<TYPE>.md` to the history directory and rebuilds `index.md`. This runs as the first `_SubmitOp` inside the artifact submission transaction so that a submission failure triggers rollback and removes the orphaned archive files.
+Archival is handled by `ralph.mcp.artifacts.history`. When history is enabled and a canonical `.agent/artifacts/<type>.md` already exists, `submit_artifact_canonical` calls `snapshot_current_artifact` before overwriting it: the current artifact (and its `.agent/<TYPE>.md` handoff, when present) is copied into the history directory under a timestamped `.md` filename and `index.md` is rebuilt.
 
 ## Fresh-entry drain clearing
 
-In addition to the artifact history archive, Ralph Workflow can delete the primary artifact files (JSON + Markdown handoff) for one or more drains at the start of a fresh phase entry. This is controlled by the `clear_drains_on_fresh_entry` field on a phase definition in `pipeline.toml`:
+In addition to the artifact history archive, Ralph Workflow can delete the primary artifact files (the canonical markdown artifact plus its handoff copy) for one or more drains at the start of a fresh phase entry. This is controlled by the `clear_drains_on_fresh_entry` field on a phase definition in `pipeline.toml`:
 
 ```toml
 [phases.planning]
@@ -199,9 +248,9 @@ clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_
 clear_drains_on_fresh_entry = ["development", "development_analysis"]
 ```
 
-Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes the primary artifact JSON and its Markdown handoff for each listed drain, preventing stale context from a previous cycle from leaking into the current one.
+Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes the canonical artifact and its Markdown handoff for each listed drain, preventing stale context from a previous cycle from leaking into the current one.
 
-**Difference from `artifact_history.clear_on_fresh_entry`:** That field clears only the history archive (`.agent/artifacts/history/<type>/`), leaving the canonical artifact files in place. `clear_drains_on_fresh_entry` removes the primary files themselves (`.agent/artifacts/<type>.json` and `.agent/<TYPE>.md`).
+**Difference from `artifact_history.clear_on_fresh_entry`:** That field clears only the history archive (`.agent/artifacts/history/<type>/`), leaving the canonical artifact files in place. `clear_drains_on_fresh_entry` removes the primary files themselves (`.agent/artifacts/<type>.md` and `.agent/<TYPE>.md`).
 
 **When clearing fires:** On program start, cross-phase transition (including last-commit → planning re-entry after a successful commit), and any entry where the incoming previous phase is not an analysis loopback back into this phase.
 
