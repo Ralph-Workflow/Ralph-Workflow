@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
@@ -9,8 +10,9 @@ from pydantic import ConfigDict, Field, ValidationError, model_validator
 if TYPE_CHECKING:
     from pathlib import Path
 
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.smoke_test_result_validation_error import SmokeTestResultValidationError
-from ralph.mcp.artifacts.store import get_artifact
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.pydantic_validation_errors import format_validation_error_messages
 
@@ -59,18 +61,26 @@ def read_smoke_test_result_artifact(repo_root: Path) -> dict[str, object] | None
     or fails schema validation against :class:`SmokeTestResult`.  This prevents
     a malformed or incomplete artifact from influencing pass/fail decisions.
     """
-    artifact_dir = repo_root / ".agent" / "artifacts"
+    artifact_path = (
+        repo_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
+    )
     try:
-        artifact = get_artifact(artifact_dir, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
-    except Exception:
+        import_module("ralph.mcp.artifacts.markdown.specs")
+        markdown = artifact_path.read_text(encoding="utf-8")
+        content, diagnostics = parse_and_validate(
+            markdown,
+            get_spec(SMOKE_TEST_RESULT_ARTIFACT_TYPE),
+        )
+    except (OSError, ValueError):
         return None
-    payload = artifact.content
-    content: dict[str, object] = {str(key): value for key, value in payload.items()}
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return None
+    normalized = {str(key): value for key, value in content.items()}
     try:
-        normalize_smoke_test_result_content(content)
+        normalize_smoke_test_result_content(normalized)
     except SmokeTestResultValidationError:
         return None
-    return content
+    return normalized
 
 
 __all__ = [

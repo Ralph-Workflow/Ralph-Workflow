@@ -1,17 +1,16 @@
 """Artifact history archival and indexing.
 
 When a phase's artifact_history policy has enabled=True, the runtime archives
-the current canonical artifact JSON and its Markdown handoff into a stable
+the current canonical Markdown artifact and its Markdown handoff into a stable
 history directory before overwriting them. This lets planning agents inspect
 prior failed plans and analysis decisions across re-planning loops.
 
 Layout under .agent/artifacts/:
     history/<artifact_type>/            -- history root for a type
-        <timestamp>_<artifact_type>.json  -- archived canonical JSON
-        <timestamp>_<artifact_type>.md    -- archived Markdown handoff (when present)
+        <timestamp>_<artifact_type>.md    -- archived canonical Markdown
         index.md                          -- human-readable summary of archived entries
 
-The canonical latest files (.agent/artifacts/plan.json, .agent/PLAN.md, etc.)
+The canonical latest files (.agent/artifacts/plan.md, .agent/PLAN.md, etc.)
 are never moved here — they remain the authoritative current state. History
 contains only prior versions that were overwritten.
 """
@@ -80,7 +79,7 @@ def archive_artifact_before_overwrite(
 ) -> list[Path]:
     """Archive the current canonical artifact files before they are overwritten.
 
-    Reads the current canonical JSON artifact and its Markdown handoff (if any),
+    Reads the current canonical Markdown artifact and its handoff (if any),
     writes them into the history directory under a timestamped prefix, then
     rebuilds the history index.
 
@@ -92,11 +91,11 @@ def archive_artifact_before_overwrite(
         now_iso: Callable returning the current timestamp as an ISO 8601 string.
 
     Returns:
-        List of Paths of files created by this operation (JSON and MD archives,
+        List of Paths of files created by this operation (Markdown archives,
         NOT the index). The caller can use these paths to roll back the archive.
     """
-    canonical_json = artifact_dir / f"{artifact_type}.md"
-    if not backend.exists(canonical_json):
+    canonical_markdown = artifact_dir / f"{artifact_type}.md"
+    if not backend.exists(canonical_markdown):
         return []
 
     timestamp = _safe_timestamp(now_iso)
@@ -105,17 +104,22 @@ def archive_artifact_before_overwrite(
 
     created: list[Path] = []
 
-    # Archive the canonical JSON
-    archive_json = hist_dir / f"{timestamp}_{artifact_type}.md"
-    backend.write_text(archive_json, backend.read_text(canonical_json))
-    created.append(archive_json)
+    archive_markdown = hist_dir / f"{timestamp}_{artifact_type}.md"
+    backend.write_text(archive_markdown, backend.read_text(canonical_markdown))
+    created.append(archive_markdown)
 
     # Archive the Markdown handoff if it exists
     handoff_rel = handoff_path_for_artifact(artifact_type)
     if handoff_rel:
         handoff_abs = workspace_root / handoff_rel
         if backend.exists(handoff_abs):
-            archive_md = hist_dir / f"{timestamp}_{artifact_type}.md"
+            archive_md = _unique_archive_path(
+                hist_dir,
+                artifact_type,
+                ".md",
+                backend=backend,
+                now_iso=now_iso,
+            )
             backend.write_text(archive_md, backend.read_text(handoff_abs))
             created.append(archive_md)
 
@@ -138,23 +142,23 @@ def snapshot_current_artifact(
     Unlike archive-before-overwrite, this records the current successful artifact
     immediately after submission so history exists from the first completed phase.
     """
-    canonical_json = artifact_dir / f"{artifact_type}.md"
-    if not backend.exists(canonical_json):
+    canonical_markdown = artifact_dir / f"{artifact_type}.md"
+    if not backend.exists(canonical_markdown):
         return []
 
     hist_dir = history_dir_for_artifact(artifact_dir, artifact_type)
     backend.mkdir(hist_dir, parents=True, exist_ok=True)
     created: list[Path] = []
 
-    archive_json = _unique_archive_path(
+    archive_markdown = _unique_archive_path(
         hist_dir,
         artifact_type,
         ".md",
         backend=backend,
         now_iso=now_iso,
     )
-    backend.write_text(archive_json, backend.read_text(canonical_json))
-    created.append(archive_json)
+    backend.write_text(archive_markdown, backend.read_text(canonical_markdown))
+    created.append(archive_markdown)
 
     handoff_rel = handoff_path_for_artifact(artifact_type)
     if handoff_rel:
@@ -189,11 +193,11 @@ def rebuild_history_index(
     if not backend.exists(hist_dir):
         return
 
-    json_files = sorted(
+    markdown_files = sorted(
         p for p in backend.glob(hist_dir, "*.md") if _TIMESTAMP_PATTERN.match(p.name)
     )
 
-    if not json_files:
+    if not markdown_files:
         index_path = hist_dir / "index.md"
         if backend.exists(index_path):
             backend.unlink(index_path)
@@ -206,12 +210,12 @@ def rebuild_history_index(
     )
     lines.append("")
 
-    for json_path in json_files:
-        m = _TIMESTAMP_PATTERN.match(json_path.name)
-        ts = m.group(1) if m else json_path.stem
+    for markdown_path in markdown_files:
+        m = _TIMESTAMP_PATTERN.match(markdown_path.name)
+        ts = m.group(1) if m else markdown_path.stem
         lines.append(f"## {ts}")
         lines.append("")
-        lines.append(f"- Markdown: `{json_path.name}`")
+        lines.append(f"- Markdown: `{markdown_path.name}`")
         lines.append("")
 
     index_path = hist_dir / "index.md"

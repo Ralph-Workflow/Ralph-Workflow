@@ -15,7 +15,6 @@ Covers the contract:
 
 from __future__ import annotations
 
-import json
 import shutil
 import tempfile
 from functools import lru_cache
@@ -105,84 +104,109 @@ _PHASE_TO_HANDLER = {
     "development_analysis": _analysis_handler_for("development_analysis"),
 }
 
-# Legacy plan format: no "summary" key → _is_legacy_work_units_payload returns True,
-# skipping full PlanArtifact pydantic validation in the development handler.
-_VALID_PLAN_JSON_LEGACY = json.dumps(
-    {"work_units": [{"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}]}
-)
+_VALID_PLAN_MARKDOWN = """\
+---
+type: plan
+schema_version: 1
+---
+## Summary
+Test plan for the retry contract.
 
-# Full PlanArtifact-compliant JSON for use in tests that also call materialize_prompt,
-# which triggers plan markdown handoff rendering via normalize_plan_artifact_content.
-_VALID_PLAN_JSON_FULL = json.dumps(
-    {
-        "type": "plan",
-        "content": {
-            "summary": {
-                "context": "test context",
-                "scope_items": [
-                    {"text": "item one"},
-                    {"text": "item two"},
-                    {"text": "item three"},
-                ],
-            },
-            "skills_mcp": {
-                "skills": ["test-driven-development", "verification-before-completion"],
-                "mcps": [],
-            },
-            "steps": [
-                {"number": 1, "title": "test step", "content": "do something"},
-            ],
-            "critical_files": {
-                "primary_files": [{"path": "src/a.py", "action": "modify"}],
-            },
-            "risks_mitigations": [
-                {"risk": "test risk", "mitigation": "test mitigation"},
-            ],
-            "verification_strategy": [
-                {"method": "run tests", "expected_outcome": "tests pass"},
-            ],
-            "work_units": [
-                {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]},
-            ],
-        },
-    }
-)
+## Scope
+- [SC-1] Exercise retry handling
+  Category: test
+- [SC-2] Preserve canonical artifact validation
+  Category: test
+- [SC-3] Verify retry recovery
+  Category: test
 
-_VALID_DEV_RESULT_JSON = json.dumps(
-    {
-        "type": "development_result",
-        "content": {
-            "status": "completed",
-            "summary": "Done.",
-            "files_changed": "- src/a.py",
-        },
-    }
-)
+## Skills MCP
+Skills: test-driven-development
 
-_VALID_DEV_RESULT_WITH_PROOF_JSON = json.dumps(
-    {
-        "type": "development_result",
-        "content": {
-            "status": "completed",
-            "summary": "Done.",
-            "files_changed": "- src/a.py",
-            "plan_items_proven": [{"plan_item": "Step 1: test step", "proof": "Implemented."}],
-            "analysis_items_addressed": [],
-        },
-    }
-)
+## Steps
+### [S-1] Implement the test change
+Update the fixture used by the retry contract.
 
-_VALID_DEV_ANALYSIS_JSON = json.dumps(
-    {
-        "type": "development_analysis_decision",
-        "content": {"status": "completed"},
-    }
-)
+Type: file_change
+Files:
+- modify src/a.py
+Satisfies: AC-01
+
+### [S-2] Verify the test change
+Run the focused retry-contract test after updating the fixture.
+
+Type: verify
+Depends on: S-1
+Verify: pytest tests/test_artifact_retry_contract.py -q
+
+## Critical Files
+- [CF-1] src/a.py
+  Action: modify
+  Changes: implement the test change
+
+## Constraints
+Must not break:
+- retry routing
+
+## Design
+Keep retry hints tied to canonical Markdown artifacts.
+
+## Acceptance Criteria
+- [AC-01] Retry succeeds after a valid artifact is submitted
+  Satisfied by: S-1
+  Verify: pytest tests/test_artifact_retry_contract.py -q
+
+## Risks
+- [R-1] Fixtures drift from the canonical format
+  Severity: medium
+  Mitigation: Parse fixtures through the production artifact loader.
+
+## Verification
+- [V-1] pytest tests/test_artifact_retry_contract.py -q
+  Expect: retry tests pass
+"""
+
+_VALID_DEV_RESULT_MARKDOWN = """\
+---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Done.
+
+## Files Changed
+- [F-1] src/a.py
+"""
+
+_VALID_DEV_RESULT_WITH_PROOF_MARKDOWN = """\
+---
+type: development_result
+status: completed
+---
+## Summary
+- [SUM-1] Done.
+
+## Files Changed
+- [F-1] src/a.py
+
+## Plan Items Proven
+- [S-1] Implemented the test change in src/a.py.
+- [S-2] Ran pytest tests/test_artifact_retry_contract.py -q successfully.
+"""
+
+_VALID_DEV_ANALYSIS_MARKDOWN = """\
+---
+type: development_analysis_decision
+status: completed
+---
+## Summary
+- [SUM-1] The implementation matches the plan.
+"""
 
 _PHASE_VALID_ARTIFACT: dict[str, str] = {
-    "planning": json.dumps({"type": "plan", "content": {"summary": "x"}}),
-    "development": _VALID_DEV_RESULT_JSON,
-    "development_analysis": _VALID_DEV_ANALYSIS_JSON,
+    "planning": _VALID_PLAN_MARKDOWN,
+    "development": _VALID_DEV_RESULT_MARKDOWN,
+    "development_analysis": _VALID_DEV_ANALYSIS_MARKDOWN,
 }
 
 
@@ -211,11 +235,14 @@ def _setup_phase_prerequisites(
     workspace: MemoryWorkspace, phase: str, *, full_plan: bool = False
 ) -> None:
     """Write required input artifacts for a phase so we test the *output* contract."""
-    plan_json = _VALID_PLAN_JSON_FULL if full_plan else _VALID_PLAN_JSON_LEGACY
+    del full_plan
     if phase in {"development", "development_analysis"}:
-        workspace.write(".agent/artifacts/plan.json", plan_json)
+        workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
     if phase == "development_analysis":
-        workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_JSON)
+        workspace.write(
+            ".agent/artifacts/development_result.md",
+            _VALID_DEV_RESULT_WITH_PROOF_MARKDOWN,
+        )
 
 
 _OPTIONAL_ARTIFACTS = _load_default_optional_artifact_phases()
@@ -306,7 +333,7 @@ def test_development_missing_dev_result_returns_phase_failure() -> None:
     The artifact is now required.
     """
     workspace = MemoryWorkspace()
-    workspace.write(".agent/artifacts/plan.json", _VALID_PLAN_JSON_LEGACY)
+    workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
     ctx = _make_ctx(workspace)
 
     events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
@@ -328,7 +355,7 @@ def test_development_missing_dev_result_uses_pipeline_owned_required_policy(
     _copy_default_policy_files(artifact_policy_dir)
     policy = load_policy(artifact_policy_dir)
     workspace = MemoryWorkspace()
-    workspace.write(".agent/artifacts/plan.json", _VALID_PLAN_JSON_LEGACY)
+    workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
     ctx = _make_ctx(workspace, policy=policy)
 
     events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
@@ -373,14 +400,14 @@ def test_retry_hint_content_includes_artifact_info(phase: str) -> None:
 def test_retry_hint_is_error_first_and_artifact_centered() -> None:
     hint = build_retry_hint(
         "development",
-        "Missing required artifact at .agent/artifacts/development_result.json",
+        "Missing required artifact at .agent/artifacts/development_result.md",
         registry=REQUIRED_ARTIFACTS,
     )
 
     first_line = hint.splitlines()[0]
     assert first_line == "ERROR RECOVERY REQUIRED"
     assert "development_result" in hint
-    assert ".agent/artifacts/development_result.json" in hint
+    assert ".agent/artifacts/development_result.md" in hint
     assert "do not restart the task from scratch" in hint.lower()
     assert "internet outage" in hint.lower() or "external" in hint.lower()
 
@@ -420,7 +447,7 @@ def test_development_proof_failure_uses_retry_hint_contract(
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "fix the proof failure without restarting")
     _setup_phase_prerequisites(workspace, "development", full_plan=True)
-    workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_JSON)
+    workspace.write(".agent/artifacts/development_result.md", _VALID_DEV_RESULT_MARKDOWN)
 
     ctx = _make_ctx(workspace, policy)
     events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
@@ -449,7 +476,10 @@ def test_development_proof_failure_uses_retry_hint_contract(
     assert "proof entries are incomplete or invalid" in rendered
     assert not workspace.exists(retry_hint_path("development"))
 
-    workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_WITH_PROOF_JSON)
+    workspace.write(
+        ".agent/artifacts/development_result.md",
+        _VALID_DEV_RESULT_WITH_PROOF_MARKDOWN,
+    )
     ctx2 = _make_ctx(workspace, policy)
     events2 = _execution_handler_for("development")(_invoke_effect("development"), ctx2)
     assert PipelineEvent.AGENT_SUCCESS in events2

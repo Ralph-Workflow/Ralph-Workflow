@@ -77,13 +77,13 @@ class TestRunPromptHelper:
         prompt_file = workspace_root / ".agent" / "tmp" / "prompt_helper_prompt.md"
         assert prompt_file.exists()
 
-    def test_prompt_file_contains_tool_name(
+    def test_prompt_file_contains_markdown_submit_tool_name(
         self,
         workspace_root: Path,
         config_with_helper_agent: UnifiedConfig,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Prompt file contains the submit_artifact_tool_name."""
+        """Prompt file names the canonical Markdown submission tool."""
         self._stub_runtime(monkeypatch)
         _patch_idea(monkeypatch)
 
@@ -96,7 +96,7 @@ class TestRunPromptHelper:
 
         prompt_file = workspace_root / ".agent" / "tmp" / "prompt_helper_prompt.md"
         content = prompt_file.read_text(encoding="utf-8")
-        assert "ralph_submit_artifact" in content
+        assert "ralph_submit_md_artifact" in content
 
     def test_idea_is_embedded_in_first_turn_prompt(
         self,

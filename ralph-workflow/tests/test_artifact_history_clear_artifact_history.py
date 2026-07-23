@@ -22,28 +22,28 @@ class TestClearArtifactHistory:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         clear_artifact_history(artifact_dir, "plan")  # must not raise
 
-    def test_removes_archived_json_and_md_files(self, tmp_path: Path) -> None:
+    def test_removes_archived_markdown_files_and_index(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         hist_dir = history_dir_for_artifact(artifact_dir, "plan")
         hist_dir.mkdir(parents=True)
-        json_file = hist_dir / "20260506T120000_plan.json"
         md_file = hist_dir / "20260506T120000_plan.md"
+        second_md_file = hist_dir / "20260506T120000_1_plan.md"
         index_file = hist_dir / "index.md"
-        json_file.write_text("{}", encoding="utf-8")
         md_file.write_text("# Plan", encoding="utf-8")
+        second_md_file.write_text("# Plan handoff", encoding="utf-8")
         index_file.write_text("# Index", encoding="utf-8")
 
         clear_artifact_history(artifact_dir, "plan")
 
-        assert not json_file.exists()
         assert not md_file.exists()
+        assert not second_md_file.exists()
         assert not index_file.exists()
 
     def test_history_dir_itself_remains_after_clear(self, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         hist_dir = history_dir_for_artifact(artifact_dir, "plan")
         hist_dir.mkdir(parents=True)
-        (hist_dir / "20260506T120000_plan.json").write_text("{}", encoding="utf-8")
+        (hist_dir / "20260506T120000_plan.md").write_text("# Plan", encoding="utf-8")
 
         clear_artifact_history(artifact_dir, "plan")
 

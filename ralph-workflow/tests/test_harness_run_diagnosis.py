@@ -16,6 +16,7 @@ from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.smoke_test_result import read_smoke_test_result_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
@@ -939,26 +940,47 @@ def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
     assert captured_params[0].unified_config.general.agent_max_session_seconds == 120.0
 
 
-def _make_artifact(tmp_path: Path, *, observed_breaks: list[str]) -> None:
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+def _make_artifact(
+    tmp_path: Path,
+    *,
+    observed_breaks: list[str],
+    run_id: str = "interactive-claude-smoke",
+) -> None:
+    artifact_path = tmp_path / ".agent" / "tmp" / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    breaks_section = (
+        "\n## Observed Breaks\n"
+        + "\n".join(
+            f"- [BR-{index}] {item}" for index, item in enumerate(observed_breaks, 1)
+        )
+        if observed_breaks
+        else ""
+    )
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "artifact_type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    "summary": "ok",
-                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
-                    "observed_working": ["tmp artifact created"],
-                    "observed_breaks": observed_breaks,
-                    "headless_guide_checks": ["tool activity"],
-                },
-            }
-        ),
+        f"""\
+---
+type: smoke_test_result
+status: passed
+output_file: tmp/interactive-agy-smoke/todo-list.js
+---
+## Summary
+- [SUM-1] Smoke checks passed.
+
+## Observed Working
+- [OK-1] tmp artifact created
+
+{breaks_section}
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
+    result = promote_fallback_artifact(
+        tmp_path,
+        "smoke_test_result",
+        run_id=run_id,
+    )
+    assert result is not None
 
 
 def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
@@ -1128,7 +1150,11 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    _make_artifact(tmp_path, observed_breaks=["something went wrong"])
+    _make_artifact(
+        tmp_path,
+        observed_breaks=["something went wrong"],
+        run_id="interactive-claude-smoke",
+    )
 
     config = AgentConfig(
         cmd="agy",
@@ -1174,7 +1200,11 @@ def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_act
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    _make_artifact(tmp_path, observed_breaks=[])
+    _make_artifact(
+        tmp_path,
+        observed_breaks=[],
+        run_id="interactive-nanocoder-smoke",
+    )
 
     config = AgentConfig(
         cmd="nanocoder",
@@ -1420,19 +1450,10 @@ def test_read_smoke_test_result_artifact_returns_none_for_invalid_content(
 ) -> None:
     """An artifact with invalid content (missing required field) returns None."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_path = artifact_dir / "smoke_test_result.json"
+    artifact_path = artifact_dir / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    # missing summary, output_file, headless_guide_checks
-                },
-            }
-        ),
+        "---\ntype: smoke_test_result\nstatus: passed\n---\n",
         encoding="utf-8",
     )
 
@@ -1454,23 +1475,24 @@ def test_read_smoke_test_result_artifact_returns_validated_content(
 ) -> None:
     """A fully valid artifact returns the validated content dict."""
     artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_path = artifact_dir / "smoke_test_result.json"
+    artifact_path = artifact_dir / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    "summary": "all checks passed",
-                    "output_file": "tmp/smoke/output.js",
-                    "observed_working": ["created output"],
-                    "observed_breaks": [],
-                    "headless_guide_checks": ["tool activity"],
-                },
-            }
-        ),
+        """\
+---
+type: smoke_test_result
+status: passed
+output_file: tmp/smoke/output.js
+---
+## Summary
+- [SUM-1] all checks passed
+
+## Observed Working
+- [OK-1] created output
+
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 
