@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,16 +18,19 @@ from ralph.workspace.memory import MemoryWorkspace
 _TINY_PROMPT = "Implement the feature."
 _LARGE_CONTENT = "X" * (100 * 1024 + 1)
 
-_MINIMAL_DEV_RESULT = json.dumps(
-    {
-        "type": "development_result",
-        "content": {
-            "status": "completed",
-            "summary": "Done.",
-            "files_changed": "- src/app.py",
-        },
-    }
-)
+_MINIMAL_DEV_RESULT = """---
+type: development_result
+status: completed
+---
+## Summary
+Done.
+
+## Files Changed
+- src/app.py
+
+## Proof
+- [S-1] Added the regression coverage.
+"""
 
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
@@ -53,7 +55,7 @@ def _render_development_analysis(
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", prompt_content)
     _write_plan_handoff(workspace)
-    workspace.write(".agent/artifacts/development_result.json", _MINIMAL_DEV_RESULT)
+    workspace.write(".agent/artifacts/development_result.md", _MINIMAL_DEV_RESULT)
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
             PromptPhaseContext(
@@ -94,5 +96,5 @@ class TestDevelopmentAnalysisNeverInlinesPromptOrPlan:
     ) -> None:
         rendered = _render_development_analysis(tmp_path)
         has_inline = "Done." in rendered
-        has_path = "DEVELOPMENT_RESULT.md" in rendered
+        has_path = ".agent/artifacts/development_result.md" in rendered
         assert has_inline or has_path, "LATEST ARTIFACT must be present (inline or path ref)"

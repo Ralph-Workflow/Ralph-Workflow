@@ -22,9 +22,10 @@ def test_canonical_types_contains_commit_message_and_plan() -> None:
     assert "plan" in _CANONICAL_TYPES
 
 
-def test_review_and_verification_types_are_canonical() -> None:
-    assert "review" in _CANONICAL_TYPES
-    assert "verification" in _CANONICAL_TYPES
+def test_analysis_decision_types_are_canonical() -> None:
+    assert "planning_analysis_decision" in _CANONICAL_TYPES
+    assert "development_analysis_decision" in _CANONICAL_TYPES
+    assert "review_analysis_decision" in _CANONICAL_TYPES
 
 
 def test_canonical_types_used_in_forbidden_path_patterns() -> None:

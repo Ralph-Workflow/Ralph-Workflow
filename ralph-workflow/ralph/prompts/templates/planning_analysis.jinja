@@ -18,7 +18,10 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 {{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
-Read the current plan document at `.agent/artifacts/plan.md` (mirror: `.agent/PLAN.md`; grammar: `.agent/artifact-formats/plan.md`) before evaluating it.
+Read the current finalized plan document at `.agent/artifacts/plan.md` (mirror:
+`.agent/PLAN.md`; grammar: `.agent/artifact-formats/plan.md`) before evaluating it.
+If no finalized plan exists, retrieve the current staged draft with
+{{ GET_MD_DRAFT_TOOL_REFERENCE }} using `artifact_type="plan"`.
 
 {% if HAS_DOCS_MCP %}
 
@@ -42,7 +45,7 @@ The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. W
 If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively
 whenever it improves evidence quality or reduces time to verified evidence.
 
-Your first priority is retrieving and checking the real analysis inputs: PROMPT and the current plan document,
+Your first priority is retrieving and checking the real analysis inputs: PROMPT and the current finalized plan or staged draft,
 plus the referenced repository files, representative verification commands, relevant policy/config files,
 and surrounding code or tests needed to confirm the plan is real and executable.
 

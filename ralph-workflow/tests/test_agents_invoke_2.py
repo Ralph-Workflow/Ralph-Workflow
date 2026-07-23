@@ -452,8 +452,8 @@ def test_provider_allowed_mcp_tool_names_dedupes_mixed_raw_and_aliased_names(
     mixed = [
         "read_file",
         "mcp__ralph__read_file",
-        "ralph_submit_artifact",
-        "mcp__ralph__ralph_submit_artifact",
+        "ralph_submit_md_artifact",
+        "mcp__ralph__ralph_submit_md_artifact",
     ]
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
@@ -464,7 +464,7 @@ def test_provider_allowed_mcp_tool_names_dedupes_mixed_raw_and_aliased_names(
 
     assert allowed == (
         claude_tool_name("read_file"),
-        claude_tool_name("ralph_submit_artifact"),
+        claude_tool_name("ralph_submit_md_artifact"),
     )
     assert len(allowed) == len(set(allowed))
 
@@ -485,7 +485,10 @@ def test_provider_allowed_mcp_tool_names_dedupes_double_prefixed_alias(
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
-        lambda endpoint: ["mcp__ralph__read_file", "mcp__ralph__ralph_submit_artifact"],
+        lambda endpoint: [
+            "mcp__ralph__read_file",
+            "mcp__ralph__ralph_submit_md_artifact",
+        ],
     )
 
     allowed = provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
@@ -496,7 +499,7 @@ def test_provider_allowed_mcp_tool_names_dedupes_double_prefixed_alias(
         )
     assert allowed == (
         claude_tool_name("read_file"),
-        claude_tool_name("ralph_submit_artifact"),
+        claude_tool_name("ralph_submit_md_artifact"),
     )
 
 

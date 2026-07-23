@@ -154,7 +154,7 @@ class TestAnalysisTemplatesStructuralInvariants:
             if template.name == "planning_analysis.jinja":
                 assert "render_payload_path('PLAN'" not in source
                 assert 'render_payload_path("PLAN"' not in source
-                assert "GET_PLAN_DRAFT_TOOL_REFERENCE" in source
+                assert "GET_MD_DRAFT_TOOL_REFERENCE" in source
                 continue
             uses_path = (
                 "render_payload_path('PLAN'" in source or 'render_payload_path("PLAN"' in source

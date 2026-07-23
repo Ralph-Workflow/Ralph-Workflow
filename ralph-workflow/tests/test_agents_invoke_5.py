@@ -176,7 +176,7 @@ class TestResolveInvocationRuntime:
             lambda endpoint: [
                 "read_file",
                 "mcp__ralph__read_file",
-                "ralph_submit_artifact",
+                "ralph_submit_md_artifact",
             ],
         )
 
@@ -188,8 +188,8 @@ class TestResolveInvocationRuntime:
         assert servers["ralph"]["alwaysAllow"] == [
             "read_file",
             "mcp__ralph__read_file",
-            "ralph_submit_artifact",
-            "mcp__ralph__ralph_submit_artifact",
+            "ralph_submit_md_artifact",
+            "mcp__ralph__ralph_submit_md_artifact",
         ]
 
     def test_prepare_interactive_claude_options_preserves_new_invoke_fields(self) -> None:

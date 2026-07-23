@@ -431,7 +431,7 @@ def test_build_standalone_http_server_filters_tools_by_session_capabilities(tmp_
 
     assert "read_file" in tool_names
     assert "directory_tree" in tool_names
-    assert "ralph_submit_artifact" in tool_names
+    assert "ralph_submit_md_artifact" in tool_names
     assert "exec" not in tool_names
     assert "write_file" not in tool_names
 
@@ -464,7 +464,7 @@ def test_build_standalone_http_server_preserves_registry_input_schema(tmp_path: 
     assert read_env_schema["required"] == ["name"]
     assert "name" in properties
 
-    submit_artifact_schema_raw = tools["ralph_submit_artifact"]["inputSchema"]
+    submit_artifact_schema_raw = tools["ralph_submit_md_artifact"]["inputSchema"]
     submit_artifact_schema = cast("dict[str, object]", submit_artifact_schema_raw)
     submit_properties = cast("dict[str, object]", submit_artifact_schema["properties"])
     assert "partial" not in submit_properties
@@ -583,33 +583,11 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
     workspace = FsWorkspace(tmp_path)
     registry = server_runtime.build_ralph_tool_registry(session, workspace)
     mcp_server = server_runtime.McpServer(session, workspace, registry)
-    payload = {
-        "summary": {
-            "context": "Ship the planning artifact via Ralph MCP.",
-            "scope_items": [
-                {"text": "Expose the planning submission tools"},
-                {"text": "Persist the plan artifact"},
-                {"text": "Validate the plan in the planning phase"},
-            ],
-        },
-        "skills_mcp": {
-            "skills": [
-                "test-driven-development",
-                "verification-before-completion",
-            ],
-            "mcps": [],
-        },
-        "steps": [{"number": 1, "title": "Submit the plan", "content": "Persist it."}],
-        "critical_files": {
-            "primary_files": [{"path": "ralph/mcp/tool_artifact.py", "action": "modify"}]
-        },
-        "risks_mitigations": [
-            {"risk": "Tool exposure drift", "mitigation": "Exercise the MCP boundary end-to-end"}
-        ],
-        "verification_strategy": [
-            {"method": "pytest", "expected_outcome": "planning accepts the submitted artifact"}
-        ],
-    }
+    document = """---
+type: plan
+noop: true
+---
+"""
 
     initialize, state = mcp_server.handle_request(
         server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
@@ -634,10 +612,10 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
             method="tools/call",
             msg_id=4,
             params={
-                "name": "ralph_submit_artifact",
+                "name": "ralph_submit_md_artifact",
                 "arguments": {
                     "artifact_type": "plan",
-                    "content": json.dumps(payload),
+                    "content": document,
                 },
             },
         ),
@@ -661,11 +639,13 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
     assert initialize is not None
     assert initialize.error is None
     assert initialized_response is None
-    assert "ralph_submit_artifact" in tool_names
+    assert "ralph_submit_md_artifact" in tool_names
     assert submit_response is not None
     assert submit_response.error is None
+    submit_result = cast("dict[str, object]", submit_response.result)
+    assert submit_result["isError"] is False
     assert planning_result == [PipelineEvent.AGENT_SUCCESS]
-    assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+    assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
 
 
 def test_upstream_client_factory_selects_transport_by_server_config() -> None:
