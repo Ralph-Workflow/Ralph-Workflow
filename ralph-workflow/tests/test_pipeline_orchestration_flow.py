@@ -85,14 +85,10 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
         determine_next_effect(state, bundle.pipeline, bundle.agents), PreparePromptEffect
     )
 
+    # The default planning_analysis loop counter is 0, so a successful
+    # planning phase routes straight into development with no
+    # planning-analysis pass in between.
     state = _apply(state, PipelineEvent.AGENT_SUCCESS)
-    visited_phases.append(state.phase)
-    assert state.phase == "planning_analysis"
-    effect = determine_next_effect(state, bundle.pipeline, bundle.agents)
-    assert isinstance(effect, PreparePromptEffect)
-    assert effect.phase == "planning_analysis"
-
-    state = _apply(state, PipelineEvent.ANALYSIS_SUCCESS)
     visited_phases.append(state.phase)
     assert state.phase == "development"
     assert isinstance(
@@ -144,7 +140,6 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
     assert determine_next_effect(state, bundle.pipeline, bundle.agents) == ExitSuccessEffect()
     assert visited_phases == [
         "planning",
-        "planning_analysis",
         "development",
         "development_commit_cleanup",
         "development_commit",
