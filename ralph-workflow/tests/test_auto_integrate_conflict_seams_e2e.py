@@ -232,13 +232,18 @@ def _startup_context(repo_root: Path, config: UnifiedConfig) -> MagicMock:
 
 
 def _assert_conflict_chain_landed(
-    tmp_git_repo: Path, base: str, outcome: RebaseState | None
+    tmp_git_repo: Path,
+    base: str,
+    outcome: RebaseState | None,
+    *,
+    action: str,
+    parent_count: int,
 ) -> None:
-    """The whole chain landed resolved content via the highest viable rung."""
+    """The whole chain resolved and landed with the seam's expected topology."""
     assert outcome is not None
-    assert outcome.last_action in {"rebased", "merged"}
+    assert outcome.last_action == action
     assert outcome.fast_forwarded is True
-    assert len(_head_parents(tmp_git_repo)) in {1, 2}
+    assert len(_head_parents(tmp_git_repo)) == parent_count
     assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == _MERGED_CONTENT
     head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(tmp_git_repo, base) == head, "the mainline did not land"
@@ -262,7 +267,7 @@ def test_phase_transition_seam_drives_the_full_conflict_chain(
     )
 
     assert prompts, "the resolution pipeline never rendered a prompt"
-    _assert_conflict_chain_landed(tmp_git_repo, base, outcome)
+    _assert_conflict_chain_landed(tmp_git_repo, base, outcome, action="merged", parent_count=2)
 
 
 def test_startup_seam_drives_the_full_conflict_chain(
@@ -283,7 +288,7 @@ def test_startup_seam_drives_the_full_conflict_chain(
     )
 
     assert prompts, "the resolution pipeline never rendered a prompt"
-    _assert_conflict_chain_landed(tmp_git_repo, base, outcome)
+    _assert_conflict_chain_landed(tmp_git_repo, base, outcome, action="rebased", parent_count=1)
 
 
 def test_an_agent_claiming_success_over_a_surviving_marker_lands_nothing(

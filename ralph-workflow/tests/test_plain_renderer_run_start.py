@@ -75,11 +75,11 @@ def test_emit_run_start_includes_parallel_when_present() -> None:
     assert "parallel=max_workers=4" in buf.getvalue()
 
 
-def test_emit_run_start_preserves_literal_brackets_in_path() -> None:
+def test_emit_run_start_strips_rich_markup_in_path() -> None:
     pd, buf = _make_display()
     pd.emit_run_start(_orientation(workspace_root="[bold]x[/bold]"))
     out = buf.getvalue()
-    assert "[bold]x[/bold]" in out
+    assert "[bold]x[/bold]" not in out
     assert "x" in out
 
 

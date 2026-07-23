@@ -73,11 +73,11 @@ def test_ansi_escapes_in_content_are_stripped() -> None:
     assert "red text" in out
 
 
-def test_literal_brackets_in_content_are_preserved() -> None:
+def test_rich_markup_in_content_is_stripped() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "[bold]x[/bold]")
     out = buf.getvalue()
-    assert "[bold]x[/bold]" in out
+    assert "[bold]x[/bold]" not in out
     assert "x" in out
 
 

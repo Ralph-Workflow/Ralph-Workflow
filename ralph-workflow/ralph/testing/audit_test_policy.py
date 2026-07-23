@@ -137,11 +137,6 @@ _IO_ALLOWLIST: set[str] = {
     # Git integration tests using the tmp_git_repo fixture (which wraps
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",
-    # AST inspection tests that read auto_integrate.py source to enforce
-    # the AC-01 disabled-path byte-identity and AC-08 silent-skip
-    # promotion contracts. The source file IS the subject under test --
-    # replacing with mocked content would defeat the regression assertion.
-    "test_auto_integrate_no_silent_skip",
     "test_git_wrapper",
     # Helper backend classes: write_text is a method on a custom backend
     # object (MemoryBackend subclass), not a Path.write_text() call.

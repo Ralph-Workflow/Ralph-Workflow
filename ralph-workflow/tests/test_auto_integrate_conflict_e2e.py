@@ -247,10 +247,10 @@ def test_runner_commit_seam_drives_the_full_conflict_chain(
     )
 
     assert outcome is not None
+    assert outcome.last_action == "rebased"
     assert outcome.fast_forwarded is True
     head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(tmp_git_repo, base) == head
-    assert outcome.last_action == "rebased"
     assert len(_head_parents(tmp_git_repo)) == 1
     assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == "feature version\nbase version 1\n"
     assert not (tmp_git_repo / ".git" / "MERGE_HEAD").exists()

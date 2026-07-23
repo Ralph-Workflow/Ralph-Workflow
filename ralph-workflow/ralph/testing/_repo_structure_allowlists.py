@@ -75,8 +75,6 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         # by the AC-06/AC-07 contract, and the 1000-line cap is not
         # the right refactor target here (each top-level section is a
         # separate AC and the helpers are interdependent).
-        "ralph/pipeline/auto_integrate.py",
-        "ralph/pipeline/auto_integrate_recovery.py",
         "tests/test_auto_integrate_recovery.py",
         # The allowlist file is split from audit_repo_structure.py
         # specifically to keep both under the 1000-line cap. New
@@ -966,9 +964,9 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/pydantic_validation_errors.py", 168),
         ("ralph/supervising.py", 209),
         ("ralph/testing/audit_lint_bypass.py", 504),
-        ("ralph/testing/audit_test_policy.py", 309),
-        ("ralph/testing/audit_test_policy.py", 591),
-        ("ralph/testing/audit_test_policy.py", 658),
+        ("ralph/testing/audit_test_policy.py", 315),
+        ("ralph/testing/audit_test_policy.py", 597),
+        ("ralph/testing/audit_test_policy.py", 664),
         ("ralph/testing/audit_typecheck_bypass.py", 286),
         ("ralph/testing/audit_typecheck_bypass.py", 301),
         # wt-034 (mcp optimization) extracted carrier files; grandfathered.
