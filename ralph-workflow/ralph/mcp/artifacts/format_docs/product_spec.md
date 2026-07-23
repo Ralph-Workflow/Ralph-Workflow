@@ -1,73 +1,62 @@
 # product_spec artifact format
 
-## What you are doing
+You are turning the user's idea into a structured product specification.
+Author markdown and submit with `ralph_submit_md_artifact`
+(`artifact_type: product_spec`) after the user approves the draft.
 
-You are acting as a product manager helping the user refine their idea into a structured product specification. You ask follow-up questions to clarify the goal, users, constraints, success criteria, product behavior, and UX/UI expectations. You reorganize rough input into clean, human-readable product language as the conversation evolves.
+See the complete sample artifact — valid format and a model of the craft:
+`.agent/artifact-formats/examples/product_spec.md`
 
-## How to submit
+## Complete minimal example
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `"product_spec"` and `content` set to either a native JSON object or a JSON-serialized string containing the product specification payload.
+```markdown
+---
+type: product_spec
+---
 
-```json
-{
-  "artifact_type": "product_spec",
-  "content": "{\"title\":\"Example Title\",\"scope\":\"One-paragraph summary of what is being built.\",\"goals\":[\"Goal 1\",\"Goal 2\"],\"users\":[\"User 1\",\"User 2\"],\"success_criteria\":[\"Criterion 1\",\"Criterion 2\"]}"
-}
+## Title
+
+- [T-1] User Dashboard Redesign
+
+## Scope
+
+- [SC-1] Redesign the dashboard to improve task visibility for power users.
+
+## Goals
+
+- [G-1] Reduce time-to-action for common tasks from 5 clicks to 2.
+- [G-2] Improve task status visibility at a glance.
+
+## Users
+
+- [U-1] Power users who perform daily tasks via the dashboard.
+
+## Success Criteria
+
+- [C-1] 90% of users complete core tasks in 2 clicks or fewer.
+- [C-2] Dashboard loads in under 1.5 seconds on median hardware.
 ```
 
-## Required fields
+## Frontmatter
 
-Inside the `content` payload you must provide:
+- `type` — required; `product_spec`.
 
-- `title` — required non-empty string, the short name of the product or feature
-- `scope` — required non-empty string, one-paragraph summary of what is being built
-- `goals` — required non-empty list of strings, what the product or feature aims to achieve
-- `users` — required non-empty list of strings, who this is for
-- `success_criteria` — required non-empty list of strings, how success is measured
+## Sections
 
-## Optional fields
+Required: `## Title` (exactly one item), `## Scope` (exactly one item),
+`## Goals`, `## Users`, `## Success Criteria` (each at least one item).
 
-- `constraints` — list of strings, any constraints or limitations
-- `product_behavior` — list of strings, expected behavior or functionality
-- `ux_ui_requirements` — list of strings, UX/UI expectations when the request is user-facing
-- `scope_boundaries` — list of strings, what is explicitly out of scope
-- `open_questions` — list of strings, unresolved questions or decisions
+Optional: `## Constraints`, `## Product Behavior`, `## UX UI Requirements`,
+`## Scope Boundaries`, `## Open Questions` — one item per point.
 
-## Complete example
+Keep items distinct and scannable: 5-10 well-organized items per section
+beat 30 loosely related ones. Prefix related items with a feature-area tag
+(e.g. `[Dashboard] ...`) in large specs. Do not include implementation
+details or code structure.
 
-```json
-{
-  "artifact_type": "product_spec",
-  "content": "{\"title\":\"User Dashboard Redesign\",\"scope\":\"Redesign the user dashboard to improve task visibility and reduce time-to-action for power users.\",\"goals\":[\"Reduce time-to-action for common tasks from 5 clicks to 2\",\"Improve task status visibility at a glance\",\"Surface actionable notifications prominently\"],\"users\":[\"Power users who perform daily tasks via the dashboard\",\"Managers who monitor team activity\"],\"constraints\":[\"Must work on tablet devices\",\"No external analytics dependencies\"],\"success_criteria\":[\"90% of users complete core tasks in 2 clicks or fewer\",\"Dashboard loads in under 1.5 seconds on median hardware\",\"Notification click-through rate improves by 20%\"],\"product_behavior\":[\"Tasks appear in priority order based on deadline and user role\",\"Notifications use a persistent banner that does not require user action to dismiss\",\"Status indicators use both color and icons for accessibility\"],\"ux_ui_requirements\":[\"Minimum touch target size of 44x44 pixels\",\"Color-blind safe palette with icon + color indicators\",\"Keyboard navigable without mouse required\"],\"scope_boundaries\":[\"Mobile-specific layouts excluded from v1\",\"Notification email integration out of scope\"],\"open_questions\":[\"Should deadline-based priority be configurable by users?\",\"Which analytics events should we track post-launch?\"]}"
-}
-```
+## Hard errors vs warnings
 
-## Common mistakes
-
-- Do NOT submit raw conversation transcripts — structure the input into clean product language
-- Do NOT include implementation details, code structure, or low-level execution plans
-- Do NOT leave required fields (title, scope, goals, users, success_criteria) empty or as empty lists
-- Do NOT submit until the user has reviewed and approved the specification
-- Do NOT use prose where a bullet list would be clearer
-
-## Dumb-proof checklist
-
-- Did you set `artifact_type` to `"product_spec"`?
-- Did you put the payload inside the `content` payload?
-- Is `title` a non-empty string?
-- Is `scope` a non-empty string?
-- Are `goals`, `users`, and `success_criteria` non-empty lists?
-- Did you avoid implementation details and code structure in your responses?
-- Did you capture UX/UI requirements when the request has user-facing components?
-- Did you present a polished draft to the user and ask for review before submitting?
-
-## Organizing large specifications
-
-When the product specification is large or PRD-style, keep list fields readable and scannable:
-
-- **Group related items with descriptive prefixes.** In `product_behavior` and `ux_ui_requirements`, prefix related items with a feature area tag such as `[Authentication]` or `[Dashboard]` to cluster related behaviors: `[Dashboard] Tasks appear in priority order by deadline and role`.
-- **Summarize; do not enumerate exhaustively.** Prefer 5-10 well-organized bullets per field over 30 loosely related items. Summarize groups of related points into one well-worded bullet rather than listing every sub-detail.
-- **Avoid overlap across fields.** Each field has a distinct purpose. A behavior belongs in `product_behavior`; its accessibility constraint belongs in `ux_ui_requirements`. Do not repeat the same item in multiple fields.
-- **Keep each bullet distinct.** Every item should describe a unique, specific point. Remove redundant or overlapping items before submitting.
-
-Note: product_spec.py has all 10 required and optional fields and is already adequate — do NOT modify it.
+Hard errors: a missing required section; more than one Title or Scope
+item; empty Goals, Users, or Success Criteria; wrong `type`; duplicate
+item IDs; unknown sections or stray prose lines. This type has no
+warning-level coercions.

@@ -1,97 +1,79 @@
 # Artifact Formats Index
 
-## What you are doing
-
-You are choosing which type of artifact to submit to Ralph. The artifact type tells Ralph what kind of work you are reporting or what decision you are making.
+Ralph artifacts are single markdown documents with a small, closed grammar.
+You author the markdown directly — there is no JSON envelope and nothing to
+escape.
 
 ## How to submit
 
-Pick the correct `artifact_type` for your case from the list below. Then call `ralph_submit_artifact` with BOTH:
-- `artifact_type` set to the exact type name
-- `content` set to a native JSON object/array or a JSON-serialized string with the required fields for that type
+1. Write the markdown document for your artifact type (see its format doc).
+2. Optionally call `ralph_verify_md_artifact` with `artifact_type` and
+   `content` to lint it without submitting. It returns the same line-anchored
+   diagnostics the submission gate uses.
+3. Call `ralph_submit_md_artifact` with `artifact_type` and `content`.
 
-Plan artifacts are the exception: use `ralph_submit_plan_section` or
-`ralph_submit_plan_sections`, then `ralph_finalize_plan`.
+For large plans you can stage incrementally: `ralph_stage_md_artifact` to
+save a draft, `ralph_get_md_draft` to read it back, `ralph_discard_md_draft`
+to drop it, and `ralph_finalize_md_artifact` to validate and submit the
+staged document. To change one plan step without resubmitting the whole
+document, use `ralph_edit_md_plan_step`.
 
-### Examples
+## The grammar (same for every type)
 
-Submit a commit message:
+```markdown
+---
+type: <artifact_type>
+key: value
+---
 
-```json
-{
-  "artifact_type": "commit_message",
-  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\"}"
-}
+## Section Name
+
+- [ID-1] one line of text
+- [ID-2] another line of text
 ```
 
-Submit a development result:
+- Frontmatter is a leading `---` block of single-line `key: value` fields.
+- Every section heading is exactly `## Name` (two hashes, one space).
+- Every content line is one list item: `- [ID] text` (checkbox form
+  `- [ ] [ID] text` is also accepted). Item text stays on one line.
+- IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within a section.
+- Blank lines are ignored. Anything else — stray prose, other heading
+  levels, unknown sections or frontmatter fields — is an error.
 
-```json
-{
-  "artifact_type": "development_result",
-  "content": "{\"status\": \"completed\", \"summary\": \"Implemented the feature.\", \"files_changed\": \"- src/main.py\", \"plan_items_proven\": [{\"plan_item\": \"Step 1: Add feature\", \"proof\": \"Added the feature and tests.\"}], \"analysis_items_addressed\": [{\"how_to_fix_item\": \"Add validation\", \"proof\": \"Added input validation.\"}]}"
-}
-```
+## Errors vs warnings
 
-Submit issues found during review:
+Hard errors (submission rejected): malformed grammar, missing or unknown
+frontmatter fields and sections, duplicate sections, missing required
+sections or items, malformed or duplicate IDs, references to unknown IDs,
+size caps, and each type's canonical content rules.
 
-```json
-{
-  "artifact_type": "issues",
-  "content": "{\"status\": \"issues_found\", \"summary\": \"Found issues.\", \"issues\": [{\"path\": \"src/main.py\", \"severity\": \"high\", \"summary\": \"Missing validation\"}], \"what_came_up_short\": [\"No input validation\"], \"how_to_fix\": [\"Add validation\"]}"
-}
-```
+Warnings (accepted, value coerced to a documented default): vocabulary
+choices such as an unknown `status` or `intent_verb`. Diagnostics carry
+`line`, `section`, `rule_id`, `message`, and `severity`.
 
-## Required fields (for choosing artifact_type)
-
-You must always provide:
-- `artifact_type` — a string. Required. Must be one of the valid types listed below.
-
-## Optional fields
-
-This index does not define optional top-level MCP fields. Every `ralph_submit_artifact` call still requires both `artifact_type` and `content`. The per-type required fields live inside the `content` payload. Read the specific format doc for your type.
-
-## Complete example
-
-This example shows the minimum fields needed to submit each type:
-
-```json
-{
-  "artifact_type": "commit_message",
-  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\"}"
-}
-```
-
-## Common mistakes
-
-- Do NOT use `artifact_type` values that are not listed below — they will be rejected
-- Do NOT leave out `artifact_type` — it is required
-- Do NOT guess the artifact type — read the list below and pick the right one
-- The generic alias `analysis_decision` is valid only inside an analysis drain. When you use that alias, read the matching drain-specific format doc (`development_analysis_decision.md`, `planning_analysis_decision.md`, or `review_analysis_decision.md`) and keep the same inner payload shape.
-
-## Supported Artifact Types
+## Supported artifact types
 
 | artifact_type | Purpose | Format doc path |
 |--------------|---------|-----------------|
-| `analysis_decision` | Generic alias for the matching `*_analysis_decision` type inside an analysis drain only | Read the matching drain-specific analysis decision format doc |
-| `commit_message` | Submit a git commit message | `.agent/artifact-formats/commit_message.md` |
-| `commit_cleanup` | Clean up files before committing | `.agent/artifact-formats/commit_cleanup.md` |
-| `development_result` | Report the outcome of a development task | `.agent/artifact-formats/development_result.md` |
-| `issues` | Report issues found during review | `.agent/artifact-formats/issues.md` |
-| `fix_result` | Report the outcome of a fix task | `.agent/artifact-formats/fix_result.md` |
-| `development_analysis_decision` | Report a development analysis decision | `.agent/artifact-formats/development_analysis_decision.md` |
-| `planning_analysis_decision` | Report a planning analysis decision | `.agent/artifact-formats/planning_analysis_decision.md` |
-| `review_analysis_decision` | Report a review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |
-| `smoke_test_result` | Report the outcome of a manual runtime smoke test | `.agent/artifact-formats/smoke_test_result.md` |
-| `product_spec` | Submit a product specification from the prompt-helper agent | `.agent/artifact-formats/product_spec.md` |
-| `plan` | Submit a structured execution plan with `ralph_submit_plan_section` / `ralph_submit_plan_sections` and `ralph_finalize_plan` | `.agent/artifact-formats/plan.md` |
+| `commit_message` | Git commit message (or skip) | `.agent/artifact-formats/commit_message.md` |
+| `commit_cleanup` | Pre-commit file cleanup actions | `.agent/artifact-formats/commit_cleanup.md` |
+| `development_result` | Outcome of a development task | `.agent/artifact-formats/development_result.md` |
+| `issues` | Issues found during review | `.agent/artifact-formats/issues.md` |
+| `fix_result` | Outcome of a fix task | `.agent/artifact-formats/fix_result.md` |
+| `development_analysis_decision` | Development analysis decision | `.agent/artifact-formats/development_analysis_decision.md` |
+| `planning_analysis_decision` | Planning analysis decision | `.agent/artifact-formats/planning_analysis_decision.md` |
+| `review_analysis_decision` | Review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |
+| `smoke_test_result` | Manual runtime smoke-test outcome | `.agent/artifact-formats/smoke_test_result.md` |
+| `product_spec` | Product specification | `.agent/artifact-formats/product_spec.md` |
+| `plan` | Structured execution plan | `.agent/artifact-formats/plan.md` |
 
-## Dumb-proof checklist
+Use the exact `artifact_type` string from the table and set the same value
+in the document's `type:` frontmatter field.
 
-- Did you set `artifact_type` to an exact value from the table above?
-- If you are in an analysis drain and intentionally used the `analysis_decision` alias, did you also read the matching drain-specific format doc before submitting?
-- Did you spell `artifact_type` correctly (check the table for the exact spelling)?
-- Did you put the required fields inside the `content` payload?
-- Did you use the correct format doc for your artifact type?
-- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?
-- If you are submitting a plan, did you use the planning tools instead of the generic artifact tool?
+## Sample artifacts
+
+Every type above ships a complete sample artifact at
+`.agent/artifact-formats/examples/<artifact_type>.md`. Each sample passes
+`ralph_verify_md_artifact` as-is and models the craft (a well-structured
+plan, a model conventional commit, honest proof discipline). Read the
+sample for your type before authoring.

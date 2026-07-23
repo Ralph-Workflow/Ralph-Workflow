@@ -1,77 +1,67 @@
 # planning_analysis_decision artifact format
 
-## What you are doing
+You are reporting the outcome of a planning analysis review: whether the
+plan is executor-ready, needs changes, or must be redone. Author markdown
+and submit with `ralph_submit_md_artifact`
+(`artifact_type: planning_analysis_decision`).
 
-You are reporting the outcome of a planning analysis review: whether the proposed plan is sound and executor-ready or needs changes, and exactly what to fix if changes are needed.
+See the complete sample artifact — valid format and a model of the craft:
+`.agent/artifact-formats/examples/planning_analysis_decision.md`
 
-You can also submit this using `artifact_type: "analysis_decision"` when your session drain is `planning_analysis`.
+## Complete minimal example (completed)
 
-## How to submit
+```markdown
+---
+type: planning_analysis_decision
+status: completed
+---
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `planning_analysis_decision` and `content` set to either a native JSON object or a JSON-serialized string containing your decision payload.
+## Summary
 
-After a successful submit, the run-scoped artifact receipt is sufficient completion evidence for the current analysis flow. `declare_complete` remains an explicit signal but is not required just to make the submission count.
-
-If your session drain is `planning_analysis`, the generic alias `artifact_type: "analysis_decision"` is also accepted. The payload shape is the same; only the outer `artifact_type` changes.
-
-```json
-{
-  "artifact_type": "planning_analysis_decision",
-  "content": "{\"status\": \"completed\", \"summary\": \"The plan is executor-ready.\"}"
-}
+- [SUM-1] The plan is executor-ready; every step has targets and verification.
 ```
 
-## Required fields (inside content)
+## Complete example (request_changes)
 
-- `status` — must be `"completed"` if the plan is sound and executor-ready, `"request_changes"` if the plan needs revision, or `"failed"` if the analysis result is unusable and the plan should be redone from the planning phase
-- `summary` — a non-empty string describing the overall analysis result
+```markdown
+---
+type: planning_analysis_decision
+status: request_changes
+---
 
-## Optional fields (inside content)
+## Summary
 
-- `what_came_up_short` — an array of strings listing what is missing or wrong (required when status is `"request_changes"` or `"failed"`, can be omitted when status is `"completed"`)
-- `how_to_fix` — an array of strings with concrete steps to resolve any problems (required when status is `"request_changes"` or `"failed"`, can be omitted when status is `"completed"`)
+- [SUM-1] The plan needs revision before execution.
 
-## Complete example
+## What Came Up Short
 
-```json
-{
-  "artifact_type": "planning_analysis_decision",
-  "content": "{\"status\": \"completed\", \"summary\": \"The plan is executor-ready.\"}"
-}
+- [W-1] Critical Files omits the real target file.
+
+## How To Fix
+
+- [FIX-1] Add the target file to primary_files and resubmit the plan.
 ```
 
-## Retry-ready non-completed example
+## Frontmatter
 
-```json
-{
-  "artifact_type": "planning_analysis_decision",
-  "content": "{\"status\": \"request_changes\", \"summary\": \"The plan needs revision before execution.\", \"what_came_up_short\": [\"critical_files is missing the real target file\"], \"how_to_fix\": [\"Resubmit critical_files with primary_files populated, then rerun planning analysis\"]}"
-}
-```
+- `type` — required; `planning_analysis_decision`.
+- `status` — required; `completed`, `request_changes`, or `failed`. An
+  unknown value is coerced to `completed` with a warning — never rely on
+  that; pick the right status.
 
-## Alias example for `analysis_decision`
+## Sections
 
-```json
-{
-  "artifact_type": "analysis_decision",
-  "content": "{\"status\": \"request_changes\", \"summary\": \"The plan needs revision before execution.\", \"what_came_up_short\": [\"critical_files is missing the real target file\"], \"how_to_fix\": [\"Resubmit critical_files with primary_files populated, then rerun planning analysis\"]}"
-}
-```
+- `## Summary` — required; exactly one item.
+- `## What Came Up Short` — one item per gap; required (non-empty) when
+  status is `request_changes` or `failed`, omitted when `completed`.
+- `## How To Fix` — one concrete remediation per item; same
+  required/omitted rule. Each item's stable ID (e.g. `FIX-1`) is what the
+  next development result cites in `## Analysis Items Addressed`, so keep
+  IDs unique and stable.
 
-## Common mistakes
+## Hard errors vs warnings
 
-- Do NOT use any status other than `"completed"`, `"request_changes"`, or `"failed"`
-- Do NOT leave `summary` empty — describe what the analysis found
-- Do NOT submit a plain non-JSON string as `content` — use a native JSON object or a JSON-serialized object
-- Do NOT omit `what_came_up_short` or `how_to_fix` when status is `"request_changes"` or `"failed"` — these fields are required
-- Do NOT include `what_came_up_short` or `how_to_fix` when status is `"completed"` — these fields are not needed
-- Do NOT confuse this with `development_analysis_decision` or `review_analysis_decision` — use this type for planning analysis sessions
-
-## Dumb-proof checklist
-
-- Did you set `artifact_type` to `"planning_analysis_decision"` or, when the drain is `planning_analysis`, the alias `"analysis_decision"`?
-- Did you set `status` to `"completed"`, `"request_changes"`, or `"failed"` (not something else)?
-- Did you write a non-empty `summary`?
-- Did you omit `what_came_up_short` and `how_to_fix` when status is `"completed"`?
-- Did you include `what_came_up_short` and `how_to_fix` when status is `"request_changes"` or `"failed"`?
-- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?
+Hard errors: missing or multiple Summary items; `request_changes`/`failed`
+without non-empty What Came Up Short and How To Fix; wrong `type`;
+duplicate item IDs; any grammar violation. Warning: unknown `status`
+coerced to `completed`.

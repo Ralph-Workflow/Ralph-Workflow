@@ -400,14 +400,17 @@ def test_format_plan_for_execution_surfaces_step_fields() -> None:
 
 
 def test_format_doc_includes_new_sections() -> None:
-    """The bundled format_docs/plan.md mentions the new symbol names and renamed heading."""
+    """The bundled format_docs/plan.md teaches the markdown plan grammar surfaces."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     for needle in (
-        "EvidenceRef",
-        "PlanConstraints",
-        "noop",
+        "## Steps",
+        "S-1",
+        "depends_on",
+        "verify_command",
         "timeout_seconds",
-        "SE-opinionated design surfaces",
+        "expected_evidence",
+        "ralph_edit_md_plan_step",
+        "shell-invocation guard",
     ):
         assert needle in doc, f"format doc missing {needle!r}"

@@ -1,74 +1,59 @@
 # issues artifact format
 
-## What you are doing
+You are reporting issues found during a review: what is wrong, where, and
+how to fix it. Author markdown and submit with `ralph_submit_md_artifact`
+(`artifact_type: issues`).
 
-You are reporting a list of issues found during a review, explaining what is wrong, where it is, and how to fix it.
+See the complete sample artifact — valid format and a model of the craft:
+`.agent/artifact-formats/examples/issues.md`
 
-## How to submit
+## Complete minimal example (issues found)
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `issues` and `content` set to either a native JSON object or a JSON-serialized string containing your issues payload.
+```markdown
+---
+type: issues
+status: issues_found
+---
 
-```json
-{
-  "artifact_type": "issues",
-  "content": "{\"status\": \"issues_found\", \"summary\": \"Found issues.\", \"issues\": [{\"path\": \"src/main.py\", \"severity\": \"high\", \"summary\": \"Missing validation\"}], \"what_came_up_short\": [\"No input validation\"], \"how_to_fix\": [\"Add validation\"]}"
-}
+## Summary
+
+- [SUM-1] Input validation is missing on the auth endpoint.
+
+## Issues
+
+- [I-1] src/main.py | high | Missing input validation on login route
+
+## What Came Up Short
+
+- [W-1] No validation for user-supplied credentials.
+
+## How To Fix
+
+- [FIX-1] Add schema validation to the login handler and a regression test.
 ```
 
-## Required fields (inside content)
+For a clean review, set `status: no_issues` and submit only `## Summary`.
 
-- `status` — either `"issues_found"` or `"no_issues"`
-- `summary` — a non-empty string describing the overall review result
+## Frontmatter
 
-When `status` is `"issues_found"`, the following are also required:
-- `issues` — a non-empty array of issue objects; each object must have:
-  - `path` — the file path where the issue is found
-  - `severity` — how bad the issue is (`"high"`, `"medium"`, or `"low"`)
-  - `summary` — a short description of the specific problem
-- `what_came_up_short` — a non-empty array of strings describing what is missing or wrong overall
-- `how_to_fix` — a non-empty array of strings with concrete steps to resolve the problems
+- `type` — required; `issues`.
+- `status` — required; `issues_found` or `no_issues`. An unknown value is
+  coerced to `no_issues` with a warning.
 
-When `status` is `"no_issues"`, `issues`, `what_came_up_short`, and `how_to_fix` may be empty arrays.
+## Sections
 
-## Optional fields
+- `## Summary` — required; exactly one item.
+- `## Issues` — items shaped `path | severity | summary` with severity one
+  of high, medium, low.
+- `## What Came Up Short` — one item per gap.
+- `## How To Fix` — one item per concrete remediation step.
 
-There are no optional fields; all fields listed above are expected.
+When `status: issues_found`, all three sections above must be present and
+non-empty. When `status: no_issues`, omit them.
 
-## Complete example
+## Hard errors vs warnings
 
-```json
-{
-  "artifact_type": "issues",
-  "content": "{\"status\": \"issues_found\", \"summary\": \"Found issues.\", \"issues\": [{\"path\": \"src/main.py\", \"severity\": \"high\", \"summary\": \"Missing validation\"}], \"what_came_up_short\": [\"No input validation\"], \"how_to_fix\": [\"Add validation\"]}"
-}
-```
-
-## Clean review example
-
-When the review passes without issues:
-
-```json
-{
-  "artifact_type": "issues",
-  "content": "{\"status\": \"no_issues\", \"summary\": \"The implementation is correct and all tests pass.\", \"issues\": [], \"what_came_up_short\": [], \"how_to_fix\": []}"
-}
-```
-
-## Common mistakes
-
-- Do NOT make `issues` a flat list of strings — each entry must be a JSON object with `path`, `severity`, and `summary`
-- Do NOT leave `what_came_up_short` or `how_to_fix` as empty arrays if you found real problems
-- Do NOT submit a plain non-JSON string as `content` — use a native JSON object or a JSON-serialized object
-- Do NOT use non-standard severity values; stick to `"high"`, `"medium"`, or `"low"`
-- Do NOT omit `path` in an issue object — even if the issue is general, use the most relevant file path
-
-## Dumb-proof checklist
-
-- Did you set `artifact_type` to `"issues"`?
-- Did you set `status` to `"issues_found"` or `"no_issues"`?
-- Did you write a non-empty `summary`?
-- If `status` is `"issues_found"`: is `issues` a non-empty array of objects?
-- Does each issue object have `path`, `severity`, and `summary`?
-- Is `severity` one of: `"high"`, `"medium"`, `"low"`?
-- If `status` is `"issues_found"`: are `what_came_up_short` and `how_to_fix` non-empty?
-- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?
+Hard errors: `issues_found` without non-empty Issues, What Came Up Short,
+and How To Fix; an Issues item not shaped `path | severity | summary`;
+duplicate item IDs; any grammar violation. Warnings: unknown `status`
+coerced to `no_issues`; unknown severity coerced to `low`.

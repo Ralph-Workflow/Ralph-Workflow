@@ -1,96 +1,60 @@
 # commit_message artifact format
 
-## What you are doing
+You are writing the git commit message for the current changes, or skipping
+the commit with a reason. Author it as markdown and submit with
+`ralph_submit_md_artifact` (`artifact_type: commit_message`); lint first
+with `ralph_verify_md_artifact` if unsure.
 
-You are telling Ralph what commit message to use for the current changes.
+See the complete sample artifact — valid format and a model of the craft:
+`.agent/artifact-formats/examples/commit_message.md`
 
-## How to submit
+## Complete minimal example (commit)
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `"commit_message"` and `content` set to either a native JSON object or a JSON-serialized string containing your commit payload.
+```markdown
+---
+type: commit
+subject: fix(auth): prevent token expiry race
+---
 
-```json
-{
-  "artifact_type": "commit_message",
-  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\", \"body\": \"Previously, concurrent refresh requests could cause the token to be invalidated while still being used by another request. This change serializes refresh operations per token to prevent that race condition.\"}"
-}
+## Body
+
+- [B-1] Serialize refresh operations per token so a concurrent refresh cannot invalidate a token still in use.
 ```
 
-## Required fields (inside content)
+## Complete minimal example (skip)
 
-- `type` — must be `"commit"` for a real commit, or `"skip"` to skip committing
-- For `"commit"` type: `subject` — a one-line commit message following conventional commit format like `fix(auth): prevent token expiry race`
-- For `"skip"` type: `reason` — a non-empty string explaining why no commit is needed
-
-## When to include a body
-
-**Most commits should include a body.** The subject alone cannot convey rationale, impact, or context.
-
-**A body is required when:**
-- The diff touches multiple files or affects multiple subsystems
-- The change adds, removes, or modifies behavior
-- A refactor changes public APIs, data structures, or contracts
-- Migration notes, deprecation warnings, or compatibility concerns apply
-- The *why* is not immediately obvious from reading the subject
-
-**One-liners (no body) are only acceptable for:**
-- Trivial typo fixes or single-character corrections
-- Single-file cosmetic changes with obvious intent
-- Truly obvious micro-changes where the subject fully captures everything
-
-## Body structure: simple vs detailed
-
-**Use `body` (single string) when:**
-- The explanation is concise and self-contained (1-2 paragraphs)
-- The rationale is straightforward and doesn't need separation
-
-**Use detailed body fields for complex changes:**
-- `body_summary`: What changed and why in 1-2 sentences
-- `body_details`: Deep dive — edge cases handled, design decisions, alternatives considered, behavioral notes
-- `body_footer`: Breaking changes, migration steps, deprecation warnings, "Fixes #123", "Closes #456"
-
-Complex refactors, architecture changes, new features with non-obvious behavior, and changes affecting multiple subsystems should use the detailed structure.
-
-## Optional fields (for "commit" type only)
-
-- `body` — a plain string with extra explanation (use this OR the detailed fields below, not both)
-- `body_summary` — first paragraph of the commit body
-- `body_details` — middle details paragraph
-- `body_footer` — closing notes paragraph (e.g., "Fixes #123")
-- `files` — an array of file paths that were changed
-- `excluded_files` — an array of objects, each with `path` (string) and `reason` (one of: `internal_ignore`, `not_task_related`, `sensitive`, `deferred`)
-
-## Complete example with body
-
-```json
-{
-  "artifact_type": "commit_message",
-  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\", \"body\": \"Previously, concurrent refresh requests could cause the token to be invalidated while still being used by another request. This change serializes refresh operations per token to prevent that race condition.\"}"
-}
+```markdown
+---
+type: skip
+reason: No committable changes; only generated files were touched.
+---
 ```
 
-## Complete example with detailed body fields
+## Frontmatter
 
-```json
-{
-  "artifact_type": "commit_message",
-  "content": "{\"type\": \"commit\", \"subject\": \"feat(api): add CSV export with filtered queries\", \"body_summary\": \"Adds support for exporting reports as CSV with client-side filtering.\", \"body_details\": \"The filter runs entirely in the browser, applying to the loaded dataset before export. This avoids the need for a new API endpoint while still giving users the filtering they expect.\", \"body_footer\": \"Fixes #42\"}"
-}
-```
+- `type` — required; `commit` or `skip`.
+- `subject` — required for `commit`; must be a conventional-commit subject:
+  `kind(scope)?: lowercase description` with kind one of feat, fix, docs,
+  refactor, test, style, perf, build, ci, chore.
+- `reason` — required for `skip`.
 
-## Common mistakes
+## Sections (all optional; commit only)
 
-- Do NOT use a plain `"message"` key — that format is no longer accepted; use `"type"` and `"subject"` instead
-- Do NOT use `"type": "fix"` — the `type` field must be `"commit"` or `"skip"`, not a conventional-commit prefix
-- Do NOT write the conventional-commit prefix in `type` — the prefix goes in `subject` like `fix(scope): description`
-- Do NOT use both `body` and `body_summary`/`body_details`/`body_footer` in the same payload
-- Do NOT assume a one-liner is sufficient for complex changes — when in doubt, add a body
-- The `subject` must follow conventional commit format: `<type>(<scope>): <description>`
+- `## Body` — exactly one item: the whole commit body on one line.
+- `## Body Summary` / `## Body Details` / `## Body Footer` — one item each;
+  a structured alternative to `## Body` for complex changes. Never combine
+  with `## Body`.
+- `## Files` — one item per file to include; must be non-empty if present.
+- `## Excluded Files` — items shaped `path | reason` with reason one of:
+  internal_ignore, not_task_related, sensitive, deferred.
 
-## Dumb-proof checklist
+Most non-trivial commits should include a body explaining the why.
 
-- Did you set `artifact_type` to `"commit_message"`?
-- Did you put `{"type": "commit", ...}` or `{"type": "skip", ...}` inside the content payload?
-- Did you use `"subject"` (not `"message"`) for the commit message text?
-- Did you spell the conventional commit prefix in `subject` like `fix(scope):` not just `fix:`?
-- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?
-- If this is a non-trivial change, did you include a body?
+## Hard errors vs warnings
+
+Hard errors: missing or non-conventional `subject`; missing `reason` on
+skip; `type` not commit/skip; `## Body` combined with detailed body
+sections; empty `## Files`; malformed `## Excluded Files` entries or an
+unknown exclusion reason; any grammar violation (unknown section, stray
+prose line, duplicate item ID). This artifact has no warning-level
+coercions — fix every diagnostic.
