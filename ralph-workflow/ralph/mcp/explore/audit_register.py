@@ -50,7 +50,6 @@ from ralph.mcp.explore._audit_seed_coord_web_media import (
     _SEED_COORD_WEB_MEDIA,
 )
 from ralph.mcp.explore._audit_seed_git_process import _SEED_GIT_PROCESS
-from ralph.mcp.explore._audit_seed_markdown_artifacts import _SEED_MARKDOWN_ARTIFACTS
 from ralph.mcp.explore._audit_seed_workspace import _SEED_WORKSPACE
 from ralph.mcp.explore._audit_types import (
     AuditCounters,
@@ -94,7 +93,6 @@ _SEED: tuple[AuditEntry, ...] = (
     *_SEED_GIT_PROCESS,
     *_SEED_ARTIFACT_PLANNING,
     *_SEED_COORD_WEB_MEDIA,
-    *_SEED_MARKDOWN_ARTIFACTS,
 )
 
 

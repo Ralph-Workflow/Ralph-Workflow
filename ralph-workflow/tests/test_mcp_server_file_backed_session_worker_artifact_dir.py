@@ -37,6 +37,7 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
+from tests.mcp.test_md_plan_spec import _plan_document
 
 # Lazy imports for multimodal tests that require optional dependencies
 # These are only available when the multimodal feature is fully configured
@@ -431,7 +432,7 @@ def test_build_standalone_http_server_filters_tools_by_session_capabilities(tmp_
 
     assert "read_file" in tool_names
     assert "directory_tree" in tool_names
-    assert "ralph_submit_artifact" in tool_names
+    assert "ralph_submit_md_artifact" in tool_names
     assert "exec" not in tool_names
     assert "write_file" not in tool_names
 
@@ -464,7 +465,7 @@ def test_build_standalone_http_server_preserves_registry_input_schema(tmp_path: 
     assert read_env_schema["required"] == ["name"]
     assert "name" in properties
 
-    submit_artifact_schema_raw = tools["ralph_submit_artifact"]["inputSchema"]
+    submit_artifact_schema_raw = tools["ralph_submit_md_artifact"]["inputSchema"]
     submit_artifact_schema = cast("dict[str, object]", submit_artifact_schema_raw)
     submit_properties = cast("dict[str, object]", submit_artifact_schema["properties"])
     assert "partial" not in submit_properties
@@ -634,10 +635,13 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
             method="tools/call",
             msg_id=4,
             params={
-                "name": "ralph_submit_artifact",
+                "name": "ralph_submit_md_artifact",
                 "arguments": {
                     "artifact_type": "plan",
-                    "content": json.dumps(payload),
+                    "content": _plan_document().replace(
+                        "Concurrent refresh requests can race.",
+                        cast("str", cast("dict[str, object]", payload["summary"])["context"]),
+                    ),
                 },
             },
         ),
@@ -661,11 +665,11 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
     assert initialize is not None
     assert initialize.error is None
     assert initialized_response is None
-    assert "ralph_submit_artifact" in tool_names
+    assert "ralph_submit_md_artifact" in tool_names
     assert submit_response is not None
     assert submit_response.error is None
     assert planning_result == [PipelineEvent.AGENT_SUCCESS]
-    assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+    assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
 
 
 def test_upstream_client_factory_selects_transport_by_server_config() -> None:

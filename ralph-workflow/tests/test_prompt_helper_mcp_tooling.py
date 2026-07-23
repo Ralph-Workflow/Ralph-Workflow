@@ -22,7 +22,7 @@ _REQUIRED_TOOLS = {
     "git_diff",
     "git_log",
     "git_show",
-    "ralph_submit_artifact",
+    "ralph_submit_md_artifact",
 }
 
 # Tools that MUST be ABSENT from the prompt-helper session
@@ -30,10 +30,7 @@ _FORBIDDEN_TOOLS = {
     "write_file",
     "exec",
     "coordinate",
-    "ralph_submit_plan_section",
-    "ralph_finalize_plan",
-    "ralph_get_plan_draft",
-    "ralph_discard_plan_draft",
+    "ralph_get_md_draft",
 }
 
 

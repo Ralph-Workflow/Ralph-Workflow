@@ -34,8 +34,11 @@ def test_approved_policy_outcomes_are_frozen_and_complete() -> None:
 
 
 def test_ralph_tool_name_is_string_enum_compatible() -> None:
-    assert RalphToolName.SUBMIT_ARTIFACT == "ralph_submit_artifact"
-    assert claude_tool_name(RalphToolName.SUBMIT_ARTIFACT) == "mcp__ralph__ralph_submit_artifact"
+    assert RalphToolName.SUBMIT_MD_ARTIFACT == "ralph_submit_md_artifact"
+    assert (
+        claude_tool_name(RalphToolName.SUBMIT_MD_ARTIFACT)
+        == "mcp__ralph__ralph_submit_md_artifact"
+    )
 
 
 def test_claude_tool_name_supports_non_ralph_server_names() -> None:

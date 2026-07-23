@@ -36,29 +36,21 @@ _ANALYSIS_REQUIRED_TOOLS = {
     "git_log",
     "git_show",
     "exec",
-    "ralph_submit_artifact",
-    "ralph_get_plan_draft",
+    "ralph_submit_md_artifact",
+    "ralph_get_md_draft",
     "declare_complete",
 }
 
 _ANALYSIS_FORBIDDEN_TOOLS = {
     "write_file",
-    "ralph_submit_plan_section",
-    "ralph_finalize_plan",
-    "ralph_discard_plan_draft",
-    "ralph_insert_plan_step",
-    "ralph_replace_plan_step",
-    "ralph_remove_plan_step",
 }
 
 _PLANNING_REQUIRED_TOOLS = {
-    "ralph_get_plan_draft",
-    "ralph_submit_plan_section",
-    "ralph_finalize_plan",
-    "ralph_discard_plan_draft",
-    "ralph_insert_plan_step",
-    "ralph_replace_plan_step",
-    "ralph_remove_plan_step",
+    "ralph_get_md_draft",
+    "ralph_stage_md_artifact",
+    "ralph_finalize_md_artifact",
+    "ralph_discard_md_draft",
+    "ralph_edit_md_plan_step",
 }
 
 

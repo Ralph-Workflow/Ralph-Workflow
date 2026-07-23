@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 _INVENTED_PREFIXES: tuple[str, ...] = ("ralph_mcp__", "mcp__ralph__", "ralph__", "ralph_", "ralph.")
 
 # Retired JSON artifact tools -> their markdown replacements.
-# CONTRACT (PROMPT.md): the markdown artifact migration removed these tools;
+# Migration contract: markdown artifact authoring removed these tools;
 # calling a removed name must fail with an error that says so and names the
 # specific markdown tool to call instead. Keyed by exact retired name;
 # mis-prefixed variants are handled by the same prefix-stripping as

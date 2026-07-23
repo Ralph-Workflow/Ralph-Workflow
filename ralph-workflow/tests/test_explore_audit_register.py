@@ -207,22 +207,17 @@ def test_implemented_tools_outcome_is_add_argument() -> None:
 
 
 def test_structured_tools_outcome_is_keep() -> None:
-    """Phase 4: the 15 already-structured tools must be KEEP and the
-    22 originally-DEFER tools must all be promoted out of DEFER.
+    """The structured markdown and coordination tools must be KEEP and the
+    originally-DEFER tools must all be promoted out of DEFER.
     """
     structured_tools = {
-        RalphToolName.SUBMIT_ARTIFACT,
-        RalphToolName.SUBMIT_PLAN_SECTION,
-        RalphToolName.SUBMIT_PLAN_SECTIONS,
-        RalphToolName.INSERT_PLAN_STEP,
-        RalphToolName.REPLACE_PLAN_STEP,
-        RalphToolName.REMOVE_PLAN_STEP,
-        RalphToolName.MOVE_PLAN_STEP,
-        RalphToolName.PATCH_PLAN_STEP,
-        RalphToolName.FINALIZE_PLAN,
-        RalphToolName.GET_PLAN_DRAFT,
-        RalphToolName.DISCARD_PLAN_DRAFT,
-        RalphToolName.VALIDATE_PLAN_DRAFT,
+        RalphToolName.SUBMIT_MD_ARTIFACT,
+        RalphToolName.VERIFY_MD_ARTIFACT,
+        RalphToolName.STAGE_MD_ARTIFACT,
+        RalphToolName.GET_MD_DRAFT,
+        RalphToolName.DISCARD_MD_DRAFT,
+        RalphToolName.FINALIZE_MD_ARTIFACT,
+        RalphToolName.EDIT_MD_PLAN_STEP,
         RalphToolName.REPORT_PROGRESS,
         RalphToolName.DECLARE_COMPLETE,
         RalphToolName.COORDINATE,
@@ -230,18 +225,13 @@ def test_structured_tools_outcome_is_keep() -> None:
     originally_deferred = {
         RalphToolName.GIT_LOG,
         RalphToolName.GIT_SHOW,
-        RalphToolName.SUBMIT_ARTIFACT,
-        RalphToolName.SUBMIT_PLAN_SECTION,
-        RalphToolName.SUBMIT_PLAN_SECTIONS,
-        RalphToolName.INSERT_PLAN_STEP,
-        RalphToolName.REPLACE_PLAN_STEP,
-        RalphToolName.REMOVE_PLAN_STEP,
-        RalphToolName.MOVE_PLAN_STEP,
-        RalphToolName.PATCH_PLAN_STEP,
-        RalphToolName.FINALIZE_PLAN,
-        RalphToolName.GET_PLAN_DRAFT,
-        RalphToolName.DISCARD_PLAN_DRAFT,
-        RalphToolName.VALIDATE_PLAN_DRAFT,
+        RalphToolName.SUBMIT_MD_ARTIFACT,
+        RalphToolName.VERIFY_MD_ARTIFACT,
+        RalphToolName.STAGE_MD_ARTIFACT,
+        RalphToolName.GET_MD_DRAFT,
+        RalphToolName.DISCARD_MD_DRAFT,
+        RalphToolName.FINALIZE_MD_ARTIFACT,
+        RalphToolName.EDIT_MD_PLAN_STEP,
         RalphToolName.REPORT_PROGRESS,
         RalphToolName.DECLARE_COMPLETE,
         RalphToolName.COORDINATE,
@@ -266,11 +256,11 @@ def test_structured_tools_outcome_is_keep() -> None:
             f"Originally-deferred tool {tool} is still DEFER after Phase 4: "
             f"{entry.outcome}"
         )
-    assert len(structured_tools) == 15, (
-        f"structured_tools must contain exactly 15 entries, got {len(structured_tools)}"
+    assert len(structured_tools) == 10, (
+        f"structured_tools must contain exactly 10 entries, got {len(structured_tools)}"
     )
-    assert len(originally_deferred) == 22, (
-        f"originally_deferred must contain exactly 22 entries, got {len(originally_deferred)}"
+    assert len(originally_deferred) == 17, (
+        f"originally_deferred must contain exactly 17 entries, got {len(originally_deferred)}"
     )
 
 
