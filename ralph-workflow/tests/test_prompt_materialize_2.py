@@ -612,7 +612,9 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
     assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
     assert "Read the complete latest artifact from file at" not in rendered
     assert "Fresh plan context." not in rendered
-    assert "Read the current plan document at `.agent/artifacts/plan.md`" in rendered
+    assert "`.agent/artifacts/plan.md`" in rendered
+    assert "authoritative markdown document" in rendered
+    assert ".agent/artifacts/plan.json" not in rendered
 
 
 def test_materialize_development_falls_back_to_plan_artifact_markdown(

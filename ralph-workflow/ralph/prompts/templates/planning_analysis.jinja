@@ -18,8 +18,9 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 {{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
-Read the current finalized plan document at `.agent/artifacts/plan.md` (mirror:
-`.agent/PLAN.md`; grammar: `.agent/artifact-formats/plan.md`) before evaluating it.
+Read the current finalized plan artifact at `.agent/artifacts/plan.md` before
+evaluating it. This artifact is the authoritative markdown document; its grammar
+is defined in `.agent/artifact-formats/plan.md`.
 If no finalized plan exists, retrieve the current staged draft with
 {{ GET_MD_DRAFT_TOOL_REFERENCE }} using `artifact_type="plan"`.
 
