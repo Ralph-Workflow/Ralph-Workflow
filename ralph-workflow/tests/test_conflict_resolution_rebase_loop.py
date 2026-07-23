@@ -776,3 +776,101 @@ def test_a_readable_replay_total_never_widens_the_stop_budget(
     assert resolved is False
     assert len(seen) == MAX_REBASE_CONFLICT_STOPS
     assert {stop.stop_cap for stop in seen} == {MAX_REBASE_CONFLICT_STOPS}
+
+
+def test_mode_only_conflict_resolved_without_invoking_resolver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C9 regression: uniform mode-only stops stage and continue without an agent."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(
+        loop_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: {
+            "src/alpha.py": {
+                1: ("100644", "blob"),
+                2: ("100644", "blob"),
+                3: ("100755", "blob"),
+            }
+        },
+    )
+    monkeypatch.setattr(
+        loop_module,
+        "run_git",
+        lambda *_args, **_kwargs: GitRunResult(args=(), returncode=0, stdout="", stderr=""),
+    )
+    called: list[RebaseStop] = []
+
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
+    assert called == []
+    assert repo.staged == [_CONFLICTED]
+
+
+def test_gitlink_conflict_resolved_via_ancestor_pick(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C7 regression: the locally reachable descendant gitlink wins."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(
+        loop_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: {"src/alpha.py": {2: ("160000", "old"), 3: ("160000", "new")}},
+    )
+    calls: list[tuple[str, ...]] = []
+
+    def _run(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
+        calls.append(args)
+        return GitRunResult(args=(), returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(loop_module, "run_git", _run)
+    called: list[RebaseStop] = []
+
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
+    assert called == []
+    assert ("update-index", "--cacheinfo", "160000,new,src/alpha.py") in calls
+
+
+def test_gitlink_conflict_diverged_declines_to_resolver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C7 regression: diverged gitlinks retain the established resolver fallback."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(
+        loop_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: {"src/alpha.py": {2: ("160000", "left"), 3: ("160000", "right")}},
+    )
+
+    def _run(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
+        rc = 1 if "merge-base" in args else 0
+        return GitRunResult(args=(), returncode=rc, stdout="", stderr="")
+
+    monkeypatch.setattr(loop_module, "run_git", _run)
+    called: list[RebaseStop] = []
+
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
+    assert len(called) == 1
+
+
+def test_mixed_deterministic_conflict_declines_whole_stop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C7/C9 regression: a mixed stop is never partially deterministic."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: ["one", "two"])
+    monkeypatch.setattr(
+        loop_module,
+        "conflict_stage_entries",
+        lambda _root, _paths: {
+            "one": {2: ("160000", "left"), 3: ("160000", "right")},
+            "two": {2: ("100644", "blob"), 3: ("100755", "blob")},
+        },
+    )
+    called: list[RebaseStop] = []
+
+    assert resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(called)) is True
+    assert called[0].conflicted_files == ("one", "two")

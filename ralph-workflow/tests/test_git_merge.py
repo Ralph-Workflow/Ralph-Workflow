@@ -23,6 +23,7 @@ from ralph.git.merge import (
     branch_exists,
     branch_sha,
     compare_and_swap_branch,
+    conflict_stage_entries,
     fast_forward_via_worktree,
     is_ancestor,
     merge_in_progress,
@@ -397,3 +398,43 @@ def test_abort_merge_is_safe_when_no_merge_in_progress(tmp_git_repo: Path) -> No
 
 
 __all__ = ["Repo"]
+
+
+def test_conflict_stage_entries_parses_mode_only_and_gitlink(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
+    """NUL-delimited stage records preserve modes, gitlinks, and spaced paths."""
+    from ralph.git import merge as merge_module
+
+    output = (
+        "100644 base 1\tspace path\0"
+        "100644 blob 2\tspace path\0"
+        "100755 blob 3\tspace path\0"
+        "160000 old 2\tsub\0"
+        "160000 new 3\tsub\0"
+    )
+    monkeypatch.setattr(
+        merge_module,
+        "run_git",
+        lambda *_args, **_kwargs: type("Result", (), {"returncode": 0, "stdout": output})(),
+    )
+
+    assert conflict_stage_entries(tmp_git_repo, ["space path", "sub"]) == {
+        "space path": {1: ("100644", "base"), 2: ("100644", "blob"), 3: ("100755", "blob")},
+        "sub": {2: ("160000", "old"), 3: ("160000", "new")},
+    }
+
+
+def test_conflict_stage_entries_returns_empty_when_git_query_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
+    """A failed index query declines deterministic resolution safely."""
+    from ralph.git import merge as merge_module
+
+    monkeypatch.setattr(
+        merge_module,
+        "run_git",
+        lambda *_args, **_kwargs: type("Result", (), {"returncode": 1, "stdout": ""})(),
+    )
+
+    assert conflict_stage_entries(tmp_git_repo, ["conflict"]) == {}

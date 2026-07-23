@@ -251,7 +251,7 @@ def rebase_onto(
     return _rebase_result_from_process(result, path, executor)
 
 
-def _rebase_stop_reports_empty(result: ProcessResult) -> bool:
+def is_empty_rebase_stop(stderr: str, stdout: str) -> bool:
     """True when a non-zero rebase stop was an "empty" stop, not a conflict.
 
     The signal is the substring that older git prints when it
@@ -264,8 +264,12 @@ def _rebase_stop_reports_empty(result: ProcessResult) -> bool:
     answers by re-entering the loop or failing out as
     ``RebaseFailed``).
     """
-    payload = f"{result.stderr}\n{result.stdout}".lower()
+    payload = f"{stderr}\n{stdout}".lower()
     return "nothing to commit" in payload or "is empty" in payload
+
+
+def _rebase_stop_reports_empty(result: ProcessResult) -> bool:
+    return is_empty_rebase_stop(result.stderr, result.stdout)
 
 
 def _validate_rebase_request(

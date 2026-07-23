@@ -13,6 +13,7 @@ from ralph.git.rebase import rebase_continuation as continuation_module
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
+    RebaseContinuationError,
     continue_rebase_at,
     rebase_in_progress_at,
     verify_rebase_completed_at,
@@ -137,3 +138,80 @@ def _resolve_conflict(repo_root: Path) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def test_continue_rebase_at_answers_empty_commit_stop_with_skip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C15 regression: an empty resolved replay is skipped instead of abandoned."""
+    state = {"in_progress": True, "skip_calls": 0}
+    repo = SimpleNamespace(head=SimpleNamespace(is_detached=False))
+    monkeypatch.setattr(continuation_module, "open_repo", lambda _root: repo)
+    monkeypatch.setattr(
+        continuation_module, "rebase_in_progress_impl", lambda _repo: state["in_progress"]
+    )
+    monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: False)
+    monkeypatch.setattr(continuation_module, "rebase_in_progress_at", lambda _root: state["in_progress"])
+
+    def _run_git(args: list[str], **_kwargs: object) -> GitRunResult:
+        if args[-1] == "--continue":
+            raise subprocess.CalledProcessError(
+                1, args, stderr="The previous cherry-pick is empty"
+            )
+        state["skip_calls"] += 1
+        state["in_progress"] = False
+        return GitRunResult(args=("git", *args), returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(continuation_module, "run_git", _run_git)
+
+    continue_rebase_at(tmp_path)
+
+    assert state["skip_calls"] == 1
+
+
+def test_continue_rebase_at_skips_consecutive_empty_commits(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C15 regression: consecutive empty stops remain bounded and land."""
+    state = {"in_progress": True, "continue_calls": 0, "skip_calls": 0}
+    repo = SimpleNamespace(head=SimpleNamespace(is_detached=False))
+    monkeypatch.setattr(continuation_module, "open_repo", lambda _root: repo)
+    monkeypatch.setattr(
+        continuation_module, "rebase_in_progress_impl", lambda _repo: state["in_progress"]
+    )
+    monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: False)
+    monkeypatch.setattr(continuation_module, "rebase_in_progress_at", lambda _root: state["in_progress"])
+
+    def _run_git(args: list[str], **_kwargs: object) -> GitRunResult:
+        if args[-1] == "--continue":
+            state["continue_calls"] += 1
+            raise subprocess.CalledProcessError(1, args, stderr="previous cherry-pick is empty")
+        state["skip_calls"] += 1
+        if state["skip_calls"] == 1:
+            return GitRunResult(args=("git", *args), returncode=1, stdout="", stderr="is empty")
+        state["in_progress"] = False
+        return GitRunResult(args=("git", *args), returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(continuation_module, "run_git", _run_git)
+
+    continue_rebase_at(tmp_path)
+
+    assert state["skip_calls"] == 2
+
+
+def test_continue_rebase_at_preserves_nonempty_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A genuine continuation failure still reports the original error."""
+    repo = SimpleNamespace(head=SimpleNamespace(is_detached=False))
+    monkeypatch.setattr(continuation_module, "open_repo", lambda _root: repo)
+    monkeypatch.setattr(continuation_module, "rebase_in_progress_impl", lambda _repo: True)
+    monkeypatch.setattr(continuation_module, "has_index_conflicts", lambda _repo: False)
+
+    def _run_git(args: list[str], **_kwargs: object) -> GitRunResult:
+        raise subprocess.CalledProcessError(1, args, stderr="could not apply commit")
+
+    monkeypatch.setattr(continuation_module, "run_git", _run_git)
+
+    with pytest.raises(RebaseContinuationError, match="could not apply commit"):
+        continue_rebase_at(tmp_path)

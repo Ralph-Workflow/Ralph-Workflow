@@ -33,6 +33,7 @@ from pathlib import Path
 from loguru import logger
 
 from ralph.git.merge import (
+    conflict_stage_entries,
     paths_with_conflict_markers,
     stage_paths,
     unmerged_paths,
@@ -70,6 +71,9 @@ _REBASE_ONTO_FILES = ("rebase-merge/onto", "rebase-apply/onto")
 #: still produced by ``--apply`` and by older gits, counts with
 #: ``next``/``last``. Read for the operator's benefit only -- see
 #: :func:`_read_replay_progress`.
+_CONFLICT_STAGE_OURS = 2
+_CONFLICT_STAGE_THEIRS = 3
+
 _REBASE_PROGRESS_FILES = (
     ("rebase-merge/msgnum", "rebase-merge/end"),
     ("rebase-apply/next", "rebase-apply/last"),
@@ -223,6 +227,8 @@ def _resolve_one_stop(
     before = _worktree_dirty_paths(root)
     if before is None:
         return False
+    if _try_deterministic_resolution(root, stop):
+        return _stage_and_prove(root, stop) and _continue_past(root, stop)
     if not resolver(root, target, stop):
         logger.info(
             "conflict_resolution: resolver declined rebase stop {} ({})",
@@ -235,6 +241,117 @@ def _resolve_one_stop(
         and _stage_and_prove(root, stop)
         and _continue_past(root, stop)
     )
+
+
+def _try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
+    """Resolve a uniformly mode-only or descendant-gitlink stop, if safe.
+
+    Mixed or unreadable stops deliberately fall through unchanged to the
+    existing resolver/endpoint-merge ladder; this helper never resolves only
+    part of a stop.
+    """
+    try:
+        entries = conflict_stage_entries(root, stop.conflicted_files)
+        if any(
+            _CONFLICT_STAGE_OURS not in entries.get(path, {})
+            or _CONFLICT_STAGE_THEIRS not in entries[path]
+            for path in stop.conflicted_files
+        ):
+            return False
+        stages = [entries[path] for path in stop.conflicted_files]
+        if all(
+            stage[_CONFLICT_STAGE_OURS][0] == stage[_CONFLICT_STAGE_THEIRS][0] == "160000"
+            for stage in stages
+        ):
+            return _resolve_gitlinks(root, stop.conflicted_files, stages)
+        if not all(
+            stage[_CONFLICT_STAGE_OURS][1] == stage[_CONFLICT_STAGE_THEIRS][1]
+            and {
+                stage[_CONFLICT_STAGE_OURS][0],
+                stage[_CONFLICT_STAGE_THEIRS][0],
+            }
+            == {"100644", "100755"}
+            for stage in stages
+        ):
+            return False
+        return _resolve_mode_only(root, stop.conflicted_files, stages)
+    except Exception as exc:
+        logger.warning("conflict_resolution: deterministic resolution declined: {}", exc)
+        return False
+
+
+def _resolve_gitlinks(
+    root: Path,
+    paths: tuple[str, ...],
+    stages: list[dict[int, tuple[str, str]]],
+) -> bool:
+    """Pick the descendant for every locally-verifiable gitlink conflict."""
+    chosen: list[tuple[str, str]] = []
+    for path, stage in zip(paths, stages, strict=True):
+        ours = stage[_CONFLICT_STAGE_OURS][1]
+        theirs = stage[_CONFLICT_STAGE_THEIRS][1]
+        submodule = root / path
+        if run_git(
+            ("-C", str(submodule), "rev-parse", "--git-dir"),
+            cwd=root,
+            label="git-gitlink-dir",
+        ).returncode != 0:
+            return False
+        if any(
+            run_git(
+                ("-C", str(submodule), "cat-file", "-e", sha),
+                cwd=root,
+                label="git-gitlink-object",
+            ).returncode
+            != 0
+            for sha in (ours, theirs)
+        ):
+            return False
+        ours_before_theirs = run_git(
+            ("-C", str(submodule), "merge-base", "--is-ancestor", ours, theirs),
+            cwd=root,
+            label="git-gitlink-ancestor",
+        ).returncode
+        theirs_before_ours = run_git(
+            ("-C", str(submodule), "merge-base", "--is-ancestor", theirs, ours),
+            cwd=root,
+            label="git-gitlink-ancestor",
+        ).returncode
+        if ours_before_theirs == 0:
+            chosen.append((path, theirs))
+        elif theirs_before_ours == 0:
+            chosen.append((path, ours))
+        else:
+            return False
+    return all(
+        run_git(
+            ("update-index", "--cacheinfo", f"160000,{sha},{path}"),
+            cwd=root,
+            label="git-gitlink-resolve",
+        ).returncode
+        == 0
+        for path, sha in chosen
+    )
+
+
+def _resolve_mode_only(
+    root: Path,
+    paths: tuple[str, ...],
+    stages: list[dict[int, tuple[str, str]]],
+) -> bool:
+    """Prefer target mode unless the feature changed it from the base."""
+    for path, stage in zip(paths, stages, strict=True):
+        target_mode, blob = stage[_CONFLICT_STAGE_OURS]
+        feature_mode = stage[_CONFLICT_STAGE_THEIRS][0]
+        base_mode = stage.get(1, ("", ""))[0]
+        mode = feature_mode if base_mode == target_mode else target_mode
+        if run_git(
+            ("update-index", "--cacheinfo", f"{mode},{blob},{path}"),
+            cwd=root,
+            label="git-mode-only-resolve",
+        ).returncode != 0:
+            return False
+    return True
 
 
 def _rebase_base_sha(root: Path) -> str | None:

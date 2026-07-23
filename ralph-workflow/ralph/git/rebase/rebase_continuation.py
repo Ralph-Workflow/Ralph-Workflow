@@ -14,6 +14,7 @@ from ralph.git.operations import GitOperationError, find_repo_root
 from ralph.git.rebase._conflict_remaining_error import ConflictRemainingError
 from ralph.git.rebase._no_rebase_in_progress_error import NoRebaseInProgressError
 from ralph.git.rebase._rebase_continuation_error import RebaseContinuationError
+from ralph.git.rebase.rebase import is_empty_rebase_stop
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ __all__ = [
 ]
 
 _REBASE_INDICATORS: Sequence[str] = ("rebase-apply", "rebase-merge")
+_MAX_EMPTY_SKIP_ATTEMPTS: int = 20
 
 
 def _git_env() -> dict[str, str]:
@@ -177,25 +179,56 @@ def continue_rebase_at(repo_root: Path | str) -> None:
         # chance to veto a malicious replay: D2 classifies such a
         # refusal as a clean retryable error.
         run_git(
-            [
-                *PINNED_CONFIG_ARGS,
-                "rebase",
-                "--continue",
-            ],
+            [*PINNED_CONFIG_ARGS, "rebase", "--continue"],
             cwd=Path(repo_root),
             label="git-rebase:continue",
-            options=GitRunOptions(
-                env=scrub_git_env(_git_env()),
-                check=True,
-            ),
+            options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
         )
     except subprocess.CalledProcessError as exc:
         raw_stderr: object = exc.stderr
         raw_stdout: object = exc.stdout
         stderr = raw_stderr if isinstance(raw_stderr, str) else ""
         stdout = raw_stdout if isinstance(raw_stdout, str) else ""
-        detail = stderr.strip() or stdout.strip() or str(exc)
-        raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from exc
+        if not is_empty_rebase_stop(stderr, stdout) or not rebase_in_progress_at(repo_root):
+            detail = stderr.strip() or stdout.strip() or str(exc)
+            raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from exc
+
+        # C15 continuation-path half: a resolver can make this replayed
+        # commit empty, so skip it just as the initial rebase path does.
+        for _ in range(_MAX_EMPTY_SKIP_ATTEMPTS):
+            skipped = run_git(
+                [*PINNED_CONFIG_ARGS, "rebase", "--skip"],
+                cwd=Path(repo_root),
+                label="git-rebase:skip",
+                options=GitRunOptions(env=scrub_git_env(_git_env())),
+            )
+            if not rebase_in_progress_at(repo_root):
+                return
+            if skipped.returncode != 0 and not is_empty_rebase_stop(
+                skipped.stderr, skipped.stdout
+            ):
+                detail = skipped.stderr.strip() or skipped.stdout.strip() or "git rebase --skip failed"
+                raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from exc
+            try:
+                run_git(
+                    [*PINNED_CONFIG_ARGS, "rebase", "--continue"],
+                    cwd=Path(repo_root),
+                    label="git-rebase:continue",
+                    options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
+                )
+                return
+            except subprocess.CalledProcessError as next_exc:
+                raw_next_stderr: object = next_exc.stderr
+                raw_next_stdout: object = next_exc.stdout
+                next_stderr = raw_next_stderr if isinstance(raw_next_stderr, str) else ""
+                next_stdout = raw_next_stdout if isinstance(raw_next_stdout, str) else ""
+                if not is_empty_rebase_stop(next_stderr, next_stdout):
+                    detail = next_stderr.strip() or next_stdout.strip() or str(next_exc)
+                    raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from next_exc
+                if not rebase_in_progress_at(repo_root):
+                    return
+
+        raise RebaseContinuationError("Failed to continue rebase: empty commit skip limit exceeded") from exc
 
 
 def continue_rebase(repo_root: Path | str | None = None) -> None:

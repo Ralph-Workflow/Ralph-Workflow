@@ -317,6 +317,38 @@ def unmerged_paths(repo_root: Path | str) -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+def conflict_stage_entries(
+    repo_root: Path | str, paths: Sequence[str]
+) -> dict[str, dict[int, tuple[str, str]]]:
+    """Return unmerged index entries keyed by path and conflict stage.
+
+    The NUL-delimited ``ls-files -u`` format preserves paths with spaces,
+    newlines, or unicode. A failed query deliberately degrades to an empty
+    mapping so callers can use their existing resolver fallback.
+    """
+    if not paths:
+        return {}
+    result = run_git(
+        ("ls-files", "-u", "-z", "--", *paths),
+        cwd=Path(repo_root),
+        label="git-conflict-stage-entries",
+    )
+    if result.returncode != 0:
+        return {}
+
+    entries: dict[str, dict[int, tuple[str, str]]] = {}
+    for record in result.stdout.split("\0"):
+        if not record:
+            continue
+        try:
+            metadata, path = record.split("\t", 1)
+            mode, blob, raw_stage = metadata.split()
+            entries.setdefault(path, {})[int(raw_stage)] = (mode, blob)
+        except ValueError:
+            return {}
+    return entries
+
+
 def stage_paths(repo_root: Path | str, paths: Sequence[str]) -> bool:
     """Stage the given paths with ``git add -- <paths>``.
 
@@ -603,6 +635,7 @@ __all__ = [
     "branch_exists",
     "branch_sha",
     "compare_and_swap_branch",
+    "conflict_stage_entries",
     "fast_forward_via_worktree",
     "is_ancestor",
     "merge_in_progress",
