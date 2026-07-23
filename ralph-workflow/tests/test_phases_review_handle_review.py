@@ -66,6 +66,41 @@ class TestHandleReview:
         result = handle_review(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
+    def test_markdown_artifact_takes_precedence_over_stale_legacy_json(self) -> None:
+        effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "review"
+        ctx = self._make_context()
+        artifacts = {
+            ".agent/artifacts/issues.md": """---
+type: issues
+status: issues_found
+---
+
+## Summary
+- [SUM-1] Canonical review found a defect.
+
+## Issues
+- [I-1] src/app.py | high | Canonical markdown issue
+
+## What Came Up Short
+- [W-1] The implementation omitted a required guard.
+
+## How To Fix
+- [FIX-1] Add the guard and cover the failure path.
+""",
+            ".agent/artifacts/issues.json": (
+                '{"type":"issues","content":{"status":"clean","summary":"stale","issues":[]}}'
+            ),
+        }
+        ctx.workspace.exists.side_effect = artifacts.__contains__
+        ctx.workspace.read.side_effect = artifacts.__getitem__
+
+        result = handle_review(effect, ctx)
+
+        assert result == [PipelineEvent.REVIEW_ISSUES_FOUND]
+        ctx.workspace.read.assert_any_call(".agent/artifacts/issues.md")
+        assert ctx.workspace.read.call_count == 2
+
     def test_invoke_agent_effect_without_issues_artifact_returns_phase_failure_recoverable(
         self,
     ) -> None:
