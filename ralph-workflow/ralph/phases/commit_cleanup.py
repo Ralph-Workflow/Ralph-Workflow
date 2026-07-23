@@ -68,7 +68,8 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts._commit_cleanup_action import CommitCleanupAction
     from ralph.phases import PhaseContext
 
-COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
+COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
+_LEGACY_COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
 
 _UNSAFE_EXTENSIONS: frozenset[str] = frozenset(
     {
@@ -629,7 +630,13 @@ def _load_cleanup_artifact(
 
     Returns the validated cleanup model, or None if loading/validation failed.
     """
-    if not ctx.workspace.exists(COMMIT_CLEANUP_ARTIFACT_PATH):
+    artifact_path = COMMIT_CLEANUP_ARTIFACT_PATH
+    if not ctx.workspace.exists(artifact_path) and ctx.workspace.exists(
+        _LEGACY_COMMIT_CLEANUP_ARTIFACT_PATH
+    ):
+        artifact_path = _LEGACY_COMMIT_CLEANUP_ARTIFACT_PATH
+
+    if not ctx.workspace.exists(artifact_path):
         logger.warning(
             "{}: missing commit_cleanup artifact at {}",
             phase_name,
@@ -638,7 +645,11 @@ def _load_cleanup_artifact(
         return None
 
     try:
-        raw_artifact = load_phase_artifact(ctx.workspace, COMMIT_CLEANUP_ARTIFACT_PATH)
+        raw_artifact = load_phase_artifact(
+            ctx.workspace,
+            artifact_path,
+            artifact_type="commit_cleanup",
+        )
         artifact_content = unwrap_phase_artifact_content(
             raw_artifact, expected_type="commit_cleanup"
         )

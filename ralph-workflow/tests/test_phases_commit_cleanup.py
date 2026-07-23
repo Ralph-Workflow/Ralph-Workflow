@@ -108,6 +108,48 @@ def test_agent_success_when_analysis_complete(tmp_git_repo: Path) -> None:
     assert result == [PipelineEvent.AGENT_SUCCESS]
 
 
+def test_markdown_artifact_takes_precedence_over_stale_legacy_json(
+    tmp_git_repo: Path,
+) -> None:
+    """A canonical markdown submission must override stale legacy JSON."""
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "add_to_gitignore", "pattern": "*.stale"}],
+        },
+    )
+    workspace.write(
+        ".agent/artifacts/commit_cleanup.md",
+        """---
+type: commit_cleanup
+analysis_complete: true
+---
+
+## Actions
+""",
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_cleanup",
+        prompt_file="cleanup.txt",
+    )
+
+    result = handle_commit_cleanup_phase(effect, ctx)
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert "*.stale" not in (tmp_git_repo / ".gitignore").read_text(encoding="utf-8")
+
+
 def test_phase_loopback_when_has_actions(tmp_git_repo: Path) -> None:
     """Test that PHASE_LOOPBACK is returned when actions remain."""
     workspace = FsWorkspace(tmp_git_repo)
