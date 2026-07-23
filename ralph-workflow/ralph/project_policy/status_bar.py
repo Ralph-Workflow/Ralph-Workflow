@@ -18,6 +18,8 @@ from ralph.display.parallel_display import phase_style_for_phase
 from ralph.display.status_bar import StatusBarModel
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -50,11 +52,9 @@ def push_remediation_status_bar(
             elapsed_seconds=elapsed_seconds,
             agent_name=agent_name,
         )
-        update = cast(
-            "Callable[[object], None] | None",
-            getattr(display, "update_status_bar", None),
-        )
+        update_raw: object = getattr(display, "update_status_bar", None)
+        update = cast("Callable[[object], None] | None", update_raw)
         if update is not None:
             update(model)
-    except Exception as exc:  # noqa: BLE001 - defensive: presentation must never block remediation
+    except Exception as exc:  # defensive: presentation must never block remediation
         logger.debug("remediation status-bar push failed (non-fatal): {}", exc)
