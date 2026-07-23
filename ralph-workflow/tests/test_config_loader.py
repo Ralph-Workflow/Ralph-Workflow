@@ -511,16 +511,59 @@ def test_general_config_provider_fallback_is_labeled_reserved() -> None:
     The field is NOT consumed by any runtime code; agent fallback is provided
     exclusively by [agent_chains] in ralph-workflow.toml. We keep the field
     only so a legacy user-global config carrying ``provider_fallback = {...}``
-    does not trip the unknown-field detector. The accompanying comment is the
-    "make it real, remove it, or label it" label this knob needed.
+    does not trip the unknown-field detector. The accompanying Python
+    comment on the field is the "make it real, remove it, or label it"
+    label this knob needed. The plan Step 6 constraint requires the label
+    to remain a maintainer comment and forbids changing the Pydantic
+    model (no Field(description=...) and no type/default change).
     """
+    import inspect
+
     assert "provider_fallback" in GeneralConfig.model_fields
     field = GeneralConfig.model_fields["provider_fallback"]
-    description = (field.description or "").lower()
-    assert "reserved" in description, (
-        "provider_fallback must carry a 'RESERVED' comment in its description "
-        "to satisfy principle 7 (label the dead knob). Got: "
+    # Constraint from the accepted plan: no Field(description=...) exposing
+    # the dead knob through Pydantic JSON schema. The label lives in the
+    # Python comment, not the Pydantic field metadata.
+    assert field.description in (None, ""), (
+        "provider_fallback must not carry a Field(description=...) that would "
+        "expose the dead knob through Pydantic JSON schema; the label belongs "
+        "in a maintainer comment. Got description: "
         f"{field.description!r}"
+    )
+    # Default value must be an empty dict (via default_factory=dict), so
+    # legacy configs that already carry the field still validate against
+    # the bundled defaults.
+    default_factory = field.default_factory
+    assert default_factory is dict, (
+        "provider_fallback must default to an empty dict via default_factory=dict; "
+        f"got default_factory={default_factory!r}"
+    )
+    # The label must be in a maintainer comment on the field declaration.
+    source = inspect.getsource(GeneralConfig)
+    source_lines = source.splitlines()
+    field_idx = next(
+        i for i, line in enumerate(source_lines) if "provider_fallback:" in line
+    )
+    provider_fallback_line = source_lines[field_idx].strip()
+    assert provider_fallback_line == "provider_fallback: dict[str, list[str]] = Field(default_factory=dict)", (
+        "provider_fallback must keep its original Field(default_factory=dict) shape; "
+        "the plan explicitly forbids adding Field(description=...) and changing the "
+        f"type/default. Got: {provider_fallback_line!r}"
+    )
+    comment_block = "\n".join(
+        line.lstrip()
+        for line in source_lines[max(0, field_idx - 20):field_idx]
+        if line.strip().startswith("#")
+    )
+    assert "RESERVED" in comment_block.upper(), (
+        "provider_fallback must carry a 'RESERVED' maintainer comment to "
+        "satisfy principle 7 (label the dead knob). Got comment block: "
+        f"{comment_block!r}"
+    )
+    assert "provider_fallback is NOT consumed" in comment_block, (
+        "provider_fallback comment must explain that the field is not "
+        "consumed by any runtime code. Got: "
+        f"{comment_block!r}"
     )
 
 

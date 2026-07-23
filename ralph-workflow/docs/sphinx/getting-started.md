@@ -22,10 +22,10 @@ Have these ready before you start:
 
 ## Exact steps
 
-The canonical six-step install → init → diagnose → spec → run → review
-sequence is inlined below so a non-developer can copy-paste without
-bouncing between files. Run every command from a human-operated shell
-**outside any Ralph-managed agent session**.
+The canonical install → init → diagnose → spec → run sequence is inlined
+below so a non-developer can copy-paste without bouncing between files.
+Run every command from a human-operated shell **outside any Ralph-managed
+agent session**.
 
 ### 1. Install Ralph Workflow
 
@@ -117,9 +117,9 @@ is the live observability surface; the on-disk artifacts under
 `.agent/artifacts/` are the durable record.
 
 For deeper operator configuration, open
-[Configuration Reference](configuration.md). For docs grouped by use
-case instead of by document type, open
-[End-User Stories](agent-compatibility.md).
+[Configuration Reference](configuration.md). For per-agent CLI, transport,
+and model-string details, open the
+[Agent Compatibility Guide](agent-compatibility.md).
 
 ## Pick the right first task
 
@@ -350,6 +350,6 @@ branch, ask for changes, revert, rerun, or discard the result.
 ## Next step
 
 - Configuration answers → [Configuration Reference](configuration.md).
-- Docs grouped by use case → [End-User Stories](agent-compatibility.md).
+- Per-agent CLI/model-string reference → [Agent Compatibility Guide](agent-compatibility.md).
 - Underlying concepts → [Concepts](concepts.md).
 - First run goes sideways → [Troubleshooting](troubleshooting.md).

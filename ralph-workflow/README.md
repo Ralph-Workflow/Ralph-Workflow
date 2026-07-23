@@ -19,7 +19,7 @@ version.
 The canonical first-run walkthrough — install → init → diagnose → edit
 PROMPT.md → run — is in
 [Getting started](docs/sphinx/getting-started.md). It is the single home
-for the six-step sequence and does not require opening any other config
+for the first-run sequence and does not require opening any other config
 file before your first run.
 
 ## Supported agents

@@ -53,7 +53,7 @@ def test_run_test_suites_runs_single_budgeted_verification_command(
         "-n",
         "5",
         "--dist",
-        "loadfile",
+        "worksteal",
         "-m",
         "not subprocess_e2e and not smoke",
     )
@@ -89,7 +89,7 @@ def test_run_test_suites_returns_non_zero_exit_code(
         "-n",
         "5",
         "--dist",
-        "loadfile",
+        "worksteal",
         "-m",
         "not subprocess_e2e and not smoke",
     )

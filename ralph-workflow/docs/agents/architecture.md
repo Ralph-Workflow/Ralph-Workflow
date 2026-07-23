@@ -31,9 +31,13 @@ registration  →  parser  →  strategy  →  CommandBuilder
    starts.
 6. **Config and chains** — `[agents.<name>]`, `[ccs_aliases.<name>]`,
    `[agent_chains]`, and `[agent_drains]` in `ralph-workflow.toml` configure every
-   aspect of an agent's behaviour. The shorthand forms (`claude/<model>`,
-   `opencode/<provider>`, `agy/<model>`, `pi/<model>`) are expanded by the
-   config layer into fully-qualified `AgentSpec` objects before registration.
+   aspect of an agent's behaviour. Shorthand forms (`claude/<model>`,
+   `opencode/<provider>/<model>`, `agy/<model>`, `pi/<model>`, ...) are
+   expanded by the config layer into fully-qualified `AgentSpec` objects
+   before registration. The canonical per-agent model-string shapes and
+   example expansions live in
+   [Agent Compatibility](../sphinx/agent-compatibility.md) — that page
+   is the single home for those facts, do not re-describe them here.
    The `pi/<model>` shorthand preserves the full suffix (e.g.
    `pi/anthropic/claude-sonnet-4-20250514` becomes
    `--model anthropic/claude-sonnet-4-20250514`) using
@@ -148,12 +152,13 @@ Agents are configured in `ralph-workflow.toml` under four top-level sections:
   is NOT parallel fan-out — that is a separate effect handled by
   `[phases.<name>].parallelization`, not by `[agent_drains]`.
 
-The shorthand forms for built-in transports are also accepted as agent names:
-`claude/<model>` (e.g. `claude/sonnet`), `opencode/<provider>` (e.g.
-`opencode/anthropic`), `agy/<model>` (e.g. `agy/gemini-2.5`), and
-`pi/<model>` (e.g. `pi/anthropic/claude-sonnet-4-20250514`).  The config
-loader expands these into fully-qualified `AgentSpec` objects before registering
-the agent in the catalog.
+The shorthand forms for built-in transports are also accepted as agent names
+(`claude/<model>`, `opencode/<provider>/<model>`, `agy/<model>`,
+`pi/<model>`, ...).  The config loader expands these into fully-qualified
+`AgentSpec` objects before registering the agent in the catalog.  The
+canonical per-agent model-string shapes and worked examples live in
+[Agent Compatibility](../sphinx/agent-compatibility.md) — that page
+is the single home for those facts, do not re-describe them here.
 
 ## Adding a new agent
 

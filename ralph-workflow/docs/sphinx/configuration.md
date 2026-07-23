@@ -668,7 +668,8 @@ Every routing decision the pipeline makes traces back to a single declared field
 - [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
 - [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
 - [Developer Reference](developer-internals.md) — implementation-oriented detail
-- [End-User Stories](agent-compatibility.md) — common user goals and the shortest docs path for each one
+- [Agent Compatibility Guide](agent-compatibility.md) — per-agent CLI, transport, and model-string reference
+
 ## Type checking and tooling
 
 The maintained Python package enforces strict mypy on every supported
