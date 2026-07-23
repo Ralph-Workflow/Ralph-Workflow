@@ -50,12 +50,11 @@ def test_phase_close_flushes_open_streaming_block() -> None:
     )
 
 
-def test_phase_close_sanitises_produced() -> None:
+def test_phase_close_preserves_literal_brackets() -> None:
     pd, buf = _make_display()
     pd.emit_phase_close("review", "[red]issues[/red]")
     out = buf.getvalue()
-    assert "[red]" not in out
-    assert "[/red]" not in out
+    assert "[red]issues[/red]" in out
     assert "issues" in out
 
 

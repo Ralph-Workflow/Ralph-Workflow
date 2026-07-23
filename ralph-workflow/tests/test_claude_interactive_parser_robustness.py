@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ralph.agents.parsers.claude_interactive import (
     ClaudeInteractiveParser,
     ClaudeInteractiveTranscriptParser,
@@ -223,3 +225,32 @@ def test_error_event_with_string_error_payload_is_surfaced() -> None:
     events = parser.feed(payload + "\n")
 
     assert [(event.kind, event.text) for event in events] == [("error", "boom: rate limited")]
+
+
+@pytest.mark.parametrize(
+    "error_text",
+    [
+        "API Error: 400 {type: error, message: invalid_request_error}",
+        "Authentication error: OAuth token has expired",
+        "Credential error: no API key found",
+        "401 Unauthorized: invalid API key",
+        "403 Forbidden: account access denied",
+        "429 Too Many Requests: quota exceeded",
+        "Rate limit error: retry after 60 seconds",
+        "Billing error: credit balance is too low",
+        "Service unavailable: Anthropic API is overloaded",
+    ],
+)
+def test_provider_failure_text_is_surfaced_as_error_immediately(error_text: str) -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+    assistant_payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "starting work"}]},
+        }
+    )
+
+    assert parser.feed(assistant_payload + "\n")
+    events = parser.feed(error_text + "\n")
+
+    assert [(event.kind, event.text) for event in events] == [("error", error_text)]

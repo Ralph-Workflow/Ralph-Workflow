@@ -57,8 +57,8 @@ def test_emit_run_end_pr_url_none_omits_pr_line() -> None:
     assert "pr=" not in out
 
 
-def test_emit_run_end_pr_url_set_emits_sanitized_pr_line() -> None:
-    """When pr_url is set, pr=<sanitized> line is emitted without Rich markup."""
+def test_emit_run_end_pr_url_preserves_literal_brackets() -> None:
+    """When pr_url is set, literal bracket content remains copy-pasteable."""
     pd, buf = _make_display()
     pd.emit_run_end(
         phase="complete",
@@ -66,9 +66,7 @@ def test_emit_run_end_pr_url_set_emits_sanitized_pr_line() -> None:
         pr_url="[bold]https://github.com/test/repo/pull/123[/bold]",
     )
     out = buf.getvalue()
-    assert "[bold]" not in out
-    assert "[/bold]" not in out
-    assert "pr=https://github.com/test/repo/pull/123" in out
+    assert "[bold]https://github.com/test/repo/pull/123[/bold]" in out
 
 
 def test_emit_run_end_no_ansi_escapes() -> None:

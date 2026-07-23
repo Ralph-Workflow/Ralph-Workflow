@@ -16,6 +16,20 @@ _SESSION_ID_PATTERNS = (
     re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
 )
 _TOOL_USE_PATTERN = re.compile(r"^claude tool:\s*\S", re.IGNORECASE)
+_PROVIDER_FAILURE_PATTERN = re.compile(
+    r"^(?:"
+    r"(?:api|authentication|authorization|credential|oauth|billing|quota|"
+    r"rate[\s_-]*limit|network|connection|provider|request)\s+"
+    r"(?:error|failure|failed|unavailable)\b"
+    r"|service\s+unavailable\b"
+    r"|(?:4(?:00|01|03|08|09|13|22|23|24|29)|5\d\d)\s+"
+    r"(?:bad\s+request|unauthorized|forbidden|request\s+timeout|conflict|"
+    r"payload\s+too\s+large|unprocessable\s+(?:content|entity)|locked|"
+    r"failed\s+dependency|too\s+many\s+requests|internal\s+server\s+error|"
+    r"bad\s+gateway|service\s+unavailable|gateway\s+timeout)\b"
+    r")",
+    re.IGNORECASE,
+)
 _MIN_MEANINGFUL_LEN = 3
 _PURE_COUNTER_RE = re.compile(r"^\s*\d+\s*$")
 _TUI_STATUSBAR_RE = re.compile(
@@ -103,7 +117,7 @@ def _count_box_drawing(text: str) -> int:
     )
 
 
-def _is_tui_chrome(text: str) -> bool:  # noqa: PLR0911
+def _is_tui_chrome(text: str) -> bool:
     """Return True when *text* is terminal-render surface noise.
 
     Detects box-drawing borders, splash screens, spinners, status bars, and
@@ -111,12 +125,8 @@ def _is_tui_chrome(text: str) -> bool:  # noqa: PLR0911
     Platform-agnostic: operates on Unicode character properties, not
     terminal-specific escape sequences (those are handled by the VT normalizer).
     """
-    if not text:
+    if not text or any(pattern.search(text) for pattern in _TUI_CHROME_PATTERNS):
         return True
-
-    for pattern in _TUI_CHROME_PATTERNS:
-        if pattern.search(text):
-            return True
 
     if not any("\u2500" <= ch <= "\u259f" for ch in text):
         return False
@@ -383,8 +393,14 @@ class ClaudeInteractiveTranscriptParser:
 
     def _match_known_pattern(self, text: str) -> InteractiveTranscriptEvent | None:
         """Match text against known regex/prefix patterns, returning event or None."""
-        result: InteractiveTranscriptEvent | None = None
+        result = (
+            InteractiveTranscriptEvent(kind="error", text=text)
+            if _PROVIDER_FAILURE_PATTERN.match(text)
+            else None
+        )
         for pattern in _SESSION_ID_PATTERNS:
+            if result is not None:
+                break
             match = pattern.search(text)
             if match is not None:
                 self.session_id = match.group(1)

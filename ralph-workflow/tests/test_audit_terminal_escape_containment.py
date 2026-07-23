@@ -256,17 +256,17 @@ def test_audit_blocks_regression_when_activity_model_render_event_line_drops_str
     assert path in captured.out
 
 
-def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_strip(
+def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_control_strip(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Adversarial: revert ``ParallelDisplay.strip_markup`` to the pre-fix ``_strip_markup``-only form."""
+    """Adversarial: remove terminal-control stripping from ``strip_markup``."""
     path = "display/parallel_display.py"
 
     def _transform(src: str) -> str:
         return src.replace(
-            "return strip_terminal_control(_strip_markup(line))",
-            "return _strip_markup(line)",
+            "return strip_terminal_control(line)",
+            "return line",
         )
 
     _patch_rel(monkeypatch, path, _transform)

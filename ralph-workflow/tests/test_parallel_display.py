@@ -155,13 +155,12 @@ def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
 
     rendered_text = console.export_text()
     assert "some output line" in rendered_text
-    assert "[green]" not in rendered_text
-    assert "[/green]" not in rendered_text
+    assert "[green]some output line[/green]" in rendered_text
     assert "Agent Activity" not in rendered_text
 
 
-def test_strip_markup_removes_rich_tags() -> None:
-    assert strip_markup("[green]ok[/green]") == "ok"
+def test_strip_markup_preserves_literal_brackets() -> None:
+    assert strip_markup("[green]ok[/green]") == "[green]ok[/green]"
     assert strip_markup("plain text") == "plain text"
 
 
