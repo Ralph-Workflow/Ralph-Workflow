@@ -75,103 +75,52 @@ trap cleanup EXIT
 # hide in the gap. Matching bytes also makes the scan immune to files
 # that are not valid UTF-8 at all.
 #
-# The corpus is ~2,700 small files totalling ~21 MB, so the scan is
-# dominated by per-file open/read latency, not by bytes and not by regex
-# work: measured on this tree a serial pass costs ~5.9s (a plain ``cat``
-# of the same file list costs ~3.4s even warm) while the whole compiled
-# regex over the same bytes costs ~0.2s. The reads are therefore issued
-# from a fixed set of worker threads -- ``read()`` releases the GIL, so
-# the threads overlap the storage round-trips that are the actual cost,
-# and the identical pass drops to ~0.25s. The worker count is fixed
-# rather than derived from ``os.cpu_count()`` because the resource being
-# saturated is I/O concurrency (outstanding requests to a high-latency
-# external volume), not CPU. Do NOT raise GREP_TIMEOUT_SECONDS to
-# accommodate a slow scan; see
-# docs/ralph-workflow-policy/gate-script-policy.md § Bounded.
-#
-# Why hand-rolled threads instead of ``concurrent.futures``: this gate is
-# the FIRST step ``make verify`` runs, so it pays cold-import cost for
-# everything it touches, and importing ``concurrent.futures`` pulls in
-# ``queue``/``weakref``/``_base`` for roughly 8x the import cost of plain
-# ``threading``. Each worker takes a stride of the path list
-# (``paths[start::READ_WORKERS]``), so there is no shared queue, no lock,
-# and no work-distribution overhead; results are written to distinct
-# preallocated slots, which is safe under CPython.
-#
-# The emitted path list stays in ``find`` order because ``results`` is
-# indexed by position, so the downstream allowlist filtering is
-# unchanged. Fail-closed in two places: a read error fails the whole scan
-# with rc=2 (reported once the workers join, because a worker cannot exit
-# the process out from under its peers), and a slot still holding its
-# ``None`` sentinel -- which can only happen if a worker died before
-# scanning its stride -- also fails with rc=2 rather than being read as
-# "no drift here".
+# Git searches tracked files through its optimized worktree scanner while a
+# second Git process lists only non-ignored untracked files. Those processes
+# run concurrently; Python reads the usually tiny untracked set itself so
+# synthetic or newly-created source files cannot evade the gate. Any Git
+# error, timeout, or untracked-file read error fails closed.
 GREP_TIMEOUT_SECONDS=2
 python3 -c '
 import re
 import subprocess
 import sys
-import threading
-
-READ_WORKERS = 64
 
 pattern = re.compile(sys.argv[1].encode("utf-8"))
+grep_process = subprocess.Popen(
+    ["git", "grep", "-IlE", sys.argv[1], "--", "ralph", "tests", "docs"],
+    stdout=subprocess.PIPE,
+)
+untracked_process = subprocess.Popen(
+    ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", "ralph", "tests", "docs"],
+    stdout=subprocess.PIPE,
+)
 try:
-    listing = subprocess.run(
-        ["git", "ls-files", "-co", "--exclude-standard", "-z", "--", "ralph", "tests", "docs"],
-        check=False,
-        stdout=subprocess.PIPE,
-        timeout=1.5,
-    )
+    grep_stdout, _ = grep_process.communicate(timeout=1.5)
+    untracked_stdout, _ = untracked_process.communicate(timeout=1.5)
 except subprocess.TimeoutExpired:
+    grep_process.kill()
+    untracked_process.kill()
     sys.exit(124)
-if listing.returncode != 0:
+if grep_process.returncode not in (0, 1) or untracked_process.returncode != 0:
     sys.exit(2)
-paths = [
+untracked_paths = [
     raw.decode(sys.getfilesystemencoding(), errors="surrogateescape")
-    for raw in listing.stdout.split(b"\0")
+    for raw in untracked_stdout.split(b"\0")
     if raw.endswith((b".py", b".rst", b".md")) and b"/__pycache__/" not in raw
 ]
-results = [None] * len(paths)
-
-
-def scan(start):
-    for index in range(start, len(paths), READ_WORKERS):
-        path = paths[index]
-        try:
-            with open(path, "rb") as handle:
-                blob = handle.read()
-        except OSError as exc:
-            results[index] = "cannot read {0}: {1}".format(path, exc)
-            continue
-        results[index] = pattern.search(blob) is not None
-
-
-workers = [
-    threading.Thread(target=scan, args=(start,))
-    for start in range(min(READ_WORKERS, len(paths)))
-]
-for worker in workers:
-    worker.start()
-for worker in workers:
-    worker.join()
-
-unscanned = [
-    paths[index] for index, result in enumerate(results) if result is None
-]
-errors = [result for result in results if isinstance(result, str)]
-if errors or unscanned:
-    for error in errors:
-        sys.stderr.write(error + "\n")
-    for path in unscanned:
-        sys.stderr.write("scan worker died before reading {0}\n".format(path))
-    sys.exit(2)
-
-matched = False
-for path, hit in zip(paths, results):
-    if hit is True:
-        sys.stdout.write(path + "\n")
-        matched = True
+matched_paths = set(grep_stdout.decode(sys.getfilesystemencoding(), errors="surrogateescape").splitlines())
+for path in untracked_paths:
+    try:
+        with open(path, "rb") as handle:
+            if pattern.search(handle.read()) is not None:
+                matched_paths.add(path)
+    except OSError as exc:
+        sys.stderr.write("cannot read {0}: {1}\n".format(path, exc))
+        sys.exit(2)
+for path in sorted(matched_paths):
+    sys.stdout.write(path + "\n")
+matched = bool(matched_paths)
 sys.exit(0 if matched else 1)
 ' "$DRIFT_PATTERNS" \
     >"$GREP_DIR/scan.out" 2>"$GREP_DIR/scan.err" &
