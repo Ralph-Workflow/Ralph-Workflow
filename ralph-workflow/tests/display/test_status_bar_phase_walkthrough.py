@@ -44,6 +44,7 @@ from ralph.pipeline.phase_transition import (
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.project_policy import cli_integration
+from ralph.project_policy.pipeline_graph import DEFAULT_MAX_REMEDIATION_ATTEMPTS
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -263,7 +264,8 @@ class _CapturingDisplay:
         self.update_call_count += 1
 
 
-def test_remediation_push_helper_produces_correct_model() -> None:
+@pytest.mark.parametrize("attempt", [1, 2, DEFAULT_MAX_REMEDIATION_ATTEMPTS])
+def test_remediation_push_helper_produces_correct_model(attempt: int) -> None:
     """Drive the real ``_push_remediation_status_bar`` and assert exact values.
 
     Uses the production helper, not a synthesized StatusBarModel, so
@@ -279,27 +281,29 @@ def test_remediation_push_helper_produces_correct_model() -> None:
     cli_integration._push_remediation_status_bar(
         capture,
         scope,
-        max_attempts=3,
-        attempt=2,
+        max_attempts=DEFAULT_MAX_REMEDIATION_ATTEMPTS,
+        attempt=attempt,
         elapsed_seconds=65.0,
         agent_name="policy-agent",
     )
     assert capture.update_call_count == 1
     assert capture.last_model is not None
     model = capture.last_model
-    assert model.outer_dev_iteration == 2, (
-        f"remediation push must surface live attempt 2; got {model.outer_dev_iteration}"
+    assert model.outer_dev_iteration == attempt, (
+        f"remediation push must surface live attempt {attempt}; "
+        f"got {model.outer_dev_iteration}"
     )
-    assert model.outer_dev_cap == 3
+    assert model.outer_dev_cap == DEFAULT_MAX_REMEDIATION_ATTEMPTS
+    assert model.outer_dev_iteration <= model.outer_dev_cap
     assert model.outer_label == "Remediation", (
         f"remediation label must be 'Remediation'; got {model.outer_label!r}"
     )
     assert model.elapsed_seconds == 65.0
     assert model.agent_name == "policy-agent"
-    # Render and confirm the bar shows ``Remediation 2/3`` exactly.
+    # Render and confirm the bar shows the live attempt and its ceiling exactly.
     text = render_status_bar(model, _ctx())
     assert "Remediation" in text.plain
-    assert "2/3" in text.plain
+    assert f"{attempt}/{DEFAULT_MAX_REMEDIATION_ATTEMPTS}" in text.plain
     assert "Time 01:05" in text.plain
     assert "Agent policy-agent" in text.plain
     assert "Cycle" not in text.plain
@@ -366,15 +370,16 @@ def test_truncation_stability_across_widths() -> None:
         )
 
 
-def test_remediation_label_at_40_columns_preserves_attempt_and_cap() -> None:
-    """The Remediation label keeps ``Remediation 2/3`` visible at 40 cols (AC-04)."""
+@pytest.mark.parametrize("attempt", [2, DEFAULT_MAX_REMEDIATION_ATTEMPTS])
+def test_remediation_label_at_40_columns_preserves_attempt_and_cap(attempt: int) -> None:
+    """The Remediation label keeps each live attempt and cap visible at 40 cols."""
     ctx = _ctx(width=40)
     model = StatusBarModel(
         workspace_root="/tmp/remediation-probe",
         phase_label="Policy Remediation",
         phase_style=phase_style_for_phase("policy_remediation"),
-        outer_dev_iteration=2,
-        outer_dev_cap=3,
+        outer_dev_iteration=attempt,
+        outer_dev_cap=DEFAULT_MAX_REMEDIATION_ATTEMPTS,
         outer_label="Remediation",
     )
     text = render_status_bar(model, ctx)
@@ -386,13 +391,12 @@ def test_remediation_label_at_40_columns_preserves_attempt_and_cap() -> None:
     # The Remediation label MUST surface the attempt value AND the
     # cap; the prior bug truncated the bar mid-label so the operator
     # lost the live remediation progress. Pass when the canonical
-    # ``Remediation 2/3`` is fully visible OR when the bar degrades
-    # to a compact / minimal carrier that still preserves the
-    # attempt number AND the cap (the ``2/3`` substring).
+    # ``Remediation N/Max`` is fully visible OR when the bar degrades
+    # to a compact / minimal carrier that still preserves both values.
     assert "Remediation" in text.plain or "Rem" in text.plain, (
         f"Remediation carrier missing at width=40: {text.plain!r}"
     )
-    assert "2/3" in text.plain, (
+    assert f"{attempt}/{DEFAULT_MAX_REMEDIATION_ATTEMPTS}" in text.plain, (
         f"remediation attempt+cap missing at width=40: {text.plain!r}"
     )
 

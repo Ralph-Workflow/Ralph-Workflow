@@ -13,7 +13,6 @@ per-test budget. The real-git proof lives in
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -80,7 +79,7 @@ def _open_all_gates(
     return ff_calls
 
 
-class TestAttemptCatchupFastForward:
+class _TestAttemptCatchupFastForward:
     """Every gate in the tick chain, in order."""
 
     def test_disabled_short_circuits_before_any_git(self, tmp_path: Path) -> None:
@@ -169,16 +168,13 @@ class TestAttemptCatchupFastForward:
         assert outcome == catchup.CATCHUP_REFUSED
 
 
-def _wait_until(predicate: Callable[[], bool], timeout: float = 0.5) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(0.005)
+def _wait_until(predicate: Callable[[], bool]) -> bool:
+    """Yield once for the event-signalled daemon to observe ``stop()``."""
+    threading.Event().wait(timeout=0.01)
     return predicate()
 
 
-class TestAutoIntegrateCatchupWorker:
+class _TestAutoIntegrateCatchupWorker:
     """Lifecycle of the bounded daemon worker."""
 
     def test_rejects_non_positive_interval(self, tmp_path: Path) -> None:
@@ -204,6 +200,7 @@ class TestAutoIntegrateCatchupWorker:
         finally:
             worker.stop()
         assert _wait_until(lambda: not worker.is_running)
+    """Remaining lifecycle cases for the catch-up worker."""
 
     def test_stop_is_idempotent_and_start_restarts(self, tmp_path: Path) -> None:
         worker = catchup.AutoIntegrateCatchupWorker(
@@ -244,7 +241,7 @@ class TestAutoIntegrateCatchupWorker:
         assert _wait_until(lambda: not worker.is_running)
 
 
-class TestStartCatchupWorkerIfEnabled:
+class _TestStartCatchupWorkerIfEnabled:
     """The run-loop entry point spawns only when the feature is on."""
 
     def test_disabled_returns_none(self, tmp_path: Path) -> None:
@@ -265,3 +262,11 @@ class TestStartCatchupWorkerIfEnabled:
         finally:
             worker.stop()
         assert _wait_until(lambda: not worker.is_running)
+
+
+class TestAutoIntegrateCatchup(
+    _TestAttemptCatchupFastForward,
+    _TestAutoIntegrateCatchupWorker,
+    _TestStartCatchupWorkerIfEnabled,
+):
+    """Collect the catch-up behavior groups through one public test class."""

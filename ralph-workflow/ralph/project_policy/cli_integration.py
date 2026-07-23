@@ -40,6 +40,7 @@ from ralph.project_policy import remediation as policy_remediation
 from ralph.project_policy.pipeline_driver import run_policy_pipeline
 from ralph.project_policy.pipeline_graph import (
     DEFAULT_ANALYSIS_CAP,
+    DEFAULT_MAX_REMEDIATION_ATTEMPTS,
     PHASE_ANALYSIS,
     PHASE_REMEDIATION,
 )
@@ -794,10 +795,15 @@ def _dispatch_preflight_result(
     with display:
         def _on_remediation_attempt(attempt: int) -> None:
             _push_remediation_status_bar(
-                display, workspace_scope, DEFAULT_ANALYSIS_CAP, attempt=attempt
+                display,
+                workspace_scope,
+                DEFAULT_MAX_REMEDIATION_ATTEMPTS,
+                attempt=attempt,
             )
 
-        _push_remediation_status_bar(display, workspace_scope, DEFAULT_ANALYSIS_CAP)
+        _push_remediation_status_bar(
+            display, workspace_scope, DEFAULT_MAX_REMEDIATION_ATTEMPTS
+        )
         final = run_policy_pipeline(
             workspace,
             stack,

@@ -267,7 +267,7 @@ def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_contro
         # Replacing the composed sanitization with ``return line`` drops both
         # Rich-markup and terminal-control stripping; the body invariant catches it.
         return src.replace(
-            "return strip_terminal_control(_strip_markup(line))",
+            "return _strip_markup(strip_terminal_control(line))",
             "return line",
         )
 

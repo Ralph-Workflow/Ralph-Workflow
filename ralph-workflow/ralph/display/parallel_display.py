@@ -384,8 +384,16 @@ _ARTIFACTS_DIR: str = ".agent/artifacts"
 
 
 def strip_markup(line: str) -> str:
-    """Strip Rich markup tags from a line, returning plain text."""
+    """Strip terminal controls from a line, preserving literal brackets."""
     return ParallelDisplay.strip_markup(line)
+
+
+def _strip_markup(line: str) -> str:
+    """Reduce valid Rich markup for log output while preserving malformed text."""
+    try:
+        return Text.from_markup(line).plain
+    except ValueError:
+        return line
 
 
 class ParallelDisplay:
@@ -582,10 +590,10 @@ class ParallelDisplay:
     def strip_markup(cls, line: str) -> str:
         """Strip Rich markup tags and terminal control sequences from a line.
 
-        Markup is stripped before terminal controls. Malformed markup remains
-        literal text; valid Rich styles reduce to their plain content.
+        Valid Rich markup is reduced to its plain content before terminal
+        controls are removed; malformed markup remains literal text.
         """
-        return strip_terminal_control(line)
+        return _strip_markup(strip_terminal_control(line))
 
     # -- Structured log emit (inlined from PlainLogRenderer) ---------------
 
@@ -1520,7 +1528,7 @@ class ParallelDisplay:
                     line=strip_markup(line),
                     agent_name=unit_id,
                 )
-        self.emit_log_line(unit_id or "run", line)
+        self.emit_log_line(unit_id or "run", strip_markup(line))
 
     def emit_parsed_event(
         self,

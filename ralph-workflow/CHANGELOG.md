@@ -49,6 +49,8 @@ and open a fresh `[Unreleased]`.
 
 ### Fixed
 
+- **fix(display): show the true policy-remediation attempt ceiling in the Status Bar** — `cli_integration.py` now passes `DEFAULT_MAX_REMEDIATION_ATTEMPTS` (`DEFAULT_ANALYSIS_CAP + 1`) to both `_push_remediation_status_bar` calls, so the final attempt renders `Remediation 4/4`, never `Remediation 4/3`; pinned by `tests/display/test_status_bar_phase_walkthrough.py::test_remediation_push_helper_produces_correct_model`.
+
 - **fix(claude-interactive): stop TUI exit banner and escape residue leaking into agent text** — commit `cb287b112`. `normalize_vt_text` now strips the generic ECMA-35/48 escape forms (charset designations like `ESC(B`, cursor save/restore `ESC7`/`ESC8`, SO/SI shift bytes) and the two-line Claude Code ≥ 2.1.x resume banner plus slash-command echoes are TUI chrome; regression-guarded by `tests/test_claude_interactive_parser.py`.
 
 - **fix(claude-interactive): emit parallel same-tool calls, surface `is_error` tool results as errors, and harden string-shaped JSON payloads** — commit `03ee17139`. The consecutive-duplicate guard now keys on `tool_use_id`, failed tool calls surface as `type=error` with tool identity (parity with the headless Claude, Cursor, Pi, and Generic parsers), and string-typed assistant content / error payloads are no longer dropped; pinned by `tests/test_claude_interactive_parser.py`.

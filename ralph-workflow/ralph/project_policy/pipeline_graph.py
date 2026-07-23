@@ -66,6 +66,9 @@ TERMINAL_DONE: Final[str] = "done"
 #: or to prove it will not converge; a fourth is a display flood, not a strategy.
 DEFAULT_ANALYSIS_CAP: Final[int] = 3
 
+#: ``R A R A R A R`` has one more remediation invocation than analysis rounds.
+DEFAULT_MAX_REMEDIATION_ATTEMPTS: Final[int] = DEFAULT_ANALYSIS_CAP + 1
+
 #: Decision the analysis agent returns to accept the policy as it stands.
 DECISION_COMPLETED: Final[str] = "completed"
 
@@ -137,6 +140,7 @@ __all__ = [
     "DECISION_FAILED",
     "DECISION_REQUEST_CHANGES",
     "DEFAULT_ANALYSIS_CAP",
+    "DEFAULT_MAX_REMEDIATION_ATTEMPTS",
     "PHASE_ANALYSIS",
     "PHASE_REMEDIATION",
     "POLICY_PIPELINE",
