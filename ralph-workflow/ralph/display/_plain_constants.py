@@ -156,7 +156,7 @@ _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
 
 def _sanitize(text: str) -> str:
-    """Strip terminal control sequences for safe terminal / transcript output.
+    """Strip terminal controls while preserving literal bracketed agent output.
 
     Literal bracket markup stays copy-pasteable; Rich rendering is disabled at
     every transcript sink. Terminal CSI / OSC / C0 sequences are always removed,

@@ -1521,14 +1521,15 @@ class ParallelDisplay:
             return
         if _is_bare_lifecycle(line):
             return
+        sanitized_line = _sanitize(line)
         if unit_id is not None:
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
-                    line=_sanitize(line),
+                    line=sanitized_line,
                     agent_name=unit_id,
                 )
-        self.emit_log_line(unit_id or "run", _sanitize(line))
+        self.emit_log_line(unit_id or "run", sanitized_line)
 
     def emit_parsed_event(
         self,
