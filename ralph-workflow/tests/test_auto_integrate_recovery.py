@@ -391,6 +391,166 @@ def test_recovery_no_record_preserves_operator_in_progress_rebase(
     )
 
 
+def test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree(
+    tmp_git_repo: Path,
+) -> None:
+    """Stale unowned rebase state on a CLEAN tree is reclaimed, not preserved.
+
+    Observed failure mode (PROMPT.md, wt-23, 2026-07-22): a leftover
+    ``rebase-merge``/``rebase-apply`` directory with NO ownership
+    record fails ``check_rebase_preconditions`` at every seam forever,
+    permanently disabling auto-integration in the worktree — the
+    forbidden silent noop. The discriminator against AC-11 case 4
+    (operator mid-conflict, which MUST be preserved) is worktree
+    cleanliness: a live conflict resolution has unmerged paths and
+    tracked modifications; inert stale state sits on a clean tree.
+    """
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
+    base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", base_seed)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "base version 2\n", "base shared 2")
+    _run(tmp_git_repo, "checkout", "feature")
+    preflight = _run(tmp_git_repo, "rebase", base)
+    assert preflight.returncode != 0, (
+        "test setup: expected a real rebase conflict to leave state on disk"
+    )
+    # Make the tree clean while the rebase bookkeeping stays on disk:
+    # this is exactly the stale shape the boundary hook meets, since
+    # the hook only fires on a clean tree.
+    _run(tmp_git_repo, "reset", "--hard")
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    assert (git_dir / "rebase-apply").exists() or (
+        git_dir / "rebase-merge"
+    ).exists(), "test setup: stale rebase state must be on disk"
+    status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
+    assert not status.stdout.strip(), "test setup: worktree must be clean"
+    assert not (
+        tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    ).exists(), "test setup: no auto-integrate record must exist"
+
+    outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
+
+    assert outcome is not None, (
+        "stale unowned rebase state on a clean tree must be reclaimed, not"
+        " silently ignored (PROMPT.md: noop is never an option)"
+    )
+    assert outcome.last_action == "recovered"
+    assert not (git_dir / "rebase-apply").exists()
+    assert not (git_dir / "rebase-merge").exists()
+    assert not (git_dir / "REBASE_HEAD").exists()
+
+
+def test_recovery_no_record_reclaims_stale_merge_state_on_clean_tree(
+    tmp_git_repo: Path,
+) -> None:
+    """Stale unowned MERGE_HEAD on a CLEAN tree is reclaimed, not preserved.
+
+    Merge-flavored twin of the stale-rebase reclaim: a leftover
+    ``MERGE_HEAD`` with no ownership record blocks
+    ``check_rebase_preconditions`` at every seam forever. Terminal-state
+    invariant: an integration attempt must end in a completed rebase, a
+    completed merge, or a clean abort -- never in-progress bookkeeping
+    nobody owns.
+    """
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
+    base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", base_seed)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "base version 2\n", "base shared 2")
+    _run(tmp_git_repo, "checkout", "feature")
+    conflicted = _run(tmp_git_repo, "merge", base)
+    assert conflicted.returncode != 0, (
+        "test setup: expected a real merge conflict to leave MERGE_HEAD"
+    )
+    # Clean the tree while MERGE_HEAD stays behind -- the stale shape.
+    _run(tmp_git_repo, "reset", "--hard")
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    # ``git reset --hard`` clears MERGE_HEAD on modern git; restore the
+    # stale marker explicitly to model a crashed abort.
+    if not (git_dir / "MERGE_HEAD").exists():
+        base_sha = _run(tmp_git_repo, "rev-parse", base).stdout.strip()
+        (git_dir / "MERGE_HEAD").write_text(base_sha + "\n", encoding="utf-8")
+    status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
+    assert not status.stdout.strip(), "test setup: worktree must be clean"
+    assert not (
+        tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    ).exists(), "test setup: no auto-integrate record must exist"
+
+    outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
+
+    assert outcome is not None, (
+        "stale unowned MERGE_HEAD on a clean tree must be reclaimed, not"
+        " silently ignored (terminal-state invariant)"
+    )
+    assert outcome.last_action == "recovered"
+    assert not (git_dir / "MERGE_HEAD").exists()
+
+
+def test_merge_exception_with_lingering_merge_head_retains_record(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed merge whose abort also failed must RETAIN the record.
+
+    Terminal-state invariant: ``_endpoint_merge_result`` used to call
+    ``clear_record`` unconditionally on the merge-raised path. When the
+    merge abort ALSO failed (MERGE_HEAD still on disk), that orphaned
+    the in-progress state -- recovery only reconciles operations whose
+    record it holds, so the worktree was permanently locked out of
+    integration. The record must survive whenever an in-progress
+    operation provably remains.
+    """
+    from ralph.pipeline import auto_integrate_rebase_merge as rm
+    from ralph.pipeline.auto_integrate_record import (
+        IntegrationRecord as Record,
+    )
+    from ralph.pipeline.auto_integrate_record import (
+        read_record,
+        write_record,
+    )
+
+    base = _base_branch(tmp_git_repo)
+    head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    write_record(
+        tmp_git_repo,
+        Record(
+            phase="integrating",
+            target=base,
+            pre_feature_sha=head,
+            pre_target_sha=head,
+        ),
+    )
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    # Model "merge raised AND its abort failed": the resolver-side
+    # helper reports the raise (None) while MERGE_HEAD stays on disk.
+    (git_dir / "MERGE_HEAD").write_text(head + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        rm, "endpoint_merge_with_resolution", lambda *a, **k: None
+    )
+
+    result = rm.run_rebase_or_merge(
+        tmp_git_repo, base, None, prefer_merge=True
+    )
+
+    assert result.short_circuit is not None
+    assert read_record(tmp_git_repo) is not None, (
+        "record must be retained while MERGE_HEAD remains on disk --"
+        " clearing it orphans the in-progress state recovery would own"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fault-injection tests: assert the durable record is RETAINED on failure
 # ---------------------------------------------------------------------------

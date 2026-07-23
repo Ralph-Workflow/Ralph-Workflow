@@ -22,13 +22,17 @@ from ralph.git.merge import (
     merge_state,
     reset_hard,
 )
+from ralph.git.operations import is_repo_clean
 from ralph.git.rebase.rebase import abort_rebase, rebase_in_progress
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     refresh_outcome_is_healthy,
 )
-from ralph.pipeline.auto_integrate_ff import fast_forward_target
+from ralph.pipeline.auto_integrate_ff import (
+    fast_forward_target,
+    maybe_push_target,
+)
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
 )
@@ -76,6 +80,113 @@ def recovery_retained_record(state: RebaseState | None) -> bool:
     retained.
     """
     return state is not None and state.recovery_record_retained
+
+
+def _rebase_bookkeeping_dir(root: Path) -> Path | None:
+    """Resolve the git dir whose rebase bookkeeping blocks preconditions.
+
+    ``git rev-parse --git-dir`` returns the PRIVATE per-worktree dir for
+    a linked worktree -- the same dir
+    :func:`ralph.git.rebase.rebase_preconditions.check_rebase_preconditions`
+    reads its blocking markers from. ``None`` when git cannot be asked;
+    the caller treats that as "nothing observable to reclaim".
+    """
+    try:
+        result = run_git(("rev-parse", "--git-dir"), cwd=root, label="recovery-git-dir")
+    except OSError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    git_dir = Path(result.stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (root / git_dir).resolve()
+    return git_dir
+
+
+def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
+    """Reclaim inert rebase state that no ownership record accounts for.
+
+    Failure mode this closes (recorded on wt-23, 2026-07-22):
+    a leftover ``rebase-merge``/``rebase-apply`` directory
+    or lone ``REBASE_HEAD`` marker with NO durable record fails
+    ``check_rebase_preconditions`` at every seam -- startup, phase
+    boundaries, the commit seam -- forever, and nothing ever cleans it,
+    because recovery's no-record branch used to return ``None``
+    unconditionally. That is the forbidden permanent silent noop.
+
+    The discriminator against AC-11 case 4 (an operator's live
+    in-progress rebase, which must stay byte-unchanged) is worktree
+    cleanliness: a live conflict resolution has unmerged paths and
+    tracked modifications, while inert stale state sits on a clean
+    tree -- the only shape the boundary hook can meet, since it fires
+    exclusively on clean trees.
+
+    Returns ``None`` when there is nothing to reclaim or the state is
+    protected (dirty tree); a ``recovered`` state after a successful
+    reclaim; a ``skipped`` state when the reclaim itself failed.
+    """
+    git_dir = _rebase_bookkeeping_dir(root)
+    if git_dir is None:
+        # Not a git checkout (or git unaskable): nothing observable to
+        # reclaim, and the pre-fix contract for the no-record branch --
+        # return ``None``, never a synthesized outcome -- must hold.
+        return None
+    dirs_present = (git_dir / "rebase-apply").exists() or (
+        git_dir / "rebase-merge"
+    ).exists()
+    marker = git_dir / "REBASE_HEAD"
+    marker_present = marker.exists()
+    merge_marker = git_dir / "MERGE_HEAD"
+    merge_present = merge_marker.exists()
+    if not dirs_present and not marker_present and not merge_present:
+        return None
+    if not is_repo_clean(root):
+        # AC-11 case 4: unmerged paths / tracked modifications mean an
+        # operator (or live agent) owns this rebase. Preserve it.
+        logger.warning(
+            "recovery: unowned in-progress rebase found in {} but the tree"
+            " is dirty; preserving it (operator-owned, AC-11 case 4)",
+            root,
+        )
+        return None
+    logger.warning(
+        "recovery: reclaiming stale unowned rebase/merge state in {} (no"
+        " ownership record, clean worktree) -- it was permanently blocking"
+        " auto-integration preconditions",
+        root,
+    )
+    try:
+        if dirs_present:
+            abort_rebase(repo_root=root)
+        if marker.exists() and not rebase_in_progress(root):
+            # ``git rebase --abort`` is not available for a lone marker
+            # file; git itself treats a bare REBASE_HEAD as disposable
+            # bookkeeping, but the precondition check blocks on it.
+            marker.unlink()
+        if merge_present and merge_state(root) != MERGE_STATE_NONE:
+            abort_merge(root)
+        if merge_marker.exists():
+            # ``git merge --abort`` can refuse a synthetic / truncated
+            # MERGE_HEAD; on a clean tree the marker itself is the only
+            # thing blocking preconditions, so remove it directly.
+            merge_marker.unlink()
+    except Exception as exc:
+        logger.warning(
+            "recovery: failed to reclaim stale unowned rebase state: {}", exc
+        )
+        return _record_skip(
+            reason=f"recovery: stale unowned rebase state could not be reclaimed: {exc}",
+            target=None,
+        )
+    return RebaseState(
+        last_action=_ACTION_RECOVERED,
+        last_reason=(
+            "reclaimed stale unowned rebase/merge state (no ownership"
+            " record, clean worktree)"
+        ),
+        last_target=None,
+        fast_forwarded=False,
+    )
 
 
 def _record_skip(
@@ -203,14 +314,25 @@ def _continue_fast_forward_from_record(
             refresh,
         )
     if branch_sha(workspace_root, record.target) == feature_sha:
-        # Already landed (another run / operator).
+        # Already landed (another run / operator). Even here we
+        # route through the push hook: a sibling that landed
+        # locally does not necessarily push to every remote (its
+        # config may differ or it may have been crashed mid-push),
+        # and the AC-03 contract says the auto-integrate subsystem
+        # is the place every local advance reaches every remote
+        # when push is enabled.
         _clear_record(workspace_root)
         return record_refresh(
-            RebaseState(
-                last_action=_ACTION_RECOVERED,
-                last_reason="already fast-forwarded",
-                last_target=record.target,
-                fast_forwarded=True,
+            maybe_push_target(
+                config,
+                workspace_root,
+                record.target,
+                RebaseState(
+                    last_action=_ACTION_RECOVERED,
+                    last_reason="already fast-forwarded",
+                    last_target=record.target,
+                    fast_forwarded=True,
+                ),
             ),
             refresh,
         )
@@ -226,7 +348,7 @@ def _continue_fast_forward_from_record(
             ),
             refresh,
         )
-    return _land_and_reconcile(workspace_root, record, feature_sha, refresh)
+    return _land_and_reconcile(workspace_root, record, feature_sha, refresh, config)
 
 
 def _land_and_reconcile(
@@ -234,6 +356,7 @@ def _land_and_reconcile(
     record: IntegrationRecord,
     feature_sha: str,
     refresh: str | None,
+    config: UnifiedConfig | None = None,
 ) -> RebaseState:
     """Run the fast-forward and decide whether the record survives it.
 
@@ -245,6 +368,14 @@ def _land_and_reconcile(
     record. A refusal that raised, or any other refusal text, is
     treated as transient and RETAINS the record so the next startup
     retries.
+
+    The successful-landing branch routes through
+    :func:`ralph.pipeline.auto_integrate_ff.maybe_push_target` so the
+    AC-03 every-successful-advance-pushes contract is honoured at the
+    recovery landing site too: a crashed previous run that retried its
+    fast-forward on the next startup must push to every configured
+    remote just as the happy path does, with ``config=None`` (the
+    pre-seam behaviour) bypassing the push byte-for-byte.
     """
     ff_failed = False
     skip_reason = ""
@@ -260,11 +391,16 @@ def _land_and_reconcile(
     if ok:
         _clear_record(workspace_root)
         return record_refresh(
-            RebaseState(
-                last_action=_ACTION_RECOVERED,
-                last_reason=None,
-                last_target=record.target,
-                fast_forwarded=True,
+            maybe_push_target(
+                config,
+                workspace_root,
+                record.target,
+                RebaseState(
+                    last_action=_ACTION_RECOVERED,
+                    last_reason=None,
+                    last_target=record.target,
+                    fast_forwarded=True,
+                ),
             ),
             refresh,
         )
@@ -344,7 +480,11 @@ def recover_incomplete_integration(
         root = Path(workspace_scope.root)
         record = _read_record(root)
         if record is None:
-            return None
+            # No durable record: either nothing happened, or stale
+            # unowned rebase bookkeeping is silently blocking every
+            # integration seam. Reclaim the latter (clean tree only;
+            # a dirty tree is operator-owned and preserved).
+            return _reclaim_unowned_stale_rebase(root)
 
         # Step 1: abort any owned engine op we may have left behind.
         # If EITHER abort fails, retain the record so the next

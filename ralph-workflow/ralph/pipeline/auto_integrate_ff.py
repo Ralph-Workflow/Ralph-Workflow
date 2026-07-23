@@ -45,6 +45,7 @@ from ralph.git.merge import (
     worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
+from ralph.git.remote_push import push_branch_to_all_remotes
 
 _TARGET_MISSING = "target branch missing at fast-forward time"
 _TARGET_QUERY_FAILED = "target branch could not be read at fast-forward time"
@@ -67,6 +68,9 @@ _RETRYABLE_REASONS = frozenset(
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.rebase_state import RebaseState
 
 
 def fast_forward_target(
@@ -256,4 +260,83 @@ def is_retryable_fast_forward_failure(reason: str) -> bool:
     return reason in _RETRYABLE_REASONS
 
 
-__all__ = ["fast_forward_target", "is_retryable_fast_forward_failure"]
+def maybe_push_target(
+    config: UnifiedConfig | None,
+    repo_root: Path,
+    target: str,
+    record: RebaseState,
+) -> RebaseState:
+    """Opt-in multi-remote push hook shared by every successful local landing.
+
+    The auto-integrate contract is "every successful local advance of the
+    shared target must reach every configured remote when push is
+    enabled" -- the happy path in :func:`auto_integrate._integrate_once`
+    AND the crash-recovery continuation in
+    :func:`ralph.pipeline.auto_integrate_recovery._land_and_reconcile`
+    both call this helper after a successful local landing.
+
+    Never gates or alters the landing. A push failure is recorded
+    on ``RebaseState.last_push`` for operator visibility; the caller's
+    ``RebaseState`` is returned unchanged when push is disabled, when
+    the helper raised defensively, or when the helper produced no
+    summary.
+
+    Args:
+        config: Unified run configuration. ``None`` (the recovery
+            preamble's pre-seam callers may not have one) skips the
+            push entirely, mirroring the pre-seam byte-identical
+            behaviour. Otherwise ``config.general.auto_integrate_push_enabled``
+            gates the call; ``config.general.auto_integrate_push_timeout_seconds``
+            sets the per-remote wall-clock budget. Both reads are
+            ``getattr``-guarded so legacy configs that pre-date the
+            push feature stay compatible.
+        repo_root: Repository root to enumerate remotes in.
+        target: Branch to push (``refs/heads/<target>:refs/heads/<target>``).
+        record: The ``RebaseState`` to annotate with ``last_push``. The
+            returned object is ``record`` unchanged when no push
+            happened, or ``record.model_copy(update={'last_push': summary})``
+            when a summary was produced.
+
+    Returns:
+        The ``RebaseState`` carrying ``last_push`` when push ran, else
+        ``record`` unchanged.
+    """
+    if config is None:
+        return record
+    if not hasattr(config, "general"):
+        return record
+    general_obj: object = config.general
+    if general_obj is None:
+        return record
+    push_enabled_raw: object = getattr(general_obj, "auto_integrate_push_enabled", False)
+    if not (isinstance(push_enabled_raw, bool) and push_enabled_raw):
+        return record
+    push_timeout_raw: object = getattr(general_obj, "auto_integrate_push_timeout_seconds", 30.0)
+    push_timeout_seconds: float = (
+        float(push_timeout_raw)
+        if isinstance(push_timeout_raw, (int, float)) and not isinstance(push_timeout_raw, bool)
+        else 30.0
+    )
+    push_summary: str | None = None
+    try:
+        push_summary = push_branch_to_all_remotes(
+            repo_root,
+            target,
+            timeout_seconds=float(push_timeout_seconds),
+        )
+    except Exception as push_exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate: push hook raised unexpectedly: {}",
+            push_exc,
+        )
+        push_summary = None
+    if push_summary is not None:
+        return record.model_copy(update={"last_push": push_summary})
+    return record
+
+
+__all__ = [
+    "fast_forward_target",
+    "is_retryable_fast_forward_failure",
+    "maybe_push_target",
+]

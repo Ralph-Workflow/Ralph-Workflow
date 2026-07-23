@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseFailed,
@@ -271,7 +272,7 @@ def _endpoint_merge_result(
         # The merge attempt raised; surface that as the headline
         # conflict state (the merge-attempt reason is more
         # informative than the generic "both conflicted" message).
-        clear_record(root)
+        _clear_record_if_no_inflight_op(root)
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=True,
@@ -282,7 +283,7 @@ def _endpoint_merge_result(
             ),
         )
     if merge_result.outcome in ("conflict", RESOLUTION_FAILED):
-        clear_record(root)
+        _clear_record_if_no_inflight_op(root)
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=True,
@@ -308,6 +309,42 @@ def _endpoint_merge_result(
         merge_outcome=merge_result,
         short_circuit=None,
     )
+
+
+def _clear_record_if_no_inflight_op(root: Path) -> None:
+    """Clear the durable record ONLY when no in-progress operation remains.
+
+    Terminal-state invariant: clearing the record while ``MERGE_HEAD``
+    or rebase bookkeeping is still on disk ORPHANS that state --
+    startup recovery reconciles only operations whose record it holds,
+    so the leftover markers fail ``check_rebase_preconditions`` at
+    every later seam with nothing ever able to clean them. When the
+    proof of cleanliness cannot be obtained the record is retained:
+    a spurious retention costs one redundant recovery pass at next
+    startup, a spurious clear costs the worktree its integration
+    forever.
+    """
+    try:
+        clean = merge_state(root) == MERGE_STATE_NONE and not rebase_in_progress(
+            root
+        )
+    except Exception as state_exc:
+        logger.warning(
+            "auto_integrate: could not prove no in-flight operation remains"
+            " in {} ({}); retaining the durable record for startup recovery",
+            root,
+            state_exc,
+        )
+        return
+    if not clean:
+        logger.warning(
+            "auto_integrate: in-progress merge/rebase state remains in {}"
+            " after a failed integration; retaining the durable record so"
+            " startup recovery can reconcile it",
+            root,
+        )
+        return
+    clear_record(root)
 
 
 def _abort_rebase_after_conflict(root: Path) -> None:

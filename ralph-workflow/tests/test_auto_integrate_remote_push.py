@@ -283,3 +283,141 @@ def test_push_disabled_does_not_contact_any_remote(tmp_path: Path) -> None:
     assert _bare_branch_sha(origin_bare, main) == main_sha_before
     # No push summary was recorded.
     assert outcome.last_push is None
+
+
+# ---------------------------------------------------------------------------
+# Real-git e2e: crash-recovery landing also pushes (AC-03 every-advance)
+# ---------------------------------------------------------------------------
+
+
+def test_recovery_landing_pushes_to_all_remotes(tmp_path: Path) -> None:
+    """AC-03 supplement: a recovered fast-forward landing pushes too.
+
+    The prompt requires that EVERY successful advance of the shared
+    target reaches every configured remote when push is enabled. The
+    happy path covered above is one such advance; the crash-recovery
+    continuation in
+    :func:`ralph.pipeline.auto_integrate_recovery._land_and_reconcile`
+    is the other -- a previous run crashed after the local
+    fast-forward, and the next startup finishes it through recovery.
+
+    This test sets up a phase='integrated' durable record pointing at
+    a feature SHA the target does NOT yet contain (so the recovery
+    path takes the ``_land_and_reconcile`` branch, not the
+    ``already fast-forwarded`` early-return) and asserts that the
+    recovery call advances the local target AND pushes to BOTH
+    configured bare remotes. The ``last_push`` summary on the
+    returned ``RebaseState`` reports the multi-remote success.
+    """
+    from ralph.pipeline.auto_integrate import IntegrationRecord
+    from ralph.pipeline.auto_integrate_recovery import (
+        recover_incomplete_integration,
+    )
+
+    main = "main"
+    feature = "feature-r"
+    origin_bare = _make_bare_repo(tmp_path / "origin.git")
+    backup_bare = _make_bare_repo(tmp_path / "backup.git")
+    repo = _make_feature_repo(
+        tmp_path / "work",
+        main=main,
+        feature=feature,
+        remotes={"origin": origin_bare, "backup": backup_bare},
+    )
+    feature_sha = _commit(repo, "feature.txt", "feature work\n", "feature commit")
+    # Move HEAD back to main WITHOUT advancing the local mainline ref
+    # so the recovery path will land the fast-forward (the
+    # "target advanced concurrently" branch refuses to land when the
+    # local main is already at the feature tip, so we must avoid that
+    # state).
+    pre_target_sha = _run(repo, "rev-parse", f"refs/heads/{main}").stdout.strip()
+    pre_feature_sha = _run(repo, "rev-parse", "HEAD").stdout.strip()
+    assert pre_target_sha != feature_sha, (
+        "test setup: target must not already be at the feature tip"
+    )
+    # Write a phase='integrated' record pointing at the feature SHA
+    # the recovery path will land.
+    record_file = repo / ".agent" / "auto_integrate_in_progress.json"
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_text(
+        IntegrationRecord(
+            phase="integrated",
+            target=main,
+            pre_feature_sha=pre_feature_sha,
+            pre_target_sha=pre_target_sha,
+            integrated_feature_sha=feature_sha,
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
+    config = _build_config(push_enabled=True)
+    outcome = recover_incomplete_integration(WorkspaceScope(repo), config=config)
+    assert outcome is not None
+    assert outcome.last_action == "recovered"
+    assert outcome.fast_forwarded is True
+    # Local target now at the feature tip.
+    assert _local_branch_sha(repo, main) == feature_sha
+    # BOTH bare remotes advanced.
+    assert _bare_branch_sha(origin_bare, main) == feature_sha
+    assert _bare_branch_sha(backup_bare, main) == feature_sha
+    # The push summary reports both remotes as successful.
+    assert outcome.last_push is not None
+    assert "2/2" in outcome.last_push
+    # The durable record is cleared by a successful recovery.
+    assert not record_file.exists()
+
+
+def test_recovery_landing_with_unreachable_remote_keeps_local_success(
+    tmp_path: Path,
+) -> None:
+    """AC-04 supplement: recovery push is fail-open like the happy path.
+
+    Mirrors the happy-path unreachable-remote invariant at the
+    recovery landing site: one unreachable remote must not stop the
+    other from advancing, must not fail the recovery, and must not
+    alter the local mainline advance.
+    """
+    from ralph.pipeline.auto_integrate import IntegrationRecord
+    from ralph.pipeline.auto_integrate_recovery import (
+        recover_incomplete_integration,
+    )
+
+    main = "main"
+    feature = "feature-r2"
+    backup_bare = _make_bare_repo(tmp_path / "backup.git")
+    repo = _make_feature_repo(
+        tmp_path / "work",
+        main=main,
+        feature=feature,
+        remotes={"backup": backup_bare},
+    )
+    feature_sha = _commit(repo, "feature.txt", "feature work\n", "feature commit")
+    pre_target_sha = _run(repo, "rev-parse", f"refs/heads/{main}").stdout.strip()
+    pre_feature_sha = _run(repo, "rev-parse", "HEAD").stdout.strip()
+    assert pre_target_sha != feature_sha
+    bad_origin = tmp_path / "no-such-remote.git"
+    assert _run(repo, "remote", "add", "origin", str(bad_origin)).returncode == 0
+    record_file = repo / ".agent" / "auto_integrate_in_progress.json"
+    record_file.parent.mkdir(parents=True, exist_ok=True)
+    record_file.write_text(
+        IntegrationRecord(
+            phase="integrated",
+            target=main,
+            pre_feature_sha=pre_feature_sha,
+            pre_target_sha=pre_target_sha,
+            integrated_feature_sha=feature_sha,
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
+    config = _build_config(push_enabled=True, push_timeout=2.0)
+    outcome = recover_incomplete_integration(WorkspaceScope(repo), config=config)
+    assert outcome is not None
+    assert outcome.last_action == "recovered"
+    assert outcome.fast_forwarded is True
+    # Local target advanced.
+    assert _local_branch_sha(repo, main) == feature_sha
+    # Reachable remote advanced.
+    assert _bare_branch_sha(backup_bare, main) == feature_sha
+    # Partial push summary recorded.
+    assert outcome.last_push is not None
+    assert "1/2" in outcome.last_push
+    assert "origin" in outcome.last_push
