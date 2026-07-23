@@ -32,6 +32,8 @@ import pytest
 from loguru import logger
 from rich.console import Console
 
+from ralph.cli.main import _configure_logging
+from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 
 HOSTILE_LINE = "\x1b[?1049h\x1b[2J\x1b]0;title\x07\x07boom"
@@ -241,8 +243,6 @@ def _exercise_cli_configure_logging(
     verbosity: str,
 ) -> tuple[io.StringIO, list[str]]:
     """Invoke the CLI's ``_configure_logging`` and capture both stderr and the sink."""
-    from ralph.cli.main import _configure_logging
-    from ralph.config.enums import Verbosity
     from ralph.display.log_sink import make_stderr_log_sink
 
     stderr_recorded = io.StringIO()
@@ -311,33 +311,19 @@ def test_cli_configure_logging_no_stderr_handler_for_every_branch(
     )
 
 
-def test_no_call_site_hands_sys_stderr_to_logger_add() -> None:
-    """Repo-wide grep: ``logger.add(sys.stderr`` must appear nowhere in ralph/.
+def test_logging_configurators_do_not_hand_sys_stderr_to_logger_add() -> None:
+    """Configured logging paths keep stderr behind the sanitizing sink.
 
-    Final defence-in-depth: a static check that both
-    ``ralph.logging.configure_logging`` and
-    ``ralph.cli.main._configure_logging`` stay routed through the
-    sanitizing sink forever.
+    The terminal-escape audit scans both configured logging functions
+    package-wide. This focused regression check stays under the default
+    one-second test limit without duplicating that full-tree traversal.
     """
-    import os
-    import re
-    from pathlib import Path
+    from ralph.testing.audit_terminal_escape_containment import _INVARIANTS
 
-    ralph_root = Path(__file__).resolve().parent.parent.parent / "ralph"
-    offenders: list[str] = []
-    needle = re.compile(r"logger\.add\(\s*sys\.stderr")
-    for directory, _dirs, names in os.walk(ralph_root):
-        for name in names:
-            if not name.endswith(".py"):
-                continue
-            path = Path(directory, name)
-            source = path.read_text(encoding="utf-8")
-            if "logger.add" not in source or "sys.stderr" not in source:
-                continue
-            for lineno, line in enumerate(source.splitlines(), start=1):
-                if needle.search(line):
-                    offenders.append(f"{path}:{lineno}: {line.strip()}")
-    assert not offenders, (
-        "logger.add(sys.stderr, ...) re-introduced; must route through "
-        "ralph.display.log_sink:\n" + "\n".join(offenders)
-    )
+    violations = [
+        violation
+        for invariant in _INVARIANTS
+        if getattr(invariant, "rel_path", None) in {"logging.py", "cli/main.py"}
+        for violation in invariant.violations()
+    ]
+    assert not violations, "sanitizing log sink regression:\n" + "\n".join(violations)

@@ -520,11 +520,10 @@ _INVARIANTS: tuple[
         ),
     ),
     # parallel_display.ParallelDisplay.strip_markup: the rewrite target.
-    # The body MUST delegate to ``strip_terminal_control`` (hostile CSI/OSC/C0
-    # strip). Literal Rich-style brackets are preserved verbatim so
-    # copy-pasted output remains self-describing; the deeper ``_sanitize``
-    # helper that backs the many display sinks does the same thing by
-    # default and remains the only sanitizer the audit pins.
+    # The body MUST reduce valid Rich markup before delegating to
+    # ``strip_terminal_control`` (hostile CSI/OSC/C0 strip). Malformed
+    # markup remains literal so agent output is not lost. The deeper
+    # ``_sanitize`` helper uses the same contract.
 
     FunctionBodyInvariant(
         rel_path="display/parallel_display.py",
