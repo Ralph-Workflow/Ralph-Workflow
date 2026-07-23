@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     from ralph.mcp.protocol.startup import HeartbeatPolicy
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
+    from ralph.pipeline.rebase_state import RebaseState
     from ralph.policy.models import ArtifactsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.hooks import (
         MarkerWatcherFactory,
@@ -44,6 +46,8 @@ if TYPE_CHECKING:
     )
     from ralph.pro_support.state_query import SnapshotRegistry
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
+    from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityState
+    from ralph.workspace.scope import WorkspaceScope
 
 
 class MaterializeSystemPromptFn(Protocol):
@@ -84,6 +88,17 @@ class ArtifactRequirementsResolverFn(Protocol):
         phase: str,
         drain: str | None = None,
     ) -> RequiredArtifact | None: ...
+
+
+class ConnectivityMonitorLike(Protocol):
+    """Connectivity state source used by the pipeline run loop."""
+
+    @property
+    def current_state(self) -> ConnectivityState: ...
+
+    def add_listener(
+        self, cb: Callable[[ConnectivityEvent], None]
+    ) -> Callable[[], None]: ...
 
 
 class McpSupervisorFactoryFn(Protocol):
@@ -244,6 +259,18 @@ class PipelineDeps:
     # Wrapped in ``suppress(Exception)`` at the call site so a
     # refusing-to-die child cannot break the suite.
     process_teardown: Callable[[], None] | None = None
+    connectivity_monitor: ConnectivityMonitorLike | None = None
+    catchup_worker_factory: (
+        Callable[[UnifiedConfig, Path], AutoIntegrateCatchupWorker | None] | None
+    ) = None
+    startup_rebase_resolver: (
+        Callable[[UnifiedConfig, WorkspaceScope], RebaseState | None] | None
+    ) = None
+    auto_integrate_resolver: (
+        Callable[[UnifiedConfig, WorkspaceScope, RebaseState], RebaseState | None] | None
+    ) = None
+    commit_effect_executor: Callable[[object, Path], object] | None = None
+    has_uncommitted_changes: Callable[[Path], bool] | None = None
 
     def __init__(
         self,
@@ -269,6 +296,19 @@ class PipelineDeps:
         connectivity_state_provider: Callable[[], str | None] | None = None,
         is_waiting_state_provider: Callable[[], bool] | None = None,
         process_teardown: Callable[[], None] | None = None,
+        connectivity_monitor: ConnectivityMonitorLike | None = None,
+        catchup_worker_factory: (
+            Callable[[UnifiedConfig, Path], AutoIntegrateCatchupWorker | None] | None
+        ) = None,
+        startup_rebase_resolver: (
+            Callable[[UnifiedConfig, WorkspaceScope], RebaseState | None] | None
+        ) = None,
+        auto_integrate_resolver: (
+            Callable[[UnifiedConfig, WorkspaceScope, RebaseState], RebaseState | None]
+            | None
+        ) = None,
+        commit_effect_executor: Callable[[object, Path], object] | None = None,
+        has_uncommitted_changes: Callable[[Path], bool] | None = None,
     ) -> None:
         core_overrides: dict[str, object] = {}
         if display_context is not _UNSET:
@@ -368,6 +408,12 @@ class PipelineDeps:
         object.__setattr__(self, "connectivity_state_provider", connectivity_state_provider)
         object.__setattr__(self, "is_waiting_state_provider", is_waiting_state_provider)
         object.__setattr__(self, "process_teardown", process_teardown)
+        object.__setattr__(self, "connectivity_monitor", connectivity_monitor)
+        object.__setattr__(self, "catchup_worker_factory", catchup_worker_factory)
+        object.__setattr__(self, "startup_rebase_resolver", startup_rebase_resolver)
+        object.__setattr__(self, "auto_integrate_resolver", auto_integrate_resolver)
+        object.__setattr__(self, "commit_effect_executor", commit_effect_executor)
+        object.__setattr__(self, "has_uncommitted_changes", has_uncommitted_changes)
 
     @property
     def display_context(self) -> DisplayContext:

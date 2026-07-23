@@ -46,6 +46,7 @@ from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -63,6 +64,7 @@ def determine_effect_from_policy(
     workspace_scope: WorkspaceScope | None = None,
     *,
     config: UnifiedConfig | None = None,
+    has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
 ) -> Effect:
     """Select the next pipeline effect based on current state and policy."""
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
@@ -82,7 +84,14 @@ def determine_effect_from_policy(
 
     if phase_def.role == "commit":
         scope = workspace_scope or resolve_workspace_scope()
-        return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
+        return _commit_phase_effect(
+            state,
+            policy_bundle,
+            phase_def,
+            scope,
+            config=config,
+            has_uncommitted_changes_fn=has_uncommitted_changes_fn,
+        )
 
     return _parallel_or_agent_effect(state, phase_def, policy_bundle, config, workspace_scope)
 
@@ -261,10 +270,14 @@ def _commit_phase_effect(
     workspace_scope: WorkspaceScope,
     *,
     config: UnifiedConfig | None = None,
+    has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
 ) -> Effect:
     if state.commit.agent_invoked:
         return CommitEffect(message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT))
-    if _should_early_skip_commit(workspace_scope.root):
+    if _should_early_skip_commit(
+        workspace_scope.root,
+        has_uncommitted_changes_fn=has_uncommitted_changes_fn,
+    ):
         delete_commit_message_artifacts(workspace_scope.root)
         return EarlySkipCommitEffect()
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
@@ -278,9 +291,13 @@ def _commit_phase_effect(
     )
 
 
-def _should_early_skip_commit(workspace_root: Path) -> bool:
+def _should_early_skip_commit(
+    workspace_root: Path,
+    *,
+    has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
+) -> bool:
     try:
-        return not has_uncommitted_changes(workspace_root)
+        return not has_uncommitted_changes_fn(workspace_root)
     except Exception:
         return False
 

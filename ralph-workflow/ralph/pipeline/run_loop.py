@@ -833,7 +833,12 @@ def _resolve_run_collaborators(
     effective_verbosity = _normalize_run_verbosity(config, verbosity=verbosity)
     is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
     sleep = _resolve_recovery_sleep(pipeline_deps, pro_hooks, _recovery_sleep)
-    resolved_monitor, monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
+    injected_monitor = (
+        pipeline_deps.connectivity_monitor
+        if pipeline_deps is not None and pipeline_deps.connectivity_monitor is not None
+        else connectivity_monitor
+    )
+    resolved_monitor, monitor_stop = _setup_connectivity_monitor(injected_monitor)
     controller = _resolve_recovery_controller(
         state,
         policy_bundle,
@@ -972,6 +977,22 @@ def _apply_startup_rebase_outcomes(
     prevent. The retained record is retried by recovery at the next
     process startup.
     """
+    from ralph.pipeline.factory import PipelineDeps
+
+    try:
+        candidate_deps = ctx.pipeline_deps
+    except AttributeError:
+        candidate_deps = None
+    pipeline_deps = candidate_deps if isinstance(candidate_deps, PipelineDeps) else None
+    if (
+        pipeline_deps is not None
+        and pipeline_deps.startup_rebase_resolver is not None
+    ):
+        injected_rebase = pipeline_deps.startup_rebase_resolver(
+            ctx.config, ctx.workspace_scope
+        )
+        return state if injected_rebase is None else state.copy_with(rebase=injected_rebase)
+
     recovered_rebase = _run_auto_integrate_recovery_preamble(
         ctx.workspace_scope, ctx.config
     )
@@ -1688,7 +1709,12 @@ def run(
         pro_watcher=_pro_watcher,
         snapshot_registry=collaborators.snapshot_registry,
         pipeline_deps=pipeline_deps,
-        catchup_worker=start_catchup_worker_if_enabled(config, workspace_scope.root),
+        catchup_worker=(
+            pipeline_deps.catchup_worker_factory(config, workspace_scope.root)
+            if pipeline_deps is not None
+            and pipeline_deps.catchup_worker_factory is not None
+            else start_catchup_worker_if_enabled(config, workspace_scope.root)
+        ),
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
     )
     return _execute_with_cleanup(

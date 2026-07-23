@@ -302,6 +302,23 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
 validate_custom_mcp_servers = _validate_custom_mcp_servers
 
 
+def _execute_commit_effect_from_deps(
+    effect: CommitEffect,
+    pipeline_deps: PipelineDeps,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | None,
+    verbosity: Verbosity,
+) -> PipelineEvent:
+    if pipeline_deps.commit_effect_executor is not None:
+        return cast(
+            "PipelineEvent",
+            pipeline_deps.commit_effect_executor(effect, workspace_scope.root),
+        )
+    return execute_commit_effect(
+        effect, create_commit, stage_all, workspace_scope.root, display, verbosity=verbosity
+    )
+
+
 def _execute_effect(
     effect: Effect,
     config: UnifiedConfig,
@@ -332,8 +349,8 @@ def _execute_effect(
             policy_bundle=policy_bundle,
         )
     if isinstance(effect, CommitEffect):
-        return execute_commit_effect(
-            effect, create_commit, stage_all, workspace_scope.root, display, verbosity=verbosity
+        return _execute_commit_effect_from_deps(
+            effect, pipeline_deps, workspace_scope, display, verbosity
         )
     if isinstance(effect, EarlySkipCommitEffect):
         logger.info("Skipping commit early: worktree is clean")
@@ -781,6 +798,10 @@ def _maybe_auto_integrate(
             pipeline_deps=pipeline_deps,
             display_context=display_context,
         )
+    if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
+        return pipeline_deps.auto_integrate_resolver(
+            config, workspace_scope, state.rebase
+        )
     conflict_resolver = _build_seam_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
@@ -950,6 +971,10 @@ def _integrate_on_phase_transition(
         # R2/AC8: ladder rung 3 -- this helper is called only for pipeline
         # transitions; non-seam events are retried at their next real seam.
         return None
+    if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
+        return pipeline_deps.auto_integrate_resolver(
+            config, workspace_scope, state.rebase
+        )
     conflict_resolver = _build_seam_conflict_resolver(
         policy_bundle=policy_bundle,
         registry=registry,
@@ -1053,7 +1078,13 @@ def _run_pipeline_step(
     _phase_timer = PhaseTimer.start(state.phase)
     _phase_outcome = "crashed"
     try:
-        effect = call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
+        effect = call_determine_effect_from_policy(
+            state,
+            policy_bundle,
+            workspace_scope,
+            config,
+            pipeline_deps=pipeline_deps,
+        )
         inline_result = handle_inline_effect(
             effect=effect,
             state=state,
@@ -1063,6 +1094,7 @@ def _run_pipeline_step(
             registry=registry,
             config=config,
             workspace_scope=workspace_scope,
+            pipeline_deps=pipeline_deps,
             display=display,
             pipeline_subscriber=pipeline_subscriber,
         )
@@ -1314,6 +1346,7 @@ def _handle_inline_effect(
     agents_policy: AgentsPolicy | None = None,
     registry: _RegistryLike | None = None,
     config: UnifiedConfig | None = None,
+    pipeline_deps: PipelineDeps | None = None,
     display: ParallelDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
@@ -1357,6 +1390,7 @@ def _handle_inline_effect(
                     state=state,
                     registry=registry,
                     config=config,
+                    pipeline_deps=pipeline_deps,
                 )
             except MissingPlanHandoffError as exc:
                 recovered_state = _recover_missing_plan_handoff(
@@ -1438,10 +1472,24 @@ def _call_determine_effect_from_policy(
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
+    *,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> Effect:
     fn = determine_effect_from_policy
     params = signature(fn).parameters
     if "config" in params:
+        if (
+            "has_uncommitted_changes_fn" in params
+            and pipeline_deps is not None
+            and pipeline_deps.has_uncommitted_changes is not None
+        ):
+            return fn(
+                state,
+                policy_bundle,
+                workspace_scope,
+                config=config,
+                has_uncommitted_changes_fn=pipeline_deps.has_uncommitted_changes,
+            )
         return fn(state, policy_bundle, workspace_scope, config=config)
 
     positional = [

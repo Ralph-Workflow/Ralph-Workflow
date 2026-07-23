@@ -140,7 +140,7 @@ def __getattr__(name: str) -> object:
         module = import_module(
             "ralph.prompts._multimodal_sidecar_entry",
         )
-        return module.MultimodalSidecarEntry
+        return typing.cast("object", module.MultimodalSidecarEntry)
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
