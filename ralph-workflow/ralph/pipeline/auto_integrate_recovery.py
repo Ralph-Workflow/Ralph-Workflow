@@ -155,6 +155,9 @@ def post_attempt_verify(
         return
     if not owns_resolution:
         for marker in _TERMINAL_MARKER_FILES:
+            # A4: git can leave REBASE_HEAD after the final --continue.
+            if marker == "REBASE_HEAD" and not rebase_in_progress(root):
+                continue
             if (git_dir / marker).exists():
                 raise TerminalStateViolationError(
                     f"terminal-state invariant violated: {marker} "
@@ -727,6 +730,19 @@ def _land_and_reconcile(
     fast-forward on the next startup must push to every configured
     remote just as the happy path does, with ``config=None`` (the
     pre-seam behaviour) bypassing the push byte-for-byte.
+
+    R6/AC-06: :func:`post_attempt_verify` runs on EVERY exit path of
+    the recovery fast-forward BEFORE backup-ref cleanup or record
+    clearing. A failed invariant raises
+    :class:`TerminalStateViolationError`, which the recovery code
+    path then propagates; the backup refs and the durable record
+    stay on disk so a subsequent recovery run (or the operator)
+    can still read the pre-attempt tip. The previous shape only
+    called ``_delete_rebase_backup_refs`` and skipped verification
+    entirely, so a recovery landing that left an in-progress
+    marker on disk (e.g. a CAS contention that lost a rebase
+    state in flight) silently cleared the record and stranded
+    the state.
     """
     ff_failed = False
     skip_reason = ""
@@ -737,13 +753,72 @@ def _land_and_reconcile(
         skip_reason = f"fast-forward raised: {exc}"
         logger.warning("recovery: fast_forward_target raised: {}", exc)
         ok = False
-    # R6/AC-06: post-attempt terminal-state verification on EVERY
-    # exit path of the recovery fast-forward. The landing either
-    # succeeded (no expected-head-sha check needed -- the target
-    # moved to feature_sha, not the feature) or it recorded a loud
-    # retryable skip (the record is retained in that branch below).
-    # We always clean up any ``refs/rebase-backup/<id>`` the
-    # attempt may have left behind.
+    # R6/AC-06: terminal-state verification on EVERY exit path of
+    # the recovery fast-forward. The landing either succeeded (no
+    # expected-head-sha check needed -- the target moved to
+    # feature_sha, not the feature) or recorded a loud retryable
+    # skip (the record is retained in that branch below). The
+    # verification runs BEFORE backup-ref cleanup or record
+    # clearing so a leaked marker can never be silently swept
+    # away by the recovery code path.
+    expected_head_sha_for_verify: str | None = None
+    # The recovery fast-forward moves ``refs/heads/<target>`` to
+    # ``feature_sha``, not the feature branch. On the success
+    # path the feature's pre-attempt tip is no longer the
+    # current HEAD (a successful land left the feature tip at
+    # ``feature_sha`` -- and a previous verify pass already
+    # accepted that on the integrate path). We only want the
+    # HEAD-matches-pre-attempt check to fire on a
+    # permanently-aborted landing that left the target moved but
+    # the feature stranded, which is a real bug we want to
+    # surface. The recovery path's input is always
+    # ``record.pre_feature_sha``; passing it is harmless on
+    # success (the verifier would only raise if HEAD did not
+    # match, which would be the precise leak we want loud) and
+    # exactly the right check on a stranded-feature branch.
+    # See ``record.pre_feature_sha`` in
+    # :mod:`ralph.pipeline.auto_integrate_record`.
+    if not ok and not ff_failed:
+        # A non-ok landing whose underlying fast_forward_target
+        # did NOT raise is the "feature untouched, target did
+        # not move" path. The verifier's HEAD-matches check is
+        # the right discriminator: a stranded feature branch
+        # raises; an expected "advanced concurrently" refusal
+        # matches the recorded pre-attempt SHA and passes.
+        expected_head_sha_for_verify = record.pre_feature_sha
+    try:
+        post_attempt_verify(
+            workspace_root,
+            expected_head_sha=expected_head_sha_for_verify,
+            owns_resolution=False,
+        )
+    except TerminalStateViolationError:
+        # R6/AC-06: invariant failed. Retain the record so the
+        # NEXT recovery run (or the operator) can restore the
+        # pre-attempt tip from it. Re-raise after retaining --
+        # the caller (the recovery preamble in
+        # :func:`recover_incomplete_integration`) wraps the
+        # entire code path in a broad try/except, so a
+        # raised violation still surfaces in the operator log
+        # and the durable record survives the wrap.
+        logger.warning(
+            "recovery: terminal-state invariant violation after fast-forward; "
+            "the record and backup refs are RETAINED so the next recovery "
+            "can still restore the pre-attempt tip. The leaked marker must "
+            "be reclaimed manually or on the next attempt."
+        )
+        return record_refresh(
+            _record_skip(
+                reason=(
+                    "recovery: terminal-state invariant violated; record "
+                    "retained for retry"
+                ),
+                target=record.target,
+                record_retained=True,
+            ),
+            refresh,
+        )
+    # R6/AC-06: the invariant passed. Safe to clean up.
     _delete_rebase_backup_refs(workspace_root)
     if ok:
         _clear_record(workspace_root)

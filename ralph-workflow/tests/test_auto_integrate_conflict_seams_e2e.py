@@ -234,12 +234,12 @@ def _startup_context(repo_root: Path, config: UnifiedConfig) -> MagicMock:
 def _assert_conflict_chain_landed(
     tmp_git_repo: Path, base: str, outcome: RebaseState | None
 ) -> None:
-    """The whole chain ran: resolved, committed as a merge, and landed."""
+    """The whole chain landed resolved content via the highest viable rung."""
     assert outcome is not None
-    assert outcome.last_action == "merged"
+    assert outcome.last_action in {"rebased", "merged"}
     assert outcome.fast_forwarded is True
-    # Ralph -- not the agent -- created a real two-parent merge commit.
-    assert len(_head_parents(tmp_git_repo)) == 2
+    assert len(_head_parents(tmp_git_repo)) in {1, 2}
+    assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == _MERGED_CONTENT
     head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(tmp_git_repo, base) == head, "the mainline did not land"
     _assert_no_surviving_markers(tmp_git_repo)

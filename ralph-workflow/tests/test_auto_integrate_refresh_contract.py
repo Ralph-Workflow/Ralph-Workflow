@@ -38,6 +38,7 @@ from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
     auto_integrate_on_phase_transition,
 )
+from ralph.pipeline.auto_integrate_recovery import TerminalStateViolationError
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ALREADY_CURRENT,
     REFRESH_NO_ORIGIN,
@@ -305,21 +306,21 @@ def test_unreachable_refresh_is_recorded_when_the_abort_leaves_a_rebase(
     import ralph.pipeline.auto_integrate_rebase_merge as _rm_mod
 
     base = _diverged_conflicting_repo(tmp_git_repo)
-    _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
+    refresh_calls = _record_refreshes(monkeypatch, REFRESH_UNREACHABLE)
 
     def _failing_abort(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("simulated abort failure")
 
     monkeypatch.setattr(_rm_mod, "abort_rebase", _failing_abort)
 
-    outcome = auto_integrate_after_commit(
-        _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
-    )
+    with pytest.raises(TerminalStateViolationError, match=r"rebase-merge|REBASE_HEAD"):
+        auto_integrate_after_commit(
+            _build_config(target=base), WorkspaceScope(tmp_git_repo), RebaseState()
+        )
 
-    assert outcome is not None
-    assert outcome.last_action == "conflict"
-    assert outcome.last_reason == "rebase in-progress after abort"
-    assert outcome.last_refresh == REFRESH_UNREACHABLE
+    record = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    assert record.exists(), "R6: leaked rebase state must retain its recovery record"
+    assert refresh_calls == [base], "AC-04: the failed attempt still recorded its refresh"
 
 
 def test_unreachable_refresh_is_recorded_when_the_merge_attempt_raises(

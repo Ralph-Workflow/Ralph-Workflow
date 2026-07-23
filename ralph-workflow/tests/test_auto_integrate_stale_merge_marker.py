@@ -98,10 +98,10 @@ def test_stale_auto_merge_marker_does_not_block_integration(
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
 
 
-def test_real_merge_in_progress_is_still_recorded_as_a_skip(
+def test_synthetic_clean_merge_head_is_reclaimed_and_lands(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-01: a genuine ``MERGE_HEAD`` must still block the integration."""
+    """A5: a synthetic MERGE_HEAD on a clean tree is reclaimed and lands."""
     main = _base_branch(tmp_git_repo)
     feature = tmp_git_repo.parent / "feature-real-merge"
     _add_worktree(tmp_git_repo, feature, "feature-real-merge")
@@ -117,7 +117,36 @@ def test_real_merge_in_progress_is_still_recorded_as_a_skip(
         )
 
         assert outcome is not None
+        assert outcome.fast_forwarded is True
+        assert outcome.last_action in {"rebased", "merged"}
+        assert branch_sha(tmp_git_repo, main) == _run(feature, "rev-parse", "HEAD").stdout.strip()
+    finally:
+        _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
+
+
+def test_real_dirty_merge_conflict_is_protected_and_skipped(tmp_git_repo: Path) -> None:
+    """A5: a real dirty merge conflict remains operator-owned."""
+    main = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    feature = tmp_git_repo.parent / "feature-real-merge"
+    _add_worktree(tmp_git_repo, feature, "feature-real-merge")
+    try:
+        _commit(feature, "shared.txt", "feature\n", "feature change")
+        _commit(tmp_git_repo, "shared.txt", "main\n", "main change")
+        merge = _run(feature, "merge", main)
+        assert merge.returncode != 0
+        git_dir = _private_git_dir(feature)
+        assert (git_dir / "MERGE_HEAD").exists()
+        before_status = _run(feature, "status", "--porcelain").stdout
+
+        outcome = auto_integrate_after_commit(
+            _build_config(target=main), WorkspaceScope(feature), RebaseState()
+        )
+
+        assert outcome is not None
         assert outcome.last_action == "skipped"
         assert "preconditions not met" in (outcome.last_reason or "")
+        assert (git_dir / "MERGE_HEAD").exists()
+        assert _run(feature, "status", "--porcelain").stdout == before_status
     finally:
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))

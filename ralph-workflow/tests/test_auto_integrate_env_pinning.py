@@ -111,11 +111,22 @@ def test_rerere_with_wrong_recorded_resolution_does_not_replay_silently(
     wrong content and zero conflict signal.
 
     With the pin, rerere is OFF for the integration run; the conflict
-    is left to the endpoint-merge fallback and the wrong rr-cache
-    entry is never consulted. The test asserts BOTH: integration
-    lands AND the rr-cache entries we stamped survive untouched
-    (which would be impossible if rerere had replayed them -- git
-    deletes consumed entries or rewrites the postimage).
+    is left to the resolver (a stub that picks the feature's version)
+    and the wrong rr-cache entry is never consulted. The test
+    asserts THREE things:
+
+    1. Integration lands: ``last_action`` in ``{"rebased", "merged"}``
+       and ``fast_forwarded is True``. AC-11 requires landing, not
+       mere progression; a ``conflict`` outcome means the integration
+       could not proceed.
+    2. The landed content is the resolver's pick, NOT the rr-cache's
+       wrong sentinel. If rerere were active, the wrong postimage
+       (``RERERE-WRONG-RESOLUTION-MARKER``) would have been
+       committed to the conflicting file.
+    3. The rr-cache entries we stamped survive untouched. A
+       consumed entry would either be deleted or have its bytes
+       changed; an untouched entry is direct proof that rerere
+       was OFF.
     """
     root = tmp_path_factory.mktemp("rerere-hostile") / "repo"
     shutil.copytree(_git_repo_template, root)
@@ -147,23 +158,84 @@ def test_rerere_with_wrong_recorded_resolution_does_not_replay_silently(
         for postimage in rr_dir.rglob("postimage"):
             pre_fingerprints[postimage] = postimage.read_bytes()
 
+    # A resolver that picks the feature's version of the
+    # conflicting file -- deterministically, so the test
+    # can assert the landed content is the feature's
+    # version, NOT the wrong rr-cache marker. The resolver
+    # is invoked only because rerere is OFF (the
+    # ``-c rerere.enabled=false`` pin neutralized the
+    # hostile config); the test would be tautological
+    # otherwise.
+    def _pick_feature(_root: Path, _paths: list[str]) -> bool:
+        shared = root / "shared.txt"
+        shared.write_text("feature version\n", encoding="utf-8")
+        _run(root, "add", "shared.txt")
+        return True
+
     try:
         outcome = auto_integrate_after_commit(
             _build_config(base),
             WorkspaceScope(root),
             RebaseState(),
+            conflict_resolver=_pick_feature,
         )
     finally:
         _run(root, "config", "--unset", "rerere.enabled")
         _run(root, "config", "--unset", "rerere.autoupdate")
 
     assert outcome is not None
-    assert outcome.last_action in {"rebased", "merged", "conflict"}, outcome.last_action
+    # AC-11 requires integration to LAND despite the hostile
+    # rerere config, not merely to advance through some
+    # recorded state. A `conflict` outcome means the endpoint
+    # merge did not land and the target was not advanced, which
+    # is the failure shape AC-11 forbids. The resolver handles
+    # the content conflict; the pinned rerere.disabled is what
+    # prevents the wrong rr-cache entry from being silently
+    # replayed.
+    assert outcome.last_action in {"rebased", "merged"}, (
+        f"AC-11 hostile-rerere integration did NOT land; "
+        f"last_action={outcome.last_action!r}, last_reason={outcome.last_reason!r}. "
+        f"A `conflict` outcome is the failure shape AC-11 forbids."
+    )
+    assert outcome.fast_forwarded is True, (
+        f"AC-11 hostile-rerere integration did not fast-forward the target; "
+        f"outcome={outcome!r}. AC-11 requires integration to land unchanged "
+        f"even with hostile config."
+    )
 
-    # AC-11 neutralization proof: the rr-cache entries we stamped
-    # must NOT have been consumed by the integration. A consumed
-    # entry would either be deleted or have its bytes changed;
-    # an untouched entry is direct proof that rerere was OFF.
+    # AC-11 neutralization proof 1: the landed content is
+    # the resolver's pick (the feature's version), NOT the
+    # rr-cache's wrong sentinel. A replayed wrong
+    # resolution would have written
+    # ``RERERE-WRONG-RESOLUTION-MARKER`` into the
+    # conflicting file.
+    landed = (root / "shared.txt").read_text(encoding="utf-8")
+    assert "RERERE-WRONG-RESOLUTION-MARKER" not in landed, (
+        f"AC-11 hostile-rerere integration replayed the wrong rr-cache "
+        f"resolution; the conflicting file carries the wrong sentinel: "
+        f"{landed!r}. The rerere.enabled=false pin was bypassed."
+    )
+    assert landed == "feature version\n", (
+        f"AC-11 hostile-rerere integration did not land the resolver's "
+        f"pick; got {landed!r}, expected 'feature version\\n'. Either "
+        "the resolver did not run or the integration did not commit."
+    )
+    # The target ref MUST equal the rebased feature tip on a
+    # successful fast-forward. The exact equality is the
+    # landing proof AC-11 requires.
+    target_sha = _run(root, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    feature_sha = _run(root, "rev-parse", "feature").stdout.strip()
+    assert target_sha == feature_sha, (
+        f"AC-11 hostile-rerere integration did not fast-forward the "
+        f"target to the feature tip; target={target_sha!r}, "
+        f"feature={feature_sha!r}"
+    )
+
+    # AC-11 neutralization proof 2: the rr-cache entries we
+    # stamped must NOT have been consumed by the integration.
+    # A consumed entry would either be deleted or have its
+    # bytes changed; an untouched entry is direct proof that
+    # rerere was OFF.
     for path, expected_bytes in pre_fingerprints.items():
         if not path.exists():
             pytest.fail(
@@ -190,22 +262,22 @@ def test_commit_gpgsign_with_no_key_does_not_hang_or_fail_replay(
     gpgsign is OFF for the integration and replayed commits land
     normally.
 
-    Setup: feature is one commit ahead of the base; the base
-    advances one commit after the feature branches off, so
-    ``auto_integrate_after_commit`` has a real conflict-free
-    rebase to perform and the ``commit.gpgsign`` knob would
-    otherwise fire on every replayed commit.
+    Setup: feature adds a feature-only file; the base advances
+    on a base-only file. The integration is a real
+    conflict-free rebase so the ``commit.gpgsign`` knob
+    would fire on every replayed commit (the base commit
+    itself + the feature commit, both replayed onto the
+    new base). A conflict would let the endpoint-merge
+    fallback mask whether the pin worked, so the
+    topology is intentionally disjoint.
     """
     root = tmp_path_factory.mktemp("gpgsign-hostile") / "repo"
     shutil.copytree(_git_repo_template, root)
     base = _base_branch(root)
-    _commit(root, "shared.txt", "seed\n", "seed")
-    seed = _run(root, "rev-parse", f"refs/heads/{base}").stdout.strip()
-    _run(root, "branch", "feature", seed)
-    _run(root, "checkout", "feature")
-    _commit(root, "shared.txt", "feature version\n", "feature edit")
+    _run(root, "checkout", "-b", "feature")
+    _commit(root, "feature.txt", "feature content\n", "feature edit")
     _run(root, "checkout", base)
-    _commit(root, "shared.txt", "base version\n", "base edit")
+    _commit(root, "base.txt", "base content\n", "base edit")
     _run(root, "checkout", "feature")
 
     _run(root, "config", "commit.gpgsign", "true")
@@ -228,18 +300,34 @@ def test_commit_gpgsign_with_no_key_does_not_hang_or_fail_replay(
         _run(root, "config", "--unset", "user.signingkey")
 
     assert outcome is not None
-    # AC-11: integration does NOT hang or fail with a gpg error.
-    # With no resolver the endpoint-merge fallback handles the
-    # conflict; without gpgsign disabled that would either hang
-    # on a pinentry prompt or fail with "No secret key". Either
-    # ``rebased`` (clean fast-forward), ``merged`` (endpoint
-    # merge fallback landed) or ``conflict`` (the resolver was
-    # not provided so the conflict stays) are all valid AC-11
-    # outcomes -- the assertion that matters is that the
-    # integration did NOT raise a gpg-related exception.
-    assert outcome.last_action in {"rebased", "merged", "conflict"}, (
-        f"unexpected last_action {outcome.last_action!r}; integration may "
-        "have failed on gpg despite the -c commit.gpgsign=false pin"
+    # AC-11: integration lands despite hostile commit.gpgsign
+    # config. The pin ``-c commit.gpgsign=false`` neutralizes
+    # the missing key; a `conflict` outcome would mean the
+    # integration could not proceed, which is the failure
+    # shape AC-11 forbids. The test's conflict-free
+    # topology proves the pin is what kept the integration
+    # going -- without it, every replayed commit would
+    # have tried to invoke gpg and either hung on a
+    # pinentry or failed with "No secret key".
+    assert outcome.last_action in {"rebased", "merged"}, (
+        f"AC-11 hostile-gpgsign integration did NOT land; "
+        f"last_action={outcome.last_action!r}, last_reason={outcome.last_reason!r}. "
+        f"A `conflict` outcome is the failure shape AC-11 forbids."
+    )
+    assert outcome.fast_forwarded is True, (
+        f"AC-11 hostile-gpgsign integration did not fast-forward the target; "
+        f"outcome={outcome!r}. AC-11 requires integration to land unchanged "
+        f"even with hostile config."
+    )
+    # The target ref MUST equal the rebased feature tip on a
+    # successful fast-forward. The exact equality is the
+    # landing proof AC-11 requires.
+    target_sha = _run(root, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    feature_sha = _run(root, "rev-parse", "feature").stdout.strip()
+    assert target_sha == feature_sha, (
+        f"AC-11 hostile-gpgsign integration did not fast-forward the "
+        f"target to the feature tip; target={target_sha!r}, "
+        f"feature={feature_sha!r}"
     )
 
     # Sanity check: the hostile config was still set during the

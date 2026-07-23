@@ -228,7 +228,7 @@ def test_production_resolver_factory_resolves_a_real_conflict_end_to_end(
 def test_runner_commit_seam_drives_the_full_conflict_chain(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-07: the seam plumbing, not a MagicMock, lands a conflicted merge."""
+    """AC-07: the seam prefers rung-2 rebase resolution over endpoint merge."""
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
     _install_editing_agent(monkeypatch)
@@ -250,5 +250,7 @@ def test_runner_commit_seam_drives_the_full_conflict_chain(
     assert outcome.fast_forwarded is True
     head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     assert branch_sha(tmp_git_repo, base) == head
-    assert len(_head_parents(tmp_git_repo)) == 2
+    assert outcome.last_action == "rebased"
+    assert len(_head_parents(tmp_git_repo)) == 1
+    assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == "feature version\nbase version 1\n"
     assert not (tmp_git_repo / ".git" / "MERGE_HEAD").exists()

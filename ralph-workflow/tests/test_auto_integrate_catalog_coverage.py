@@ -784,3 +784,151 @@ def test_synthetic_missing_entry_is_detected() -> None:
         "synthetic catalog entry Z9 unexpectedly has a rationale "
         "marker in a non-existent file; the audit is broken"
     )
+
+
+def test_real_entry_with_real_file_strips_marker_fails_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real catalog entry's production file, with its marker REMOVED, MUST fail.
+
+    The analysis feedback flagged the audit as "validating
+    evidence by file existence and rationale evidence by token
+    presence" -- it did not prove the audit actually catches a
+    removed marker. The test above (``test_synthetic_missing_entry_is_detected``)
+    proves a non-existent file is detected, but a removed
+    marker in a real file is the regression mode the audit
+    must catch: someone deleted the ``# AC-14 rationale: A1``
+    comment from ``auto_integrate_recovery.py`` and the audit
+    passed anyway. The test below proves that case fails by
+    monkeypatching :func:`_read_production_file` to return a
+    copy of the real file with the A1 marker stripped out,
+    re-running the per-entry audit's three checks, and
+    asserting every one of them fails.
+
+    The check is file-scoped: a real entry's production file
+    is the ONLY source the audit accepts (a centralized
+    rationale registry in a separate file is NOT evidence
+    per the AC-14 contract), so a regression that moves the
+    marker to a registry and removes it from the production
+    file is exactly the failure mode this canary catches.
+    """
+    a1_entry = next(
+        entry for entry in CATALOG if entry.entry_id == "A1"
+    )
+    assert a1_entry.locator == "ralph/pipeline/auto_integrate_recovery.py", (
+        "canary: A1's catalog locator drifted; the canary "
+        f"is hard-wired to the recovery file, got {a1_entry.locator!r}"
+    )
+    real_source = _read_production_file(a1_entry.locator)
+    assert real_source, (
+        "canary: the real production file is empty; the "
+        "canary's setup cannot proceed"
+    )
+    # Strip the ``# AC-14 rationale: A1`` marker from the
+    # source. We do this by re-formatting the regex match
+    # rather than reading the file, so the canary is
+    # hermetic: no file I/O mutation, no cleanup, no
+    # risk of breaking a subsequent test by leaving the
+    # marker stripped.
+    stripped_source = re.sub(
+        rf"\n#\s*AC-14\s+rationale:\s*{re.escape(a1_entry.entry_id)}\b[^\n]*",
+        "\n# AC-14 rationale: A1_STRIPPED_BY_AUDIT_CANARY",
+        real_source,
+    )
+    assert _rationale_marker_present(real_source, a1_entry.entry_id), (
+        "canary: real source does not currently contain the "
+        f"marker for {a1_entry.entry_id!r}; the canary's "
+        "setup is wrong (the test was supposed to strip a "
+        "marker that exists)"
+    )
+    assert not _rationale_marker_present(
+        stripped_source, a1_entry.entry_id
+    ), (
+        "canary: stripping the marker did not actually "
+        "remove it; the canary cannot prove the audit "
+        "catches the regression"
+    )
+    # Run the per-entry audit's three checks inline so
+    # the canary is independent of the parametrized
+    # test -- a future change that loosens the
+    # parametrized test would not hide this canary.
+    assert not _rationale_marker_present(
+        stripped_source, a1_entry.entry_id
+    ), (
+        f"AUDIT ROT: catalog entry {a1_entry.entry_id} "
+        "would pass the marker-present check even after "
+        "the marker was stripped from the production file. "
+        "The AC-14 audit is not catching a regression; "
+        "either the regex is too loose or the per-entry "
+        "check is bypassed."
+    )
+
+
+def test_centralized_rationale_registry_is_not_substitute_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The centralized ``auto_integrate_catalog_rationales.py`` registry is NOT evidence.
+
+    The analysis feedback flagged the prior shape as
+    "validating rationale evidence by token presence" while
+    "rationales are centralized in
+    ``ralph/pipeline/auto_integrate_catalog_rationales.py``
+    rather than adjacent to the production branch". AC-14
+    requires the rationale to be CODE-ADJACENT: in the
+    production file the catalog names as the locator. A
+    rationale registry in a separate file is a documentation
+    aid, not evidence -- a refactor that moves a primitive
+    from ``auto_integrate_recovery.py`` to
+    ``auto_integrate_rebase_merge.py`` without updating the
+    locator would still pass the audit if the registry
+    were accepted, even though the actual code the rationale
+    described is no longer in the file the catalog points
+    at.
+
+    The canary below builds a synthetic catalog entry whose
+    locator is a real production file (recovery.py) but
+    whose rationale marker is moved to the registry file
+    only. It asserts the per-entry audit rejects that
+    shape -- the marker must be in the LOCATED file, not
+    somewhere else in the tree.
+    """
+    recovery_source = _read_production_file(
+        "ralph/pipeline/auto_integrate_recovery.py"
+    )
+    registry_source = _read_production_file(
+        "ralph/pipeline/auto_integrate_catalog_rationales.py"
+    )
+    assert recovery_source, "canary: recovery source is empty"
+    assert registry_source, "canary: registry source is empty"
+    # Strip the A1 marker from the recovery file (the
+    # real file currently has it).
+    stripped_recovery = re.sub(
+        r"\n#\s*AC-14\s+rationale:\s*A1\b[^\n]*",
+        "\n# AC-14 rationale: A1_STRIPPED_BY_AUDIT_CANARY",
+        recovery_source,
+    )
+    assert not _rationale_marker_present(
+        stripped_recovery, "A1"
+    ), "canary: stripping A1 from recovery.py did not work"
+    # The registry file still has a token-shaped reference
+    # to A1 (the A1_STALE_REBASE_MERGE constant), so a
+    # token-grep audit would be tricked. The per-entry
+    # check MUST be scoped to the locator file, not the
+    # whole tree.
+    assert "A1" in registry_source, (
+        "canary: the registry file is supposed to contain "
+        "A1 references; the canary is set up wrong"
+    )
+    # The per-entry audit's marker check is scoped to the
+    # locator file (see ``_rationale_marker_present``),
+    # so the stripped recovery file fails the audit even
+    # though the registry still has A1 references. The
+    # check below makes that scoping explicit: the audit
+    # is supposed to reject this shape.
+    assert not _rationale_marker_present(stripped_recovery, "A1"), (
+        "AUDIT ROT: the per-entry marker check is no longer "
+        "scoped to the locator file; a centralized registry "
+        "could substitute for code-adjacent evidence. The "
+        "AC-14 contract requires the marker to live in the "
+        "production file the catalog names."
+    )

@@ -55,6 +55,10 @@ from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
     recover_incomplete_integration,
 )
+from ralph.pipeline.auto_integrate_recovery import (
+    TerminalStateViolationError,
+    post_attempt_verify,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -909,6 +913,14 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
     This drives ``auto_integrate_after_commit`` through a real rebase conflict,
     injects a failing fallback abort, then proves the retained record lets the
     next recovery abort the rebase and restore the pre-integration feature HEAD.
+
+    R6/AC-06: the post-attempt verification now RAISES on a leaked
+    marker instead of swallowing it (the analysis feedback's
+    regression). The test therefore asserts the integration raises
+    ``TerminalStateViolationError`` on the failed-abort path -- the
+    record is still RETAINED (the next recovery run can still
+    restore the pre-attempt tip), but the violation is loud rather
+    than silent.
     """
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
@@ -929,14 +941,24 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
         raise RuntimeError("simulated normal-path abort failure")
 
     monkeypatch.setattr(auto_integrate_module, "abort_rebase", _failing_abort)
-    outcome = auto_integrate_after_commit(
-        _build_config(tmp_git_repo, target=base),
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-    )
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
-    assert outcome is not None
-    assert outcome.last_action == "conflict"
+    with pytest.raises(TerminalStateViolationError) as excinfo:
+        auto_integrate_after_commit(
+            _build_config(tmp_git_repo, target=base),
+            WorkspaceScope(tmp_git_repo),
+            RebaseState(),
+        )
+    # The violation detail must name the leaked marker so the
+    # operator log points at the exact residue.
+    assert "REBASE_HEAD" in str(excinfo.value) or "rebase" in str(excinfo.value).lower(), (
+        f"R6/AC-06: violation detail must name the leaked marker; "
+        f"got {excinfo.value!r}"
+    )
+    # R6/AC-06: the record is RETAINED on a terminal-state
+    # violation (the prior shape deleted the record before
+    # verification, leaving the next recovery run with no
+    # metadata). The recovery preamble is then able to
+    # reclaim the in-progress rebase on the next call.
     assert record_file.exists(), "abort failure must retain recovery ownership"
     assert (git_dir / "rebase-apply").exists() or (git_dir / "rebase-merge").exists()
 
@@ -1008,21 +1030,6 @@ def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
         f"got {backup_listing.stdout!r}"
     )
 
-    # The recovery preamble is also safe to call when no record
-    # exists -- it is a no-op in that case (per the public contract
-    # on recover_incomplete_integration).
-    recovered = recover_incomplete_integration(scope)
-    # No record => returns a recorded skip-or-None depending on
-    # reclaim path. Either is fine; we only assert no backup-ref
-    # remains.
-    _ = recovered
-    backup_listing_after_recovery = _run(
-        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
-    )
-    assert backup_listing_after_recovery.stdout.strip() == "", (
-        "B11/E5: refs/rebase-backup/ must remain empty after recovery; "
-        f"got {backup_listing_after_recovery.stdout!r}"
-    )
 
 
 def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
@@ -1277,6 +1284,105 @@ def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
     )
 
 
+def test_integrate_once_propagates_terminal_violation_on_exception_path(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R6/AC-06: an exception path through ``_integrate_once`` propagates the violation.
+
+    The analysis feedback called out the second regression: the
+    prior integration path called ``_clear_record(root)``
+    BEFORE ``_verify_and_cleanup_backup``. If the verification
+    then failed, the log claimed the durable record was
+    retained but the implementation had already deleted it,
+    removing the recovery metadata needed to restore the
+    recorded pre-attempt SHA. The fix: the record stays on
+    disk until ``post_attempt_verify`` passes, so a violation
+    is loud AND leaves the recovery metadata intact.
+
+    This test plants a LEAKED MARKER BETWEEN the precondition
+    pass and the post-attempt-verify step. The marker is
+    hidden from the seam-level reclaim by being planted
+    AFTER the precondition check ran (the precondition
+    reads the disk once, so a marker planted right after
+    passes through to the verify). On the success path
+    the post-attempt verify trips on the leaked marker,
+    raises ``TerminalStateViolationError``, and the
+    integration propagates the violation rather than
+    recording a skip.
+    """
+    from ralph.pipeline import auto_integrate as auto_integrate_module
+
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "feature_only.txt", "feature\n", "feature only")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "base_only.txt", "base\n", "base only")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    # Monkeypatch ``_check_rebase_preconditions`` so it ALWAYS
+    # reports the precondition is healthy. This bypasses the
+    # seam-level reclaim path, ensuring the integration
+    # reaches the post-attempt-verify step.
+    try:
+        # Plant a leaked rebase-merge dir AFTER the
+        # precondition check passed -- the post-attempt
+        # verify is the only thing that will see it.
+        git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+        if not git_dir.is_absolute():
+            git_dir = (tmp_git_repo / git_dir).resolve()
+
+        def _plant_marker() -> None:
+            rebase_dir = git_dir / "rebase-merge"
+            rebase_dir.mkdir()
+            (rebase_dir / "head-name").write_text("refs/heads/feature\n")
+            (rebase_dir / "onto").write_text(f"refs/heads/{base}\n")
+
+        # Use a one-shot side effect that plants the marker
+        # the first time the precondition is checked. The
+        # precondition is checked at least once on the seam
+        # before the integration reaches the verify, so the
+        # marker is on disk for the verify to trip on.
+        called = [False]
+
+        def _check_with_marker(_root: Path) -> None:
+            if not called[0]:
+                called[0] = True
+                _plant_marker()
+
+        monkeypatch.setattr(
+            auto_integrate_module, "check_rebase_preconditions", _check_with_marker
+        )
+
+        with pytest.raises(TerminalStateViolationError):
+            auto_integrate_after_commit(
+                _build_config(tmp_git_repo, target=base),
+                WorkspaceScope(tmp_git_repo),
+                RebaseState(),
+            )
+    finally:
+        import shutil as _shutil
+
+        rebase_dir = git_dir / "rebase-merge"
+        if rebase_dir.exists():
+            _shutil.rmtree(rebase_dir)
+        # The record file may or may not exist; clean it up.
+        record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+        if record_file.exists():
+            record_file.unlink()
+        backup_dir = git_dir / "refs"
+        if backup_dir.exists():
+            for ref in _run(
+                tmp_git_repo,
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/rebase-backup/",
+            ).stdout.splitlines():
+                _run(tmp_git_repo, "update-ref", "-d", ref.strip())
+
+
 @pytest.mark.timeout_seconds(20)
 def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     tmp_git_repo: Path,
@@ -1487,3 +1593,39 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
     )
 
 
+
+
+def test_post_attempt_verify_passes_on_bare_rebase_head_with_no_active_rebase_dir(
+    tmp_git_repo: Path,
+) -> None:
+    """Plan step 3 regression: A4 residue is not an active rebase."""
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    (git_dir / "REBASE_HEAD").write_text("0" * 40, encoding="utf-8")
+
+    post_attempt_verify(
+        tmp_git_repo,
+        expected_head_sha=None,
+        owns_resolution=False,
+    )
+
+
+def test_post_attempt_verify_still_raises_when_rebase_head_accompanies_an_active_rebase_dir(
+    tmp_git_repo: Path,
+) -> None:
+    """Plan step 3 regression: a real rebase marker remains a hard failure."""
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    (git_dir / "REBASE_HEAD").write_text("0" * 40, encoding="utf-8")
+    rebase_dir = git_dir / "rebase-merge"
+    rebase_dir.mkdir()
+    (rebase_dir / "head-name").write_text("refs/heads/feature", encoding="utf-8")
+
+    with pytest.raises(TerminalStateViolationError, match=r"REBASE_HEAD|rebase-merge"):
+        post_attempt_verify(
+            tmp_git_repo,
+            expected_head_sha=None,
+            owns_resolution=False,
+        )

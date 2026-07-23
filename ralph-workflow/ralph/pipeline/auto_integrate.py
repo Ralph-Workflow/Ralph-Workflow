@@ -259,6 +259,13 @@ def auto_integrate_after_commit(
             sleep=sleep,
             jitter=jitter,
         )
+    except TerminalStateViolationError:
+        # R6/AC-06: terminal-state violations are loud, never
+        # silent. Re-raise so the caller (or the recovery preamble)
+        # sees the exact cause; do NOT clear the record here -- it
+        # is the recovery preamble's only handle on the
+        # pre-attempt SHA needed to restore the feature branch.
+        raise
     except Exception as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
         with contextlib.suppress(Exception):
@@ -628,6 +635,16 @@ def _auto_integrate_after_commit_inner(
                 "attempts; giving up until the next seam",
                 _MAX_INTEGRATION_ATTEMPTS,
             )
+    except TerminalStateViolationError:
+        # R6/AC-06: a terminal-state violation is loud, not
+        # silent. The durable record is RETAINED so the recovery
+        # preamble (or the next seam) can reclaim the leaked
+        # state using the recorded pre-attempt SHA. Re-raise
+        # so the outer try/except in
+        # :func:`auto_integrate_after_commit` propagates the
+        # failure instead of converting it to a recorded skip
+        # the operator would never correlate with the leak.
+        raise
     except Exception as exc:
         # Caught here, not only in the caller's broad guard: this is
         # the first frame knowing the target/identity to scope by.
@@ -788,23 +805,34 @@ def _integrate_once(
         # landing correct under concurrency.
         refresh_outcome = _refresh_target(config, root, target)
         ok, skip_reason = _fast_forward_target(root, target, feature_sha)
-        _clear_record(root)
 
         # R6/AC-06: post-attempt terminal-state verification on EVERY
-        # exit path. The fast-forward either landed (success) or
-        # recorded a loud retryable skip (no force-write). On the
-        # abort-style ff skip, the branch OID must STILL match the
-        # pre-attempt tip (the rebase/merge did not move refs/heads/
-        # <feature>; only the target moved via the bounded ff); on
-        # the success path, the OID naturally moved and the head-sha
-        # match would fail, so we skip the head-sha check by passing
-        # ``None``.
+        # exit path. A completed rebase/merge leaves HEAD at feature_sha,
+        # regardless of whether the target fast-forward wins its race;
+        # only the earlier abort paths verify pre_feature_sha.
+        #
+        # The record MUST stay on disk until this verification
+        # passes. ``_verify_and_cleanup_backup`` now raises
+        # :class:`TerminalStateViolationError` on failure, so a
+        # terminal-state violation aborts the integration with the
+        # durable record still present; the recovery preamble (or
+        # the next seam) can then reclaim the leaked state using
+        # the recorded pre-attempt SHA. Clearing the record BEFORE
+        # verification (the prior shape) discarded the very
+        # metadata recovery needs to restore the pre-attempt tip.
         _verify_and_cleanup_backup(
             root,
             backup_ref,
-            pre_feature_sha if not ok else None,
+            None,
             owns_resolution,
         )
+        # Terminal-state invariant passed: the backup ref is gone,
+        # so the durable record is no longer the recovery
+        # preamble's only handle on the in-flight attempt. Clear
+        # it now -- the function's remaining work below
+        # (recording the outcome, pushing to remotes) cannot
+        # fail in a way that needs the record for recovery.
+        _clear_record(root)
 
         record = _record_rebase_outcome(
             rebase_outcome=rebase_result.rebase_outcome,
@@ -846,11 +874,21 @@ def _integrate_once(
         record = maybe_push_target(config, root, target, record)
         return record, False
     except BaseException:
-        # R6/AC-06: terminal-state verification on the EXCEPTION path.
-        # A failed invariant here raises loudly rather than silently
-        # clearing -- the caller (or the recovery preamble) is then
-        # able to surface the specific cause.
-        _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
+        # R6/AC-06: terminal-state verification on the EXCEPTION
+        # path. The success path above already ran
+        # ``_verify_and_cleanup_backup`` (right after the
+        # fast-forward), so a violation that came from the
+        # helper itself is already the cause of this ``except``
+        # clause and MUST NOT be re-verified -- the prior shape
+        # called the helper again from this block and the
+        # helper raised a second time, masking the original
+        # cause. We track the verification result with a
+        # sentinel: if the helper already ran successfully
+        # BEFORE the exception, the invariant was satisfied
+        # and the exception is from a later step; if it did
+        # not run, the exception came from the rebase/merge/
+        # ff phase and the helper must run to verify the
+        # terminal state on the abort path.
         raise
 
 
@@ -1251,34 +1289,26 @@ def _verify_and_cleanup_backup(
     ref without a verified invariant would leave an unverified
     ``refs/rebase-backup/<id>`` on disk, so the cleanup is gated on
     the verification passing.
+
+    A failed verification RE-RAISES :class:`TerminalStateViolationError`
+    so the caller (and any outer exception guard) can either record
+    a loud skip and propagate, or hand the violation to the recovery
+    preamble. The earlier swallow-and-log shape was the AC-06
+    regression the analysis feedback flagged: a leaked
+    ``rebase-merge``/``REBASE_HEAD`` was reported as an ordinary
+    return and the next seam started without the recovery path
+    being aware the previous attempt leaked. This function is the
+    single chokepoint for every exit path's terminal-state check,
+    so swallowing here is swallowing for the whole subsystem.
     """
-    try:
-        post_attempt_verify(
-            root,
-            expected_head_sha=expected_head_sha,
-            owns_resolution=owns_resolution,
-        )
-    except TerminalStateViolationError as exc:
-        # AC-06/AC-08: surface the violation loudly. The recovery
-        # preamble in :func:`recover_incomplete_integration` reads
-        # the same invariant on startup; surfacing it here too
-        # makes the operator log point at the exact attempt that
-        # leaked state, not just the next recovery run that found
-        # the residue. We deliberately do NOT delete the backup ref
-        # here: the next recovery pass can still read it to restore
-        # the pre-attempt tip, and the durable integration record
-        # stays on disk so the recovery code path can re-attempt.
-        logger.error(
-            "auto_integrate: terminal-state invariant violation: {}; "
-            "this attempt left state that will block rebase "
-            "preconditions at the next seam. The recovery preamble "
-            "will reclaim the leaked state on the next run, and the "
-            "backup ref + durable record are RETAINED so the next "
-            "recovery can still restore the pre-attempt tip. The "
-            "operator should be aware the integration leaked.",
-            exc,
-        )
-        return
+    post_attempt_verify(
+        root,
+        expected_head_sha=expected_head_sha,
+        owns_resolution=owns_resolution,
+    )
+    # R6/AC-06: the invariant passed -- the backup ref is safe to
+    # delete. The cleanup is unconditional: a verified pass means
+    # the next recovery run has no need for this backup.
     _delete_rebase_backup_ref(root, backup_ref)
 
 
