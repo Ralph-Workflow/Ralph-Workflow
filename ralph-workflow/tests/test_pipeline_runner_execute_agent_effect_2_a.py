@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from io import StringIO
 from pathlib import Path
@@ -105,37 +104,8 @@ def _write_minimal_plan_artifacts(
     context: str = "Existing plan",
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (root / ".agent" / "artifacts" / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+    (root / ".agent" / "artifacts" / "plan.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -147,24 +117,8 @@ def _write_minimal_plan_artifacts(
 def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:01+00:00",
-                "sections": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
+    (artifact_dir / ".plan.draft.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
 
@@ -557,14 +511,14 @@ class TestExecuteAgentEffectA:
             (
                 "development",
                 (
-                    ".agent/artifacts/development_result.json",
+                    ".agent/artifacts/development_result.md",
                     ".agent/DEVELOPMENT_RESULT.md",
                 ),
             ),
             (
                 "development_analysis",
                 (
-                    ".agent/artifacts/development_analysis_decision.json",
+                    ".agent/artifacts/development_analysis_decision.md",
                     ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
                 ),
             ),
@@ -622,18 +576,11 @@ class TestExecuteAgentEffectA:
         )
         _write_minimal_plan_artifacts(tmp_path, context="Loopback plan")
         _write_minimal_plan_draft(tmp_path, context="Loopback draft")
-        (tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json").write_text(
-            json.dumps(
-                {
-                    "type": "planning_analysis_decision",
-                    "content": {
-                        "status": "request_changes",
-                        "summary": "Need revisions",
-                        "what_came_up_short": ["issue"],
-                        "how_to_fix": ["fix it"],
-                    },
-                }
-            ),
+        (tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.md").write_text(
+            "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+            "## Summary\n- [S1] Need revisions\n"
+            "## What Came Up Short\n- [W1] issue\n"
+            "## How To Fix\n- [F1] fix it\n",
             encoding="utf-8",
         )
         prompt_file = tmp_path / "PROMPT.md"
@@ -659,8 +606,8 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_execute_agent_effect_worker_mode_uses_namespaced_system_prompt_and_session(
@@ -743,7 +690,7 @@ class TestExecuteAgentEffectA:
             drain="development",
         )
         worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
-        shared_artifact = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        shared_artifact = tmp_path / ".agent" / "artifacts" / "development_result.md"
         shared_artifact.parent.mkdir(parents=True, exist_ok=True)
         shared_artifact.write_text("{}", encoding="utf-8")
         prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
@@ -823,8 +770,8 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_materialize_prepared_prompt_preserves_resumed_planning_context(
@@ -860,8 +807,8 @@ class TestExecuteAgentEffectA:
 
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING EDIT MODE" in rendered
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_materialize_agent_prompt_if_needed_preserves_resumed_planning_context(
@@ -900,8 +847,8 @@ class TestExecuteAgentEffectA:
 
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING EDIT MODE" in rendered
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_materialize_agent_prompt_if_needed_resets_resumed_planning_context_when_prompt_changed(
@@ -949,8 +896,8 @@ class TestExecuteAgentEffectA:
         assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
             "Replace the plan with a different task"
         )
-        assert not (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-        assert not (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert not (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
+        assert not (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert not (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_dynamic_ccs_agent_reaches_invocation(self) -> None:

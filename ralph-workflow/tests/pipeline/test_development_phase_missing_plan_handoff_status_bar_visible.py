@@ -66,6 +66,7 @@ from ralph.config.verbosity import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBar, StatusBarModel
+from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.run_loop import (
     _LoopContext,
@@ -351,6 +352,11 @@ def test_development_phase_missing_plan_handoff_recovers_and_status_bar_remains_
       the test (the patch captures every real push from inside the
       loop; the test never calls the helper directly).
     """
+    monkeypatch.setattr(
+        run_loop_module,
+        "_apply_connectivity_check",
+        lambda current_state, _monitor: current_state,
+    )
     pipeline_bundle = _load_default_policy_bundle()
     pipeline_policy = pipeline_bundle.pipeline
 

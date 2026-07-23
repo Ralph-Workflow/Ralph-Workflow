@@ -15,7 +15,6 @@ finish in < 0.5 s.
 from __future__ import annotations
 
 import dataclasses
-import json
 import sys
 from datetime import UTC, datetime
 from io import StringIO
@@ -192,23 +191,13 @@ def test_emit_completion_panel_does_not_duplicate_commit_subject(tmp_path: Path)
     subject line. The consolidated single default-mode layout renders
     the commit output in ``_commit_section`` only.
     """
-    artifacts = tmp_path / ".agent" / "tmp"
+    artifacts = tmp_path / ".agent" / "artifacts"
     artifacts.mkdir(parents=True)
-    (artifacts / "commit_message.json").write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {
-                    "type": "commit",
-                    "subject": "feat(display): surface polished completion output",
-                    "body_summary": "Show the final commit message in the completion summary.",
-                },
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
+    (artifacts / "commit_message.md").write_text(
+        "---\ntype: commit\n"
+        "subject: feat(display): surface polished completion output\n---\n\n"
+        "## Body Summary\n\n"
+        "- [S-1] Show the final commit message in the completion summary.\n",
         encoding="utf-8",
     )
 
@@ -252,23 +241,13 @@ def test_emit_completion_panel_pr_url_without_commit_artifact(tmp_path: Path) ->
 
 def test_emit_completion_panel_pr_url_with_commit_artifact(tmp_path: Path) -> None:
     """PR URL is rendered alongside the commit-message artifact in the same section."""
-    artifacts = tmp_path / ".agent" / "tmp"
+    artifacts = tmp_path / ".agent" / "artifacts"
     artifacts.mkdir(parents=True)
-    (artifacts / "commit_message.json").write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {
-                    "type": "commit",
-                    "subject": "feat(display): surface polished completion output",
-                    "body_summary": "Show the final commit message in the completion summary.",
-                },
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
+    (artifacts / "commit_message.md").write_text(
+        "---\ntype: commit\n"
+        "subject: feat(display): surface polished completion output\n---\n\n"
+        "## Body Summary\n\n"
+        "- [S-1] Show the final commit message in the completion summary.\n",
         encoding="utf-8",
     )
 

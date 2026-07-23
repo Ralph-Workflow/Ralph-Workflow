@@ -10,6 +10,7 @@ import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
+from ralph.pipeline import run_loop as run_loop_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -227,6 +228,11 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
         lambda _effect, _config, _workspace_scope: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+    monkeypatch.setattr(
+        run_loop_module,
+        "_apply_connectivity_check",
+        lambda current_state, _monitor: current_state,
+    )
     _install_runner_display_context(monkeypatch)
 
     result = runner_module.run(config, initial_state=state)

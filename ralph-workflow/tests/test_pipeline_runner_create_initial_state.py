@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -105,37 +104,8 @@ def _write_minimal_plan_artifacts(
     context: str = "Existing plan",
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (root / ".agent" / "artifacts" / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+    (root / ".agent" / "artifacts" / "plan.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -147,24 +117,8 @@ def _write_minimal_plan_artifacts(
 def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:01+00:00",
-                "sections": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
+    (artifact_dir / ".plan.draft.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
 
@@ -224,51 +178,15 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Revise the plan")
     workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "Existing plan",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "revise"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+        ".agent/PLAN.md",
+        "# Execution Plan\n\nExisting plan\n",
     )
     workspace.write(
-        ".agent/artifacts/planning_analysis_decision.json",
-        json.dumps(
-            {
-                "type": "planning_analysis_decision",
-                "content": {
-                    "status": "request_changes",
-                    "summary": "Need revisions",
-                    "what_came_up_short": ["issue"],
-                    "how_to_fix": ["fix it"],
-                },
-            }
-        ),
+        ".agent/PLANNING_ANALYSIS_DECISION.md",
+        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S1] Need revisions\n"
+        "## What Came Up Short\n- [W1] issue\n"
+        "## How To Fix\n- [F1] fix it\n",
     )
     workspace.write(
         ".agent/tmp/planning_prompt.md",

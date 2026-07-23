@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -100,43 +99,33 @@ def _config_with_agents(
     return config
 
 
+def _commit_document(
+    subject: str = "fix: pipeline artifact message",
+    *,
+    files: tuple[str, ...] = (),
+    excluded_files: tuple[tuple[str, str], ...] = (),
+) -> str:
+    sections = ""
+    if files:
+        sections += "\n## Files\n" + "".join(
+            f"- [F{index}] {path}\n" for index, path in enumerate(files, 1)
+        )
+    if excluded_files:
+        sections += "\n## Excluded Files\n" + "".join(
+            f"- [E{index}] {path} | {reason}\n"
+            for index, (path, reason) in enumerate(excluded_files, 1)
+        )
+    return f"---\ntype: commit\nsubject: {subject}\n---\n{sections}"
+
+
 def _write_minimal_plan_artifacts(
     root: Path,
     *,
     context: str = "Existing plan",
 ) -> None:
     (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (root / ".agent" / "artifacts" / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+    (root / ".agent" / "artifacts" / "plan.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
@@ -148,24 +137,8 @@ def _write_minimal_plan_artifacts(
 def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:01+00:00",
-                "sections": {
-                    "summary": {
-                        "context": context,
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
+    (artifact_dir / ".plan.draft.md").write_text(
+        f"---\ntype: plan\nschema_version: 1\nintent_verb: modify\n---\n## Summary\n{context}\n",
         encoding="utf-8",
     )
 
@@ -225,51 +198,15 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Revise the plan")
     workspace.write(
-        ".agent/artifacts/plan.json",
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "Existing plan",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "revise"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        ),
+        ".agent/PLAN.md",
+        "# Execution Plan\n\nExisting plan\n",
     )
     workspace.write(
-        ".agent/artifacts/planning_analysis_decision.json",
-        json.dumps(
-            {
-                "type": "planning_analysis_decision",
-                "content": {
-                    "status": "request_changes",
-                    "summary": "Need revisions",
-                    "what_came_up_short": ["issue"],
-                    "how_to_fix": ["fix it"],
-                },
-            }
-        ),
+        ".agent/PLANNING_ANALYSIS_DECISION.md",
+        "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S1] Need revisions\n"
+        "## What Came Up Short\n- [W1] issue\n"
+        "## How To Fix\n- [F1] fix it\n",
     )
     workspace.write(
         ".agent/tmp/planning_prompt.md",
@@ -352,23 +289,14 @@ class TestExecuteCommitEffect:
     ) -> None:
         stage_all = MagicMock()
         create_commit = MagicMock(return_value="sha")
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
-            encoding="utf-8",
+            _commit_document("fix: pipeline artifact message"), encoding="utf-8"
         )
 
         result = runner_module.execute_commit_effect(
@@ -390,9 +318,10 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
@@ -402,20 +331,7 @@ class TestExecuteCommitEffect:
             lambda _repo_root: ["src/feature.py", "tests/test_feature.py"],
         )
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {
-                        "type": "commit",
-                        "subject": "fix: pipeline artifact message",
-                        "files": ["src/feature.py", "tests/test_feature.py"],
-                    },
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
+            _commit_document(files=("src/feature.py", "tests/test_feature.py")),
             encoding="utf-8",
         )
 
@@ -440,27 +356,20 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
+        monkeypatch.setattr(
+            commit_executor_module,
+            "_changed_commit_paths",
+            lambda _repo_root: ["src/feature.py", "../secrets.txt"],
+        )
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {
-                        "type": "commit",
-                        "subject": "fix: pipeline artifact message",
-                        "files": ["src/feature.py", "../secrets.txt"],
-                    },
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
+            _commit_document(files=("src/feature.py", "../secrets.txt")),
             encoding="utf-8",
         )
 
@@ -482,9 +391,10 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
@@ -494,20 +404,7 @@ class TestExecuteCommitEffect:
             lambda _repo_root: ["src/feature.py"],
         )
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {
-                        "type": "commit",
-                        "subject": "fix: pipeline artifact message",
-                        "files": ["src/feature.py", "docs/guide.md"],
-                    },
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
+            _commit_document(files=("src/feature.py", "docs/guide.md")),
             encoding="utf-8",
         )
 
@@ -529,9 +426,10 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
@@ -541,20 +439,7 @@ class TestExecuteCommitEffect:
             lambda _repo_root: ["src/feature.py", "tests/test_feature.py", "docs/guide.md"],
         )
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {
-                        "type": "commit",
-                        "subject": "fix: pipeline artifact message",
-                        "excluded_files": [{"path": "docs/guide.md", "reason": "internal_ignore"}],
-                    },
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
+            _commit_document(excluded_files=(("docs/guide.md", "internal_ignore"),)),
             encoding="utf-8",
         )
 
@@ -758,23 +643,14 @@ class TestExecuteCommitEffect:
             create_commit = MagicMock(
                 side_effect=GitOperationError("create_commit", "index.lock contention")
             )
-            message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+            message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
             text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
             message_file.parent.mkdir(parents=True, exist_ok=True)
+            text_file.parent.mkdir(parents=True, exist_ok=True)
             text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
             monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
             message_file.write_text(
-                json.dumps(
-                    {
-                        "name": "commit_message",
-                        "type": "commit_message",
-                        "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
-                        "created_at": "STATIC",
-                        "updated_at": "STATIC",
-                        "metadata": {},
-                    }
-                ),
-                encoding="utf-8",
+                _commit_document("fix: pipeline artifact message"), encoding="utf-8"
             )
 
             result = runner_module.execute_commit_effect(
@@ -824,23 +700,14 @@ class TestExecuteCommitEffect:
     ) -> None:
         stage_all = MagicMock()
         create_commit = MagicMock(return_value="sha")
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
-            encoding="utf-8",
+            _commit_document("fix: pipeline artifact message"), encoding="utf-8"
         )
         output = io.StringIO()
         display = ParallelDisplay(
@@ -868,23 +735,14 @@ class TestExecuteCommitEffect:
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
         stage_all = MagicMock()
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
-            encoding="utf-8",
+            _commit_document("fix: pipeline artifact message"), encoding="utf-8"
         )
 
         def fail_create(*_: object) -> None:
@@ -921,7 +779,7 @@ class TestExecuteCommitEffect:
     ) -> None:
         stage_all = MagicMock()
         create_commit = MagicMock()
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         message_file.write_text("{not json", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
@@ -942,23 +800,12 @@ class TestExecuteCommitEffect:
     ) -> None:
         stage_all = MagicMock()
         create_commit = MagicMock()
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: skip empty worktree", encoding="utf-8")
-        message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {"type": "commit", "subject": "fix: skip empty worktree"},
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
-            encoding="utf-8",
-        )
+        message_file.write_text(_commit_document("fix: skip empty worktree"), encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: False)
 
         result = runner_module.execute_commit_effect(
@@ -984,24 +831,13 @@ class TestExecuteCommitEffect:
         """
         stage_all = MagicMock()
         create_commit = MagicMock()
-        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("SKIP: no pending changes visible in diff", encoding="utf-8")
         message_file.write_text(
-            json.dumps(
-                {
-                    "name": "commit_message",
-                    "type": "commit_message",
-                    "content": {
-                        "type": "skip",
-                        "reason": "no pending changes visible in diff",
-                    },
-                    "created_at": "STATIC",
-                    "updated_at": "STATIC",
-                    "metadata": {},
-                }
-            ),
+            "---\ntype: skip\nreason: no pending changes visible in diff\n---\n",
             encoding="utf-8",
         )
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)

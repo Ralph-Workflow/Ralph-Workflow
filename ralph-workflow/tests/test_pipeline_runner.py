@@ -96,7 +96,7 @@ def _make_fake_bundle() -> PolicyBundle:
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                json_path=".agent/artifacts/plan.json",
+                json_path=".agent/artifacts/plan.md",
             )
         }
     )
@@ -1038,9 +1038,7 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
     lifecycle_module.__dict__["after_agent_refresh"] = _spy_after
     try:
         # Avoid the agent actually running.
-        def _fake_execute_effect_with_optional_display(
-            *_args: object, **_kwargs: object
-        ) -> object:
+        def _fake_execute_effect_with_optional_display(*_args: object, **_kwargs: object) -> object:
             events.append("invocation")
             return MagicMock()
 
@@ -1118,9 +1116,7 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
             pre_phase_role="review",
             pre_phase_drain="review",
         )
-        assert events == ["invocation"], (
-            f"review drain should not trigger refresh; got {events!r}"
-        )
+        assert events == ["invocation"], f"review drain should not trigger refresh; got {events!r}"
 
         # COMMIT drain: must observe no refresh events.
         events.clear()
@@ -1136,9 +1132,7 @@ def test_runner_wires_pre_post_refresh_around_development_agent(
             pre_phase_role="commit",
             pre_phase_drain="commit",
         )
-        assert events == ["invocation"], (
-            f"commit drain should not trigger refresh; got {events!r}"
-        )
+        assert events == ["invocation"], f"commit drain should not trigger refresh; got {events!r}"
     finally:
         lifecycle_module.__dict__["before_agent_refresh"] = original_before
         lifecycle_module.__dict__["after_agent_refresh"] = original_after
