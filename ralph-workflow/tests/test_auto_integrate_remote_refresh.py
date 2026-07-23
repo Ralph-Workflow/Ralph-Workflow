@@ -1,10 +1,13 @@
-"""Regression coverage for the bounded remote refresh of the target ref.
+"""Regression coverage for the observe-only remote refresh of the target ref.
 
-The mainline pointer is assumed to be moving underneath every agent. In
-a clone topology the local ``refs/heads/<target>`` would otherwise stay
-frozen at whatever it was when it was first materialized, so every
-integration would be computed against a mainline another agent moved
-long ago.
+Auto-integration is a LOCAL feature: every rebase, merge and landing
+decision is made against the local ``refs/heads/<target>`` the fleet of
+linked worktrees advances directly. A configured origin may be fetched
+(when ``auto_integrate_fetch_enabled`` is explicitly turned on) purely
+to OBSERVE and report its position -- remote state must never move a
+local ref or otherwise affect local rebase operations. These tests
+prove both halves: the observation stays read-only, and integration
+proceeds against the local pointer regardless of what origin holds.
 
 Every remote in this module is a local bare repository path or a path
 that does not exist: no test reaches a real network host.
@@ -23,6 +26,7 @@ from ralph.pipeline import auto_integrate
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
 from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
     refresh_target_from_remote,
 )
@@ -93,20 +97,28 @@ def _seed_bare_origin(tmp_git_repo: Path) -> tuple[Path, str]:
     return bare, main
 
 
-def test_remote_advance_is_observed_before_integration(tmp_git_repo: Path) -> None:
-    """AC-03: a mainline moved by another agent is picked up before landing."""
+def test_remote_advance_never_affects_the_local_integration(
+    tmp_git_repo: Path,
+) -> None:
+    """A mainline pushed to origin by another clone stays on origin.
+
+    Integration reasons about the LOCAL target ref only: the commit the
+    other clone pushed must not be rebased in, must not appear in the
+    worktree, and the landing must fast-forward the local ref from its
+    own (locally observed) position.
+    """
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-a", main, branch="feature")
     other = _make_clone(bare, tmp_git_repo.parent / "agent-b", main, branch="other")
 
-    # The OTHER agent lands a commit on the shared mainline.
+    # The OTHER agent lands a commit on origin's mainline.
     assert _run(other, "checkout", main).returncode == 0
     other_sha = _commit(other, "other.txt", "other agent\n", "other agent change")
     assert _run(other, "push", "origin", main).returncode == 0
 
-    stale_local_main = branch_sha(agent, main)
-    assert stale_local_main is not None
-    assert stale_local_main != other_sha, "the local ref must start out stale"
+    local_main = branch_sha(agent, main)
+    assert local_main is not None
+    assert local_main != other_sha, "origin must genuinely be ahead"
 
     _commit(agent, "feature.txt", "feature\n", "feature change")
     outcome = auto_integrate_after_commit(
@@ -116,8 +128,10 @@ def test_remote_advance_is_observed_before_integration(tmp_git_repo: Path) -> No
 
     assert outcome is not None
     assert outcome.fast_forwarded is True
-    assert is_ancestor(agent, other_sha, feature_head) is True
-    assert (agent / "other.txt").exists()
+    assert is_ancestor(agent, other_sha, feature_head) is False, (
+        "a commit that exists only on origin was integrated locally"
+    )
+    assert not (agent / "other.txt").exists()
     assert branch_sha(agent, main) == feature_head
 
 
@@ -167,17 +181,15 @@ def test_diverged_remote_is_not_force_moved(tmp_git_repo: Path) -> None:
     assert is_ancestor(agent, local_sha, refreshed) is True
 
 
-def test_retry_attempt_refetches_the_moved_mainline(
+def test_retry_attempt_reintegrates_locally_without_pulling_origin(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-03: EVERY bounded retry refetches, not only the first attempt.
+    """A bounded retry re-observes the LOCAL pointer, never origin.
 
     The first attempt loses the landing race exactly as it would in
-    production (another agent moved the target between the ancestry
-    check and the ref update). The retry must therefore integrate
-    onto the mainline as it is NOW, which means fetching origin
-    again -- a refresh performed only once, before the loop, would
-    re-integrate onto the same stale pointer forever.
+    production. The retry must integrate onto the local mainline as it
+    is NOW -- and only the local mainline: a commit pushed to origin
+    between the attempts must stay on origin.
     """
     assert is_retryable_fast_forward_failure(_CONCURRENT_MOVE) is True
 
@@ -212,11 +224,47 @@ def test_retry_attempt_refetches_the_moved_mainline(
     assert landed, "the injected landing race never fired"
     assert outcome is not None
     assert outcome.fast_forwarded is True
-    # Proof the retry fetched: the commit pushed AFTER the first
-    # attempt started is in the integrated history and on disk.
-    assert is_ancestor(agent, landed[0], feature_head) is True
-    assert (agent / "late.txt").exists()
+    # The retry observed only the local ref: the commit pushed to
+    # origin between the attempts was NOT integrated.
+    assert is_ancestor(agent, landed[0], feature_head) is False
+    assert not (agent / "late.txt").exists()
     assert branch_sha(agent, main) == feature_head
+
+
+def test_refresh_never_moves_the_local_ref_even_when_origin_is_ahead(
+    tmp_git_repo: Path,
+) -> None:
+    """Remote observation is read-only for LOCAL refs, with no exception.
+
+    Auto-integration is a local-only feature: the mainline pointer every
+    rebase and landing decision uses is ``refs/heads/<target>``, owned by
+    the local fleet. A fetch may observe origin, but an origin that is
+    strictly ahead must NOT be applied to the local ref -- the previous
+    behaviour, which let a remote nobody asked about rewrite the base of
+    every local rebase.
+    """
+    bare, main = _seed_bare_origin(tmp_git_repo)
+    agent = _make_clone(bare, tmp_git_repo.parent / "agent-ahead", main, branch="feature")
+    other = _make_clone(bare, tmp_git_repo.parent / "agent-mover", main, branch="other")
+
+    assert _run(other, "checkout", main).returncode == 0
+    remote_sha = _commit(other, "other.txt", "other agent\n", "other agent change")
+    assert _run(other, "push", "origin", main).returncode == 0
+
+    local_sha = branch_sha(agent, main)
+    assert local_sha is not None
+    assert local_sha != remote_sha
+    # Materialize origin's objects so the strictly-ahead precondition is
+    # provable; the refresh under test performs its own fetch anyway.
+    assert _run(agent, "fetch", "origin", main).returncode == 0
+    assert is_ancestor(agent, local_sha, remote_sha) is True
+
+    outcome = refresh_target_from_remote(agent, main, timeout_seconds=2.0)
+
+    assert outcome == REFRESH_ORIGIN_AHEAD
+    assert branch_sha(agent, main) == local_sha, (
+        "the refresh moved the local mainline ref from remote state"
+    )
 
 
 def test_refresh_regression_failed_fetch_never_claims_a_fresh_origin_read(

@@ -235,9 +235,13 @@ def _dirty_boundary_workspace(
     return WorkspaceScope(tmp_path)
 
 
-def _config() -> UnifiedConfig:
+def _config(*, fetch_enabled: bool = False) -> UnifiedConfig:
     payload: dict[str, object] = {
-        "general": {"auto_integrate_enabled": True, "auto_integrate_target": "main"}
+        "general": {
+            "auto_integrate_enabled": True,
+            "auto_integrate_target": "main",
+            "auto_integrate_fetch_enabled": fetch_enabled,
+        }
     }
     return UnifiedConfig.model_validate(payload)
 
@@ -289,7 +293,7 @@ def test_dirty_boundary_without_an_origin_records_no_origin_remote(
     monkeypatch.setattr("ralph.pipeline.auto_integrate_sync.run_git", _fake_run_git)
 
     outcome = auto_integrate.auto_integrate_on_phase_transition(
-        _config(), scope, RebaseState()
+        _config(fetch_enabled=True), scope, RebaseState()
     )
 
     assert outcome is not None

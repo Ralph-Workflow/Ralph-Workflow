@@ -127,31 +127,30 @@ def _add_worktree(repo_root: Path, path: Path, branch: str) -> None:
     assert _run(repo_root, "worktree", "add", "-b", branch, str(path)).returncode == 0
 
 
-def test_conflicting_origin_advance_rebases_conflicted_then_merges_and_lands(
+def test_conflicting_origin_advance_never_reaches_the_local_integration(
     tmp_git_repo: Path,
 ) -> None:
-    """AC-08: remote refresh and real conflict handling compose and land.
+    """A conflicting mainline pushed to origin cannot conflict locally.
 
-    The feature branch edits ``shared.txt`` and then restores it, so its
-    NET content is unchanged from the merge base while its individual
-    commits are not. Replaying those commits onto a mainline that edited
-    the same line conflicts, while the single endpoint three-way merge
-    is clean -- which is exactly the path a clone-topology agent takes
-    when another agent pushed a conflicting mainline change.
+    Remote state must never affect local auto-rebase: the conflicting
+    edit the other clone pushed stays on origin, so the local
+    integration sees no conflict at all -- it lands the feature onto
+    the LOCAL mainline and fast-forwards that local ref, with the
+    feature's own content intact.
     """
     _commit(tmp_git_repo, "shared.txt", _ORIGINAL_SHARED, "seed shared")
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-a", main, branch="feature")
     other = _make_clone(bare, tmp_git_repo.parent / "agent-b", main, branch="other")
 
-    # The OTHER agent pushes a CONFLICTING mainline change.
+    # The OTHER agent pushes a change that WOULD conflict if applied.
     assert _run(other, "checkout", main).returncode == 0
     other_sha = _commit(other, "shared.txt", "base edit\n", "base edit")
     assert _run(other, "push", "origin", main).returncode == 0
 
-    stale_local_main = branch_sha(agent, main)
-    assert stale_local_main is not None
-    assert stale_local_main != other_sha, "the local ref must start out stale"
+    local_main = branch_sha(agent, main)
+    assert local_main is not None
+    assert local_main != other_sha, "origin must genuinely differ"
 
     _commit(agent, "shared.txt", "feature edit\n", "feature edit")
     _commit(agent, "shared.txt", _ORIGINAL_SHARED, "feature restores shared")
@@ -162,12 +161,15 @@ def test_conflicting_origin_advance_rebases_conflicted_then_merges_and_lands(
     feature_head = _run(agent, "rev-parse", "HEAD").stdout.strip()
 
     assert outcome is not None
-    # The rebase conflicted; the endpoint merge landed it.
-    assert outcome.last_action == "merged"
+    # No conflict is possible: the conflicting edit never left origin.
+    assert outcome.last_action != "conflict"
     assert outcome.fast_forwarded is True
-    # The moved mainline was fetched and is now contained in the feature.
-    assert is_ancestor(agent, other_sha, feature_head) is True
-    assert (agent / "shared.txt").read_text(encoding="utf-8") == "base edit\n"
+    assert is_ancestor(agent, other_sha, feature_head) is False, (
+        "a commit that exists only on origin was integrated locally"
+    )
+    assert (
+        (agent / "shared.txt").read_text(encoding="utf-8") == _ORIGINAL_SHARED
+    )
     assert branch_sha(agent, main) == feature_head
     assert not (agent / ".git" / "MERGE_HEAD").exists()
 

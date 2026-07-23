@@ -162,7 +162,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `git_user_email` | (from git config) | Git author email for commits |
 | `auto_integrate_enabled` | `true` | On by default: at each of the four live integration seams (see [Auto-integration triggers and skips](#auto-integration-triggers-and-skips)) Ralph Workflow rebases the current feature branch onto the shared mainline (falling back to a single endpoint merge on conflict) and fast-forwards the local mainline ref to the feature tip. Never pushes to a remote and never force-moves the mainline. A no-op on single-branch workflows via the skip conditions (on the target branch, no commits beyond the target, detached HEAD, missing target). Set to `false` to keep git behaviour byte-identical to runs without auto-integration. |
 | `auto_integrate_target` | (auto-detect) | Shared integration branch name. When set (e.g. `"develop"`) it is used verbatim, provided that branch exists locally or can be materialized from `refs/remotes/origin/<target>`. When unset, the target is auto-detected: the remote default branch (`origin/HEAD`) when a remote exists, otherwise `main`, otherwise `master`. If no candidate exists the step skips with a recorded reason and never guesses. |
-| `auto_integrate_fetch_enabled` | `true` | On by default: before each integration attempt Ralph Workflow runs a bounded, read-only `git fetch origin <target>` and fast-forwards the local mainline ref when the remote-tracking ref is strictly ahead. Never force-moves a ref and never pushes; a diverged remote is left alone. Set to `false` to keep the step strictly local -- appropriate when every agent shares one git common directory through linked worktrees, where the mainline ref is already shared. |
+| `auto_integrate_fetch_enabled` | `false` | Off by default: auto-integration is strictly local -- no network access, and the mainline pointer is re-observed from the local ref store, the right setting for a fleet of linked worktrees sharing one git common directory. When `true`, a bounded, read-only `git fetch origin <target>` runs before each attempt purely to *observe* origin's position, which is recorded on the `auto-integrate:` line. The fetch never moves a local ref, never pushes, and never affects the rebase, merge or landing: remote state cannot change local auto-rebase behaviour in any configuration. |
 | `auto_integrate_fetch_timeout_seconds` | `10.0` | Wall-clock budget for the auto-integration fetch (must be `> 0` and `<= 120`). On timeout or any remote failure the step falls back to local-only integration and the run is never failed by an unreachable remote. The degradation is not silent: the refresh outcome (`origin unreachable`) is recorded on the run state and rendered to the operator in the `auto-integrate:` line. |
 | `auto_integrate_resolve_timeout_seconds` | `900.0` | ONE wall-clock ceiling SHARED by the complete conflict-resolution operation during auto-integration (must be `> 0` and `<= 7200`). Every rebase stop, every round within a stop, and every sequential candidate agent invocation draw down this single budget -- none of them is granted a fresh ceiling of its own. On expiry the in-flight invocation is cut, the in-progress rebase or merge is aborted and the integration records a conflict, so a hung resolver can never stall the run with a rebase or merge in progress. At most two CONSECUTIVE unresolved conflicts against the same target may invoke the resolver; after that the integration records an escalation naming the blocked target and stops invoking an agent until a later integration lands. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
@@ -351,9 +351,8 @@ commits, and a routine nothing-to-do there is not a fault:
   is an
   already-integrated tip read through an *unhealthy* refresh --
   `origin unreachable`, `diverged from origin`, `no local branch`,
-  `no origin remote`, `target worktree lookup failed`,
-  `refresh suppressed by throttle`, or
-  `lost a concurrent refresh race` -- which is recorded as a
+  `no origin remote`, or
+  `refresh suppressed by throttle` -- which is recorded as a
   `no commits beyond target` skip carrying that refresh outcome,
   because a no-op computed from an unverifiable pointer is
   indistinguishable from a healthy one.
@@ -406,15 +405,22 @@ when another attempt will actually run. The next commit or phase
 boundary re-enters the whole loop.
 
 Immediately before the fast-forward observes the target SHA, the target
-is re-read from origin a second time (the first read happens when the
+pointer is re-observed a second time (the first read happens when the
 integration context is resolved). This matters because the rebase, the
 endpoint merge and any agent conflict resolution can take minutes,
-during which other agents keep landing on the same mainline. The
-outcome of that refresh -- `refreshed from origin`, `already current`,
+during which sibling agents keep landing on the same shared local
+mainline. The observation is strictly read-only towards local refs:
+even with fetching enabled, remote state is only *reported* and never
+applied, so an origin seen ahead records
+`origin ahead (local ref kept)` and the local pointer -- the one every
+rebase and landing decision uses -- stays exactly where the local
+fleet put it. The outcome of that refresh -- `already current`,
 `local fleet`, `no origin remote`, `no remote branch`,
 `no local branch`, `origin unreachable`, `diverged from origin`,
-`lost a concurrent refresh race`, `target worktree lookup failed`,
-`refresh suppressed by throttle`, `fetch disabled` -- is recorded on
+`origin ahead (local ref kept)`,
+`refresh suppressed by throttle`, `fetch disabled`, plus
+`refreshed from origin` on records persisted by earlier versions whose
+refresh still fast-forwarded the local ref -- is recorded on
 the run state and rendered in the
 `auto-integrate:` line as `[target refresh: <outcome>]`, so a landing
 computed against a stale pointer is never silent. The refresh itself

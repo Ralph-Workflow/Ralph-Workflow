@@ -113,15 +113,19 @@ class GeneralConfig(RalphBaseModel):
         ),
     )
     auto_integrate_fetch_enabled: bool = Field(
-        default=True,
+        default=False,
         description=(
-            "When true (default), the auto-integration step runs a bounded,"
-            " read-only 'git fetch origin <target>' before each attempt and"
-            " fast-forwards the local mainline ref when the remote-tracking ref"
-            " is strictly ahead. Never force-moves a ref and never pushes. Set"
-            " to false to keep the step strictly local -- appropriate when"
-            " every agent shares one git common directory through linked"
-            " worktrees, where the mainline ref is already shared."
+            "When false (default), auto-integration is strictly local: no"
+            " network access, and the mainline pointer is re-observed from the"
+            " local ref store -- the right setting for a fleet of linked"
+            " worktrees sharing one git common directory, where the mainline"
+            " ref is already shared. When true, a bounded, read-only"
+            " 'git fetch origin <target>' runs before each attempt purely to"
+            " OBSERVE origin's position, which is recorded on the"
+            " auto-integrate line. The fetch never moves a local ref, never"
+            " pushes, and never affects the rebase, merge or landing: remote"
+            " state cannot change local auto-rebase behaviour in any"
+            " configuration."
         ),
     )
     auto_integrate_fetch_timeout_seconds: float = Field(

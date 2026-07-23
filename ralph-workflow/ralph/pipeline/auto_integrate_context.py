@@ -25,6 +25,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DISABLED,
     REFRESH_LOCAL_FLEET,
     REFRESH_NO_REMOTE_BRANCH,
+    REFRESH_ORIGIN_AHEAD,
     REFRESH_REFRESHED,
 )
 
@@ -33,14 +34,16 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.rebase_state import RebaseState
 
-#: Refresh outcomes that leave the target pointer trustworthy: either
-#: it was just read from origin, or origin has no say over it (fetching
-#: is off, or origin does not carry the branch), or it was just re-read
-#: from the shared ref store a fleet of sibling worktrees advances
-#: directly. Every OTHER outcome -- unreachable, diverged, a lost
-#: refresh race, a failed worktree query, a missing local branch, a
-#: throttle-suppressed probe -- means the pointer the skip decision used
-#: could not be confirmed current, so the skip must say so.
+#: Refresh outcomes that leave the target pointer trustworthy: the
+#: authoritative LOCAL ref was just re-observed (the local fleet and
+#: fetch-disabled cases), or origin has no say over it (origin does not
+#: carry the branch), or origin was observed and the local pointer is
+#: deliberately kept -- remote state never affects local rebase
+#: operations, so an origin seen ahead does not make the local pointer
+#: any less current for the decisions it feeds. Every OTHER outcome --
+#: unreachable, diverged, a missing local branch, a throttle-suppressed
+#: probe -- means the pointer the skip decision used could not be
+#: confirmed current, so the skip must say so.
 #:
 #: ``REFRESH_NO_ORIGIN`` is deliberately NOT here. Its meaning changed:
 #: :mod:`ralph.pipeline.auto_integrate_sync` now returns
@@ -49,12 +52,16 @@ if TYPE_CHECKING:
 #: target that could not be observed AT ALL. That is the LEAST
 #: trustworthy outcome in the vocabulary, and while it sat in this set
 #: it silenced the very staleness record it should have triggered.
+#: ``REFRESH_REFRESHED`` survives only for records persisted by earlier
+#: versions, whose refresh still fast-forwarded the local ref from
+#: origin; the observe-only refresh never produces it.
 _HEALTHY_REFRESH_OUTCOMES: frozenset[str] = frozenset(
     {
         REFRESH_ALREADY_CURRENT,
         REFRESH_DISABLED,
         REFRESH_LOCAL_FLEET,
         REFRESH_NO_REMOTE_BRANCH,
+        REFRESH_ORIGIN_AHEAD,
         REFRESH_REFRESHED,
     }
 )

@@ -16,9 +16,12 @@ The two topologies are not interchangeable:
   reports ``REFRESH_NO_ORIGIN`` -- see
   :mod:`ralph.pipeline.auto_integrate_sync`. Landing here must go
   through the sibling worktree that has the target checked out.
-* **clone**: several agents hold separate clones of one origin. The
-  local target ref goes stale the moment another agent pushes, so the
-  refresh is what keeps the landing correct.
+* **clone**: several agents hold separate clones of one origin. Auto-
+  integration is a LOCAL feature: what another agent pushed to origin
+  stays on origin -- the fetch (when explicitly enabled) only OBSERVES
+  origin's position, and every seam integrates against the local
+  target ref alone. These tests prove the seams land locally AND that
+  the remote commit is never pulled in.
 
 Every "origin" here is a local bare repository addressed by filesystem
 path: no test reaches a real network host. No agent process is launched
@@ -214,12 +217,25 @@ def _default_policy_bundle() -> PolicyBundle:
 
 
 def _assert_landed(topology: _Topology) -> None:
-    """The catch-up ran: both agents' commits are present and the ref landed."""
+    """The integration ran against the LOCAL pointer and landed it.
+
+    In the linked-worktree layout the sibling's commit lives on the
+    shared local ref, so it must be caught up. In the clone layout the
+    sibling's commit exists only on origin, and remote state must never
+    affect the local integration -- so it must NOT appear.
+    """
     root = topology.root
     head = get_head_sha(root)
     assert branch_sha(root, _TARGET) == head, "mainline ref did not land"
     assert (root / "feature.txt").exists(), "this agent's commit was lost"
-    assert (root / "mainline.txt").exists(), "the sibling's commit was not caught up"
+    if topology.origin is None:
+        assert (root / "mainline.txt").exists(), (
+            "the sibling's commit on the shared local ref was not caught up"
+        )
+    else:
+        assert not (root / "mainline.txt").exists(), (
+            "a commit that exists only on origin was integrated locally"
+        )
 
 
 def test_after_commit_seam_rebases_and_lands(topology: _Topology) -> None:
@@ -317,17 +333,16 @@ def test_linked_worktree_refresh_reports_the_local_fleet_outcome(
     _assert_landed(layout)
 
 
-def test_clone_topology_picks_up_a_main_advanced_after_the_fixture_was_built(
+def test_clone_topology_never_pulls_origin_commits_into_the_local_rebase(
     tmp_path: Path,
 ) -> None:
-    """The user's 'ALWAYS get the latest main pointer' requirement.
+    """The 'remote must never affect local auto-rebase' requirement.
 
-    Every commit the sibling agent pushed to origin -- including one
-    pushed AFTER this agent's checkout was already stale by one commit
-    -- must be an ancestor of the feature tip after a single boundary
-    integration. The pointer the integration reasons about therefore has
-    to be the one origin holds at that moment, not the one this clone
-    happened to fetch earlier.
+    Commits the sibling agent pushed to origin -- before or after this
+    agent's checkout went stale -- must stay on origin. The pointer the
+    integration reasons about is the LOCAL target ref, and the landing
+    fast-forwards that local ref to the feature tip without ever
+    applying remote state to it.
     """
     layout = _clone_topology(tmp_path)
     config = _build_config()
@@ -335,12 +350,11 @@ def test_clone_topology_picks_up_a_main_advanced_after_the_fixture_was_built(
         layout.sibling, "rev-parse", "HEAD"
     ).stdout.strip()
 
-    # A second mainline commit lands on origin while this agent is idle,
-    # so the local 'main' ref is now two commits behind.
+    # A second mainline commit lands on origin while this agent is idle.
     late_sha = _commit(layout.sibling, "late.txt", "late\n", "late mainline work")
     assert _run(layout.sibling, "push", "origin", _TARGET).returncode == 0
     assert branch_sha(layout.root, _TARGET) != late_sha, (
-        "fixture precondition: the local target ref must still be stale"
+        "fixture precondition: the local target ref must differ from origin"
     )
 
     outcome = auto_integrate_on_phase_transition(
@@ -351,9 +365,10 @@ def test_clone_topology_picks_up_a_main_advanced_after_the_fixture_was_built(
     assert outcome.fast_forwarded is True
     head = get_head_sha(layout.root)
     for sha, label in ((first_mainline_sha, "first"), (late_sha, "late")):
-        assert is_ancestor(layout.root, sha, head), (
-            f"the {label} mainline commit on origin was not picked up"
+        assert not is_ancestor(layout.root, sha, head), (
+            f"the {label} mainline commit that exists only on origin was "
+            "integrated locally"
         )
     assert branch_sha(layout.root, _TARGET) == head
-    assert (layout.root / "late.txt").exists()
+    assert not (layout.root / "late.txt").exists()
     assert (layout.root / "feature.txt").exists()
