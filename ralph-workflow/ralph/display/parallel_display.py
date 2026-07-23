@@ -124,6 +124,7 @@ from ralph.display._plain_constants import (
     LEVELS,
     TAG_CATEGORY,
     _sanitize,
+    _strip_markup,
 )
 from ralph.display._streaming_ctx import _StreamingCtx
 from ralph.display.activity_model import ActivityEventKind
@@ -577,19 +578,31 @@ class ParallelDisplay:
 
     @classmethod
     def strip_markup(cls, line: str) -> str:
-        """Strip terminal control sequences from a line, returning plain text.
+        """Strip Rich markup AND terminal control sequences from a line.
 
-        Delegates the escape strip to :func:`strip_terminal_control` so every
-        CSI / OSC / C0 sequence (alternate screen, erase display, private
-        parameter forms like ``ESC[>0c`` and ``ESC[<35;1;2M``, OSC titles) is
-        removed. After the wt-028-display consolidation the helper no
-        longer strips Rich markup because every consumer in this module
-        prints the result through a Console with ``markup=False``; a
-        Rich ``[red]...[/red]`` style therefore cannot reach the
-        terminal and stripping it would mutate literal agent content
-        (``[result] ok`` -> ``ok``).
+        Composition order matters: :func:`_strip_markup` runs first so
+        Rich ``[red]...[/red]`` style sequences are removed before
+        the terminal-control strip inspects the result, and
+        :func:`strip_terminal_control` runs second so any CSI / OSC /
+        C0 sequence (alternate screen, erase display, private
+        parameter forms like ``ESC[>0c`` and ``ESC[<35;1;2M``, OSC
+        titles) is also removed. The result is copy-paste-safe plain
+        text that contains no Rich markup and no terminal control
+        sequences.
+
+        A subset of consumers print the result through a Rich Console
+        with ``markup=False``; for those sinks the Rich strip is a
+        defence-in-depth measure (the Console would not interpret the
+        markup as style), and the terminal-control strip is the load-
+        bearing step. A different subset (the
+        :func:`subscriber.record_activity` line, the
+        :meth:`emit` subscriber path) feeds the result into
+        ``subscriber.record_activity`` whose snapshot consumers may
+        re-render the line through a styled Console — for those
+        sinks the Rich strip is the load-bearing step. The
+        composition therefore serves every consumer correctly.
         """
-        return strip_terminal_control(line)
+        return strip_terminal_control(_strip_markup(line))
 
     # -- Structured log emit (inlined from PlainLogRenderer) ---------------
 

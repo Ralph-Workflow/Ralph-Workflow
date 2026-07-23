@@ -100,20 +100,40 @@ def test_sanitize_plain_constants_strips_hostile_line() -> None:
     _assert_no_escape_leak(sanitized, sink_label="_sanitize")
 
 
-def test_sanitize_plain_constants_preserves_literal_brackets() -> None:
-    """``_sanitize`` strips terminal control sequences but PRESERVES literal Rich markup.
+def test_sanitize_plain_constants_strips_rich_markup() -> None:
+    """``_sanitize`` strips BOTH terminal control sequences AND Rich markup.
 
-    After the wt-028-display consolidation, every ``_sanitize`` consumer
-    in :mod:`ralph.display.parallel_display` prints the result through
-    a Console with ``markup=False`` -- Rich therefore does NOT
-    interpret ``[green]ok[/green]`` as a style sequence, and stripping
-    it here would mutate literal agent content (``[result] ok`` ->
-    ``ok``). The function therefore keeps only the terminal-control
-    strip; literal ``[bracket]`` content surfaces verbatim to the
-    operator.
+    The composition order matters: :func:`_strip_markup` runs first
+    so Rich ``[red]...[/red]`` style sequences are removed before
+    :func:`strip_terminal_control` inspects the result, and the
+    terminal-control strip runs second so any CSI / OSC / C0
+    sequence (alternate screen, erase display, private parameter
+    forms like ``ESC[>0c`` and ``ESC[<35;1;2M``, OSC titles) is
+    also removed. The result is copy-paste-safe plain text that
+    contains no Rich markup and no terminal control sequences.
+
+    The Rich strip is a defence-in-depth measure for the consumers
+    that print the sanitized text through a Rich Console with
+    ``markup=False`` (Rich would not interpret the markup as
+    style), and the load-bearing step for the consumers that
+    route the sanitized text into ``subscriber.record_activity``
+    where downstream snapshot rendering may re-render the line
+    through a styled Console. The terminal-control strip is the
+    load-bearing step for the Console-printing path: it removes
+    every CSI / OSC / C0 sequence that would otherwise paint the
+    real terminal. Literal ``[bracket]`` content the operator
+    authored on purpose (e.g. ``[result] ok``) is preserved when
+    :func:`_strip_markup` recognises the bracketed text as a
+    Rich-style sequence; Rich itself parses the bracket pair as a
+    style and ``Text.from_markup`` returns the inner text. The
+    :func:`_strip_markup` body is wrapped in ``try/except`` so a
+    malformed bracket pair falls back to the literal text rather
+    than raising.
     """
     sanitized = _sanitize("[green]ok[/green]")
-    assert sanitized == "[green]ok[/green]"
+    assert sanitized == "ok", (
+        f"_sanitize must strip Rich markup; got {sanitized!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -136,16 +156,24 @@ def test_parallel_display_strip_markup_strips_hostile_line() -> None:
     _assert_no_escape_leak(stripped, sink_label="strip_markup")
 
 
-def test_parallel_display_strip_markup_preserves_literal_brackets() -> None:
-    """``strip_markup`` strips terminal control sequences only.
+def test_parallel_display_strip_markup_strips_rich_markup() -> None:
+    """The public ``ParallelDisplay.strip_markup`` helper strips BOTH layers.
 
-    After the wt-028-display consolidation the helper no longer strips
-    Rich markup -- every consumer prints through ``markup=False`` so a
-    literal ``[green]ok[/green]`` cannot reach the terminal as
-    markup. The function therefore keeps the literal brackets
-    verbatim; only the terminal control sequences are removed.
+    The helper composes the Rich-markup strip (``_strip_markup``,
+    which uses ``Text.from_markup`` to remove ``[red]...[/red]``
+    style sequences) and the terminal-control strip
+    (``strip_terminal_control`` for CSI / OSC / C0 sequences). The
+    body MUST delegate to
+    ``strip_terminal_control(_strip_markup(line))`` so every
+    consumer (the Console-printing path AND the
+    ``subscriber.record_activity`` snapshot path) sees plain text
+    with no Rich markup and no terminal control sequences. A
+    regression that drops either strip silently re-opens the
+    escape class the helper was wired to close.
     """
-    assert strip_markup("[green]ok[/green]") == "[green]ok[/green]"
+    assert strip_markup("[green]ok[/green]") == "ok", (
+        f"strip_markup must strip Rich markup; got {strip_markup('[green]ok[/green]')!r}"
+    )
     assert strip_markup("plain text") == "plain text"
 
 

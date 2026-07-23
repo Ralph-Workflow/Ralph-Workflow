@@ -118,24 +118,25 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     ]
 
 
-def test_emit_log_line_preserves_literal_brackets_for_copy_paste() -> None:
-    """Plain-text emit keeps literal Rich markup unchanged.
+def test_emit_log_line_strips_rich_markup_for_clean_copy_paste() -> None:
+    """Plain-text emit strips both Rich markup and terminal control sequences.
 
-    After the wt-028-display consolidation, ``emit_log_line`` (which
-    flows through ``_sanitize`` -> ``strip_terminal_control``) no
-    longer strips Rich markup because the consumer prints the result
-    through a Console with ``markup=False``; a literal
-    ``[bold magenta]hello[/bold magenta]`` therefore cannot reach
-    the terminal as markup, and stripping it here would mutate the
-    operator-visible content. The terminal-control strip remains
-    (escape sequences still get cleaned).
+    The composition is :func:`_sanitize` -> Rich strip ->
+    terminal-control strip, so a literal ``[bold magenta]hello[/bold
+    magenta]`` becomes ``hello`` in the output. The terminal-control
+    strip is also applied (escape sequences are still cleaned). The
+    result is copy-paste-safe plain text with no bracketed
+    sequences the operator did not type literally (a stray
+    ``[result]`` would be eaten; the underlying ``try/except`` in
+    ``_strip_markup`` falls back to the literal text for malformed
+    bracket pairs).
     """
     pd, stream = _make_display()
 
     pd.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
     assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] [bold magenta]hello[/bold magenta]"
+        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] hello"
     ]
 
 

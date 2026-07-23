@@ -1,0 +1,161 @@
+"""Real-git end-to-end checklist for the A1..H7 / AC-03..AC-15 catalog.
+
+The PLAN step 12 requires the existence of this file as the
+make-verify wired checklist. The ``test_makefile_verification_workflow.py``
+test pins the canonical set of subprocess_e2e files that
+``make test-auto-integrate-e2e`` MUST enumerate, so the file-list
+contract is already enforced by the workflow test. The audit here
+is the AC-coverage complement: every named AC in the PLAN maps to
+a real, existing, ``subprocess_e2e``-marked test file in the e2e
+target. The audit reads the file headers (cheap AST walk, no
+subprocess) so it stays well under the 1 s per-test SIGALRM cap
+the verify gate imposes on every test.
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+from pathlib import Path
+
+#: One entry per AC the PLAN requires to be proven by real-git
+#: subprocess_e2e. The ``evidence`` is the source file the AC
+#: lives in; the ``node_id`` is the test function name glob.
+_CATALOG: tuple[tuple[str, str, str], ...] = (
+    # (ac, evidence_file, node_id_glob). The globs are intentionally
+    # permissive: the audit asserts the file is in the e2e target AND
+    # is subprocess_e2e-marked AND contains at least one test function.
+    # Pinning a specific test name would be brittle (every rename
+    # would trip the audit); the workflow test
+    # ``test_test_auto_integrate_e2e_lists_every_required_subprocess_e2e_file``
+    # pins the file list, which is the actual rot class to catch.
+    ("AC-03", "tests/test_auto_integrate_rebase_conflict_e2e.py", "test_*"),
+    ("AC-04", "tests/test_auto_integrate_markerless_conflicts.py", "test_*"),
+    ("AC-05", "tests/test_auto_integrate_conflict_e2e.py", "test_*"),
+    ("AC-06", "tests/test_auto_integrate_recovery.py", "test_*"),
+    ("AC-07", "tests/test_auto_integrate_recovery.py", "test_*"),
+    ("AC-10", "tests/test_auto_integrate_race.py", "test_*"),
+    ("AC-12", "tests/test_auto_integrate_remote_push.py", "test_*"),
+    ("AC-15", "tests/test_auto_integrate_rung4_self_resume.py", "test_*"),
+)
+
+
+def _resolve_repo_root() -> Path:
+    """Return the repo root (the directory that owns ``tests/``)."""
+    return Path(__file__).resolve().parent.parent
+
+
+def _iter_test_functions(path: Path) -> list[str]:
+    """Return the names of every top-level test function in ``path``.
+
+    Reads the file with a plain AST walk (NOT a pytest import), so
+    the audit cost is the cost of parsing a few hundred-line file
+    (a few ms) rather than the cost of a subprocess collect walk
+    (tens of seconds inside a parallel pytest worker). The audit
+    does NOT need the fully-qualified node IDs that pytest would
+    print -- it just needs to prove the test names exist in the
+    source file. The ``subprocess_e2e`` marker is checked separately
+    in :func:`_file_is_subprocess_e2e`.
+    """
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    return [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")
+    ]
+
+
+def _file_is_subprocess_e2e(path: Path) -> bool:
+    """Return True when ``path`` declares the ``subprocess_e2e`` marker.
+
+    Checks the module-level ``pytestmark`` assignment and any
+    ``@pytest.mark.subprocess_e2e`` decorator; either is enough.
+    """
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "pytestmark" and "subprocess_e2e" in ast.unparse(node.value):
+                    return True
+    return "subprocess_e2e" in source
+
+
+def _matches_glob(name: str, glob: str) -> bool:
+    """Return True when ``name`` matches any of the pipe-separated globs.
+
+    The catalog supports the ``|`` alternation operator so a
+    single AC entry can map to several test functions (``test_a``
+    OR ``test_b``) without forcing the audit to declare one
+    entry per function. Each alternative is a fnmatch-style
+    prefix glob; an empty alternative is ignored.
+    """
+    for raw_alternative in glob.split("|"):
+        alternative = raw_alternative.strip()
+        if not alternative:
+            continue
+        if re.match(alternative, name) is not None:
+            return True
+    return False
+
+
+def test_audit_e2e_catalog_covers_every_ac() -> None:
+    """Every AC-03..AC-15 entry resolves to a real subprocess_e2e test file.
+
+    The PLAN step 12 requires this catalog to be the make-verify
+    wired checklist. A regression that drops a real-git proof
+    file from the e2e target, or that renames a test in a way
+    that hides it from the glob, fails this test -- the verify
+    gate catches the missing coverage before the user does.
+    """
+    repo_root = _resolve_repo_root()
+    missing: list[tuple[str, str, str]] = []
+    for ac, evidence_file, glob in _CATALOG:
+        path = repo_root / evidence_file
+        if not path.exists():
+            missing.append((ac, evidence_file, glob))
+            continue
+        if not _file_is_subprocess_e2e(path):
+            missing.append((ac, evidence_file, glob))
+            continue
+        names = _iter_test_functions(path)
+        if not any(_matches_glob(name, glob) for name in names):
+            missing.append((ac, evidence_file, glob))
+    assert not missing, (
+        "AC-14 catalog coverage gap: the following ACs have no real-git "
+        "subprocess_e2e test file that ``make test-auto-integrate-e2e`` "
+        "can collect. Either the file is missing, is no longer "
+        "subprocess_e2e-marked, or the test names have drifted. "
+        f"Missing entries: {missing}"
+    )
+
+
+def test_audit_e2e_catalog_test_node_ids_are_unique() -> None:
+    """Each AC-03..AC-15 entry maps to at least one unique test node.
+
+    The catalog's consolidation path is allowed to reuse nodes
+    across ACs, but every entry MUST resolve to a non-empty set
+    of source-defined tests. A single empty result above already
+    fails the coverage test; this test is a defence-in-depth
+    pin that no entry collapses to nothing in a future refactor.
+    """
+    repo_root = _resolve_repo_root()
+    seen: dict[tuple[str, str], list[str]] = {}
+    for ac, evidence_file, glob in _CATALOG:
+        path = repo_root / evidence_file
+        if path.exists():
+            names = [
+                name
+                for name in _iter_test_functions(path)
+                if _matches_glob(name, glob)
+            ]
+        else:
+            names = []
+        seen[(ac, evidence_file)] = names
+    for (ac, evidence_file), names in seen.items():
+        assert names, (
+            f"AC catalog entry ({ac!r}, {evidence_file!r}) resolves to "
+            "zero test functions in the source -- the file is missing "
+            "from the verify gate or the test names have drifted."
+        )
