@@ -1655,6 +1655,19 @@ def run(
     _heartbeat_client = _apply_legacy_heartbeat_override(
         workspace_scope.root, _heartbeat_client
     )
+    _unsubscribe_display = _subscribe_recovery_display(
+        _controller,
+        active_display,
+        _resolve_recovery_display_interval(config),
+        now=time.monotonic,
+    )
+    # The catch-up worker starts as the LAST setup step, inside the
+    # _LoopContext construction that feeds straight into
+    # _execute_with_cleanup's try/finally -- nothing may run between
+    # the worker starting and the cleanup guarantee attaching, or a
+    # setup exception would strand the ticking thread (it is daemonic,
+    # so the process could still exit, but the guarantee should not
+    # have gaps).
     loop_ctx = _LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
@@ -1677,12 +1690,6 @@ def run(
         pipeline_deps=pipeline_deps,
         catchup_worker=start_catchup_worker_if_enabled(config, workspace_scope.root),
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
-    )
-    _unsubscribe_display = _subscribe_recovery_display(
-        _controller,
-        active_display,
-        _resolve_recovery_display_interval(config),
-        now=time.monotonic,
     )
     return _execute_with_cleanup(
         state,

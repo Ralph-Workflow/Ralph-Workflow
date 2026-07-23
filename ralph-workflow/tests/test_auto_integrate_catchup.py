@@ -70,11 +70,15 @@ def _open_all_gates(
         ff_calls.append((Path(root), sha))
         return ff_ok
 
+    def _fake_still_safe(root: Path, expected_branch: str) -> bool:
+        return True
+
     monkeypatch.setattr(catchup, "resolve_integration_target", _fake_resolve)
     monkeypatch.setattr(catchup, "_current_branch_name", _fake_current_branch)
     monkeypatch.setattr(catchup, "_worktree_is_clean", _fake_clean)
     monkeypatch.setattr(catchup, "observe_branch_sha", _fake_observe)
     monkeypatch.setattr(catchup, "is_ancestor", _fake_is_ancestor)
+    monkeypatch.setattr(catchup, "_still_safe_to_merge", _fake_still_safe)
     monkeypatch.setattr(catchup, "fast_forward_via_worktree", _fake_ff)
     return ff_calls
 

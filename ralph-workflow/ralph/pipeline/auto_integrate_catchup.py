@@ -36,10 +36,11 @@ ancestry and cleanliness checks go through GitPython's own git wrapper
 (not ProcessManager), and only run once the SHAs prove a fast-forward
 is even possible. The single ProcessManager subprocess left is the
 ``git merge --ff-only`` that actually lands -- an event worth its log
-line. ``merge --ff-only`` is also its own atomic guard: it advances
-ref + index + working tree together and refuses non-destructively when
-anything changed between the checks and the merge (an agent started
-editing, a seam integration began, the target moved).
+line. ``merge --ff-only`` refuses every non-fast-forward and every
+file overwrite non-destructively, and :func:`_still_safe_to_merge`
+re-verifies branch identity and no-rebase-in-flight immediately before
+the spawn -- see that function's docstring for the bounded residual
+window this design accepts.
 
 Threading contract (mirrors :class:`ralph.pro_support.heartbeat.ProHeartbeatClient`):
 the worker runs in a **daemon thread** so the process can always exit;
@@ -57,7 +58,8 @@ from __future__ import annotations
 
 import threading
 from contextlib import suppress
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from git import Repo, SymbolicReference
 from loguru import logger
@@ -66,7 +68,8 @@ from ralph.git.merge import fast_forward_via_worktree
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
+
+    from git import Head
 
     from ralph.config.models import UnifiedConfig
 
@@ -154,13 +157,27 @@ def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
         _close_repo(repo)
 
 
+def _local_head(repo: Repo, name: str) -> Head | None:
+    """The local branch named EXACTLY ``name``, or ``None``.
+
+    Deliberately iterates ``repo.heads`` comparing ``.name`` instead of
+    the tempting ``repo.heads[name]``: GitPython's ``IterableList``
+    falls back to ``getattr`` for string keys, so branch names that
+    collide with ``list`` method names (``append``, ``index``,
+    ``count``, ``sort``, ``copy``, ``pop``) resolve to the BOUND METHOD
+    -- a false "exists" for a missing branch and an unreadable SHA for
+    a real one. Adversarial review reproduced both; exact name
+    comparison has no such collision.
+    """
+    try:
+        return next((head for head in repo.heads if head.name == name), None)
+    except Exception:
+        return None
+
+
 def _local_branch_exists(repo: Repo, name: str) -> bool:
     """Whether ``refs/heads/<name>`` exists, via in-process ref lookup."""
-    try:
-        _ = repo.heads[name]
-    except (IndexError, AttributeError):
-        return False
-    return True
+    return _local_head(repo, name) is not None
 
 
 def _origin_head_branch_name(repo: Repo) -> str | None:
@@ -194,15 +211,9 @@ def observe_branch_sha(root: Path, name: str) -> tuple[str | None, bool]:
     repo: Repo | None = None
     try:
         repo = Repo(root)
-    except Exception:
-        return None, False
-    try:
-        head = repo.heads[name]
-    except (IndexError, AttributeError):
-        return None, True
-    except Exception:
-        return None, False
-    try:
+        head = _local_head(repo, name)
+        if head is None:
+            return None, True
         return head.commit.hexsha, True
     except Exception:
         return None, False
@@ -232,20 +243,30 @@ def is_ancestor(root: Path, ancestor_sha: str, descendant_sha: str) -> bool:
 def _worktree_is_clean(root: Path) -> bool:
     """True when no uncommitted TRACKED modification is present.
 
-    Same tracked-only definition of clean as the boundary seams
-    (``ralph.pipeline.auto_integrate_worktree_state._worktree_is_clean``,
-    i.e. ``git status --porcelain --untracked-files=no``), expressed as
-    GitPython's ``is_dirty(untracked_files=False)`` so the probe stays
-    off the ProcessManager/log path. Untracked files deliberately do
-    not block: ``merge --ff-only`` refuses non-destructively per-file
-    for any untracked path it would overwrite. Fails closed (``False``)
-    on any error so the worker never fast-forwards a worktree it cannot
-    prove clean.
+    Runs the seams' EXACT probe -- ``git status --porcelain
+    --untracked-files=no`` (see
+    ``ralph.pipeline.auto_integrate_worktree_state._worktree_is_clean``)
+    -- through GitPython's own git wrapper, so it stays off the
+    ProcessManager/log path while giving byte-identical answers. An
+    earlier revision used ``repo.is_dirty(untracked_files=False)``,
+    but adversarial review showed the two disagree in the UNSAFE
+    direction on line-ending-only modifications under
+    ``core.autocrlf``: ``is_dirty`` applies the clean filter (clean)
+    while ``status`` stat-matches (dirty), and the seam's verdict must
+    win. Untracked files deliberately do not block: ``merge --ff-only``
+    refuses non-destructively per-file for any untracked path it would
+    overwrite. Fails closed (``False``) on any error so the worker
+    never fast-forwards a worktree it cannot prove clean.
     """
     repo: Repo | None = None
     try:
         repo = Repo(root)
-        return not repo.is_dirty(index=True, working_tree=True, untracked_files=False)
+        # ``repo.git.<cmd>`` is GitPython's dynamic dispatch and types
+        # as Any; the cast is the sanctioned disallow_any_expr wrapper.
+        status_out = cast(
+            "str", repo.git.status("--porcelain", "--untracked-files=no")
+        )
+        return not status_out.strip()
     except Exception:
         return False
     finally:
@@ -308,9 +329,43 @@ def _fast_forward_if_strictly_behind(root: Path, target: str, current: str) -> s
         return skip_reason
     if not _worktree_is_clean(root):
         return CATCHUP_DIRTY
+    if not _still_safe_to_merge(root, current):
+        return CATCHUP_REFUSED
     if fast_forward_via_worktree(root, target_sha):
         return CATCHUP_FAST_FORWARDED
     return CATCHUP_REFUSED
+
+
+def _still_safe_to_merge(root: Path, expected_branch: str) -> bool:
+    """Last-instant re-check before spawning the merge.
+
+    ``merge --ff-only`` is NOT a complete guard on its own: adversarial
+    review demonstrated that git happily fast-forwards a DETACHED
+    rebase HEAD (a rebase that began after this tick's earlier gates,
+    stopped with a clean transient tree at an ancestor of the target),
+    silently changing the base the rebase resumes on. There is no lock
+    shared with the pipeline thread's seam integration, so this
+    re-check -- all in-process reads, immediately before the spawn --
+    shrinks that tens-of-milliseconds window to the sub-millisecond gap
+    between this read and the merge process starting: HEAD must still
+    be the SAME branch the SHA gates were computed for, and no
+    ``rebase-merge`` / ``rebase-apply`` state may exist in the gitdir.
+    The residual gap is accepted and bounded: a rebase can only begin
+    inside it via the seam or an agent, the originals stay reachable
+    via reflog/ORIG_HEAD, and ``merge --ff-only`` still refuses every
+    non-fast-forward and every overwrite.
+    """
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+        git_dir = Path(repo.git_dir)
+        if (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists():
+            return False
+        return repo.active_branch.name == expected_branch
+    except Exception:
+        return False
+    finally:
+        _close_repo(repo)
 
 
 def _observe_strictly_behind(

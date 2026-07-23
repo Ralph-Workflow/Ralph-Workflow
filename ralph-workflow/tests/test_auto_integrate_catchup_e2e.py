@@ -179,6 +179,38 @@ def test_quiet_resolver_matches_seam_resolver(tmp_path: Path) -> None:
     )
 
 
+def test_branch_names_shadowing_list_methods_resolve_correctly(
+    tmp_path: Path,
+) -> None:
+    """Branch names like ``append``/``count`` must not fool the ref reads.
+
+    GitPython's ``IterableList[name]`` falls back to ``getattr``, so a
+    lookup for a branch named after a ``list`` method returns the bound
+    method: a missing branch reads as present, and a REAL branch named
+    ``append`` reads as unreadable (adversarial-review reproduction).
+    The catch-up's exact-name lookup must get both directions right.
+    """
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    # Direction 1: a configured target named after a list method that
+    # does NOT exist must resolve to None (never to the bound method).
+    for phantom in ("append", "count", "index", "sort", "copy", "pop"):
+        config = UnifiedConfig.model_validate(
+            {"general": {"auto_integrate_target": phantom}}
+        )
+        assert catchup.resolve_integration_target(config, repo) is None
+    # Direction 2: a REAL branch named "append" must be fully readable
+    # and land a catch-up like any other branch.
+    assert _run(repo, "branch", "append").returncode == 0
+    advanced = _commit(repo, "mainline.txt", "landed\n", "mainline advance")
+    assert _run(repo, "checkout", "append").returncode == 0
+    sha, ok = catchup.observe_branch_sha(repo, "append")
+    assert ok and sha is not None
+    outcome = catchup.attempt_catchup_fast_forward(_build_config(), repo)
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert _head_sha(repo) == advanced
+
+
 def test_worker_thread_lands_the_catchup_end_to_end(tmp_path: Path) -> None:
     """The daemon worker itself performs the fast-forward on its cadence."""
     repo, advanced = _repo_with_feature_behind_main(tmp_path)
