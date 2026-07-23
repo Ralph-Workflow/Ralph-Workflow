@@ -68,6 +68,9 @@ REGISTRY: dict[str, SideEffectContract] = {
     "delete_path": _contract("delete_path", "mutate"),
     "ralph_submit_artifact": _contract("ralph_submit_artifact", "mutate"),
     "ralph_submit_md_artifact": _contract("ralph_submit_md_artifact", "mutate"),
+    "ralph_stage_md_artifact": _contract("ralph_stage_md_artifact", "mutate"),
+    "ralph_finalize_md_artifact": _contract("ralph_finalize_md_artifact", "mutate"),
+    "ralph_discard_md_draft": _contract("ralph_discard_md_draft", "mutate"),
     "ralph_submit_plan_section": _contract("ralph_submit_plan_section", "mutate"),
     "ralph_submit_plan_sections": _contract("ralph_submit_plan_sections", "mutate"),
     "ralph_insert_plan_step": _contract("ralph_insert_plan_step", "mutate"),
@@ -98,6 +101,10 @@ REGISTRY: dict[str, SideEffectContract] = {
     "ralph_get_plan_draft": _contract("ralph_get_plan_draft", "read"),
     "ralph_validate_draft": _contract("ralph_validate_draft", "read"),
     "ralph_verify_md_artifact": _contract("ralph_verify_md_artifact", "read"),
+    "ralph_get_md_draft": _contract("ralph_get_md_draft", "read"),
+    # Pure in-memory transform: edits the caller-supplied markdown and returns
+    # the result without persisting anything, so a retry is always safe.
+    "ralph_edit_md_plan_step": _contract("ralph_edit_md_plan_step", "read"),
     "read_image": _contract("read_image", "read"),
     "read_media": _contract("read_media", "read"),
     # Indexed exploration tools (Phase 1).

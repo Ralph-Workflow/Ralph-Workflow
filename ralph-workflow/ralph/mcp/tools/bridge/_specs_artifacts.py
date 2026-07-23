@@ -9,9 +9,13 @@ from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
+    DISCARD_MD_DRAFT_TOOL,
     EDIT_MD_PLAN_STEP_TOOL,
+    FINALIZE_MD_ARTIFACT_TOOL,
+    GET_MD_DRAFT_TOOL,
     READ_ENV_TOOL,
     REPORT_PROGRESS_TOOL,
+    STAGE_MD_ARTIFACT_TOOL,
     SUBMIT_MD_ARTIFACT_TOOL,
     VERIFY_MD_ARTIFACT_TOOL,
 )
@@ -39,6 +43,46 @@ def artifact_specs() -> list[ToolSpec]:
             ),
             module_name="ralph.mcp.tools.md_artifact",
             handler_name="handle_verify_md_artifact",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=STAGE_MD_ARTIFACT_TOOL,
+                description="Stage a large markdown artifact incrementally: append to (or replace) a persisted draft; returns section outline and non-gating diagnostics.",
+                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}, "content": {"type": "string"}, "mode": {"enum": ["append", "replace_all"]}}, "required": ["artifact_type", "content"]},
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
+            ),
+            module_name="ralph.mcp.tools.md_artifact",
+            handler_name="handle_stage_md_artifact",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=GET_MD_DRAFT_TOOL,
+                description="Return the staged markdown draft and its current diagnostics (resume after interruption).",
+                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}}, "required": ["artifact_type"]},
+                required_capability=Capability.ARTIFACT_PLAN_READ.value,
+            ),
+            module_name="ralph.mcp.tools.md_artifact",
+            handler_name="handle_get_md_draft",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=DISCARD_MD_DRAFT_TOOL,
+                description="Discard the staged markdown draft for one artifact type.",
+                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}}, "required": ["artifact_type"]},
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
+            ),
+            module_name="ralph.mcp.tools.md_artifact",
+            handler_name="handle_discard_md_draft",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=FINALIZE_MD_ARTIFACT_TOOL,
+                description="Validate the assembled draft with the submission gate and submit it canonically; on failure the draft is kept for repair.",
+                input_schema={"type": "object", "properties": {"artifact_type": {"type": "string"}}, "required": ["artifact_type"]},
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
+            ),
+            module_name="ralph.mcp.tools.md_artifact",
+            handler_name="handle_finalize_md_artifact",
         ),
         ToolSpec(
             metadata=_metadata(
