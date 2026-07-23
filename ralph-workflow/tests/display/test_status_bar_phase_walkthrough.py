@@ -209,3 +209,56 @@ def test_truncation_stability_across_widths() -> None:
         assert len(text.plain) <= width, (
             f"status bar exceeded width={width}: {len(text.plain)} > {width}"
         )
+
+
+def test_remediation_label_at_40_columns_preserves_attempt_and_cap() -> None:
+    """The Remediation label keeps ``Remediation 2/3`` visible at 40 cols (AC-04)."""
+    ctx = _ctx(width=40)
+    model = StatusBarModel(
+        workspace_root="/tmp/remediation-probe",
+        phase_label="Policy Remediation",
+        phase_style=phase_style_for_phase("policy_remediation"),
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+        outer_label="Remediation",
+    )
+    text = render_status_bar(model, ctx)
+    # The bar must stay single-line and fit the terminal width.
+    assert "\n" not in text.plain, f"status bar wrapped at width=40: {text.plain!r}"
+    assert len(text.plain) <= 40, (
+        f"status bar exceeded width=40: {len(text.plain)} > 40"
+    )
+    # The Remediation label MUST surface the attempt value AND the
+    # cap; the prior bug truncated the bar mid-label so the operator
+    # lost the live remediation progress. Pass when the canonical
+    # ``Remediation 2/3`` is fully visible OR when the bar degrades
+    # to a compact / minimal carrier that still preserves the
+    # attempt number AND the cap (the ``2/3`` substring).
+    assert "Remediation" in text.plain or "Rem" in text.plain, (
+        f"Remediation carrier missing at width=40: {text.plain!r}"
+    )
+    assert "2/3" in text.plain, (
+        f"remediation attempt+cap missing at width=40: {text.plain!r}"
+    )
+
+
+def test_round_label_at_40_columns_preserves_attempt_and_cap() -> None:
+    """The Round label keeps ``Round 2/3`` visible at 40 cols (AC-04)."""
+    ctx = _ctx(width=40)
+    model = StatusBarModel(
+        workspace_root="/tmp/conflict-probe",
+        phase_label="Rebase Conflict Resolution",
+        phase_style=phase_style_for_phase("rebase_conflict_resolution"),
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+        outer_label="Round",
+    )
+    text = render_status_bar(model, ctx)
+    assert "\n" not in text.plain, f"status bar wrapped at width=40: {text.plain!r}"
+    assert len(text.plain) <= 40, (
+        f"status bar exceeded width=40: {len(text.plain)} > 40"
+    )
+    assert "Round" in text.plain, f"Round carrier missing at width=40: {text.plain!r}"
+    assert "2/3" in text.plain, (
+        f"round attempt+cap missing at width=40: {text.plain!r}"
+    )

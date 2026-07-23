@@ -264,6 +264,9 @@ def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_contro
     path = "display/parallel_display.py"
 
     def _transform(src: str) -> str:
+        # The post-fix body is ``return strip_terminal_control(line)``.
+        # Replacing it with ``return line`` drops the terminal-control
+        # strip -- the audit's body invariant catches the regression.
         return src.replace(
             "return strip_terminal_control(line)",
             "return line",

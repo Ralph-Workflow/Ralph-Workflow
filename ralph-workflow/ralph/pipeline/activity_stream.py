@@ -476,16 +476,17 @@ def _truncate(text: str, max_length: int) -> str:
 def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
     """Render an agent event through the single registry.
 
-    After the wt-028-display consolidation, this function is a thin
-    adapter that delegates every presentation decision to
-    :mod:`ralph.display.agent_event_renderer`. It maps the parser-shaped
-    :class:`AgentOutputLine` to the canonical ``ActivityEventKind``
-    (via the shared :func:`activity_router.map_parser_type_to_kind`),
-    runs :func:`agent_event_renderer.render_event_kind_text` to
-    produce a stable plain-text line (the same line the registry's
-    ring-buffer / activity-router path consumes), and wraps the
-    result in a :class:`rich.text.Text` so downstream callers that
-    expect a styled Text keep working unchanged.
+    After the wt-028-display consolidation, this function constructs a
+    canonical :class:`AgentActivityEvent` from the parser-shaped
+    :class:`AgentOutputLine` via the shared normalizer
+    (:func:`ralph.display.agent_event_renderer.normalize_event_from_agent_output_line`)
+    so agent-specific quirks (claude / codex / opencode / ...) are
+    removed BEFORE rendering. It then delegates every presentation
+    decision to the single registry via
+    :func:`ralph.display.agent_event_renderer.render_event` and
+    extracts the plain text from the returned :class:`rich.text.Text`
+    so downstream callers that expect a styled Text keep working
+    unchanged.
 
     The previous per-type helpers (``_render_text_line`` /
     ``_render_tool_use_line`` / ``_render_tool_result_line`` /
@@ -494,16 +495,33 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
     / ``_styled_prefix``) were the pipeline runner's competing
     formatter; they have been deleted and this function is the
     single rendering seam on the pipeline-runnner side.
-    """
-    from ralph.display.agent_event_renderer import render_event_kind_text
 
-    kind = map_parser_type_to_kind(output.type)
-    plain = render_event_kind_text(
-        kind,
-        output.content or "",
-        metadata=output.metadata or {},
-        agent_name=agent_name,
+    Production call sites construct typed events at ingestion and call
+    :func:`render_event` directly. The plain-text adapter
+    ``render_event_kind_text`` is kept only at the final presentation
+    boundary (for paths that don't carry a Console / unit_id and need
+    a plain string back), not in the rendering seam.
+    """
+    from ralph.display.activity_provider import ActivityProvider
+    from ralph.display.agent_event_renderer import (
+        normalize_event_from_agent_output_line,
+        render_event,
     )
+
+    # The pipeline runner's caller chain does not always carry a
+    # parser-shaped ``provider`` hint (it predates the typed-event
+    # boundary). Use ``UNKNOWN`` so the canonical normalizer never has
+    # to invent one; backend-specific quirks are already removed by
+    # ``make_event`` -> ``map_parser_type_to_kind`` so the registry
+    # renders the same line regardless of which provider fed the
+    # ``AgentOutputLine`` here.
+    event = normalize_event_from_agent_output_line(
+        output, provider=ActivityProvider.UNKNOWN, unit_id=agent_name
+    )
+    from ralph.display.agent_event_renderer import _truncate_to_cells
+
+    text = render_event(event, unit_id=agent_name, escape_body=False)
+    plain = _truncate_to_cells(text.plain, 200)
     if not plain:
         return None
     return Text(plain)

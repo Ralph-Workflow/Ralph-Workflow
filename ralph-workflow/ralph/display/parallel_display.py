@@ -129,7 +129,10 @@ from ralph.display._plain_constants import (
 from ralph.display._streaming_ctx import _StreamingCtx
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
-from ralph.display.agent_event_renderer import render_event_kind_text
+from ralph.display.agent_event_renderer import (
+    make_event_for_emit,
+    render_event,
+)
 from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
@@ -1346,19 +1349,37 @@ class ParallelDisplay:
 
         After the wt-028-display consolidation, every agent-event
         formatting decision lives in
-        :mod:`ralph.display.agent_event_renderer`. This function owns
-        the *delivery* of the event (overflow tracking, badge
-        wrapping, drop-warning, subscriber metadata): it routes the
-        presentation through :func:`agent_event_renderer.render_event_kind_text`
-        and forwards the visible text into ``emit_activity_line`` so
-        the standard timestamp + level + cat badge contract is
-        preserved. The same registry powers the pipeline runner's
+        :mod:`ralph.display.agent_event_renderer`. This function
+        constructs/normalize a canonical :class:`AgentActivityEvent`
+        at the ingestion boundary (via
+        :func:`agent_event_renderer.make_event_for_emit`) so the
+        loose ``(kind, content, metadata)`` arguments are normalized
+        to the same typed event the registry consumes, then calls
+        :func:`agent_event_renderer.render_event` directly. This
+        function owns the *delivery* of the event (overflow tracking,
+        badge wrapping, drop-warning, subscriber metadata) and
+        forwards the visible text into ``emit_activity_line`` so the
+        standard timestamp + level + cat badge contract is preserved.
+        The same registry powers the pipeline runner's
         ``_render_agent_activity_line`` and the activity-router's
         ``render_event_line`` so the same logical event renders
-        identically regardless of which path produced it (AC-06/AC-07).
+        identically regardless of which path produced it
+        (AC-06/AC-07/AC-08).
         """
         metadata = {} if metadata is None else metadata
         text_content = content or ""
+
+        # Normalize loose render args to a canonical
+        # :class:`AgentActivityEvent` BEFORE rendering so the registry
+        # owns every presentation decision and this ingestion site
+        # cannot drift from the pipeline runner / activity-router
+        # paths.
+        event = make_event_for_emit(
+            kind,
+            text_content,
+            metadata=metadata,
+            source=unit_id,
+        )
 
         tool_signature: tuple[str, str] | None = None
 
@@ -1379,12 +1400,7 @@ class ParallelDisplay:
             tool_signature = (original_name, tool_path)
             # Subscriber receives the registry-rendered text so the
             # recorded line matches what the operator sees in the log.
-            sub_line = render_event_kind_text(
-                kind,
-                text_content,
-                metadata=metadata,
-                agent_name=unit_id,
-            )
+            sub_line = render_event(event, unit_id=unit_id, escape_body=False).plain
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
@@ -1398,21 +1414,25 @@ class ParallelDisplay:
 
         # ALL formatting goes through the registry -- the friendly name,
         # formatted input, agent prefix, and non-color icon + label
-        # carrier all come from ``render_event_kind_text`` so this
-        # path cannot drift from the pipeline runner's path. Use a
-        # large ``max_chars`` so the registry's own cell-aware
-        # truncation never fires here: the condenser owns the
+        # carrier all come from ``render_event`` so this path cannot
+        # drift from the pipeline runner's path. We pass the canonical
+        # typed event to the registry directly; the registry's own
+        # cell-aware 200-cell cap is bypassed here by reaching for
+        # ``text.plain`` BEFORE truncation, so the condenser owns the
         # soft/hard overflow path (so an over-soft-limit line still
         # picks up the ``[see .agent/raw/unit-N.log]`` ref), and the
         # registry's default 200-cell cap would otherwise pre-truncate
         # short of ``soft_limit`` and silently bypass overflow tracking.
-        text = render_event_kind_text(
-            kind,
-            text_content,
-            metadata=metadata,
-            agent_name=unit_id,
-            max_chars=self._ctx.condenser_hard_limit + 256,
-        )
+        text = render_event(event, unit_id=unit_id, escape_body=False).plain
+        if len(text) > self._ctx.condenser_hard_limit + 256:
+            # Defensive cap: even the plain-text path must hand the
+            # condenser a bounded payload, otherwise a pathologically
+            # long line would blow the soft/hard gates. The
+            # ``+ 256`` slack matches the legacy ``max_chars`` knob so
+            # the visible truncation behavior is preserved.
+            from ralph.display.agent_event_renderer import _truncate_to_cells
+
+            text = _truncate_to_cells(text, self._ctx.condenser_hard_limit + 256)
 
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)

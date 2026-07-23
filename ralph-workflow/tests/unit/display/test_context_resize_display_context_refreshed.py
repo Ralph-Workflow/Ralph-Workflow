@@ -94,6 +94,11 @@ class TestDisplayContextRefreshed:
 
         refreshed = ctx.refreshed()
 
+        # ``refreshed()`` re-runs width resolution; the
+        # ``DisplayContext`` does not currently store the
+        # ``injected_console`` flag so refreshed() falls through to
+        # the COLUMNS env path. Document the asymmetry here; a follow-
+        # up may store the flag so refreshed() stays consistent.
         assert refreshed.width == forced_narrow_width
 
     def test_refreshed_preserves_force_width(self) -> None:

@@ -263,9 +263,7 @@ def test_precondition_error_class_is_loud() -> None:
     assert not isinstance(RebasePreconditionError(), (bool, int))
     # Raising + catching the exception exercises the
     # loud surface end-to-end.
-    try:
+    with pytest.raises(RebasePreconditionError) as excinfo:
         raise RebasePreconditionError("shallow clone rung-4 diagnostic")
-    except RebasePreconditionError as exc:
-        assert "shallow" in str(exc)
-    else:
-        pytest.fail("RebasePreconditionError was not raised")
+    assert "shallow" in str(excinfo.value)
+

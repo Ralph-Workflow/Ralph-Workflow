@@ -487,10 +487,44 @@ def _build_plain_event(
     agnostic: it is the canonical registry's job to keep the same
     rendered string across providers (AC-07).
     """
+    return make_event_for_emit(
+        kind,
+        content,
+        timestamp=timestamp,
+        metadata=metadata,
+        source=source,
+    )
+
+
+def make_event_for_emit(
+    kind: ActivityEventKind,
+    content: str | None,
+    *,
+    timestamp: str | None = None,
+    metadata: dict[str, object] | None = None,
+    source: str | None = None,
+) -> AgentActivityEvent:
+    """Construct a canonical :class:`AgentActivityEvent` from loose render args.
+
+    Production ingestion sites that still receive loose render
+    arguments (e.g. the ``_emit_activity_event`` callback in
+    :mod:`ralph.display.parallel_display` and the
+    ``render_event_line`` adapter in :mod:`ralph.display.activity_model`)
+    call this to build the typed event BEFORE calling
+    :func:`render_event` so the registry owns every rendering
+    decision.
+
+    Uses ``UNKNOWN`` as the ``ActivityProvider`` because the
+    ingestion sites that hold loose args are provider-agnostic --
+    agent-specific quirks have already been removed upstream by
+    :func:`normalize_event_from_agent_output_line` so the registry
+    renders the same line regardless of the originating provider
+    (AC-07).
+    """
     return AgentActivityEvent(
         provider=ActivityProvider.UNKNOWN,
         kind=kind,
-        content=content,
+        content=content or "",
         metadata=metadata or {},
         source=source or "",
         sequence=0,
@@ -658,31 +692,11 @@ def normalize_event_from_agent_output_line(
     )
 
 
-def _event_options_from_line(
-    line: AgentOutputLine,
-    *,
-    source: str,
-) -> object:
-    """Build :class:`EventOptions` from a parser line (avoids cycles).
-
-    Implementation note: returns the result of an inline import so the
-    ralph/display subgraph does not pull in the ralph/display/event_options
-    import at module load time (which would create an eager
-    cycle with activity_model).
-    """
-    from ralph.display.event_options import EventOptions
-
-    return EventOptions(
-        content=line.content,
-        metadata=line.metadata or {},
-        source=source,
-    )
-
-
 # Re-exports (keep callers stable as the legacy renders are deleted).
 __all__ = [
     "EVENT_RENDERERS",
     "EventRenderer",
+    "make_event_for_emit",
     "normalize_event_from_agent_output_line",
     "render_event",
     "render_event_kind_text",

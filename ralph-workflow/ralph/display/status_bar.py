@@ -182,6 +182,15 @@ _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS: int = 4
 # Minimal label widths (1/3 / 2/5; no prefix).
 _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS: int = 4
 _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS: int = 4
+# Maximum width of the ``N/cap`` / ``#N`` suffix carried by
+# ``format_dev_cycle`` (worst case ``99/999`` = 7 chars). Used by
+# :func:`_outer_label_canonical_chars` to size the canonical-form
+# budget when the caller supplies a custom ``outer_label``
+# (e.g. ``Remediation`` -> ``Remediation 99/999`` = 18 chars). The
+# canonical-form branch in :func:`_format_dev_label` gates on this
+# so a wide custom label renders in full rather than being clipped by
+# the terminal-width clamp that downstream truncates the rendered line.
+_OUTER_DEV_LABEL_SUFFIX_MAX_CHARS: int = 7
 # Threshold at and above which the canonical (full) label form is
 # always honored regardless of how much phase/path truncation is
 # needed. Below this threshold the implementation may degrade to
@@ -387,6 +396,7 @@ def _field_overhead_and_label_budgets(
     *,
     has_outer_dev: bool,
     has_inner_analysis: bool,
+    outer_label_canonical_chars: int = _OUTER_DEV_LABEL_MAX_CHARS,
 ) -> _FieldBudgets:
     """Derive width-aware budgets that always fit ``ctx.width``.
 
@@ -397,6 +407,15 @@ def _field_overhead_and_label_budgets(
     implementation may degrade to compact (``D1/3`` / ``A2/5``) or
     minimal (``1/3`` / ``2/5``) forms to fit the bar at very narrow
     widths.
+
+    ``outer_label_canonical_chars`` overrides the default canonical-form
+    width when the caller supplies a custom ``outer_label`` (e.g.
+    ``Remediation``). The default ``_OUTER_DEV_LABEL_MAX_CHARS`` (10)
+    accommodates ``Cycle 99/999`` but a custom label like ``Remediation
+    2/3`` needs more room -- the override widens the canonical-form
+    budget so a wide custom label renders in full rather than being
+    clipped by the terminal-width clamp downstream. Callers compute the
+    override via :func:`_outer_label_canonical_chars`.
 
     Iteration segments are present (in canonical / compact / minimal
     form) when the model fields are non-``None`` and ``ctx.width``
@@ -562,7 +581,7 @@ def _field_overhead_and_label_budgets(
         )
 
     label_forms: tuple[tuple[int, int], ...] = (
-        (_OUTER_DEV_LABEL_MAX_CHARS, _INNER_ANALYSIS_LABEL_MAX_CHARS),
+        (outer_label_canonical_chars, _INNER_ANALYSIS_LABEL_MAX_CHARS),
         (_OUTER_DEV_LABEL_COMPACT_MAX_CHARS, _INNER_ANALYSIS_LABEL_COMPACT_MAX_CHARS),
         (_OUTER_DEV_LABEL_MINIMAL_MAX_CHARS, _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS),
     )
@@ -635,16 +654,28 @@ def _format_dev_label(
     and is returned as-is. This keeps the per-iteration redundancy the
     status bar already provides (a glyph + an ASCII label) while letting
     callers choose a phase-appropriate noun.
+
+    The returned label NEVER exceeds ``max_chars`` so the bar's
+    downstream width clamp (which truncates the whole rendered line)
+    cannot silently drop the iteration value or cap. When
+    ``outer_label`` is wider than the canonical budget, the caller is
+    expected to have allocated a wider budget via
+    :func:`_outer_label_canonical_chars` -- if ``max_chars`` is still
+    too small for the canonical form, the function degrades to the
+    compact form (with a per-call substitution) and finally the
+    minimal form so the cap is preserved at every width.
     """
     if max_chars <= 0:
         return ""
-    if max_chars >= _OUTER_DEV_LABEL_MAX_CHARS:
+    canonical_needed = _outer_label_canonical_chars(outer_label)
+    if max_chars >= canonical_needed:
         label = format_dev_cycle(n, cap)
         if outer_label:
             # replace the default 'Cycle' / 'N' label with the
             # caller's noun. Safe because format_dev_cycle produces
             # ``Cycle N/cap`` / ``Cycle #N`` -- both start with 'Cycle '.
-            return f"{outer_label} {label.split(' ', 1)[1]}"
+            rendered = f"{outer_label} {label.split(' ', 1)[1]}"
+            return rendered[:max_chars]
         return label
     if max_chars >= _OUTER_DEV_LABEL_COMPACT_MAX_CHARS:
         label = format_dev_cycle_compact(n, cap)
@@ -655,9 +686,39 @@ def _format_dev_label(
             # neutral compact label (avoid truncation hazards at this
             # tight 4-char budget).
             initial = outer_label[:1]
-            return f"{initial}{label[1:]}"
+            rendered = f"{initial}{label[1:]}"
+            return rendered[:max_chars]
         return label
-    return format_dev_cycle_minimal(n, cap)
+    # Minimal form has no prefix to swap -- at this tight budget the
+    # canonical cap-bearing string must be preserved so the operator
+    # still sees ``N/cap``; truncate defensively in case ``max_chars``
+    # is below the minimal form's width.
+    minimal = format_dev_cycle_minimal(n, cap)
+    return minimal[:max_chars]
+
+
+def _outer_label_canonical_chars(outer_label: str | None) -> int:
+    """Return the canonical-form width the Status Bar needs for the outer label.
+
+    The default ``Cycle`` label is bounded by
+    :data:`_OUTER_DEV_LABEL_MAX_CHARS` (10 chars; ``Dev 99/999`` /
+    ``Cycle #N`` worst case). When the caller supplies a custom
+    ``outer_label`` (e.g. ``Remediation`` / ``Round``), the canonical
+    form is ``<outer_label> <suffix>`` where ``suffix`` is the same
+    ``N/cap`` / ``#N`` text the neutral label carries. The custom
+    label's canonical width is therefore ``len(outer_label) + 1 + len(suffix)``.
+
+    ``_format_dev_label`` uses this value to gate the canonical-form
+    branch so a wide custom label (e.g. ``Remediation 2/3`` = 15 chars)
+    always renders in full rather than being clipped by
+    :func:`render_status_bar`'s terminal-width clamp. ``_format_dev_label``
+    also clamps its returned string to ``max_chars`` as a defence so a
+    mis-allocated budget cannot drop the value or cap.
+    """
+    suffix_max = _OUTER_DEV_LABEL_SUFFIX_MAX_CHARS
+    if outer_label is None:
+        return _OUTER_DEV_LABEL_MAX_CHARS
+    return len(outer_label) + 1 + suffix_max
 
 
 def _format_analysis_label(n: int, cap: int | None, max_chars: int) -> str:
@@ -734,6 +795,7 @@ def render_status_bar(
         ctx,
         has_outer_dev=has_outer_dev,
         has_inner_analysis=has_inner_analysis,
+        outer_label_canonical_chars=_outer_label_canonical_chars(model.outer_label),
     )
 
     path_display = _middle_truncate_path(path_display, budgets.path_budget)

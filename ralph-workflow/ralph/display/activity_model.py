@@ -64,10 +64,13 @@ def render_event_line(
     split in half) and BEFORE rich ``escape`` (so rich markup like
     ``[red]...[/red]`` is still neutralised to ``\\[red]...\\[/red]``).
 
-    After the wt-028-display consolidation this function delegates to
-    :func:`ralph.display.agent_event_renderer.render_event_kind_text`
-    so every event kind routes through the single registry. The
-    pre-render sanitization call is kept here so the
+    After the wt-028-display consolidation this function constructs a
+    canonical :class:`AgentActivityEvent` at the ingestion boundary
+    via
+    :func:`ralph.display.agent_event_renderer.make_event_for_emit`
+    and calls :func:`ralph.display.agent_event_renderer.render_event`
+    directly so every event kind routes through the single registry.
+    The pre-render sanitization call is kept here so the
     :mod:`ralph.testing.audit_terminal_escape_containment` literal-string
     invariant that pins this function as a containment sink stays
     satisfied: a regression that drops the strip is detected as a
@@ -78,13 +81,21 @@ def render_event_line(
     """
     # Defence-in-depth strip (audit_terminal_escape_containment pinned).
     safe_content = strip_terminal_control(content or "")
-    from ralph.display.agent_event_renderer import render_event_kind_text
+    from ralph.display.agent_event_renderer import (
+        _truncate_to_cells,
+        make_event_for_emit,
+        render_event,
+    )
 
-    return render_event_kind_text(
+    event = make_event_for_emit(
         kind,
         safe_content,
         timestamp=timestamp,
     )
+    # Apply the canonical 200-cell cap to the rendered plain-text line
+    # so callers that build a wide body get the same cell-aware
+    # ellipsis truncation the legacy adapter produced.
+    return _truncate_to_cells(render_event(event, escape_body=False).plain, 200)
 
 
 __all__ = [
