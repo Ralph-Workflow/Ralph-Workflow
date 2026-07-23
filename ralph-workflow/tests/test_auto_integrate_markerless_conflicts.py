@@ -251,6 +251,51 @@ def test_binary_conflict_lands_via_endpoint_merge(tmp_git_repo: Path) -> None:
     )
 
 
+def test_mode_only_conflict_lands_via_deterministic_resolution(
+    tmp_git_repo: Path,
+) -> None:
+    """C9: a permission-only feature commit rebases and fast-forwards.
+
+    The target has the same blob and non-executable mode; the feature changes
+    only its executable bit.  This is the pure mode-only shape handled without
+    an endpoint merge.
+    """
+    base = _base_branch(tmp_git_repo)
+    target = tmp_git_repo / "script.sh"
+    target.write_text("#!/bin/sh\necho hello\n")
+    target.chmod(0o644)
+    _run(tmp_git_repo, "add", "script.sh")
+    _run(tmp_git_repo, "commit", "-m", "base script")
+    seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    _run(tmp_git_repo, "checkout", "feature")
+    target.chmod(0o755)
+    _run(tmp_git_repo, "add", "script.sh")
+    _run(tmp_git_repo, "commit", "-m", "feature executable")
+    _run(tmp_git_repo, "checkout", base)
+    # Advance the target without changing this path: the replay remains a
+    # pure permission-only change while still exercising auto-integrate.
+    _commit(tmp_git_repo, "target-note.txt", "target advanced\n", "target advance")
+    _run(tmp_git_repo, "checkout", "feature")
+    _run(tmp_git_repo, "config", "core.fileMode", "true")
+
+    from ralph.workspace.scope import WorkspaceScope
+
+    outcome = auto_integrate_after_commit(
+        _build_config(base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
+
+    assert outcome is not None
+    assert outcome.last_action == "rebased"
+    assert outcome.fast_forwarded is True
+    target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    feature_sha = _run(tmp_git_repo, "rev-parse", "feature").stdout.strip()
+    assert target_sha == feature_sha
+    assert _run(tmp_git_repo, "rev-list", "--merges", "-n", "1", "HEAD").stdout.strip() == ""
+
+
 def test_mode_only_conflict_lands_via_endpoint_merge(tmp_git_repo: Path) -> None:
     """AC-04: a mode-only (100644 vs 100755) conflict lands via endpoint merge.
 

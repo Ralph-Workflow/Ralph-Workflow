@@ -166,6 +166,56 @@ def test_single_stop_resolves_and_continues_once(
     assert repo.continue_calls == 1
 
 
+def test_resolve_rebase_in_progress_lands_after_empty_commit_skip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C15: an empty replay commit handled by ``--skip`` still lands.
+
+    The continuation seam returns normally only after its bounded empty-stop
+    skip path has completed.  The loop must treat that as progress rather than
+    abandoning to endpoint merge.
+    """
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+    empty_stop_handled = {"value": False}
+
+    def _continue_after_empty_stop(root: Path) -> None:
+        if not empty_stop_handled["value"]:
+            empty_stop_handled["value"] = True
+        repo.continue_rebase(root)
+
+    monkeypatch.setattr(
+        loop_module, "continue_rebase_at", _continue_after_empty_stop
+    )
+    seen: list[RebaseStop] = []
+
+    assert (
+        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver(seen))
+        is True
+    )
+    assert empty_stop_handled["value"] is True
+    assert repo.continue_calls == 1
+
+
+def test_rebase_empty_stop_continuation_failure_abandons(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The old continuation failure routes this otherwise valid stop to fallback."""
+    repo = _FakeRepo(stops=1)
+    _install_seams(monkeypatch, repo)
+
+    def _old_continue(_root: Path) -> None:
+        raise RebaseContinuationError("previous cherry-pick is empty")
+
+    monkeypatch.setattr(loop_module, "continue_rebase_at", _old_continue)
+
+    assert (
+        resolve_rebase_in_progress(tmp_path, _TARGET, _accepting_resolver([]))
+        is False
+    )
+    assert repo.continue_calls == 0
+
+
 def test_three_stops_drive_three_resolver_calls_in_order(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
