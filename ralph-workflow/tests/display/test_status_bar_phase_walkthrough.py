@@ -10,7 +10,7 @@ AC-01 / AC-02 / AC-03 contract test:
 * Terminal phases (`complete`, `failed_terminal`) omit the outer
   count.
 * Analysis phases additionally show the inner analysis count.
-* Policy remediation (`_push_remediation_status_bar`) shows the live
+* Policy remediation (`push_remediation_status_bar`) shows the live
   attempt with the ``Remediation`` label.
 * Conflict resolution (`push_conflict_status_bar`) shows the round
   with the ``Round`` label.
@@ -44,6 +44,7 @@ from ralph.pipeline.phase_transition import (
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.project_policy import cli_integration
+from ralph.project_policy import status_bar as status_bar_module
 from ralph.project_policy.pipeline_graph import DEFAULT_MAX_REMEDIATION_ATTEMPTS
 from ralph.workspace.scope import WorkspaceScope
 
@@ -248,7 +249,7 @@ class _CapturingDisplay:
     uses ``__slots__`` and its ``update_status_bar`` is a method, not
     an instance attribute, so it cannot be subclassed and patched in
     place without disturbing the class's invariants. The push helpers
-    we exercise here (``_push_remediation_status_bar`` and
+    we exercise here (``push_remediation_status_bar`` and
     ``push_conflict_status_bar``) only call ``getattr(display,
     "update_status_bar", None)``, so a stub with the same contract
     is a faithful production substitute.
@@ -266,7 +267,7 @@ class _CapturingDisplay:
 
 @pytest.mark.parametrize("attempt", [1, 2, DEFAULT_MAX_REMEDIATION_ATTEMPTS])
 def test_remediation_push_helper_produces_correct_model(attempt: int) -> None:
-    """Drive the real ``_push_remediation_status_bar`` and assert exact values.
+    """Drive the real ``push_remediation_status_bar`` and assert exact values.
 
     Uses the production helper, not a synthesized StatusBarModel, so
     the test fails if the helper regresses (e.g. the bug where
@@ -278,7 +279,7 @@ def test_remediation_push_helper_produces_correct_model(attempt: int) -> None:
         root=Path("/tmp/remediation-walkthrough-probe"),
         allowed_roots=frozenset({Path("/tmp/remediation-walkthrough-probe")}),
     )
-    cli_integration._push_remediation_status_bar(
+    status_bar_module.push_remediation_status_bar(
         capture,
         scope,
         max_attempts=DEFAULT_MAX_REMEDIATION_ATTEMPTS,

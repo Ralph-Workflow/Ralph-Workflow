@@ -7,7 +7,7 @@ showing whatever phase the run was in when the seam fired, which reads as
 a hang.
 
 Every function here is defensive by contract, exactly as
-``ralph.project_policy.cli_integration._push_remediation_status_bar`` is:
+``ralph.project_policy.status_bar_module.push_remediation_status_bar`` is:
 presentation must NEVER block integration. A display that raises is
 logged at DEBUG and otherwise ignored.
 """

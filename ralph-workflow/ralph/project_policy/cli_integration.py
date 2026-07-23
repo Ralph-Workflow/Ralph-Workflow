@@ -22,8 +22,7 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
-from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
-from ralph.display.status_bar import StatusBarModel
+from ralph.display.parallel_display import resolve_active_display
 from ralph.git.operations import create_commit
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
@@ -47,6 +46,7 @@ from ralph.project_policy.pipeline_graph import (
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.project_policy.preflight import run_policy_readiness_preflight
 from ralph.project_policy.reset import reset_policy_state
+from ralph.project_policy.status_bar import push_remediation_status_bar
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -591,44 +591,6 @@ def _build_workspace(
     return FsWorkspace(scope.root, allowed_roots=scope.allowed_roots)
 
 
-def _push_remediation_status_bar(
-    display: object,
-    workspace_scope: WorkspaceScope,
-    max_attempts: int,
-    *,
-    attempt: int = 1,
-    elapsed_seconds: float | None = None,
-    agent_name: str | None = None,
-) -> None:
-    """Seed the persistent status bar for the remediation phase.
-
-    Mirrors the run loop's phase push so the footer shows the working
-    directory and the active phase during remediation instead of nothing.
-    ``attempt`` is the 1-indexed live attempt (1 on the first try, 2 on
-    the first re-try, etc.) so the bar surfaces real progress instead
-    of a hardcoded ``Dev 1/N`` placeholder. Defensive: any display
-    failure is swallowed -- presentation must never block remediation.
-    """
-    try:
-        model = StatusBarModel(
-            workspace_root=str(workspace_scope.root),
-            phase_label="Policy Remediation",
-            phase_style=phase_style_for_phase("policy_remediation"),
-            outer_dev_iteration=attempt,
-            outer_dev_cap=max_attempts,
-            outer_label="Remediation",
-            elapsed_seconds=elapsed_seconds,
-            agent_name=agent_name,
-        )
-        update = cast(
-            "Callable[[object], None] | None",
-            getattr(display, "update_status_bar", None),
-        )
-        if update is not None:
-            update(model)
-    except Exception as exc:
-        logger.debug("remediation status-bar push failed (non-fatal): {}", exc)
-
 
 def _snapshot_working_tree(workspace_scope: WorkspaceScope) -> frozenset[str]:
     """Capture the currently-dirty paths. Never raises."""
@@ -794,14 +756,14 @@ def _dispatch_preflight_result(
     # ``Remediation N/Max`` instead of a hardcoded ``Dev 1/N`` placeholder.
     with display:
         def _on_remediation_attempt(attempt: int) -> None:
-            _push_remediation_status_bar(
+            push_remediation_status_bar(
                 display,
                 workspace_scope,
                 DEFAULT_MAX_REMEDIATION_ATTEMPTS,
                 attempt=attempt,
             )
 
-        _push_remediation_status_bar(
+        push_remediation_status_bar(
             display, workspace_scope, DEFAULT_MAX_REMEDIATION_ATTEMPTS
         )
         final = run_policy_pipeline(
