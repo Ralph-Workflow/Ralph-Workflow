@@ -29,7 +29,7 @@ source-tree parse on separate workers for each clause.
 from __future__ import annotations
 
 import ast
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 _RALPH_DIR = Path(__file__).parent.parent.parent / "ralph"
@@ -45,7 +45,7 @@ _FORBIDDEN_DIRS = (
 _CONSTRUCTOR_FILE = "parallel_display.py"
 
 
-@lru_cache(maxsize=1)
+@cache
 def _scan_targets() -> tuple[Path, ...]:
     """Return every ``*.py`` file under the three scan directories."""
     files: list[Path] = []
@@ -59,7 +59,7 @@ def _scan_targets() -> tuple[Path, ...]:
     return tuple(files)
 
 
-@lru_cache(maxsize=256)
+@cache
 def _parse(path: Path) -> ast.Module:
     """Return the AST module for ``path``, parsed once and cached."""
     return ast.parse(path.read_text(encoding="utf-8"))

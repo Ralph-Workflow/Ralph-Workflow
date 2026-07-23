@@ -22,11 +22,14 @@ from ralph.display.parallel_display import ParallelDisplay
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 _TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+\-]\d{2}:\d{2}")
+_ELAPSED_RE = re.compile(r"elapsed=\d+\.\d+s")
 
 
 def _normalize(text: str) -> str:
-    """Strip ANSI codes and timestamps so logical-line equality is testable."""
-    return _TIMESTAMP_RE.sub("<TS>", _ANSI_ESCAPE_RE.sub("", text))
+    """Strip presentation-independent runtime values before comparing lines."""
+    without_ansi = _ANSI_ESCAPE_RE.sub("", text)
+    without_timestamps = _TIMESTAMP_RE.sub("<TS>", without_ansi)
+    return _ELAPSED_RE.sub("elapsed=<DURATION>", without_timestamps)
 
 
 def _make_display(*, force_terminal: bool) -> tuple[ParallelDisplay, io.StringIO]:
