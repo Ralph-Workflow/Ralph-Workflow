@@ -122,23 +122,17 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
     base = _base_branch(tmp_git_repo)
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    pre_landing_base_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    pre_landing_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     # Concurrent landing: a new commit on base, advancing base past
     # the pre-landing SHA. The integration's rebase will replay feat
     # on top of the new base.
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
-    post_landing_base_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    post_landing_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert pre_landing_base_sha != post_landing_base_sha
     _run(tmp_git_repo, "checkout", "feature")
 
-    def _stale_observe_branch_sha(
-        _repo_root: object, _name: str
-    ) -> tuple[str | None, bool]:
+    def _stale_observe_branch_sha(_repo_root: object, _name: str) -> tuple[str | None, bool]:
         # The single observe_branch_sha call inside
         # auto_integrate_ff is the observation that decides the CAS
         # expected-oldvalue. Returning the pre-landing SHA -- with
@@ -161,16 +155,10 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
         f" moves between observation and CAS, got {outcome.fast_forwarded!r}"
     )
     assert outcome.last_reason is not None and (
-        "advanced concurrently" in outcome.last_reason
-        or "CAS mismatch" in outcome.last_reason
-    ), (
-        f"AC-08 race: last_reason must mention the concurrent landing,"
-        f" got {outcome.last_reason!r}"
-    )
+        "advanced concurrently" in outcome.last_reason or "CAS mismatch" in outcome.last_reason
+    ), f"AC-08 race: last_reason must mention the concurrent landing, got {outcome.last_reason!r}"
     # Target ref is UNCHANGED -- still at the post-landing SHA.
-    final_base_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    final_base_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert final_base_sha == post_landing_base_sha, (
         f"AC-08 race: target ref must be byte-unchanged, expected"
         f" {post_landing_base_sha!r}, got {final_base_sha!r}"
@@ -243,13 +231,9 @@ def test_clean_target_worktree_fast_forward_succeeds(tmp_git_repo: Path) -> None
             f" worktree fast-forward, got {outcome.last_reason!r}"
         )
         # Post-integration feature tip (refreshed; see TRAP above).
-        feature_tip_after = _run(
-            tmp_git_repo, "rev-parse", "HEAD"
-        ).stdout.strip()
+        feature_tip_after = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
         # Target ref moved to the post-integration feature tip.
-        wt_ref_after = _run(
-            tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
-        ).stdout.strip()
+        wt_ref_after = _run(tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}").stdout.strip()
         assert wt_ref_after == feature_tip_after, (
             f"AC-09 success: target ref {wt_ref_after!r} must equal"
             f" the post-integration HEAD {feature_tip_after!r}"
@@ -266,9 +250,7 @@ def test_clean_target_worktree_fast_forward_succeeds(tmp_git_repo: Path) -> None
             f" ``git merge --ff-only`` inside the worktree"
         )
         # Worktree is still clean.
-        wt_status = _run(
-            wt_path, "status", "--porcelain", "--untracked-files=no"
-        ).stdout.strip()
+        wt_status = _run(wt_path, "status", "--porcelain", "--untracked-files=no").stdout.strip()
         assert wt_status == "", (
             f"AC-09 success: linked worktree must remain clean after"
             f" the ff, got status={wt_status!r}"
@@ -303,13 +285,8 @@ def test_fast_forward_target_missing_branch_is_reported(tmp_git_repo: Path) -> N
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
 
-    ok, reason = fast_forward_target(
-        tmp_git_repo, "definitely-not-a-branch", feature_sha
-    )
-    assert ok is False, (
-        f"AC-08 ff: missing target branch must report ok=False,"
-        f" got ok={ok!r}"
-    )
+    ok, reason = fast_forward_target(tmp_git_repo, "definitely-not-a-branch", feature_sha)
+    assert ok is False, f"AC-08 ff: missing target branch must report ok=False, got ok={ok!r}"
     assert reason == "target branch missing at fast-forward time", (
         f"AC-08 ff: defensive reason for missing branch must match"
         f" the producer literal, got {reason!r}"
@@ -341,9 +318,7 @@ def test_unreadable_target_is_retryable_but_a_missing_one_is_not(
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
 
-    unreadable_ok, unreadable_reason = fast_forward_target(
-        tmp_path, "main", feature_sha
-    )
+    unreadable_ok, unreadable_reason = fast_forward_target(tmp_path, "main", feature_sha)
     assert unreadable_ok is False
     assert is_retryable_fast_forward_failure(unreadable_reason), (
         f"an unreadable target must be retried, got reason={unreadable_reason!r}"
@@ -359,7 +334,7 @@ def test_unreadable_target_is_retryable_but_a_missing_one_is_not(
 
 
 def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The attempt budget is spent truthfully, in the log and on the state.
 
@@ -375,37 +350,63 @@ def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
        one-off concurrent move looked identical to a target that kept
        moving until the loop gave up.
 
-    The scenario is the same deterministic CAS race the AC-08 test uses:
-    a permanently stale observed SHA makes every compare-and-swap fail,
-    which is retryable, so all three attempts are consumed.
+    A scripted integration runner reports the same retryable CAS loss on
+    every attempt. The separate AC-08 test above retains the real-git proof
+    that a stale observation produces that loss; this test owns only the
+    orchestration contract around the bounded runner.
     """
     from loguru import logger
 
     import ralph.pipeline.auto_integrate as _ai_mod
-    import ralph.pipeline.auto_integrate_ff as _ai_ff_mod
 
-    base = _base_branch(tmp_git_repo)
-    _run(tmp_git_repo, "checkout", "-b", "feature")
-    _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
-    pre_landing_base_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
-    _run(tmp_git_repo, "checkout", base)
-    _commit(tmp_git_repo, "concurrent.txt", "concurrent\n", "concurrent")
-    _run(tmp_git_repo, "checkout", "feature")
-
+    base = "main"
+    attempts: list[int] = []
     monkeypatch.setattr(
-        _ai_ff_mod,
-        "observe_branch_sha",
-        lambda _root, _name: (pre_landing_base_sha, True),
+        _ai_mod,
+        "_auto_integrate_resolve_context",
+        lambda _config, _scope: (tmp_path, "feature", base, "refreshed"),
     )
+    monkeypatch.setattr(
+        _ai_mod,
+        "_auto_integrate_check_skip_conditions",
+        lambda _root, _branch, _target: None,
+    )
+    monkeypatch.setattr(
+        _ai_mod,
+        "observe_conflict_identity",
+        lambda _root, _target: "feature-target-identity",
+    )
+    monkeypatch.setattr(
+        _ai_mod,
+        "resolver_allowed",
+        lambda _state, _target, _identity: True,
+    )
+    monkeypatch.setattr(
+        _ai_mod,
+        "_refresh_target",
+        lambda _config, _root, _target: "refreshed",
+    )
+
+    def _retrying_runner(*_args: object, **_kwargs: object) -> tuple[RebaseState, bool]:
+        attempts.append(len(attempts) + 1)
+        return (
+            RebaseState(
+                last_action="rebased",
+                last_target=base,
+                last_reason="target advanced concurrently (CAS mismatch)",
+                fast_forwarded=False,
+            ),
+            True,
+        )
+
+    monkeypatch.setattr(_ai_mod, "_integrate_once", _retrying_runner)
 
     lines: list[str] = []
     sink_id = logger.add(lines.append, level="INFO", format="{message}")
     try:
         outcome = auto_integrate_after_commit(
-            _build_config(tmp_git_repo, target=base),
-            WorkspaceScope(tmp_git_repo),
+            _build_config(tmp_path, target=base),
+            WorkspaceScope(tmp_path),
             RebaseState(),
             sleep=lambda _seconds: None,
             jitter=lambda: 0.0,
@@ -417,15 +418,13 @@ def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
     assert outcome.fast_forwarded is False
     assert outcome.last_reason is not None
     assert "exhausted 3 integration attempts" in outcome.last_reason, (
-        "the recorded reason must say the attempt budget was spent, got"
-        f" {outcome.last_reason!r}"
+        f"the recorded reason must say the attempt budget was spent, got {outcome.last_reason!r}"
     )
     # The underlying concurrency cause survives as the headline.
     assert "advanced concurrently" in outcome.last_reason
+    assert attempts == [1, 2, 3]
 
-    promised_retries = [
-        line for line in lines if "re-integrating onto the moved target" in line
-    ]
+    promised_retries = [line for line in lines if "re-integrating onto the moved target" in line]
     assert len(promised_retries) == _ai_mod._MAX_INTEGRATION_ATTEMPTS - 1, (
         "the re-integration line must be emitted only when another attempt"
         f" will actually run, got {promised_retries!r}"
@@ -448,40 +447,26 @@ def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> Non
     base = _base_branch(tmp_git_repo)
     # Genuine divergence: feature and base BOTH advance past a
     # shared ancestor, so base is NOT an ancestor of feature.
-    base_seed_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    base_seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     _run(tmp_git_repo, "checkout", "-b", "feature")
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "base_only.txt", "base only\n", "base only")
-    base_ref_before = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    base_ref_before = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_ref_before != base_seed_sha, (
-        "setup: base must have advanced past the seed for the"
-        " divergence to be real"
+        "setup: base must have advanced past the seed for the divergence to be real"
     )
-    feature_sha = _run(
-        tmp_git_repo, "rev-parse", "refs/heads/feature"
-    ).stdout.strip()
+    feature_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/feature").stdout.strip()
 
     ok, reason = fast_forward_target(tmp_git_repo, base, feature_sha)
-    assert ok is False, (
-        f"AC-08 ff: non-ancestor target must report ok=False,"
-        f" got ok={ok!r}"
-    )
-    assert reason == (
-        "target advanced concurrently (not an ancestor of feature)"
-    ), (
+    assert ok is False, f"AC-08 ff: non-ancestor target must report ok=False, got ok={ok!r}"
+    assert reason == ("target advanced concurrently (not an ancestor of feature)"), (
         f"AC-08 ff: defensive reason for non-ancestor target must"
         f" match the producer literal, got {reason!r}"
     )
     # AC-08 no-force-move contract at the ff layer: the target ref
     # is BYTE-UNCHANGED.
-    base_ref_after = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
+    base_ref_after = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_ref_after == base_ref_before, (
         f"AC-08 ff: target ref must be byte-unchanged on a refused"
         f" non-ancestor ff, before={base_ref_before!r}"
@@ -565,9 +550,7 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
         "feature content\n",
         "feature rewrites conflict.txt",
     )
-    wt_branch_sha_before = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
-    ).stdout.strip()
+    wt_branch_sha_before = _run(tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}").stdout.strip()
     assert feature_sha != wt_branch_sha_before
     # Add a SECOND worktree on wt_branch.
     wt_path = tmp_git_repo.parent / f"{tmp_git_repo.name}-wt"
@@ -580,12 +563,9 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
         # update).
         tracked_in_wt = wt_path / "conflict.txt"
         tracked_in_wt.write_text("worktree dirty content\n", encoding="utf-8")
-        wt_status = _run(
-            wt_path, "status", "--porcelain", "--untracked-files=no"
-        ).stdout.strip()
+        wt_status = _run(wt_path, "status", "--porcelain", "--untracked-files=no").stdout.strip()
         assert "conflict.txt" in wt_status, (
-            f"preflight: linked worktree must report the tracked dirty"
-            f" file, got {wt_status!r}"
+            f"preflight: linked worktree must report the tracked dirty file, got {wt_status!r}"
         )
         config = _build_config(tmp_git_repo, target=wt_branch)
         scope = WorkspaceScope(tmp_git_repo)
@@ -614,10 +594,7 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
             "AC-08: integration MUST surface a loud retryable skip "
             "when the target's checked-out worktree refused merge --ff-only"
         )
-        assert (
-            "merge --ff-only" in outcome.last_reason
-            or "checked out" in outcome.last_reason
-        ), (
+        assert "merge --ff-only" in outcome.last_reason or "checked out" in outcome.last_reason, (
             f"AC-08: skip reason must name merge --ff-only and the "
             f"checked-out sibling, got {outcome.last_reason!r}"
         )
@@ -644,8 +621,7 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
             wt_path, "status", "--porcelain", "--untracked-files=no"
         ).stdout.strip()
         assert "conflict.txt" in wt_status_after, (
-            f"AC-10: linked worktree must remain dirty, got status="
-            f"{wt_status_after!r}"
+            f"AC-10: linked worktree must remain dirty, got status={wt_status_after!r}"
         )
         # Now clean the worktree and re-run integration -- the
         # next clean seam contract holds, and the same
@@ -656,8 +632,7 @@ def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
             wt_path, "status", "--porcelain", "--untracked-files=no"
         ).stdout.strip()
         assert wt_status_clean == "", (
-            f"preflight: worktree must be clean before next-seam test, "
-            f"got {wt_status_clean!r}"
+            f"preflight: worktree must be clean before next-seam test, got {wt_status_clean!r}"
         )
         outcome_clean = auto_integrate_after_commit(
             config, scope, RebaseState(), sleep=lambda _seconds: None, jitter=lambda: 0.0
