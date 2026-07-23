@@ -34,7 +34,7 @@ its full model ID, including bracket parameters, unchanged.
 
 - **CLI**: `claude`
 - **Transport**: `claude` (interactive) and `claude-headless`
-- **Args**: `--json`, `--full-auto`, `--prompt <PROMPT>`, plus the autonomy flag the bundled policy declares. With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions`.
+- **Args**: `--json`, `--prompt <PROMPT>`, plus the autonomy flag the bundled policy declares. With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions`.
 - **Parser**: `claude` (native, most reliable)
 - **Caveats**: Claude's MCP config injection routes the Ralph Workflow MCP tools into the agent's tool surface; see [Advanced MCP Configuration](advanced-mcp-configuration.md). `claude` and `claude-headless` are both maintained invocation contracts. Do not remove, deprecate, merge, alias, or silently redirect either one into the other as part of unrelated agent work.
 
@@ -42,7 +42,7 @@ its full model ID, including bracket parameters, unchanged.
 [agents.claude]
 name = "claude"
 command = "claude"
-args = ["--json", "--full-auto", "--prompt", "<PROMPT>"]
+args = ["--json", "--prompt", "<PROMPT>"]
 json_parser = "claude"
 ```
 
@@ -50,14 +50,14 @@ json_parser = "claude"
 
 - **CLI**: `codex`
 - **Transport**: `codex`
-- **Args**: `exec`, `--json`, `--full-auto`, `<PROMPT>`, plus `--approve` for unattended approval and any resume/session flags the policy declares.
+- **Args**: `exec`, `--json`, `<PROMPT>`, plus `--dangerously-bypass-approvals-and-sandbox` for unattended execution and any resume/session flags the policy declares.
 - **Parser**: `codex` (native)
 
 ```toml
 [agents.codex]
 name = "codex"
 command = "codex"
-args = ["exec", "--json", "--full-auto", "<PROMPT>"]
+args = ["exec", "--json", "<PROMPT>"]
 json_parser = "codex"
 ```
 
@@ -65,7 +65,7 @@ json_parser = "codex"
 
 - **CLI**: `opencode`
 - **Transport**: `opencode`
-- **Args**: `--json`, `<PROMPT>`, plus `--approve` for unattended approval and `-m <provider>/<model>` when a model alias is selected.
+- **Args**: `--json`, `<PROMPT>`, plus `-m <provider>/<model>` when a model alias is selected.
 - **Parser**: `opencode` (required, not interchangeable with the generic parser)
 
 ```toml
@@ -84,7 +84,7 @@ json_parser = "opencode"
 - **Parser**: `generic` (native AGY parser; plain-text, not NDJSON)
 - **Caveats**:
     - PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.
-    - With `autonomy_mode = "dangerously-bypass-approvals-and-sandbox"`, the argv includes the corresponding AGY-side flag.
+    - With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions` (AGY reuses the Claude flag; the earlier docs incorrectly attributed Codex's `--dangerously-bypass-approvals-and-sandbox` to AGY).
     - Completion contract: `declare_complete` or phase artifact, same as Claude interactive.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
@@ -249,5 +249,5 @@ Found an agent that should be in the list above? See [CONTRIBUTING.md](../../CON
 
 ## Additional Resources
 
-- **Main README**: [README.md](README.md)
+- **Main README**: [README.md](../../README.md)
 - **Issue Tracker**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>

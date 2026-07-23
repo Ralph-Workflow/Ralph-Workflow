@@ -16,9 +16,21 @@
 # ---------------------------------------------------------------------------
 # Agent chains
 # ---------------------------------------------------------------------------
-# A drain is the step of the run an agent handles, such as planning,
-# development, analysis, or commit. The bundled defaults work out of the box;
-# this OPTIONAL section only needs editing when you want to swap an agent or model.
+# Each chain is an ORDERED FALLBACK LIST: Ralph Workflow tries the first agent, and
+# if it fails (or exhausts its retries) it moves to the next one.
+#
+# What KIND of model belongs where (plain language):
+#   - planning / analysis  → your most capable, reviewer-grade model.
+#   - development          → a strong coder model.
+#   - commit               → a small/cheap/fast model is fine.
+#
+# The bundled defaults below use ONLY the default-active `claude` agent
+# so a fresh first-run with just Claude installed works out of the box.
+# The two bundled copies (this file's structured [agent_chains.*] tables
+# and ralph-workflow.toml's flat list form) AGREE on this rule. To add a
+# fallback agent, install it, confirm `which <binary>` works, then extend
+# the chain's `agents = [...]` list below. See
+# docs/sphinx/agent-compatibility.md for the per-agent model-string syntax.
 
 [agent_chains.planning]
 agents = ["claude"]
@@ -26,7 +38,7 @@ max_retries = 2
 retry_delay_ms = 1000
 
 [agent_chains.development]
-agents = ["claude", "opencode"]
+agents = ["claude"]
 max_retries = 3
 retry_delay_ms = 1000
 
@@ -85,10 +97,9 @@ retry_delay_ms = 1000
 # above it is bound to no phase in ralph/policy/defaults/pipeline.toml, so
 # validate_drain_contracts / validate_agent_chains_satisfiable do not require a
 # phase binding. The chain mirrors `development` because resolving a conflict
-# is source editing under verification, and conflict resolution must be able
-# to fall back to a second agent when the first cannot converge.
+# is source editing under verification.
 [agent_chains.rebase_conflict_resolution]
-agents = ["claude", "opencode"]
+agents = ["claude"]
 max_retries = 2
 retry_delay_ms = 1000
 

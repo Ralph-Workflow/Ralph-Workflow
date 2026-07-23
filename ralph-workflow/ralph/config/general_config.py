@@ -65,7 +65,27 @@ class GeneralConfig(RalphBaseModel):
     templates_dir: Path | None = None
     git_user_name: str | None = None
     git_user_email: str | None = None
-    provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
+    # RESERVED dead knob: provider_fallback is NOT consumed by any runtime code.
+    # Agent fallback is provided exclusively by [agent_chains] in
+    # ralph-workflow.toml (an ORDERED FALLBACK LIST of agents per role).
+    # This field exists only so a legacy user-global config that still
+    # carries `provider_fallback = {...}` does not trip the unknown-field
+    # detector. Do not document it in user-facing onboarding or TOML
+    # comments; do not add typed accessors for it. A regression-guard
+    # test in tests/test_config_loader.py asserts it is absent from
+    # every bundled ralph/policy/defaults/*.toml. The Field description
+    # below is the public-facing label (Pydantic surfaces it as JSON schema
+    # documentation); the Python comment above is the maintainer rationale.
+    provider_fallback: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "RESERVED dead knob. Agent fallback is provided exclusively by "
+            "[agent_chains] in ralph-workflow.toml; this field is kept so a "
+            "legacy user-global config that still carries provider_fallback "
+            "does not trip the unknown-field detector. Do not set or read "
+            "this field in new configs."
+        ),
+    )
     max_same_agent_retries: int = Field(default=10, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)
     max_retries: int = Field(default=3, ge=0)

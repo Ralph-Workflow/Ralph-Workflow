@@ -132,16 +132,21 @@ value without registering both classes fails this test before reaching productio
 
 ## Config and chains
 
-Agents are configured in `ralph-workflow.toml` under three top-level sections:
+Agents are configured in `ralph-workflow.toml` under four top-level sections:
 
 - `[agents.<name>]` — defines an agent's transport, parser, strategy factory,
   flags, and display name.
 - `[ccs_aliases.<name>]` — creates a short alias that expands to an agent name,
   used in `agent_chains` and `agent_drains`.
-- `[agent_chains]` — chains the output of one agent into the input of another,
-  with optional transformation filters.
-- `[agent_drains]` — fans a single prompt out to multiple agents in parallel and
-  collects all responses.
+- `[agent_chains]` — an ORDERED FALLBACK LIST of agent names for one role.
+  Ralph tries the first agent; if it fails or exhausts its retries, Ralph
+  moves to the next one instead of stopping immediately. This is the
+  canonical definition; do NOT describe it as inter-agent piping.
+- `[agent_drains]` — a ROUTING LABEL that binds a pipeline phase to a chain.
+  The drain name is the pipeline key (`planning`, `development`, `analysis`,
+  `commit`, …) and its value is the chain name that handles it. The drain
+  is NOT parallel fan-out — that is a separate effect handled by
+  `[phases.<name>].parallelization`, not by `[agent_drains]`.
 
 The shorthand forms for built-in transports are also accepted as agent names:
 `claude/<model>` (e.g. `claude/sonnet`), `opencode/<provider>` (e.g.

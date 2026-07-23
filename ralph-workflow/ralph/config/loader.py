@@ -23,16 +23,44 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 from pydantic import ValidationError
 
+from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.config.agent_config import AgentConfig
 from ralph.config.config_error_messages import format_config_validation_error
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
+from ralph.config.prompt_helper_config import PromptHelperConfig
+from ralph.pydantic_validation_errors import suggest_canonical_field
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.pydantic_compat import RalphBaseModel
     from ralph.workspace.scope import WorkspaceScope
 
 GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
+
+# Open user-key maps whose IMMEDIATE child KEYS are user-defined.  We do
+# NOT warn on the child key names (they are chain/alias/agent names the
+# operator chose) but we DO recurse into the leaf fields underneath them.
+# Each entry is (mapping name, leaf-fields model class) where the model
+# class is None when the leaves are free-form (e.g. CCS alias table).
+_USER_KEYED_TABLES: tuple[tuple[str, type[object] | None], ...] = (
+    ("agents", AgentConfig),
+    ("ccs_aliases", None),
+    ("agent_chains", None),
+    ("agent_drains", None),
+)
+
+# Closed nested subtables whose field names we DO want to detect typos on.
+# ``general.workflow`` and ``prompt_helper`` carry specific leaf fields,
+# so a misspelled leaf is a real bug the operator probably wants to see.
+# Reference the classes directly so the Any-free ``RalphBaseModel`` facade
+# in ``ralph.pydantic_compat`` does not force a type-ignore suppression here.
+_CLOSED_SUBTABLE_LEAVES: tuple[tuple[str, type[RalphBaseModel]], ...] = (
+    ("workflow", GeneralWorkflowFlags),
+    ("agent", PromptHelperConfig),
+)
 
 
 class ConfigTomlError(ValueError):
@@ -84,27 +112,170 @@ def load_toml(path: Path) -> dict[str, object]:
 
 
 def warn_unknown_fields(data: dict[str, object], path: Path) -> None:
-    """Warn about misspelled fields in the closed main-config schema."""
-    _warn_unknown_mapping_fields(data, UnifiedConfig.model_fields, path, "")
+    """Emit warning logs for every misspelled field discovered under *data*.
+
+    Walks the closed main-config schema (general, ccs, prompt_helper),
+    the open user-keyed maps (agents, ccs_aliases, agent_chains,
+    agent_drains) at one level of depth, and the leaf fields under each
+    user-defined agent name. Top-level typos are caught, nested typos
+    like ``general.wrokflow`` and ``general.workflow.checkpont_enabled``
+    are caught, and user-defined names like ``[agent_chains.planning]``
+    or ``[agents.claude]`` are NOT warned about.
+
+    Args:
+        data: The parsed TOML data to inspect.
+        path: The TOML file path (used in the warning message).
+    """
+    for line in collect_unknown_config_fields(data, path):
+        logger.warning(line)
+
+
+def _format_unknown_field_message(
+    *, full_path: str, path: Path, suggestion: str | None
+) -> str:
+    """Build a what/why/fix line for a single unknown field.
+
+    Args:
+        full_path: The dotted field path, e.g. ``"general.wrokflow"``.
+        path: The TOML file the field was found in.
+        suggestion: The closest canonical field name, or ``None``.
+
+    Returns:
+        A formatted single-line message mirroring the
+        ``ConfigTomlError`` envelope.
+    """
+    base = (
+        f"What failed: unknown setting `{full_path}` in {path}. "
+        "Why it matters: Ralph ignores keys it does not recognize, so your "
+        "change silently does nothing. "
+        f"Fix: correct the key in {path}"
+    )
+    if suggestion is not None:
+        base = f"{base}; did you mean `{suggestion}`?"
+    base = f"{base}, then run `ralph --check-config`."
+    return base
+
+
+def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[str]:
+    """Return formatted what/why/fix lines for every unknown field under *data*.
+
+    This is the pure collector used by ``ralph --diagnose`` to surface
+    configuration typos without requiring a side-effecting log sink. The
+    returned lines are newline-free single strings; the caller decides
+    how to render them.
+
+    Args:
+        data: The parsed TOML data to inspect.
+        path: The TOML file path (used in the message body).
+
+    Returns:
+        A list of formatted human-readable lines, one per unknown field.
+        Returns an empty list when the config is fully clean.
+    """
+    lines: list[str] = []
+    seen: set[tuple[str, Path]] = set()
+
+    def emit(full_path: str, suggestion: str | None) -> None:
+        key = (full_path, path)
+        if key in seen:
+            return
+        seen.add(key)
+        lines.append(_format_unknown_field_message(full_path=full_path, path=path, suggestion=suggestion))
+
+    # 1. Top-level closed keys
+    _collect_unknown_leaves(
+        data,
+        known_fields=set(UnifiedConfig.model_fields),
+        path=path,
+        prefix="",
+        suggester=emit,
+    )
+
+    # 2. Closed nested subtables (general, ccs, prompt_helper)
     general = data.get("general")
     if isinstance(general, dict):
-        _warn_unknown_mapping_fields(general, GeneralConfig.model_fields, path, "general.")
+        _collect_unknown_leaves(
+            general,
+            known_fields=set(GeneralConfig.model_fields),
+            path=path,
+            prefix="general.",
+            suggester=emit,
+        )
+        # Recurse into the closed sub-subtables declared in
+        # ``_CLOSED_SUBTABLE_LEAVES`` so a typo like
+        # ``general.workflow.checkpont_enabled`` is caught.
+        for sub_name, sub_model in _CLOSED_SUBTABLE_LEAVES:
+            sub = general.get(sub_name)
+            if isinstance(sub, dict):
+                _collect_unknown_leaves(
+                    sub,
+                    known_fields=set(sub_model.model_fields),
+                    path=path,
+                    prefix=f"general.{sub_name}.",
+                    suggester=emit,
+                )
+
+    ccs = data.get("ccs")
+    if isinstance(ccs, dict):
+        from ralph.config.ccs_config import CcsConfig  # local import: avoid cycle at import time
+
+        _collect_unknown_leaves(
+            ccs,
+            known_fields=set(CcsConfig.model_fields),
+            path=path,
+            prefix="ccs.",
+            suggester=emit,
+        )
+
+    prompt_helper = data.get("prompt_helper")
+    if isinstance(prompt_helper, dict):
+        _collect_unknown_leaves(
+            prompt_helper,
+            known_fields=set(PromptHelperConfig.model_fields),
+            path=path,
+            prefix="prompt_helper.",
+            suggester=emit,
+        )
+
+    # 3. Open user-keyed maps: keys are operator-defined; leaves under
+    #    each key are still validated against the closed leaf schema.
     agents = data.get("agents")
     if isinstance(agents, dict):
         for name, agent in agents.items():
             if isinstance(name, str) and isinstance(agent, dict):
-                _warn_unknown_mapping_fields(
-                    agent, AgentConfig.model_fields, path, f"agents.{name}."
+                _collect_unknown_leaves(
+                    agent,
+                    known_fields=set(AgentConfig.model_fields),
+                    path=path,
+                    prefix=f"agents.{name}.",
+                    suggester=emit,
                 )
 
+    # 4. agent_chains and agent_drains carry rich shapes (lists of
+    #    agents, or {chain: str} dicts). Their leaves are NOT a closed
+    #    model — accept anything — but we still want to warn if the
+    #    operator typo'd a chain/drain entry itself. We treat each
+    #    chain/drain name as a user-defined key and stop there.
+    #    (No leaf warnings for these tables by design.)
 
-def _warn_unknown_mapping_fields(
-    data: dict[str, object], known_fields: object, path: Path, prefix: str
+    return lines
+
+
+def _collect_unknown_leaves(
+    data: dict[str, object],
+    *,
+    known_fields: set[str],
+    path: Path,
+    prefix: str,
+    suggester: Callable[[str, str | None], None],
 ) -> None:
-    field_names = set(cast("dict[str, object]", known_fields))
+    """Emit one warning line for every key in *data* not in *known_fields*."""
     for field in data:
-        if field not in field_names:
-            logger.warning("Unknown configuration field `{}` in {}.", f"{prefix}{field}", path)
+        if field in known_fields:
+            continue
+        full_path = f"{prefix}{field}"
+        suggestion = suggest_canonical_field(field, sorted(known_fields))
+        suggester(full_path, suggestion)
 
 
 def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
@@ -165,7 +336,7 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
         "templates_dir",
         "git_user_name",
         "git_user_email",
-        "provider_fallback",
+        "provider_fallback",  # RESERVED dead knob; see general_config.py
         "max_same_agent_retries",
         "max_commit_residual_retries",
         "max_retries",

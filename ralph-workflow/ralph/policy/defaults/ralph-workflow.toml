@@ -260,29 +260,50 @@ subagent_capability = true
 
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
-# A drain is the step of the run an agent handles, such as planning,
-# development, analysis, or commit. The bundled defaults work out of the box;
-# this OPTIONAL section only needs editing when you want a different agent or
-# model to handle a role.
+#
+# Each chain is an ORDERED FALLBACK LIST: Ralph Workflow tries the first agent, and
+# if it fails (or exhausts its retries) it moves to the next one. The
+# first entry is what you actually run; the rest are the safety net.
+#
+# What KIND of model belongs where (plain language):
+#   - planning / analysis  → your most capable, reviewer-grade model.
+#                            These phases review work and catch mistakes.
+#   - development          → a strong coder model.
+#                            This phase edits files and runs the loop.
+#   - commit               → a small/cheap/fast model is fine.
+#                            This phase writes a commit message; speed > depth.
+#
+# The bundled defaults below use ONLY the default-active `claude` agent
+# so a fresh first-run with just Claude installed works out of the box —
+# no other agent binary is required. Once you install another agent and
+# verify it on PATH, uncomment one of the examples below to extend the
+# fallback chain. Each entry is `agent/model`; agent supports multi-segment
+# forms like `opencode/<provider>/<model>` (see
+# docs/sphinx/agent-compatibility.md for the full syntax per agent).
 # ---------------------------------------------------------------------------
 
 [agent_chains]
 planning = ["claude/opus"]
 development = [
-  "opencode/minimax/MiniMax-M2.7-highspeed",
-  "codex",
   "claude/sonnet",
 ]
-analysis = ["opencode/openai/gpt-5.4"]
+analysis = ["claude/opus"]
 commit = ["claude/haiku"]
 
+# After you install opencode and confirm `opencode` is on PATH:
+#   development = ["claude/sonnet", "opencode/openai/gpt-5.4"]
+# After you install codex:
+#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
 # CCS alternative example: planning = ["ccs/work"]
 # See docs/sphinx/configuration.md#ccs_aliases for CCS details.
 
 # Edit this only if you are changing which chain handles a role.
 # ---------------------------------------------------------------------------
 # [agent_drains.*] — Drain-to-chain bindings for pipeline drains
-# Maps each pipeline drain name to a chain name defined in [agent_chains].
+# A drain is a ROUTING LABEL that binds a pipeline phase to a chain.
+# (The chain itself is the ordered fallback list above; the drain is the
+# "which chain handles the planning phase?" answer.)
+#
 # IMPORTANT: the bundled pipeline uses the drain set below.
 # ---------------------------------------------------------------------------
 

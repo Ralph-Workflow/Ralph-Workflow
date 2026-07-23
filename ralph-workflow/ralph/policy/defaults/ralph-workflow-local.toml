@@ -141,22 +141,38 @@
 
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
-# The active defaults below are the recommended starting point. They showcase
-# explicit model families and ordered fallback across Claude, OpenCode, Codex, Nanocoder, and Google Anti Gravity (agy).
+#
+# Each chain is an ORDERED FALLBACK LIST: Ralph Workflow tries the first agent, and
+# if it fails (or exhausts its retries) it moves to the next one.
+#
+# What KIND of model belongs where (plain language):
+#   - planning / analysis  → your most capable, reviewer-grade model.
+#   - development          → a strong coder model.
+#   - commit               → a small/cheap/fast model is fine.
+#
+# The bundled defaults below use ONLY the default-active `claude` agent
+# so a fresh first-run with just Claude installed works out of the box.
+# To add a fallback agent, install it, confirm `which <binary>` works, then
+# extend the chain's list. See docs/sphinx/agent-compatibility.md for the
+# per-agent model-string syntax.
 # ---------------------------------------------------------------------------
 
 [agent_chains]
 planning = ["claude/opus"]
-development = ["opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
-analysis = ["opencode/openai/gpt-5.4"]
+development = ["claude/sonnet"]
+analysis = ["claude/opus"]
 commit = ["claude/haiku"]
 
+# After you install opencode and confirm `opencode` is on PATH:
+#   development = ["claude/sonnet", "opencode/openai/gpt-5.4"]
+# After you install codex:
+#   development = ["claude/sonnet", "codex"]
 # CCS alternative example: planning = ["ccs/work"]
 # See docs/sphinx/configuration.md#ccs_aliases for CCS details.
 
 # ---------------------------------------------------------------------------
 # [agent_drains.*] — Drain-to-chain bindings for pipeline drains
-# Maps each pipeline drain name to a chain name defined in [agent_chains].
+# A drain is a ROUTING LABEL that binds a pipeline phase to a chain.
 # IMPORTANT: the bundled pipeline uses the drain set below.
 # ---------------------------------------------------------------------------
 

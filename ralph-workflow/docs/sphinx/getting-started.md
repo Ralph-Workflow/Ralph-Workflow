@@ -23,10 +23,100 @@ Have these ready before you start:
 ## Exact steps
 
 The canonical six-step install → init → diagnose → spec → run → review
-sequence lives in the repository root
-[`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md#first-run).
-Run those commands from a human-operated shell outside any Ralph-managed
-agent session. For deeper operator configuration, open
+sequence is inlined below so a non-developer can copy-paste without
+bouncing between files. Run every command from a human-operated shell
+**outside any Ralph-managed agent session**.
+
+### 1. Install Ralph Workflow
+
+Install the bundled command and its baseline skills in one step:
+
+```bash
+pipx install ralph-workflow
+```
+
+Ralph Workflow needs Python 3.12 or newer. If you do not have `pipx`,
+install it with `pip install --user pipx && pipx ensurepath` and restart
+your shell.
+
+### 2. Install and authenticate at least one agent CLI
+
+Ralph Workflow orchestrates one of the agent CLIs you already trust. Pick
+one and follow its native install + auth flow:
+
+- **Claude Code** (`claude`): <https://docs.claude.com/claude-code>
+- **Codex CLI** (`codex`): <https://codex.openai.com>
+- **OpenCode** (`opencode`): <https://opencode.ai>
+- **Nanocoder** (`nanocoder`), **Google Anti Gravity** (`agy`),
+  **Pi** (`pi`), **Cursor** (`agent`): see the per-agent install pages in
+  [Agent Compatibility](agent-compatibility.md).
+
+Verify the binary is on `PATH` before continuing:
+
+```bash
+claude --version     # or: codex --version / opencode --version / etc.
+```
+
+### 3. Initialize the project
+
+From inside the git repo you want Ralph Workflow to operate on, run
+`ralph --init`. The command:
+
+1. Detects which agent CLIs are on `PATH` and enables them.
+2. Materialises the user-global config (`~/.config/ralph-workflow.toml`)
+   and the policy defaults.
+3. Writes a starter `PROMPT.md` (with a sentinel comment marking it as
+   the starter template — Ralph Workflow refuses to run until you replace it).
+
+```bash
+ralph --init
+```
+
+`ralph --init` is safe to re-run; it is idempotent and re-checks
+detected agents on every run.
+
+### 4. Confirm the agent is wired up
+
+Run `ralph --list-agents` (or `ralph --diagnose` for the full picture)
+and confirm the agent you authenticated in step 2 shows up. If it does
+not, the agent binary is not on `PATH` for the shell you launched
+`ralph` from.
+
+### 5. Run the pre-flight diagnostic
+
+```bash
+ralph --diagnose
+```
+
+Every line should be green before you spend a real run on it. If a
+line is red, fix that line before continuing.
+
+### 6. Edit `PROMPT.md`
+
+Open the `PROMPT.md` file the init step created in your repo root and
+replace the example content with your task. Remove the
+`<!-- ralph:starter-prompt ... -->` sentinel comment at the top —
+Ralph Workflow refuses to run with the starter template in place.
+
+A small focused task fits four criteria (full guidance in
+**Pick the right first task** below):
+
+- **Clear boundary** — one sentence describes "done".
+- **Clear correctness check** — tests, a script, or a recognisable diff.
+- **Real but not critical** — a backlog item you would merge, not production.
+- **2-6 hours of work**.
+
+### 7. Start the run
+
+```bash
+ralph
+```
+
+The run walks planning → development → commit. The terminal transcript
+is the live observability surface; the on-disk artifacts under
+`.agent/artifacts/` are the durable record.
+
+For deeper operator configuration, open
 [Configuration Reference](configuration.md). For docs grouped by use
 case instead of by document type, open
 [End-User Stories](agent-compatibility.md).

@@ -156,8 +156,10 @@ unattended execution. Codex has no Ralph-managed resume/session flag.
 
 ### OpenCode
 
-The OpenCode builder uses `--approve` for unattended approval plus
-`-m <provider>/<model>` when a model alias is selected. See the complete
+The OpenCode builder does NOT use an autonomy flag; OpenCode ships without
+a built-in unattended-execution mode in the bundled default policy. Model
+selection uses `-m <provider>/<model>` when a model alias is selected. See
+the complete
 [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference).
 
 ### Nanocoder
@@ -176,8 +178,10 @@ completion, and process cleanup through the Nanocoder smoke test.
 The AGY builder runs `agy` inside a PTY with a bounded drain so buffered
 stdout is captured end-to-end. The AGY parser classifies live output into
 `text:` / `thinking:` / `tool_use:` events for the smoke report. With
-`autonomy_mode = "dangerously-bypass-approvals-and-sandbox"`, the argv
-includes the corresponding AGY-side flag.
+`autonomy_mode = "dangerously-skip-permissions"`, the argv includes
+`--dangerously-skip-permissions` (AGY's actual autonomy flag — note this
+is the Claude flag, NOT Codex's `--dangerously-bypass-approvals-and-sandbox`,
+which was incorrectly attributed to AGY in earlier docs).
 
 ### Pi
 

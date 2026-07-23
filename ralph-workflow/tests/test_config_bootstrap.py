@@ -438,12 +438,8 @@ def test_local_template_defines_active_agent_chain_defaults() -> None:
     chains = data["agent_chains"]
 
     assert chains["planning"] == ["claude/opus"]
-    assert chains["development"] == [
-        "opencode/minimax/MiniMax-M2.7-highspeed",
-        "codex",
-        "claude/sonnet",
-    ]
-    assert chains["analysis"] == ["opencode/openai/gpt-5.4"]
+    assert chains["development"] == ["claude/sonnet"]
+    assert chains["analysis"] == ["claude/opus"]
     assert chains["commit"] == ["claude/haiku"]
 
     # Review-era chains must not appear in the active default local template.

@@ -2818,7 +2818,11 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[warning]")
-            self._console.print(message, markup=False, highlight=False, no_wrap=True)
+            # ``soft_wrap=True`` preserves long lines (warnings that mention a
+            # concrete file path or a re-run command) without truncating at
+            # the terminal width — critical because a clipped warning hides
+            # the fix-it phrase the operator needs to act on.
+            self._console.print(message, markup=False, highlight=False, soft_wrap=True)
 
     def emit_skill_failure_warning(self, failures: list[str]) -> None:
         """Emit a single warning line listing the skill-failure entries.

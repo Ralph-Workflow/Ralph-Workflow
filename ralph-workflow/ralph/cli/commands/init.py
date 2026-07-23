@@ -118,6 +118,21 @@ def init_command(
             raise typer.Exit(code=1) from exc
         prompt_path.write_text(prompt, encoding="utf-8")
         display.emit_status(f"Created: {prompt_path}")
+    elif template:
+        # PROMPT.md already exists. An explicit `--init <label>` is NEVER
+        # silently dropped: the operator's intent was to choose a starter
+        # shape, so we still validate the label and tell them why their
+        # file wasn't overwritten. Unknown labels raise as today so a
+        # typo'd `--init feature-specs` (note the plural) still exits 1.
+        try:
+            resolve_starter_template(template)
+        except ValueError as exc:
+            display.emit_warning(str(exc))
+            raise typer.Exit(code=1) from exc
+        display.emit_warning(
+            f'PROMPT.md already exists; the "{template}" starter template was NOT applied. '
+            f"Edit PROMPT.md directly, or delete it and run `ralph --init {template}`."
+        )
 
     auto_seed_default_gitignore(target)
     auto_seed_default_git_exclude(target)

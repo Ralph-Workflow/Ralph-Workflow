@@ -15,7 +15,12 @@ from rich.text import Text
 from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
-from ralph.config.loader import load_config
+from ralph.config.loader import (
+    _global_config_path,
+    collect_unknown_config_fields,
+    load_config,
+    load_toml,
+)
 from ralph.diagnostics.fs_health import FsHealth
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
@@ -471,7 +476,14 @@ def _check_configuration(
     *,
     display: object,
 ) -> bool:
-    """Check configuration validity."""
+    """Check configuration validity.
+
+    Surfaces typo'd config keys as a distinct warning row in the
+    Configuration table so the operator sees them at the same gate that
+    reports ``Config loaded: Success``. Unknown fields are ADVISORY only
+    \u2014 the gate never fails on them; the recommended fix is the
+    ``ralph --check-config`` flow that mirrors the loader warning.
+    """
     from ralph.display.parallel_display import ParallelDisplay
 
     assert isinstance(display, ParallelDisplay)
@@ -492,8 +504,103 @@ def _check_configuration(
         _emit_simple_table(display, "Configuration", rows)
         return False
 
+    # Advisory: re-read the effective global + local TOML so we can flag
+    # typo'd keys without changing the validation result. Unknown keys
+    # are tolerated by the Pydantic schema (extra='ignore') but should
+    # still be visible at the first-run gate.
+    unknown_field_rows = _collect_unknown_field_rows(config_path, workspace_scope)
+    rows.extend(unknown_field_rows)
+
     _emit_simple_table(display, "Configuration", rows)
     return True
+
+
+def _collect_unknown_field_rows(
+    config_path: Path | None, workspace_scope: WorkspaceScope | None
+) -> list[tuple[object, ...]]:
+    """Render unknown-field findings as Configuration-table rows.
+
+    Re-reads the global config and either the explicit ``config_path`` or
+    the workspace-local ``.agent/ralph-workflow.toml`` and runs the
+    pure :func:`collect_unknown_config_fields` collector. Returns one
+    warning-styled row per finding, with the field name in column 1 and
+    the suggested correction + next command in column 2.
+    """
+    rows: list[tuple[object, ...]] = []
+    findings: list[tuple[str, str | None]] = []
+
+    global_path = _global_config_path()
+    global_data = load_toml(global_path)
+    findings.extend(_findings_with_path(global_data, global_path))
+
+    if config_path is not None:
+        local_data = load_toml(config_path)
+        findings.extend(_findings_with_path(local_data, config_path))
+    elif workspace_scope is not None:
+        local_path = workspace_scope.local_config_path
+        local_data = load_toml(local_path)
+        findings.extend(_findings_with_path(local_data, local_path))
+
+    for field_path, suggestion in findings:
+        fix = (
+            f"did you mean `{suggestion}`? fix in TOML, then `ralph --check-config`"
+            if suggestion is not None
+            else "fix in TOML, then `ralph --check-config`"
+        )
+        rows.append(
+            (
+                field_path,
+                Text(fix, style="theme.status.warning"),
+                "",
+                "",
+                "",
+            )
+        )
+    return rows
+
+
+def _findings_with_path(data: dict[str, object], path: Path) -> list[tuple[str, str | None]]:
+    """Run the loader collector and pull (field, suggestion) tuples out of it.
+
+    The collector returns human-readable single-line messages; the
+    diagnose renderer needs the structured ``(field, suggestion)`` pair
+    so we re-parse the suggestion out of the line with a minimal scan
+    rather than introducing a parallel data path through the loader.
+    """
+    raw_lines = collect_unknown_config_fields(data, path)
+    parsed: list[tuple[str, str | None]] = []
+    for line in raw_lines:
+        field, suggestion = _parse_unknown_field_line(line)
+        if field is None:
+            continue
+        parsed.append((field, suggestion))
+    return parsed
+
+
+def _parse_unknown_field_line(line: str) -> tuple[str | None, str | None]:
+    """Extract ``(field, suggestion)`` from a loader-formatted warning line.
+
+    The loader formats each line as::
+        What failed: unknown setting `<field>` in <path>. ...
+        Fix: ... did you mean `<suggestion>`? ...
+
+    Pulling these out without restructuring the loader keeps the
+    collector and the diagnose renderer on the same contract. The line
+    shape is owned by ``config_error_messages`` and this parser is the
+    single non-trivial consumer.
+    """
+    field: str | None = None
+    suggestion: str | None = None
+    _, _, tail = line.partition("unknown setting `")
+    if not tail:
+        return field, suggestion
+    field_part, _, tail = tail.partition("`")
+    field = field_part or None
+    if "did you mean `" in tail:
+        _, _, after = tail.partition("did you mean `")
+        suggestion_part, _, _ = after.partition("`")
+        suggestion = suggestion_part or None
+    return field, suggestion
 
 
 def check_agents(

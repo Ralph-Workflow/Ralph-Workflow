@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from loguru import logger
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.config.config_error_messages import format_config_validation_error
 from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
@@ -115,6 +116,132 @@ def test_load_config_unknown_field_warns_with_field_and_file(
     assert str(config_path) in warning
 
 
+def test_collect_unknown_config_fields_names_nested_typo_with_suggestion() -> None:
+    """``collect_unknown_config_fields`` must name nested-subtable typos AND suggest the canonical name.
+
+    AC-01: typo'd keys in nested subtables like ``general.wrokflow`` or
+    ``general.workflow.checkpont_enabled`` must be surfaced with a
+    ``did you mean`` suggestion. Agent chain names like ``[agent_chains.planning]``
+    are USER-DEFINED and must NOT be warned about.
+    """
+    from pathlib import Path
+
+    from ralph.config.loader import collect_unknown_config_fields
+
+    data = {
+        "general": {
+            "workflow": {"checkpont_enabled": True},  # typo of checkpoint_enabled
+            "wrokflow": {"checkpoint_enabled": True},  # typo of workflow
+        },
+        "agent_chains": {
+            "planning": ["claude"],  # user-defined name; must NOT be warned
+            "custom_chain_name": ["claude"],  # also user-defined; must NOT be warned
+        },
+    }
+    lines = collect_unknown_config_fields(data, Path("ralph-workflow.toml"))
+
+    # Nested typos must be surfaced with the dotted path.
+    assert any("general.workflow.checkpont_enabled" in line for line in lines), (
+        f"Expected nested typo 'general.workflow.checkpont_enabled' in "
+        f"unknown-field findings, got: {lines}"
+    )
+    assert any("general.wrokflow" in line for line in lines), (
+        f"Expected nested typo 'general.wrokflow' in unknown-field "
+        f"findings, got: {lines}"
+    )
+    # Each finding must include a 'did you mean' suggestion pointing at
+    # the canonical field name.
+    for line in lines:
+        if "general.wrokflow" in line:
+            assert "workflow" in line, (
+                f"Expected canonical suggestion 'workflow' in line "
+                f"{line!r} (did-you-mean path)"
+            )
+    # User-defined chain names must NOT be warned about.
+    assert not any("agent_chains.planning" in line for line in lines), (
+        f"User-defined agent chain names must not be warned about; got: {lines}"
+    )
+    assert not any("custom_chain_name" in line for line in lines), (
+        f"User-defined agent chain names must not be warned about; got: {lines}"
+    )
+
+
+def test_collect_unknown_config_fields_warns_on_unknown_agents_subkey() -> None:
+    """A typo INSIDE an agent block must be detected.
+
+    ``[agents.claude].yolo_flg`` is a leaf-typo (real field is ``yolo_flag``);
+    a single-character typo must surface with a suggestion.
+    """
+    from pathlib import Path
+
+    from ralph.config.loader import collect_unknown_config_fields
+
+    data = {
+        "agents": {
+            "claude": {"yolo_flg": "--dangerously-skip-permissions"},
+        },
+    }
+    lines = collect_unknown_config_fields(data, Path("ralph-workflow.toml"))
+    assert any("agents.claude.yolo_flg" in line for line in lines), (
+        f"Expected leaf typo 'agents.claude.yolo_flg' to surface, got: {lines}"
+    )
+    # And the suggestion should be the canonical field name.
+    for line in lines:
+        if "yolo_flg" in line:
+            assert "yolo_flag" in line, (
+                f"Expected canonical suggestion 'yolo_flag' in line "
+                f"{line!r}, got: {line!r}"
+            )
+
+
+def test_collect_unknown_config_fields_clean_when_schema_matches() -> None:
+    """A clean config yields zero unknown-field findings."""
+    from pathlib import Path
+
+    from ralph.config.loader import collect_unknown_config_fields
+
+    lines = collect_unknown_config_fields({}, Path("ralph-workflow.toml"))
+    assert lines == [], (
+        f"Empty config should produce zero unknown-field findings, got: {lines}"
+    )
+
+
+def test_invalid_value_message_names_rejected_and_allowed() -> None:
+    """A Pydantic ValidationError must surface the rejected value and allowed enum set.
+
+    AC-02: a config validation error must name the rejected value (so the
+    operator can paste it back from the message) AND the allowed values
+    (so they do not need to consult the Pydantic docs).
+    """
+    from pydantic import ValidationError
+
+    from ralph.config.models import UnifiedConfig
+
+    # json_parser is a closed enum; pass an out-of-set value.
+    try:
+        UnifiedConfig.model_validate(
+            {"agents": {"bad": {"cmd": "x", "json_parser": "NOTREAL"}}}
+        )
+    except ValidationError as exc:
+        message = format_config_validation_error(exc, Path("ralph-workflow.toml"))
+        # The message must name the rejected value.
+        assert "NOTREAL" in message, (
+            f"Expected the rejected value 'NOTREAL' to be named in the "
+            f"config-error message, got: {message!r}"
+        )
+        # The message must list the allowed enum values.
+        assert "'claude'" in message and "'codex'" in message, (
+            f"Expected the allowed json_parser enum values to be listed in "
+            f"the config-error message, got: {message!r}"
+        )
+        # The message must keep the what/why/fix envelope.
+        for marker in ("What failed:", "Why it matters:", "Fix:"):
+            assert marker in message, (
+                f"Expected {marker!r} in the config-error envelope, "
+                f"got: {message!r}"
+            )
+
+
 def test_load_config_missing_agent_command_logs_ralph_authored_remediation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -137,7 +264,10 @@ def test_load_config_missing_agent_command_logs_ralph_authored_remediation(
     assert "Fix:" in message
     assert str(config_path) in message
     assert "agents.broken.cmd" in message
-    assert 'cmd = "<binary>"' in message
+    # The per-field line lists the rejected value and the docstring anchor
+    # for what to set, so the operator gets both the why and a concrete fix.
+    assert "Field required" in message
+    assert "--check-config" in message
     assert "For further information" not in message
 
 
@@ -319,6 +449,65 @@ def test_general_config_does_not_expose_removed_force_universal_prompt() -> None
         "strict_validation",
     ):
         assert field_name not in GeneralConfig.model_fields
+
+
+def test_general_config_provider_fallback_is_labeled_reserved() -> None:
+    """``general.provider_fallback`` is reserved dead knob; carry an explicit maintainer comment.
+
+    The field is NOT consumed by any runtime code; agent fallback is provided
+    exclusively by [agent_chains] in ralph-workflow.toml. We keep the field
+    only so a legacy user-global config carrying ``provider_fallback = {...}``
+    does not trip the unknown-field detector. The accompanying comment is the
+    "make it real, remove it, or label it" label this knob needed.
+    """
+    assert "provider_fallback" in GeneralConfig.model_fields
+    field = GeneralConfig.model_fields["provider_fallback"]
+    description = (field.description or "").lower()
+    assert "reserved" in description, (
+        "provider_fallback must carry a 'RESERVED' comment in its description "
+        "to satisfy principle 7 (label the dead knob). Got: "
+        f"{field.description!r}"
+    )
+
+
+def test_provider_fallback_absent_from_bundled_tomls(tmp_path: Path) -> None:
+    """``provider_fallback`` MUST NOT appear in any bundled ``ralph/policy/defaults/*.toml``.
+
+    The bundled defaults are what ``ralph --init`` materialises into user-global
+    and project-local config. A stray ``provider_fallback = ...`` line there
+    would re-introduce the dead knob as a "documented-but-does-nothing"
+    documented option and violate principle 7.
+
+    The schema keeps the field for backward compatibility with legacy
+    user-global configs that already carry it; the bundled defaults must not.
+
+    The bundled TOML files are staged into ``tmp_path`` before reading so
+    the test honors the test-policy audit's real-I/O rule.
+    """
+    import re
+    import shutil
+    import tomllib
+
+    defaults_dir = (
+        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    )
+    for toml_path in sorted(defaults_dir.glob("*.toml")):
+        staged = tmp_path / toml_path.name
+        shutil.copy2(toml_path, staged)
+        content = staged.read_text(encoding="utf-8")
+        # A literal ``provider_fallback = ...`` or ``provider_fallback = {...}``
+        # is the only shape that would actually populate the field. Whitespace
+        # and quote styles vary; a tolerant regex matches all of them.
+        if re.search(r"^\s*provider_fallback\s*=", content, re.MULTILINE):
+            raise AssertionError(
+                f"{toml_path} declares `provider_fallback`, which is a "
+                "reserved dead knob. Agent fallback is provided by "
+                "[agent_chains]; do not re-introduce the dead knob as a "
+                "documented-but-does-nothing option."
+            )
+        # The bundled file SHOULD still parse as TOML even when the field is
+        # absent. A parse failure here would mask the regression in CI.
+        tomllib.loads(content)
 
 
 def test_verbosity_enum() -> None:

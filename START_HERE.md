@@ -11,11 +11,13 @@ The selection and trust-boundary story is in
 
 ## First run
 
-The canonical six-step sequence (install → init → diagnose → spec →
-run → review) lives in the
-[`README.md`](README.md#first-run) first-run block. The pre-flight
-check is run by the same six-step sequence; the long-form walkthrough
-is in [`Getting started`](ralph-workflow/docs/sphinx/getting-started.md).
+The canonical first-run walkthrough is
+[`Getting started`](ralph-workflow/docs/sphinx/getting-started.md) — it
+is the single home for the install → init → diagnose → spec → run →
+review sequence, inlined as runnable commands so a non-developer can
+copy-paste without bouncing between files. The
+[`README.md`](README.md#first-run) first-run block has the same shape
+in fewer steps; both point at the same operator manual.
 
 ## Success looks like
 
@@ -29,3 +31,5 @@ environment, exercise the feature, then decide the next action.
 - [`docs/README.md`](docs/README.md) — docs map
 - [`ralph-workflow/docs/sphinx/index.rst`](ralph-workflow/docs/sphinx/index.rst) —
   the operator manual
+- [`ralph-workflow/docs/sphinx/getting-started.md`](ralph-workflow/docs/sphinx/getting-started.md) —
+  the canonical first-run path

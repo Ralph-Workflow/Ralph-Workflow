@@ -373,6 +373,58 @@ def test_build_next_steps_all_ok_recommends_run() -> None:
 
 
 @pytest.mark.timeout_seconds(5)
+def test_diagnose_flags_unknown_config_field(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``ralph --diagnose`` must surface typo'd config keys as a warning row.
+
+    Without the unknown-field surfacing, the Configuration table reports
+    ``Config loaded: Success`` while silently dropping the typo — the
+    exact pre-first-run footgun AC-01 names.
+    """
+    del clean_env
+    _stub_init_bootstrap(monkeypatch)
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Bootstrap a project-local config with a typo'd nested-subtable
+    # (`general.wrokflow`). The typo is close to canonical so the
+    # suggestion path also fires.
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        "[general]\nverbosity = 2\nwrokflow = { checkpoint_enabled = true }\n",
+        encoding="utf-8",
+    )
+    # Mirror the patched local path into the loader's expectations.
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
+
+    output = result.output
+    # The Configuration table must still report "Config loaded: Success" so
+    # the gate keeps its normal shape; the unknown-field row is an
+    # additional warning row, not a flipped config_ok.
+    assert "Config loaded" in output, (
+        f"Expected 'Config loaded' status row in --diagnose output, got: {output}"
+    )
+    # The flat string-list of unknown-field rows exposes the field name in
+    # column 1 of the row.
+    assert "general.wrokflow" in output, (
+        f"Expected the typo'd 'general.wrokflow' field to be surfaced in "
+        f"--diagnose output, got: {output}"
+    )
+    # The fix-it suggestion must include the canonical field name so the
+    # operator can correct the typo without grep'ing the docs.
+    assert "workflow" in output, (
+        f"Expected the canonical 'workflow' suggestion in --diagnose output, "
+        f"got: {output}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
 def test_diagnose_next_steps_panel_rendered_in_cli(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

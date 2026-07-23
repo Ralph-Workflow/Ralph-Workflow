@@ -11,6 +11,7 @@ from io import StringIO
 from typing import TYPE_CHECKING
 
 import pytest
+import typer
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
@@ -187,3 +188,120 @@ def test_init_command_runs_capability_refresh_on_every_run(
 
     output = stream.getvalue()
     assert "Ralph Workflow initialized in" in output
+
+
+@pytest.mark.timeout_seconds(3)
+def test_init_label_over_existing_prompt_warns_not_applied(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``ralph --init <label>`` over an existing PROMPT.md must NOT silently ignore the label.
+
+    AC-03: an explicit valid label must print a clear "template was not applied"
+    warning that names the label and tells the operator how to apply it,
+    instead of silently doing nothing. PROMPT.md content must be unchanged.
+    """
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+
+    # Pre-create PROMPT.md with a sentinel-free marker so we can verify
+    # the init path leaves it alone (no overwrite).
+    (tmp_path / "PROMPT.md").write_text("# my task\ndo the thing\n", encoding="utf-8")
+
+    def fake_ensure(_self_obj: object, *, workspace_root: object) -> object:
+        return CapabilityState(), []
+
+    monkeypatch.setattr(
+        manager_module.SkillManager,
+        "ensure_baseline_capabilities",
+        fake_ensure,
+    )
+
+    init_module.init_command(template="refactor")
+
+    output = stream.getvalue()
+    # The warning names the label so the operator can act on it.
+    assert "refactor" in output, (
+        f"Expected the label 'refactor' to be quoted in the warning so "
+        f"the operator can act on it, got: {output}"
+    )
+    # The warning points the operator at the remediation.
+    assert (
+        "edit PROMPT.md directly" in output
+        or "remove/rename PROMPT.md" in output
+        or "ralph --init refactor" in output
+    ), (
+        f"Expected the warning to point the operator at the remediation "
+        f"path, got: {output}"
+    )
+    # The original PROMPT.md content was preserved (no overwrite).
+    assert (tmp_path / "PROMPT.md").read_text(encoding="utf-8") == "# my task\ndo the thing\n", (
+        "PROMPT.md must NOT be overwritten when an explicit label is "
+        "passed over an existing file"
+    )
+
+
+@pytest.mark.timeout_seconds(3)
+def test_init_label_over_existing_prompt_unknown_label_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``ralph --init <bad-label>`` over an existing PROMPT.md must still error non-zero.
+
+    AC-03: an UNKNOWN label over an existing PROMPT.md must NOT silently
+    succeed (the typo'd label still has to be flagged). The init path
+    resolves the template first to surface unknown labels, then prints
+    the same warning a valid label would emit.
+    """
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "PROMPT.md").write_text("# existing\n", encoding="utf-8")
+
+    def fake_ensure(_self_obj: object, *, workspace_root: object) -> object:
+        return CapabilityState(), []
+
+    monkeypatch.setattr(
+        manager_module.SkillManager,
+        "ensure_baseline_capabilities",
+        fake_ensure,
+    )
+
+    with pytest.raises(typer.Exit):
+        init_module.init_command(template="feature-specs")  # plural — typo
+
+    output = stream.getvalue()
+    # Unknown label must surface the same it/why/fix envelope as the
+    # bare ``ralph --init feature-specs`` path.
+    assert "feature-specs" in output or "Unknown PROMPT.md template" in output, (
+        f"Expected the unknown-label name to appear in the warning, got: {output}"
+    )
+
+
+@pytest.mark.timeout_seconds(3)
+def test_init_no_template_over_existing_prompt_stays_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A bare ``ralph --init`` (no template) over an existing PROMPT.md stays silent.
+
+    AC-03: only an EXPLICIT --init <label> triggers the new warning; a bare
+    re-run keeps its existing behavior (no spurious warning).
+    """
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "PROMPT.md").write_text("# existing\n", encoding="utf-8")
+
+    def fake_ensure(_self_obj: object, *, workspace_root: object) -> object:
+        return CapabilityState(), []
+
+    monkeypatch.setattr(
+        manager_module.SkillManager,
+        "ensure_baseline_capabilities",
+        fake_ensure,
+    )
+
+    init_module.init_command(template=None)
+
+    output = stream.getvalue()
+    # The AC-03 warning should NOT appear for a bare re-run.
+    assert "starter template was not applied" not in output, (
+        f"A bare re-run must not print the template-not-applied warning, "
+        f"got: {output}"
+    )

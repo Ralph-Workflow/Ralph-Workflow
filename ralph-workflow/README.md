@@ -16,6 +16,12 @@ ralph --diagnose   # optional pre-flight check
 post-condition is that `ralph --version` prints the installed package
 version.
 
+The canonical first-run walkthrough — install → init → diagnose → edit
+PROMPT.md → run — is in
+[Getting started](docs/sphinx/getting-started.md). It is the single home
+for the six-step sequence and does not require opening any other config
+file before your first run.
+
 ## Supported agents
 
 Eight built-in agents ship with Ralph Workflow:

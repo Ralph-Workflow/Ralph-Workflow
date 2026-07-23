@@ -370,7 +370,7 @@ def test_config_synthesized_policy_keeps_default_chains_not_overridden(
     agents_policy = policy_loader.load_agents_policy(tmp_path, config=config)
 
     assert agents_policy.agent_chains["planning"].agents == ["codex"]
-    assert agents_policy.agent_chains["development"].agents == ["claude", "opencode"]
+    assert agents_policy.agent_chains["development"].agents == ["claude"]
     assert agents_policy.agent_drains["development"].chain == "development"
 
 
