@@ -25,6 +25,48 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._tool_spec import ToolSpec
     from ralph.mcp.tools.bridge._types import JsonObject
 
+# Mis-prefixes models commonly invent for MCP tool names; stripped when looking
+# for the tool the agent actually meant.
+_INVENTED_PREFIXES: tuple[str, ...] = ("ralph_mcp__", "mcp__ralph__", "ralph__", "ralph_", "ralph.")
+
+# Retired JSON artifact tools -> their markdown replacements.
+# CONTRACT (PROMPT.md): the markdown artifact migration removed these tools;
+# calling a removed name must fail with an error that says so and names the
+# specific markdown tool to call instead. Keyed by exact retired name;
+# mis-prefixed variants are handled by the same prefix-stripping as
+# ``_suggest_registered_name``.
+_RETIRED_JSON_TOOL_REPLACEMENTS: dict[str, str] = {
+    "ralph_submit_artifact": "ralph_submit_md_artifact",
+    "ralph_submit_plan_section": "ralph_stage_md_artifact",
+    "ralph_submit_plan_sections": "ralph_stage_md_artifact",
+    "ralph_finalize_plan": "ralph_finalize_md_artifact",
+    "ralph_get_plan_draft": "ralph_get_md_draft",
+    "ralph_discard_plan_draft": "ralph_discard_md_draft",
+    "ralph_validate_draft": "ralph_verify_md_artifact",
+    "ralph_patch_step": "ralph_edit_md_plan_step",
+    "ralph_insert_plan_step": "ralph_edit_md_plan_step",
+    "ralph_replace_plan_step": "ralph_edit_md_plan_step",
+    "ralph_remove_plan_step": "ralph_edit_md_plan_step",
+    "ralph_move_plan_step": "ralph_edit_md_plan_step",
+}
+
+
+def _candidate_names(name: str) -> tuple[str, ...]:
+    """Return ``name`` plus variants with common invented prefixes stripped."""
+    stripped = tuple(
+        name[len(prefix) :] for prefix in _INVENTED_PREFIXES if name.startswith(prefix)
+    )
+    return (name, *stripped)
+
+
+def _retired_replacement(name: str) -> str | None:
+    """Return the markdown replacement if ``name`` is a retired JSON artifact tool."""
+    for candidate in _candidate_names(name):
+        replacement = _RETIRED_JSON_TOOL_REPLACEMENTS.get(candidate)
+        if replacement is not None:
+            return replacement
+    return None
+
 
 class ToolBridge:
     """Registry for MCP tools and dispatcher for tool invocations."""
@@ -76,20 +118,28 @@ class ToolBridge:
         tool name — models often mis-prefix MCP tools (e.g. ``ralph_mcp__exec`` or
         ``mcp__ralph__exec`` instead of the registered name) — and lists what is
         available so the next call can succeed.
+
+        Retired JSON artifact tools are checked first: they get a dedicated
+        error naming the markdown replacement (see
+        ``_RETIRED_JSON_TOOL_REPLACEMENTS``).
         """
-        base = f"Tool '{name}' is not registered."
+        base = f"Tool '{name}' is not registered"
+        replacement = _retired_replacement(name)
+        if replacement is not None:
+            return (
+                f"{base}: it was removed in the markdown artifact migration. "
+                f"Call '{replacement}' instead."
+            )
         suggestion = self._suggest_registered_name(name)
         hint = f" Did you mean '{suggestion}'?" if suggestion else ""
         available = ", ".join(sorted(self._tools)) or "(none)"
-        return f"{base}{hint} Do not retry the same name. Available tools: {available}"
+        return f"{base}.{hint} Do not retry the same name. Available tools: {available}"
 
     def _suggest_registered_name(self, name: str) -> str | None:
         """Strip common mis-prefixes a model may invent and return a real tool name."""
-        for prefix in ("ralph_mcp__", "mcp__ralph__", "ralph__", "ralph_", "ralph."):
-            if name.startswith(prefix):
-                candidate = name[len(prefix) :]
-                if candidate in self._tools:
-                    return candidate
+        for candidate in _candidate_names(name)[1:]:
+            if candidate in self._tools:
+                return candidate
         return None
 
     def list_metadata(self) -> list[ToolMetadata]:
