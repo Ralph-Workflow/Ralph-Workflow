@@ -8,8 +8,11 @@ setups: both paths call ``maybe_push_target`` after local success.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git import remote_push
@@ -20,7 +23,60 @@ from ralph.pipeline.rebase_state import RebaseState
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    import pytest
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+
+
+def test_push_updates_a_real_bare_remote(tmp_git_repo: Path, tmp_path: Path) -> None:
+    """The Git boundary updates the target ref in a real bare repository."""
+    bare = tmp_path / "origin.git"
+    subprocess.run(
+        ("git", "init", "--bare", str(bare)),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    branch = subprocess.run(
+        ("git", "symbolic-ref", "--short", "HEAD"),
+        cwd=tmp_git_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+    subprocess.run(
+        ("git", "remote", "add", "origin", str(bare)),
+        cwd=tmp_git_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    summary = remote_push.push_branch_to_all_remotes(
+        tmp_git_repo,
+        branch,
+        timeout_seconds=2.0,
+    )
+    remote_sha = subprocess.run(
+        ("git", "rev-parse", f"refs/heads/{branch}"),
+        cwd=bare,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+    local_sha = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=tmp_git_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+
+    assert remote_sha == local_sha
+    assert summary == f"pushed {branch} to 1/1 remotes"
 
 
 def _result(
