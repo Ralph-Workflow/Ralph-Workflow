@@ -8,8 +8,6 @@ mock of it.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from ralph.project_policy import analysis, pipeline_driver, remediation
@@ -40,18 +38,26 @@ def _submit_decision(
 ) -> None:
     """Write the decision artifact the way the MCP submit path would."""
     workspace.mkdirs(".agent/artifacts")
+    shortcomings = what_came_up_short or []
+    extra_sections = ""
+    if shortcomings:
+        short_items = "\n".join(
+            f"- [W-{index}] {item}" for index, item in enumerate(shortcomings, start=1)
+        )
+        extra_sections = (
+            f"\n## What Came Up Short\n\n{short_items}\n"
+            "\n## How To Fix\n\n- [FIX-1] Do the thing.\n"
+        )
     workspace.write(
         analysis.ANALYSIS_ARTIFACT_REL_PATH,
-        json.dumps(
-            {
-                "type": analysis.ANALYSIS_ARTIFACT_TYPE,
-                "content": {
-                    "status": status,
-                    "summary": "review",
-                    "what_came_up_short": what_came_up_short or [],
-                    "how_to_fix": ["do the thing"] if what_came_up_short else [],
-                },
-            }
+        (
+            "---\n"
+            f"type: {analysis.ANALYSIS_ARTIFACT_TYPE}\n"
+            f"status: {status}\n"
+            "---\n\n"
+            "## Summary\n\n"
+            "- [SUM-1] Review complete.\n"
+            f"{extra_sections}"
         ),
     )
 
@@ -318,4 +324,3 @@ def test_on_remediation_attempt_callback_defaults_to_noop() -> None:
     )
 
     assert result.status is ReadinessStatus.READY
-

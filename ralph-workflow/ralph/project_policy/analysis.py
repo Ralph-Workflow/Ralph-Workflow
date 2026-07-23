@@ -70,9 +70,7 @@ ANALYSIS_PROMPT_REL_PATH: str = ".agent/tmp/policy_remediation_analysis_prompt.m
 #: The artifact the analysis agent submits, as declared in
 #: ``ralph/policy/defaults/artifacts.toml``.
 ANALYSIS_ARTIFACT_TYPE: str = "policy_remediation_analysis_decision"
-ANALYSIS_ARTIFACT_REL_PATH: str = (
-    f".agent/artifacts/{ANALYSIS_ARTIFACT_TYPE}.json"
-)
+ANALYSIS_ARTIFACT_REL_PATH: str = f".agent/artifacts/{ANALYSIS_ARTIFACT_TYPE}.md"
 
 EmitFn = Callable[[str], None]
 
@@ -96,7 +94,7 @@ def _noop_emit(message: str) -> None:
 def _string_list(value: object) -> list[str]:
     """Coerce an artifact field to a list of non-empty strings.
 
-    The artifact is agent-supplied JSON, so every field is untrusted: the value
+    The artifact is agent-supplied markdown, so every field is untrusted: the value
     may be absent, a scalar, or a list of anything at all. Anything that is not a
     list of non-empty strings degrades to an empty list rather than raising -- a
     malformed feedback field must not crash the policy pipeline.
@@ -151,7 +149,7 @@ def clear_stale_decision(workspace: Workspace) -> None:
 
 
 def read_analysis_decision(workspace: Workspace) -> AnalysisDecision:
-    """Read the analysis decision back from the artifact JSON.
+    """Read the analysis decision back from the markdown artifact.
 
     Fails closed in every degenerate case -- artifact absent, unreadable,
     malformed, wrong type, or carrying a status outside the decision vocabulary

@@ -90,7 +90,7 @@ Add a new `[artifacts.<name>]` block and ensure the matching drain/phase expects
 
 Each artifact type has a short, closed markdown format. Agents read its
 bundled format document, author the complete markdown document, and submit it
-through `ralph_submit_md_artifact`. Ralph validates the same document before
+through `ralph_submit_md_artifact`. Ralph Workflow validates the same document before
 storing it at `.agent/artifacts/<artifact_type>.md`.
 
 Keep custom prompt guidance aligned with the bundled format document. Do not

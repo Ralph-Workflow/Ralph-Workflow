@@ -44,9 +44,6 @@ _FORBIDDEN_DIRS = (
     _RALPH_DIR / "runtime",
 )
 _CONSTRUCTOR_FILE = "parallel_display.py"
-_START_LINE_NUMBER = 1486
-_STOP_LINE_NUMBER = 1494
-_CTOR_LINE_NUMBER = 541
 
 
 @lru_cache(maxsize=1)
@@ -130,6 +127,27 @@ def _attribute_call_sites(
     return sites
 
 
+def _site_is_in_method(
+    tree: ast.Module,
+    lineno: int,
+    *,
+    class_name: str,
+    method_name: str,
+) -> bool:
+    """Return whether ``lineno`` belongs to the named class method."""
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        for child in node.body:
+            if (
+                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and child.name == method_name
+                and child.lineno <= lineno <= (child.end_lineno or child.lineno)
+            ):
+                return True
+    return False
+
+
 # Pre-warm the AST cache at import time so per-test SIGALRM windows
 # are not spent re-parsing files.
 for _path in _scan_targets():
@@ -140,15 +158,19 @@ def test_status_bar_only_instantiated_inside_parallel_display() -> None:
     """``StatusBar(...)`` constructor sites appear ONLY in parallel_display.py.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.__init__``
-    at ``_CTOR_LINE_NUMBER`` (``self._status_bar: StatusBar = StatusBar(self)``). No
-    other module under ``ralph/display/``, ``ralph/pipeline/``, or
+    No other class or method under ``ralph/display/``, ``ralph/pipeline/``, or
     ``ralph/cli/`` may construct ``StatusBar``.
     """
     violations: list[str] = []
     for path in _scan_targets():
         tree = _parse(path)
         for lineno in _status_bar_constructor_sites(tree):
-            if path.name == _CONSTRUCTOR_FILE and lineno == _CTOR_LINE_NUMBER:
+            if path.name == _CONSTRUCTOR_FILE and _site_is_in_method(
+                tree,
+                lineno,
+                class_name="ParallelDisplay",
+                method_name="__init__",
+            ):
                 continue
             violations.append(f"{_rel(path)}:{lineno}: StatusBar(...)")
     assert not violations, (
@@ -164,8 +186,8 @@ def test_parallel_display_is_only_class_that_starts_status_bar() -> None:
     ``ParallelDisplay.start``.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.start``
-    at line ``_START_LINE_NUMBER``. No other module under ``ralph/display/``, ``ralph/pipeline/``,
-    or ``ralph/cli/`` may call ``start()`` on the composed StatusBar.
+    No other class or method under ``ralph/display/``, ``ralph/pipeline/``, or
+    ``ralph/cli/`` may call ``start()`` on the composed StatusBar.
     """
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
     violations: list[str] = []
@@ -176,7 +198,12 @@ def test_parallel_display_is_only_class_that_starts_status_bar() -> None:
             attr="start",
             receiver_names=receiver_names,
         ):
-            if path.name == _CONSTRUCTOR_FILE and lineno == _START_LINE_NUMBER:
+            if path.name == _CONSTRUCTOR_FILE and _site_is_in_method(
+                tree,
+                lineno,
+                class_name="ParallelDisplay",
+                method_name="start",
+            ):
                 continue
             violations.append(f"{_rel(path)}:{lineno}: *.start()")
     assert not violations, (
@@ -192,8 +219,8 @@ def test_status_bar_stop_only_inside_parallel_display_stop() -> None:
     ``ParallelDisplay.stop``.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.stop``
-    at line ``_STOP_LINE_NUMBER``. No other module under ``ralph/display/``, ``ralph/pipeline/``,
-    or ``ralph/cli/`` may call ``stop()`` on the composed StatusBar.
+    No other class or method under ``ralph/display/``, ``ralph/pipeline/``, or
+    ``ralph/cli/`` may call ``stop()`` on the composed StatusBar.
     """
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
     violations: list[str] = []
@@ -204,7 +231,12 @@ def test_status_bar_stop_only_inside_parallel_display_stop() -> None:
             attr="stop",
             receiver_names=receiver_names,
         ):
-            if path.name == _CONSTRUCTOR_FILE and lineno == _STOP_LINE_NUMBER:
+            if path.name == _CONSTRUCTOR_FILE and _site_is_in_method(
+                tree,
+                lineno,
+                class_name="ParallelDisplay",
+                method_name="stop",
+            ):
                 continue
             violations.append(f"{_rel(path)}:{lineno}: *.stop()")
     assert not violations, (

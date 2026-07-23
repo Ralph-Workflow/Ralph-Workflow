@@ -9,6 +9,9 @@ To edit one step, call `ralph_edit_md_plan_step` with its stable `S-n` ID.
 Insert, move, replace, and remove never renumber IDs. A replacement is one
 complete `### [S-n] Title` block whose ID matches `step_id`.
 
+Parallel work is delegated to agent-managed sub-agents. Ralph-managed fan-out is dormant
+in this build.
+
 See the complete opinionated sample:
 `.agent/artifact-formats/examples/plan.md`.
 
