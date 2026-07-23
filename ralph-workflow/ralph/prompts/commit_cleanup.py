@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL
+from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL
 from ralph.prompts._commit_diff import commit_cleanup_diff
 from ralph.prompts.commit import _format_submit_artifact_tool_instructions
 from ralph.prompts.materialize_support import (
@@ -42,8 +42,8 @@ def render_commit_cleanup_prompt(
     if worker_namespace:
         output_dir = worker_namespace / "tmp/prompt_payloads"
     bv = {
-        "SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
-            SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+        "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
+            SUBMIT_MD_ARTIFACT_TOOL.prompt_aliases(
                 tool_name_prefix=session_caps.tool_name_prefix,
             )
         ),

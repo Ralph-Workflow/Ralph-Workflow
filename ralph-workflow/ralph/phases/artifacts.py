@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -37,13 +36,12 @@ def load_phase_artifact(workspace: Workspace, path: str) -> dict[str, object]:
 
 def _load_legacy_json_artifact(text: str, path: str) -> dict[str, object]:
     """Read the historical JSON envelope without changing its shape."""
+    from ralph.mcp.artifacts.legacy_json import parse_or_reject
+
     try:
-        raw_obj: object = json.loads(text)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise PhaseArtifactError(f"Artifact at {path} must be valid JSON text") from exc
-    if not isinstance(raw_obj, dict):
-        raise PhaseArtifactError(f"Artifact at {path} must be a JSON object")
-    return cast("dict[str, object]", raw_obj)
+        return parse_or_reject(path, text)
+    except ValueError as exc:
+        raise PhaseArtifactError(str(exc)) from exc
 
 
 def _load_markdown_artifact(text: str, path: str) -> dict[str, object]:

@@ -28,7 +28,7 @@ from ralph.mcp.artifacts.plan import (
 )
 from ralph.mcp.tools.names import (
     DECLARE_COMPLETE_TOOL,
-    SUBMIT_ARTIFACT_TOOL,
+    SUBMIT_MD_ARTIFACT_TOOL,
     WRITE_FILE_TOOL,
     claude_tool_name,
     claude_tool_name_prefix,
@@ -316,7 +316,7 @@ def _render_prompt_for_phase(
             _commit_phase_diff(workspace_root),
             template_registry=tmpl_ctx.registry,
             partials=tmpl_ctx.partials,
-            submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+            submit_artifact_tool_names=SUBMIT_MD_ARTIFACT_TOOL.prompt_aliases(
                 tool_name_prefix=session_caps.tool_name_prefix,
             ),
             payload_config=CommitPromptPayloadConfig(
@@ -577,7 +577,7 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
             "description": unit.description,
             "allowed_directories": json.dumps(unit.allowed_directories, indent=2),
             "base_prompt": base_prompt,
-            "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_ARTIFACT_TOOL}`",
+            "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_MD_ARTIFACT_TOOL}`",
             "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
             "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
         },
@@ -603,10 +603,10 @@ _CLAUDE_STYLE_TRANSPORTS = (
 def submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
     """Return the submit-artifact tool name for the given transport."""
     if transport in _CLAUDE_STYLE_TRANSPORTS:
-        return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+        return claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
     if transport == AgentTransport.OPENCODE:
-        return opencode_tool_name(SUBMIT_ARTIFACT_TOOL)
-    return SUBMIT_ARTIFACT_TOOL
+        return opencode_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
+    return SUBMIT_MD_ARTIFACT_TOOL
 
 
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:

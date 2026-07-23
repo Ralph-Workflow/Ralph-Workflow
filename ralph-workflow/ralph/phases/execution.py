@@ -17,10 +17,8 @@ pre-validation for plan and development_result drains.
 from __future__ import annotations
 
 import json
-import re
 from contextlib import suppress
 from datetime import datetime
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -65,9 +63,6 @@ if TYPE_CHECKING:
         PhaseDefinition,
         PipelinePolicy,
     )
-
-_MATCH_SCORE_THRESHOLD = 0.88
-_MATCH_SCORE_GAP = 0.03
 
 
 def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
@@ -325,7 +320,7 @@ def _step_proof_errors(required_refs: frozenset[str], submitted_list: list[str])
     if missing:
         errors.append(
             "PROOF INCOMPLETE: The following plan step(s) have no proof entry: "
-            f'{sorted(missing)}. Each plan_item must exactly match "Step N: <title>".'
+            f'{sorted(missing)}. Each plan_item must exactly match a stable S-id.'
         )
     if extra:
         errors.append(
@@ -354,74 +349,18 @@ def _work_unit_proof_errors(required_refs: frozenset[str], submitted_list: list[
     return errors
 
 
-def _normalize_analysis_proof_ref(value: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[^\w]+", " ", value.casefold())).strip()
-
-
-def _match_analysis_proof_ref(required_refs: frozenset[str], submitted_ref: str) -> str | None:
-    normalized_submitted = _normalize_analysis_proof_ref(submitted_ref)
-    if not normalized_submitted:
-        return None
-
-    exact_matches = [
-        ref for ref in required_refs if _normalize_analysis_proof_ref(ref) == normalized_submitted
-    ]
-    if len(exact_matches) == 1:
-        return exact_matches[0]
-    if len(exact_matches) > 1:
-        return None
-
-    scored_matches = sorted(
-        (
-            (
-                SequenceMatcher(
-                    None,
-                    normalized_submitted,
-                    _normalize_analysis_proof_ref(required_ref),
-                ).ratio(),
-                required_ref,
-            )
-            for required_ref in required_refs
-        ),
-        reverse=True,
-    )
-    if not scored_matches:
-        return None
-
-    best_score, best_match = scored_matches[0]
-    second_best_score = scored_matches[1][0] if len(scored_matches) > 1 else 0.0
-    if best_score < _MATCH_SCORE_THRESHOLD or best_score - second_best_score < _MATCH_SCORE_GAP:
-        return None
-    return best_match
-
-
 def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
+    """Require stable analysis-item IDs, never fuzzy copied prose."""
     errors: list[str] = []
-    matched_refs: list[str] = []
-    unmatched_refs: list[str] = []
-
-    for submitted_ref in submitted_list:
-        matched_ref = _match_analysis_proof_ref(required_refs, submitted_ref)
-        if matched_ref is None:
-            unmatched_refs.append(submitted_ref)
-            continue
-        matched_refs.append(matched_ref)
-
-    if len(set(matched_refs)) < len(matched_refs):
-        errors.append(
-            "PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed."
-        )
-    missing = required_refs - frozenset(matched_refs)
+    submitted = frozenset(submitted_list)
+    if len(submitted) < len(submitted_list):
+        errors.append("PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed.")
+    missing = required_refs - submitted
+    extra = submitted - required_refs
     if missing:
-        errors.append(
-            "PROOF INCOMPLETE: The following how_to_fix item(s) have no proof entry: "
-            f"{sorted(missing)}. Each how_to_fix_item must exactly match the prior analysis text."
-        )
-    if unmatched_refs:
-        errors.append(
-            "PROOF INVALID: Unknown how_to_fix_item reference(s) not matching any prior "
-            f"analysis item: {sorted(frozenset(unmatched_refs))}."
-        )
+        errors.append(f"PROOF INCOMPLETE: Missing proof for analysis item ID(s): {sorted(missing)}.")
+    if extra:
+        errors.append(f"PROOF INVALID: Unknown how_to_fix_item ID(s): {sorted(extra)}.")
     return errors
 
 
@@ -449,9 +388,14 @@ def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
                     for step in steps:
                         if not isinstance(step, dict):
                             return frozenset()
-                        if "number" not in step or "title" not in step:
-                            return frozenset()
-                        refs.add(f"Step {step['number']}: {step['title']}")
+                        step_id = step.get("id") or step.get("step_id")
+                        if not isinstance(step_id, str):
+                            # Canonical markdown parsing preserves number; derive its stable ID.
+                            number = step.get("number")
+                            if not isinstance(number, int):
+                                return frozenset()
+                            step_id = f"S-{number}"
+                        refs.add(step_id)
     except Exception:
         return frozenset()
     return frozenset(refs)
@@ -488,7 +432,11 @@ def _get_canonical_analysis_how_to_fix_refs(ctx: PhaseContext, phase: str) -> fr
             how_to_fix = content.get("how_to_fix")
             if not isinstance(how_to_fix, list):
                 return frozenset()
-            return frozenset(str(item) for item in how_to_fix if item)
+            return frozenset(
+                item.split(":", 1)[0]
+                for item in how_to_fix
+                if isinstance(item, str) and ":" in item
+            )
         return frozenset()
     except Exception:
         return frozenset()

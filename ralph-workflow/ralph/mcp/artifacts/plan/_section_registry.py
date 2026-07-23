@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ralph.pydantic_compat import RalphBaseModel
 
 PLAN_ARTIFACT_TYPE = "plan"
-PLAN_ARTIFACT_PATH = ".agent/artifacts/plan.json"
+PLAN_ARTIFACT_PATH = ".agent/artifacts/plan.md"
 PLAN_MARKDOWN_PATH = ".agent/PLAN.md"
 PLAN_DRAFT_PATH = ".agent/artifacts/.plan_draft.json"
 PLAN_DRAFT_SCHEMA_VERSION = 1

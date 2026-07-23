@@ -61,7 +61,9 @@ def build_required_artifacts(
     for contract in artifacts_policy.artifacts.values():
         drain = str(contract.drain)
         artifact_type = contract.artifact_type
-        json_path = contract.artifact_json_path or f".agent/artifacts/{artifact_type}.json"
+        # Migrated artifacts are markdown source documents; keep the historic
+        # field name so consumers retain a narrow stable interface.
+        json_path = f".agent/artifacts/{artifact_type}.md"
         markdown_path = contract.markdown_summary_path
         normalizer = _ARTIFACT_TYPE_NORMALIZERS.get(artifact_type)
 
@@ -167,17 +169,15 @@ def build_retry_hint(
     lines = [block, "", "Submit the artifact now. Do not restart the task from scratch."]
     tool = submit_tool_name or "the submit-artifact MCP tool"
     lines.append(
-        f'Call {tool} with artifact_type="{artifact_type}" and put the payload in '
-        "the content field as a JSON string."
+        f'Call {tool} with artifact_type="{artifact_type}" and put the complete markdown document in '
+        "the content field."
     )
     if example_payload:
         lines.append(f"Example MCP arguments: {example_payload}")
     if json_path is not None:
         lines.append(
-            f"If the submit-artifact MCP tool is unavailable, write the raw payload "
-            f"JSON to {json_path} instead. Do not use content_path for this retry. "
-            "Ralph detects this fallback file at completion-check time and stamps a "
-            "canonical receipt from it."
+            f"If the submit tool is unavailable, write the complete markdown document to {json_path}. "
+            "Do not write a JSON fallback."
         )
     if prior_output:
         echoed = "\n".join(prior_output[-12:])

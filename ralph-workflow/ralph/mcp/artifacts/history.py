@@ -95,7 +95,7 @@ def archive_artifact_before_overwrite(
         List of Paths of files created by this operation (JSON and MD archives,
         NOT the index). The caller can use these paths to roll back the archive.
     """
-    canonical_json = artifact_dir / f"{artifact_type}.json"
+    canonical_json = artifact_dir / f"{artifact_type}.md"
     if not backend.exists(canonical_json):
         return []
 
@@ -106,7 +106,7 @@ def archive_artifact_before_overwrite(
     created: list[Path] = []
 
     # Archive the canonical JSON
-    archive_json = hist_dir / f"{timestamp}_{artifact_type}.json"
+    archive_json = hist_dir / f"{timestamp}_{artifact_type}.md"
     backend.write_text(archive_json, backend.read_text(canonical_json))
     created.append(archive_json)
 
@@ -138,7 +138,7 @@ def snapshot_current_artifact(
     Unlike archive-before-overwrite, this records the current successful artifact
     immediately after submission so history exists from the first completed phase.
     """
-    canonical_json = artifact_dir / f"{artifact_type}.json"
+    canonical_json = artifact_dir / f"{artifact_type}.md"
     if not backend.exists(canonical_json):
         return []
 
@@ -149,7 +149,7 @@ def snapshot_current_artifact(
     archive_json = _unique_archive_path(
         hist_dir,
         artifact_type,
-        ".json",
+        ".md",
         backend=backend,
         now_iso=now_iso,
     )
@@ -190,7 +190,7 @@ def rebuild_history_index(
         return
 
     json_files = sorted(
-        p for p in backend.glob(hist_dir, "*.json") if _TIMESTAMP_PATTERN.match(p.name)
+        p for p in backend.glob(hist_dir, "*.md") if _TIMESTAMP_PATTERN.match(p.name)
     )
 
     if not json_files:
@@ -202,8 +202,7 @@ def rebuild_history_index(
     lines = [f"# Artifact History: {artifact_type}", ""]
     lines.append(
         "Prior versions of this artifact are archived below, oldest first. "
-        "Each entry shows the timestamp and the path to the archived JSON "
-        "and optional Markdown handoff."
+        "Each entry shows the timestamp and archived markdown source document."
     )
     lines.append("")
 
@@ -212,11 +211,7 @@ def rebuild_history_index(
         ts = m.group(1) if m else json_path.stem
         lines.append(f"## {ts}")
         lines.append("")
-        lines.append(f"- JSON: `{json_path.name}`")
-        md_name = json_path.name.replace(".json", ".md")
-        md_path = hist_dir / md_name
-        if backend.exists(md_path):
-            lines.append(f"- Markdown: `{md_name}`")
+        lines.append(f"- Markdown: `{json_path.name}`")
         lines.append("")
 
     index_path = hist_dir / "index.md"
