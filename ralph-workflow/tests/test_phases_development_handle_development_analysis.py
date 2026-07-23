@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -13,22 +12,20 @@ from ralph.pipeline.effects import Effect, InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent
 from ralph.policy.loader import load_policy
 
-_VALID_PLAN_JSON = json.dumps(
-    {"work_units": [{"unit_id": "u1", "description": "A", "allowed_directories": ["src"]}]}
-)
 
-_VALID_DEV_RESULT_JSON = json.dumps(
-    {
-        "type": "development_result",
-        "content": {
-            "status": "completed",
-            "summary": "Done.",
-            "files_changed": "- src/a.py",
-            "plan_items_proven": [{"plan_item": "u1", "proof": "Implemented."}],
-            "analysis_items_addressed": [],
-        },
-    }
-)
+def _decision_markdown(status: str) -> str:
+    feedback = (
+        "## What Came Up Short\n- [W-1] A defect remains.\n"
+        "## How To Fix\n- [FIX-1] Repair the defect.\n"
+        if status == "failed"
+        else ""
+    )
+    return (
+        "---\ntype: development_analysis_decision\n"
+        f"status: {status}\n---\n"
+        "## Summary\n- [SUM-1] Analysis complete.\n"
+        f"{feedback}"
+    )
 
 
 @lru_cache(maxsize=1)
@@ -57,7 +54,7 @@ class TestHandleDevelopmentAnalysis:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "completed"}'
+        ctx.workspace.read.return_value = _decision_markdown("completed")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
@@ -65,35 +62,35 @@ class TestHandleDevelopmentAnalysis:
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].decision == "completed"
 
-    def test_unknown_status_returns_phase_failure(self) -> None:
+    def test_unknown_status_uses_lenient_completed_fallback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "unknown"}'
+        ctx.workspace.read.return_value = _decision_markdown("unknown")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
-        assert isinstance(result[0], PhaseFailureEvent)
-        assert result[0].recoverable is True
+        assert isinstance(result[0], AnalysisDecisionEvent)
+        assert result[0].decision == "completed"
 
-    def test_revise_decision_returns_phase_failure(self) -> None:
+    def test_revise_status_uses_lenient_completed_fallback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "revise"}'
+        ctx.workspace.read.return_value = _decision_markdown("revise")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
-        assert isinstance(result[0], PhaseFailureEvent)
-        assert result[0].recoverable is True
+        assert isinstance(result[0], AnalysisDecisionEvent)
+        assert result[0].decision == "completed"
 
     def test_failure_decision_returns_analysis_decision_event(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "failed"}'
+        ctx.workspace.read.return_value = _decision_markdown("failed")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
@@ -101,17 +98,17 @@ class TestHandleDevelopmentAnalysis:
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].decision == "failed"
 
-    def test_escalate_decision_returns_phase_failure(self) -> None:
+    def test_escalate_status_uses_lenient_completed_fallback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "escalate"}'
+        ctx.workspace.read.return_value = _decision_markdown("escalate")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
-        assert isinstance(result[0], PhaseFailureEvent)
-        assert result[0].recoverable is True
+        assert isinstance(result[0], AnalysisDecisionEvent)
+        assert result[0].decision == "completed"
 
     def test_missing_artifact_returns_phase_failure_recoverable(self) -> None:
         effect = self._mock_invoke_effect()

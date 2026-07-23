@@ -315,22 +315,24 @@ def test_promote_fallback_thread_receipt_secret_to_promoted_receipt(
     """
     promotion_run_id = "adversarial-promotion-run"
 
-    # Seed a fallback artifact the orchestrator would promote. The
-    # smoke_test_result schema accepts a plain dict, so no extra
-    # envelope is required for promotion.
-    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.json"
+    # Seed the Markdown fallback accepted by the canonical submission gate.
+    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.md"
     fallback_path.parent.mkdir(parents=True, exist_ok=True)
     fallback_path.write_text(
-        json.dumps(
-            {
-                "status": "passed",
-                "output_file": "tmp/promotion/sentinel.js",
-                "observed_working": ["promotion secret thread"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "Promoted fallback under broker secret.",
-            }
-        ),
+        """---
+type: smoke_test_result
+status: passed
+output_file: tmp/promotion/sentinel.js
+---
+## Summary
+- [SUM-1] Promoted fallback under broker secret.
+## Observed Working
+- [OK-1] promotion secret thread
+## Observed Breaks
+- [BR-1] none observed
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 
@@ -376,19 +378,23 @@ def test_promote_fallback_without_secret_keeps_legacy_no_hmac_contract(
     for the no-secret call site.
     """
     no_secret_run_id = "adversarial-no-secret-run"
-    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.json"
+    fallback_path = workspace / ".agent" / "tmp" / "smoke_test_result.md"
     fallback_path.parent.mkdir(parents=True, exist_ok=True)
     fallback_path.write_text(
-        json.dumps(
-            {
-                "status": "passed",
-                "output_file": "tmp/promotion/no-secret.js",
-                "observed_working": ["promotion without secret"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-                "summary": "Promoted fallback without broker secret.",
-            }
-        ),
+        """---
+type: smoke_test_result
+status: passed
+output_file: tmp/promotion/no-secret.js
+---
+## Summary
+- [SUM-1] Promoted fallback without broker secret.
+## Observed Working
+- [OK-1] promotion without secret
+## Observed Breaks
+- [BR-1] none observed
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 

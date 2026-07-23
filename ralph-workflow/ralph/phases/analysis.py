@@ -70,7 +70,7 @@ def parse_analysis_decision_status(
     policy_phase_name = phase_name if phase_name is not None else drain_name
     artifact_type = f"{drain_name}_decision"
     ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
-    artifact_path = ra.json_path if ra is not None else f".agent/artifacts/{artifact_type}.json"
+    artifact_path = ra.json_path if ra is not None else f".agent/artifacts/{artifact_type}.md"
 
     if not ctx.workspace.exists(artifact_path):
         logger.warning(
@@ -176,7 +176,7 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
             registry = None
         ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
         artifact_path = (
-            ra.json_path if ra is not None else f".agent/artifacts/{drain_name}_decision.json"
+            ra.json_path if ra is not None else f".agent/artifacts/{drain_name}_decision.md"
         )
 
         if not ctx.workspace.exists(artifact_path):

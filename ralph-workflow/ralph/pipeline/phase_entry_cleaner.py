@@ -1,6 +1,7 @@
 """Phase-entry drain clearing for fresh phase entries.
 
-This module handles the clearing of drain artifact files (JSON + Markdown handoff)
+This module clears canonical Markdown artifacts, Markdown handoffs, and stale
+legacy JSON artifacts
 when a pipeline phase is genuinely entered fresh — on program start, cross-phase
 transition, or last-commit re-entry — as opposed to same-phase retry or analysis
 loopback where the existing context should be preserved.
@@ -67,7 +68,7 @@ def _clear_drain(
     drain_name: str,
     artifacts_policy: ArtifactsPolicy,
 ) -> None:
-    """Clear the primary artifact files (JSON + Markdown) for a single drain.
+    """Clear canonical, handoff, and stale legacy files for a single drain.
 
     Uses the same path resolution as phase_output_artifact_paths in commit_executor.py.
 
@@ -81,11 +82,16 @@ def _clear_drain(
     if required_artifact is None:
         return
 
-    # Clear the primary JSON artifact
+    # ``json_path`` is the historic field name for the canonical Markdown path.
     if workspace.exists(required_artifact.json_path):
         workspace.remove(required_artifact.json_path)
 
-    # Clear the Markdown handoff if one exists
+    # Explicit legacy cleanup prevents pre-migration state surviving fresh entry.
+    legacy_path = f".agent/artifacts/{required_artifact.artifact_type}.json"
+    if workspace.exists(legacy_path):
+        workspace.remove(legacy_path)
+
+    # Clear the Markdown handoff if one exists.
     md_path = required_artifact.markdown_path
     if md_path is not None and workspace.exists(md_path):
         workspace.remove(md_path)

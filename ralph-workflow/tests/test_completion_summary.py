@@ -170,23 +170,16 @@ def test_render_verification_reads_wrapped_artifact_content(tmp_path: Path) -> N
 
 
 def test_render_includes_commit_message_artifact_when_present(tmp_path: Path) -> None:
-    commit_dir = tmp_path / ".agent" / "tmp"
+    commit_dir = tmp_path / ".agent" / "artifacts"
     commit_dir.mkdir(parents=True)
-    (commit_dir / "commit_message.json").write_text(
-        json.dumps(
-            {
-                "name": "commit_message",
-                "type": "commit_message",
-                "content": {
-                    "type": "commit",
-                    "subject": "feat(display): surface polished completion output",
-                    "body_summary": "Show the final commit message in the completion summary.",
-                },
-                "created_at": "STATIC",
-                "updated_at": "STATIC",
-                "metadata": {},
-            }
-        ),
+    (commit_dir / "commit_message.md").write_text(
+        """---
+type: commit
+subject: feat(display): surface polished completion output
+---
+## Body Summary
+- [BS-1] Show the final commit message in the completion summary.
+""",
         encoding="utf-8",
     )
 

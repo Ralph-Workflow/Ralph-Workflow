@@ -28,6 +28,21 @@ def _fs_context(root: Path) -> PhaseContext:
     )
 
 
+def _decision_markdown(status: str) -> str:
+    feedback = (
+        "## What Came Up Short\n- [W-1] A defect remains.\n"
+        "## How To Fix\n- [FIX-1] Repair the defect.\n"
+        if status == "failed"
+        else ""
+    )
+    return (
+        "---\ntype: review_analysis_decision\n"
+        f"status: {status}\n---\n"
+        "## Summary\n- [SUM-1] Analysis complete.\n"
+        f"{feedback}"
+    )
+
+
 class TestHandleReviewAnalysis:
     def _make_context(self) -> MagicMock:
         ctx = MagicMock()
@@ -48,7 +63,7 @@ class TestHandleReviewAnalysis:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "completed"}'
+        ctx.workspace.read.return_value = _decision_markdown("completed")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
@@ -57,39 +72,37 @@ class TestHandleReviewAnalysis:
         assert result[0].phase == "review_analysis"
         assert result[0].decision == "completed"
 
-    def test_unknown_status_returns_phase_failure(self) -> None:
+    def test_unknown_status_uses_lenient_completed_fallback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "unknown"}'
+        ctx.workspace.read.return_value = _decision_markdown("unknown")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
-        assert isinstance(event, PhaseFailureEvent)
-        assert event.phase == "review_analysis"
-        assert event.recoverable is True
+        assert isinstance(event, AnalysisDecisionEvent)
+        assert event.decision == "completed"
 
-    def test_revise_decision_unroutable_returns_phase_failure(self) -> None:
+    def test_revise_status_uses_lenient_completed_fallback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "revise"}'
+        ctx.workspace.read.return_value = _decision_markdown("revise")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
-        assert isinstance(event, PhaseFailureEvent)
-        assert event.phase == "review_analysis"
-        assert event.recoverable is True
+        assert isinstance(event, AnalysisDecisionEvent)
+        assert event.decision == "completed"
 
     def test_failure_decision_returns_analysis_decision_event(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "failed"}'
+        ctx.workspace.read.return_value = _decision_markdown("failed")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
@@ -98,19 +111,18 @@ class TestHandleReviewAnalysis:
         assert result[0].phase == "review_analysis"
         assert result[0].decision == "failed"
 
-    def test_escalate_decision_unroutable_returns_phase_failure(self) -> None:
+    def test_escalate_status_uses_lenient_completed_fallback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "escalate"}'
+        ctx.workspace.read.return_value = _decision_markdown("escalate")
         ctx.artifacts_policy.artifacts = {}
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
-        assert isinstance(event, PhaseFailureEvent)
-        assert event.phase == "review_analysis"
-        assert event.recoverable is True
+        assert isinstance(event, AnalysisDecisionEvent)
+        assert event.decision == "completed"
 
     def test_missing_artifact_returns_phase_failure_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
