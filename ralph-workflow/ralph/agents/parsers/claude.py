@@ -38,6 +38,20 @@ _CLAUDE_NOISE_SYSTEM_SUBTYPES: Final[frozenset[str]] = frozenset(
     {"init", "hook_started", "hook_response", "thinking_tokens"}
 )
 
+# ``stream_event.event`` (partial-message streaming, active whenever the
+# harness passes ``--include-partial-messages``, which every production
+# invocation does) carries a nested ``message_delta`` once per turn with a
+# ``delta.stop_reason``. Expected end-of-turn reasons carry no actionable
+# signal beyond "the turn ended normally" and are suppressed; any other
+# reason (e.g. ``max_tokens`` truncation, ``refusal``, or a future reason
+# this parser has not seen yet) is operator-relevant and still surfaces.
+_CLAUDE_EXPECTED_STOP_REASONS: Final[frozenset[str]] = frozenset({"end_turn", "tool_use"})
+
+# ``rate_limit_event.rate_limit_info.status`` values that mean "nothing to
+# report" -- the account is comfortably within quota. Any other status
+# (e.g. ``allowed_warning``, ``rejected``) or overage usage is surfaced.
+_CLAUDE_RATE_LIMIT_OK_STATUSES: Final[frozenset[str]] = frozenset({"allowed"})
+
 
 class ClaudeParser(NdjsonParserBase):
     """Parser for Claude's NDJSON streaming output with robust delta accumulation.
@@ -202,16 +216,18 @@ class ClaudeParser(NdjsonParserBase):
         elif event_type == "content_block_start":
             self._track_content_block_start(obj)
             yield from self._parse_content_block_start(obj, raw)
-        elif event_type == "assistant":
-            yield from self._parse_assistant_message(obj, raw)
+        elif event_type in ("assistant", "user"):
+            yield from self._parse_role_message(obj, raw)
         elif event_type == "result":
             yield from self._parse_result_event(obj, raw)
         elif event_type == "error":
             yield from self._parse_error_event(obj, raw)
         elif event_type == "system":
             yield from self._parse_system_event(obj, raw)
+        elif event_type == "rate_limit_event":
+            yield from self._parse_rate_limit_event(obj, raw)
         else:
-            yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
+            yield self._unclassified_event_line(event_type, obj, raw)
 
     def _parse_system_event(
         self,
@@ -222,14 +238,65 @@ class ClaudeParser(NdjsonParserBase):
 
         Pure plumbing subtypes (see :data:`_CLAUDE_NOISE_SYSTEM_SUBTYPES`)
         are suppressed entirely. Any other subtype -- known (e.g.
-        ``compact_boundary``) or a future one this parser has not seen yet
-        -- still surfaces so operators are not left blind to it, but with
-        the subtype as its content instead of an empty line.
+        ``status``, ``compact_boundary``) or a future one this parser has
+        not seen yet -- still surfaces so operators are not left blind to
+        it, with the subtype (and, when present, a same-event ``status``
+        field observed on the ``status`` subtype in production, e.g.
+        ``status="requesting"``) as its content instead of an empty line.
         """
         subtype = str(obj.get("subtype", ""))
         if subtype in _CLAUDE_NOISE_SYSTEM_SUBTYPES:
             return
-        yield AgentOutputLine(type="system", content=subtype or "unknown", raw=raw, metadata=obj)
+        status = obj.get("status")
+        if isinstance(status, str) and status:
+            content = f"{subtype} ({status})" if subtype else status
+        else:
+            content = subtype or "unknown"
+        yield AgentOutputLine(type="system", content=content, raw=raw, metadata=obj)
+
+    def _parse_rate_limit_event(
+        self,
+        obj: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Classify a top-level ``rate_limit_event``.
+
+        Fires on essentially every turn boundary. When the account is
+        comfortably within quota (see :data:`_CLAUDE_RATE_LIMIT_OK_STATUSES`)
+        and not drawing on overage, the event is pure noise and is
+        suppressed. Anything else -- an unusual status or active overage
+        usage -- is operator-relevant and surfaces with that status as
+        content.
+        """
+        info = obj.get("rate_limit_info")
+        info_dict: dict[str, object] = info if isinstance(info, dict) else {}
+        status = str(info_dict.get("status", ""))
+        using_overage = bool(info_dict.get("isUsingOverage", False))
+        if status in _CLAUDE_RATE_LIMIT_OK_STATUSES and not using_overage:
+            return
+        yield AgentOutputLine(
+            type="rate_limit_event",
+            content=status or "unknown",
+            raw=raw,
+            metadata=obj,
+        )
+
+    def _unclassified_event_line(
+        self,
+        event_type: str,
+        obj: dict[str, object],
+        raw: str,
+    ) -> AgentOutputLine:
+        """Build a self-describing line for a wire event with no dedicated handler.
+
+        Covers event types this parser has never seen (a future addition to
+        the ``claude -p`` wire format). Falls back to ``subtype`` when
+        present so an unrecognized event is still identifiable to an
+        operator rather than rendering as a bare, content-less line.
+        """
+        subtype = obj.get("subtype")
+        content = str(subtype) if subtype else ""
+        return AgentOutputLine(type=event_type, content=content, raw=raw, metadata=obj)
 
     def _track_content_block_start(self, obj: dict[str, object]) -> None:
         content_block = obj.get("content_block")
@@ -255,21 +322,35 @@ class ClaudeParser(NdjsonParserBase):
 
         if event_type == "content_block_delta":
             yield from self._parse_content_block_delta(event, raw)
-            return
-
-        if event_type == "content_block_start":
+        elif event_type == "content_block_start":
             self._track_content_block_start(event)
             yield from self._parse_stream_content_block_start(event, raw)
-            return
-
-        if event_type == "error":
+        elif event_type == "error":
             yield from self._parse_stream_error(event, raw)
-            return
+        elif event_type == "message_delta":
+            yield from self._parse_stream_message_delta(event, raw)
+        elif event_type not in _CLAUDE_TOP_LEVEL_LIFECYCLE:
+            yield self._unclassified_event_line(event_type, event, raw)
 
-        if event_type in _CLAUDE_TOP_LEVEL_LIFECYCLE:
-            return
+    def _parse_stream_message_delta(
+        self,
+        event: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Classify a ``stream_event``-nested ``message_delta``.
 
-        yield AgentOutputLine(type=event_type, raw=raw, metadata=event)
+        Fires once per completed turn with ``delta.stop_reason``. Expected
+        end-of-turn reasons (see :data:`_CLAUDE_EXPECTED_STOP_REASONS`) are
+        suppressed as routine turn-boundary noise; any other reason --
+        truncation, refusal, or a future reason this parser has not seen
+        yet -- is operator-relevant and surfaces with the reason as content.
+        """
+        delta = event.get("delta")
+        delta_dict: dict[str, object] = delta if isinstance(delta, dict) else {}
+        stop_reason = delta_dict.get("stop_reason")
+        if stop_reason is None or str(stop_reason) in _CLAUDE_EXPECTED_STOP_REASONS:
+            return
+        yield AgentOutputLine(type="message_delta", content=str(stop_reason), raw=raw, metadata=event)
 
     def _parse_content_block_delta(
         self,
@@ -419,11 +500,20 @@ class ClaudeParser(NdjsonParserBase):
             error_msg = "unknown error"
         yield AgentOutputLine(type="error", content=error_msg, raw=raw, metadata=event)
 
-    def _parse_assistant_message(
+    def _parse_role_message(
         self,
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
+        """Classify a top-level ``assistant`` or ``user`` message event.
+
+        Both wire shapes carry the same ``message.content`` block-list
+        envelope; the only difference is which role authored it. A
+        top-level ``user`` event is how ``claude -p`` echoes a tool_result
+        back after a tool call -- without this branch that content
+        (including tool failures) was silently dropped, since previously
+        only ``assistant`` was dispatched here.
+        """
         message = obj.get("message")
         if not isinstance(message, dict):
             return
@@ -577,19 +667,31 @@ class ClaudeParser(NdjsonParserBase):
         block: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
+        """Classify a ``tool_result`` content block.
+
+        Honors the wire-format ``is_error`` flag (matching the precedent
+        already established by the Cursor, Pi, and Generic parsers): a
+        failed tool call surfaces as ``type="error"`` instead of
+        ``type="tool_result"`` so a tool failure is visually distinct and
+        counted as a break signal, rather than reading as a routine result.
+        The message text lives in ``content`` either way -- Claude's
+        tool_result envelope has no separate ``error`` field to fall back
+        to.
+        """
+        result_type = "error" if block.get("is_error") else "tool_result"
         content = block.get("content")
         if content is None:
-            yield AgentOutputLine(type="tool_result", content="", raw=raw, metadata=block)
+            yield AgentOutputLine(type=result_type, content="", raw=raw, metadata=block)
             return
 
         if isinstance(content, list):
             tool_result = stringify_text_blocks(content, require_text_type=True)
             yield AgentOutputLine(
-                type="tool_result",
+                type=result_type,
                 content=tool_result,
                 raw=raw,
                 metadata=block,
             )
             return
 
-        yield AgentOutputLine(type="tool_result", content=str(content), raw=raw, metadata=block)
+        yield AgentOutputLine(type=result_type, content=str(content), raw=raw, metadata=block)
