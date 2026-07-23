@@ -1965,6 +1965,20 @@ ralph.mcp.artifacts.history
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.legacy_json
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.legacy_json
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.md_draft_io
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.md_draft_io
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.plan
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2239,13 +2253,6 @@ ralph.mcp.tools.md_artifact
    :members:
    :show-inheritance:
 
-ralph.mcp.tools.plan_draft_edit
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.tools.plan_draft_edit
-   :members:
-   :show-inheritance:
-
 ralph.mcp.tools.bridge
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2338,13 +2345,6 @@ ralph.mcp.tools.invalid_params_error
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.tools.invalid_params_error
-   :members:
-   :show-inheritance:
-
-ralph.mcp.tools.json_repair
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.tools.json_repair
    :members:
    :show-inheritance:
 
@@ -2597,12 +2597,6 @@ ralph.mcp.explore.audit_register
 .. automodule:: ralph.mcp.explore.audit_register
    :members:
    :show-inheritance:
-
-ralph.mcp.explore._audit_seed_markdown_artifacts
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.explore._audit_seed_markdown_artifacts
-   :members:
 
 ralph.mcp.explore.family_baseline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3850,13 +3844,6 @@ ralph.prompts.types
    :members:
    :show-inheritance:
    :exclude-members: CapabilitySet,PolicyFlag,PolicyFlagSet
-
-ralph.prompts.plan_format
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.prompts.plan_format
-   :members:
-   :show-inheritance:
 
 Testing
 -------

@@ -1,4 +1,4 @@
-import json
+import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -463,28 +463,9 @@ def test_handle_planning_prepare_prompt_preserves_resumable_plan_draft(
         agents_policy=object(),
         artifacts_policy=policy.artifacts,
     )
-    draft_path = tmp_path / ".agent" / "artifacts" / ".plan_draft.json"
+    draft_path = tmp_path / ".agent" / "artifacts" / ".plan.draft.md"
     draft_path.parent.mkdir(parents=True, exist_ok=True)
-    draft_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:00+00:00",
-                "sections": {
-                    "summary": {
-                        "context": "Resume planning",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    draft_path.write_text(_PLAN_DOC.replace("plan", "resumable plan", 1), encoding="utf-8")
 
     effect = PreparePromptEffect(phase="planning", iteration=3)
 
@@ -506,30 +487,13 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
         artifacts_policy=policy.artifacts,
     )
     artifact_dir = tmp_path / ".agent" / "artifacts"
-    draft_path = artifact_dir / ".plan_draft.json"
+    draft_path = artifact_dir / ".plan.draft.md"
     plan_path = artifact_dir / "plan.md"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    draft_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "started_at": "2026-01-01T00:00:00+00:00",
-                "updated_at": "2026-01-01T00:00:00+00:00",
-                "sections": {
-                    "summary": {
-                        "context": "Old planning run",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    draft_path.write_text(_PLAN_DOC.replace("plan", "stale plan", 1), encoding="utf-8")
     plan_path.write_text(_PLAN_DOC, encoding="utf-8")
+    os.utime(draft_path, (1, 1))
+    os.utime(plan_path, (2, 2))
 
     effect = PreparePromptEffect(phase="planning", iteration=3)
 

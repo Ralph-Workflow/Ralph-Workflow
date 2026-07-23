@@ -6,7 +6,7 @@ from typing import cast
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
-from ralph.mcp.artifacts.plan import extract_plan_skill_names, is_noop_plan
+from ralph.mcp.artifacts.plan import is_noop_plan
 from tests.mcp.test_md_plan_spec import _plan_document
 
 
@@ -21,7 +21,8 @@ def test_plan_markdown_maps_to_the_canonical_execution_model() -> None:
         {"path": "tests/mcp/test_md_plan_spec.py", "action": "create"},
     ]
     assert steps[1]["depends_on"] == [1]
-    assert extract_plan_skill_names(content) == ("test-driven-development",)
+    skills_mcp = cast("dict[str, object]", content["skills_mcp"])
+    assert skills_mcp["skills"] == ["test-driven-development"]
     assert is_noop_plan(content) is False
 
 

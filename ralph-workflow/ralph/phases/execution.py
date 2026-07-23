@@ -18,19 +18,17 @@ from __future__ import annotations
 
 import json
 from contextlib import suppress
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.mcp.artifacts.development_result import DevelopmentResult
+from ralph.mcp.artifacts.md_draft_io import md_draft_path
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
-    PLAN_DRAFT_PATH,
     PlanArtifactValidationError,
     is_noop_plan,
-    load_plan_draft,
     normalize_plan_artifact_content,
 )
 from ralph.phases.artifacts import (
@@ -130,25 +128,16 @@ def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
 
 
 def _clear_stale_plan_draft_if_needed(ctx: PhaseContext) -> None:
-    if not ctx.workspace.exists(PLAN_DRAFT_PATH):
+    draft_path = md_draft_path(Path(".agent/artifacts"), "plan").as_posix()
+    if not ctx.workspace.exists(draft_path):
         return
     if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
         return
-    artifact_dir = Path(ctx.workspace.absolute_path(".agent/artifacts"))
-    draft = load_plan_draft(artifact_dir)
-    if draft is None:
-        return
-    updated_at = draft.get("updated_at")
-    if not isinstance(updated_at, str):
-        return
-    try:
-        draft_updated_at = datetime.fromisoformat(updated_at).timestamp()
-    except ValueError:
-        return
+    draft_mtime = Path(ctx.workspace.absolute_path(draft_path)).stat().st_mtime
     plan_mtime = Path(ctx.workspace.absolute_path(PLAN_ARTIFACT_PATH)).stat().st_mtime
-    if draft_updated_at <= plan_mtime:
-        logger.info("Clearing stale plan draft at {}", PLAN_DRAFT_PATH)
-        ctx.workspace.remove(PLAN_DRAFT_PATH)
+    if draft_mtime <= plan_mtime:
+        logger.info("Clearing stale plan draft at {}", draft_path)
+        ctx.workspace.remove(draft_path)
 
 
 def _validate_plan_output(

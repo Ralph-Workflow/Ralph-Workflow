@@ -41,8 +41,6 @@ from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from tests.mcp.test_md_plan_spec import _plan_document
 
-# Lazy imports for multimodal tests that require optional dependencies
-# These are only available when the multimodal feature is fully configured
 _lazy_imports: dict[str, object] = {}
 
 HTTP_OK = 200
@@ -925,11 +923,6 @@ def test_upstream_policy_allows_proxied_tools_with_upstream_capability(
         cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
     }
     assert "ralph_upstream__srv2__do_thing" in tool_names
-
-
-# =============================================================================
-# Image content serialization tests (Task 3)
-# =============================================================================
 
 
 class TestFileBackedSessionModelIdentity:

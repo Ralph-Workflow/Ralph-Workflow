@@ -1,4 +1,4 @@
-"""Plan-artifact validation, normalization, and payload decoding.
+"""Plan-artifact validation and normalization.
 
 The single source of truth for ``PlanArtifact`` (the top-level
 validated schema) lives here because it owns the cross-reference
@@ -11,18 +11,10 @@ The lazy WorkUnit forward reference (handled by
 also lives here so the rebuild state is a local concern of the
 module that owns the model that needs it.
 
-The payload decoding helpers (``parse_plan_payload_strict``,
-``parse_plan_payload_lenient``, and the private
-``_decode_plan_payload`` core) consolidate the four previously
-duplicated JSON parsers that lived in ``tools/artifact.py``,
-``prompts/plan_format.py``, and the original ``__init__.py``.
 """
 
 from __future__ import annotations
 
-import json
-from collections.abc import Mapping
-from contextlib import suppress
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -60,6 +52,8 @@ from ralph.pydantic_validation_errors import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ralph.pipeline.work_unit import WorkUnit
 
 # Closed intent_verb -> allowed ScopeCategory mapping. Every (verb, category)
@@ -601,25 +595,6 @@ def validate_plan_section(
     )
 
 
-def merge_plan_section(
-    sections: PlanArtifactDict,
-    section: str,
-    fragment: object,
-    mode: SectionMode,
-) -> PlanArtifactDict:
-    """Return a new sections dict with the given fragment merged in."""
-    new_sections: dict[str, object] = dict(sections)
-    if section in PLAN_SECTION_OBJECT_MODELS or mode == "replace":
-        new_sections[section] = fragment
-        return new_sections
-
-    existing = new_sections.get(section)
-    base: list[object] = list(existing) if isinstance(existing, list) else []
-    base.append(fragment)
-    new_sections[section] = base
-    return new_sections
-
-
 def _collect_criteria(design: DesignSection | None) -> list[AcceptanceCriterion]:
     if design is None or design.acceptance_criteria is None:
         return []
@@ -721,120 +696,11 @@ def _check_research_verify_step_references(
                 raise PlanArtifactValidationError(msg)
 
 
-def _decode_plan_payload(raw: str | Mapping[str, object]) -> PlanArtifactDict:
-    """Canonical plan-payload decoder shared by the strict and lenient helpers.
-
-    Accepts either a JSON string (decoded exactly once) or a mapping
-    (shallow-copied to avoid leaking the caller's dict). Detects the
-    ``{"type": "plan", "content": {...}}`` envelope and returns the
-    inner ``content`` dict when it is a dict, otherwise raises
-    ``PlanArtifactValidationError``.
-    """
-    if isinstance(raw, str):
-        try:
-            parsed: object = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise PlanArtifactValidationError(f"Content must be valid JSON: {exc}") from exc
-        if isinstance(parsed, str):
-            with suppress(json.JSONDecodeError):
-                parsed = json.loads(parsed)
-    elif isinstance(raw, Mapping):
-        parsed = dict(raw)
-    else:
-        raise PlanArtifactValidationError(
-            f"plan payload must be a JSON string or mapping, got {type(raw).__name__}"
-        )
-
-    if not isinstance(parsed, dict):
-        raise PlanArtifactValidationError("plan payload must decode to a JSON object")
-    parsed_dict = cast("PlanArtifactDict", parsed)
-    if parsed_dict.get("type") == "plan":
-        nested = parsed_dict.get("content")
-        if isinstance(nested, dict):
-            return cast("PlanArtifactDict", nested)
-        raise PlanArtifactValidationError("plan envelope has no valid 'content' object")
-    return parsed_dict
-
-
-def parse_plan_payload_strict(raw: str | Mapping[str, object]) -> PlanArtifactDict:
-    """Strict plan-payload decoder that raises on any failure."""
-    return _decode_plan_payload(raw)
-
-
-def parse_plan_payload_lenient(
-    raw: str | Mapping[str, object],
-) -> PlanArtifactDict | None:
-    """Lenient plan-payload decoder that returns None on the same failures."""
-    try:
-        return _decode_plan_payload(raw)
-    except PlanArtifactValidationError:
-        return None
-
-
-def finalize_plan_draft(draft: PlanArtifactDict) -> PlanArtifactDict:
-    """Validate a draft's sections as a whole PlanArtifact.
-
-    Raises PlanArtifactValidationError if any cross-section invariant fails
-    (e.g. a required section is still missing).
-    """
-    sections = draft.get("sections")
-    if not isinstance(sections, dict):
-        raise PlanArtifactValidationError("plan draft is missing a 'sections' object")
-    return normalize_plan_artifact_content(cast("PlanArtifactDict", sections))
-
-
-def _schema_with_evidence_string_shorthand(schema: dict[str, object]) -> dict[str, object]:
-    """Expose the accepted bare-string evidence shorthand in JSON Schema."""
-    defs_obj = schema.get("$defs")
-    if isinstance(defs_obj, dict):
-        defs = cast("dict[str, object]", defs_obj)
-        plan_step_obj = defs.get("PlanStep")
-        if isinstance(plan_step_obj, dict):
-            plan_step = cast("dict[str, object]", plan_step_obj)
-            properties_obj = plan_step.get("properties")
-            if isinstance(properties_obj, dict):
-                properties = cast("dict[str, object]", properties_obj)
-                expected_evidence_obj = properties.get("expected_evidence")
-                if isinstance(expected_evidence_obj, dict):
-                    expected_evidence = cast("dict[str, object]", expected_evidence_obj)
-                    items_obj = expected_evidence.get("items")
-                    if isinstance(items_obj, dict):
-                        items = cast("dict[str, object]", items_obj)
-                        if "anyOf" not in items:
-                            string_schema: dict[str, object] = {
-                                "type": "string",
-                                "description": (
-                                    "Bare-string shorthand accepted for legacy compatibility; "
-                                    "canonicalized to EvidenceRef(kind='file', ref=value)."
-                                ),
-                            }
-                            expected_evidence["items"] = {"anyOf": [items, string_schema]}
-    return schema
-
-
-def generate_plan_schema() -> dict[str, object]:
-    """Return the JSON Schema for ``PlanArtifact`` as a Python dict.
-
-    The on-disk file at ``ralph/mcp/artifacts/plan/schema.json`` is generated
-    from this helper (via ``PlanArtifact.model_json_schema()``) and locked
-    by the regression test ``test_schema_json_file_matches_generate_plan_schema``.
-    External tools (mypy, pyright, vscode) can consume the on-disk file to
-    type-check a plan without round-tripping Pydantic.
-    """
-    _ensure_plan_artifact_rebuilt()
-    return _schema_with_evidence_string_shorthand(PlanArtifact.model_json_schema())
-
-
 __all__ = [
     "PlanArtifact",
     "PlanArtifactValidationError",
     "SectionMode",
-    "finalize_plan_draft",
-    "generate_plan_schema",
     "is_noop_plan",
-    "merge_plan_section",
     "normalize_plan_artifact_content",
-    "parse_plan_payload_lenient",
-    "parse_plan_payload_strict",
     "validate_plan_section",
 ]

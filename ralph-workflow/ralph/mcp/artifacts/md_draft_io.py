@@ -5,8 +5,7 @@ A draft is one plain markdown file per artifact type at
 content during incremental authoring. Reads and writes go through a
 ``FileBackend`` so production code can be unit-tested with an in-memory
 backend, and the draft survives an MCP server restart (resumability).
-Writes are atomic (temp write + replace), mirroring the precedent set by
-the retired JSON plan-draft store in ``ralph/mcp/artifacts/plan/_draft_io.py``.
+Writes are atomic (temp write + replace).
 """
 
 from __future__ import annotations

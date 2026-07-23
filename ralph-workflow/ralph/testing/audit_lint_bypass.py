@@ -109,7 +109,6 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # at module level). The setters therefore MUST update those
     # scalars in-place via `global`, which ruff flags as PLW0603.
     ("_sentry", "PLW0603"),
-    ("_renderers", "PLR0912"),
     ("parallel_display", "PLR0912"),
     ("pydantic_validation_errors", "PLR0911"),
     ("_command_builders", "PLC0415"),  # lazy import enables test monkeypatching of invoke module

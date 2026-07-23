@@ -51,7 +51,7 @@ Persistent artifact storage and per-type validators. Used by **both** Ralph's se
 | `canonical_submit.py` | `submit_artifact_canonical` — the single canonical writer for `.agent/artifacts/<type>.md`, handoff copies, receipts, and sentinels |
 | `store.py` | `Artifact`, `submit_artifact`, `get_artifact`, `list_artifacts`, `update_artifact`, `delete_artifact` |
 | `file_backend.py` | `FileBackend`, `PathFileBackend`, `DEFAULT_FILE_BACKEND` |
-| `plan.py` | `PlanArtifact`, `validate_plan_artifact`, `finalize_plan_draft`, etc. |
+| `plan/` | Normalized plan models and cross-reference validation used by the markdown spec |
 | `commit_message.py` | Commit message artifact helpers |
 | `development_result.py` | Development result validation |
 | `format_docs/` | Package of bundled dumb-proof Markdown reference docs — `load_bundled_format_doc`, `materialize_format_doc`, `FORMAT_DOC_ARTIFACT_TYPES`; one `.md` per non-plan artifact type loaded via `importlib.resources` |

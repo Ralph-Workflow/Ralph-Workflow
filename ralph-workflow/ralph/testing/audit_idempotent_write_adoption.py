@@ -48,7 +48,6 @@ _ALLOWLISTED_MODULES: tuple[str, ...] = (
     "skills/_content.py",
     "mcp/artifacts/format_docs/__init__.py",
     "mcp/artifacts/handoffs.py",
-    "mcp/artifacts/plan/_renderers.py",
     "pipeline/auto_integrate_agent.py",
     "pipeline/cycle_baseline.py",
     "pipeline/checkpoint.py",
