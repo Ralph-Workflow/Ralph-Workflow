@@ -47,7 +47,13 @@ def _ctx(width: int = 120) -> DisplayContext:
     console = Console(
         file=io.StringIO(), force_terminal=False, color_system=None, width=width
     )
-    return make_display_context(console=console)
+    # Force the display context width to the requested ``width`` so the
+    # test is invariant to ``COLUMNS`` (pytest-xdist sets ``COLUMNS=80``
+    # for its workers, which would otherwise leak into ctx.width and
+    # break the "len(text.plain) <= width" assertion below). The
+    # ``force_width`` seam is the documented escape hatch for tests that
+    # need a deterministic width regardless of inherited environment.
+    return make_display_context(console=console, force_width=width)
 
 
 def _load_default_policy() -> PipelinePolicy:

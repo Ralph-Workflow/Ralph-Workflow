@@ -457,8 +457,8 @@ retry_delay_ms = 1000
 
 [agent_chains]
 planning = ["claude/opus"]
-development = ["agy", "opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
-analysis = ["opencode/openai/gpt-5.4"]
+development = ["claude/sonnet"]
+analysis = ["claude/opus"]
 commit = ["claude/haiku"]
 
 [agent_drains]

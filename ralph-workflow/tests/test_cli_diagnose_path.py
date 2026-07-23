@@ -425,6 +425,56 @@ def test_diagnose_flags_unknown_config_field(
 
 
 @pytest.mark.timeout_seconds(5)
+def test_diagnose_flags_unknown_field_in_propagated_config(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``ralph --diagnose`` must surface a typo in an inherited/propagated ancestor config.
+
+    AC-01 follow-up: ``load_config`` merges every
+    ``workspace_scope.propagated_config_paths`` file into the effective
+    configuration and ``_collect_unknown_field_rows`` must read every
+    propagated path so a typo in an effective ancestor config surfaces
+    in the diagnose Configuration table (not just the local config).
+    """
+    del clean_env
+    _stub_init_bootstrap(monkeypatch)
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Stage a propagated ancestor config with a typo, and a clean local config.
+    propagated_path = tmp_path / "parent" / ".agent" / "ralph-workflow.toml"
+    propagated_path.parent.mkdir(parents=True)
+    propagated_path.write_text(
+        "[general]\nwrokflow = { checkpoint_enabled = true }\n",
+        encoding="utf-8",
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text("", encoding="utf-8")
+    # Patch the workspace scope resolver to inject the propagated path.
+    from ralph.workspace.scope import WorkspaceScope
+
+    monkeypatch.setattr(
+        "ralph.cli.commands.diagnose.resolve_workspace_scope",
+        lambda: WorkspaceScope(
+            root=tmp_path,
+            local_config_path=local_path,
+            propagated_config_paths=(propagated_path,),
+        ),
+    )
+
+    result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
+
+    output = result.output
+    assert "general.wrokflow" in output, (
+        f"Expected the propagated-ancestor typo 'general.wrokflow' to be "
+        f"surfaced in --diagnose output, got: {output}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
 def test_diagnose_next_steps_panel_rendered_in_cli(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

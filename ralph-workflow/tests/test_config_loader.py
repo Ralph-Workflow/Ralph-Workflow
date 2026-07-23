@@ -206,6 +206,60 @@ def test_collect_unknown_config_fields_clean_when_schema_matches() -> None:
     )
 
 
+def test_load_config_warns_on_unknown_field_in_propagated_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A typo in an inherited (propagated) ancestor config must surface too.
+
+    AC-01 follow-up: ``load_config`` merges every
+    ``workspace_scope.propagated_config_paths`` file into the effective
+    configuration but must call ``warn_unknown_fields`` for each
+    inherited source path, not only for global + local. An unknown key
+    in an effective ancestor config must therefore be visible in the
+    loader warning, not silently ignored.
+    """
+    from ralph.workspace.scope import WorkspaceScope
+
+    propagated_path = tmp_path / "parent" / ".agent" / "ralph-workflow.toml"
+    propagated_path.parent.mkdir(parents=True)
+    propagated_path.write_text(
+        "[general]\nwrokflow = { checkpoint_enabled = true }\n",
+        encoding="utf-8",
+    )
+    local_path = tmp_path / "child" / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        load_config(
+            workspace_scope=WorkspaceScope(
+                root=tmp_path / "child",
+                local_config_path=local_path,
+                propagated_config_paths=(propagated_path,),
+            )
+        )
+    finally:
+        logger.remove(sink_id)
+
+    warning = "\n".join(records)
+    assert "general.wrokflow" in warning, (
+        f"Expected the propagated-ancestor typo 'general.wrokflow' in the "
+        f"loader warning, got: {warning!r}"
+    )
+    assert str(propagated_path) in warning, (
+        f"Expected the propagated-ancestor path to be named in the loader "
+        f"warning, got: {warning!r}"
+    )
+    # The fix-it suggestion must include the canonical field name.
+    assert "workflow" in warning, (
+        f"Expected canonical 'workflow' suggestion in propagated-ancestor "
+        f"warning, got: {warning!r}"
+    )
+
+
 def test_invalid_value_message_names_rejected_and_allowed() -> None:
     """A Pydantic ValidationError must surface the rejected value and allowed enum set.
 

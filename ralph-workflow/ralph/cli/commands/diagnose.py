@@ -540,6 +540,13 @@ def _collect_unknown_field_rows(
         local_path = workspace_scope.local_config_path
         local_data = load_toml(local_path)
         findings.extend(_findings_with_path(local_data, local_path))
+        # Inherited / propagated ancestor config files contribute to
+        # the effective config but the loader's per-source unknown-field
+        # warning needs the per-path name so the operator can locate the
+        # typo in a specific inherited file, not just the local one.
+        for propagated_path in workspace_scope.propagated_config_paths:
+            propagated_data = load_toml(propagated_path)
+            findings.extend(_findings_with_path(propagated_data, propagated_path))
 
     for field_path, suggestion in findings:
         fix = (

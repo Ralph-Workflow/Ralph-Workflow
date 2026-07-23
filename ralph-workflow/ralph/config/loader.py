@@ -382,6 +382,11 @@ def load_config(
         SystemExit: If configuration validation fails.
     """
     global_data = load_toml(_global_config_path())
+    # Track each propagated path's data separately so warn_unknown_fields
+    # can name the exact source file when a typo is found in an inherited
+    # config. The merged ``propagated_data`` below stays aggregated for
+    # the effective-config merge; the per-path list is only for warnings.
+    propagated_entries: list[tuple[Path, dict[str, object]]] = []
     propagated_data: dict[str, object] = {}
     local_path = config_path or LOCAL_CONFIG_PATH
     if config_path is None:
@@ -393,7 +398,9 @@ def load_config(
         else:
             local_path = workspace_scope.local_config_path
             for propagated_path in workspace_scope.propagated_config_paths:
-                propagated_data = deep_merge(propagated_data, load_toml(propagated_path))
+                propagated_data_for_path = load_toml(propagated_path)
+                propagated_entries.append((propagated_path, propagated_data_for_path))
+                propagated_data = deep_merge(propagated_data, propagated_data_for_path)
     local_data = load_toml(local_path)
 
     # Convert legacy config format if needed
@@ -401,6 +408,8 @@ def load_config(
     propagated_data = _convert_legacy_config(propagated_data)
     local_data = _convert_legacy_config(local_data)
     warn_unknown_fields(global_data, _global_config_path())
+    for propagated_path, propagated_path_data in propagated_entries:
+        warn_unknown_fields(propagated_path_data, propagated_path)
     warn_unknown_fields(local_data, local_path)
 
     # Merge: global -> propagated -> local
