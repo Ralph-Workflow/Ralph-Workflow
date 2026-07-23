@@ -263,9 +263,17 @@ def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> 
     would have been the correct path -- the exact bug class that
     would silently flatten a merge commit (B3) or replay an
     already-upstream patch into a conflict (B6).
+
+    The revision range ``<target>..HEAD`` MUST come BEFORE any
+    ``--`` separator. ``--`` tells ``git rev-list`` that the
+    following arguments are paths to limit the walk to, and a
+    ``<ref>..<ref>`` token placed after ``--`` is interpreted as a
+    filesystem path; git then exits 129 with usage text and the
+    pipeline logs the topology as unknown. There are no paths to
+    limit to here, so no ``--`` separator is needed at all.
     """
     result = run_git(
-        ("rev-list", "--count", *extra_args, "--", f"{target}..HEAD"),
+        ("rev-list", "--count", *extra_args, f"{target}..HEAD"),
         cwd=root,
         label="auto-integrate:rev-list-count",
     )

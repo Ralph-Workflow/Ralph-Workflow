@@ -359,7 +359,15 @@ def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) ->
             get_process_manager().shutdown_all(grace_period_s=0)
         reset_process_manager()
 
-    _assert_full_lifecycle(events, "git-rebase:")
+    # get_conflicted_files now routes through the NUL-delimited
+    # hardening helper (ralph.git.hardening.porcelain_z) so the
+    # ProcessManager event label is the hardening label, not the
+    # old SubprocessExecutor ``git-rebase:`` label. The executor
+    # argument is retained for signature compatibility; the helper
+    # uses the hardened run_git path so the per-invocation pin
+    # and non-interactive env are exactly what the rest of the
+    # auto-integration pipeline uses.
+    _assert_full_lifecycle(events, "hardening:porcelain-z")
 
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:

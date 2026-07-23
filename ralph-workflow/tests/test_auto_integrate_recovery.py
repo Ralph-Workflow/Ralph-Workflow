@@ -1285,24 +1285,33 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
 
     The original failure mode (PROMPT.md wt-23): a leftover
     rebase state at a non-startup seam (e.g. the commit seam)
-    was the forbidden silent noop -- ``_auto_integrate_check_skip_conditions``
-    caught the precondition error and returned a recorded skip,
-    permanently disabling integration. The fix: that helper
-    now invokes the expanded reclaim at every seam and
-    re-runs ``check_rebase_preconditions``, proceeding in the
-    same seam when the reclaim succeeds.
+    was the forbidden silent noop -- the precondition check
+    caught the leftover state and returned a recorded skip,
+    permanently disabling integration. The fix: the seam-level
+    reclaim-then-retry path runs at every seam and re-runs
+    ``check_rebase_preconditions``, proceeding in the same
+    seam when the reclaim succeeds.
 
     This test plants orphaned rebase state WITHOUT an
     ownership record on a clean tree, drives the seam-level
-    reclaim through the production helper, and asserts:
+    reclaim through the public :func:`auto_integrate_after_commit`
+    seam (the seam the production commit / phase-transition
+    path uses), and asserts:
 
-    * the helper returns ``None`` (proceed) when the reclaim
-      succeeded and the precondition now passes (the
-      tristate return distinguishes "reclaim did nothing" from
-      "reclaim succeeded, proceed");
-    * the rebase marker is gone after the reclaim;
+    * the integration PROCEEDS in the same seam -- outcome is
+      not the ``"preconditions not met"`` skip the silent-noop
+      bug produced;
+    * the rebase marker is gone after the reclaim ran (the
+      reclaim is what removed it; the subsequent rebase would
+      have run in the same seam but is not exercised here
+      because the test setup plants a content conflict on
+      ``shared.txt`` -- the marker-removal + integration-proceed
+      is the seam-level reclaim's contract, and the full
+      conflict-resolution pipeline is pinned by the recovery
+      and rebase-conflict e2e suites);
     * ``check_rebase_preconditions`` passes when invoked
-      directly on the same worktree.
+      directly on the same worktree, proving the reclaim
+      restored the precondition to a healthy state.
 
     The full integration outcome is exercised by the existing
     ``test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree``
@@ -1311,7 +1320,6 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     contract the analysis feedback requires.
     """
     from ralph.git.rebase import check_rebase_preconditions
-    from ralph.pipeline.auto_integrate import _auto_integrate_check_skip_conditions
 
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
@@ -1330,11 +1338,15 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
     # Make the tree clean while the rebase bookkeeping stays on disk:
     # this is exactly the stale shape the seam-level reclaim meets.
     # We reset to the pre-rebase tip (the original feature HEAD) so
-    # the feature is still ahead of base after the reset.
+    # the feature is still ahead of base after the reset, then
+    # re-checkout feature -- ``reset --hard`` keeps HEAD detached
+    # from the in-progress rebase, and ``auto_integrate_after_commit``
+    # needs a checked-out branch to know the integration source.
     pre_rebase_feature_sha = _run(
         tmp_git_repo, "rev-parse", "feature"
     ).stdout.strip()
     _run(tmp_git_repo, "reset", "--hard", pre_rebase_feature_sha)
+    _run(tmp_git_repo, "checkout", "feature")
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()
@@ -1347,20 +1359,32 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
         tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     ).exists(), "test setup: no auto-integrate record must exist"
 
-    # Drive the seam-level reclaim via the helper (the same helper
-    # the commit / phase-transition seam calls BEFORE the integration
-    # runs). On a clean tree, the reclaim-at-seam path runs and
-    # re-runs the preconditions; the helper's tristate return
-    # distinguishes "reclaim did nothing" (None) from
-    # "reclaim succeeded, proceed" (the call site treats the
-    # success case as proceed and never falls through to
-    # record a skip with the ORIGINAL precondition error).
-    result = _auto_integrate_check_skip_conditions(tmp_git_repo, "feature", base)
-    assert result is None, (
-        "AC-07/R8: seam-level reclaim must allow the integration to "
-        "proceed; the helper must return None when the reclaim "
-        "succeeded and the precondition now passes (got "
-        f"{result!r})"
+    # Drive the seam-level reclaim through the PUBLIC seam
+    # (the same ``auto_integrate_after_commit`` the commit and
+    # phase-transition paths call). On a clean tree, the
+    # seam-level reclaim runs, removes the orphaned state, and
+    # the integration proceeds. The headline assertion is that
+    # the integration is NOT recorded as ``"preconditions not met"``:
+    # the silent-noop bug would have produced exactly that skip
+    # and disabled integration for the worktree forever.
+    result = auto_integrate_after_commit(
+        _build_config(tmp_git_repo, target=base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
+    assert result is not None, (
+        "AC-07/R8: the seam-level integration must surface a recorded "
+        "outcome (the auto-integrate feature is enabled, so a silent "
+        "None is the silent-noop bug)"
+    )
+    assert not (
+        result.last_reason or ""
+    ).startswith("preconditions not met"), (
+        "AC-07/R8: seam-level reclaim must have removed the "
+        "stale state and let the integration proceed; the "
+        "silent-noop bug recorded a 'preconditions not met' "
+        "skip here. Got: "
+        f"{result.last_reason!r}"
     )
     assert not (git_dir / "rebase-apply").exists(), (
         "AC-07/R8: seam-level reclaim must have removed the "
@@ -1371,7 +1395,7 @@ def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
         "rebase-merge marker in the same seam"
     )
     # Direct precondition check after the reclaim: no marker,
-    # so the helper's retry must have been a pass. The
+    # so the seam-level retry must have been a pass. The
     # production caller's check at the seam would have been
     # the same call.
     check_rebase_preconditions(tmp_git_repo)
@@ -1389,8 +1413,6 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
     a precondition failure on a dirty tree is recorded as a
     loud skip, and the state stays on disk.
     """
-    from ralph.pipeline.auto_integrate import _auto_integrate_check_skip_conditions
-
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
     base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -1406,6 +1428,16 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
     )
     # DO NOT reset -- the unmerged paths are the operator's
     # in-progress conflict, which must be preserved (AC-11 case 4).
+    # Re-attach HEAD to the feature branch so the integration's
+    # branch-resolution path runs (a rebase leaves HEAD detached,
+    # which would short-circuit the precondition check with a
+    # ``detached HEAD`` skip BEFORE the seam-level reclaim runs,
+    # bypassing the dirty-tree discriminator under test). A plain
+    # ``git checkout feature`` would refuse while unmerged paths
+    # are present, so use ``symbolic-ref HEAD`` to re-attach the
+    # pointer without touching the worktree -- the unmerged paths
+    # and the rebase-apply/rebase-merge state both stay on disk.
+    _run(tmp_git_repo, "symbolic-ref", "HEAD", "refs/heads/feature")
     git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
     if not git_dir.is_absolute():
         git_dir = (tmp_git_repo / git_dir).resolve()
@@ -1417,12 +1449,34 @@ def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
         "test setup: worktree must be dirty with unmerged paths"
     )
 
-    result = _auto_integrate_check_skip_conditions(tmp_git_repo, "feature", base)
+    # Drive the seam-level reclaim through the PUBLIC seam
+    # (the same ``auto_integrate_after_commit`` the commit and
+    # phase-transition paths call). On a dirty tree with
+    # unmerged paths, the seam-level reclaim MUST refuse --
+    # the operator (or live agent) owns the in-progress
+    # rebase via the unmerged paths, and the AC-11 case-4
+    # protection is the same dirty-tree discriminator the
+    # startup recovery uses. The outcome must therefore be
+    # a recorded ``"preconditions not met"`` skip (loud,
+    # not silent), and the state must still be on disk.
+    result = auto_integrate_after_commit(
+        _build_config(tmp_git_repo, target=base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
     assert result is not None, (
         "AC-11 case 4: a dirty tree with unmerged paths is "
         "operator-owned and MUST be preserved; the seam-level "
-        "reclaim must NOT touch it. The helper must return a "
-        "recorded skip in this case."
+        "reclaim must NOT touch it. The integration must "
+        "surface a recorded skip in this case, never a "
+        "silent None."
+    )
+    assert (result.last_reason or "").startswith("preconditions not met"), (
+        "AC-11 case 4: a dirty tree with unmerged paths must "
+        "trigger the precondition-failure skip; the recorded "
+        "reason names the precondition that blocked the "
+        "integration. Got: "
+        f"{result.last_reason!r}"
     )
     # The state is still on disk.
     assert (git_dir / "rebase-apply").exists() or (

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
+from ralph.git.hardening import unmerged_paths_collect
 from ralph.git.rebase._process_executor import ProcessExecutor
 from ralph.git.rebase.process_result import ProcessResult
 from ralph.git.rebase.rebase_conflicts import RebaseConflicts
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
 
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
-_STATUS_PREFIX_LEN = 3
 
 
 @dataclass(frozen=True)
@@ -97,37 +97,35 @@ def get_conflicted_files(
     repo_root: Path | str | None = None,
     executor: ProcessExecutor | None = None,
 ) -> list[str]:
-    """List files that are currently marked as conflicted in the index."""
+    """List files that are currently marked as conflicted in the index.
 
+    Detection is NUL-delimited (D12 / spec section C detection rule):
+    paths with embedded newlines, spaces, tabs, and unicode survive
+    unchanged, and the same path is authoritative over stderr text
+    for every conflict type -- several produce no markers at all
+    (modify/delete, binary, symlink, mode-only, gitlink). The
+    parser used is :func:`ralph.git.hardening.unmerged_paths_z`,
+    the shared index-authoritative surface the rebase engine,
+    conflict-resolution pipeline, and recovery code path all
+    read from. Renames are surfaced as the destination path
+    (the live path the resolver will see); the source lives
+    on the returned :class:`PorcelainEntry` for callers that
+    need both names.
+    """
     path = _resolve_repo_root(repo_root)
-    executor = executor or SubprocessExecutor()
+    _ = executor  # kept for signature compatibility; the NUL helper
+    # runs git via the hardened run_git path so the per-invocation
+    # pin and non-interactive env are exactly what the rest of the
+    # auto-integration pipeline uses.
 
-    result = executor.execute(
-        "git",
-        ("status", "--porcelain", "--untracked-files=no"),
-        cwd=path,
-    )
-
-    if result.returncode != 0:
+    try:
+        entries = unmerged_paths_collect(path)
+    except Exception as exc:
         raise RebaseOperationError(
-            f"Failed to list conflicted files: {result.stderr or result.stdout or 'unknown'}"
-        )
+            f"Failed to list conflicted files: {exc}"
+        ) from exc
 
-    conflicts: list[str] = []
-    for line in result.stdout.splitlines():
-        if not line:
-            continue
-
-        prefix = line[:2]
-        if "U" not in prefix:
-            continue
-
-        payload = line[_STATUS_PREFIX_LEN:] if len(line) > _STATUS_PREFIX_LEN else ""
-        filename = payload.split(" -> ")[-1].strip()
-        if filename:
-            conflicts.append(filename)
-
-    return sorted(set(conflicts))
+    return sorted({entry.path for entry in entries if entry.path})
 
 
 def rebase_onto(

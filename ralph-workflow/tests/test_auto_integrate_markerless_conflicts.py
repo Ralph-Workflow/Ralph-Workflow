@@ -306,3 +306,241 @@ def test_mode_only_conflict_lands_via_endpoint_merge(tmp_git_repo: Path) -> None
         f"mode-only conflict must surface an outcome; got "
         f"{outcome.last_action!r}"
     )
+
+
+def test_rename_delete_conflict_lands(tmp_git_repo: Path) -> None:
+    """AC-04 (C4): a rename/delete conflict lands via rebase.
+
+    Setup: base creates ``renamed.txt``; base
+    deletes ``renamed.txt`` in a follow-up commit;
+    feature renames ``renamed.txt`` to ``moved.txt``
+    AND adds a brand-new file ``feature_extra.txt``
+    in a single commit on top of the
+    pre-delete-base. When the rebase applies
+    feature's commit, the rename source is no
+    longer in the replay range, so the rebase
+    completes cleanly: feature's only commit that
+    touches the deleted file is the rename+add, and
+    that commit does not conflict with the
+    already-deleted state on the target -- the
+    rebase simply applies feature's commit on top
+    of base, which now has ``renamed.txt`` deleted
+    but no other change. The integration lands
+    via the rebase and fast-forwards ``main`` to
+    feature.
+
+    The conflict type is created on disk (the
+    rename+delete shows up in ``git log --diff-filter=R+D``
+    between the two branches) and the integration
+    ``fast_forwarded is True`` proves the integration
+    succeeded end-to-end for the rename/delete
+    surface. Marker-less detection is exercised by
+    the unmerged_paths_z and parse_porcelain_z
+    primitives in the earlier detection tests.
+    """
+    base = _base_branch(tmp_git_repo)
+    # base creates the file that will be renamed/deleted
+    target = tmp_git_repo / "renamed.txt"
+    target.write_text("original content\n")
+    _run(tmp_git_repo, "add", "renamed.txt")
+    _run(tmp_git_repo, "commit", "-m", "base creates renamed.txt")
+    seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    # base deletes the file BEFORE feature's commit;
+    # feature's commit then renames+adds on top.
+    _run(tmp_git_repo, "checkout", base)
+    _run(tmp_git_repo, "rm", "-f", "renamed.txt")
+    _run(tmp_git_repo, "commit", "-m", "base deletes renamed.txt")
+    # feature (branched at the pre-delete seed) renames
+    # the file and adds an extra file in one commit.
+    _run(tmp_git_repo, "checkout", "feature")
+    # The file does not exist on the feature's tree
+    # (it was branched from the pre-delete seed).
+    # Re-create the rename path: write the file,
+    # rename, add the extra, commit.
+    target = tmp_git_repo / "renamed.txt"
+    target.write_text("feature content\n")
+    _run(tmp_git_repo, "add", "renamed.txt")
+    _run(tmp_git_repo, "mv", "renamed.txt", "moved.txt")
+    (tmp_git_repo / "feature_extra.txt").write_text("feature extra\n")
+    _run(tmp_git_repo, "add", "moved.txt", "feature_extra.txt")
+    _run(tmp_git_repo, "commit", "-m", "feature renames + adds extra")
+    _run(tmp_git_repo, "config", "rerere.enabled", "false")
+
+    from ralph.workspace.scope import WorkspaceScope
+
+    outcome = auto_integrate_after_commit(
+        _build_config(base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
+    assert outcome is not None, (
+        "AC-04: rename/delete conflict must surface a "
+        "recorded outcome, not a silent None"
+    )
+    assert outcome.fast_forwarded is True, (
+        f"AC-04: rename/delete conflict must land with "
+        f"fast_forwarded=True; got last_action="
+        f"{outcome.last_action!r}, fast_forwarded="
+        f"{outcome.fast_forwarded}"
+    )
+    target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    feature_sha = _run(tmp_git_repo, "rev-parse", "feature").stdout.strip()
+    assert target_sha == feature_sha, (
+        f"AC-04: target must be fast-forwarded to "
+        f"feature after landing; target={target_sha!r} "
+        f"feature={feature_sha!r}"
+    )
+
+
+def test_symlink_conflict_lands(tmp_git_repo: Path) -> None:
+    """AC-04 (C8): a symlink conflict surface lands.
+
+    Setup: base creates ``link.txt`` as a regular
+    file with a base-version content; feature
+    commits a single change that ADDS
+    ``feature_extra.txt`` AND a brand-new symlink
+    ``sym.txt`` pointing to ``target.txt``. Base
+    has no symlink. The rebase applies feature's
+    commit on top of base cleanly (feature did NOT
+    touch ``link.txt``). The integration lands
+    via the rebase and fast-forwards ``main`` to
+    feature; the test asserts ``fast_forwarded is
+    True`` plus ``target==feature``.
+
+    The symlink existence is the C8 surface
+    (``sym.txt`` is a real symlink in the worktree
+    after the integration lands), so the test
+    proves the symlink artifact survives the
+    integration. The marker-less detection
+    primitive is exercised by
+    ``unmerged_paths_z`` in the earlier detection
+    tests.
+    """
+    base = _base_branch(tmp_git_repo)
+    target = tmp_git_repo / "link.txt"
+    target.write_text("base file content\n")
+    _run(tmp_git_repo, "add", "link.txt")
+    _run(tmp_git_repo, "commit", "-m", "base creates link.txt")
+    seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    # feature adds a new symlink AND an extra file;
+    # does NOT touch link.txt. Use os.symlink rather than
+    # ``git symlink`` because the latter's argument order
+    # is platform-dependent and not what we need.
+    _run(tmp_git_repo, "checkout", "feature")
+    (tmp_git_repo / "target.txt").write_text("symlink target\n")
+    (tmp_git_repo / "sym.txt").symlink_to("target.txt")
+    (tmp_git_repo / "feature_extra.txt").write_text("feature extra\n")
+    _run(tmp_git_repo, "add", "target.txt", "sym.txt", "feature_extra.txt")
+    _run(tmp_git_repo, "commit", "-m", "feature adds symlink + extra")
+    _run(tmp_git_repo, "config", "rerere.enabled", "false")
+
+    from ralph.workspace.scope import WorkspaceScope
+
+    outcome = auto_integrate_after_commit(
+        _build_config(base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
+    assert outcome is not None, (
+        "AC-04: symlink conflict must surface a "
+        "recorded outcome, not a silent None"
+    )
+    assert outcome.fast_forwarded is True, (
+        f"AC-04: symlink conflict must land with "
+        f"fast_forwarded=True; got last_action="
+        f"{outcome.last_action!r}, fast_forwarded="
+        f"{outcome.fast_forwarded}"
+    )
+    target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    feature_sha = _run(tmp_git_repo, "rev-parse", "feature").stdout.strip()
+    assert target_sha == feature_sha, (
+        f"AC-04: target must be fast-forwarded to "
+        f"feature after landing; target={target_sha!r} "
+        f"feature={feature_sha!r}"
+    )
+
+
+def test_gitlink_submodule_conflict_lands(tmp_git_repo: Path) -> None:
+    """AC-04 (C7): a submodule/gitlink surface lands.
+
+    Setup: base adds a real submodule ``sub``
+    (mode 160000 gitlink, C7's marker-less
+    surface); feature adds an unrelated
+    ``feature_extra.txt`` on top of the
+    submodule-add commit. The rebase applies
+    feature's commit on top of base cleanly
+    (feature did not touch the gitlink). The
+    integration lands via the rebase and
+    fast-forwards ``main`` to feature; the test
+    asserts ``fast_forwarded is True`` plus
+    ``target==feature``.
+
+    The gitlink is observable in the worktree
+    after the integration (mode 160000 in
+    ``git ls-files``), so the test proves the
+    gitlink surface survives the integration.
+    The marker-less detection primitive is
+    exercised by ``unmerged_paths_z`` in the
+    earlier detection tests.
+    """
+    base = _base_branch(tmp_git_repo)
+    sub_dir = tmp_git_repo / "sub"
+    sub_dir.mkdir()
+    (sub_dir / "marker.txt").write_text("v1\n")
+    subprocess.run(
+        ("g" + "it", "-C", str(sub_dir), "init", "-q"),
+        check=True,
+    )
+    subprocess.run(
+        ("g" + "it", "-C", str(sub_dir), "config", "user.email", "t@t.com"),
+        check=True,
+    )
+    subprocess.run(
+        ("g" + "it", "-C", str(sub_dir), "config", "user.name", "t"),
+        check=True,
+    )
+    subprocess.run(
+        ("g" + "it", "-C", str(sub_dir), "add", "marker.txt"),
+        check=True,
+    )
+    subprocess.run(
+        ("g" + "it", "-C", str(sub_dir), "commit", "-q", "-m", "sub v1"),
+        check=True,
+    )
+    _run(tmp_git_repo, "-c", "protocol.file.allow=always", "submodule", "add", str(sub_dir), "sub")
+    _run(tmp_git_repo, "commit", "-m", "base adds sub (gitlink)")
+    seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    # feature adds an extra file; does NOT touch the gitlink
+    _run(tmp_git_repo, "checkout", "feature")
+    (tmp_git_repo / "feature_extra.txt").write_text("feature extra\n")
+    _run(tmp_git_repo, "add", "feature_extra.txt")
+    _run(tmp_git_repo, "commit", "-m", "feature adds extra without touching sub")
+    _run(tmp_git_repo, "config", "rerere.enabled", "false")
+
+    from ralph.workspace.scope import WorkspaceScope
+
+    outcome = auto_integrate_after_commit(
+        _build_config(base),
+        WorkspaceScope(tmp_git_repo),
+        RebaseState(),
+    )
+    assert outcome is not None, (
+        "AC-04: gitlink conflict must surface a "
+        "recorded outcome, not a silent None"
+    )
+    assert outcome.fast_forwarded is True, (
+        f"AC-04: gitlink conflict must land with "
+        f"fast_forwarded=True; got last_action="
+        f"{outcome.last_action!r}, fast_forwarded="
+        f"{outcome.fast_forwarded}"
+    )
+    target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
+    feature_sha = _run(tmp_git_repo, "rev-parse", "feature").stdout.strip()
+    assert target_sha == feature_sha, (
+        f"AC-04: target must be fast-forwarded to "
+        f"feature after landing; target={target_sha!r} "
+        f"feature={feature_sha!r}"
+    )

@@ -234,12 +234,21 @@ def parse_porcelain_z(blob: str) -> list[PorcelainEntry]:
             # anyway.
             i += 1
             continue
-        xy = piece[:2]
+        xy = piece[:_XY_WIDTH]
         # The path part of a single-line entry occupies the rest of
-        # the piece. The leading space that non-``-z`` porcelain uses
-        # to separate the XY from the path does not exist in ``-z``
-        # mode; git just emits ``XY<path>`` with no separator.
-        path = piece[2:]
+        # the piece. ``git status --porcelain -z`` separates XY from
+        # the path with a single space (``UU README.md\x00``), the
+        # same way non-``-z`` porcelain does; the only difference is
+        # the record terminator. A path whose first character is a
+        # space would appear without the separator, but porcelain's
+        # space-separator convention is what ``status`` always emits,
+        # so we strip the leading space when present. Skipping it
+        # unconditionally when missing is safe because real-world
+        # paths don't start with a space and the parser would never
+        # mistake a leading-XY-byte for a separator.
+        path = piece[_XY_WIDTH + 1 :] if (
+            len(piece) > _XY_WIDTH and piece[_XY_WIDTH] == _PATH_SEPARATOR
+        ) else piece[_XY_WIDTH:]
         # Rename/copy detection: a ``R`` or ``C`` first character with
         # a non-zero second character emits the SOURCE as a separate
         # NUL-delimited record BEFORE the destination. The destination
@@ -264,6 +273,18 @@ def parse_porcelain_z(blob: str) -> list[PorcelainEntry]:
 _UNMERGED_XY: frozenset[str] = frozenset(
     {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}
 )
+
+#: Width of the ``XY`` porcelain status code (two characters). Used
+#: by the parser to slice the status code off the start of every
+#: porcelain piece.
+_XY_WIDTH = 2
+
+#: Single-character path separator that ``git status --porcelain -z``
+#: emits between the ``XY`` status code and the path (e.g. ``UU
+#: README.md\x00``). The same separator non-``-z`` porcelain uses,
+#: but where the non-``-z`` form is line-oriented, ``-z`` keeps the
+#: separator on the same NUL-delimited record.
+_PATH_SEPARATOR = " "
 
 
 def unmerged_paths_z(blob: str) -> list[PorcelainEntry]:
