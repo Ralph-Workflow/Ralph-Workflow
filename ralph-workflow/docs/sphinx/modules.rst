@@ -3629,6 +3629,13 @@ ralph.project_policy.cli_integration
    :members:
    :show-inheritance:
 
+ralph.project_policy.status_bar
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.status_bar
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.starters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

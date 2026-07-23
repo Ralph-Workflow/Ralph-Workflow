@@ -69,13 +69,13 @@ def _make_policy_bundle() -> PolicyBundle:
 
 def _common_monkeypatches(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_git_repo: Path,
+    workspace_root: Path,
     bundle: PolicyBundle,
     fake_execute: object,
     save_fn: object = None,
 ) -> None:
     monkeypatch.setattr(
-        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
+        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(workspace_root)
     )
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
@@ -92,7 +92,7 @@ def _common_monkeypatches(
 
 
 def test_runner_exits_via_cycle_cap_not_premature_termination(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Runner loops through recovery until CycleCap is hit, then exits with code 1.
@@ -133,7 +133,7 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
         invocation_count += 1
         raise AgentInvocationError("claude", 1, "agent idle timeout")
 
-    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, _capture_saved_state)
+    _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute, _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
@@ -157,7 +157,7 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
 
 
 def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Each recovery cycle records FailureEvents for both agents and a FalloverEvent.
@@ -206,7 +206,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInvocationError("claude", 1, "agent idle timeout")
 
-    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute)
+    _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
@@ -244,7 +244,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
 
 
 def test_runner_fallover_history_reflects_agent_transitions(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The fallover_history in final state shows all agent transitions."""
@@ -269,7 +269,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
     def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInvocationError("claude", 1, "agent idle timeout")
 
-    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, _capture_saved_state)
+    _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute, _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
@@ -303,7 +303,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
 
 
 def test_runner_recovery_cycle_count_reaches_cap(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The recovery_cycle_count in saved checkpoints reaches the cap value."""
@@ -328,7 +328,7 @@ def test_runner_recovery_cycle_count_reaches_cap(
     def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInvocationError("claude", 1, "agent idle timeout")
 
-    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, _capture_saved_state)
+    _common_monkeypatches(monkeypatch, tmp_path, bundle, _fake_execute, _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 

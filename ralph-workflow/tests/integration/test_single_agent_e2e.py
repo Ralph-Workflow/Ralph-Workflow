@@ -63,10 +63,10 @@ def _policy_bundle() -> SimpleNamespace:
 
 
 def test_run_completes_in_serial_mode_without_fan_out(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prompt = tmp_git_repo / "PROMPT.md"
+    prompt = tmp_path / "PROMPT.md"
     prompt.write_text("# Test Prompt\n\nRun the serial path.")
 
     initial_state = PipelineState(
@@ -84,8 +84,10 @@ def test_run_completes_in_serial_mode_without_fan_out(
     monkeypatch.setattr(
         runner_module,
         "resolve_workspace_scope",
-        lambda: WorkspaceScope(tmp_git_repo),
+        lambda: WorkspaceScope(tmp_path),
     )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _path: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _path: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: _policy_bundle())
     monkeypatch.setattr(
         runner_module,
@@ -141,7 +143,7 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
 
 def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_output(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Serial unattended run reaches 'complete' even when the development phase produces
@@ -151,7 +153,7 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     tool results: the pipeline must not emit a fan-out event or get stuck when the
     development phase processes multimodal tool output.
     """
-    prompt = tmp_git_repo / "PROMPT.md"
+    prompt = tmp_path / "PROMPT.md"
     prompt.write_text("# Test\n\nRun multimodal serial path.")
 
     initial_state = PipelineState(
@@ -168,8 +170,10 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     monkeypatch.setattr(
         runner_module,
         "resolve_workspace_scope",
-        lambda: WorkspaceScope(tmp_git_repo),
+        lambda: WorkspaceScope(tmp_path),
     )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _path: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _path: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: _policy_bundle())
     monkeypatch.setattr(
         runner_module,
@@ -227,7 +231,7 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
 
 
 def test_development_phase_receives_multimodal_handoff_metadata(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Runner-owned prompt seam carries delivery/block_type/URI metadata to dev phase.
@@ -276,7 +280,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
             },
         ],
     }
-    index_path = tmp_git_repo / media_session_path("development")
+    index_path = tmp_path / media_session_path("development")
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
 
@@ -290,7 +294,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     ) -> None:
         phase = getattr(effect, "phase", None)
         if phase is not None:
-            fs_ws = FsWorkspace(tmp_git_repo)
+            fs_ws = FsWorkspace(tmp_path)
             entries = collect_media_entries_for_phase(fs_ws, str(phase))
             captured_entries.extend(entries)
 
@@ -309,8 +313,10 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     monkeypatch.setattr(
         runner_module,
         "resolve_workspace_scope",
-        lambda: WorkspaceScope(tmp_git_repo),
+        lambda: WorkspaceScope(tmp_path),
     )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _path: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _path: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: _policy_bundle())
     monkeypatch.setattr(
         runner_module,
@@ -381,7 +387,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
 
 
 def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unsupported provider/modality combinations are carried through the runner handoff seam.
@@ -420,7 +426,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
             },
         ],
     }
-    index_path = tmp_git_repo / media_session_path("development")
+    index_path = tmp_path / media_session_path("development")
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
 
@@ -431,7 +437,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     ) -> None:
         phase = getattr(effect, "phase", None)
         if phase is not None:
-            fs_ws = FsWorkspace(tmp_git_repo)
+            fs_ws = FsWorkspace(tmp_path)
             entries = collect_media_entries_for_phase(fs_ws, str(phase))
             captured_entries.extend(entries)
 
@@ -450,8 +456,10 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     monkeypatch.setattr(
         runner_module,
         "resolve_workspace_scope",
-        lambda: WorkspaceScope(tmp_git_repo),
+        lambda: WorkspaceScope(tmp_path),
     )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _path: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _path: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: _policy_bundle())
     monkeypatch.setattr(
         runner_module,

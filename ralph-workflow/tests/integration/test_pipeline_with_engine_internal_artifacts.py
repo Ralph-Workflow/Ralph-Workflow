@@ -138,17 +138,14 @@ def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict) -> Non
 def _track_and_commit(repo_root: Path, *rel_paths: str) -> None:
     """Stage each relative path in ``repo_root`` and commit it (helper).
 
-    The repository handle is opened ONCE for all paths. Opening a
-    GitPython ``Repo`` per commit was the dominant cost of this file's
-    fixture, and that cost is charged against the 60 s combined test
-    budget; the commits themselves are unchanged, so each path still
-    lands as its own tracked commit.
+    One commit is sufficient: this regression asserts that every path is
+    tracked before cleanup, not their individual history. Batch staging
+    removes two unnecessary Git commit subprocesses from the default suite.
     """
     repo = Repo(repo_root)
     try:
-        for rel_path in rel_paths:
-            repo.index.add([rel_path])
-            repo.index.commit(f"track {rel_path}")
+        repo.index.add(list(rel_paths))
+        repo.index.commit("track engine-internal artifacts")
     finally:
         repo.close()
 

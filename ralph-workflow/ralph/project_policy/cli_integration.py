@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 

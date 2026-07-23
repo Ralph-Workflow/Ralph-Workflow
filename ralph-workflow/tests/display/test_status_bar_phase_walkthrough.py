@@ -43,7 +43,6 @@ from ralph.pipeline.phase_transition import (
 )
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.project_policy import cli_integration
 from ralph.project_policy import status_bar as status_bar_module
 from ralph.project_policy.pipeline_graph import DEFAULT_MAX_REMEDIATION_ATTEMPTS
 from ralph.workspace.scope import WorkspaceScope
