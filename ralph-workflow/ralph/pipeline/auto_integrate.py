@@ -55,6 +55,7 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
+from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
 from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
 from ralph.pipeline.auto_integrate_budget_seam import (
@@ -100,6 +101,8 @@ from ralph.pipeline.auto_integrate_record import (
     write_record as _write_record,
 )
 from ralph.pipeline.auto_integrate_recovery import (
+    TerminalStateViolationError,
+    _reclaim_unowned_stale_rebase,
     post_attempt_verify,
     recover_incomplete_integration,
     recovery_retained_record,
@@ -969,6 +972,74 @@ def _auto_integrate_resolve_context(
     return root, current_branch, target, refresh
 
 
+def _reclaim_and_retry_preconditions(
+    root: Path,
+    target: str,
+    precondition_exc: RebasePreconditionError,
+) -> RebaseState | None:
+    """AC-07/R8 reclaim-at-seam helper.
+
+    On a precondition failure that looks like unowned stale state,
+    invoke :func:`_reclaim_unowned_stale_rebase` to abort/reclaim
+    the state, then re-run ``check_rebase_preconditions`` and
+    return ``None`` (proceed) when it now passes. A dirty tree
+    keeps the state protected (AC-11 case 4); a post-reclaim
+    precondition failure surfaces a loud ``skipped`` record with
+    the cause so the next seam can retry.
+
+    Return contract: a recorded skip is returned when the
+    precondition still fails after the reclaim, ``None`` otherwise
+    (both when the reclaim did nothing and when it succeeded).
+    The caller relies on this contract to distinguish "skip
+    because the reclaim retried and still failed" from "proceed
+    because the reclaim worked" by checking the LAST_REASON
+    string on the returned record (only the recorded-skip
+    branch sets a ``preconditions not met after reclaim`` reason).
+    """
+    reclaimed = _reclaim_unowned_stale_rebase(root)
+    if reclaimed is None:
+        # No reclaim happened: either nothing to reclaim or the
+        # tree was dirty (operator-owned, AC-11 case 4). Let the
+        # caller record a skip with the original cause.
+        return None
+    logger.warning(
+        "auto_integrate: rebase preconditions blocked by stale "
+        "unowned state for target '{}': {}; "
+        "reclaimed at seam (AC-07/R8) -- retrying preconditions",
+        target,
+        precondition_exc,
+    )
+    try:
+        check_rebase_preconditions(root)
+    except RebasePreconditionError as retry_exc:
+        # Reclaim ran but the precondition still fails (e.g.
+        # the state was operator-owned and the dirty-tree check
+        # kept it). Surface the failure loudly with the
+        # original cause so the next seam can retry; never a
+        # silent noop.
+        logger.warning(
+            "auto_integrate: rebase preconditions still failing "
+            "after reclaim at seam for target '{}': {} (was {}); "
+            "the recovery preamble will reclaim on the next run",
+            target,
+            retry_exc,
+            precondition_exc,
+        )
+        return _record_skip(
+            reason=f"preconditions not met after reclaim: {retry_exc}",
+            target=target,
+        )
+    # Reclaim succeeded and the precondition now passes: proceed
+    # in the same seam. We return a recorded skip with a sentinel
+    # ``_RECLAIM_SUCCEEDED`` reason so the call site can detect
+    # the success case without falling through to the original
+    # precondition error.
+    return _record_skip(
+        reason="_reclaim_succeeded",
+        target=target,
+    )
+
+
 def _auto_integrate_check_skip_conditions(
     root: Path,
     current_branch: str,
@@ -981,6 +1052,16 @@ def _auto_integrate_check_skip_conditions(
     reach the caller's broad handler, where it became an opaque
     ``unexpected failure`` that named neither the operation nor the
     repository.
+
+    AC-07/R8 (reclaim-at-seam): a ``RebasePreconditionError`` that
+    points at UNOWNED stale state (the ``rebase_in_progress`` /
+    ``merge_in_progress`` family of precondition failures) on a
+    clean tree is NOT a permanent disablement -- it is a recoverable
+    block. The reclaim is delegated to
+    :func:`_reclaim_and_retry_preconditions`, which re-runs the
+    preconditions in the same seam when the reclaim succeeds and
+    proceeds. A dirty tree with unmerged paths is preserved
+    (operator-owned, AC-11 case 4).
     """
     if current_branch == target:
         return _record_skip(reason="on target branch", target=target)
@@ -994,18 +1075,53 @@ def _auto_integrate_check_skip_conditions(
     try:
         check_rebase_preconditions(root)
     except RebasePreconditionError as exc:
-        # A precondition failure disables auto-integration for the whole
-        # run, so it must not be visible only as one token on an
-        # activity line that scrolls past. WARN names the target and the
-        # precondition so the cause is greppable in the run log; the
-        # recorded skip keeps the never-crash semantics unchanged.
-        logger.warning(
-            "auto_integrate: rebase preconditions not met for target '{}': {}",
-            target,
-            exc,
-        )
-        return _record_skip(reason=f"preconditions not met: {exc}", target=target)
+        return _handle_precondition_failure(root, target, exc)
     return None
+
+
+def _handle_precondition_failure(
+    root: Path,
+    target: str,
+    exc: RebasePreconditionError,
+) -> RebaseState | None:
+    """Handle a precondition failure with AC-07/R8 reclaim-at-seam.
+
+    The helper's return contract distinguishes three cases via the
+    returned state:
+
+    * ``None`` -- the reclaim did nothing; the caller should
+      record a skip with the original cause.
+    * ``RebaseState`` with reason starting with
+      ``"preconditions not met after reclaim: "`` -- the reclaim
+      ran but the precondition still fails; the caller returns
+      this state directly.
+    * ``RebaseState`` with the ``_reclaim_succeeded`` sentinel
+      reason -- the reclaim succeeded and the precondition now
+      passes; the caller proceeds in this seam (the sentinel
+      reason prevents the call site from falling through to the
+      original precondition error and recording a skip with the
+      wrong reason).
+
+    Extracted from :func:`_auto_integrate_check_skip_conditions`
+    so the orchestrator stays under the ruff PLR0911
+    (too-many-returns) cap.
+    """
+    post_reclaim = _reclaim_and_retry_preconditions(root, target, exc)
+    if post_reclaim is not None:
+        if post_reclaim.last_reason == "_reclaim_succeeded":
+            return None
+        return post_reclaim
+    # A precondition failure disables auto-integration for the whole
+    # run, so it must not be visible only as one token on an
+    # activity line that scrolls past. WARN names the target and the
+    # precondition so the cause is greppable in the run log; the
+    # recorded skip keeps the never-crash semantics unchanged.
+    logger.warning(
+        "auto_integrate: rebase preconditions not met for target '{}': {}",
+        target,
+        exc,
+    )
+    return _record_skip(reason=f"preconditions not met: {exc}", target=target)
 
 
 def _create_rebase_backup_ref(root: Path, pre_feature_sha: str | None) -> str | None:
@@ -1022,10 +1138,14 @@ def _create_rebase_backup_ref(root: Path, pre_feature_sha: str | None) -> str | 
     concurrent attempts in the same repository never collide on the
     same name and the recovery preamble can discover them all.
 
-    Failure modes are loud, never silent: any unexpected git error
-    raises so the attempt is aborted rather than continuing without
-    the protection. The CAS-style update-ref is atomic on its own
-    and does not move the feature ref.
+    Failure modes are loud and FAIL CLOSED (B11/E5 contract): if
+    ``update-ref`` raises or returns non-zero, this function raises
+    so the attempt is aborted BEFORE any rebase/merge mutation.
+    Continuing without the B11/E5 backup would risk a concurrent
+    ``git gc --prune`` reclaiming the in-flight tip while the
+    pipeline is mutating it (an unrecoverable history loss on a
+    shared object store). The CAS-style update-ref is atomic on
+    its own and does not move the feature ref.
     """
     if pre_feature_sha is None:
         return None
@@ -1036,22 +1156,30 @@ def _create_rebase_backup_ref(root: Path, pre_feature_sha: str | None) -> str | 
             cwd=root,
             label="auto-integrate:backup-ref-create",
         )
-    except Exception as exc:  # pragma: no cover -- defensive
-        logger.warning(
-            "auto_integrate: backup-ref creation raised unexpectedly: {}; "
-            "continuing WITHOUT the B11/E5 backup (a concurrent gc could "
-            "prune the in-flight tip)",
-            exc,
-        )
-        return None
+    except Exception as exc:
+        # B11/E5 fail-closed: the attempt cannot proceed without a
+        # backup ref because a concurrent gc could prune the
+        # in-flight tip mid-run. Raise loudly; the outer
+        # _integrate_once exception handler runs the verified-abort
+        # path (post_attempt_verify + record retention) so no
+        # state is left behind and the next seam can resume.
+        raise RuntimeError(
+            f"auto_integrate: B11/E5 backup-ref creation raised "
+            f"unexpectedly; refusing to start the attempt without "
+            f"recovery reachability for the in-flight tip: {exc}"
+        ) from exc
     if result.returncode != 0:
-        logger.warning(
-            "auto_integrate: backup-ref creation failed (rc={}): {}; "
-            "continuing WITHOUT the B11/E5 backup",
-            result.returncode,
-            (result.stderr or result.stdout).strip()[:200],
+        stderr = (result.stderr or result.stdout).strip()[:200]
+        # B11/E5 fail-closed: see the docstring above. Raising here
+        # routes through the outer exception handler which clears
+        # the durable integration record via the verified-abort
+        # path. We do NOT silently continue without the backup.
+        raise RuntimeError(
+            f"auto_integrate: B11/E5 backup-ref creation failed "
+            f"(rc={result.returncode}): {stderr}; refusing to start "
+            f"the attempt without recovery reachability for the "
+            f"in-flight tip"
         )
-        return None
     return backup_name
 
 
@@ -1106,10 +1234,16 @@ def _verify_and_cleanup_backup(
       :mod:`ralph.pipeline.auto_integrate_recovery` -- asserts the
       git dir carries no in-progress markers (unless a live
       resolution session owns them) AND that HEAD resolves to
-      exactly ``expected_head_sha`` on the abort path. A failed
-      invariant logs a loud ``ERROR`` and the caller surfaces it.
+      exactly ``expected_head_sha`` on the abort path. RAISES
+      :class:`TerminalStateViolationError` on failure so the caller
+      surfaces a loud diagnostic AND the recovery code path retains
+      the durable record / backup ref until the invariant is
+      restored (the analysis feedback's AC-06 contract: a failed
+      invariant must be loud, not silent-and-ignored).
     * :func:`_delete_rebase_backup_ref` -- cleans up the backup ref
-      after a verified land or abort.
+      ONLY after a verified pass; the call is skipped when the
+      invariant failed so the next recovery pass can still read the
+      backup ref to restore the pre-attempt tip.
 
     Called from EVERY exit path of
     :func:`_integrate_once` -- success, conflict, fallback, error,
@@ -1118,26 +1252,33 @@ def _verify_and_cleanup_backup(
     ``refs/rebase-backup/<id>`` on disk, so the cleanup is gated on
     the verification passing.
     """
-    ok, detail = post_attempt_verify(
-        root,
-        expected_head_sha=expected_head_sha,
-        owns_resolution=owns_resolution,
-    )
-    if not ok:
+    try:
+        post_attempt_verify(
+            root,
+            expected_head_sha=expected_head_sha,
+            owns_resolution=owns_resolution,
+        )
+    except TerminalStateViolationError as exc:
         # AC-06/AC-08: surface the violation loudly. The recovery
         # preamble in :func:`recover_incomplete_integration` reads
         # the same invariant on startup; surfacing it here too
         # makes the operator log point at the exact attempt that
         # leaked state, not just the next recovery run that found
-        # the residue.
+        # the residue. We deliberately do NOT delete the backup ref
+        # here: the next recovery pass can still read it to restore
+        # the pre-attempt tip, and the durable integration record
+        # stays on disk so the recovery code path can re-attempt.
         logger.error(
             "auto_integrate: terminal-state invariant violation: {}; "
             "this attempt left state that will block rebase "
             "preconditions at the next seam. The recovery preamble "
-            "will reclaim the leaked state on the next run, but the "
+            "will reclaim the leaked state on the next run, and the "
+            "backup ref + durable record are RETAINED so the next "
+            "recovery can still restore the pre-attempt tip. The "
             "operator should be aware the integration leaked.",
-            detail,
+            exc,
         )
+        return
     _delete_rebase_backup_ref(root, backup_ref)
 
 

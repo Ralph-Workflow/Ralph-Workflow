@@ -53,6 +53,20 @@ if TYPE_CHECKING:
 _ACTION_SKIPPED = "skipped"
 _ACTION_RECOVERED = "recovered"
 
+
+class TerminalStateViolationError(RuntimeError):
+    """Raised when the R6/AC-06 terminal-state invariant is violated.
+
+    The pipeline contract: an integration attempt that exits MUST leave
+    the git dir in a state where ``check_rebase_preconditions`` would
+    pass (no in-progress markers unless a live resolution session owns
+    them), AND on the abort path HEAD must resolve to the recorded
+    pre-attempt SHA. When either condition fails, this exception is
+    raised after the diagnostic is logged so the caller surfaces the
+    leak loudly and the recovery code path retains the durable record
+    / backup ref until the invariant is restored.
+    """
+
 #: Terminal-state invariant marker files. The post-attempt
 #: verification refuses to clear the durable record while ANY of
 #: these is on disk AND no resolution session owns them. The
@@ -110,48 +124,48 @@ def post_attempt_verify(
     *,
     expected_head_sha: str | None,
     owns_resolution: bool,
-) -> tuple[bool, str]:
+) -> None:
     """Terminal-state invariant check used on EVERY exit path (R6).
 
-    Returns ``(ok, detail)``. ``ok`` is True only when:
+    RAISES :class:`TerminalStateViolationError` on failure so the caller
+    surfaces a loud diagnostic AND the recovery code path retains
+    the durable record / backup ref until the invariant is restored
+    (the analysis feedback's AC-06 contract: a failed invariant
+    must be loud, not silent-and-ignored).
 
-    * no in-progress marker from :data:`_TERMINAL_MARKER_FILES`
-      remains in the per-worktree git dir, OR ``owns_resolution`` is
-      True (a live resolution session is editing the conflict and
-      will clean up its own state); AND
+    A failure is detected when:
+
+    * any in-progress marker from :data:`_TERMINAL_MARKER_FILES`
+      remains in the per-worktree git dir, AND ``owns_resolution``
+      is False (a live resolution session is editing the conflict
+      and will clean up its own state); OR
     * on the abort path (``expected_head_sha`` is not ``None``),
-      ``HEAD`` resolves to exactly that SHA -- never ``ORIG_HEAD``,
-      which any intervening operation can overwrite.
-
-    A failure raises loudly via the returned ``detail`` string and
-    the caller is expected to surface it as a log line; the
-    function itself does NOT raise because the call site is a
-    post-attempt gate, and raising there would mask the actual
-    exception path the user is trying to debug.
+      ``HEAD`` resolves to something other than that SHA -- never
+      ``ORIG_HEAD``, which any intervening operation can overwrite.
 
     The function is intentionally side-effect-free: it READS
     state, never WRITES it. Recovery / abort paths that run AFTER
-    this call decide what to do with a failed invariant.
+    this call decide what to do with a failed invariant (the
+    standard contract is: do not delete the backup ref or clear
+    the durable record until the invariant passes).
     """
     git_dir = _rebase_bookkeeping_dir(root)
     if git_dir is None:
         # Not a git checkout: nothing to verify; pass.
-        return True, "no git dir"
+        return
     if not owns_resolution:
         for marker in _TERMINAL_MARKER_FILES:
             if (git_dir / marker).exists():
-                return (
-                    False,
-                    f"terminal-state invariant violated: {marker} present in {git_dir}",
+                raise TerminalStateViolationError(
+                    f"terminal-state invariant violated: {marker} "
+                    f"present in {git_dir}"
                 )
     if expected_head_sha is not None and not _head_matches_sha(root, expected_head_sha):
         actual = _read_head_sha(root)
-        return (
-            False,
+        raise TerminalStateViolationError(
             "terminal-state invariant violated: HEAD is "
-            f"{actual or '<unreadable>'}, expected {expected_head_sha}",
+            f"{actual or '<unreadable>'}, expected {expected_head_sha}"
         )
-    return True, "ok"
 
 
 def _read_head_sha(root: Path) -> str | None:

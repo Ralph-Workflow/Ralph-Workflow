@@ -112,7 +112,6 @@ def _validate_git_state(repo: Repo) -> None:
 
 def _detect_concurrent_operation(repo: Repo) -> _ConcurrentOperation | None:
     git_dir = _git_dir(repo)
-
     if (git_dir / REBASE_MERGE_DIR).exists() or (git_dir / REBASE_APPLY_DIR).exists():
         return _ConcurrentOperation("rebase", "rebase")
 

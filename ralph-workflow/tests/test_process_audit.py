@@ -141,24 +141,6 @@ TESTS_ALLOWLIST: set[str] = {
     # up the crashed state and drive the recovery + resume argv.
     "test_auto_integrate_rung4_self_resume.py",
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
-    # AC-11 hostile-config fixtures: per-test git repos are built with
-    # subprocess.run in test fixtures (real-git subprocess_e2e suite;
-    # the hostile config keys are written via the same git subprocess
-    # path every sibling auto-integrate e2e file follows)
-    "test_auto_integrate_env_pinning.py",
-    # AC-04 marker-less conflict fixtures: per-test git repos drive
-    # ``git status`` / ``git rebase`` / ``git diff`` via subprocess.run
-    # to set up modify/delete, binary, mode-only, symlink, and rename
-    # pairs (real-git subprocess_e2e suite)
-    "test_auto_integrate_markerless_conflicts.py",
-    # AC-13 non-main target fixtures: per-test git repos drive
-    # ``git init`` / ``git checkout -b develop|unstable|integration``
-    # via subprocess.run (real-git subprocess_e2e suite)
-    "test_auto_integrate_non_main_target.py",
-    # AC-15 rung-4 self-resume fixtures: per-test git repos drive
-    # ``git init`` and write a shallow marker via subprocess.run
-    # (real-git subprocess_e2e suite)
-    "test_auto_integrate_rung4_self_resume.py",
 }
 
 _MCP_FIXTURE_FILES = {

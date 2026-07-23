@@ -1138,13 +1138,22 @@ def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
 
 
 def test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
-    """R6/AC-06: after a verified land, post_attempt_verify reports OK.
+    """R6/AC-06: after a verified land, post_attempt_verify passes silently.
 
     The verified land path of :func:`_integrate_once` calls
     :func:`post_attempt_verify` with ``expected_head_sha=None`` (the
     feature branch legitimately moved past the pre-attempt tip on
     success). The verifier asserts there are no in-progress
-    markers left in the per-worktree git dir.
+    markers left in the per-worktree git dir AND (when
+    expected_head_sha is set) that HEAD resolves to that SHA.
+
+    The contract is now raise-on-violation (AC-06 loud-diagnostic
+    contract from the analysis feedback): the verifier RAISES
+    :class:`TerminalStateViolationError` on failure rather than
+    returning ``(False, detail)`` so the caller can rely on the
+    exception to skip the backup-ref cleanup (the recovery path
+    must still be able to read the backup to restore the
+    pre-attempt tip).
     """
     from ralph.pipeline.auto_integrate_recovery import post_attempt_verify
 
@@ -1168,30 +1177,31 @@ def test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
         f"AC-06 happy-path setup failed: got outcome={outcome!r}"
     )
 
-    ok, detail = post_attempt_verify(
+    # AC-06 raise-on-violation: the clean-tree success path returns
+    # without raising. The legacy (False, detail) tuple shape is
+    # gone; a violation is a raised
+    # :class:`TerminalStateViolationError`.
+    post_attempt_verify(
         tmp_git_repo, expected_head_sha=None, owns_resolution=False
-    )
-    assert ok is True, (
-        f"R6/AC-06: post_attempt_verify MUST pass on a clean tree after "
-        f"a verified land; got ok=False, detail={detail!r}"
     )
 
 
 def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
     tmp_git_repo: Path,
 ) -> None:
-    """R6/AC-06: post_attempt_verify reports a violation when an in-progress
-    marker is present without an active resolution session.
+    """R6/AC-06: post_attempt_verify RAISES on an in-progress marker
+    violation when no active resolution session owns it.
 
     The verifier is the terminal-state invariant: when a stray
     ``rebase-merge`` directory is present and ``owns_resolution`` is
-    False, it reports the violation in the returned detail string
-    (and the production caller logs an ERROR + surfaces the
-    violation to the recovery preamble). The test pins that the
-    verifier detects the marker, names it in the detail, and does
-    not raise on its own (the caller raises / surfaces).
+    False, it now RAISES :class:`TerminalStateViolationError` (the
+    AC-06 loud-diagnostic contract from the analysis feedback)
+    rather than returning ``(False, detail)`` so the caller can
+    skip the backup-ref cleanup and let the recovery path
+    restore the pre-attempt tip.
     """
     from ralph.pipeline.auto_integrate_recovery import (
+        TerminalStateViolationError,
         _rebase_bookkeeping_dir,
         post_attempt_verify,
     )
@@ -1205,16 +1215,13 @@ def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
     (rebase_dir / "head-name").write_text("refs/heads/feature\n")
 
     try:
-        ok, detail = post_attempt_verify(
-            tmp_git_repo, expected_head_sha=None, owns_resolution=False
-        )
-        assert ok is False, (
-            "R6/AC-06: post_attempt_verify MUST report a violation when "
-            "an in-progress marker is present without a live resolution"
-        )
-        assert "rebase-merge" in detail, (
-            f"R6/AC-06: violation detail must name the leaked marker; "
-            f"got {detail!r}"
+        with pytest.raises(TerminalStateViolationError) as excinfo:
+            post_attempt_verify(
+                tmp_git_repo, expected_head_sha=None, owns_resolution=False
+            )
+        assert "rebase-merge" in str(excinfo.value), (
+            "R6/AC-06: violation detail must name the leaked marker; "
+            f"got {excinfo.value!r}"
         )
     finally:
         # Clean up so subsequent tests start from a clean tree.
@@ -1227,16 +1234,20 @@ def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
 def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
     tmp_git_repo: Path,
 ) -> None:
-    """R6/AC-06: on the abort path, post_attempt_verify asserts HEAD
-    resolves to exactly the recorded pre-attempt SHA.
+    """R6/AC-06: on the abort path, post_attempt_verify RAISES when HEAD
+    does not resolve to the recorded pre-attempt SHA.
 
     The verifier never trusts ``ORIG_HEAD`` (which any intervening
     operation overwrites); it reads HEAD and compares against the
     SHA the pipeline recorded BEFORE starting. This test pins
-    both the success case (HEAD matches) and the failure case
-    (HEAD moved, verifier reports the mismatch).
+    both the success case (HEAD matches, no raise) and the failure
+    case (HEAD moved, verifier raises
+    :class:`TerminalStateViolationError`).
     """
-    from ralph.pipeline.auto_integrate_recovery import post_attempt_verify
+    from ralph.pipeline.auto_integrate_recovery import (
+        TerminalStateViolationError,
+        post_attempt_verify,
+    )
 
     base = _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
@@ -1254,14 +1265,171 @@ def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
     # the feature branch stranded past the recorded pre-attempt SHA.
     _commit(tmp_git_repo, "feature_extra.txt", "extra\n", "extra")
 
-    ok, detail = post_attempt_verify(
-        tmp_git_repo, expected_head_sha=pre_feature_sha, owns_resolution=False
+    with pytest.raises(TerminalStateViolationError) as excinfo:
+        post_attempt_verify(
+            tmp_git_repo,
+            expected_head_sha=pre_feature_sha,
+            owns_resolution=False,
+        )
+    assert "expected" in str(excinfo.value), (
+        "R6/AC-06: violation detail must name the SHA mismatch; "
+        f"got {excinfo.value!r}"
     )
-    assert ok is False, (
-        "R6/AC-06: post_attempt_verify MUST report a violation when "
-        "HEAD moved past the recorded pre-attempt SHA"
+
+
+@pytest.mark.timeout_seconds(20)
+def test_seam_level_reclaim_lands_integration_without_recovery_preamble(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-07/R8: reclaim-then-land at a non-startup seam.
+
+    The original failure mode (PROMPT.md wt-23): a leftover
+    rebase state at a non-startup seam (e.g. the commit seam)
+    was the forbidden silent noop -- ``_auto_integrate_check_skip_conditions``
+    caught the precondition error and returned a recorded skip,
+    permanently disabling integration. The fix: that helper
+    now invokes the expanded reclaim at every seam and
+    re-runs ``check_rebase_preconditions``, proceeding in the
+    same seam when the reclaim succeeds.
+
+    This test plants orphaned rebase state WITHOUT an
+    ownership record on a clean tree, drives the seam-level
+    reclaim through the production helper, and asserts:
+
+    * the helper returns ``None`` (proceed) when the reclaim
+      succeeded and the precondition now passes (the
+      tristate return distinguishes "reclaim did nothing" from
+      "reclaim succeeded, proceed");
+    * the rebase marker is gone after the reclaim;
+    * ``check_rebase_preconditions`` passes when invoked
+      directly on the same worktree.
+
+    The full integration outcome is exercised by the existing
+    ``test_recovery_no_record_reclaims_stale_rebase_state_on_clean_tree``
+    which drives the start-up recovery path; this test pins
+    the SEAM-LEVEL (non-startup) path which is the AC-07/R8
+    contract the analysis feedback requires.
+    """
+    from ralph.git.rebase import check_rebase_preconditions
+    from ralph.pipeline.auto_integrate import _auto_integrate_check_skip_conditions
+
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
+    base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", base_seed)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "feature_only.txt", "feature a\n", "feature a")
+    _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "base version 2\n", "base shared 2")
+    _run(tmp_git_repo, "checkout", "feature")
+    preflight = _run(tmp_git_repo, "rebase", base)
+    assert preflight.returncode != 0, (
+        "test setup: expected a real rebase conflict to leave state on disk"
     )
-    assert pre_feature_sha not in detail or "expected" in detail, (
-        f"R6/AC-06: violation detail must name the SHA mismatch; "
-        f"got {detail!r}"
+    # Make the tree clean while the rebase bookkeeping stays on disk:
+    # this is exactly the stale shape the seam-level reclaim meets.
+    # We reset to the pre-rebase tip (the original feature HEAD) so
+    # the feature is still ahead of base after the reset.
+    pre_rebase_feature_sha = _run(
+        tmp_git_repo, "rev-parse", "feature"
+    ).stdout.strip()
+    _run(tmp_git_repo, "reset", "--hard", pre_rebase_feature_sha)
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    assert (git_dir / "rebase-apply").exists() or (
+        git_dir / "rebase-merge"
+    ).exists(), "test setup: stale rebase state must be on disk"
+    status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
+    assert not status.stdout.strip(), "test setup: worktree must be clean"
+    assert not (
+        tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
+    ).exists(), "test setup: no auto-integrate record must exist"
+
+    # Drive the seam-level reclaim via the helper (the same helper
+    # the commit / phase-transition seam calls BEFORE the integration
+    # runs). On a clean tree, the reclaim-at-seam path runs and
+    # re-runs the preconditions; the helper's tristate return
+    # distinguishes "reclaim did nothing" (None) from
+    # "reclaim succeeded, proceed" (the call site treats the
+    # success case as proceed and never falls through to
+    # record a skip with the ORIGINAL precondition error).
+    result = _auto_integrate_check_skip_conditions(tmp_git_repo, "feature", base)
+    assert result is None, (
+        "AC-07/R8: seam-level reclaim must allow the integration to "
+        "proceed; the helper must return None when the reclaim "
+        "succeeded and the precondition now passes (got "
+        f"{result!r})"
     )
+    assert not (git_dir / "rebase-apply").exists(), (
+        "AC-07/R8: seam-level reclaim must have removed the "
+        "rebase-apply marker in the same seam"
+    )
+    assert not (git_dir / "rebase-merge").exists(), (
+        "AC-07/R8: seam-level reclaim must have removed the "
+        "rebase-merge marker in the same seam"
+    )
+    # Direct precondition check after the reclaim: no marker,
+    # so the helper's retry must have been a pass. The
+    # production caller's check at the seam would have been
+    # the same call.
+    check_rebase_preconditions(tmp_git_repo)
+
+
+
+@pytest.mark.timeout_seconds(20)
+def test_seam_level_reclaim_preserves_dirty_tree(tmp_git_repo: Path) -> None:
+    """AC-07/R8 / AC-11 case 4: dirty tree with unmerged paths is preserved.
+
+    The seam-level reclaim is a recovery primitive: it MUST NOT
+    reclaim state when an operator (or live agent) owns an
+    in-progress rebase via unmerged paths. The dirty-tree
+    discriminator is the same one the startup recovery uses;
+    a precondition failure on a dirty tree is recorded as a
+    loud skip, and the state stays on disk.
+    """
+    from ralph.pipeline.auto_integrate import _auto_integrate_check_skip_conditions
+
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
+    base_seed = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", base_seed)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "shared.txt", "base version 2\n", "base shared 2")
+    _run(tmp_git_repo, "checkout", "feature")
+    preflight = _run(tmp_git_repo, "rebase", base)
+    assert preflight.returncode != 0, (
+        "test setup: expected a real rebase conflict to leave state on disk"
+    )
+    # DO NOT reset -- the unmerged paths are the operator's
+    # in-progress conflict, which must be preserved (AC-11 case 4).
+    git_dir = Path(_run(tmp_git_repo, "rev-parse", "--git-dir").stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = (tmp_git_repo / git_dir).resolve()
+    assert (git_dir / "rebase-apply").exists() or (
+        git_dir / "rebase-merge"
+    ).exists(), "test setup: stale rebase state must be on disk"
+    status = _run(tmp_git_repo, "status", "--porcelain", "--untracked-files=no")
+    assert status.stdout.strip(), (
+        "test setup: worktree must be dirty with unmerged paths"
+    )
+
+    result = _auto_integrate_check_skip_conditions(tmp_git_repo, "feature", base)
+    assert result is not None, (
+        "AC-11 case 4: a dirty tree with unmerged paths is "
+        "operator-owned and MUST be preserved; the seam-level "
+        "reclaim must NOT touch it. The helper must return a "
+        "recorded skip in this case."
+    )
+    # The state is still on disk.
+    assert (git_dir / "rebase-apply").exists() or (
+        git_dir / "rebase-merge"
+    ).exists(), (
+        "AC-11 case 4: dirty-tree reclaim MUST preserve the "
+        "operator-owned in-progress rebase state"
+    )
+
+
