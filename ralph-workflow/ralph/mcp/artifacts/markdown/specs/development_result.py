@@ -9,7 +9,7 @@ from ralph.mcp.artifacts.development_result import (
     normalize_development_result_content,
 )
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
-from ralph.mcp.artifacts.markdown._lenient import LenientEnum
+from ralph.mcp.artifacts.markdown._lenient_enum import LenientEnum
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import Content, MdArtifactSpec
 

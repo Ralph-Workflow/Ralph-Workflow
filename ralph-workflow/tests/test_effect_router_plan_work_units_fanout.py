@@ -8,7 +8,6 @@ multiple agent CLI instances actually run in parallel.
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -62,34 +61,65 @@ def _config_with_development_agent() -> UnifiedConfig:
     return cast("UnifiedConfig", config)
 
 
-def _plan_content(work_units: list[dict[str, object]]) -> dict[str, object]:
-    return {
-        "summary": {
-            "context": "Parallel development plan",
-            "scope_items": [{"text": "one"}, {"text": "two"}, {"text": "three"}],
-        },
-        "skills_mcp": {
-            "skills": ["test-driven-development", "verification-before-completion"],
-            "mcps": [],
-        },
-        "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
-        "critical_files": {
-            "primary_files": [{"path": "src/main.py", "action": "modify"}],
-            "reference_files": [],
-        },
-        "risks_mitigations": [{"risk": "drift", "mitigation": "verify"}],
-        "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-        "work_units": work_units,
-    }
+def _plan_document(work_units: list[dict[str, object]]) -> str:
+    unit_items = "\n".join(
+        f"- [{unit['unit_id']}] {unit['description']}\n"
+        f"  Directories: {', '.join(cast('list[str]', unit['allowed_directories']))}"
+        for unit in work_units
+    )
+    return f"""---
+type: plan
+schema_version: 1
+---
+## Summary
+Parallel development plan.
+
+Intent: Implement independent work units.
+Coverage: feature, test
+
+## Scope
+- [SC-1] Implement production changes
+  Category: feature
+- [SC-2] Add tests
+  Category: test
+- [SC-3] Verify the result
+  Category: test
+
+## Skills MCP
+Skills: test-driven-development, verification-before-completion
+
+## Steps
+
+### [S-1] Implement
+Do the work.
+
+Type: file_change
+Files:
+- modify src/main.py
+
+## Critical Files
+- [CF-1] src/main.py
+  Action: modify
+  Changes: implement the feature
+
+## Risks
+- [R-1] Parallel changes overlap
+  Severity: high
+  Mitigation: Assign disjoint directories.
+
+## Verification
+- [V-1] pytest
+  Expect: passes
+
+## Work Units
+{unit_items}
+"""
 
 
-def _write_plan_artifact(root: Path, content: dict[str, object]) -> None:
+def _write_plan_artifact(root: Path, document: str) -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps({"type": "plan", "content": content}),
-        encoding="utf-8",
-    )
+    (artifact_dir / "plan.md").write_text(document, encoding="utf-8")
 
 
 def _two_disjoint_units() -> list[dict[str, object]]:
@@ -100,7 +130,7 @@ def _two_disjoint_units() -> list[dict[str, object]]:
 
 
 def test_development_phase_fans_out_from_plan_artifact_work_units(tmp_path: Path) -> None:
-    _write_plan_artifact(tmp_path, _plan_content(_two_disjoint_units()))
+    _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(phase="development")
     legacy_bundle = _legacy_fan_out_policy_bundle()
 
@@ -121,7 +151,7 @@ def test_development_phase_fans_out_from_plan_artifact_work_units(tmp_path: Path
 def test_single_plan_work_unit_falls_back_to_serial_agent(tmp_path: Path) -> None:
     _write_plan_artifact(
         tmp_path,
-        _plan_content([{"unit_id": "solo", "description": "S", "allowed_directories": ["src"]}]),
+        _plan_document([{"unit_id": "solo", "description": "S", "allowed_directories": ["src"]}]),
     )
     state = PipelineState(phase="development")
 
@@ -151,7 +181,7 @@ def test_missing_plan_artifact_falls_back_to_serial_agent(tmp_path: Path) -> Non
 
 
 def test_noop_plan_falls_back_to_serial_agent(tmp_path: Path) -> None:
-    _write_plan_artifact(tmp_path, {"steps": [], "work_units": []})
+    _write_plan_artifact(tmp_path, "---\ntype: plan\nnoop: true\n---\n")
     state = PipelineState(phase="development")
 
     effect = determine_effect_from_policy(
@@ -168,7 +198,7 @@ def test_noop_plan_falls_back_to_serial_agent(tmp_path: Path) -> None:
 def test_corrupted_plan_artifact_falls_back_to_serial_agent(tmp_path: Path) -> None:
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text("{not valid json", encoding="utf-8")
+    (artifact_dir / "plan.md").write_text("not a plan", encoding="utf-8")
     state = PipelineState(phase="development")
 
     effect = determine_effect_from_policy(
@@ -186,7 +216,7 @@ def test_preseeded_single_unit_state_ignores_plan_artifact(tmp_path: Path) -> No
     """A worker child carries exactly one unit in state and must stay serial."""
     _write_plan_artifact(
         tmp_path,
-        _plan_content(
+        _plan_document(
             [
                 *_two_disjoint_units(),
                 {"unit_id": "unit-c", "description": "C", "allowed_directories": ["src/c"]},
@@ -209,24 +239,8 @@ def test_preseeded_single_unit_state_ignores_plan_artifact(tmp_path: Path) -> No
     assert effect.phase == "development"
 
 
-def test_legacy_bare_work_units_plan_payload_fans_out(tmp_path: Path) -> None:
-    """A legacy plan payload (work_units without summary) must still fan out."""
-    _write_plan_artifact(tmp_path, {"work_units": _two_disjoint_units()})
-    state = PipelineState(phase="development")
-
-    effect = determine_effect_from_policy(
-        state,
-        _legacy_fan_out_policy_bundle(),
-        WorkspaceScope(tmp_path),
-        config=_config_with_development_agent(),
-    )
-
-    assert isinstance(effect, FanOutEffect)
-    assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
-
-
 def test_non_parallelized_phase_ignores_plan_work_units(tmp_path: Path) -> None:
-    _write_plan_artifact(tmp_path, _plan_content(_two_disjoint_units()))
+    _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(phase="planning")
     config = MagicMock()
     config.agent_chains = {"planner": ["claude"]}
@@ -245,7 +259,7 @@ def test_non_parallelized_phase_ignores_plan_work_units(tmp_path: Path) -> None:
 
 def test_resume_with_recorded_worker_states_still_fans_out(tmp_path: Path) -> None:
     """After checkpoint resume the plan on disk must re-trigger fan-out."""
-    _write_plan_artifact(tmp_path, _plan_content(_two_disjoint_units()))
+    _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(
         phase="development",
         worker_states={
@@ -274,7 +288,7 @@ def test_overlapping_plan_work_unit_directories_are_rejected(tmp_path: Path) -> 
     """
     _write_plan_artifact(
         tmp_path,
-        _plan_content(
+        _plan_document(
             [
                 {"unit_id": "unit-a", "description": "A", "allowed_directories": ["src"]},
                 {"unit_id": "unit-b", "description": "B", "allowed_directories": ["src/sub"]},

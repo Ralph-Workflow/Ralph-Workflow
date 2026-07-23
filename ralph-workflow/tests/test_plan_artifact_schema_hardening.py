@@ -1,18 +1,18 @@
 """Schema-hardening tests for the plan-artifact package.
 
-The 18 net-new tests in this module cover the four cross-section
+The tests in this module cover the four cross-section
 validators added to ``PlanArtifact``, the typed ``EvidenceRef`` /
 ``PlanConstraints`` sub-models, the new ``timeout_seconds`` / ``cwd``
-fields on ``VerificationStep``, and the renderer / format-doc
-synchronization. All tests are pure Pydantic round-trips with no
+fields on ``VerificationStep``, and format-doc synchronization.
+The retired dict-to-markdown renderer is intentionally not covered:
+native ``plan.md`` is now the source of truth. All tests are pure
+Pydantic round-trips with no
 ``time.sleep``, no real subprocess, and no real file I/O so the
 ``audit_test_policy`` guard accepts them and the 60-second combined
 test budget stays well within budget.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 
@@ -25,10 +25,8 @@ from ralph.mcp.artifacts.plan import (
     PlanConstraints,
     VerificationStep,
     normalize_plan_artifact_content,
-    render_plan_markdown,
     validate_plan_section,
 )
-from ralph.prompts.plan_format import format_plan_for_execution
 
 
 def _base_plan_dict() -> dict[str, object]:
@@ -352,53 +350,6 @@ def test_verification_step_timeout_and_cwd_round_trip() -> None:
     }
 
 
-# ---------------------------------------------------------------------------
-# 16. test_renderer_includes_project_constraints_section
-# ---------------------------------------------------------------------------
-
-
-def test_renderer_includes_project_constraints_section() -> None:
-    """render_plan_markdown emits ## Project Constraints between Critical Files and Risks."""
-    plan = _base_plan_dict()
-    plan["constraints"] = {"must_not_break": ["public API"]}
-    markdown = render_plan_markdown(plan)
-    constraints_idx = markdown.find("## Project Constraints")
-    critical_idx = markdown.find("## Critical Files")
-    risks_idx = markdown.find("## Risks and Mitigations")
-    assert critical_idx >= 0
-    assert constraints_idx >= 0
-    assert risks_idx >= 0
-    assert critical_idx < constraints_idx < risks_idx
-
-
-# ---------------------------------------------------------------------------
-# 17. test_format_plan_for_execution_surfaces_step_fields
-# ---------------------------------------------------------------------------
-
-
-def test_format_plan_for_execution_surfaces_step_fields() -> None:
-    """format_plan_for_execution surfaces step_type, expected_evidence, verify_command."""
-    plan = _base_plan_dict()
-    plan["steps"][0]["step_type"] = "file_change"
-    plan["steps"][0]["expected_evidence"] = [
-        {"kind": "file", "ref": "src/a.py"},
-        {"kind": "test_name", "ref": "tests/test_x.py::test_a"},
-    ]
-    plan["steps"][0]["verify_command"] = "pytest tests/test_x.py -q"
-    plan["constraints"] = {"must_not_break": ["public API"]}
-    rendered = format_plan_for_execution(json.dumps(plan))
-    assert "step_type: file_change" in rendered
-    assert "file: src/a.py" in rendered
-    assert "test_name: tests/test_x.py::test_a" in rendered
-    assert "verify_command: `pytest tests/test_x.py -q`" in rendered
-    assert "Project Constraints:" in rendered
-
-
-# ---------------------------------------------------------------------------
-# 18. test_format_doc_includes_new_sections
-# ---------------------------------------------------------------------------
-
-
 def test_format_doc_includes_new_sections() -> None:
     """The bundled format_docs/plan.md teaches the markdown plan grammar surfaces."""
     doc = load_bundled_format_doc("plan")
@@ -406,11 +357,11 @@ def test_format_doc_includes_new_sections() -> None:
     for needle in (
         "## Steps",
         "S-1",
-        "depends_on",
-        "verify_command",
-        "timeout_seconds",
-        "expected_evidence",
+        "Depends on:",
+        "Verify:",
+        "Timeout:",
+        "Evidence:",
         "ralph_edit_md_plan_step",
-        "shell-invocation guard",
+        "must not start with `bash -c`, `sh -c`, or `eval`",
     ):
         assert needle in doc, f"format doc missing {needle!r}"

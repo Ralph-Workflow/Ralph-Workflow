@@ -69,7 +69,7 @@ _MINIMAL_PLANNING_POLICY = PipelinePolicy(
 )
 
 
-def test_planning_prompt_mentions_step_edit_tools(tmp_path: Path) -> None:
+def test_planning_prompt_mentions_markdown_plan_tools(tmp_path: Path) -> None:
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the work")
 
@@ -85,12 +85,11 @@ def test_planning_prompt_mentions_step_edit_tools(tmp_path: Path) -> None:
     )
 
     rendered = workspace.read(prompt_path)
-    assert "ralph_insert_plan_step" in rendered
-    assert "ralph_replace_plan_step" in rendered
-    assert "ralph_patch_step" in rendered
-    assert "ralph_move_plan_step" in rendered
-    assert "ralph_remove_plan_step" in rendered
-    assert "ralph_move_plan_step" in rendered
+    assert "ralph_verify_md_artifact" in rendered
+    assert "ralph_submit_md_artifact" in rendered
+    assert "ralph_edit_md_plan_step" in rendered
+    assert "### [S-n] Title" in rendered
+    assert "IDs are stable and never renumbered" in rendered
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +118,7 @@ def test_planning_prompt_forbids_test_step_type(tmp_path: Path) -> None:
     rendered = workspace.read(prompt_path)
     assert "PROMPT SCOPE CLASSIFICATION" in rendered
     assert "Common StepType mistakes" in rendered
-    assert 'Do NOT use `step_type: "test"`' in rendered
+    assert "Do NOT use `Type: test`" in rendered
 
 
 def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None:
@@ -144,7 +143,7 @@ def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None
     assert "Plan-artifact scope (planner-meta-task)" in rendered
     # The four sub-task bullets
     for sub_task in (
-        "Plan-artifact schema",
+        "Plan-artifact grammar",
         "Planning prompt",
         "Planning MCP tools",
         "Planning audit checks",
@@ -152,7 +151,7 @@ def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None
         assert sub_task in rendered, f"Missing sub-task bullet: {sub_task!r}"
     # The four worked examples
     for example in (
-        "add a JSON Schema for the plan artifact",
+        "add a labeled field to `## Design`",
         "document planning quality guidance in the format doc",
         "rewrite the planning prompt to be more universal",
         "add an audit check for plan-field drift",
@@ -160,7 +159,9 @@ def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None
         assert example in rendered, f"Missing worked example: {example!r}"
 
 
-def test_planning_analysis_prompt_mentions_step_edit_remediation_flow(tmp_path: Path) -> None:
+def test_planning_analysis_prompt_mentions_markdown_step_edit_remediation_flow(
+    tmp_path: Path,
+) -> None:
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the work")
     workspace.write(".agent/PLAN.md", _MINIMAL_PROMPT_PLAN_HANDOFF)
@@ -177,6 +178,8 @@ def test_planning_analysis_prompt_mentions_step_edit_remediation_flow(tmp_path: 
     )
 
     rendered = workspace.read(prompt_path)
-    assert "ralph_insert_plan_step" in rendered
-    assert "ralph_replace_plan_step" in rendered
-    assert "ralph_remove_plan_step" in rendered
+    assert "ralph_edit_md_plan_step" in rendered
+    assert "`replace` for a vague or wrong step" in rendered
+    assert "`insert` for missing work" in rendered
+    assert "`remove` for unsupported work" in rendered
+    assert "ralph_submit_md_artifact" in rendered
