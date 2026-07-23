@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import re
+from functools import lru_cache
 from pathlib import Path
 
 #: One entry per AC the PLAN requires to be proven by real-git
@@ -45,35 +46,33 @@ def _resolve_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _iter_test_functions(path: Path) -> list[str]:
-    """Return the names of every top-level test function in ``path``.
-
-    Reads the file with a plain AST walk (NOT a pytest import), so
-    the audit cost is the cost of parsing a few hundred-line file
-    (a few ms) rather than the cost of a subprocess collect walk
-    (tens of seconds inside a parallel pytest worker). The audit
-    does NOT need the fully-qualified node IDs that pytest would
-    print -- it just needs to prove the test names exist in the
-    source file. The ``subprocess_e2e`` marker is checked separately
-    in :func:`_file_is_subprocess_e2e`.
-    """
+@lru_cache(maxsize=8)
+def _source_tree(path: Path) -> tuple[str, ast.Module]:
+    """Read and parse a catalog source file once per pytest worker."""
     source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(path))
-    return [
+    return source, ast.parse(source, filename=str(path))
+
+
+@lru_cache(maxsize=8)
+def _iter_test_functions(path: Path) -> tuple[str, ...]:
+    """Return the source-defined test names in ``path``.
+
+    The catalog has repeated evidence files, so cache the AST-derived names
+    and avoid repeated filesystem reads and parses inside the 1-second test
+    budget. The audit needs source names only, not pytest collection.
+    """
+    _, tree = _source_tree(path)
+    return tuple(
         node.name
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")
-    ]
+    )
 
 
+@lru_cache(maxsize=8)
 def _file_is_subprocess_e2e(path: Path) -> bool:
-    """Return True when ``path`` declares the ``subprocess_e2e`` marker.
-
-    Checks the module-level ``pytestmark`` assignment and any
-    ``@pytest.mark.subprocess_e2e`` decorator; either is enough.
-    """
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(path))
+    """Return whether ``path`` declares the ``subprocess_e2e`` marker."""
+    source, tree = _source_tree(path)
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
