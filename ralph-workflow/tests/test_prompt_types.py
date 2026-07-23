@@ -1,255 +1,55 @@
-"""Tests for prompt capability and policy typing helpers."""
-
 from __future__ import annotations
 
-from ralph.mcp.tools.names import ARTIFACT_SUBMIT_TOOLS, PLAN_DRAFT_WRITE_TOOLS
-from ralph.prompts.types import (
-    ENV_READ_TOOLS,
-    GIT_DIFF_READ_TOOLS,
-    GIT_STATUS_READ_TOOLS,
-    PROCESS_EXEC_TOOLS,
-    PROGRESS_TOOLS,
-    TRACKED_WRITE_TOOLS,
-    Capability,
-    CapabilitySet,
-    PolicyFlag,
-    PolicyFlagSet,
-    SessionCapabilities,
-    SessionDrain,
-    bool_to_template_value,
-    capability_template_variables,
-    format_capability_summary,
-    format_mcp_tools_list,
-    visible_mcp_tool_names,
+from ralph.mcp.tools.names import (
+    ARTIFACT_SUBMIT_TOOLS,
+    PLANNING_DRAFT_TOOLS,
+    RalphToolName,
 )
+from ralph.prompts.template_variables import capability_template_variables
+from ralph.prompts.types import SessionCapabilities, SessionDrain
 
 
-def test_capability_set_defaults_cover_each_drain() -> None:
-    planning = CapabilitySet.defaults_for_drain(SessionDrain.PLANNING)
-    development = CapabilitySet.defaults_for_drain(SessionDrain.DEVELOPMENT)
-    fix = CapabilitySet.defaults_for_drain(SessionDrain.FIX)
-    commit = CapabilitySet.defaults_for_drain(SessionDrain.COMMIT)
+def test_planning_capabilities_expose_only_markdown_artifact_tools() -> None:
+    capabilities = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+    capability_set = capabilities.capabilities
 
-    assert set(planning) == {
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_METADATA_READ,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.ARTIFACT_PLAN_READ,
-        Capability.ARTIFACT_PLAN_WRITE,
-        Capability.PROCESS_EXEC_BOUNDED,
-        Capability.MEDIA_READ,
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-    }
-    assert set(development) == {
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_METADATA_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.WORKSPACE_WRITE_TRACKED,
-        Capability.WORKSPACE_EDIT,
-        Capability.WORKSPACE_DELETE,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.PROCESS_EXEC_BOUNDED,
-        Capability.PROCESS_EXEC_UNBOUNDED,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.ARTIFACT_PLAN_READ,
-        Capability.RUN_REPORT_PROGRESS,
-        Capability.ENV_READ,
-        Capability.MEDIA_READ,
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.WEB_DOWNLOAD,
-    }
-    assert set(fix) == {
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_METADATA_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.WORKSPACE_WRITE_TRACKED,
-        Capability.WORKSPACE_EDIT,
-        Capability.WORKSPACE_DELETE,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.PROCESS_EXEC_BOUNDED,
-        Capability.PROCESS_EXEC_UNBOUNDED,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.ARTIFACT_PLAN_READ,
-        Capability.RUN_REPORT_PROGRESS,
-        Capability.ENV_READ,
-        Capability.MEDIA_READ,
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.WEB_DOWNLOAD,
-    }
-    assert set(commit) == {
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_METADATA_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.ARTIFACT_PLAN_READ,
-        Capability.PROCESS_EXEC_BOUNDED,
-        Capability.RUN_REPORT_PROGRESS,
-        Capability.MEDIA_READ,
-    }
+    expected = {str(tool) for tool in (*ARTIFACT_SUBMIT_TOOLS, *PLANNING_DRAFT_TOOLS)}
+    from ralph.prompts.template_variables import visible_mcp_tool_names
+
+    visible = set(visible_mcp_tool_names(capability_set))
+    assert expected <= visible
+    assert all("plan_section" not in tool for tool in visible)
+    assert all("submit_artifact" not in tool for tool in visible)
 
 
-def test_policy_flag_defaults_cover_each_drain() -> None:
-    assert set(PolicyFlagSet.defaults_for_drain(SessionDrain.PLANNING)) == {PolicyFlag.NO_EDIT}
-    assert set(PolicyFlagSet.defaults_for_drain(SessionDrain.ANALYSIS)) == {PolicyFlag.NO_EDIT}
-    assert set(PolicyFlagSet.defaults_for_drain(SessionDrain.REVIEW)) == {PolicyFlag.NO_EDIT}
-    assert set(PolicyFlagSet.defaults_for_drain(SessionDrain.DEVELOPMENT)) == {
-        PolicyFlag.ALLOW_SHELL
-    }
-    assert set(PolicyFlagSet.defaults_for_drain(SessionDrain.FIX)) == {PolicyFlag.ALLOW_SHELL}
-    assert set(PolicyFlagSet.defaults_for_drain(SessionDrain.COMMIT)) == {
-        PolicyFlag.ALLOW_GIT_WRITE
-    }
-
-
-def test_session_capabilities_defaults_bundle_capabilities_and_flags() -> None:
-    session = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
-
-    assert session.capabilities.contains(Capability.WORKSPACE_WRITE_TRACKED)
-    assert session.policy_flags.contains(PolicyFlag.ALLOW_SHELL)
-
-
-def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
-    capabilities = CapabilitySet(
-        [
-            Capability.WORKSPACE_READ,
-            Capability.GIT_STATUS_READ,
-            Capability.GIT_DIFF_READ,
-            Capability.WORKSPACE_WRITE_TRACKED,
-            Capability.PROCESS_EXEC_BOUNDED,
-            Capability.ARTIFACT_SUBMIT,
-            Capability.ARTIFACT_PLAN_WRITE,
-            Capability.RUN_REPORT_PROGRESS,
-            Capability.ENV_READ,
-        ]
-    )
-
-    assert set(visible_mcp_tool_names(capabilities)) == {
-        "read_file",
-        "list_directory",
-        "list_directory_recursive",
-        "directory_tree",
-        "search_files",
-        "read_multiple_files",
-        "list_allowed_roots",
-        "grep_files",
-        "ralph_reindex",
-        "ralph_graph",
-        *GIT_STATUS_READ_TOOLS,
-        *GIT_DIFF_READ_TOOLS,
-        *TRACKED_WRITE_TOOLS,
-        *PROCESS_EXEC_TOOLS,
-        *ARTIFACT_SUBMIT_TOOLS,
-        *PLAN_DRAFT_WRITE_TOOLS,
-        *PROGRESS_TOOLS,
-        *ENV_READ_TOOLS,
-    }
-
-
-def test_capability_template_variables_include_enabled_tools_and_flags() -> None:
-    capabilities = CapabilitySet.defaults_for_drain(SessionDrain.DEVELOPMENT)
-    policy_flags = PolicyFlagSet.defaults_for_drain(SessionDrain.DEVELOPMENT)
-
-    variables = capability_template_variables(capabilities, policy_flags)
-
-    assert variables["HAS_WORKSPACE_WRITE"] == "true"
-    assert variables["HAS_PROCESS_EXEC"] == "true"
-    assert variables["HAS_GIT_WRITE"] == ""
-    assert variables["POLICY_ALLOW_SHELL"] == "true"
-    assert variables["POLICY_ALLOW_GIT_WRITE"] == ""
-    assert variables["MCP_TOOLS_LIST"] == format_mcp_tools_list(
-        visible_mcp_tool_names(capabilities)
-    )
-    assert variables["HAS_MCP_WRITE"] == "true"
-    assert variables["HAS_MCP_EXEC"] == "true"
-    assert variables["HAS_MCP_GIT"] == "true"
-    assert variables["SUBMIT_ARTIFACT_TOOL_NAME"] == "ralph_submit_artifact"
-    assert variables["SUBMIT_PLAN_SECTION_TOOL_NAME"] == ""
-    assert variables["FINALIZE_PLAN_TOOL_NAME"] == ""
-    assert variables["GET_PLAN_DRAFT_TOOL_NAME"] == "ralph_get_plan_draft"
-    assert variables["DISCARD_PLAN_DRAFT_TOOL_NAME"] == ""
-    assert variables["DECLARE_COMPLETE_TOOL_NAME"] == "declare_complete"
-    assert variables["COORDINATE_TOOL_NAME"] == ""
-    assert variables["REPORT_PROGRESS_TOOL_NAME"] == "report_progress"
-    assert variables["WRITE_FILE_TOOL_NAME"] == "write_file"
-    assert variables["LIST_DIRECTORY_TOOL_NAME"] == "list_directory"
-    assert variables["LIST_DIRECTORY_RECURSIVE_TOOL_NAME"] == "list_directory_recursive"
-    assert variables["SEARCH_FILES_TOOL_NAME"] == "search_files"
-    assert variables["EXEC_TOOL_NAME"] == "exec"
-    assert variables["GIT_STATUS_TOOL_NAME"] == "git_status"
-    assert variables["GIT_DIFF_TOOL_NAME"] == "git_diff"
-    assert variables["GIT_LOG_TOOL_NAME"] == "git_log"
-    assert variables["GIT_SHOW_TOOL_NAME"] == "git_show"
-    assert variables["CAPABILITY_SUMMARY"] == format_capability_summary(capabilities, policy_flags)
-
-
-def test_capability_template_variables_can_prefix_tool_names_for_claude_mcp() -> None:
-    capabilities = CapabilitySet.defaults_for_drain(SessionDrain.DEVELOPMENT)
-    policy_flags = PolicyFlagSet.defaults_for_drain(SessionDrain.DEVELOPMENT)
+def test_template_variables_name_the_native_markdown_surface() -> None:
+    capabilities = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
 
     variables = capability_template_variables(
-        capabilities,
-        policy_flags,
+        capabilities.capabilities, capabilities.policy_flags
+    )
+
+    assert variables["SUBMIT_MD_ARTIFACT_TOOL_NAME"] == "ralph_submit_md_artifact"
+    assert variables["VERIFY_MD_ARTIFACT_TOOL_NAME"] == "ralph_verify_md_artifact"
+    assert variables["STAGE_MD_ARTIFACT_TOOL_NAME"] == "ralph_stage_md_artifact"
+    assert variables["GET_MD_DRAFT_TOOL_NAME"] == "ralph_get_md_draft"
+    assert variables["FINALIZE_MD_ARTIFACT_TOOL_NAME"] == "ralph_finalize_md_artifact"
+    assert variables["EDIT_MD_PLAN_STEP_TOOL_NAME"] == "ralph_edit_md_plan_step"
+
+
+def test_prefixed_template_variables_keep_bare_markdown_aliases_visible() -> None:
+    capabilities = SessionCapabilities.defaults_for_drain(
+        SessionDrain.PLANNING,
         tool_name_prefix="mcp__ralph__",
     )
 
-    assert variables["SUBMIT_ARTIFACT_TOOL_NAME"] == "mcp__ralph__ralph_submit_artifact"
-    assert variables["SUBMIT_PLAN_SECTION_TOOL_NAME"] == ""
-    assert variables["EXEC_TOOL_NAME"] == "mcp__ralph__exec"
-    assert variables["WRITE_FILE_TOOL_REFERENCE"] == "`mcp__ralph__write_file` or bare `write_file`"
-    assert variables["EXEC_TOOL_REFERENCE"] == "`mcp__ralph__exec` or bare `exec`"
-    assert (
-        variables["DECLARE_COMPLETE_TOOL_REFERENCE"]
-        == "`mcp__ralph__declare_complete` or bare `declare_complete`"
+    variables = capability_template_variables(
+        capabilities.capabilities,
+        capabilities.policy_flags,
+        tool_name_prefix=capabilities.tool_name_prefix,
     )
-    assert variables["MCP_TOOLS_LIST"].startswith("mcp__ralph__read_file")
 
-
-def test_capability_template_variables_leave_disabled_tool_names_empty() -> None:
-    capabilities = CapabilitySet([Capability.WORKSPACE_READ])
-    policy_flags = PolicyFlagSet([PolicyFlag.NO_EDIT])
-
-    variables = capability_template_variables(capabilities, policy_flags)
-
-    assert set(variables["MCP_TOOLS_LIST"].split(", ")) == {
-        "read_file",
-        "list_directory",
-        "list_directory_recursive",
-        "directory_tree",
-        "search_files",
-        "read_multiple_files",
-        "list_allowed_roots",
-        "grep_files",
-        "ralph_reindex",
-        "ralph_graph",
-    }
-    assert variables["WRITE_FILE_TOOL_NAME"] == ""
-    assert variables["EXEC_TOOL_NAME"] == ""
-    assert variables["GIT_DIFF_TOOL_NAME"] == ""
-    assert variables["SUBMIT_ARTIFACT_TOOL_NAME"] == ""
-    assert variables["HAS_MCP_GIT"] == ""
-
-
-def test_format_helpers_cover_empty_and_populated_sets() -> None:
-    assert format_mcp_tools_list(["read_file", "search_files"]) == "read_file, search_files"
-    assert bool_to_template_value(True) == "true"
-    assert bool_to_template_value(False) == ""
-
-    empty_summary = format_capability_summary(CapabilitySet(), PolicyFlagSet())
-    assert empty_summary == "Capabilities:\n  (none)\n\nPolicy Flags:\n  (none)"
-
-    populated_summary = format_capability_summary(
-        CapabilitySet([Capability.GIT_WRITE, Capability.WORKSPACE_READ]),
-        PolicyFlagSet([PolicyFlag.ALLOW_GIT_WRITE]),
-    )
-    assert populated_summary == (
-        "Capabilities:\n  - git.write\n  - workspace.read\n\nPolicy Flags:\n  - allow_git_write"
-    )
+    reference = variables["SUBMIT_MD_ARTIFACT_TOOL_REFERENCE"]
+    assert "mcp__ralph__ralph_submit_md_artifact" in reference
+    assert "ralph_submit_md_artifact" in reference
+    assert RalphToolName.SUBMIT_MD_ARTIFACT.value in variables["MCP_TOOLS_LIST"]

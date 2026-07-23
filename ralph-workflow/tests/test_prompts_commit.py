@@ -73,11 +73,14 @@ def test_commit_prompt_uses_registry_templates() -> None:
 def test_commit_prompt_includes_prefixed_submit_artifact_aliases() -> None:
     prompt = prompt_commit_message(
         "diff --git a/app.py b/app.py\n+hello",
-        submit_artifact_tool_names=("ralph_submit_artifact", "mcp__ralph__ralph_submit_artifact"),
+        submit_artifact_tool_names=(
+            "ralph_submit_md_artifact",
+            "mcp__ralph__ralph_submit_md_artifact",
+        ),
     )
 
-    assert "ralph_submit_artifact" in prompt
-    assert "mcp__ralph__ralph_submit_artifact" in prompt
+    assert "ralph_submit_md_artifact" in prompt
+    assert "mcp__ralph__ralph_submit_md_artifact" in prompt
 
 
 def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
@@ -157,7 +160,7 @@ def test_opencode_commit_prompt_uses_file_reference_for_large_diff(tmp_path: obj
 
     prompt = prompt_commit_message_for_opencode(
         diff,
-        submit_artifact_tool_name="ralph_submit_artifact",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
         payload_config=CommitPromptPayloadConfig(
             output_dir=tmp_path,
             name_prefix="review_commit",

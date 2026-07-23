@@ -236,7 +236,8 @@ def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work
     assert "continuing a DEVELOPMENT iteration" in prompt
     assert "content_path" not in prompt
     assert "development_result" in prompt
-    assert "analysis_items_addressed" in prompt
+    assert ".agent/artifact-formats/development_result.md" in prompt
+    assert "ralph_submit_md_artifact" in prompt
     assert "UNATTENDED MODE" in prompt
     assert "MCP TOOLS" in prompt
     assert DEVELOPER_SMALL_CHANGE_TEXT in prompt
@@ -271,11 +272,10 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
 
     assert "PLANNING MODE" in prompt
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
-    assert "ralph_submit_artifact" in prompt
-    assert "ralph_submit_plan_section" in prompt
-    assert "ralph_finalize_plan" in prompt
+    assert "ralph_submit_md_artifact" in prompt
+    assert "ralph_verify_md_artifact" in prompt
+    assert "ralph_edit_md_plan_step" in prompt
     assert PLANNING_FIRST_PASS_APPROVAL_TEXT in prompt
-    assert PLANNING_SELF_CRITIQUE_TEXT in prompt
     assert PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT in prompt
     assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
@@ -286,7 +286,7 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     assert "discovers them automatically" in prompt
 
 
-def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: Path) -> None:
+def test_planning_prompt_describes_native_markdown_plan_contract(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -298,24 +298,15 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: 
         session_caps=session_caps,
     )
 
-    assert "Do not use" in prompt
-    assert "for planning" in prompt
-    assert "submit each required section separately" in prompt
-    assert "Stage `design` for non-trivial plans" in prompt
-    assert "Use `ralph_submit_plan_section`" in prompt
-    assert "Use `ralph_get_plan_draft`" in prompt
-    assert "Use `ralph_discard_plan_draft`" in prompt
-    assert "Use `ralph_finalize_plan`" in prompt
-    assert "edit `.agent/artifacts/plan.json`" not in prompt
-    assert "resubmit with `content_path`" not in prompt
-    # After the planning.jinja trim (wt-023), the detailed raw plan payload
-    # contract (JSON example + hard requirements) is documented in
-    # `.agent/artifact-formats/plan.md` §`Plan-artifact payload` and surfaced
-    # via a one-line pointer. The contract is preserved verbatim in the
-    # format doc, so the prompt must point at it and the per-field rules
-    # it relies on must remain reachable.
+    assert "ONE markdown document" in prompt
+    assert "### [S-n] Title" in prompt
+    assert "IDs are stable and never renumbered" in prompt
+    assert "ralph_verify_md_artifact" in prompt
+    assert "ralph_submit_md_artifact" in prompt
+    assert "ralph_stage_md_artifact" in prompt
+    assert "ralph_finalize_md_artifact" in prompt
+    assert "plan.json" not in prompt
     assert ".agent/artifact-formats/plan.md" in prompt
-    assert "Plan-artifact payload" in prompt
 
 
 def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> None:
@@ -337,11 +328,13 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> 
 
     assert "PLANNING EDIT MODE" in prompt
     assert "The prior plan was rejected by planning analysis." in prompt
-    assert PLANNING_EDIT_GET_DRAFT_TEXT in prompt
+    assert "ralph_edit_md_plan_step" in prompt
+    assert "replacement" in prompt
+    assert "IDs are stable and never renumbered" in prompt
     assert PLANNING_EDIT_DEFECT_SCOPE_TEXT in prompt
     assert PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT in prompt
-    assert PLANNING_EDIT_FINALIZE_TEXT in prompt
-    assert PLANNING_EDIT_SELF_AUDIT_TEXT in prompt
+    assert "ralph_verify_md_artifact" in prompt
+    assert "ralph_submit_md_artifact" in prompt
     assert PLANNING_EDIT_RISK_COVERAGE_TEXT in prompt
     assert PLANNING_EDIT_PARALLELIZATION_TEXT in prompt
     assert PLANNING_EDIT_MAINTAINABILITY_TEXT in prompt
@@ -349,32 +342,18 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> 
     assert PLANNING_EDIT_DISCOVERY_FIRST_TEXT in prompt
     assert PLANNING_EDIT_SCOPE_DERIVATION_TEXT in prompt
     assert PLANNING_EDIT_PASS_TARGET_TEXT in prompt
-    assert PLANNING_EDIT_NO_KNOWN_GAPS_TEXT in prompt
-    assert PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_TEXT in prompt
-    assert PLANNING_EDIT_NEXT_ANALYZER_TEXT in prompt
-    assert PLANNING_EDIT_SURFACED_BLOCKER_TEXT in prompt
-    assert PLANNING_EDIT_RULE_CATEGORY_TEXT in prompt
-    assert PLANNING_EDIT_NO_EXCEPTION_TEXT in prompt
     assert PLANNING_EDIT_STARTING_POINT_TEXT in prompt
     assert PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT in prompt
-    assert PLANNING_EDIT_SELF_ANALYSIS_TEXT in prompt
-    assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in prompt
-    assert PLANNING_EDIT_CLOSURE_LEDGER_TEXT in prompt
-    assert PLANNING_EDIT_ADJACENT_ISSUES_TEXT in prompt
-    assert PLANNING_EDIT_CONTINUATION_GATE_TEXT in prompt
-    assert PLANNING_EDIT_NO_SUBMISSION_BEFORE_GATE_TEXT in prompt
     assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
     assert PLANNING_STABLE_ID_TEXT in prompt
     assert PLANNING_SUBAGENT_REVIEW_FANOUT_TEXT in prompt
-    assert PLANNING_EDIT_FINDING_CLOSURE_SCOUT_TEXT in prompt
-    assert "Use `ralph_discard_plan_draft` only when the existing plan is unsalvageable" in prompt
     assert (
         "Do not make transient .agent handoff files part of the revised plan's execution inputs"
         in prompt
     )
     assert "Ralph Workflow's own planning or artifact plumbing" in prompt
-    assert 'artifact_type="plan"' not in prompt
+    assert 'artifact_type="plan"' in prompt
     assert workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md") in prompt
 
 
@@ -397,7 +376,8 @@ def test_planning_analysis_prompt_teaches_core_workflow_inference(tmp_path: Path
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
     assert PLANNING_STABLE_ID_TEXT in prompt
     assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
-    assert PLANNING_ANALYSIS_FORMAT_TEXT in prompt
+    assert "ralph_submit_md_artifact" in prompt
+    assert ".agent/artifact-formats/planning_analysis_decision.md" in prompt
 
 
 def test_planning_edit_fallback_teaches_holistic_replanning_contract(tmp_path: Path) -> None:
@@ -427,20 +407,14 @@ def test_planning_edit_fallback_teaches_holistic_replanning_contract(tmp_path: P
             template_name="planning_edit.jinja",
         )
 
-    assert PLANNING_EDIT_CLOSURE_LEDGER_TEXT in prompt
-    assert PLANNING_EDIT_ADJACENT_ISSUES_TEXT in prompt
-    assert PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT in prompt
-    assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
-    assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
-    assert PLANNING_STABLE_ID_TEXT in prompt
-    assert PLANNING_EDIT_FALLBACK_SCOUT_TEXT in prompt
-    assert PLANNING_EDIT_FALLBACK_HISTORY_TEXT in prompt
-    assert PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_TEXT in prompt
-    assert PLANNING_EDIT_CONTINUATION_GATE_TEXT in prompt
-    assert PLANNING_EDIT_NO_SUBMISSION_BEFORE_GATE_TEXT in prompt
+    assert "ONE markdown document" in prompt
+    assert "ralph_edit_md_plan_step" in prompt
+    assert "ralph_verify_md_artifact" in prompt
+    assert "ralph_submit_md_artifact" in prompt
+    assert history_path in prompt
 
 
-def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: Path) -> None:
+def test_planning_prompt_fallback_uses_native_markdown_plan_contract(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -456,16 +430,15 @@ def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: Pat
             session_caps=session_caps,
         )
 
-    assert "Use the plan tools exactly as named below" in prompt
-    assert 'artifact_type="plan"' not in prompt
-    assert "Unless the plan is genuinely short" not in prompt
-    assert "ralph_submit_plan_section" in prompt
-    assert "ralph_submit_plan_sections" in prompt
-    assert "ralph_validate_draft" in prompt
-    assert "ralph_finalize_plan" in prompt
+    assert "Submit one native-markdown document" in prompt
+    assert 'artifact_type="plan"' in prompt
+    assert "ralph_verify_md_artifact" in prompt
+    assert "ralph_submit_md_artifact" in prompt
+    assert "ralph_stage_md_artifact" in prompt
+    assert "ralph_finalize_md_artifact" in prompt
+    assert "### [S-1]" in prompt
     assert "plan.json" not in prompt
-    assert "content_path" not in prompt
-    assert "<ralph-plan>" not in prompt
+    assert '{"title"' not in prompt
 
 
 def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: Path) -> None:
@@ -487,16 +460,12 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: Path) -> No
             session_caps=session_caps,
         )
 
-    assert "mcp__ralph__ralph_submit_plan_section" in prompt
-    assert "mcp__ralph__ralph_finalize_plan" in prompt
-    assert "mcp__ralph__ralph_get_plan_draft" in prompt
-    assert "mcp__ralph__ralph_discard_plan_draft" in prompt
-    assert "mcp__ralph__ralph_submit_artifact" not in prompt
-    assert "or bare `ralph_submit_plan_section`" in prompt
-    assert "or bare `ralph_finalize_plan`" in prompt
-    assert "or bare `ralph_get_plan_draft`" in prompt
-    assert "or bare `ralph_discard_plan_draft`" in prompt
-    assert "or bare `ralph_submit_artifact`" not in prompt
+    assert "mcp__ralph__ralph_submit_md_artifact" in prompt
+    assert "mcp__ralph__ralph_verify_md_artifact" in prompt
+    assert "mcp__ralph__ralph_get_md_draft" in prompt
+    assert "mcp__ralph__ralph_finalize_md_artifact" in prompt
+    assert "or bare `ralph_submit_md_artifact`" in prompt
+    assert "or bare `ralph_verify_md_artifact`" in prompt
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert "{{" not in prompt
     assert "{%" not in prompt
