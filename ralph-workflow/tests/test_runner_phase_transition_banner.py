@@ -218,8 +218,8 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
         record_artifact_outcome=_capture_outcome,
     )
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write("feat: add canonical phase name\n")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write("---\ntype: commit\nsubject: feat: add canonical phase name\n---\n")
         msg_path = f.name
 
     effect = CommitEffect(message_file=msg_path)
@@ -297,8 +297,8 @@ def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
         budget_caps={"iteration": 4},
     )
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write("feat: add iteration context\n")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write("---\ntype: commit\nsubject: feat: add iteration context\n---\n")
         msg_path = f.name
 
     effect = CommitEffect(message_file=msg_path)

@@ -9,7 +9,6 @@ dispatch its own sub-agents.
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -55,31 +54,59 @@ def _config_with_development_agent() -> UnifiedConfig:
 def _write_plan_artifact(root: Path, work_units: list[dict[str, object]]) -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "Parallel plan",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {"skills": ["test-driven-development"], "mcps": []},
-                    "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
-                    "critical_files": {
-                        "primary_files": [{"path": "src/main.py", "action": "modify"}],
-                        "reference_files": [],
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "verify"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": work_units,
-                },
-            }
-        ),
+    unit_items = "\n".join(
+        f"- [{unit['unit_id']}] {unit['description']}\n"
+        f"  Directories: {', '.join(cast('list[str]', unit['allowed_directories']))}"
+        for unit in work_units
+    )
+    (artifact_dir / "plan.md").write_text(
+        f"""---
+type: plan
+schema_version: 1
+---
+## Summary
+Parallel development plan.
+
+Intent: Implement independent work units.
+Coverage: feature, test
+
+## Scope
+- [SC-1] Implement production changes
+  Category: feature
+- [SC-2] Add tests
+  Category: test
+- [SC-3] Verify the result
+  Category: test
+
+## Skills MCP
+Skills: test-driven-development, verification-before-completion
+
+## Steps
+
+### [S-1] Implement
+Do the work.
+
+Type: file_change
+Files:
+- modify src/main.py
+
+## Critical Files
+- [CF-1] src/main.py
+  Action: modify
+  Changes: implement the feature
+
+## Risks
+- [R-1] Parallel changes overlap
+  Severity: high
+  Mitigation: Assign disjoint directories.
+
+## Verification
+- [V-1] pytest
+  Expect: passes
+
+## Work Units
+{unit_items}
+""",
         encoding="utf-8",
     )
 
