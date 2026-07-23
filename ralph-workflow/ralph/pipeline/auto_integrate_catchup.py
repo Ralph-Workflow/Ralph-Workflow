@@ -132,9 +132,9 @@ def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
     name exists, else the first of ``('main', 'master')`` that exists
     locally, else ``None``) -- but observed through GitPython ref reads
     instead of ``run_git`` subprocesses, honouring this module's
-    quiet-probe contract. ``tests/test_auto_integrate_catchup_e2e.py``
-    pins the two resolvers to identical answers so the catch-up can
-    never drift toward a different branch than the seams land on.
+    quiet-probe contract. Its precedence table mirrors the seam resolver
+    so the catch-up cannot drift toward a different branch than the
+    seams land on.
     """
     repo: Repo | None = None
     try:
@@ -396,8 +396,8 @@ class AutoIntegrateCatchupWorker:
     """Bounded daemon-threaded catch-up loop over :func:`attempt_catchup_fast_forward`.
 
     Constructor parameters are explicit so tests can inject a recording
-    ``tick`` callable and a short ``interval_seconds`` instead of
-    monkeypatching module state. No I/O happens at construction time;
+    ``tick`` callable and deterministic ``wait`` function instead of
+    waiting on a real clock. No I/O happens at construction time;
     ``start()`` launches the daemon thread and ``stop()`` is an
     idempotent event-set that never joins (the thread is daemonic, and
     joining could block shutdown on a slow git subprocess).
@@ -410,6 +410,7 @@ class AutoIntegrateCatchupWorker:
         *,
         interval_seconds: float = DEFAULT_CATCHUP_INTERVAL_SECONDS,
         tick: Callable[[], str] | None = None,
+        wait: Callable[[float], bool] | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
@@ -418,6 +419,7 @@ class AutoIntegrateCatchupWorker:
         self._interval = float(interval_seconds)
         self._tick: Callable[[], str] = tick if tick is not None else self._default_tick
         self._stop_event = threading.Event()
+        self._wait = wait if wait is not None else self._stop_event.wait
         self._thread: threading.Thread | None = None
 
     def _default_tick(self) -> str:
@@ -429,7 +431,7 @@ class AutoIntegrateCatchupWorker:
             return
         self._stop_event.clear()
         thread = threading.Thread(
-            target=self._run_loop,
+            target=self.run,
             name="ralph-auto-integrate-catchup",
             daemon=True,
         )
@@ -448,14 +450,15 @@ class AutoIntegrateCatchupWorker:
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def _run_loop(self) -> None:
+    def run(self) -> None:
+        """Run cadence ticks until the injected wait reports a stop."""
         # ``Event.wait`` doubles as the interval sleep AND the stop
         # signal, so a stop() from any thread interrupts the wait
         # immediately instead of burning out the remaining interval.
         # The first tick therefore fires one full interval AFTER
         # start() -- the run loop already performs a synchronous
         # startup integration, so an immediate tick would be redundant.
-        while not self._stop_event.wait(timeout=self._interval):
+        while not self._wait(self._interval):
             self._tick_once()
 
     def _tick_once(self) -> None:

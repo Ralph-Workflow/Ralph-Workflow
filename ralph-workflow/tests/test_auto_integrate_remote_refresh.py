@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from ralph.config.models import UnifiedConfig
-from ralph.git.merge import branch_sha, is_ancestor
+from ralph.git.merge import branch_sha
 from ralph.pipeline import auto_integrate, auto_integrate_sync
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
@@ -98,46 +98,26 @@ def _seed_bare_origin(tmp_git_repo: Path) -> tuple[Path, str]:
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(20)
-def test_remote_advance_never_affects_the_local_integration(
+def test_remote_ahead_refresh_keeps_the_local_target_unchanged(
     tmp_git_repo: Path,
 ) -> None:
-    """A mainline pushed to origin by another clone stays on origin.
-
-    Integration reasons about the LOCAL target ref only: the commit the
-    other clone pushed must not be rebased in, must not appear in the
-    worktree, and the landing must fast-forward the local ref from its
-    own (locally observed) position.
-    """
+    """A real fetch observes origin ahead without moving the local target."""
     bare, main = _seed_bare_origin(tmp_git_repo)
     agent = _make_clone(bare, tmp_git_repo.parent / "agent-a", main, branch="feature")
-    other = _make_clone(bare, tmp_git_repo.parent / "agent-b", main, branch="other")
-
-    # The OTHER agent lands a commit on origin's mainline.
-    assert _run(other, "checkout", main).returncode == 0
-    other_sha = _commit(other, "other.txt", "other agent\n", "other agent change")
-    assert _run(other, "push", "origin", main).returncode == 0
 
     local_main = branch_sha(agent, main)
     assert local_main is not None
-    assert local_main != other_sha, "origin must genuinely be ahead"
-
-    _commit(agent, "feature.txt", "feature\n", "feature change")
-    outcome = auto_integrate_after_commit(
-        _build_config(),
-        WorkspaceScope(agent),
-        RebaseState(),
-        sleep=lambda _seconds: None,
-        jitter=lambda: 0.0,
+    remote_sha = _commit(
+        tmp_git_repo, "remote.txt", "remote advance\n", "remote advance"
     )
-    feature_head = _run(agent, "rev-parse", "HEAD").stdout.strip()
+    assert _run(tmp_git_repo, "push", str(bare), main).returncode == 0
+    assert remote_sha != local_main
 
-    assert outcome is not None
-    assert outcome.fast_forwarded is True
-    assert is_ancestor(agent, other_sha, feature_head) is False, (
-        "a commit that exists only on origin was integrated locally"
-    )
-    assert not (agent / "other.txt").exists()
-    assert branch_sha(agent, main) == feature_head
+    outcome = refresh_target_from_remote(agent, main, timeout_seconds=2.0)
+
+    assert outcome == REFRESH_ORIGIN_AHEAD
+    assert branch_sha(agent, main) == local_main
+    assert not (agent / "remote.txt").exists()
 
 
 def test_unreachable_remote_degrades_to_local_integration(

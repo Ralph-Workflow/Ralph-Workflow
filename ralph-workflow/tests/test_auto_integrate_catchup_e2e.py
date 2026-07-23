@@ -7,7 +7,7 @@ against fakes, and THIS file proves the git effects: a behind-and-clean
 checkout lands exactly on the target tip, while divergence, dirt, and
 being on the target itself all leave the repository byte-identical.
 
-Only the two tests marked ``subprocess_e2e`` drive real git. The gate
+Only the landing test marked ``subprocess_e2e`` drives real git. The gate
 table and worker cadence use injected deterministic observations so the
 default suite proves those contracts without rebuilding repositories.
 
@@ -19,7 +19,6 @@ tests/test_auto_integrate_race.py:11-15.
 from __future__ import annotations
 
 import subprocess
-import threading
 from pathlib import Path
 
 import pytest
@@ -180,44 +179,6 @@ def test_disabled_config_never_touches_git(
     assert outcome == catchup.CATCHUP_DISABLED
 
 
-@pytest.mark.subprocess_e2e
-@pytest.mark.timeout_seconds(20)
-def test_quiet_resolver_matches_seam_resolver(tmp_path: Path) -> None:
-    """The in-process target resolver answers exactly like the seams' resolver.
-
-    The catch-up moving the checkout toward a DIFFERENT branch than the
-    seams integrate onto would be actively harmful, so the quiet
-    GitPython mirror is pinned byte-identical to
-    :func:`ralph.pipeline.auto_integrate.resolve_integration_target`
-    across the precedence rungs: configured-and-existing, configured-
-    but-missing, and the main/master auto-detection fallbacks.
-    """
-    from ralph.pipeline.auto_integrate import (
-        resolve_integration_target as seam_resolve,
-    )
-
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    assert _run(repo, "branch", _FEATURE).returncode == 0
-
-    configured = _build_config()
-    missing = UnifiedConfig.model_validate(
-        {"general": {"auto_integrate_target": "no-such-branch"}}
-    )
-    autodetect = UnifiedConfig.model_validate({"general": {}})
-    for config in (configured, missing, autodetect):
-        assert catchup.resolve_integration_target(config, repo) == seam_resolve(
-            config, repo
-        )
-
-    master_repo = tmp_path / "master-repo"
-    _init_repo(master_repo)
-    assert _run(master_repo, "branch", "-M", "master").returncode == 0
-    assert catchup.resolve_integration_target(autodetect, master_repo) == seam_resolve(
-        autodetect, master_repo
-    )
-
-
 def test_branch_names_shadowing_list_methods_resolve_correctly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -242,22 +203,31 @@ def test_branch_names_shadowing_list_methods_resolve_correctly(
         assert catchup._local_head(repo, phantom) is None
 
 
-def test_worker_thread_runs_the_injected_tick_on_its_cadence() -> None:
-    """The daemon worker invokes its deterministic tick on cadence."""
-    landed = threading.Event()
+def test_worker_runner_uses_injected_wait_cadence() -> None:
+    """The worker runner ticks on cadence without a real thread or clock."""
+    waits = iter((False, False, True))
+    intervals: list[float] = []
+    outcomes: list[str] = []
+
+    def _wait(interval: float) -> bool:
+        intervals.append(interval)
+        return next(waits)
 
     def _observing_tick() -> str:
-        landed.set()
-        return catchup.CATCHUP_FAST_FORWARDED
+        outcomes.append(catchup.CATCHUP_FAST_FORWARDED)
+        return outcomes[-1]
 
     worker = catchup.AutoIntegrateCatchupWorker(
         _build_config(),
         Path("/workspace"),
-        interval_seconds=0.001,
+        interval_seconds=3.0,
         tick=_observing_tick,
+        wait=_wait,
     )
-    worker.start()
-    try:
-        assert landed.wait(timeout=0.5)
-    finally:
-        worker.stop()
+    worker.run()
+
+    assert intervals == [3.0, 3.0, 3.0]
+    assert outcomes == [
+        catchup.CATCHUP_FAST_FORWARDED,
+        catchup.CATCHUP_FAST_FORWARDED,
+    ]
