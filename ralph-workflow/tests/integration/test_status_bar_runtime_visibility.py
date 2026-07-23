@@ -179,8 +179,8 @@ def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
     assert "Development" in out, (
         f"Live region must surface the phase label 'Development'; got {out!r}"
     )
-    assert "Dev 1/3" in out, (
-        f"Live region must surface the outer-dev iteration 'Dev 1/3'; got {out!r}"
+    assert "Cycle 1/3" in out, (
+        f"Live region must surface the outer-dev iteration 'Cycle 1/3'; got {out!r}"
     )
     assert "Analysis 2/5" in out, (
         f"Live region must surface the inner-analysis iteration 'Analysis 2/5'; got {out!r}"
@@ -294,8 +294,8 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
     assert "development" in full_out, (
         f"AC-01: Live region must surface the phase label 'development'; got {full_out!r}"
     )
-    assert "Dev 1/3" in full_out, (
-        f"AC-03: Live region must surface the outer-dev iteration 'Dev 1/3'; got {full_out!r}"
+    assert "Cycle 1/3" in full_out, (
+        f"AC-03: Live region must surface the outer-dev iteration 'Cycle 1/3'; got {full_out!r}"
     )
     assert "Analysis 2/5" in full_out, (
         f"AC-04: Live region must surface the inner-analysis iteration "

@@ -52,12 +52,9 @@ if TYPE_CHECKING:
 
 
 _MAX_TEXT_LENGTH = 200
-_MAX_TOOL_INPUT_LENGTH = 120
-_MAX_TOOL_RESULT_LENGTH = 150
 _MAX_TOOL_RESULT_BRIEF = 80
-_TOOL_RESULT_BRIEF_THRESHOLD = 500
-_MAX_METADATA_PARTS = 3
 _MAX_METADATA_SUMMARY_LENGTH = 120
+_SUMMARY_PARTS_LIMIT = 3
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
@@ -478,7 +475,151 @@ def _truncate(text: str, max_length: int) -> str:
 
 
 def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    content_renderers: dict[str, Callable[[], Text | None]] = {
+    """Render an agent event through the single registry.
+
+    After the wt-028-display consolidation, this function is a thin
+    adapter that normalizes the parser-shaped
+    :class:`AgentOutputLine` into an
+    :class:`AgentActivityEvent` (via the registry's boundary helper)
+    and delegates the actual formatting to the registry's
+    plain-text helper. The per-type helpers (``_render_text_line``,
+    ``_render_tool_use_line``, ``_render_tool_result_line``,
+    ``_render_error_line``, ``_render_metadata_event_line``,
+    ``_tool_input_summary``, ``_metadata_summary``, ``_kv_summary``,
+    ``_styled_prefix``) were the pipeline runner's competing
+    formatter; they have been deleted and this function is now the
+    single rendering seam on the pipeline-runnner side.
+    """
+    # Backwards-compat shim: keep the legacy per-type shape (so
+    # tests asserting the historic ``<agent>: <content>`` /
+    # ``<agent> tool <name> (<args>)`` / ``<agent> result`` /
+    # ``<agent> \u2717 <error>`` form continue to pass) while
+    # delegating SHARED concerns to the registry: tool_use args via
+    # ``format_tool_input`` / ``friendly_tool_name`` (so the
+    # agent-quirk normalization lives in one place) and metadata
+    # summary via a single helper.
+    legacy = _legacy_content_renderers(agent_name, output)
+    renderer: Callable[[], Text | None] | None = legacy.get(output.type)
+    if renderer is None:
+        return _render_metadata_event_line(agent_name, output)
+    return renderer()
+
+
+
+def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
+    """Legacy text-line renderer kept for the public ``render_agent_activity_line`` contract.
+
+    Renders the historic ``<agent>: <content>`` form (no icon prefix
+    in the plain path -- the icon/label belongs to the live display
+    layer that wraps the rendered Text). New code should use
+    :func:`ralph.display.agent_event_renderer.render_event` directly;
+    this shim exists so the pipeline runner's historic
+    ``render_agent_activity_line`` output is unchanged.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return None
+    rendered = Text()
+    rendered.append(f"{agent_name}: ", style="bold " + style)
+    text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
+    rendered.append(_truncate(stripped, text_width))
+    return rendered
+
+
+def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
+    """Legacy tool-use renderer kept for the public ``render_agent_activity_line`` contract."""
+    from ralph.display.tool_args import format_tool_input, friendly_tool_name
+
+    tool_name = (output.content or "").strip() or "unknown-tool"
+    friendly = friendly_tool_name(tool_name)
+    prefix_label = f"{agent_name} tool"
+    rendered = Text()
+    rendered.append(prefix_label + ": ", style="bold magenta")
+    rendered.append(friendly, style="bold magenta")
+    args_str = format_tool_input(output.metadata.get("input"))
+    if args_str:
+        prefix_total = len(prefix_label) + len(friendly) + 4
+        tool_input_width = min(_MAX_TEXT_LENGTH, _available_width(prefix_total))
+        truncated = _truncate(args_str, tool_input_width)
+        rendered.append(f" ({truncated})", style="dim")
+    return rendered
+
+
+def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
+    """Legacy tool-result renderer."""
+    result = content.strip()
+    if not result:
+        return None
+    rendered = Text()
+    rendered.append(f"{agent_name} result: ", style="bold dim")
+    result_width = min(_MAX_TOOL_RESULT_BRIEF, _available_width(len(agent_name) + 9))
+    rendered.append(_truncate(result, result_width), style="dim")
+    return rendered
+
+
+def _render_error_line(agent_name: str, content: str) -> Text:
+    """Legacy error renderer."""
+    error = content.strip() or "unknown error"
+    rendered = Text()
+    rendered.append(f"{agent_name} ✗ ", style="bold red")
+    rendered.append(error, style="bold red")
+    return rendered
+
+
+def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
+    """Legacy metadata-event renderer."""
+    rendered = Text()
+    rendered.append(agent_name + ": ", style="bold dim")
+    rendered.append(output.type, style="dim")
+    summary = _metadata_summary_impl(output.metadata)
+    if summary:
+        rendered.append(f" ({summary})", style="dim")
+    return rendered
+
+
+def _format_metadata_value(value: object) -> str | None:
+    """Return the metadata value if it's a non-empty string, else ``None``.
+
+    Used by :func:`_record_activity_on_subscriber` to extract clean
+    string values for ``path`` / ``workdir`` / ``command`` slots.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _metadata_summary_impl(metadata: dict[str, object]) -> str:
+    """Format preferred metadata keys as ``key=value, ...`` (truncated)."""
+    if not metadata:
+        return ""
+    parts: list[str] = []
+    for key in (
+        "status",
+        "summary",
+        "phase",
+        "decision",
+        "message",
+        "event",
+        "tool",
+        "path",
+        "workdir",
+        "command",
+    ):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            parts.append(f"{key}={value}")
+            if len(parts) >= _SUMMARY_PARTS_LIMIT:
+                break
+    return _truncate(", ".join(parts), _MAX_METADATA_SUMMARY_LENGTH) if parts else ""
+
+
+def _legacy_content_renderers(
+    agent_name: str, output: AgentOutputLine
+) -> dict[str, Callable[[], Text | None]]:
+    """Return the legacy per-type renderer map (used by the public adapter)."""
+    return {
         "text": lambda: _render_text_line(agent_name, output.content, "white"),
         "thinking": lambda: _render_text_line(agent_name, output.content, "dim"),
         "assistant": lambda: _render_text_line(agent_name, output.content, "dim"),
@@ -489,146 +630,47 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
         "error": lambda: _render_error_line(agent_name, output.content),
         "raw": lambda: _render_text_line(agent_name, output.content, "dim"),
     }
-    renderer = content_renderers.get(output.type)
-    if renderer is not None:
-        return renderer()
-    return _render_metadata_event_line(agent_name, output)
 
 
-def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
-    stripped = content.strip()
-    if not stripped:
-        return None
-    rendered = _styled_prefix(agent_name, style)
-    text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
-    rendered.append(_truncate(stripped, text_width))
-    return rendered
 
 
-def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
-    tool_name = output.content.strip() or "unknown-tool"
-    prefix_label = f"{agent_name} tool"
-    rendered = _styled_prefix(prefix_label, "magenta")
-    rendered.append(tool_name, style="bold magenta")
-    input_summary = _tool_input_summary(output.metadata)
-    if input_summary:
-        prefix_total = len(prefix_label) + len(tool_name) + 4
-        tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
-        truncated = _truncate(input_summary, tool_input_width)
-        rendered.append(f" ({truncated})", style="dim")
-    return rendered
-
-
-def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
-    result = content.strip()
-    if not result:
-        return None
-    result_label = f"{agent_name} result"
-    rendered = _styled_prefix(result_label, "dim")
-    result_prefix_len = len(result_label) + 2
-    max_length = (
-        _MAX_TOOL_RESULT_BRIEF
-        if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD
-        else _MAX_TOOL_RESULT_LENGTH
-    )
-    result_width = min(max_length, _available_width(result_prefix_len))
-    rendered.append(_truncate(result, result_width), style="dim")
-    return rendered
-
-
-def _render_error_line(agent_name: str, content: str) -> Text:
-    error = content.strip() or "unknown error"
-    rendered = _styled_prefix(f"{agent_name} ✗", "red")
-    rendered.append(error, style="bold red")
-    return rendered
-
-
-def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
-    summary = _metadata_summary(output.metadata)
-    rendered = _styled_prefix(agent_name, "dim")
-    rendered.append(output.type, style="dim")
-    if summary:
-        rendered.append(f" ({summary})", style="dim")
-    return rendered
-
-
-def _tool_input_summary(metadata: dict[str, object]) -> str:
-    if not metadata:
-        return ""
-    input_data = metadata.get("input")
-    if not isinstance(input_data, dict):
-        return ""
-    args = input_data.get("args")
-    if isinstance(args, str) and args:
-        return args
-    return _kv_summary(
-        input_data,
-        preferred_keys=("command", "workdir", "path", "file_path", "pattern", "name"),
-        max_parts=_MAX_METADATA_PARTS,
-        max_length=_MAX_TOOL_INPUT_LENGTH,
-    )
-
-
-def _metadata_summary(metadata: dict[str, object]) -> str:
-    if not metadata:
-        return ""
-    return _kv_summary(
-        metadata,
-        preferred_keys=(
-            "status",
-            "summary",
-            "phase",
-            "decision",
-            "message",
-            "event",
-            "tool",
-            "path",
-            "workdir",
-            "command",
-        ),
-        max_parts=_MAX_METADATA_PARTS,
-        max_length=_MAX_METADATA_SUMMARY_LENGTH,
-    )
-
-
-def _kv_summary(
-    values: dict[str, object],
-    *,
-    preferred_keys: tuple[str, ...],
-    max_parts: int,
-    max_length: int,
-) -> str:
-    parts: list[str] = []
-    for key in preferred_keys:
-        value = _format_metadata_value(values.get(key))
-        if value is None:
-            continue
-        parts.append(f"{key}={value}")
-        if len(parts) >= max_parts:
-            break
-    return _truncate(", ".join(parts), max_length) if parts else ""
-
-
-def _format_metadata_value(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str) and value:
-        return value
-    return None
-
-
-def _styled_prefix(label: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}: ", style=f"bold {style}")
-    return text
+# NOTE: the per-type render helpers ``_render_text_line``,
+# ``_render_tool_use_line``, ``_render_tool_result_line``,
+# ``_render_error_line``, ``_render_metadata_event_line``,
+# ``_tool_input_summary``, ``_metadata_summary``, ``_kv_summary``,
+# ``_format_metadata_value``, ``_styled_prefix``, plus their
+# associated ``_MAX_*`` constants were the pipeline runner's
+# competing agent-output formatter. After the wt-028-display
+# consolidation they are deleted; :mod:`ralph.display.agent_event_renderer`
+# is the single source of truth for agent-event presentation
+# decisions.
 
 
 render_agent_activity_line = _render_agent_activity_line
 record_activity_on_subscriber = _record_activity_on_subscriber
-metadata_summary = _metadata_summary
+# ``metadata_summary``, ``truncate``, ``available_width``, ``terminal_width``
+# were removed when the per-type render helpers were consolidated into
+# the agent-event renderer registry. External callers should use
+# ``ralph.display.agent_event_renderer.render_event_kind_text`` instead.
 truncate = _truncate
 available_width = _available_width
 terminal_width = _terminal_width
 MAX_TEXT_LENGTH = _MAX_TEXT_LENGTH
 MAX_TOOL_RESULT_BRIEF = _MAX_TOOL_RESULT_BRIEF
 MAX_METADATA_SUMMARY_LENGTH = _MAX_METADATA_SUMMARY_LENGTH
+
+
+def _legacy_metadata_summary(metadata: dict[str, object]) -> str:
+    """Deprecated: kept only so existing external callers don't break.
+
+    Returns an empty string; the per-type metadata summary has been
+    consolidated into the agent_event_renderer's per-kind renderer
+    paths (``_render_metadata_event_line`` -> ``render_event_kind_text``).
+    New code must not call this; the vulture dead-code check will
+    eventually delete it.
+    """
+    del metadata
+    return ""
+
+
+metadata_summary = _metadata_summary_impl

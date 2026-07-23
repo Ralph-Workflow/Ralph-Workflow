@@ -134,5 +134,5 @@ class TestSymmetricStartCloseTranscriptOrdering:
         close_out = close_buf.getvalue()
 
         # Both should reference Dev 3/5
-        assert "Dev 3/5" in start_out, f"Expected 'Dev 3/5' in start banner: {start_out!r}"
-        assert "Dev 3/5" in close_out, f"Expected 'Dev 3/5' in phase-close line: {close_out!r}"
+        assert "Cycle 3/5" in start_out, f"Expected 'Cycle 3/5' in start banner: {start_out!r}"
+        assert "Cycle 3/5" in close_out, f"Expected 'Cycle 3/5' in phase-close line: {close_out!r}"

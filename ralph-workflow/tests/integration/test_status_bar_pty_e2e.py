@@ -362,7 +362,7 @@ def test_status_bar_pty_renders_workspace_phase_and_omits_dash_placeholder(
         f"stripped preview: {stripped[:300]!r}"
     )
 
-    forbidden_placeholders = ("Dev --", "D --", "Analysis --", "A --", "--/--")
+    forbidden_placeholders = ("Cycle --", "C --", "Analysis --", "A --", "--/--")
     for placeholder in forbidden_placeholders:
         assert placeholder not in stripped, (
             f"AC-02: placeholder {placeholder!r} must NOT appear in the "
@@ -505,12 +505,12 @@ def test_status_bar_pty_outer_dev_iteration_label_visible_when_set(
     stripped = _ANSI_ESCAPE_RE.sub("", stream_text)
 
     dev_iter_patterns = (
-        r"Dev\s+\d+/\d+",
-        r"D\s+\d+/\d+",
+        r"Cycle\s+\d+/\d+",
+        r"C\s+\d+/\d+",
     )
     assert any(re.search(pat, stripped) for pat in dev_iter_patterns), (
-        f"AC-03: outer-dev iteration label 'Dev 1/3' (or compact "
-        f"'D1/3') must appear in the captured PTY stream when "
+        f"AC-03: outer-dev iteration label 'Cycle 1/3' (or compact "
+        f"'C1/3') must appear in the captured PTY stream when "
         f"outer_dev_iteration is set; checked patterns: "
         f"{dev_iter_patterns!r}; stripped preview: {stripped[:300]!r}"
     )

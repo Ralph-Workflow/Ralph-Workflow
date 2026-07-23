@@ -1,4 +1,35 @@
-"""Okabe-Ito theme helpers for Ralph CLI display."""
+"""Okabe-Ito theme helpers for Ralph CLI display.
+
+Accessibility contract
+----------------------
+
+The palette is Okabe-Ito (a colorblind-safe palette researched by Okabe
+& Ito, 2002 -- "Color Universal Design") so that no semantic state is
+distinguishable by hue alone under the common forms of color-vision
+deficiency (deuteranopia, protanopia, tritanopia). The pairing rules
+below make that explicit so an accessibility decision is made once
+here, not per call site:
+
+* ``STATUS_STYLES`` carries a 3-tuple ``(rich_style, unicode_icon,
+  ascii_label)`` per semantic state. Display code must always render
+  the icon and the ASCII label alongside the color so a colorblind
+  operator (or a no-color console) keeps every piece of meaning the
+  color was carrying.
+* ``success`` (BLUISH_GREEN, okabe-ito #009E73, lightness L*~52)
+  vs ``error`` (VERMILLION, okabe-ito #D55E00, lightness L*~54). The
+  lightnesses are similar in raw hex but visually distinct after
+  Okabe-Ito's perceptual tuning: red/green pairings are the classic
+  accessibility trap and the Okabe-Ito pair avoids it by using
+  blueish-green and vermillion (orange-red) which differ in lightness
+  AND hue. Display code MUST NOT use red/green as the sole
+  differentiator for any state pair -- the accessibility test in
+  ``tests/display/test_agent_output_accessibility.py`` asserts each
+  state also carries a non-color carrier.
+* Semantic roles are defined ONCE here: ``success``, ``running``,
+  ``warning``, ``error``, ``skipped``, ``pending``, ``info``. New
+  states must add a new entry here, never duplicate a hex string in
+  a renderer.
+"""
 
 from __future__ import annotations
 

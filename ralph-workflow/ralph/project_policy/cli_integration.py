@@ -594,21 +594,26 @@ def _push_remediation_status_bar(
     display: object,
     workspace_scope: WorkspaceScope,
     max_attempts: int,
+    *,
+    attempt: int = 1,
 ) -> None:
     """Seed the persistent status bar for the remediation phase.
 
     Mirrors the run loop's phase push so the footer shows the working
     directory and the active phase during remediation instead of nothing.
-    Defensive: any display failure is swallowed — presentation must never
-    block remediation.
+    ``attempt`` is the 1-indexed live attempt (1 on the first try, 2 on
+    the first re-try, etc.) so the bar surfaces real progress instead
+    of a hardcoded ``Dev 1/N`` placeholder. Defensive: any display
+    failure is swallowed -- presentation must never block remediation.
     """
     try:
         model = StatusBarModel(
             workspace_root=str(workspace_scope.root),
             phase_label="Policy Remediation",
             phase_style=phase_style_for_phase("policy_remediation"),
-            outer_dev_iteration=1,
+            outer_dev_iteration=attempt,
             outer_dev_cap=max_attempts,
+            outer_label="Remediation",
         )
         update = cast(
             "Callable[[object], None] | None",

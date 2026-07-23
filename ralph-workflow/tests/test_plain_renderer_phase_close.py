@@ -122,7 +122,7 @@ def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
     pd.emit_phase_close("fix", "fix: applied", options=PhaseCloseOptions(iteration_context=ctx))
     out = buf.getvalue()
     assert "phase=fix" in out
-    assert "[Dev #2]" in out
+    assert "[Cycle #2]" in out
     assert "[Analysis #1]" in out
     assert "fix: applied" in out
 
@@ -194,7 +194,7 @@ def test_phase_close_exit_trigger_with_iteration_context() -> None:
     opts = PhaseCloseOptions(iteration_context=ctx, exit_trigger="produced")
     pd.emit_phase_close("fix", "fix: applied", options=opts)
     out = buf.getvalue()
-    assert "[Dev #2]" in out
+    assert "[Cycle #2]" in out
     assert "exit=produced" in out
     assert "fix: applied" in out
 

@@ -123,7 +123,7 @@ def test_render_status_bar_default_mode_shows_all_applicable_fields() -> None:
     plain = _plain_text(text)
     assert "Development" in plain
     assert "my-cool-project" in plain
-    assert "Dev 1/3" in plain
+    assert "Cycle 1/3" in plain
     assert "Analysis 2/5" in plain
 
 
@@ -244,7 +244,7 @@ def test_render_status_bar_shows_all_fields_at_wide_widths(width: int) -> None:
     plain = _plain_text(text)
     assert "Development" in plain
     assert "my-cool-project" in plain
-    assert "Dev 1/3" in plain
+    assert "Cycle 1/3" in plain
     assert "Analysis 2/5" in plain
 
 
@@ -312,10 +312,10 @@ def test_render_status_bar_shows_all_applicable_fields_at_ac03_widths(width: int
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     # outer_dev iteration: must always render in SOME form at AC-03
-    # widths. Accept canonical ("Dev 1/3"), compact ("D1/3"), or
+    # widths. Accept canonical ("Cycle 1/3"), compact ("C1/3"), or
     # minimal ("1/3"). The count/payload ("1/3") is the
     # disambiguating invariant.
-    outer_forms = ("Dev 1/3", "D1/3", "1/3")
+    outer_forms = ("Cycle 1/3", "C1/3", "1/3")
     assert any(form in plain for form in outer_forms), (
         f"outer_dev must render in canonical/compact/minimal form at width={width}; got {plain!r}"
     )
@@ -358,15 +358,15 @@ def test_render_status_bar_canonical_iteration_labels_at_ac03_widths(width: int)
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     # Canonical form is required at every width >= 40.
-    assert "Dev 1/3" in plain, (
-        f"AC-03: 'Dev 1/3' must render in canonical form at width={width}; got {plain!r}"
+    assert "Cycle 1/3" in plain, (
+        f"AC-03: 'Cycle 1/3' must render in canonical form at width={width}; got {plain!r}"
     )
     assert "Analysis 2/5" in plain, (
         f"AC-03: 'Analysis 2/5' must render in canonical form at width={width}; got {plain!r}"
     )
     # No shortened label forms at AC-03 widths.
-    assert "D1/3" not in plain, (
-        f"AC-03: shortened 'D1/3' must NOT appear at width={width}; got {plain!r}"
+    assert "C1/3" not in plain, (
+        f"AC-03: shortened 'C1/3' must NOT appear at width={width}; got {plain!r}"
     )
     assert "A2/5" not in plain, (
         f"AC-03: shortened 'A2/5' must NOT appear at width={width}; got {plain!r}"
@@ -599,7 +599,7 @@ def test_render_status_bar_no_dash_placeholder_when_inner_analysis_is_none() -> 
     text = render_status_bar(model, ctx, home="/Users/alice")
     plain = _plain_text(text)
     # The outer_dev field is present, the inner_analysis field is not.
-    assert "Dev 1/3" in plain
+    assert "Cycle 1/3" in plain
     assert "--" not in plain, f"Status bar must not render '--' placeholders; got {plain!r}"
     # Neither inner_analysis glyph (Unicode '▸' or ASCII '[IA]') should appear.
     assert "▸" not in plain, (
@@ -648,7 +648,7 @@ def test_render_status_bar_no_dash_placeholder_in_ascii_mode() -> None:
 
 
 def test_render_status_bar_dev_iteration_format_with_cap() -> None:
-    """outer_dev_iteration=1, outer_dev_cap=3 -> 'Dev 1/3'."""
+    """outer_dev_iteration=1, outer_dev_cap=3 -> 'Cycle 1/3'."""
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
         phase_label="Development",
@@ -658,11 +658,11 @@ def test_render_status_bar_dev_iteration_format_with_cap() -> None:
     )
     ctx = _make_display_context(width=140)
     text = render_status_bar(model, ctx, home="/Users/alice")
-    assert "Dev 1/3" in _plain_text(text)
+    assert "Cycle 1/3" in _plain_text(text)
 
 
 def test_render_status_bar_dev_iteration_format_without_cap() -> None:
-    """outer_dev_iteration=2, outer_dev_cap=None -> 'Dev #2' (canonical fallback)."""
+    """outer_dev_iteration=2, outer_dev_cap=None -> 'Cycle #2' (canonical fallback)."""
     model = StatusBarModel(
         workspace_root="/Users/alice/code/proj",
         phase_label="Development",
@@ -672,7 +672,7 @@ def test_render_status_bar_dev_iteration_format_without_cap() -> None:
     )
     ctx = _make_display_context(width=140)
     text = render_status_bar(model, ctx, home="/Users/alice")
-    assert "Dev #2" in _plain_text(text)
+    assert "Cycle #2" in _plain_text(text)
 
 
 # ---------------------------------------------------------------------------
@@ -1466,7 +1466,7 @@ def test_status_bar_live_region_renders_updated_model_on_tty_like_stream() -> No
     assert "Development" in out, (
         f"Live region must surface the phase label 'Development'; got {out!r}"
     )
-    assert "Dev 1/3" in out, f"Live region must surface the iteration label 'Dev 1/3'; got {out!r}"
+    assert "Cycle 1/3" in out, f"Live region must surface the iteration label 'Cycle 1/3'; got {out!r}"
 
 
 def test_status_bar_live_region_renders_phase_only_when_no_iteration() -> None:
@@ -1532,7 +1532,7 @@ def test_status_bar_live_region_renders_with_outer_dev_only() -> None:
         sb.stop()
     out = buf.getvalue()
     assert "Development" in out
-    assert "Dev 2/5" in out
+    assert "Cycle 2/5" in out
     assert "Analysis" not in out
     assert "--" not in out
 
@@ -1862,9 +1862,9 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
         f"AC-08: Live region must have rendered the workspace path "
         f"{workspace_root!r} before stop; got out={out!r}"
     )
-    assert "Dev 1/3" in out, (
+    assert "Cycle 1/3" in out, (
         f"AC-08: Live region must have rendered the outer-dev iteration "
-        f"'Dev 1/3' before stop; got out={out!r}"
+        f"'Cycle 1/3' before stop; got out={out!r}"
     )
     assert out.endswith("\r\x1b[1A\x1b[2K"), (
         f"AC-08: captured buffer must end with the Rich transient "
@@ -1882,7 +1882,7 @@ def test_status_bar_live_region_is_erased_after_stop_preserving_scrollback() -> 
         f"content in scrollback; got last_line_visible={last_line_visible!r}, "
         f"full last_line={last_line!r}, full out={out!r}"
     )
-    for forbidden_substr in (workspace_root, phase_label, "Dev 1/3"):
+    for forbidden_substr in (workspace_root, phase_label, "Cycle 1/3"):
         assert forbidden_substr not in last_line, (
             f"AC-08: the LAST captured line must NOT contain rendered "
             f"model content; got {forbidden_substr!r} in last_line={last_line!r}"

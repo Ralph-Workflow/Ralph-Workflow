@@ -68,6 +68,24 @@ _ICON_BY_KIND: dict[ActivityEventKind, str] = {
 }
 
 
+def _icon_for_kind(kind: ActivityEventKind) -> str:
+    """Return the canonical icon for a kind, falling back to STATUS_STYLES.
+
+    After the wt-028-display consolidation, agent-event iconography
+    lives in the single registry (:mod:`ralph.display.agent_event_renderer`).
+    :func:`render_event_line` keeps a local copy so the
+    ring-buffer/activity-router path (which doesn't carry a
+    ``DisplayContext``) can still produce a non-color carrier without
+    importing the registry and pulling in its rich dependencies. New
+    code should call :func:`ralph.display.agent_event_renderer.render_event_kind_text`
+    or build a :class:`DisplayContext` and call
+    :func:`ralph.display.agent_event_renderer.render_event`.
+    """
+    if kind in _ICON_BY_KIND:
+        return _ICON_BY_KIND[kind]
+    return "?"
+
+
 def _truncate_to_cells(content: str, max_cells: int = 200) -> str:
     if cell_len(content) <= max_cells:
         return content

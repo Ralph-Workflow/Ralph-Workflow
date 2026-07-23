@@ -216,9 +216,9 @@ class StatusBarModel:
         phase_style: Rich style string applied to the phase label
             (e.g. ``theme.phase.development``); also carries textual
             meaning so the bar is readable when color is disabled.
-        outer_dev_iteration: Current outer development cycle (1-indexed),
-            or ``None`` when the active phase does not track outer progress.
-        outer_dev_cap: Outer development cap, or ``None`` when unknown.
+        outer_dev_iteration: Current outer cycle (1-indexed), or ``None``
+            when the active phase does not track outer progress.
+        outer_dev_cap: Outer cycle cap, or ``None`` when unknown.
         inner_analysis: Current inner analysis iteration (1-indexed),
             or ``None`` when the active phase does not track analysis cycles.
         inner_analysis_cap: Inner analysis iteration cap, or ``None`` when
@@ -227,6 +227,14 @@ class StatusBarModel:
             bar segment while an auto-integrate conflict is unresolved
             (``None`` otherwise). Present so a run that needs conflict
             resolution can never scroll its warning out of sight.
+        outer_label: Optional phase-appropriate label for the outer cycle
+            (``None`` -> the neutral ``Cycle`` label via
+            :func:`ralph.display.phase_status.format_dev_cycle`).
+            Set to ``Remediation`` / ``Round`` etc. by callers whose
+            phase-level semantics want a different noun than the default
+            neutral label, so the bar never claims a phase is something
+            it isn't (AC-02). When ``None`` the bar renders ``Cycle N/cap``;
+            when set, it renders ``<outer_label> N/cap``.
     """
 
     workspace_root: str
@@ -237,6 +245,7 @@ class StatusBarModel:
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
     integration_alert: str | None = None
+    outer_label: str | None = None
 
 
 def _home_relative(path: str, home: str | None) -> str:
@@ -610,14 +619,44 @@ def _field_overhead_and_label_budgets(
     )
 
 
-def _format_dev_label(n: int, cap: int | None, max_chars: int) -> str:
-    """Format the outer_dev label using the form that fits ``max_chars``."""
+def _format_dev_label(
+    n: int,
+    cap: int | None,
+    max_chars: int,
+    *,
+    outer_label: str | None = None,
+) -> str:
+    """Format the outer-cycle label using the form that fits ``max_chars``.
+
+    When ``outer_label`` is provided (e.g. ``Remediation`` for policy
+    remediation, ``Round`` for conflict resolution), the canonical and
+    compact forms substitute the supplied noun for the neutral
+    ``Cycle`` / ``C`` prefix; the minimal form has no prefix to swap
+    and is returned as-is. This keeps the per-iteration redundancy the
+    status bar already provides (a glyph + an ASCII label) while letting
+    callers choose a phase-appropriate noun.
+    """
     if max_chars <= 0:
         return ""
     if max_chars >= _OUTER_DEV_LABEL_MAX_CHARS:
-        return format_dev_cycle(n, cap)
+        label = format_dev_cycle(n, cap)
+        if outer_label:
+            # replace the default 'Cycle' / 'N' label with the
+            # caller's noun. Safe because format_dev_cycle produces
+            # ``Cycle N/cap`` / ``Cycle #N`` -- both start with 'Cycle '.
+            return f"{outer_label} {label.split(' ', 1)[1]}"
+        return label
     if max_chars >= _OUTER_DEV_LABEL_COMPACT_MAX_CHARS:
-        return format_dev_cycle_compact(n, cap)
+        label = format_dev_cycle_compact(n, cap)
+        if outer_label:
+            # Compact form is 'C{n}/{cap}' / 'C#{n}' -- swap the 'C'
+            # prefix for the first char of the supplied noun when it is
+            # exactly one character long; otherwise fall back to the
+            # neutral compact label (avoid truncation hazards at this
+            # tight 4-char budget).
+            initial = outer_label[:1]
+            return f"{initial}{label[1:]}"
+        return label
     return format_dev_cycle_minimal(n, cap)
 
 
@@ -727,6 +766,7 @@ def render_status_bar(
                 model.outer_dev_iteration or 0,
                 model.outer_dev_cap,
                 budgets.outer_dev_label_max_chars,
+                outer_label=model.outer_label,
             )
         )
     if render_inner_analysis:

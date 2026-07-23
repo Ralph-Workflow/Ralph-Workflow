@@ -3117,6 +3117,13 @@ ralph.display.activity_router
    :members:
    :show-inheritance:
 
+ralph.display.agent_event_renderer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.agent_event_renderer
+   :members:
+   :show-inheritance:
+
 ralph.display.artifact_reader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -28,14 +28,28 @@ if TYPE_CHECKING:
 
 
 def format_dev_cycle(n: int, cap: int | None = None) -> str:
-    """Return canonical label for outer development cycle number (1-indexed).
+    """Return canonical phase-neutral label for the outer cycle (1-indexed).
 
-    When *cap* is provided (and positive), shows ``Dev N/cap`` to make the
-    remaining budget immediately visible.  Without a cap, shows ``Dev #N``.
+    The outer cycle is run-level context (the lifecycle counter owned by
+    ``developer_iteration`` / ``development_final_commit``) that is
+    meaningful across ``planning``, ``development``, ``analysis``,
+    ``commit``, and remediation phases alike. The label uses the
+    phase-neutral word ``Cycle`` instead of the phase-specific ``Dev`` so
+    the same string carries the right meaning in every phase.
+
+    When *cap* is provided (and positive), shows ``Cycle N/cap`` to make
+    the remaining budget immediately visible.  Without a cap, shows
+    ``Cycle #N``.
+
+    Phase-specific labeling overrides (e.g. ``Remediation`` for policy
+    remediation, ``Round`` for conflict resolution) are applied in the
+    Status Bar layer via :class:`ralph.display.status_bar.StatusBarModel.outer_label`,
+    never by introducing a second formatter -- format_dev_cycle is the
+    single-source renderer.
     """
     if cap is not None and cap > 0:
-        return f"Dev {n}/{cap}"
-    return f"Dev #{n}"
+        return f"Cycle {n}/{cap}"
+    return f"Cycle #{n}"
 
 
 def format_analysis_cycle(n: int, cap: int | None = None) -> str:
@@ -46,22 +60,21 @@ def format_analysis_cycle(n: int, cap: int | None = None) -> str:
 
 
 def format_dev_cycle_compact(n: int, cap: int | None = None) -> str:
-    """Return compact dev cycle label for narrow-terminal rendering.
+    """Return compact phase-neutral outer-cycle label for narrow-terminal rendering.
 
-    The compact form shortens the canonical ``Dev N/cap`` to ``D1/3``
-    (4 chars) so the persistent Status Bar fits a constrained terminal
-    without dropping the iteration field. Without a cap, returns
-    ``D#1`` (3 chars).
+    Shortens the canonical ``Cycle N/cap`` to ``C1/3`` (4 chars) so the
+    persistent Status Bar fits a constrained terminal without dropping
+    the iteration field. Without a cap, returns ``C#1`` (3 chars).
 
-    The compact form keeps the disambiguating ``D`` prefix so an
-    operator can still tell dev cycles from analysis cycles at a
-    glance. Used by :mod:`ralph.display.status_bar` when the canonical
-    label exceeds the per-iteration label budget derived from
-    ``ctx.width``.
+    The compact form keeps the disambiguating ``C`` prefix so an
+    operator can still tell outer cycles from inner-analysis cycles
+    at a glance. Used by :mod:`ralph.display.status_bar` when the
+    canonical label exceeds the per-iteration label budget derived
+    from ``ctx.width``.
     """
     if cap is not None and cap > 0:
-        return f"D{n}/{cap}"
-    return f"D#{n}"
+        return f"C{n}/{cap}"
+    return f"C#{n}"
 
 
 def format_analysis_cycle_compact(n: int, cap: int | None = None) -> str:
@@ -77,11 +90,11 @@ def format_analysis_cycle_compact(n: int, cap: int | None = None) -> str:
 
 
 def format_dev_cycle_minimal(n: int, cap: int | None = None) -> str:
-    """Return minimal dev cycle label for very narrow terminals.
+    """Return minimal phase-neutral outer-cycle label for very narrow terminals.
 
     Returns ``N/cap`` (no prefix) when a cap is provided, ``#N``
     otherwise. Used by :mod:`ralph.display.status_bar` when even the
-    compact form (``D1/3``) cannot fit.
+    compact form (``C1/3``) cannot fit.
     """
     if cap is not None and cap > 0:
         return f"{n}/{cap}"

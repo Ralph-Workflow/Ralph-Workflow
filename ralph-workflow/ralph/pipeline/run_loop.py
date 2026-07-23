@@ -436,16 +436,18 @@ def _push_status_bar_if_changed(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_root: Path,
-    last_sig: tuple[str, int | None, int | None, str | None] | None,
-) -> tuple[str, int | None, int | None, str | None] | None:
-    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle, alert) signature changes.
+    last_sig: tuple[str, int | None, int | None, str | None, str | None] | None,
+) -> tuple[str, int | None, int | None, str | None, str | None] | None:
+    """Push a fresh :class:`StatusBarModel` only when the (phase, cycle, alert, label) signature changes.
 
     The integration alert participates in the signature so the bar
     repushes the moment a conflict appears or clears, not only on the
-    next phase change. Returns the new signature so the caller's
-    closure-local ``last_status_sig`` stays current. Defensive: any
-    failure is swallowed. Pass ``last_sig=None`` for an unconditional
-    initial push.
+    next phase change. ``outer_label`` is in the signature too so a
+    label transition (e.g. ``Cycle`` -> ``Remediation`` -> ``Round``)
+    forces a repaint instead of silently inheriting the previous label.
+    Returns the new signature so the caller's closure-local
+    ``last_status_sig`` stays current. Defensive: any failure is
+    swallowed. Pass ``last_sig=None`` for an unconditional initial push.
     """
     with suppress(Exception):
         model = _build_status_bar_model(state, policy_bundle, workspace_root)
@@ -454,6 +456,7 @@ def _push_status_bar_if_changed(
             model.outer_dev_iteration,
             model.inner_analysis,
             model.integration_alert,
+            model.outer_label,
         )
         if signature != last_sig and hasattr(active_display, "update_status_bar"):
             active_display.update_status_bar(model)
@@ -993,7 +996,7 @@ def _run_inner_loop(
     def _live_is_waiting() -> bool:
         return bool(state_holder[0].is_waiting_state)
 
-    last_status_sig: tuple[str, int | None, int | None, str | None] | None = None
+    last_status_sig: tuple[str, int | None, int | None, str | None, str | None] | None = None
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[0] = state

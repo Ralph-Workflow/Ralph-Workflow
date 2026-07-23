@@ -124,6 +124,7 @@ def push_conflict_status_bar(
             phase_style=phase_style_for_phase(PHASE_RESOLUTION),
             outer_dev_iteration=round_index,
             outer_dev_cap=round_cap,
+            outer_label="Round",
         )
         update = cast(
             "Callable[[object], None] | None",

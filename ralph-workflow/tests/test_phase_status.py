@@ -14,9 +14,9 @@ from ralph.display.phase_status import (
 
 
 def test_format_dev_cycle_renders_number() -> None:
-    assert format_dev_cycle(1) == "Dev #1"
-    assert format_dev_cycle(5) == "Dev #5"
-    assert format_dev_cycle(10) == "Dev #10"
+    assert format_dev_cycle(1) == "Cycle #1"
+    assert format_dev_cycle(5) == "Cycle #5"
+    assert format_dev_cycle(10) == "Cycle #10"
 
 
 def test_format_analysis_cycle_without_cap() -> None:
@@ -53,7 +53,7 @@ def test_phase_iteration_context_labels_outer_dev_only() -> None:
     labels = ctx.context_labels()
     assert len(labels) == 1
     text, style = labels[0]
-    assert text == "Dev #3"
+    assert text == "Cycle #3"
     assert style == "theme.outer_dev"
 
 
@@ -61,9 +61,9 @@ def test_phase_iteration_context_labels_full_context() -> None:
     ctx = PhaseIterationContext(outer_dev=2, inner_analysis=1, inner_analysis_cap=3)
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
-    assert "Dev #2" in texts
+    assert "Cycle #2" in texts
     assert "Analysis 1/3" in texts
-    assert len(texts) == len({"Dev #2", "Analysis 1/3"})
+    assert len(texts) == len({"Cycle #2", "Analysis 1/3"})
 
 
 def test_phase_iteration_context_labels_order() -> None:
@@ -75,7 +75,7 @@ def test_phase_iteration_context_labels_order() -> None:
     )
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
-    assert texts.index("Dev #2") < texts.index("Analysis 1/3")
+    assert texts.index("Cycle #2") < texts.index("Analysis 1/3")
 
 
 # --- Tests for format_transition_context_items ---

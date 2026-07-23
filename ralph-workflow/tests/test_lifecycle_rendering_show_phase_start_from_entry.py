@@ -97,7 +97,7 @@ class TestShowPhaseStartFromEntry:
         display = resolve_active_display(None, ctx)
         display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
-        assert "Dev" in out
+        assert "Cycle" in out
         assert "2" in out
         assert "5" in out
 
@@ -136,7 +136,7 @@ class TestShowPhaseStartFromEntry:
         display = resolve_active_display(None, ctx)
         display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
-        assert out.index("Dev") < out.index("Analysis")
+        assert out.index("Cycle") < out.index("Analysis")
 
     def test_ascii_fallback_mode(self) -> None:
         """In force_glyphs=ascii mode, glyphs are ASCII safe."""
@@ -158,6 +158,6 @@ class TestShowPhaseStartFromEntry:
         out = buf.getvalue()
         assert "Planning" in out
         # Should not include iteration context keywords when all None
-        assert "Dev" not in out
+        assert "Cycle" not in out
         assert "Analysis" not in out
         assert "Budget" not in out

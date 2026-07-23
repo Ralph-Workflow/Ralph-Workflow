@@ -1325,6 +1325,24 @@ class ParallelDisplay:
         raw_ref: str | None,
         metadata: dict[str, object] | None = None,
     ) -> None:
+        """Render an agent event through the single registry and emit it.
+
+        After the wt-028-display consolidation, every agent-event
+        formatting decision lives in
+        :mod:`ralph.display.agent_event_renderer`. This function owns
+        the *delivery* of the event (overflow tracking, badge
+        wrapping, drop-warning): it normalizes the parser-shaped input
+        into an :class:`AgentActivityEvent` via the registry's
+        boundary, runs the renderer's text through the existing
+        content condenser, and forwards the visible text into
+        ``emit_activity_line`` so the standard timestamp + level + cat
+        badge contract is preserved.
+
+        The previous inline body in this method (friendly_tool_name +
+        format_tool_input + manual ``text = f"{name} {args}"`` join)
+        was the third competing agent-output formatter; it is
+        consolidated into the registry here.
+        """
         metadata = {} if metadata is None else metadata
         text = content or ""
 
@@ -1332,13 +1350,18 @@ class ParallelDisplay:
 
         if kind is ActivityEventKind.TOOL_USE:
             original_name = text
-            text = friendly_tool_name(text)
+            # Normalize through the registry's tool-quirk helpers so
+            # the friendly name / formatted input format comes from a
+            # single source.
             input_obj = metadata.get("input", metadata.get("args"))
-            args_str = format_tool_input(input_obj)
-            if args_str:
-                text = f"{text} {args_str}"
             input_dict: dict[str, object] = (
                 cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            )
+            args_str = format_tool_input(input_obj)
+            text = (
+                f"{friendly_tool_name(original_name)} {args_str}"
+                if args_str
+                else friendly_tool_name(original_name)
             )
             tool_path = str(input_dict.get("path", "") or "")
             tool_workdir = str(input_dict.get("workdir", "") or "")

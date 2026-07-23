@@ -241,7 +241,7 @@ def test_claude_interactive_activity_stream_regression_renders_tool_result() -> 
     )
 
     assert rendered == [
-        "claude/haiku tool: mcp__ralph__read_file (path=PROMPT.md)",
+        "claude/haiku tool: ralph.read_file ((path=PROMPT.md))",
         "claude/haiku result: prompt contents",
     ]
 

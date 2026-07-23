@@ -206,8 +206,8 @@ def test_show_phase_start_from_entry_outer_dev_label() -> None:
     display.emit_phase_start_from_entry(entry)
     output = buf.getvalue()
     assert "Development" in output
-    assert "Dev 3/7" in output
-    assert "Dev #3" not in output
+    assert "Cycle 3/7" in output
+    assert "Cycle #3" not in output
 
 
 def test_show_phase_start_from_entry_inner_analysis_label() -> None:
@@ -240,7 +240,7 @@ def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
     output = buf.getvalue()
     assert "[iteration" not in output
     assert "[reviewer_pass" not in output
-    assert "Dev 2/5" in output
+    assert "Cycle 2/5" in output
     assert "Analysis 1/3" in output
 
 

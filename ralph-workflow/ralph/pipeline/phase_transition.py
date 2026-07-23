@@ -72,6 +72,16 @@ def _find_commit_counter_from_phase(
 
     Returns the lifecycle-owned counter name when the phase graph declares one,
     otherwise falls back to the nearest commit phase increments_counter.
+
+    When a commit-role phase declares ``commit_policy`` with no
+    ``increments_counter``, the trace CONTINUES along ``on_success`` rather
+    than returning ``None`` -- the counter belongs to a later lifecycle
+    phase (e.g. ``development_final_commit``), and earlier phases
+    (``planning``, ``development``, ``development_commit``) must still
+    resolve the counter so the Status Bar shows an outer cycle while in
+    them. Terminal phases (``complete``, ``failed_terminal``) self-loop
+    and the trace exhausts naturally, so the function still returns
+    ``None`` for genuine terminals.
     """
     visited: set[str] = set()
     current: str | None = phase_name
@@ -84,9 +94,17 @@ def _find_commit_counter_from_phase(
         if lifecycle is not None:
             counter = lifecycle.increments_counter
             return counter if counter and counter != "none" else None
+        # Commit-role phases: if they own the counter, return it; otherwise
+        # continue the trace to find the lifecycle owner downstream
+        # (development_commit, which has no increments_counter, advances to
+        # development_analysis -> development_final_commit_cleanup ->
+        # development_final_commit which DOES declare increments_counter).
         if phase_def.role == "commit" and phase_def.commit_policy is not None:
             counter = phase_def.commit_policy.increments_counter
-            return counter if counter and counter != "none" else None
+            if counter and counter != "none":
+                return counter
+            # fall through to the on_success trace -- the lifecycle
+            # counter is owned by a later phase this phase transitions into.
         current = phase_def.transitions.on_success if phase_def.transitions else None
     return None
 

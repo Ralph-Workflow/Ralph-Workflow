@@ -321,7 +321,7 @@ def test_completion_summary_outer_dev_uses_canonical_label() -> None:
         outer_dev_iteration=4,
     )
     text = _render_plain(snap)
-    assert "Dev #4" in text
+    assert "Cycle #4" in text
     assert "Outer Dev Iteration:" not in text
 
 
@@ -352,8 +352,8 @@ def test_completion_summary_outer_dev_with_cap_shows_n_of_total() -> None:
         },
     )
     text = _render_plain(snap)
-    assert "Dev 2/5" in text
-    assert "Dev #2" not in text
+    assert "Cycle 2/5" in text
+    assert "Cycle #2" not in text
 
 
 def test_completion_summary_elapsed_appears_before_metrics() -> None:
@@ -392,7 +392,7 @@ def test_completion_summary_iteration_context_label_shown_for_outer_dev() -> Non
     )
     text = _render_plain(snap)
     assert "Iteration Context:" in text
-    assert "Dev #3" in text
+    assert "Cycle #3" in text
 
 
 def test_completion_summary_no_iteration_context_label_when_absent() -> None:

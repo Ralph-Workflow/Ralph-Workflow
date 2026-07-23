@@ -354,7 +354,7 @@ def test_iteration_context_section_appears_with_outer_dev() -> None:
     """Default mode shows an 'Iteration Context' section when outer_dev_iteration is set."""
     out = _render_group_full(_make_snapshot_with_outer_dev(outer_dev_iteration=3))
     assert "Iteration Context" in out
-    assert "Dev #3" in out
+    assert "Cycle #3" in out
 
 
 def test_iteration_context_section_absent_without_context() -> None:
