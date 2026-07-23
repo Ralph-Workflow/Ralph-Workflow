@@ -28,7 +28,7 @@ The escape containment contract:
         ImportError trap if just the constant is deleted without
         migrating its users).
       * ``ParallelDisplay.strip_markup`` MUST delegate to
-        ``strip_terminal_control(_strip_markup(line))`` (the
+        ``strip_terminal_control(line)`` (the
         rewrite target).
       * The module-level ``emit_activity_line`` MUST call
         ``_sanitize(line)`` in BOTH its ``unit_id is None`` and
@@ -520,14 +520,16 @@ _INVARIANTS: tuple[
         ),
     ),
     # parallel_display.ParallelDisplay.strip_markup: the rewrite target.
-    # The body MUST run BOTH ``_strip_markup`` (Rich-tag strip) and
-    # ``strip_terminal_control`` (hostile CSI/OSC/C0 strip). The canonical
-    # call shape ensures neither protection regresses.
+    # The body MUST delegate to ``strip_terminal_control`` (hostile CSI/OSC/C0
+    # strip). Literal Rich-style brackets are preserved verbatim so
+    # copy-pasted output remains self-describing; the deeper ``_sanitize``
+    # helper that backs the many display sinks does the same thing by
+    # default and remains the only sanitizer the audit pins.
 
     FunctionBodyInvariant(
         rel_path="display/parallel_display.py",
         qualname="ParallelDisplay.strip_markup",
-        present=("strip_terminal_control(_strip_markup(line))",),
+        present=("strip_terminal_control(line)",),
     ),
     # parallel_display._render_titled_lines: the artifact/handoff body
     # sink -- each line must be sanitized via strip_terminal_control

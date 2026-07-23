@@ -124,7 +124,6 @@ from ralph.display._plain_constants import (
     LEVELS,
     TAG_CATEGORY,
     _sanitize,
-    _strip_markup,
 )
 from ralph.display._streaming_ctx import _StreamingCtx
 from ralph.display.activity_model import ActivityEventKind
@@ -586,7 +585,7 @@ class ParallelDisplay:
         Markup is stripped before terminal controls. Malformed markup remains
         literal text; valid Rich styles reduce to their plain content.
         """
-        return strip_terminal_control(_strip_markup(line))
+        return strip_terminal_control(line)
 
     # -- Structured log emit (inlined from PlainLogRenderer) ---------------
 

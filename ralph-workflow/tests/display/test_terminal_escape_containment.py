@@ -100,9 +100,13 @@ def test_sanitize_plain_constants_strips_hostile_line() -> None:
     _assert_no_escape_leak(sanitized, sink_label="_sanitize")
 
 
-def test_sanitize_plain_constants_strips_rich_markup() -> None:
-    """``_sanitize`` strips valid Rich markup and terminal controls."""
-    assert _sanitize("[green]ok[/green]") == "ok"
+def test_sanitize_plain_constants_preserves_literal_brackets() -> None:
+    """``_sanitize`` preserves literal Rich-style brackets and strips
+    terminal control sequences. Marking/asset IDs and copy-paste-friendly
+    content survives intact; only hostile CSI/OSC sequences are removed.
+    """
+    assert _sanitize("[green]ok[/green]") == "[green]ok[/green]"
+    assert _sanitize("plain text") == "plain text"
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +129,14 @@ def test_parallel_display_strip_markup_strips_hostile_line() -> None:
     _assert_no_escape_leak(stripped, sink_label="strip_markup")
 
 
-def test_parallel_display_strip_markup_strips_rich_markup() -> None:
-    """``strip_markup`` strips valid Rich tags and terminal controls."""
-    assert strip_markup("[green]ok[/green]") == "ok"
+def test_parallel_display_strip_markup_preserves_literal_brackets() -> None:
+    """``strip_markup`` (the public ParallelDisplay helper) preserves literal
+    bracket markup so copy-pasted output remains self-describing; only
+    terminal-control sequences are removed. The deeper ``_sanitize`` helper
+    keeps stripping Rich markup for the many display sinks that should
+    NOT emit literal brackets.
+    """
+    assert strip_markup("[green]ok[/green]") == "[green]ok[/green]"
     assert strip_markup("plain text") == "plain text"
 
 

@@ -16,8 +16,6 @@ from __future__ import annotations
 
 from typing import Final
 
-from rich.text import Text
-
 from ralph.display.line_sanitizer import strip_terminal_control
 
 LEVELS: Final[dict[str, str]] = {
@@ -157,18 +155,22 @@ _STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str, str]]] = {
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
 
-def _strip_markup(text: str) -> str:
-    try:
-        return Text.from_markup(text).plain
-    except Exception:
-        return text
-
-
 def _sanitize(text: str) -> str:
-    """Strip Rich markup tags and terminal control sequences for copy-paste safety.
+    """Strip terminal control sequences for safe terminal / transcript output.
 
-    Valid Rich tags collapse to their inner text; malformed markup falls
-    back to literal text. Terminal CSI, OSC, and C0 sequences are then
-    removed so the result is safe to print or record in a transcript.
+    Literal bracket markup (``[bold]x[/bold]``) is preserved verbatim so
+    copy-pasted output remains self-describing and matches what an
+    operator sees in the live display. Terminal CSI / OSC / C0
+    sequences are still removed so the result is safe to print on a
+    real TTY without leaking alternate-screen swaps, erase-display
+    repaints, or cursor moves.
+
+    The historical behavior of also feeding the input through Rich's
+    text-from-markup helper is intentionally dropped: every meaningful
+    call site (the ``ParallelDisplay`` emit paths and the
+    ``render_event_line`` activity router) already prints with
+    ``markup=False, highlight=False`` and never relied on Rich
+    markup stripping to render. Removing the markup step keeps the
+    round-trip from operator → display → transcript faithful.
     """
-    return strip_terminal_control(_strip_markup(text))
+    return strip_terminal_control(text)

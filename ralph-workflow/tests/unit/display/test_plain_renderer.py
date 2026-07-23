@@ -118,14 +118,17 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     ]
 
 
-def test_emit_log_line_strips_rich_markup_for_copy_paste() -> None:
-    """Plain-text emit strips valid Rich markup and terminal controls."""
+def test_emit_log_line_preserves_literal_brackets_for_copy_paste() -> None:
+    """Plain-text emit preserves literal Rich-style brackets so copy-pasted
+    output remains self-describing. Only terminal control sequences are
+    stripped (no terminal escapes survive the stringify round-trip).
+    """
     pd, stream = _make_display()
 
     pd.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
     assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] hello"
+        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] [bold magenta]hello[/bold magenta]"
     ]
 
 
