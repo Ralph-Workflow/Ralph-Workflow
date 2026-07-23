@@ -972,27 +972,6 @@ ralph.pipeline.auto_integrate_backoff
    :members:
    :show-inheritance:
 
-ralph.pipeline.auto_integrate_backup_refs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.auto_integrate_backup_refs
-   :members:
-   :show-inheritance:
-
-ralph.pipeline.auto_integrate_recovery_terminal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.auto_integrate_recovery_terminal
-   :members:
-   :show-inheritance:
-
-ralph.pipeline.auto_integrate_terminal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.auto_integrate_terminal
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.auto_integrate_boundary_refresh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

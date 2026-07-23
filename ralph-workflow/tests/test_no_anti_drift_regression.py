@@ -722,13 +722,15 @@ class TestInterruptPathReliable:
                 rel = path.relative_to(RALPH_ROOT.parent)
                 if rel in whitelisted:
                     continue
-                source = _read(path)
-                if "dispatcher_from_process_manager()" not in source:
+                source_bytes = path.read_bytes()
+                if b"dispatcher_from_process_manager()" not in source_bytes:
                     continue
-                if "begin_interrupt(block=True)" not in source:
+                if b"begin_interrupt(block=True)" not in source_bytes:
                     continue
+                # Decode only candidate files; the repository-wide byte scan is
+                # materially cheaper under xdist contention.
+                source_lines = source_bytes.decode("utf-8").splitlines()
                 # Both must appear within 10 lines of each other.
-                source_lines = source.splitlines()
                 pattern_a = "dispatcher_from_process_manager()"
                 pattern_b = "begin_interrupt(block=True)"
                 for i, line in enumerate(source_lines):

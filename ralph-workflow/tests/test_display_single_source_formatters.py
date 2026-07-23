@@ -9,24 +9,28 @@ from __future__ import annotations
 
 import ast
 import pathlib
-
-import pytest
+from functools import lru_cache
 
 _DISPLAY_ROOT = pathlib.Path(__file__).parent.parent / "ralph" / "display"
 
-pytestmark = pytest.mark.timeout_seconds(10)
+
+@lru_cache(maxsize=1)
+def _display_trees() -> tuple[ast.Module, ...]:
+    """Parse the fixed display source set once for all anti-drift checks."""
+    return tuple(
+        ast.parse(path.read_text(encoding="utf-8"))
+        for path in _DISPLAY_ROOT.rglob("*.py")
+        if "__pycache__" not in path.parts
+    )
 
 
 def _function_def_count(name: str) -> int:
-    count = 0
-    for path in _DISPLAY_ROOT.rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        count += sum(
-            1 for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == name
-        )
-    return count
+    return sum(
+        1
+        for tree in _display_trees()
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
 
 
 def test_make_badge_text_defined_once() -> None:

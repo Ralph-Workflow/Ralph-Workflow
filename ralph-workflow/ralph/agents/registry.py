@@ -321,7 +321,10 @@ class AgentRegistry:
         builtin = _find_builtin_support(name)
         if builtin is not None and self._catalog is not None:
             override_support = _synthesize_override_support(name, config, builtin)
-            self._catalog.replace_builtin(name, override_support)
+            if self._catalog.get(name) is None:
+                self._catalog.add(override_support)
+            else:
+                self._catalog.replace_builtin(name, override_support)
             object.__setattr__(config, "_support", override_support)
 
     def unregister(self, name: str) -> None:
