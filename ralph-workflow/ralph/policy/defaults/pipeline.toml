@@ -16,6 +16,8 @@ terminal_phase = "complete"
 # Loop counters
 # ---------------------------------------------------------------------------
 
+# Raise this if development-analysis reviews keep looping past 10 passes before approving a change;
+# lower it to fail fast on a weaker development agent instead of grinding through retries.
 [loop_counters.development_analysis_iteration]
 default_max = 10
 description = "Development analysis loop iteration counter"
@@ -26,6 +28,8 @@ description = "Development analysis loop iteration counter"
 default_max = 0
 description = "Planning analysis loop iteration counter"
 
+# Raise this only if commit-cleanup (fixing lint/format issues before a commit) needs more than 3 self-correction passes;
+# most agents fix cleanup issues in one or two passes.
 [loop_counters.commit_cleanup_iteration]
 default_max = 3
 description = "Commit cleanup loop iteration counter"
@@ -35,6 +39,8 @@ description = "Commit cleanup loop iteration counter"
 # Budget counters
 # ---------------------------------------------------------------------------
 
+# This is the overall ceiling on full plan -> build -> commit cycles for one run.
+# Raise it for a multi-day task that needs more passes; lower it to cap cost/time on a quick task.
 [budget_counters.iteration]
 description = "Development iteration counter (developer cycles)"
 tracks_budget = true
