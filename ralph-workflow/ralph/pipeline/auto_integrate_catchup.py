@@ -125,16 +125,20 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
     enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
     if not (isinstance(enabled_raw, bool) and enabled_raw):
         return CATCHUP_DISABLED
-    target = resolve_integration_target(config, root)
-    if target is None:
-        return CATCHUP_NO_TARGET
+    # The clean check runs FIRST among the git gates: on an active run
+    # the worktree is dirty most of the time (an agent is mid-edit), so
+    # the steady-state tick bails after ONE git subprocess instead of
+    # paying the branch-name and target-resolution probes for a skip.
+    if not _worktree_is_clean(root):
+        return CATCHUP_DIRTY
     current = _current_branch_name(root)
     if current is None:
         return CATCHUP_NOT_ON_BRANCH
+    target = resolve_integration_target(config, root)
+    if target is None:
+        return CATCHUP_NO_TARGET
     if current == target:
         return CATCHUP_ON_TARGET
-    if not _worktree_is_clean(root):
-        return CATCHUP_DIRTY
     return _fast_forward_if_strictly_behind(root, target, current)
 
 
@@ -236,12 +240,14 @@ class AutoIntegrateCatchupWorker:
                 tick_exc,
             )
             return
+        # Skips are deliberately UNLOGGED: the tick fires every 30
+        # seconds for the whole run and a per-tick skip line (even at
+        # debug level) is pure noise in the log stream. Only the tick
+        # that actually moved the checkout says anything.
         if outcome == CATCHUP_FAST_FORWARDED:
             logger.info(
                 "auto_integrate catch-up: fast-forwarded the checkout onto the target"
             )
-        else:
-            logger.debug("auto_integrate catch-up: {}", outcome)
 
 
 def start_catchup_worker_if_enabled(
