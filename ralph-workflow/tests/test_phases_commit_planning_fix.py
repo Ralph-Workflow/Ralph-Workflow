@@ -27,6 +27,7 @@ from ralph.pipeline.effects import (
 from ralph.pipeline.events import AnalysisDecisionEvent, Event, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.memory import MemoryWorkspace
 
 
 @lru_cache(maxsize=1)
@@ -57,15 +58,90 @@ subject: fix(test): validate commit artifact
 ---
 """
 
+_PLAN_DOC = """---
+type: plan
+schema_version: 1
+intent_verb: add
+---
+## Summary
+Validate phase behavior with a markdown plan.
 
-def _write_commit_message_doc(root: Path, document: str = _COMMIT_MESSAGE_DOC) -> None:
-    commit_msg_path = root / COMMIT_MESSAGE_ARTIFACT
-    commit_msg_path.parent.mkdir(parents=True, exist_ok=True)
-    commit_msg_path.write_text(document, encoding="utf-8")
+Intent: Exercise the phase artifact boundary.
+Coverage: test
 
+## Scope
+- [SC-1] Validate planning output
+  Category: test
+- [SC-2] Hand the plan to development
+  Category: test
+- [SC-3] Preserve retry behavior
+  Category: test
 
-def _write_skip_commit_message_doc(root: Path, reason: str) -> None:
-    _write_commit_message_doc(root, f"---\ntype: skip\nreason: {reason}\n---\n")
+## Skills MCP
+Skills: test-driven-development
+MCPs: none
+
+## Steps
+
+### [S-1] Validate the markdown plan
+Exercise the phase artifact boundary.
+
+Type: file_change
+Files:
+- modify ralph/phases/execution.py
+Satisfies: AC-01
+
+## Critical Files
+- [CF-1] ralph/phases/execution.py
+  Action: modify
+  Changes: consume the markdown plan
+
+## Design
+Use the canonical markdown artifact as the phase input.
+
+Outcome: Phase handlers consume a validated plan document.
+
+## Acceptance Criteria
+- [AC-01] The phase accepts the markdown plan
+  Satisfied by: S-1
+  Verify: pytest tests/test_phases_commit_planning_fix.py -q
+
+## Risks
+- [R-1] Artifact path drift
+  Severity: low
+  Mitigation: Assert the canonical path read by the phase.
+
+## Verification
+- [V-1] pytest tests/test_phases_commit_planning_fix.py -q
+  Expect: focused tests pass
+"""
+
+_DEVELOPMENT_RESULT_DOC = """---
+type: development_result
+status: completed
+---
+## Summary
+
+- [SUM-1] Validated phase consumption of the markdown plan.
+
+## Files Changed
+
+- [F-1] ralph/phases/execution.py
+
+## Plan Items Proven
+
+- [S-1] The phase loaded and validated the canonical plan artifact.
+
+## Analysis Items Addressed
+
+- [FIX-1] No analysis items required changes.
+"""
+
+_NOOP_PLAN_DOC = """---
+type: plan
+noop: true
+---
+"""
 
 
 def _stub_context(*, commit_message_present: bool = False) -> PhaseContext:
@@ -102,10 +178,19 @@ def _stub_context_no_exists() -> PhaseContext:
     )
 
 
-def _fs_context(root: Path, *, write_commit_message: bool = False) -> PhaseContext:
-    workspace = FsWorkspace(root)
-    if write_commit_message:
-        _write_commit_message_doc(root)
+def _commit_context(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    has_uncommitted_changes: bool,
+    commit_message: str | None = None,
+) -> PhaseContext:
+    workspace = MemoryWorkspace()
+    monkeypatch.setattr(
+        "ralph.phases.commit.has_uncommitted_changes",
+        lambda _root: has_uncommitted_changes,
+    )
+    if commit_message is not None:
+        workspace.write(COMMIT_MESSAGE_ARTIFACT, commit_message)
     return PhaseContext.construct(
         workspace=workspace,
         registry=object(),
@@ -116,9 +201,14 @@ def _fs_context(root: Path, *, write_commit_message: bool = False) -> PhaseConte
     )
 
 
-def test_development_commit_defers_to_runner_on_invoke_agent(tmp_git_repo: Path) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
+def test_development_commit_defers_to_runner_on_invoke_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message=_COMMIT_MESSAGE_DOC,
+    )
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -138,9 +228,14 @@ def test_development_commit_ignores_prepare_prompt_effect() -> None:
     assert handle_commit_phase(effect, ctx) == []
 
 
-def test_review_commit_defers_to_runner_on_invoke_agent(tmp_git_repo: Path) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
+def test_review_commit_defers_to_runner_on_invoke_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message=_COMMIT_MESSAGE_DOC,
+    )
     effect = InvokeAgentEffect(
         agent_name="review",
         phase="review_commit",
@@ -150,8 +245,10 @@ def test_review_commit_defers_to_runner_on_invoke_agent(tmp_git_repo: Path) -> N
     assert handle_commit_phase(effect, ctx) == []
 
 
-def test_development_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
-    ctx = _fs_context(tmp_git_repo)
+def test_development_commit_emits_skip_when_no_diff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(monkeypatch, has_uncommitted_changes=False)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -161,9 +258,14 @@ def test_development_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
     assert handle_commit_phase(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
 
 
-def test_development_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
+def test_development_commit_defers_when_diff_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message=_COMMIT_MESSAGE_DOC,
+    )
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -174,10 +276,9 @@ def test_development_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
 
 
 def test_development_commit_missing_commit_message_emits_retry_in_session(
-    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo)  # no commit_message written
+    ctx = _commit_context(monkeypatch, has_uncommitted_changes=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -194,14 +295,13 @@ def test_development_commit_missing_commit_message_emits_retry_in_session(
 
 
 def test_development_commit_invalid_commit_message_emits_retry_in_session(
-    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    _write_commit_message_doc(
-        tmp_git_repo,
-        "---\ntype: commit\nsubject: not a conventional subject\n---\n",
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message="---\ntype: commit\nsubject: not a conventional subject\n---\n",
     )
-    ctx = _fs_context(tmp_git_repo)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -218,8 +318,10 @@ def test_development_commit_invalid_commit_message_emits_retry_in_session(
     assert "invalid" in event.reason.lower() or "empty" in event.reason.lower()
 
 
-def test_review_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
-    ctx = _fs_context(tmp_git_repo)
+def test_review_commit_emits_skip_when_no_diff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(monkeypatch, has_uncommitted_changes=False)
     effect = InvokeAgentEffect(
         agent_name="review",
         phase="review_commit",
@@ -229,9 +331,14 @@ def test_review_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
     assert handle_commit_phase(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
 
 
-def test_review_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
+def test_review_commit_defers_when_diff_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message=_COMMIT_MESSAGE_DOC,
+    )
     effect = InvokeAgentEffect(
         agent_name="review",
         phase="review_commit",
@@ -242,10 +349,9 @@ def test_review_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
 
 
 def test_review_commit_missing_commit_message_emits_retry_in_session(
-    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo)  # no commit_message written
+    ctx = _commit_context(monkeypatch, has_uncommitted_changes=True)
     effect = InvokeAgentEffect(
         agent_name="review",
         phase="review_commit",
@@ -262,16 +368,18 @@ def test_review_commit_missing_commit_message_emits_retry_in_session(
 
 
 def test_development_commit_emits_skip_when_agent_submits_skip_artifact(
-    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the agent submits a skip artifact, handle_commit_phase must return COMMIT_SKIPPED.
 
     This prevents the runner from creating a git commit whose subject is literally
     'SKIP: reason' — the skip response must be honoured at the phase-handler layer.
     """
-    (tmp_git_repo / "dirty.py").write_text("untracked_only = True\n")
-    ctx = _fs_context(tmp_git_repo)  # worktree is dirty (untracked file)
-    _write_skip_commit_message_doc(tmp_git_repo, "no diff available")
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message="---\ntype: skip\nreason: no diff available\n---\n",
+    )
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -283,12 +391,14 @@ def test_development_commit_emits_skip_when_agent_submits_skip_artifact(
 
 
 def test_review_commit_emits_skip_when_agent_submits_skip_artifact(
-    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Same as above but for a review-role commit phase."""
-    (tmp_git_repo / "dirty.py").write_text("untracked_only = True\n")
-    ctx = _fs_context(tmp_git_repo)
-    _write_skip_commit_message_doc(tmp_git_repo, "no pending changes")
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message="---\ntype: skip\nreason: no pending changes\n---\n",
+    )
     effect = InvokeAgentEffect(
         agent_name="review",
         phase="review_commit",
@@ -299,9 +409,14 @@ def test_review_commit_emits_skip_when_agent_submits_skip_artifact(
     assert result == [PipelineEvent.COMMIT_SKIPPED]
 
 
-def test_handle_commit_delegates_based_on_phase(tmp_git_repo: Path) -> None:
-    (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
+def test_handle_commit_delegates_based_on_phase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = _commit_context(
+        monkeypatch,
+        has_uncommitted_changes=True,
+        commit_message=_COMMIT_MESSAGE_DOC,
+    )
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -392,7 +507,7 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
     )
     artifact_dir = tmp_path / ".agent" / "artifacts"
     draft_path = artifact_dir / ".plan_draft.json"
-    plan_path = artifact_dir / "plan.json"
+    plan_path = artifact_dir / "plan.md"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     draft_path.write_text(
         json.dumps(
@@ -414,39 +529,7 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
         ),
         encoding="utf-8",
     )
-    plan_path.write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "Completed planning run",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [{"number": 1, "title": "x", "content": "y"}],
-                    "critical_files": {
-                        "primary_files": [
-                            {"path": "ralph/mcp/tool_artifact.py", "action": "modify"}
-                        ]
-                    },
-                    "risks_mitigations": [{"risk": "drift", "mitigation": "cleanup"}],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    plan_path.write_text(_PLAN_DOC, encoding="utf-8")
 
     effect = PreparePromptEffect(phase="planning", iteration=3)
 
@@ -457,17 +540,8 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
 def test_handle_planning_invokes_agent_successfully() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = (
-        '{"type":"plan","content":{"summary":{"context":"Plan handoff","scope_items":['
-        '{"text":"Retry invalid planning output"},{"text":"Hand off to development"},'
-        '{"text":"Verify policy-driven routing"}]},'
-        '"skills_mcp":{"skills":["test-driven-development"],"mcps":[]},'
-        '"steps":[{"number":1,"title":"Implement","content":"Wire the pipeline"}],'
-        '"critical_files":{"primary_files":[{"path":"ralph/pipeline/runner.py","action":"modify"}]},'
-        '"risks_mitigations":[{"risk":"Regression","mitigation":"Add tests"}],'
-        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
-    )
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _PLAN_DOC
     effect = InvokeAgentEffect(
         agent_name="planner",
         phase="planning",
@@ -500,10 +574,16 @@ def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
 def test_handle_planning_invalid_work_units_emits_retry_in_session() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.return_value = True
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
     workspace.read.return_value = (
-        '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"],'
-        '"dependencies":["missing"]}]}'
+        _PLAN_DOC
+        + """
+
+## Work Units
+- [u1] Implement the change
+  Directories: src
+  Depends on: missing
+"""
     )
 
     effect = InvokeAgentEffect(
@@ -524,35 +604,20 @@ def test_handle_planning_invalid_work_units_emits_retry_in_session() -> None:
 def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = (
-        '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
-        '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
-        '"skills_mcp":{"skills":["test-driven-development"],"mcps":[]},'
-        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
-        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
-        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
-        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
-    )
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _PLAN_DOC
 
     effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
     assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
-    workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
+    workspace.read.assert_called_once_with(".agent/artifacts/plan.md")
 
 
 def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = (
-        '{"type":"plan","content":'
-        '{"summary":{"context":"Plan MCP rollout","scope_items":[{"text":"Only one"}]},'
-        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
-        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
-        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
-        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
-    )
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _PLAN_DOC.replace("## Skills MCP", "## Unsupported")
 
     effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
@@ -568,8 +633,8 @@ def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
 def test_handle_planning_accepts_noop_plan() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _NOOP_PLAN_DOC
 
     effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
@@ -579,32 +644,18 @@ def test_handle_planning_accepts_noop_plan() -> None:
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
-    plan_json = (
-        '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
-        '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
-        '"skills_mcp":{"skills":["test-driven-development"],"mcps":[]},'
-        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
-        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
-        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
-        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
-    )
-    dev_result_json = (
-        '{"type":"development_result","content":{"status":"completed",'
-        '"summary":"Done.","files_changed":"- src/a.py",'
-        '"plan_items_proven":['
-        '{"plan_item":"Step 1: Validate plan",'
-        '"proof":"Validated the wrapped plan artifact."}'
-        "]}}"
-    )
+    plan_doc = _PLAN_DOC
     workspace.exists.side_effect = lambda path: (
         path
         in {
-            ".agent/artifacts/plan.json",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/plan.md",
+            ".agent/artifacts/development_result.md",
         }
     )
     workspace.read.side_effect = lambda path: (
-        dev_result_json if path == ".agent/artifacts/development_result.json" else plan_json
+        _DEVELOPMENT_RESULT_DOC
+        if path == ".agent/artifacts/development_result.md"
+        else plan_doc
     )
 
     effect = InvokeAgentEffect(
@@ -612,14 +663,14 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
     )
 
     assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
-    workspace.read.assert_any_call(".agent/artifacts/plan.json")
+    workspace.read.assert_any_call(".agent/artifacts/plan.md")
 
 
 def test_handle_development_skips_when_plan_is_noop() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _NOOP_PLAN_DOC
 
     effect = InvokeAgentEffect(
         agent_name="developer", phase="development", prompt_file="development.txt"
@@ -666,8 +717,8 @@ def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
     """handle_generic_analysis_phase emits a completed decision when plan is a no-op."""
     ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _NOOP_PLAN_DOC
 
     effect = InvokeAgentEffect(
         agent_name="developer",
@@ -680,13 +731,12 @@ def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
     ]
 
 
-def test_handle_development_analysis_skips_empty_steps_plan() -> None:
-    """handle_generic_analysis_phase emits a completed decision for noop fallback plans."""
+def test_handle_development_analysis_skips_minimal_noop_plan() -> None:
+    """The explicit minimal no-op document short-circuits analysis."""
     ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    # is_noop_plan fallback requires BOTH steps AND work_units to be empty lists
-    workspace.read.return_value = '{"type":"plan","content":{"steps":[],"work_units":[]}}'
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _NOOP_PLAN_DOC
 
     effect = InvokeAgentEffect(
         agent_name="developer",
@@ -708,12 +758,9 @@ def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
     """
     ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
-    # plan.json exists but is NOT a no-op
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = (
-        '{"type":"plan","content":{"summary":{"context":"Real work","scope_items":'
-        '[{"text":"Implement feature"}]},"steps":[{"number":1,"title":"Do it","content":"x"}]}}'
-    )
+    # plan.md exists but is not a no-op.
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
+    workspace.read.return_value = _PLAN_DOC
 
     effect = InvokeAgentEffect(
         agent_name="developer",

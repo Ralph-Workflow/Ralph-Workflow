@@ -750,6 +750,26 @@ def _document_warnings(document: ParsedDocument) -> list[Diagnostic]:
     return [diagnostic for diagnostic in diagnostics if diagnostic.severity == "warning"]
 
 
+def _minimal_noop_variant(
+    document: ParsedDocument,
+) -> tuple[Content | None, list[Diagnostic]]:
+    value = document.frontmatter.get("noop")
+    if value is None:
+        return None, []
+    if value != "true":
+        message = "frontmatter 'noop' must be 'true' when present"
+    elif document.frontmatter != {"type": "plan", "noop": "true"} or document.sections:
+        message = (
+            "a no-op plan must contain exactly 'type: plan' and "
+            "'noop: true' with no sections"
+        )
+    else:
+        return {"noop": True}, []
+    return None, [
+        Diagnostic(document.frontmatter_lines["noop"], None, "PLAN023", message)
+    ]
+
+
 def edit_plan_step_markdown(
     text: str,
     action: str,
@@ -868,7 +888,7 @@ def _edit_position(index: int, length: int) -> int:
 PLAN_SPEC = MdArtifactSpec(
     artifact_type=PLAN_ARTIFACT_TYPE,
     required_frontmatter=frozenset({"type"}),
-    optional_frontmatter=frozenset({"schema_version"}),
+    optional_frontmatter=frozenset({"schema_version", "noop"}),
     lenient_enums={"intent_verb": LenientEnum(_INTENT_VERBS, "add")},
     sections={
         "Summary": SectionRule(allow_body=True, max_items=0),
@@ -887,6 +907,7 @@ PLAN_SPEC = MdArtifactSpec(
     to_content=_to_content,
     normalize_content=normalize_plan_artifact_content,
     validate_document=_document_warnings,
+    minimal_variant=_minimal_noop_variant,
 )
 
 register_spec(PLAN_SPEC)

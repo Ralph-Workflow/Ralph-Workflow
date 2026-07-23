@@ -21,6 +21,7 @@ type Content = dict[str, object]
 type DocumentMapper = Callable[[ParsedDocument], Content]
 type ContentNormalizer = Callable[[Content], Content]
 type DocumentValidator = Callable[[ParsedDocument], list[Diagnostic]]
+type MinimalVariantParser = Callable[[ParsedDocument], tuple[Content | None, list[Diagnostic]]]
 
 
 @dataclass(frozen=True)
@@ -35,17 +36,29 @@ class MdArtifactSpec:
     optional_frontmatter: frozenset[str] = frozenset()
     lenient_enums: Mapping[str, LenientEnum] = field(default_factory=dict)
     validate_document: DocumentValidator | None = None
+    minimal_variant: MinimalVariantParser | None = None
     max_characters: int | None = None
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
     """Parse and validate markdown through one shared, pure artifact gate."""
     document, diagnostics = parse_markdown_document(text)
-    diagnostics.extend(_validate_structure(document, text, spec))
+    minimal_content: Content | None = None
+    if spec.minimal_variant is not None:
+        minimal_content, variant_diagnostics = spec.minimal_variant(document)
+        diagnostics.extend(variant_diagnostics)
+    diagnostics.extend(
+        _validate_structure(
+            document,
+            text,
+            spec,
+            require_sections=minimal_content is None,
+        )
+    )
     document = _coerce_lenient_frontmatter(document, spec, diagnostics)
     if not _has_errors(diagnostics):
         try:
-            content = spec.to_content(document)
+            content = minimal_content if minimal_content is not None else spec.to_content(document)
             normalized = spec.normalize_content(content)
         except MarkdownArtifactError as exc:
             diagnostics.extend(exc.diagnostics)
@@ -53,14 +66,18 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         except (TypeError, ValueError) as exc:
             diagnostics.append(_normalizer_diagnostic(document, str(exc)))
             return {}, diagnostics
-        if spec.validate_document is not None:
+        if spec.validate_document is not None and minimal_content is None:
             diagnostics.extend(spec.validate_document(document))
         return normalized, diagnostics
     return {}, diagnostics
 
 
 def _validate_structure(
-    document: ParsedDocument, text: str, spec: MdArtifactSpec
+    document: ParsedDocument,
+    text: str,
+    spec: MdArtifactSpec,
+    *,
+    require_sections: bool,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     if spec.max_characters is not None and len(text) > spec.max_characters:
@@ -96,7 +113,7 @@ def _validate_structure(
         )
         diagnostics.extend(_validate_section_shapes(section, rule))
     for name, rule in spec.sections.items():
-        if rule.required and name not in seen_sections:
+        if require_sections and rule.required and name not in seen_sections:
             diagnostics.append(Diagnostic(1, name, "SPEC008", f"missing required section {name!r}"))
     return diagnostics
 

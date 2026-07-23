@@ -99,6 +99,62 @@ def _steps(content: dict[str, object]) -> list[dict[str, object]]:
     return [cast("dict[str, object]", step) for step in steps]
 
 
+def test_explicit_noop_plan_uses_minimal_closed_frontmatter_grammar() -> None:
+    document = """---
+type: plan
+noop: true
+---
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {"noop": True}
+    assert diagnostics == []
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "---\ntype: evil\nnoop: true\n---\n",
+        "---\ntype: plan\nnoop: true\nintent_verb: add\n---\n",
+        "---\ntype: plan\nnoop: true\n---\n## Summary\nDiscarded content.\n",
+    ],
+    ids=["wrong-type", "extra-metadata", "attached-section"],
+)
+def test_noop_plan_rejects_every_non_minimal_document(document: str) -> None:
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "PLAN023"
+        and "exactly 'type: plan' and 'noop: true' with no sections" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+@pytest.mark.parametrize("value", ["false", "yes", "1"])
+def test_non_true_noop_value_cannot_bypass_ordinary_plan_sections(value: str) -> None:
+    document = f"""---
+type: plan
+noop: {value}
+---
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "PLAN023"
+        and diagnostic.line == 3
+        and "must be 'true'" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+    assert any(
+        diagnostic.rule_id == "SPEC008" and diagnostic.section == "Steps"
+        for diagnostic in diagnostics
+    )
+
+
 def test_plan_document_maps_to_canonical_content_without_json() -> None:
     content, diagnostics = parse_and_validate(_plan_document(), PLAN_SPEC)
 
