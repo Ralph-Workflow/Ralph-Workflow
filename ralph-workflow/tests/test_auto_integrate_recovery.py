@@ -1144,6 +1144,8 @@ def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
 # ---------------------------------------------------------------------------
 
 
+# The full rebase-and-land setup exceeds the file default under parallel subprocess contention.
+@pytest.mark.timeout_seconds(20)
 def test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
     """R6/AC-06: after a verified land, post_attempt_verify passes silently.
 

@@ -185,6 +185,8 @@ def test_dirty_target_worktree_lands_through_ff_only_and_stays_consistent(
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature))
 
 
+# Two worktree adds and three integration rounds exceeded the 5s default under parallel contention.
+@pytest.mark.timeout_seconds(20)
 def test_two_independent_worktree_agents_converge_on_main(tmp_git_repo: Path) -> None:
     """Regression: an idle feature must rebase after main advances past its tip.
 
@@ -231,6 +233,8 @@ def test_two_independent_worktree_agents_converge_on_main(tmp_git_repo: Path) ->
         _run(tmp_git_repo, "worktree", "remove", "--force", str(feature_a))
 
 
+# A deliberate CAS-loss retry adds a second complete integration round under parallel contention.
+@pytest.mark.timeout_seconds(20)
 def test_sibling_worktree_landing_mid_integration_is_retried_and_lands(
     tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

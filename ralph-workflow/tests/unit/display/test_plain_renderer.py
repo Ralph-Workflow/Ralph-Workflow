@@ -125,7 +125,8 @@ def test_emit_log_line_preserves_literal_rich_markup_for_copy_paste() -> None:
     pd.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
     assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] [bold magenta]hello[/bold magenta]"
+        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] "
+        "[bold magenta]hello[/bold magenta]"
     ]
 
 

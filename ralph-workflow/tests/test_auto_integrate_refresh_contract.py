@@ -15,8 +15,8 @@ test`` (the budget-tracked 60 s step) because
 :func:`auto_integrate_after_commit` calls
 ``_current_branch_or_detached_marker``, which opens a real GitPython
 ``Repo``, so the ``tmp_git_repo`` fixture is required.
-``timeout_seconds(5)`` sizes the budget for that real git I/O, matching
-the convention in tests/test_auto_integrate_race.py. This does not
+``timeout_seconds(20)`` sizes the budget for that real git I/O, matching
+the clone/worktree integration convention. This does not
 weaken any cap: the file stays out of the 60 s combined budget and
 inside the 60 s per-suite cap on ``make test-subprocess-e2e``.
 
@@ -48,7 +48,7 @@ from ralph.pipeline.auto_integrate_sync import (
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 
 def _run(

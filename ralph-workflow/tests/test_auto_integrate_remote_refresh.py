@@ -33,7 +33,8 @@ from ralph.pipeline.auto_integrate_sync import (
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+# Two local clones plus fetch/push and integration exceed 5s under parallel runs.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 #: A fast-forward skip reason the bounded retry loop treats as a
 #: transient concurrent target move (asserted below, so the literal
