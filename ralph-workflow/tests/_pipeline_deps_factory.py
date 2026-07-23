@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol.startup import HeartbeatPolicy
 from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import (
     ArtifactRequirementsResolverFn,
     CheckMcpBridgeHealthFn,
@@ -20,6 +21,7 @@ from ralph.pipeline.factory import (
     PhasePromptMaterializerFn,
     PipelineDeps,
 )
+from ralph.recovery.testing import FakeConnectivityMonitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -225,6 +227,13 @@ def make_test_pipeline_deps(
         mcp_supervisor_factory=mcp_supervisor_factory or _mcp_supervisor_factory,
         heartbeat_policy_from_env_fn=heartbeat_policy_from_env_fn or _heartbeat_policy_from_env,
         check_mcp_bridge_health_fn=check_mcp_bridge_health_fn or _check_mcp_bridge_health,
+        connectivity_monitor=FakeConnectivityMonitor(),
+        catchup_worker_factory=lambda _config, _workspace_root: None,
+        startup_rebase_resolver=lambda _config, _workspace_scope: None,
+        auto_integrate_resolver=lambda _config, _workspace_scope, _rebase: None,
+        commit_effect_executor=lambda _effect, _workspace_root: PipelineEvent.COMMIT_SKIPPED,
+        has_uncommitted_changes=lambda _workspace_root: True,
+        process_teardown=process_teardown or (lambda: None),
     )
     if policy_bundle is not None:
         deps = dataclasses.replace(deps, policy_bundle=policy_bundle)
@@ -238,8 +247,6 @@ def make_test_pipeline_deps(
         deps = dataclasses.replace(deps, marker_watcher_factory=marker_watcher_factory)
     if snapshot_registry is not None:
         deps = dataclasses.replace(deps, snapshot_registry=snapshot_registry)
-    if process_teardown is not None:
-        deps = dataclasses.replace(deps, process_teardown=process_teardown)
     return deps
 
 

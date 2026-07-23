@@ -198,7 +198,12 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
 
-    result = runner_module.run(_config(), initial_state=state, display=display)
+    result = runner_module.run(
+        _config(),
+        initial_state=state,
+        display=display,
+        pipeline_deps=make_test_pipeline_deps(display._ctx),
+    )
 
     output = rendered.getvalue()
     assert result == 0
@@ -295,7 +300,12 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
 
-    result = runner_module.run(_config(), initial_state=state, display=display)
+    result = runner_module.run(
+        _config(),
+        initial_state=state,
+        display=display,
+        pipeline_deps=make_test_pipeline_deps(display._ctx),
+    )
 
     output = rendered.getvalue()
     assert result == 0
@@ -367,6 +377,7 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         initial_state=state,
         display=display,
         dashboard_subscriber=_Subscriber(),
+        pipeline_deps=make_test_pipeline_deps(display._ctx),
     )
 
     assert result == 0

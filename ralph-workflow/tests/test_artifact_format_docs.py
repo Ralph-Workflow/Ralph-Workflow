@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +24,7 @@ from ralph.mcp.artifacts.format_docs import (
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
+
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
 def test_every_supported_type_has_a_nonempty_format_doc(artifact_type: str) -> None:

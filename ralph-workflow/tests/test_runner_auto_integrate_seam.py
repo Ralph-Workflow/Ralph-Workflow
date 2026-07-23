@@ -6,6 +6,7 @@ collaborator is mocked; no test in this file starts git or writes a repository.
 
 from __future__ import annotations
 
+import dataclasses
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -24,6 +25,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -76,10 +78,24 @@ def _run_commit_phase(
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "auto_integrate_after_commit", integration)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(runner_module, "reducer_reduce", reduced)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
     _install_runner_display_context(monkeypatch)
-    runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+    runner_module.run(
+        MagicMock(),
+        initial_state=state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=dataclasses.replace(
+            make_test_pipeline_deps(make_display_context(force_width=120)),
+            auto_integrate_resolver=None,
+            commit_effect_executor=None,
+        ),
+    )
     return state, reduced
 
 
@@ -113,10 +129,24 @@ def test_commit_skipped_does_not_invoke_auto_integrate(monkeypatch: MonkeyPatch)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda *_a, **_k: None)
     monkeypatch.setattr(runner_module, "auto_integrate_after_commit", integration)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(runner_module, "reducer_reduce", MagicMock(return_value=(state, [])))
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
     _install_runner_display_context(monkeypatch)
-    runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+    runner_module.run(
+        MagicMock(),
+        initial_state=state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=dataclasses.replace(
+            make_test_pipeline_deps(make_display_context(force_width=120)),
+            auto_integrate_resolver=None,
+            commit_effect_executor=None,
+        ),
+    )
 
     integration.assert_not_called()
     assert all("rebase" not in call.kwargs for call in state.copy_with.call_args_list)
@@ -375,6 +405,11 @@ def test_startup_integration_runs_before_loop(
     hook = MagicMock(return_value=outcome)
     monkeypatch.setattr(
         run_loop_module, "auto_integrate_on_phase_transition", hook
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_run_auto_integrate_recovery_preamble",
+        lambda *_args, **_kwargs: None,
     )
     state = MagicMock()
     state.phase = "complete"

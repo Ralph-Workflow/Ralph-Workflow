@@ -21,6 +21,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -84,6 +85,11 @@ def _install_runner_stubs(
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run
@@ -115,7 +121,14 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
         budget_caps={"iteration": 1, "reviewer_pass": 0},
     )
 
-    exit_code = runner_module.run(_config(), initial_state=state, verbosity=Verbosity.QUIET)
+    exit_code = runner_module.run(
+        _config(),
+        initial_state=state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=make_test_pipeline_deps(
+            make_display_context(console=captured_console, force_width=120)
+        ),
+    )
     assert exit_code == 0
 
     # ParallelDisplay is the only display; in quiet mode it is constructed
@@ -145,7 +158,16 @@ def test_quiet_mode_renders_completion_summary_on_failure(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(
+        runner_module.ckpt,
+        "save",
+        lambda _state, *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
 
     failed_state = PipelineState(
         phase="failed",
@@ -175,7 +197,14 @@ def test_quiet_mode_renders_completion_summary_on_failure(
         lambda *args, **kwargs: args[1],
     )
 
-    exit_code = runner_module.run(_config(), initial_state=failed_state, verbosity=Verbosity.QUIET)
+    exit_code = runner_module.run(
+        _config(),
+        initial_state=failed_state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=make_test_pipeline_deps(
+            make_display_context(console=captured_console, force_width=120)
+        ),
+    )
     assert exit_code == 0
 
     out = captured_console.export_text()

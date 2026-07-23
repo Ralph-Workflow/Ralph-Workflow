@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.enums import Verbosity
+from ralph.display.context import make_display_context
 from ralph.mcp.multimodal.capabilities import (
     DeliveryMode,
     MultimodalModelIdentity,
@@ -27,6 +28,7 @@ from ralph.prompts.debug_dump import media_session_path
 from ralph.prompts.materialize import collect_media_entries_for_phase
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -60,6 +62,10 @@ def _policy_bundle() -> SimpleNamespace:
         terminal_phase="complete",
     )
     return SimpleNamespace(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
+
+
+def _pipeline_deps() -> object:
+    return make_test_pipeline_deps(make_display_context(env={"NO_COLOR": "1"}))
 
 
 def test_run_completes_in_serial_mode_without_fan_out(
@@ -135,6 +141,7 @@ def test_run_completes_in_serial_mode_without_fan_out(
         config=MagicMock(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
+        pipeline_deps=_pipeline_deps(),
     )
 
     assert exit_code == 0
@@ -223,6 +230,7 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
         config=MagicMock(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
+        pipeline_deps=_pipeline_deps(),
     )
 
     assert exit_code == 0
@@ -348,6 +356,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
         config=MagicMock(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
+        pipeline_deps=_pipeline_deps(),
     )
 
     assert exit_code == 0
@@ -491,6 +500,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
         config=MagicMock(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
+        pipeline_deps=_pipeline_deps(),
     )
 
     # (d) serial mode still reaches complete without fan-out.

@@ -30,6 +30,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -177,7 +178,10 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         budget_caps={"iteration": 1},
     )
 
-    exit_code = runner_module.run(_config(), initial_state=state)
+    pipeline_deps = make_test_pipeline_deps(
+        make_display_context(console=captured_console, force_width=300)
+    )
+    exit_code = runner_module.run(_config(), initial_state=state, pipeline_deps=pipeline_deps)
     assert exit_code == 0
 
     out = captured_console.export_text()
@@ -255,7 +259,15 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
 
     # Run with Verbosity.QUIET
     quiet_config = UnifiedConfig()
-    exit_code = runner_module.run(quiet_config, initial_state=state, verbosity=Verbosity.QUIET)
+    pipeline_deps = make_test_pipeline_deps(
+        make_display_context(console=captured_console, force_width=300)
+    )
+    exit_code = runner_module.run(
+        quiet_config,
+        initial_state=state,
+        verbosity=Verbosity.QUIET,
+        pipeline_deps=pipeline_deps,
+    )
     assert exit_code == 0
 
     out = captured_console.export_text()

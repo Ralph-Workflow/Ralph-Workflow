@@ -16,12 +16,14 @@ from unittest.mock import MagicMock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
 from ralph.pipeline.work_unit import WorkUnit
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import PipelineStateSnapshot, SnapshotRegistry
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.memory import MemoryWorkspace
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from ralph.agents.executor import WorkerResult
@@ -59,6 +61,22 @@ def test_build_default_pipeline_deps_returns_valid_pipeline_deps() -> None:
     assert deps.marker_watcher_factory is None
     assert deps.snapshot_registry is None
     assert deps.recovery_sleep is None
+
+
+def test_test_pipeline_deps_fakes_external_runtime_boundaries() -> None:
+    """The shared test bundle never starts network or process-tree I/O."""
+    deps = make_test_pipeline_deps(_fake_display_context())
+
+    assert deps.connectivity_monitor.current_state.value == "online"
+    assert deps.catchup_worker_factory(UnifiedConfig(), Path("/workspace")) is None
+    assert deps.startup_rebase_resolver(UnifiedConfig(), MagicMock()) is None
+    assert deps.auto_integrate_resolver(UnifiedConfig(), MagicMock(), MagicMock()) is None
+    assert (
+        deps.commit_effect_executor(MagicMock(), Path("/workspace"))
+        is PipelineEvent.COMMIT_SKIPPED
+    )
+    assert deps.process_teardown is not None
+    assert deps.process_teardown() is None
 
 
 def test_build_default_pipeline_deps_applies_pro_hooks() -> None:

@@ -29,6 +29,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -64,6 +65,11 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
 
     invoked_phases: list[str] = []
 
@@ -103,7 +109,11 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
         budget_caps={"iteration": 1, "reviewer_pass": 0},
     )
 
-    exit_code = runner_module.run(_config(), initial_state=state)
+    exit_code = runner_module.run(
+        _config(),
+        initial_state=state,
+        pipeline_deps=make_test_pipeline_deps(make_display_context()),
+    )
 
     assert exit_code == 0
     # Default verbose path constructs exactly one ParallelDisplay.
@@ -123,6 +133,11 @@ def test_default_run_propagates_display_subscriber(
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
 
     real_init = pd_module.ParallelDisplay.__init__
 
@@ -140,7 +155,11 @@ def test_default_run_propagates_display_subscriber(
         lambda *_args, **_kwargs: runner_module.ExitSuccessEffect(),
     )
 
-    exit_code = runner_module.run(_config(), initial_state=state)
+    exit_code = runner_module.run(
+        _config(),
+        initial_state=state,
+        pipeline_deps=make_test_pipeline_deps(make_display_context()),
+    )
 
     assert exit_code == 0
 
@@ -188,6 +207,11 @@ def test_width_refresher_updates_live_display_context(
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
 
     stop_called: list[bool] = []
 
@@ -216,6 +240,7 @@ def test_width_refresher_updates_live_display_context(
         initial_state=state,
         display=display,
         verbosity=Verbosity.VERBOSE,
+        pipeline_deps=make_test_pipeline_deps(wide_ctx),
     )
 
     assert exit_code == 0
