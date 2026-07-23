@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -22,18 +23,48 @@ CUSTOM_LOG_COUNT = 20
 
 class TestRunGitCommand:
     def test_successful_git_command(self, tmp_path: Path) -> None:
-        # We use 'git' directly since it's available on the test system
-        # even if network git operations might be blocked
-        result = run_git_command(tmp_path, ["--version"])
-        assert "git version" in result
+        def successful_runner(
+            command: list[str], cwd: Path
+        ) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess(
+                command,
+                returncode=0,
+                stdout=b"git version 2.50.1",
+                stderr=b"",
+            )
+
+        result = run_git_command(
+            tmp_path,
+            ["--version"],
+            runner=successful_runner,
+        )
+
+        assert result == "git version 2.50.1"
 
     def test_failing_git_command_raises(self, tmp_path: Path) -> None:
+        def failing_runner(
+            command: list[str], cwd: Path
+        ) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess(
+                command,
+                returncode=1,
+                stdout=b"",
+                stderr=b"git: 'missing' is not a git command",
+            )
+
         with pytest.raises(ExecutionError):
-            run_git_command(tmp_path, ["nonexistent-subcommand"])
+            run_git_command(
+                tmp_path,
+                ["nonexistent-subcommand"],
+                runner=failing_runner,
+            )
 
     def test_nonexistent_git_raises_file_not_found(self, tmp_path: Path) -> None:
-        with pytest.raises(ExecutionError):
-            run_git_command(tmp_path, ["status"])
+        def missing_git_runner(command: list[str], cwd: Path) -> object:
+            raise FileNotFoundError("git")
+
+        with pytest.raises(ExecutionError, match="git"):
+            run_git_command(tmp_path, ["status"], runner=missing_git_runner)
 
     def test_uses_injected_runner(self, tmp_path: Path) -> None:
         seen: dict[str, object] = {}

@@ -53,24 +53,12 @@ def _make_index_lock_error(lock_path: Path) -> GitCommandError:
     )
 
 
-# Real-git tests fork `git` subprocesses; under full-suite worksteal
-# parallelism the default 1s wall-clock alarm intermittently fires on a
-# loaded machine even though each test normally finishes in ~100ms.
-pytestmark = pytest.mark.timeout_seconds(5)
-
-# Most tests in this module exercise real git operations against the
-# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
-# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
-# machines, so the default 1-second per-test ceiling is unsafe. A few
-# tests that do not touch the fixture complete in < 1 s and tolerate
-# the elevated ceiling as a no-op.
-pytestmark = pytest.mark.timeout_seconds(5)
-
 FULL_SHA_LENGTH = 40
 INITIAL_OCCURRENCE_COUNT = 1
 DEFAULT_BRANCHES = {"main", "master"}
 
 
+@pytest.mark.subprocess_e2e
 def test_find_repo_root(tmp_git_repo: Path) -> None:
     """Test finding repository root."""
     root = find_repo_root(tmp_git_repo)
@@ -95,12 +83,14 @@ def test_find_repo_root_prefers_active_worktree_root(tmp_path: Path) -> None:
         monkeypatch.undo()
 
 
+@pytest.mark.subprocess_e2e
 def test_find_repo_root_not_git() -> None:
     """Test finding repo root when not in git repository."""
     with pytest.raises(GitOperationError, match="Not inside a git repository"):
         find_repo_root(Path("/tmp"))
 
 
+@pytest.mark.subprocess_e2e
 def test_is_repo_clean(tmp_git_repo: Path) -> None:
     """Test checking if repository is clean."""
     assert is_repo_clean(tmp_git_repo) is True
@@ -155,15 +145,18 @@ def test_has_staged_changes() -> None:
         monkeypatch.undo()
 
 
+@pytest.mark.subprocess_e2e
 def test_has_uncommitted_changes_clean_repo(tmp_git_repo: Path) -> None:
     assert has_uncommitted_changes(tmp_git_repo) is False
 
 
+@pytest.mark.subprocess_e2e
 def test_has_uncommitted_changes_dirty_repo(tmp_git_repo: Path) -> None:
     (tmp_git_repo / "README.md").write_text("dirty")
     assert has_uncommitted_changes(tmp_git_repo) is True
 
 
+@pytest.mark.subprocess_e2e
 def test_has_uncommitted_changes_untracked_file(tmp_git_repo: Path) -> None:
     (tmp_git_repo / "new_file.txt").write_text("new")
     assert has_uncommitted_changes(tmp_git_repo) is True
@@ -191,10 +184,12 @@ def test_has_uncommitted_changes_prefers_subprocess_git_status(
     assert has_uncommitted_changes(Path("/tmp/repo")) is True
 
 
+@pytest.mark.subprocess_e2e
 def test_has_commits_since_no_baseline_returns_true(tmp_git_repo: Path) -> None:
     assert has_commits_since(tmp_git_repo, None) is True
 
 
+@pytest.mark.subprocess_e2e
 def test_has_commits_since_head_equals_baseline_returns_false(tmp_git_repo: Path) -> None:
     head = get_head_sha(tmp_git_repo)
     assert has_commits_since(tmp_git_repo, head) is False
@@ -222,6 +217,7 @@ def test_has_commits_since_prefers_bounded_subprocess_rev_list(
     assert has_commits_since(Path("/tmp/repo"), "abc123") is False
 
 
+@pytest.mark.subprocess_e2e
 def test_has_commits_since_new_commit_returns_true(tmp_git_repo: Path) -> None:
     baseline = get_head_sha(tmp_git_repo)
     (tmp_git_repo / "extra.txt").write_text("more")
@@ -236,6 +232,7 @@ def test_has_commits_since_new_commit_returns_true(tmp_git_repo: Path) -> None:
     assert has_commits_since(tmp_git_repo, baseline) is True
 
 
+@pytest.mark.subprocess_e2e
 def test_stage_all(tmp_git_repo: Path) -> None:
     """Test staging all changes."""
     readme = tmp_git_repo / "README.md"
@@ -251,6 +248,7 @@ def test_stage_all(tmp_git_repo: Path) -> None:
         repo.close()
 
 
+@pytest.mark.subprocess_e2e
 def test_stage_all_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
     lock_path = tmp_git_repo / ".git" / "index.lock"
     lock_path.write_text(str(_unused_pid()), encoding="utf-8")
@@ -325,6 +323,7 @@ def test_create_commit() -> None:
     )
 
 
+@pytest.mark.subprocess_e2e
 def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
     lock_path = tmp_git_repo / ".git" / "index.lock"
     lock_path.write_text(str(_unused_pid()), encoding="utf-8")
@@ -460,12 +459,14 @@ def test_create_commit_appends_ralph_workflow_coauthor_trailer() -> None:
     assert author.email == "repo@example.com"
 
 
+@pytest.mark.subprocess_e2e
 def test_get_head_sha(tmp_git_repo: Path) -> None:
     """Test getting HEAD SHA."""
     sha = get_head_sha(tmp_git_repo)
     assert len(sha) == FULL_SHA_LENGTH
 
 
+@pytest.mark.subprocess_e2e
 def test_get_current_branch(tmp_git_repo: Path) -> None:
     """Test getting current branch name."""
     branch = get_current_branch(tmp_git_repo)
@@ -520,6 +521,7 @@ def test_merge_base() -> None:
     assert base == base2
 
 
+@pytest.mark.subprocess_e2e
 def test_push_without_remote(tmp_git_repo: Path) -> None:
     """Test that push fails gracefully without remote."""
     repo = Repo(tmp_git_repo)
@@ -539,7 +541,6 @@ def test_push_without_remote(tmp_git_repo: Path) -> None:
 # directly to the staging-filename contract pinned by the audit invariant.
 
 
-@pytest.mark.timeout_seconds(5)
 def test_atomic_append_text_empty_payload_is_noop(tmp_path: Path) -> None:
     """Empty payload is a no-op: no exception, no staging file remains.
 
@@ -568,7 +569,6 @@ def test_atomic_append_text_empty_payload_is_noop(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.timeout_seconds(5)
 def test_atomic_append_text_preserves_crlf_in_existing_content(tmp_path: Path) -> None:
     """CRLF-terminated existing content is preserved byte-for-byte through the atomic round-trip.
 
@@ -606,7 +606,6 @@ def test_atomic_append_text_preserves_crlf_in_existing_content(tmp_path: Path) -
     assert "line-three" in raw_text, "Appended payload must be present in output"
 
 
-@pytest.mark.timeout_seconds(5)
 def test_atomic_append_text_inserts_separator_when_existing_lacks_trailing_newline(
     tmp_path: Path,
 ) -> None:
@@ -630,7 +629,6 @@ def test_atomic_append_text_inserts_separator_when_existing_lacks_trailing_newli
     )
 
 
-@pytest.mark.timeout_seconds(5)
 def test_atomic_append_text_propagates_oserror_when_target_is_directory(
     tmp_path: Path,
 ) -> None:
@@ -650,7 +648,6 @@ def test_atomic_append_text_propagates_oserror_when_target_is_directory(
         _atomic_append_text(target, "payload\n", encoding="utf-8")
 
 
-@pytest.mark.timeout_seconds(5)
 def test_atomic_append_text_replaces_target_symlink(tmp_path: Path) -> None:
     """When the target path is a symlink, ``Path.replace`` REPLACES the symlink.
 
@@ -710,7 +707,6 @@ def test_atomic_append_text_replaces_target_symlink(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.timeout_seconds(5)
 def test_recover_stale_git_lock_fails_closed_when_lock_has_no_pid(
     tmp_path: Path,
 ) -> None:
@@ -735,7 +731,6 @@ def test_recover_stale_git_lock_fails_closed_when_lock_has_no_pid(
     assert lock_path.exists(), "Lock file must remain on disk when recovery fails"
 
 
-@pytest.mark.timeout_seconds(5)
 def test_recover_stale_git_lock_fails_closed_when_lock_pid_is_alive(
     tmp_path: Path,
 ) -> None:
@@ -760,7 +755,6 @@ def test_recover_stale_git_lock_fails_closed_when_lock_pid_is_alive(
     assert lock_path.exists(), "Lock file must remain on disk when PID is still alive"
 
 
-@pytest.mark.timeout_seconds(5)
 def test_recover_stale_git_lock_recovers_when_lock_pid_is_dead(
     tmp_path: Path,
 ) -> None:
@@ -783,7 +777,6 @@ def test_recover_stale_git_lock_recovers_when_lock_pid_is_dead(
     assert not lock_path.exists(), "Lock file must be unlinked when PID is dead"
 
 
-@pytest.mark.timeout_seconds(5)
 def test_recover_stale_git_lock_returns_false_for_non_lock_error() -> None:
     """A non-lock GitCommandError does NOT trigger recovery.
 
@@ -799,7 +792,6 @@ def test_recover_stale_git_lock_returns_false_for_non_lock_error() -> None:
     assert _recover_stale_git_lock("status", error) is False
 
 
-@pytest.mark.timeout_seconds(5)
 def test_git_status_porcelain_lines_raises_on_nonzero_return(
     tmp_git_repo: Path,
 ) -> None:
@@ -828,7 +820,7 @@ def test_git_status_porcelain_lines_raises_on_nonzero_return(
         monkeypatch.undo()
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.subprocess_e2e
 def test_git_status_porcelain_lines_returns_lines_on_zero_return(
     tmp_git_repo: Path,
 ) -> None:
@@ -839,7 +831,7 @@ def test_git_status_porcelain_lines_returns_lines_on_zero_return(
     assert lines == []
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.subprocess_e2e
 def test_has_staged_changes_returns_false_for_untracked_only_repo(
     tmp_git_repo: Path,
 ) -> None:
@@ -859,7 +851,7 @@ def test_has_staged_changes_returns_false_for_untracked_only_repo(
     )
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.subprocess_e2e
 def test_has_staged_changes_returns_false_for_untracked_only_via_subprocess(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
