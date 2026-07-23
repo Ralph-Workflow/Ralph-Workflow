@@ -179,9 +179,9 @@ STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
     "running": ("bold #1F5F8B", "◐", "RUN"),
     "warning": ("bold #A06A00", "⚠", "WARN"),
     "error": ("bold #993F00", "✗", "FAIL"),
-    "skipped": ("bold #8C7D00", "○", "SKIP"),
+    "skipped": ("bold #5A6200", "○", "SKIP"),
     "pending": ("bold #555555", "○", "WAIT"),
-    "info": ("bold #003D75", "\u2139", "INFO"),
+    "info": ("bold #002B5C", "\u2139", "INFO"),
 }
 
 _THEME_STYLES: Final[dict[str, str]] = {

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import string
+from itertools import combinations
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -28,7 +29,7 @@ from ralph.display.activity_model import ActivityProvider, EventOptions, make_ev
 from ralph.display.agent_event_renderer import EVENT_RENDERERS, render_event
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.status_bar import StatusBarModel, render_status_bar
-from ralph.display.theme import STATUS_STYLES
+from ralph.display.theme import STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG
 
 if TYPE_CHECKING:
     from ralph.display.activity_event_kind import ActivityEventKind
@@ -68,6 +69,37 @@ def test_status_styles_define_redundant_carriers_for_every_state() -> None:
         assert any(c in string.ascii_uppercase for c in label), (
             f"{state} ascii label {label!r} must contain an ASCII letter"
         )
+
+
+def _hex_from_style(style: str) -> str | None:
+    """Extract the semantic foreground hex, if the style declares one."""
+    return next((token for token in style.split() if token.startswith("#")), None)
+
+
+def _rgb(hex_color: str) -> tuple[int, int, int]:
+    """Return the hex color's RGB channels for pairwise-distance checks."""
+    return tuple(int(hex_color[index : index + 2], 16) for index in (1, 3, 5))
+
+
+def test_status_style_pairs_have_distinct_non_color_carriers_and_rgb_distance() -> None:
+    """Every semantic pair has labels/icons and at least 40 RGB-channel distance.
+
+    40 rejects near-duplicate hues while
+    leaving the documented Okabe-Ito palette intact. States with non-hex Rich
+    styles remain protected by the mandatory icon + ASCII-label carriers.
+    """
+    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG):
+        for (left_name, left), (right_name, right) in combinations(table.items(), 2):
+            assert left[1:] != right[1:], f"{left_name}/{right_name} need distinct carriers"
+            left_hex = _hex_from_style(left[0])
+            right_hex = _hex_from_style(right[0])
+            if left_hex is not None and right_hex is not None:
+                distance = sum(
+                    (a - b) ** 2 for a, b in zip(_rgb(left_hex), _rgb(right_hex), strict=True)
+                ) ** 0.5
+                assert distance >= 40, (
+                    f"{left_name}/{right_name} colors are too close: {left_hex}/{right_hex}"
+                )
 
 
 def test_no_red_green_hue_only_pairing_in_status_styles() -> None:

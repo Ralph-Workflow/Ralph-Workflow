@@ -542,9 +542,10 @@ def test_run_inner_loop_status_bar_fits_at_narrow_widths(width: int) -> None:
             f"AC-07: _push_status_bar_if_changed must return a fresh "
             f"signature after a first push at width={width}; got None"
         )
-        assert isinstance(new_sig, tuple) and len(new_sig) == 5, (
+        assert isinstance(new_sig, tuple) and len(new_sig) == 6, (
             f"AC-07: _push_status_bar_if_changed must return a "
-            f"(phase, outer, inner, integration_alert, outer_label) tuple; got {new_sig!r}"
+            f"(phase, outer, inner, integration_alert, outer_label, agent_name) tuple; "
+            f"got {new_sig!r}"
         )
     assert captured_inside_active is True, (
         f"StatusBar must be active inside the production context manager at width={width}"

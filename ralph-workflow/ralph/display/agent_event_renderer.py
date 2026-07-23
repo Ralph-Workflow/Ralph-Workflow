@@ -60,7 +60,6 @@ from ralph.display.activity_model import make_event
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.agent_activity_event import AgentActivityEvent
-from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.theme import STATUS_STYLES
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
@@ -179,38 +178,16 @@ def _tool_name_for_result(event: AgentActivityEvent) -> str:
     return ""
 
 
-#: Bounded fallback limits for :func:`_condense_for_display` when no
-#: :class:`DisplayContext` is supplied. The canonical ``ctx`` path uses
-#: ``ctx.condenser_soft_limit`` / ``ctx.condenser_hard_limit`` so the
-#: limits stay aligned with the consumer's terminal width; the fallback
-#: values match :mod:`ralph.display.content_condenser`'s module defaults
-#: (``400`` soft / ``4000`` hard) so tests and the ring-buffer path
-#: behave identically without having to fabricate a ``ctx``.
-_DEFAULT_TOOL_RESULT_SOFT_LIMIT: int = 400
-_DEFAULT_TOOL_RESULT_HARD_LIMIT: int = 4000
-
-
-def _condense_for_display(body: str, ctx: DisplayContext | None) -> str:
-    """Pass ``body`` through :func:`condense_content` with ``ctx``-aware limits.
-
-    Falls back to bounded module-default limits when ``ctx`` is
-    ``None`` so callers without a :class:`DisplayContext` (the
-    ring-buffer / activity-router path, plus the
-    :func:`render_event_kind_text` plain-text adapter) cannot leak an
-    unbounded line. The condenser emits a visible ``(truncated)``
-    suffix when it drops content so the operator sees the
-    truncation marker even when no overflow reference is configured.
-    """
-    soft_limit = ctx.condenser_soft_limit if ctx is not None else _DEFAULT_TOOL_RESULT_SOFT_LIMIT
-    hard_limit = ctx.condenser_hard_limit if ctx is not None else _DEFAULT_TOOL_RESULT_HARD_LIMIT
-    result = condense_content(
-        body,
-        options=CondenseOptions(soft_limit=soft_limit, hard_limit=hard_limit),
-    )
-    # condense_content returns either a 2-tuple (visible, condensed) or
-    # a 4-tuple (visible, condensed, summary_line, ai_summary_line)
-    # depending on options.summary; we only need the visible body.
-    return result[0]
+#: Bounded fallback cap for the plain-text path. The plain-text
+#: renderer (:func:`render_event_kind_text`) uses
+#: ``max_chars = _DEFAULT_PLAIN_MAX_CHARS`` cells by default; callers
+#: pass an explicit ``max_chars`` to override. The
+#: :class:`ParallelDisplay` delivery path applies its own
+#: overflow-aware condenser on the FULL unabridged line emitted by
+#: this renderer, so the overflow log records the complete original
+#: payload (NOT a pre-truncated copy -- the regression the
+#: analysis feedback flagged).
+_DEFAULT_PLAIN_MAX_CHARS: int = 200
 
 
 def _render_text_event(
@@ -342,7 +319,7 @@ def _render_tool_result_event(
     """Render a tool result.
 
     Layout:
-    ``<icon><label> <ts> <unit_id> [<tool_name>] <condensed-result>``.
+    ``<icon><label> <ts> <unit_id> [<tool_name>] <body>``.
 
     Success uses the ``success`` carrier; a tool result carrying
     ``is_error`` true (or a non-empty ``error`` in metadata) flips to
@@ -351,17 +328,16 @@ def _render_tool_result_event(
     plain-text path derived via :func:`render_event_kind_text` honors
     it byte-for-byte.
 
-    The body is passed through :func:`content_condenser.condense_content`
-    using the limits the :class:`DisplayContext` provides so an
-    oversized tool result (a 10k-char JSON dump, a giant stack trace)
-    never reaches the operator's terminal verbatim. The same registry
-    is also called from the plain-text path; the body is condensed
-    with bounded fallback limits when no ``ctx`` is supplied so
-    callers without a context (the ring-buffer / activity-router
-    path, plus tests) still get bounded output. A visible ``(truncated)``
-    suffix is appended whenever the condenser drops content, so the
-    operator sees the truncation marker whether or not an overflow
-    reference is configured.
+    The body is rendered UNABRIDGED. Condensation is a delivery concern
+    handled by the caller's :class:`RawOverflowLog` + condenser path --
+    NOT a presentation concern of the registry. Rendering the full
+    content here is required so the caller's overflow-aware condenser
+    sees the complete original payload and the overflow log records
+    the full unabridged line (otherwise the deliverable silently loses
+    data -- a 1000-char tool result would land in the overflow log as
+    ~400 chars, truncating the audit trail). Plain-text consumers that
+    want a bounded line apply their own cell-aware
+    :func:`_truncate_to_cells` cap (see :func:`render_event_kind_text`).
 
     The line opens with the same icon + label carrier as the
     ``TOOL_USE`` renderer, carries the same timestamp cue, and
@@ -377,7 +353,6 @@ def _render_tool_result_event(
         body = _format_body_with_unit(raw_body, unit_id)
     else:
         body = raw_body
-    condensed_body = _condense_for_display(body, ctx)
     tool_ref = _tool_name_for_result(event)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
@@ -391,7 +366,7 @@ def _render_tool_result_event(
         )
         text.append(" ", style=style)
     text.append(
-        escape(condensed_body) if escape_body else condensed_body,
+        escape(body) if escape_body else body,
         style="theme.text.muted" if not is_error else style,
     )
     return text

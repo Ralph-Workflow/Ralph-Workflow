@@ -90,6 +90,8 @@ def push_conflict_status_bar(
     stop_cap: int | None = None,
     replay_index: int | None = None,
     replay_total: int | None = None,
+    elapsed_seconds: float | None = None,
+    agent_name: str | None = None,
 ) -> None:
     """Show the resolution phase and its round counter in the footer.
 
@@ -125,6 +127,8 @@ def push_conflict_status_bar(
             outer_dev_iteration=round_index,
             outer_dev_cap=round_cap,
             outer_label="Round",
+            elapsed_seconds=elapsed_seconds,
+            agent_name=agent_name,
         )
         update = cast(
             "Callable[[object], None] | None",

@@ -182,6 +182,64 @@ def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
     assert "A" * 100 in written
 
 
+def test_tool_result_oversized_preserves_full_payload_in_overflow_log(tmp_path: Path) -> None:
+    """Regression: TOOL_RESULT above soft_limit must capture the FULL payload in the overflow log.
+
+    The analysis feedback flagged this regression: pre-fix the
+    registry's ``_render_tool_result_event`` called an internal
+    ``_condense_for_display`` helper that truncated the body to
+    ``soft_limit`` characters BEFORE
+    ``ParallelDisplay._emit_activity_event`` ran its overflow-aware
+    condenser. A 1000-character tool result then landed in the
+    overflow log as ~400 chars instead of 1000, silently truncating
+    the audit trail.
+
+    The fix moves condensation out of the renderer and into the
+    delivery boundary (``_emit_activity_event``), so the overflow log
+    captures the FULL unabridged line. This test pins the contract:
+    every original character must appear in the on-disk overflow log.
+    """
+    console, buf = _make_wide_console()
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
+
+    original_payload = "Z" * 1000  # above soft_limit(400), below hard_limit(4000)
+    pd._emit_activity_event(
+        "unit-tool-result",
+        ActivityEventKind.TOOL_RESULT,
+        original_payload,
+        None,
+        {},
+    )
+    # The raw overflow log uses block buffering; flush via drop_unit.
+    pd.drop_unit("unit-tool-result")
+
+    overflow_log = tmp_path / ".agent" / "raw" / "unit-tool-result.log"
+    assert overflow_log.exists(), (
+        f"overflow log should be created for the condensed tool result; "
+        f"expected at {overflow_log}"
+    )
+    written = overflow_log.read_text(encoding="utf-8")
+    z_count = written.count("Z")
+    assert z_count == 1000, (
+        f"overflow log must capture the FULL original tool result body; "
+        f"got {z_count} Z chars in the overflow log, expected 1000. "
+        f"Pre-fix regression: registry condenser truncated body to soft_limit "
+        f"before overflow tracking, losing ~60% of the audit trail."
+    )
+
+    # Visible line must include the overflow reference and the
+    # truncation marker so the operator knows where to find the
+    # unabridged payload.
+    rendered = buf.getvalue()
+    assert "unit-tool-result.log" in rendered, (
+        f"visible line must reference the overflow log path so the operator "
+        f"can locate the unabridged payload; got: {rendered!r}"
+    )
+    assert "(truncated" in rendered, (
+        f"visible line must carry the (truncated) marker; got: {rendered!r}"
+    )
+
+
 def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> None:
     """Content between soft and hard limits includes overflow ref in condensed output."""
     console, buf = _make_wide_console()

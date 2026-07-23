@@ -596,6 +596,8 @@ def _push_remediation_status_bar(
     max_attempts: int,
     *,
     attempt: int = 1,
+    elapsed_seconds: float | None = None,
+    agent_name: str | None = None,
 ) -> None:
     """Seed the persistent status bar for the remediation phase.
 
@@ -614,6 +616,8 @@ def _push_remediation_status_bar(
             outer_dev_iteration=attempt,
             outer_dev_cap=max_attempts,
             outer_label="Remediation",
+            elapsed_seconds=elapsed_seconds,
+            agent_name=agent_name,
         )
         update = cast(
             "Callable[[object], None] | None",

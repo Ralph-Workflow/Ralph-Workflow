@@ -16,7 +16,8 @@ all applicable fields at every terminal width where they fit:
 - outer development iteration (when non-``None`` AND ``ctx.width``
   can accommodate it),
 - inner analysis iteration (when non-``None`` AND ``ctx.width``
-  can accommodate it).
+  can accommodate it),
+- elapsed run time and current agent identity when the path budget has room.
 
 Width-driven degradation (in order) so ``len(text.plain) <= ctx.width``
 holds at every width:
@@ -26,7 +27,9 @@ holds at every width:
 3. Iteration label form degrades canonical -> compact -> minimal.
 4. Phase marker is dropped below the marker-fit threshold.
 5. Per-iteration glyphs are dropped below the glyph-fit threshold.
-6. Iteration segments drop one at a time (outer_dev first, then
+6. Elapsed-time and agent-identity segments drop before iteration context
+   when the path budget cannot preserve both core fields.
+7. Iteration segments drop one at a time (outer_dev first, then
    inner_analysis, then both) below the iteration-visibility
    threshold (``14 cols``). The bar always fits ``ctx.width`` even
    when iteration segments drop entirely \u2014 phase + path remain
@@ -65,6 +68,7 @@ The single default layout renders (in order)::
     [phase_marker] {phase_label} [milestone] {workspace_root}
                               [milestone] {outer_dev} Dev N/cap
                               [milestone] {inner_analysis} Analysis N/cap
+                              [milestone] Time mm:ss [milestone] Agent name
 
 A field is omitted entirely (no ``--`` placeholder) when its iteration
 field is ``None`` on the model. The phase marker glyph is omitted when
@@ -236,6 +240,9 @@ class StatusBarModel:
             bar segment while an auto-integrate conflict is unresolved
             (``None`` otherwise). Present so a run that needs conflict
             resolution can never scroll its warning out of sight.
+        elapsed_seconds: Elapsed run duration supplied by the display clock,
+            never persisted in pipeline state.
+        agent_name: Current agent identity supplied by the phase-entry model.
         outer_label: Optional phase-appropriate label for the outer cycle
             (``None`` -> the neutral ``Cycle`` label via
             :func:`ralph.display.phase_status.format_dev_cycle`).
@@ -255,6 +262,8 @@ class StatusBarModel:
     inner_analysis_cap: int | None = None
     integration_alert: str | None = None
     outer_label: str | None = None
+    elapsed_seconds: float | None = None
+    agent_name: str | None = None
 
 
 def _home_relative(path: str, home: str | None) -> str:
@@ -721,6 +730,16 @@ def _outer_label_canonical_chars(outer_label: str | None) -> int:
     return len(outer_label) + 1 + suffix_max
 
 
+def _format_elapsed(seconds: float) -> str:
+    """Return a compact, label-carrying elapsed-time segment value."""
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"Time {hours}:{minutes:02d}:{secs:02d}"
+    return f"Time {minutes:02d}:{secs:02d}"
+
+
 def _format_analysis_label(n: int, cap: int | None, max_chars: int) -> str:
     """Format the inner_analysis label using the form that fits ``max_chars``."""
     if max_chars <= 0:
@@ -798,7 +817,20 @@ def render_status_bar(
         outer_label_canonical_chars=_outer_label_canonical_chars(model.outer_label),
     )
 
-    path_display = _middle_truncate_path(path_display, budgets.path_budget)
+    elapsed_label = _format_elapsed(model.elapsed_seconds) if model.elapsed_seconds is not None else ""
+    agent_label = f"Agent {_safe_single_line(model.agent_name)}" if model.agent_name else ""
+    # Optional trailing context yields before path/phase/cycle context. Reserve
+    # only path surplus so the established narrow-width contract is unchanged.
+    optional_segments = [label for label in (elapsed_label, agent_label) if label]
+    optional_width = sum(len(separator) + len(label) for label in optional_segments)
+    path_budget = budgets.path_budget
+    if optional_width > path_budget - _MIN_PATH_BUDGET:
+        optional_segments = [elapsed_label] if elapsed_label else []
+        optional_width = sum(len(separator) + len(label) for label in optional_segments)
+    if optional_width > path_budget - _MIN_PATH_BUDGET:
+        optional_segments = []
+        optional_width = 0
+    path_display = _middle_truncate_path(path_display, path_budget - optional_width)
     phase_display = _tail_truncate(phase_display, budgets.phase_budget)
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
     render_inner_analysis = has_inner_analysis and budgets.inner_analysis_label_max_chars > 0
@@ -844,6 +876,9 @@ def render_status_bar(
                 budgets.inner_analysis_label_max_chars,
             )
         )
+    for label in optional_segments:
+        text.append(separator, style="theme.status.path_marker")
+        text.append(label, style="theme.status.info")
     # Final width clamp: at extremely narrow widths (1-2 cols) the
     # phase|path separator alone exceeds the budget so the rendered text
     # cannot fit. Truncate the rendered text to ``ctx.width`` so the

@@ -178,6 +178,41 @@ def test_tool_result_with_is_error_metadata_uses_error_carrier() -> None:
     assert "permission denied" in rendered.plain
 
 
+def test_tool_result_renders_body_unabridged() -> None:
+    """TOOL_RESULT body is rendered UNABRIDGED so the caller's overflow-aware condenser sees the complete original payload.
+
+    Regression for the analysis-feedback finding: pre-fix the registry's
+    ``_render_tool_result_event`` called ``_condense_for_display`` which
+    truncated the body to ``soft_limit`` characters BEFORE
+    ``ParallelDisplay._emit_activity_event`` ran its overflow-aware
+    condenser. A 1000-character tool result then landed in the overflow
+    log as ~400 chars instead of 1000, silently truncating the audit
+    trail. The registry must now render the FULL body; condensation is a
+    delivery concern handled by the overflow-aware condenser at the
+    delivery boundary.
+    """
+    ctx = _ctx()
+    body = "Z" * 1000
+    rendered = render_event(_event(ActivityEventKind.TOOL_RESULT, body), ctx)
+    plain = rendered.plain
+    # Every original character must appear in the rendered plain text;
+    # the registry MUST NOT condense / truncate / drop any characters.
+    assert body in plain, (
+        f"registry must render the full 1000-char tool result body; "
+        f"got {len(plain)} chars but the body was 1000 chars"
+    )
+    assert plain.count("Z") == 1000, (
+        f"registry must preserve every Z in the body; "
+        f"got {plain.count('Z')} Z's in the rendered line, expected 1000"
+    )
+    # The visible line should NOT carry a condenser-suffix marker
+    # because the registry never condensed it.
+    assert "(truncated" not in plain, (
+        f"registry must not emit a (truncated) suffix; "
+        f"condensation is a delivery concern, not a presentation one: {plain!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Sanitization & normalization
 # ---------------------------------------------------------------------------

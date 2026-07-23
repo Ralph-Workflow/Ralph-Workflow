@@ -150,6 +150,10 @@ def _build_phase_entry_model_from_state(
         outer_dev_cap = state.get_budget_cap(counter)
 
     current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
+    if agent_name is None:
+        chain = state.chain_for_phase(phase)
+        if chain is not None and chain.agents and chain.current_index < len(chain.agents):
+            agent_name = chain.agents[chain.current_index]
     return PhaseEntryModel(
         phase_name=phase,
         phase_role=phase_role,

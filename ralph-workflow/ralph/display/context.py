@@ -515,7 +515,7 @@ def install_sigwinch_refresher(
     if threading.main_thread() is not threading.current_thread():
         return
 
-    def handler(signum: int, frame: object) -> None:
+    def handler(_signum: int, _frame: object) -> None:
         refreshed = ctx_holder[0].refreshed()
         ctx_holder[0] = refreshed
         if on_refresh is not None:

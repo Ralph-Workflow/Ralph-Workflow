@@ -1342,7 +1342,7 @@ class ParallelDisplay:
         unit_id: str,
         kind: ActivityEventKind,
         content: str | None,
-        raw_ref: str | None,
+        _raw_ref: str | None,
         metadata: dict[str, object] | None = None,
     ) -> None:
         """Render an agent event through the single registry and emit it.
