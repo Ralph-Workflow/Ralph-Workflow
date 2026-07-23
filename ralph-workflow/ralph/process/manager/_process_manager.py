@@ -1158,7 +1158,7 @@ class ProcessManager:
         except psutil_mod.NoSuchProcess:
             self._mark_killed(record)
             return
-        except psutil_mod.AccessDenied:
+        except (psutil_mod.AccessDenied, PermissionError):
             self._raise_access_denied_termination(record)
 
         all_procs = [root, *children]
@@ -1233,7 +1233,7 @@ class ProcessManager:
         except psutil_mod.NoSuchProcess:
             self._mark_killed(record, proc.poll())
             return
-        except psutil_mod.AccessDenied:
+        except (psutil_mod.AccessDenied, PermissionError):
             self._raise_access_denied_termination(record, proc.poll())
 
         all_procs = [root, *children]
@@ -1347,7 +1347,7 @@ class ProcessManager:
                 children = root.children(recursive=True)
             except psutil_mod.NoSuchProcess:
                 return False
-            except psutil_mod.AccessDenied as exc:
+            except (psutil_mod.AccessDenied, PermissionError) as exc:
                 raise PermissionError from exc
             all_procs = [root, *children]
             for p in all_procs:
@@ -1408,7 +1408,7 @@ class ProcessManager:
         except psutil_mod.NoSuchProcess:
             self._mark_killed(record, proc.returncode)
             return
-        except psutil_mod.AccessDenied:
+        except (psutil_mod.AccessDenied, PermissionError):
             self._raise_access_denied_termination(record, proc.returncode)
         all_procs = [root, *children]
         for p in all_procs:

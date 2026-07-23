@@ -7,10 +7,9 @@ of the repository — on a cold filesystem cache a single ``git status``
 over this repository dominates the per-test budget, and the diagnostics
 tests called it once per test.
 
-Tests that assert on how ``gather`` COMPOSES its fields inject
-:func:`stub_git_probe` instead of forking git. The one test that pins the
-real probe's behaviour (``TestSystemInfo.info``) still uses the
-production default, so real-git coverage is retained rather than removed.
+Tests that assert on how ``gather`` composes its fields inject
+:func:`stub_git_probe` instead of forking git. Real-git behavior belongs
+in the subprocess E2E suite, not deterministic unit tests.
 """
 
 from __future__ import annotations

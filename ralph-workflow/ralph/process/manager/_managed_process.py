@@ -355,7 +355,12 @@ class ManagedProcess:
         try:
             root = psutil_mod.process_from_pid(self.pid)
             descendants = root.children(recursive=True)
-        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+        except (
+            psutil_mod.NoSuchProcess,
+            psutil_mod.AccessDenied,
+            PermissionError,
+            OSError,
+        ):
             return []
         return [proc for proc in descendants if self._is_live_psutil_process(psutil_mod, proc)]
 
@@ -364,7 +369,12 @@ class ManagedProcess:
     ) -> bool:
         try:
             return proc.is_running() and proc.status() != "zombie"
-        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+        except (
+            psutil_mod.NoSuchProcess,
+            psutil_mod.AccessDenied,
+            PermissionError,
+            OSError,
+        ):
             return False
 
     def _collect_live_direct_children(
@@ -375,7 +385,12 @@ class ManagedProcess:
         for proc in processes:
             try:
                 children = proc.children(recursive=False)
-            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            except (
+                psutil_mod.NoSuchProcess,
+                psutil_mod.AccessDenied,
+                PermissionError,
+                OSError,
+            ):
                 continue
             for child in children:
                 if not self._is_live_psutil_process(psutil_mod, child):

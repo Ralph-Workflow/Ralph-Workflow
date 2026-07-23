@@ -6,6 +6,7 @@ import io
 import itertools
 import subprocess
 import sys
+import threading
 import typing
 from typing import TYPE_CHECKING, cast
 
@@ -142,6 +143,83 @@ def test_missing_root_still_returns_output() -> None:
     assert stdout == b"ok"
     assert stderr == b"err"
     assert handle.record.status == ProcessStatus.EXITED
+
+
+def test_process_observer_regression_permission_error_does_not_escape_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: macOS sandbox denial must not escape the observer thread."""
+    attempted = threading.Event()
+
+    class PermissionDeniedRoot(TreeProcess):
+        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+            del recursive
+            attempted.set()
+            raise PermissionError
+
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {1: PermissionDeniedRoot(pid=1)}
+    handle = _make_handle(fake_psutil=fake_psutil)
+    thread_errors: list[BaseException | None] = []
+    monkeypatch.setattr(
+        threading,
+        "excepthook",
+        lambda args: thread_errors.append(args.exc_value),
+    )
+
+    def communicate(
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        assert attempted.wait(timeout=0.5)
+        return b"ok", b""
+
+    handle._proc.communicate = communicate
+    stdout, stderr = handle.communicate_and_cleanup()
+
+    assert stdout == b"ok"
+    assert stderr == b""
+    assert thread_errors == []
+
+
+def test_process_observer_regression_keeps_child_seen_before_permission_error() -> None:
+    """Regression: a denied later scan must not discard an observed child."""
+    child = TreeProcess(pid=1001, stubborn=True)
+    observed = threading.Event()
+
+    class PermissionDeniedAfterObservationRoot(TreeProcess):
+        def __init__(self) -> None:
+            super().__init__(pid=1)
+            self._scan_count = 0
+
+        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+            del recursive
+            self._scan_count += 1
+            if self._scan_count == 1:
+                observed.set()
+                return [child]
+            raise PermissionError
+
+    root = PermissionDeniedAfterObservationRoot()
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {1: root, child.pid: child}
+    handle = _make_handle(fake_psutil=fake_psutil)
+
+    def communicate(
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        assert observed.wait(timeout=0.5)
+        return b"ok", b""
+
+    handle._proc.communicate = communicate
+    stdout, stderr = handle.communicate_and_cleanup()
+
+    assert stdout == b"ok"
+    assert stderr == b""
+    assert child._killed is True
 
 
 def test_kills_root_late_spawn_descendants() -> None:

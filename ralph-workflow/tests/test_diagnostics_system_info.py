@@ -24,14 +24,8 @@ class TestSystemInfo:
 
     @pytest.fixture(scope="class")
     def info(self) -> SystemInfo:
-        """Gather once against the REAL git probe.
-
-        This is the file's real-git coverage: it pins that the production
-        probe populates every field on a live repository. It is
-        class-scoped so the whole class pays for one gather, and the two
-        env-only tests below inject a stub instead of paying for a second.
-        """
-        return SystemInfo.gather()
+        """Gather once with a deterministic git probe."""
+        return SystemInfo.gather(git_probe=stub_git_probe)
 
     def test_system_info_gather_returns_instance(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() returns a SystemInfo instance."""
