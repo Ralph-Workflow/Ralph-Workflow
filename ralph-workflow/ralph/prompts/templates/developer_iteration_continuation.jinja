@@ -68,22 +68,31 @@ ABSOLUTE RULE: this continuation exists because the previous development pass fa
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 
-You MUST submit a `development_result` artifact before declaring completion. The artifact must include proof for every plan step and every prior analysis how_to_fix item:
+You MUST submit a `development_result` artifact before declaring completion: a markdown document with frontmatter `type: development_result` and `status: completed|partial`, then `## Summary` (exactly one item), `## Files Changed` (one item per file), and the proof sections below. Each proof item's bracketed ID is the reference; the item text is the evidence.
 
-**plan_items_proven** (required when the execution plan has steps): One unique entry per step.
-- `plan_item`: Canonical step reference — must EXACTLY match "Step N: <title>" where N is the step number and <title> is the step title as written in the plan.
-- `proof`: Concrete evidence, e.g. "Modified src/validation.py lines 10-25. All tests pass."
+**## Plan Items Proven** (required when the execution plan has steps): one `- [S-N] <proof>` item per plan step, where `S-N` EXACTLY matches the step's stable ID from the plan document and the proof cites concrete evidence, e.g. `- [S-1] Modified src/validation.py lines 10-25; pytest tests/test_validation.py -q passes.`
 
-**plan_items_proven** (required when the plan uses work_units): One entry for the work unit you were assigned.
-- `plan_item`: Must EXACTLY match the `unit_id` of your assigned work unit from the plan.
-- `proof`: Concrete evidence of what you implemented for this work unit.
+**## Plan Items Proven** (when the plan uses work_units instead): one `- [<unit_id>] <proof>` item for the work unit you were assigned, where the ID EXACTLY matches the plan's `unit_id`.
 
-**analysis_items_addressed** (required when ANALYSIS FEEDBACK exists): One unique entry per `how_to_fix` item.
-- `how_to_fix_item`: Must EXACTLY match the how_to_fix text from the prior analysis artifact — copy it verbatim, do not paraphrase.
-- `proof`: Concrete evidence of how it was resolved.
+**## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per `How To Fix` entry from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
 
-Each `plan_item` and each `how_to_fix_item` must be distinct — duplicate entries will fail validation. Unknown references (ones that don't match an actual plan step, work_unit id, or analysis item) will also fail validation and trigger a re-prompt.
+Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step, work_unit id, or analysis item) also fail validation and trigger a re-prompt.
 
-{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Implemented the requested fix and verified it.","files_changed":"- src/main.py","plan_items_proven":[{"plan_item":"Step 1: Implement the fix","proof":"Updated src/main.py and ran pytest."}],"analysis_items_addressed":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{% set development_result_example %}
+---
+type: development_result
+status: completed
+---
+
+## Summary
+- [SUM-1] Implemented the requested fix and verified it.
+
+## Files Changed
+- [FC-1] src/main.py
+
+## Plan Items Proven
+- [S-1] Updated src/main.py and ran pytest tests/test_main.py -q; it passes.
+{% endset %}
+{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-development-result-artifact', '.agent/artifact-formats/development_result.md') }}

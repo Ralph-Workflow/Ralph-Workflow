@@ -22,17 +22,10 @@ EXECUTION:
 
 {% if not (HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)) %}
 ARTIFACT SUBMISSION:
-- Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results with a fresh `content` native JSON object or JSON-serialized string
-{% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage plan sections incrementally{% endif %}
-{% if SUBMIT_PLAN_SECTIONS_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage multiple complete plan sections together only after each entry is analysis-ready (validates ALL before any merge; whole batch is rejected on the first failure){% endif %}
-{% if INSERT_PLAN_STEP_TOOL_NAME %}- Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a numbered plan step and automatically reindex the steps list{% endif %}
-{% if REPLACE_PLAN_STEP_TOOL_NAME %}- Use {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} to replace a numbered plan step without rewriting the whole section{% endif %}
-{% if PATCH_PLAN_STEP_TOOL_NAME %}- Use {{PATCH_PLAN_STEP_TOOL_REFERENCE}} to partial-update a single step (shallow-merge; missing fields are preserved){% endif %}
-{% if REMOVE_PLAN_STEP_TOOL_NAME %}- Use {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} to remove a numbered plan step and automatically reindex the remaining steps{% endif %}
-{% if MOVE_PLAN_STEP_TOOL_NAME %}- Use {{MOVE_PLAN_STEP_TOOL_REFERENCE}} to move a plan step to a new index in a single call (auto-reindex, depends_on rewrite, AC remap){% endif %}
-{% if VALIDATE_PLAN_DRAFT_TOOL_NAME %}- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to run the full PlanArtifact cross-section validator without writing plan.json and without deleting the draft (read-only){% endif %}
-{% if FINALIZE_PLAN_TOOL_NAME %}- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} to finalize a staged plan draft{% endif %}
-{% if GET_PLAN_DRAFT_TOOL_NAME %}- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect a staged plan draft{% endif %}
-{% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} to discard a staged plan draft and restart{% endif %}
+- Use {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} to submit an artifact: pass `artifact_type` and `content` (the complete markdown document per its `.agent/artifact-formats/<type>.md` format doc)
+{% if VERIFY_MD_ARTIFACT_TOOL_NAME %}- Use {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} to validate an artifact document without persisting it (read-only; same arguments; returns line/section/rule-anchored diagnostics){% endif %}
+{% if EDIT_MD_PLAN_STEP_TOOL_NAME %}- Use {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} to apply one ID-addressed plan-step edit (`action` = replace/insert/remove/move, `step_id` like `S-3`) to a plan document; it returns the edited document — resubmit that with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}{% endif %}
+{% if STAGE_MD_ARTIFACT_TOOL_NAME %}- For long documents, stage incrementally: {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} appends (or `mode="replace_all"` replaces) draft content{% if GET_MD_DRAFT_TOOL_NAME %}, {{GET_MD_DRAFT_TOOL_REFERENCE}} returns the draft with diagnostics{% endif %}{% if FINALIZE_MD_ARTIFACT_TOOL_NAME %}, {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} validates and submits the assembled draft (kept intact for repair on failure){% endif %}{% if DISCARD_MD_DRAFT_TOOL_NAME %}, {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} drops the draft to restart{% endif %}{% endif %}
+{{SUBMIT_MD_ARTIFACT_BARE_HINT}}
 {% endif %}
 - Use {{DECLARE_COMPLETE_TOOL_REFERENCE}} when finished

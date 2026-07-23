@@ -137,7 +137,7 @@ If you cannot make a decision from the diff alone, explore until you can.
 
 ---
 
-You MUST submit a structured review analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
+You MUST submit a review analysis decision artifact with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
 using `artifact_type="review_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 Not submitting the analysis artifact is a FAILURE.
 
@@ -236,25 +236,33 @@ the claim is not evaluatable — do not report it as a gap.
 
 ## DECISION ARTIFACT
 
-Return a JSON object.
+The decision is a markdown document (grammar: `.agent/artifact-formats/review_analysis_decision.md`):
+`---` frontmatter with `type: review_analysis_decision` and `status: completed|request_changes|failed`,
+then `## Summary` (exactly one item), and — for any non-completed status — `## What Came Up Short`
+and `## How To Fix`, one `- [RA-###] ...` item per gap with matching IDs across the two sections.
 
-- If the review is clean and thorough across ALL dimensions above:
-  `{"status":"completed","summary":"..."}`
+- Choose `status: completed` when the review is clean and thorough across ALL dimensions above.
+- Choose `status: request_changes` when the review has coverage or quality gaps that you proved yourself.
+- Choose `status: failed` when the review found major incompleteness or is otherwise unusable; stronger remediation may be needed, including redoing the review.
 
-- After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
-  and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+Author the document, submit it per the procedure below, and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 
-- Use `content` for a freshly generated native JSON object or JSON-serialized string.
-- Valid submit example:
-  `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
+{% set review_decision_example %}
+---
+type: review_analysis_decision
+status: request_changes
+---
 
-- The review has gaps in coverage or quality that you proved yourself:
-  `{"status":"request_changes","summary":"The review missed a high-severity validation issue.","what_came_up_short":["The review did not check the new error path"],"how_to_fix":["Re-review src/foo.py and tests/test_foo.py, then submit issues if the error path is still uncovered"]}`
+## Summary
+- [SUM-1] The review missed a high-severity validation issue.
 
-- The review found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
-  `{"status":"failed","summary":"The review artifact is unusable because it lacks issue details.","what_came_up_short":["issues_found was submitted without issue objects"],"how_to_fix":["Redo the review and submit each issue with path, severity, summary, and concrete fix guidance"]}`
+## What Came Up Short
+- [RA-001] [Correctness] The review did not check the new error path in src/foo.py; the bare except at line 87 silently swallows exceptions.
 
-{{ render_artifact_submission('review_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Review looks good."}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## How To Fix
+- [RA-001] Re-review src/foo.py and tests/test_foo.py, add a Correctness finding for the bare except at line 87, and submit issues if the error path is still uncovered.
+{% endset %}
+{{ render_artifact_submission('review_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, review_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 
@@ -265,6 +273,7 @@ Return a JSON object.
 1. **List every gap found** across all dimensions. Do not stop after the first problem.
 
 2. **For each gap, include:**
+   - A stable item ID (`- [RA-###] ...`) reused verbatim by the matching `How To Fix` entry
    - The dimension it belongs to (Plan Compliance / Security / Correctness / Performance /
      Maintainability / Testing / Review Structure / Verification Evidence)
    - What the review was supposed to check but did not, or checked but did incorrectly
@@ -287,20 +296,12 @@ Return a JSON object.
    not personally observe the missed issue or coverage failure in this session, it is not a gap —
    at most it is a not-evaluatable limit to disclose in the summary.
 
-Example `what_came_up_short`:
+Example `## What Came Up Short` items:
 
-```
-- [Security] `api/auth.py:23` contains a hardcoded fallback API key — this is a
-  CRITICAL severity finding in the code that the review should have surfaced.
-- [Review Structure] The SQL injection finding in `db/queries.py` is classified as MEDIUM
-  but should be CRITICAL — the query at line 15 concatenates user input directly, enabling
-  arbitrary SQL execution. Misclassifying CRITICAL findings as MEDIUM is a review quality failure.
-- [Testing] I ran the relevant test suite and searched the repository: no test exercises the
-  new error path in `api/auth.py`, a coverage gap the review should have surfaced.
-- [Plan Compliance] `.github/workflows/release-binaries.yml` lacks a Windows matrix leg,
-  which is a concrete mismatch with the plan requirement and should have been surfaced by the review.
-- [Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows
-  exceptions — a concrete code issue the review should have surfaced.
+```markdown
+- [RA-001] [Security] api/auth.py:23 contains a hardcoded fallback API key — a CRITICAL severity finding in the code that the review should have surfaced.
+- [RA-002] [Review Structure] The SQL injection finding in db/queries.py:15 is classified as MEDIUM but should be CRITICAL — the query concatenates user input directly.
+- [RA-003] [Testing] I ran the relevant test suite and searched the repository: no test exercises the new error path in api/auth.py, a coverage gap the review should have surfaced.
 ```
 
 ---
@@ -316,47 +317,34 @@ For every item in `what_came_up_short`, provide a corresponding fix entry:
    the implementation?
 4. **How to verify the fix.** What command or check confirms the review finding is valid?
 
-Example `how_to_fix`:
+Example `## How To Fix` items (IDs match the gaps above):
 
-```
-- Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL severity finding for
-  the hardcoded fallback API key at line 23. Remediation: remove the key and load from
-  `os.environ.get("API_TOKEN")` instead.
-- Reclassify the SQL injection finding in `db/queries.py` as CRITICAL. The query at
-  line 15 concatenates user input directly, enabling arbitrary SQL execution. Update
-  the severity in the review findings table and update the summary to reflect CRITICAL status.
-- Run the relevant test suite yourself and record the observed output. If tests for new code do
-  not run or do not pass, add a Testing gap finding to the review with the specific failing command
-  and result.
-- Re-examine `.github/workflows/release-binaries.yml` against the PLAN. Confirm whether
-  the Windows matrix leg is present. If absent, add a Plan Compliance gap finding with
-  the specific gap and remediation.
-- Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare
-  `except` at line 87 that silently swallows exceptions. Remediation: catch specific
-  exception types and preserve error context.
+```markdown
+- [RA-001] Re-examine api/auth.py for hardcoded credentials; add a CRITICAL finding for the hardcoded fallback API key at line 23 with remediation to load it from os.environ.get("API_TOKEN").
+- [RA-002] Reclassify the SQL injection finding in db/queries.py:15 as CRITICAL and update the review severity table and summary accordingly.
+- [RA-003] Run the relevant test suite yourself and record the observed output; if no test covers the new error path, add a Testing gap finding with the specific failing command and result.
 ```
 
 ---
 
 ## EXAMPLE FAILING REVIEW ANALYSIS ARTIFACT
 
-```json
-{
-  "status": "request_changes",
-  "summary": "The review is structurally present but missed several critical findings and misclassified at least one severity level.",
-  "what_came_up_short": [
-    "[Security] `api/auth.py:23` contains a hardcoded fallback API key — CRITICAL severity, and the review should have surfaced it.",
-    "[Review Structure] SQL injection in `db/queries.py:15` is classified as MEDIUM but should be CRITICAL — user input concatenated directly into SQL.",
-    "[Testing] I ran the relevant test suite and searched the repository: no test exercises the new error path in api/auth.py, a coverage gap the review should have surfaced.",
-    "[Plan Compliance] `.github/workflows/release-binaries.yml` lacks the Windows matrix leg required by the PLAN, and the review should have surfaced that mismatch.",
-    "[Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows exceptions, and the review should have surfaced that issue."
-  ],
-  "how_to_fix": [
-    "Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL finding for the hardcoded key at line 23. Remediation: load from `os.environ.get('API_TOKEN')`.",
-    "Reclassify the SQL injection in `db/queries.py:15` as CRITICAL and update the review summary and severity table accordingly.",
-    "Run the relevant test suite and record whether tests for new code run and pass. If the tests fail or no test covers the new code, add a Testing gap finding with the specific command output.",
-    "Re-examine `.github/workflows/release-binaries.yml` against the PLAN. If the Windows leg is absent, add a Plan Compliance gap.",
-    "Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare `except` at line 87. Remediation: catch specific exception types and preserve context."
-  ]
-}
+```markdown
+---
+type: review_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] The review is structurally present but missed several critical findings and misclassified at least one severity level.
+
+## What Came Up Short
+- [RA-001] [Security] api/auth.py:23 contains a hardcoded fallback API key — CRITICAL severity, and the review should have surfaced it.
+- [RA-002] [Review Structure] SQL injection in db/queries.py:15 is classified as MEDIUM but should be CRITICAL — user input concatenated directly into SQL.
+- [RA-003] [Testing] No test exercises the new error path in api/auth.py, a coverage gap the review should have surfaced.
+
+## How To Fix
+- [RA-001] Re-examine api/auth.py for hardcoded credentials; add a CRITICAL finding for the hardcoded key at line 23 with remediation to load it from os.environ.get("API_TOKEN").
+- [RA-002] Reclassify the SQL injection in db/queries.py:15 as CRITICAL and update the review summary and severity table accordingly.
+- [RA-003] Run the relevant test suite and record whether tests for new code run and pass; if not, add a Testing gap finding with the specific command output.
 ```

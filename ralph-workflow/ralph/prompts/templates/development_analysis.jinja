@@ -164,7 +164,7 @@ or explicitly marked `not_evaluatable` with the attempted observation and reason
 
 ---
 
-You MUST submit a structured analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
+You MUST submit an analysis decision artifact with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
 using `artifact_type="development_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 Not submitting the analysis artifact is a FAILURE.
 
@@ -249,28 +249,38 @@ editing this repository, and you personally confirmed it is absent or wrong.
 
 ## DECISION ARTIFACT
 
-Return a JSON object.
+The decision is a markdown document (grammar: `.agent/artifact-formats/development_analysis_decision.md`):
+`---` frontmatter with `type: development_analysis_decision` and `status: completed|request_changes|failed`,
+then `## Summary` (exactly one item), and — for any non-completed status — `## What Came Up Short`
+and `## How To Fix`, one `- [DA-###] ...` item per gap with matching IDs across the two sections.
+The developer proves closure by citing each `How To Fix` item's ID, so every item needs a stable ID.
 
-- If no observable gap exists across all evaluatable requirements and applicable dimensions:
-  `{"status":"completed","summary":"..."}`. This holds even when some requirements remain
-  `not_evaluatable`: once every gap you can prove is closed, the status is `completed`.
-  The `summary` MUST cite the key current-work-product evidence and self-run command results
-  supporting the decision, and disclose material `not_evaluatable` limits.
+- Choose `status: completed` when no observable gap exists across all evaluatable requirements and
+  applicable dimensions. This holds even when some requirements remain `not_evaluatable`: once every
+  gap you can prove is closed, the status is `completed`. The Summary item MUST cite the key
+  current-work-product evidence and self-run command results supporting the decision, and disclose
+  material `not_evaluatable` limits.
+- Choose `status: request_changes` when the work falls short in any evaluatable dimension with a gap you proved yourself.
+- Choose `status: failed` when the analysis found observable major incompleteness or an otherwise unusable current result; stronger remediation may be needed, including redoing the work phase.
 
-- After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
-  and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+Author the document, submit it per the procedure below, and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 
-- Use `content` for a freshly generated native JSON object or JSON-serialized string.
-- Valid submit example:
-  `{"artifact_type":"development_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
+{% set development_decision_example %}
+---
+type: development_analysis_decision
+status: request_changes
+---
 
-- Falls short in any evaluatable dimension, with a gap you proved yourself:
-  `{"status":"request_changes","summary":"The implementation still needs a regression test.","what_came_up_short":["No test covers oversized indexes"],"how_to_fix":["Add tests/test_foo.py::test_clamp_handles_out_of_range_index and rerun pytest tests/test_foo.py -q"]}`
+## Summary
+- [SUM-1] The implementation still needs a regression test.
 
-- The analysis found observable major incompleteness or an otherwise unusable current result; stronger remediation may be needed, including possible redo or starting over from the work phase:
-  `{"status":"failed","summary":"The required behavior is absent from the current work product.","what_came_up_short":["src/foo.py does not implement the required behavior"],"how_to_fix":["Redo the implementation from the accepted plan and submit a new development_result with proof for each step"]}`
+## What Came Up Short
+- [DA-001] [Testing] No test covers oversized indexes; running pytest tests/test_foo.py -q shows no case for the out-of-range path.
 
-{{ render_artifact_submission('development_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"The required behavior is implemented in src/foo.py:handle_index; pytest tests/test_foo.py -q passed."}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## How To Fix
+- [DA-001] Add tests/test_foo.py::test_clamp_handles_out_of_range_index and rerun pytest tests/test_foo.py -q until it passes.
+{% endset %}
+{{ render_artifact_submission('development_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 
@@ -281,6 +291,7 @@ Return a JSON object.
 1. **List every gap found** across all dimensions. Do not stop after the first problem.
 
 2. **For each gap, include:**
+   - A stable item ID (`- [DA-###] ...`) reused verbatim by the matching `How To Fix` entry
    - The dimension it belongs to (Plan Compliance / Security / Correctness / Performance /
      Maintainability / Testing / Verification Evidence)
    - Exact file path and line/function if applicable
@@ -299,18 +310,12 @@ Return a JSON object.
    it by editing this repository, it is not a gap — at most it is a `not_evaluatable` limit to
    disclose in the summary.
 
-Example `what_came_up_short`:
+Example `## What Came Up Short` items:
 
-```
-- [Plan Compliance] `.github/workflows/release-binaries.yml` does not build or upload
-  the Windows artifact — the Windows matrix leg is absent from the workflow file.
-- [Plan Compliance] `ralph-workflow/scripts/install.ps1` exists but is not referenced
-  from the workflow or release documentation.
-- [Testing] Running `pytest tests/test_pipeline.py::test_runner_error_path -v` now shows
-  3 failing assertions, so the current work product fails verification for that path.
-- [Verification Evidence] The PLAN requires `docs/release-verification.md` recording the
-  release verification output; I confirmed the file is absent from the repository.
-- [Security] `api/auth.py:23` hardcodes a fallback API key in source — CRITICAL severity.
+```markdown
+- [DA-001] [Plan Compliance] .github/workflows/release-binaries.yml does not build or upload the Windows artifact — the Windows matrix leg is absent from the workflow file.
+- [DA-002] [Testing] Running pytest tests/test_pipeline.py::test_runner_error_path -v now shows 3 failing assertions, so the current work product fails verification for that path.
+- [DA-003] [Security] api/auth.py:23 hardcodes a fallback API key in source — CRITICAL severity.
 ```
 
 ---
@@ -327,43 +332,34 @@ For every item in `what_came_up_short`, provide a corresponding fix entry:
 
 One gap, one fix entry. No grouping multiple gaps under one fix.
 
-Example `how_to_fix`:
+Example `## How To Fix` items (IDs match the gaps above):
 
-```
-- Add a Windows matrix leg to `.github/workflows/release-binaries.yml` using the same
-  artifact upload pattern as the macOS job. Run on `windows-latest`, produce a `.zip`,
-  upload with the existing `{platform}-{arch}.zip` naming convention.
-- Add `ralph-workflow/scripts/install.ps1` to `.github/release-docs.md` under the
-  Windows installation section with a `powershell -File install.ps1` command block.
-- Run `pytest tests/test_pipeline.py::test_runner_error_path -v`, inspect the 3 failing
-  assertions, and make the implementation and verification path pass for the claimed behavior.
-- Run the release verification commands from the PLAN and save output to
-  `docs/release-verification.md`. Confirm each platform archive and checksum is present.
-- Remove the hardcoded fallback API key from `api/auth.py:23`. Load from environment
-  using `os.environ.get("API_TOKEN")` with a clear error if the variable is unset.
+```markdown
+- [DA-001] Add a Windows matrix leg to .github/workflows/release-binaries.yml using the same artifact upload pattern as the macOS job: run on windows-latest, produce a .zip, upload with the existing {platform}-{arch}.zip naming convention.
+- [DA-002] Run pytest tests/test_pipeline.py::test_runner_error_path -v, inspect the 3 failing assertions, and make the implementation and verification path pass for the claimed behavior.
+- [DA-003] Remove the hardcoded fallback API key from api/auth.py:23; load it from os.environ.get("API_TOKEN") with a clear error if the variable is unset.
 ```
 
 ---
 
 ## EXAMPLE FAILING ANALYSIS ARTIFACT
 
-```json
-{
-  "status": "request_changes",
-  "summary": "The implementation is partially complete but has gaps in plan compliance, testing, and verification evidence.",
-  "what_came_up_short": [
-    "[Plan Compliance] `.github/workflows/release-binaries.yml` does not build or upload the Windows artifact.",
-    "[Plan Compliance] `ralph-workflow/scripts/install.ps1` exists but is not referenced from the workflow or release documentation.",
-    "[Testing] Running `pytest tests/test_pipeline.py::test_runner_error_path -v` now shows 3 failing assertions, so the current work product fails verification for that path.",
-    "[Verification Evidence] The PLAN requires docs/release-verification.md recording the release verification output; I confirmed the file is absent from the repository.",
-    "[Security] `api/auth.py:23` hardcodes a fallback API key in source — CRITICAL severity."
-  ],
-  "how_to_fix": [
-    "Add a Windows matrix leg to `.github/workflows/release-binaries.yml` using the same artifact upload pattern as the macOS job. Run on `windows-latest`, produce a `.zip`, upload with the existing `{platform}-{arch}.zip` naming convention.",
-    "Add `ralph-workflow/scripts/install.ps1` to `.github/release-docs.md` under the Windows installation section with a `powershell -File install.ps1` command block.",
-    "Run `pytest tests/test_pipeline.py::test_runner_error_path -v`, inspect the 3 failing assertions, and make the implementation and verification path pass for the claimed behavior.",
-    "Run the release verification commands from the PLAN and save output to `docs/release-verification.md`. Confirm each platform archive and checksum file is present.",
-    "Remove the hardcoded fallback API key from `api/auth.py:23`. Load from environment using `os.environ.get('API_TOKEN')` with a clear error if unset."
-  ]
-}
+```markdown
+---
+type: development_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] The implementation is partially complete but has gaps in plan compliance, testing, and security.
+
+## What Came Up Short
+- [DA-001] [Plan Compliance] .github/workflows/release-binaries.yml does not build or upload the Windows artifact.
+- [DA-002] [Testing] Running pytest tests/test_pipeline.py::test_runner_error_path -v shows 3 failing assertions, so the current work product fails verification for that path.
+- [DA-003] [Security] api/auth.py:23 hardcodes a fallback API key in source — CRITICAL severity.
+
+## How To Fix
+- [DA-001] Add a Windows matrix leg to .github/workflows/release-binaries.yml using the same artifact upload pattern as the macOS job; run on windows-latest and upload a .zip with the existing naming convention.
+- [DA-002] Run pytest tests/test_pipeline.py::test_runner_error_path -v, inspect the 3 failing assertions, and make the implementation and verification path pass for the claimed behavior.
+- [DA-003] Remove the hardcoded fallback API key from api/auth.py:23; load it from os.environ.get("API_TOKEN") with a clear error if unset.
 ```

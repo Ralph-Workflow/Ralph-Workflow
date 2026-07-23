@@ -69,31 +69,58 @@ Complex refactors, architecture changes, new features with non-obvious behavior,
 ## OUTPUT RULES
 After submitting the MCP artifact, you may echo only the commit subject line as plain text.
 Do not output any additional explanation, markdown formatting, bullets, or prose after the subject line.
-Do not wrap JSON or the subject in code fences.
+Do not wrap the document or the subject in code fences in your final text.
 Do not ask the user for confirmation or write "Would you like me to..." questions.
 Submit the artifact now, not as a proposal for later approval.
 Call the tool before emitting any final text. If you skip the tool call, the task has failed.
-Do not call Bash. Do not use `content_path` for this task.
+Do not call Bash.
 
 MCP REQUIREMENT:
-The only state-changing tools you may call for this task are {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
-If {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list includes {{ WRITE_FILE_TOOL_REFERENCE }}, you may use that one write_file call only for the documented fallback file.
-You MUST submit the final result through the documented artifact path: call {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} when it is available, or use the documented write-file fallback only when that tool is unavailable and your tool list exposes {{ WRITE_FILE_TOOL_REFERENCE }}. The inner payload must match one of these shapes:
-{"type": "commit", "subject": "fix(auth): prevent token expiry race"}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "body": "Optional multi-line body"}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]}
-{"type": "commit", "subject": "fix(auth): prevent token expiry race", "excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]}
-{"type": "skip", "reason": "Reason why no commit is needed"}.
+The only state-changing tools you may call for this task are {{ SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
+If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list includes {{ WRITE_FILE_TOOL_REFERENCE }}, you may use that one write_file call only for the documented fallback file.
 
-Submit the MCP arguments in this shape:
-{"artifact_type":"commit_message","content":"{\"type\":\"commit\",\"subject\":\"fix(auth): prevent token expiry race\"}"}
+DOCUMENT SHAPE:
+The artifact is a markdown document. Frontmatter carries the decision; optional `##` sections carry the body. Valid shapes:
 
-Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope. `files` must be an array of strings. `excluded_files` must be an array of objects with exactly `path` and `reason` fields. Valid `excluded_files.reason` values: internal_ignore, not_task_related, sensitive, deferred.
+- Commit (frontmatter `type: commit` plus `subject:`), with optional sections `## Body` (one item, concise self-contained explanation) OR the detailed trio `## Body Summary` / `## Body Details` / `## Body Footer` (one item each — never combine `Body` with the trio), plus optional `## Files` (one item per file to include) and `## Excluded Files` (one item per exclusion, text `path | reason`; valid reasons: internal_ignore, not_task_related, sensitive, deferred):
 
-Read the diff and decide whether the correct result is a commit artifact or a skip artifact. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
+```markdown
+---
+type: commit
+subject: fix(auth): prevent token expiry race
+---
 
-{{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"type":"commit","subject":"fix(auth): prevent token expiry race"}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## Body Summary
+- [BS-1] Prevents a race where refreshed tokens could expire mid-request.
+
+## Body Details
+- [BD-1] The expiry check now happens after refresh; covers the concurrent-refresh edge case.
+
+## Excluded Files
+- [X-1] notes/todo.md | not_task_related
+```
+
+- Skip (no commit needed):
+
+```markdown
+---
+type: skip
+reason: Only generated artifacts changed; nothing to commit.
+---
+```
+
+Read the diff and decide whether the correct result is a commit document or a skip document. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
+
+{% set commit_message_example %}
+---
+type: commit
+subject: fix(auth): prevent token expiry race
+---
+
+## Body
+- [B-1] Explains the expiry race and why the check moved after refresh.
+{% endset %}
+{{ render_artifact_submission('commit_message', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_message_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
 

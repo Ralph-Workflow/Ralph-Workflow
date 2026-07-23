@@ -118,24 +118,34 @@ For files OUTSIDE the Ralph Workflow runtime-artifact allowlist above, recommend
 
 ## OUTPUT FORMAT
 
-Submit a ``commit_cleanup`` artifact. The ``content`` payload must be a native JSON object or JSON-serialized object shaped as:
-- ``analysis_complete`` (boolean) and
-- ``actions`` (array)
+Submit a ``commit_cleanup`` artifact: a markdown document with frontmatter ``type: commit_cleanup`` and ``analysis_complete: true|false``, plus a ``## Actions`` section holding one ``- [ID] <action> | <path-or-pattern>`` item per action (actions: ``delete_file`` with a path, ``add_to_gitignore`` or ``add_to_git_exclude`` with a pattern). An optional ``## Reason`` section (one item) may explain the decision.
 
-**If the diff contains nothing that needs cleanup**, set ``analysis_complete: true`` with an empty ``actions`` array.
+**If the diff contains nothing that needs cleanup**, set ``analysis_complete: true`` and leave ``## Actions`` empty.
 
 **If cleanup is needed**, perform one iteration and set ``analysis_complete: true`` once done, or set ``analysis_complete: false`` to request another cleanup pass.
 
-Artifact content JSON examples:
-```json
-{"analysis_complete": true, "actions": []}
+Example document with actions:
+
+```markdown
+---
+type: commit_cleanup
+analysis_complete: true
+---
+
+## Actions
+- [A-1] delete_file | tmp/debug.log
+- [A-2] add_to_gitignore | tmp/*.log
 ```
 
-```json
-{"analysis_complete": true, "actions": [{"action": "delete_file", "path": "tmp/debug.log"}, {"action": "add_to_gitignore", "pattern": "tmp/*.log"}]}
-```
+{% set commit_cleanup_example %}
+---
+type: commit_cleanup
+analysis_complete: true
+---
 
-{{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"analysis_complete":true,"actions":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## Actions
+{% endset %}
+{{ render_artifact_submission('commit_cleanup', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_cleanup_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-commit-cleanup-artifact', '.agent/artifact-formats/commit_cleanup.md') }}
 

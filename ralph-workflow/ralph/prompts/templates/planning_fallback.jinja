@@ -44,19 +44,38 @@ The full schema, per-section shapes, per-list caps, and string-length tiers for 
 - Planning quality → `.agent/artifact-formats/plan.md` §`Planning quality guidance` (analysis-ready criteria, exact verification, acceptance criteria, evidence, and risk coverage).
 - Depends-on DAG guard → `.agent/artifact-formats/plan.md` §`Cross-section invariants` (`depends_on` DAG contract; diamond-shaped DAGs accepted).
 
-Native file and shell tools are disabled in this brokered fallback; native orchestration tools remain enabled. Use the plan tools exactly as named below. Step mutation tools echo the new step number(s), the `depends_on` reindex map, and the AC ids whose `satisfied_by_steps` were rewritten.
+Native file and shell tools are disabled in this brokered fallback; native orchestration tools remain enabled.
 
-- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`. Stage `design` for non-trivial plans so acceptance criteria, testability, drift detection, and refactor strategy are explicit before finalize.
-- Use {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} only when every entry already contains complete, analysis-ready section content.
-- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalize and {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if validation fails.
-- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} once all required sections are staged, and {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} only to throw the draft away.
-Use these MCP argument envelopes and fill them with concrete executor-ready detail:
+Submit the plan as ONE markdown document:
+1. Author the document: `---` frontmatter with `type: plan`, then `## Summary`, `## Skills MCP`, `## Steps`, `## Critical Files`, `## Risks Mitigations`, `## Verification` (add `## Design` for non-trivial plans). Each section entry is one line `- [ID] {...}` whose text is a JSON object. Steps use stable IDs `S-1`, `S-2`, ...; `depends_on` lists step IDs.
+2. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document). Each diagnostic names the line, section, and rule — repair them all in one pass.
+3. Submit the corrected document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same two arguments). For a targeted step change, {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`action` = replace/insert/remove/move, `step_id` like `S-2`) returns the edited document to submit; it reindexes IDs and `depends_on` for you.
+4. For a long plan, stage chunks with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the next chunk), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then validate-and-submit the assembled draft with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}; {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} restarts the draft.
 
-{{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}}:
-{"entries":[{"section":"summary","mode":"replace","content":{"context":"Fix the foo() off-by-one regression and prove it with a focused unit test.","intent":"Clamp foo() index so the regression cannot recur.","intent_verb":"improve","scope_items":[{"text":"Add a regression test for the out-of-range foo() index","category":"test"},{"text":"Modify src/foo.py to clamp the index before lookup","category":"file_change"},{"text":"Run the focused pytest command that proves the regression is fixed","category":"test"}]}},{"section":"skills_mcp","mode":"replace","content":{"skills":["test-driven-development","systematic-debugging"],"mcps":[]}},{"section":"steps","mode":"replace","content":[{"number":1,"title":"Add the foo() regression test","content":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.","step_type":"file_change","priority":"high","targets":[{"path":"tests/test_foo.py","action":"modify"}],"satisfies":["AC-01"],"expected_evidence":[{"kind":"file","ref":"tests/test_foo.py"},{"kind":"test_name","ref":"tests/test_foo.py::test_clamp_handles_out_of_range_index"}],"depends_on":[]},{"number":2,"title":"Clamp the foo() index","content":"Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.","step_type":"file_change","priority":"high","targets":[{"path":"src/foo.py","action":"modify"}],"satisfies":["AC-02"],"expected_evidence":[{"kind":"file","ref":"src/foo.py"},{"kind":"test_name","ref":"tests/test_foo.py::test_clamp_handles_out_of_range_index"}],"depends_on":[1]},{"number":3,"title":"Run the focused regression test","content":"Run pytest tests/test_foo.py -q from the repository root and confirm it passes.","step_type":"verify","verify_command":"pytest tests/test_foo.py -q","expected_evidence":[{"kind":"command_output","ref":"pytest tests/test_foo.py -q"}],"depends_on":[2]}]},{"section":"critical_files","mode":"replace","content":{"primary_files":[{"path":"src/foo.py","action":"modify"},{"path":"tests/test_foo.py","action":"modify"}],"reference_files":[]}},{"section":"risks_mitigations","mode":"replace","content":[{"risk":"Clamping could hide a caller bug that should remain visible in behavior expectations.","mitigation":"Preserve the public signature and add focused assertions documenting the intended clamping behavior.","severity":"medium"}]},{"section":"verification_strategy","mode":"replace","content":[{"method":"pytest tests/test_foo.py -q","expected_outcome":"The focused regression test passes.","timeout_seconds":60,"cwd":"."}]},{"section":"design","mode":"replace","content":{"planning_profile":"strict","outcome":"foo() handles out-of-range indexes without crashing and the regression test passes.","testability":{"must_be_black_box":true,"forbidden_in_tests":["time.sleep"],"required_test_layers":["unit"]},"acceptance_criteria":{"criteria":[{"id":"AC-01","description":"A focused regression test covers the out-of-range index.","satisfied_by_steps":[1]},{"id":"AC-02","description":"src/foo.py clamps the index while preserving the public signature.","satisfied_by_steps":[2]}]}}}]}
+Worked example document (fill with concrete executor-ready detail):
 
-{{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}}:
-{}
+```markdown
+---
+type: plan
+---
 
-{{FINALIZE_PLAN_TOOL_REFERENCE}}:
-{}
+## Summary
+- [SUM-1] {"context":"Fix the foo() off-by-one regression and prove it with a focused unit test.","intent":"Clamp foo() index so the regression cannot recur.","intent_verb":"improve","scope_items":[{"text":"Add a regression test for the out-of-range foo() index","category":"test"},{"text":"Modify src/foo.py to clamp the index before lookup","category":"file_change"},{"text":"Run the focused pytest command that proves the regression is fixed","category":"test"}]}
+
+## Skills MCP
+- [SK-1] {"skills":["test-driven-development","systematic-debugging"],"mcps":[]}
+
+## Steps
+- [S-1] {"title":"Add the foo() regression test","content":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.","step_type":"file_change","priority":"high","targets":[{"path":"tests/test_foo.py","action":"modify"}],"expected_evidence":[{"kind":"test_name","ref":"tests/test_foo.py::test_clamp_handles_out_of_range_index"}],"depends_on":[]}
+- [S-2] {"title":"Clamp the foo() index","content":"Update src/foo.py so the lookup index is clamped while preserving the public foo() signature.","step_type":"file_change","priority":"high","targets":[{"path":"src/foo.py","action":"modify"}],"expected_evidence":[{"kind":"file","ref":"src/foo.py"}],"depends_on":["S-1"]}
+- [S-3] {"title":"Run the focused regression test","content":"Run pytest tests/test_foo.py -q from the repository root and confirm it passes.","step_type":"verify","verify_command":"pytest tests/test_foo.py -q","expected_evidence":[{"kind":"command_output","ref":"pytest tests/test_foo.py -q"}],"depends_on":["S-2"]}
+
+## Critical Files
+- [CF-1] {"primary_files":[{"path":"src/foo.py","action":"modify"},{"path":"tests/test_foo.py","action":"modify"}],"reference_files":[]}
+
+## Risks Mitigations
+- [R-1] {"risk":"Clamping could hide a caller bug that should remain visible in behavior expectations.","mitigation":"Preserve the public signature and add focused assertions documenting the intended clamping behavior.","severity":"medium"}
+
+## Verification
+- [V-1] {"method":"pytest tests/test_foo.py -q","expected_outcome":"The focused regression test passes.","timeout_seconds":60,"cwd":"."}
+```

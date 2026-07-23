@@ -1,59 +1,74 @@
-{# Single-shot artifact submission contract. Single source of truth so the
-   prose cannot drift between commit_message, development_analysis, review,
-   worker_developer, etc. The planning multi-step flow
-   (submit_plan_section / finalize_plan) does NOT use this macro.
+{# Single-shot markdown artifact submission contract. Single source of truth
+   so the prose cannot drift between commit_message, development_analysis,
+   review, worker_developer, etc.
 
    Designed for cheap / small / "dumb" agents that follow numbered steps
    and pattern-match examples. Failure modes the macro defuses: wrong
-   artifact_type alias, outer envelope wrapper, legacy content_path,
-   schema guessing, missing declare_complete, prose echo.
+   artifact_type alias, JSON payloads instead of markdown, wrong section
+   headings or item syntax, missing declare_complete, prose echo.
 
    declare_complete is the LOAD-BEARING final step. The completion gate
    checks TWO things atomically: a submission receipt for (run_id,
    artifact_type) on disk AND a declare_complete sentinel for the same
    run_id. Receipt without declare_complete ⇒ "no completion evidence"
    ⇒ forced retry. A real production failure: a small model that called
-   submit_artifact successfully then stopped (interpreting the submit's
+   the submit tool successfully then stopped (interpreting the submit's
    success text as "done") — the gate retried forever because there was
    no declare_complete to correlate against. The macro therefore makes
    declare_complete step 5, emboldened, repeated in DO-NOT. If the gate
    ever changes so receipts alone satisfy completion, REMOVE step 5 in
    the same change.
+
+   ``example_doc`` is a complete example markdown document, typically
+   built at the call site with {% set example_doc %}...{% endset %}.
+   ``verify_tool_reference`` is optional because some renderers (commit,
+   reviewer, worker) do not expose the verify tool.
 #}
-{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_payload, write_file_tool_reference='') -%}
+{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_doc, write_file_tool_reference='', verify_tool_reference='') -%}
 ## Submit a `{{ artifact_type }}` artifact
 
 **Do steps 1-5 in order. If step 3 is unavailable and the write-file fallback is present, use step 6 instead. Step 5 is mandatory.**
 
 1. **Read the format doc** at `.agent/artifact-formats/{{ artifact_type }}.md`
-   (or `artifact_formats_index.md`). Do NOT guess.
+   (or `artifact_formats_index.md`). Do NOT guess the grammar.
 
-2. **Build the inner payload object** (e.g. for `commit_message`:
-   `{{ example_payload }}`). This becomes `content`.
+2. **Author the artifact as ONE markdown document**: a `---`-delimited
+   frontmatter block (`key: value` lines), then `## Section` headings whose
+   content is stable-ID list items of the form `- [ID] text` (one line per
+   item). Example for `{{ artifact_type }}`:
 
-3. **Call {{ submit_tool_reference }}** with this exact shape (`content`
-   is a JSON STRING — escape inner quotes):
-
+   ```markdown
+{{ example_doc | trim | indent(3, true) }}
    ```
-   {"artifact_type": "{{ artifact_type }}", "content": {{ example_payload | tojson }}}
-   ```
 
-4. **Wait for the tool result.** `Artifact submitted:` is NOT completion.
+3. **Call {{ submit_tool_reference }}** with two arguments: `artifact_type`
+   set to `"{{ artifact_type }}"` and `content` set to the full markdown
+   document from step 2 (a plain markdown string — never JSON).
+{%- if verify_tool_reference %}
+   Optionally call {{ verify_tool_reference }} first with the same two
+   arguments to validate without persisting.
+{%- endif %}
+
+4. **Wait for the tool result.** If it reports diagnostics, each one carries
+   a line number, section, and rule code — fix every reported line in the
+   document and resubmit ONCE with all repairs applied. A success result is
+   NOT completion.
 
 5. **>>> CALL `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}` AS YOUR FINAL ACTION. <<<**
 
    Optional `summary` param. Example:
-   `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}(summary="commit_message")`.
+   `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}(summary="{{ artifact_type }}")`.
 
 {% if write_file_tool_reference %}
-6. **If submit-artifact MCP tool is unavailable, use this INSTEAD OF step 3**: write the raw inner payload JSON to `.agent/tmp/{{ artifact_type }}.json` via
-   {{ write_file_tool_reference }} (no outer envelope), then do steps 4 and 5.
+6. **If the submit tool is unavailable, use this INSTEAD OF step 3**: write the
+   same complete markdown document to `.agent/tmp/{{ artifact_type }}.md` via
+   {{ write_file_tool_reference }}, then do steps 4 and 5.
 {% endif %}
 
 ## Do NOT
 
 - **Stop after step 3 or step 4.** Submit success text is NOT completion.
-- Send `artifact_type="commit"` or `"skip"` — use canonical `{{ artifact_type }}`.
-- Do NOT wrap the fallback file in `{"type":..., "content":...}`; write ONLY the inner payload.
-- Echo the payload as your ONLY action — the MCP declare_complete call is the contract.
+- Send a different `artifact_type` alias — use canonical `{{ artifact_type }}`.
+- Put JSON in `content` or wrap the document in any object; `content` is the raw markdown text.
+- Echo the document as your ONLY action — the MCP declare_complete call is the contract.
 {%- endmacro %}

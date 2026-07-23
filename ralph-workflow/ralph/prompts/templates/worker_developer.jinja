@@ -27,4 +27,21 @@ Do not write to `.agent/workers/` paths belonging to other workers.
 
 {{ base_prompt }}
 
-{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Implemented the requested fix and verified it.","files_changed":"- src/main.py","plan_items_proven":[{"plan_item":"Step 1: Implement the fix","proof":"Updated src/main.py and ran pytest."}],"analysis_items_addressed":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{% set development_result_example %}
+---
+type: development_result
+status: completed
+---
+
+## Summary
+- [SUM-1] Implemented the requested fix and verified it.
+
+## Files Changed
+- [FC-1] src/main.py
+
+## Plan Items Proven
+- [{{ unit_id }}] Implemented this work unit; updated src/main.py and ran pytest tests/test_main.py -q; it passes.
+{% endset %}
+In `## Plan Items Proven`, the bracketed ID must EXACTLY match your assigned `unit_id` (`{{ unit_id }}`), and the item text must cite concrete evidence of what you implemented.
+
+{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

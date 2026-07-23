@@ -256,8 +256,8 @@ def is_artifact_submitted(
 
     This is the completion-signal layer's single entry point for artifact
     presence. It first checks for a receipt; if none exists it attempts to
-    promote a fallback file written by the agent (``.agent/tmp/<type>.json`` or
-    ``.agent/artifacts/<type>.json``) through the canonical submit path so a
+    promote a fallback markdown document written by the agent
+    (``.agent/tmp/<type>.md``) through the canonical submit path so a
     receipt is stamped.
 
     Args:

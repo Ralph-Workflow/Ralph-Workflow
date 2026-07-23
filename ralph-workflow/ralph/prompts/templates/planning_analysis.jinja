@@ -18,7 +18,7 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 {{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
-Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the current finalized plan or staged draft before evaluating it.
+Read the current plan document at `.agent/artifacts/plan.md` (mirror: `.agent/PLAN.md`; grammar: `.agent/artifact-formats/plan.md`) before evaluating it.
 
 {% if HAS_DOCS_MCP %}
 
@@ -42,7 +42,7 @@ The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. W
 If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively
 whenever it improves evidence quality or reduces time to verified evidence.
 
-Your first priority is retrieving and checking the real analysis inputs: PROMPT and the current finalized plan or staged draft,
+Your first priority is retrieving and checking the real analysis inputs: PROMPT and the current plan document,
 plus the referenced repository files, representative verification commands, relevant policy/config files,
 and surrounding code or tests needed to confirm the plan is real and executable.
 
@@ -129,7 +129,8 @@ Every entry you put in `what_came_up_short` must pass BOTH tests:
 
 1. **Provable**: you personally observed the defect in this session — in the plan content, the
    repository, or the output of a command you ran — and the entry cites that observation.
-2. **Actionable**: the planner can close the gap through the MCP plan-edit tools, and closure is
+2. **Actionable**: the planner can close the gap by revising the plan document (rewritten sections
+   or `ralph_edit_md_plan_step` step edits, resubmitted via `ralph_submit_md_artifact`), and closure is
    provable from plan content, repository evidence, or runnable commands in a session like this one.
 
 If a claim can only be verified outside this session — a CI pipeline, a deployed environment,
@@ -169,7 +170,7 @@ If you cannot make a decision from the plan alone, explore until you can.
 
 ---
 
-You MUST submit a structured planning analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
+You MUST submit a planning analysis decision artifact with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}}
 using `artifact_type="planning_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 Not submitting the analysis artifact is a FAILURE.
 
@@ -195,13 +196,13 @@ Before issuing `request_changes`, enumerate all currently visible repo-grounded 
 Judge the plan against the ORIGINAL PROMPT scope, not only against the most recent review comments.
 If the task is repository-wide, check that inventories, remediation scope, critical files, risks, and verification are repository-wide rather than example-scoped or subset-scoped.
 If defect scope is `repo_wide`, say explicitly that the next planning pass must re-derive the plan globally rather than patching only the cited sections.
-When describing remediation, target the planner's MCP revision workflow: tell it which plan sections to resubmit and what repository evidence those revised sections must incorporate. When a fix is limited to specific executor steps, explicitly suggest the most precise step-edit tool: `ralph_patch_step` for adding or correcting a few fields, `ralph_replace_plan_step` for replacing a vague or wrong step, `ralph_insert_plan_step` for adding missing work, `ralph_move_plan_step` for reordering dependencies, or `ralph_remove_plan_step` for deleting unsupported work. Do not tell the planner to edit `PLAN.md` or `.agent/artifacts/plan.json` directly.
+When describing remediation, target the planner's revision workflow: tell it which plan document sections to rewrite and what repository evidence those revised sections must incorporate. When a fix is limited to specific executor steps, suggest the matching `ralph_edit_md_plan_step` action: `replace` for a vague or wrong step, `insert` for missing work, `move` for reordering dependencies, or `remove` for unsupported work — the revised document is then resubmitted with `ralph_submit_md_artifact`. Do not tell the planner to edit `.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
 Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL PROMPT to count as working, even when the prompt states them only implicitly.
 Use this reasoning chain explicitly when needed: Goal → required workflow → prerequisite action/state → plan coverage. If a required workflow or prerequisite is missing from the plan, treat that as missing work rather than as an optional product idea.
 Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
 Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
 If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before deciding it is sound.
-Use this exact string format for each `what_came_up_short` entry: `PA-### | Dimension: ... | Defect: ... | Evidence: ... | Missing: ...`.
+Write each `what_came_up_short` entry as `- [PA-###] Dimension: ... | Defect: ... | Evidence: ... | Missing: ...` and each `how_to_fix` entry as `- [PA-###] <fix>` with the SAME ID.
 
 ### 1. PROMPT COMPLIANCE
 
@@ -305,25 +306,33 @@ required by the task.
 
 ## DECISION ARTIFACT
 
-Return a JSON object.
+The decision is a markdown document (grammar: `.agent/artifact-formats/planning_analysis_decision.md`):
+`---` frontmatter with `type: planning_analysis_decision` and `status: completed|request_changes|failed`,
+then `## Summary` (exactly one item), and — for any non-completed status — `## What Came Up Short`
+and `## How To Fix`, one `- [PA-###] ...` item per gap with matching IDs across the two sections.
 
-- If the plan is sound across ALL dimensions: `{"status":"completed","summary":"..."}`
+- Choose `status: completed` when the plan is sound across ALL evaluatable dimensions.
+- Choose `status: request_changes` when it falls short in any evaluatable dimension with a gap you proved yourself.
+- Choose `status: failed` when the analysis found major incompleteness or an otherwise unusable plan; stronger remediation may be needed, including starting over from the planning phase.
 
-- After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
-  and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+Author the document, submit it per the procedure below, and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 
-- Use `content` for a freshly generated native JSON object or JSON-serialized string.
-- Valid submit example:
-  `{"artifact_type":"planning_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
+{% set planning_decision_example %}
+---
+type: planning_analysis_decision
+status: request_changes
+---
 
-- Falls short in any evaluatable dimension, with a gap you proved yourself:
-  `{"status":"request_changes","summary":"The plan is missing executor-ready verification.","what_came_up_short":["PA-001 | Dimension: Verification gap | Defect: verification_strategy omits the exact pytest command | Evidence: verification_strategy[0] says run tests | Missing: exact command and expected passing result"],"how_to_fix":["PA-001 | Resubmit verification_strategy with method pytest tests/test_foo.py -q and expected_outcome describing the passing regression test"]}`
+## Summary
+- [SUM-1] The plan is missing executor-ready verification.
 
-- The analysis found major incompleteness or an otherwise unusable result; stronger remediation may
-  be needed, including possible redo or start over from the planning phase:
-  `{"status":"failed","summary":"The plan is not usable because required sections are missing.","what_came_up_short":["PA-001 | Dimension: Executor readiness | Defect: steps and critical_files are absent | Evidence: staged draft only contains summary | Missing: executable steps and real target files"],"how_to_fix":["PA-001 | Restart planning and stage summary, skills_mcp, steps, critical_files, risks_mitigations, and verification_strategy before finalizing"]}`
+## What Came Up Short
+- [PA-001] Dimension: Verification gap | Defect: verification section omits the exact pytest command | Evidence: V-1 says "run tests" | Missing: exact command and expected passing result
 
-{{ render_artifact_submission('planning_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"The plan is executor-ready."}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## How To Fix
+- [PA-001] Rewrite the Verification section with method `pytest tests/test_foo.py -q` and an expected_outcome describing the passing regression test, then resubmit the plan document.
+{% endset %}
+{{ render_artifact_submission('planning_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, planning_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 
@@ -362,7 +371,7 @@ For every item in `what_came_up_short`, provide a corresponding fix entry:
 2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
 3. **Preserve the same stable gap ID from the corresponding `what_came_up_short` entry** so the planner can prove closure without ambiguity.
 4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
-5. **Step-by-step remediation using the planner's MCP flow** (`ralph_get_plan_draft` / `ralph_submit_plan_section` / `ralph_insert_plan_step` / `ralph_replace_plan_step` / `ralph_patch_step` / `ralph_move_plan_step` / `ralph_remove_plan_step` / `ralph_finalize_plan`, or restart only when truly unsalvageable).
+5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, use `ralph_edit_md_plan_step` for targeted step edits, resubmit via `ralph_submit_md_artifact`; restart only when truly unsalvageable).
 6. **Commands or checks to validate the revised plan.**
 7. **What passing evidence looks like.**
 
@@ -372,19 +381,22 @@ One gap, one fix entry. No grouping multiple gaps under one fix.
 
 ## EXAMPLE FAILING ANALYSIS ARTIFACT
 
-```json
-{
-  "status": "request_changes",
-  "summary": "The plan captures the broad goal but is not yet executor-ready.",
-  "what_came_up_short": [
-    "PA-001 | Dimension: Executor readiness | Defect: `steps[2]` says to update the review flow but does not name files, transitions, or artifact contracts | Evidence: `steps[2].content` only says update the review flow | Missing: exact policy, prompt, artifact, and routing edits",
-    "PA-002 | Dimension: Repository reference invalid | Defect: The plan references `tests/test_planning_analysis.py`, but no such file exists | Evidence: repository search finds no `tests/test_planning_analysis.py` | Missing: real target files and an existing test pattern to mirror",
-    "PA-003 | Dimension: Verification gap | Defect: `verification_strategy[0]` says run tests without an exact pytest target | Evidence: `verification_strategy[0].method` is `run tests` | Missing: exact command and expected passing result"
-  ],
-  "how_to_fix": [
-    "PA-001 | Resubmit `steps` via `ralph_submit_plan_section` so `steps[2]` names the exact policy, prompt, and artifact files the executor must change and the concrete routing behavior to implement.",
-    "PA-002 | Resubmit the affected `steps` or `critical_files` sections so the nonexistent `tests/test_planning_analysis.py` reference is replaced with real target files and an existing test file whose pattern should be mirrored.",
-    "PA-003 | Resubmit `verification_strategy` with exact commands such as `uv run pytest -q tests/test_policy_loader.py tests/test_tool_artifact.py`, then finalize the revised draft only after those planning-analysis regressions are named as required passing evidence."
-  ]
-}
+```markdown
+---
+type: planning_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] The plan captures the broad goal but is not yet executor-ready.
+
+## What Came Up Short
+- [PA-001] Dimension: Executor research burden | Defect: step S-2 says to update the review flow but does not name files, transitions, or artifact contracts | Evidence: S-2 content only says update the review flow | Missing: exact policy, prompt, artifact, and routing edits
+- [PA-002] Dimension: Repository reference invalid | Defect: the plan references tests/test_planning_analysis.py, but no such file exists | Evidence: repository search finds no tests/test_planning_analysis.py | Missing: real target files and an existing test pattern to mirror
+- [PA-003] Dimension: Verification gap | Defect: V-1 says run tests without an exact pytest target | Evidence: V-1 method is "run tests" | Missing: exact command and expected passing result
+
+## How To Fix
+- [PA-001] Use ralph_edit_md_plan_step with action "replace" on S-2 so it names the exact policy, prompt, and artifact files the executor must change and the concrete routing behavior to implement, then resubmit the document.
+- [PA-002] Rewrite the affected Steps and Critical Files entries so the nonexistent tests/test_planning_analysis.py reference is replaced with real target files and an existing test file whose pattern should be mirrored.
+- [PA-003] Rewrite the Verification section with exact commands such as `uv run pytest -q tests/test_policy_loader.py` and name the expected passing evidence, then resubmit the document.
 ```

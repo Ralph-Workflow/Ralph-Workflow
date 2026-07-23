@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -12,6 +12,8 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.history import snapshot_current_artifact
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.mcp.artifacts.markdown import MarkdownArtifactError, parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
 
@@ -110,19 +112,79 @@ def submit_artifact_canonical(
     return SubmitResult(artifact_path, receipt_path, sentinel_path, handoff_path, artifact_type, run_id)
 
 
+def _registered_markdown_types() -> tuple[str, ...]:
+    """Return the artifact types with a registered markdown spec."""
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    return tuple(spec.artifact_type for spec in registered_specs())
+
+
+def _fallback_path(workspace_root: Path, artifact_type: str) -> Path:
+    return workspace_root / ".agent" / "tmp" / f"{artifact_type}.md"
+
+
 def _clear_fallback_artifacts(workspace_root: Path, run_id: str, *, backend: FileBackend = DEFAULT_FILE_BACKEND) -> None:
-    """Clear obsolete JSON fallback files from a newly started run."""
+    """Clear obsolete fallback files (legacy JSON and markdown) from a newly started run."""
     del run_id
     tmp = workspace_root / ".agent" / "tmp"
-    if backend.exists(tmp):
-        for path in backend.glob(tmp, "*.json"):
-            backend.unlink(path, missing_ok=True)
+    if not backend.exists(tmp):
+        return
+    for path in backend.glob(tmp, "*.json"):
+        backend.unlink(path, missing_ok=True)
+    for artifact_type in _registered_markdown_types():
+        backend.unlink(_fallback_path(workspace_root, artifact_type), missing_ok=True)
 
 
-def promote_fallback_artifact(*args: object, **kwargs: object) -> SubmitResult | None:
-    """Markdown has no JSON fallback promotion path."""
-    del args, kwargs
-    return None
+def promote_fallback_artifact(
+    workspace_root: Path,
+    artifact_type: str,
+    *,
+    deps: ArtifactHandlerDeps | None = None,
+    run_id: str | None = None,
+    receipt_secret: str | None = None,
+) -> SubmitResult | None:
+    """Promote an agent-written ``.agent/tmp/<type>.md`` fallback through canonical submit.
+
+    Returns ``None`` when no fallback document exists, the artifact type has
+    no registered markdown spec, or the document fails markdown validation —
+    an invalid fallback must not stamp a submission receipt.
+    """
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    try:
+        spec = get_spec(artifact_type)
+    except ValueError:
+        return None
+    resolved_deps = deps
+    if resolved_deps is None:
+        resolved_deps = cast(
+            "ArtifactHandlerDeps",
+            import_module("ralph.mcp.tools.artifact").DEFAULT_ARTIFACT_HANDLER_DEPS,
+        )
+    if receipt_secret is not None:
+        resolved_deps = replace(resolved_deps, receipt_secret=receipt_secret)
+    backend = resolved_deps.backend
+    fallback = _fallback_path(workspace_root, artifact_type)
+    if not backend.exists(fallback):
+        return None
+    try:
+        markdown = backend.read_text(fallback, encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        parsed_content, diagnostics = parse_and_validate(markdown, spec)
+    except (ValueError, MarkdownArtifactError):
+        return None
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return None
+    result = submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=artifact_type,
+        parsed_content=dict(parsed_content),
+        markdown=markdown,
+        deps=resolved_deps,
+        run_id=run_id,
+    )
+    backend.unlink(fallback, missing_ok=True)
+    return result
 
 
 __all__ = ["SubmitResult", "_clear_fallback_artifacts", "promote_fallback_artifact", "submit_artifact_canonical"]

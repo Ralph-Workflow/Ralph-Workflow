@@ -22,50 +22,48 @@ Read the changed files and compare the implementation against the plan and requi
 
 Submit review findings using `artifact_type="issues"`.
 
-Return a JSON object.
+The `issues` artifact is a markdown document (grammar: `.agent/artifact-formats/issues.md`):
+`---` frontmatter with `type: issues` and `status: no_issues|issues_found`, then:
+- `## Summary` — exactly one item: a one-sentence summary of the review.
+- `## Issues` — one item per finding, text formatted `path | severity | summary` (severity: `high`, `medium`, or `low`).
+- `## What Came Up Short` — one item per defect, regression, missing requirement, unsafe change, or verification gap.
+- `## How To Fix` — one item per gap: ordered, concrete remediation the fixer can execute directly (exact files, changes, checks to run, expected outcomes).
 
-- If the implementation passes review, use `{"status":"no_issues","summary":"<one-sentence summary of the review>","issues":[],"what_came_up_short":[],"how_to_fix":[]}`.
-- If the implementation needs fixes, use `{"status":"issues_found","summary":"The implementation has a validation gap.","issues":[{"path":"src/foo.py","severity":"high","summary":"Out-of-range indexes are not clamped"}],"what_came_up_short":["Out-of-range index handling is missing"],"how_to_fix":["Clamp the index in src/foo.py and add tests/test_foo.py::test_clamp_handles_out_of_range_index"]}`.
+Rules:
+- When `status` is `no_issues`, omit `## Issues`, `## What Came Up Short`, and `## How To Fix` (or leave them empty).
+- When `status` is `issues_found`, all three sections must be non-empty.
+- Cite concrete evidence in every gap: file paths, failing tests, missing checks, or behavior mismatches. No vague summaries.
 
-Valid status values are `"no_issues"` and `"issues_found"`.
+{% set issues_example %}
+---
+type: issues
+status: no_issues
+---
 
-For any review that finds issues, the following two fields are mandatory and must be as detailed as possible:
+## Summary
+- [SUM-1] The implementation is correct and verification passed.
+{% endset %}
+{{ render_artifact_submission('issues', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, issues_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
-1. `what_came_up_short`
-   - Enumerate every defect, regression, missing requirement, unsafe change, or verification gap.
-   - Cite concrete evidence: file paths, failing tests, missing checks, or behavior mismatches.
-   - Do not use vague summaries without specifics.
+Example issues artifact when the implementation needs fixes:
 
-2. `how_to_fix`
-   - Provide detailed, ordered remediation steps that would allow the implementation to pass review on the next attempt.
-   - Include exact files to change, what to update in each file, which tests/checks to run, and what outcomes must be observed.
-   - Make the instructions comprehensive enough that the fixer can execute them directly.
+```markdown
+---
+type: issues
+status: issues_found
+---
 
-When `status` is `"no_issues"`, `issues`, `what_came_up_short`, and `how_to_fix` may be empty arrays.
-When `status` is `"issues_found"`, all three arrays must be non-empty.
+## Summary
+- [SUM-1] The feature works in the happy path, but error handling and regression coverage are incomplete.
 
-{{ render_artifact_submission('issues', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"no_issues","summary":"The implementation is correct and verification passed.","issues":[],"what_came_up_short":[],"how_to_fix":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## Issues
+- [I-1] ralph/pipeline/runner.py | high | A failure path still treats runtime text as markup.
 
-Example issues artifact:
+## What Came Up Short
+- [W-1] ralph/pipeline/runner.py still has one failure output path that renders runtime text unsafely.
+- [W-2] There is no regression test proving malformed tool output cannot crash the remaining CLI error output path.
 
-```json
-{
-  "status": "issues_found",
-  "summary": "The feature works in the happy path, but error handling and regression coverage are incomplete.",
-  "issues": [
-    {
-      "path": "ralph/pipeline/runner.py",
-      "severity": "high",
-      "summary": "A failure path still treats runtime text as markup."
-    }
-  ],
-  "what_came_up_short": [
-    "`ralph/pipeline/runner.py` still has one failure output path that renders runtime text unsafely.",
-    "There is no regression test proving malformed tool payloads cannot crash the remaining CLI error output path."
-  ],
-  "how_to_fix": [
-    "Convert the remaining CLI failure output path to a Rich `Text`-based render so runtime strings are always treated as literal text.",
-    "Add a regression test that feeds bracket-heavy runtime text through the affected path and confirms rendering does not raise `MarkupError`."
-  ]
-}
+## How To Fix
+- [F-1] Convert the remaining CLI failure output path to a Rich Text-based render so runtime strings are always treated as literal text.
+- [F-2] Add a regression test that feeds bracket-heavy runtime text through the affected path and confirms rendering does not raise MarkupError.
 ```
