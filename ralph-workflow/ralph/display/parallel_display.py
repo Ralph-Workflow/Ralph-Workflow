@@ -389,11 +389,11 @@ def strip_markup(line: str) -> str:
 
 
 def _strip_markup(line: str) -> str:
-    """Reduce valid Rich markup for log output while preserving malformed text."""
+    """Reduce valid Rich markup for explicit markup-stripping callers."""
     try:
-        return Text.from_markup(line).plain
+        return strip_terminal_control(Text.from_markup(line).plain)
     except ValueError:
-        return line
+        return strip_terminal_control(line)
 
 
 class ParallelDisplay:
@@ -1525,10 +1525,10 @@ class ParallelDisplay:
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
-                    line=strip_markup(line),
+                    line=_sanitize(line),
                     agent_name=unit_id,
                 )
-        self.emit_log_line(unit_id or "run", strip_markup(line))
+        self.emit_log_line(unit_id or "run", _sanitize(line))
 
     def emit_parsed_event(
         self,

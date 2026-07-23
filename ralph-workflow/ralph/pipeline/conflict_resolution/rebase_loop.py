@@ -26,7 +26,7 @@ not stage even if it tried.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -323,14 +323,10 @@ def _resolve_gitlinks(
             chosen.append((path, ours))
         else:
             return False
-    return all(
-        run_git(
-            ("update-index", "--cacheinfo", f"160000,{sha},{path}"),
-            cwd=root,
-            label="git-gitlink-resolve",
-        ).returncode
-        == 0
-        for path, sha in chosen
+    return _stage_deterministic_entries(
+        root,
+        (("160000", sha, path) for path, sha in chosen),
+        label="git-gitlink-resolve",
     )
 
 
@@ -340,18 +336,40 @@ def _resolve_mode_only(
     stages: list[dict[int, tuple[str, str]]],
 ) -> bool:
     """Prefer target mode unless the feature changed it from the base."""
-    for path, stage in zip(paths, stages, strict=True):
-        target_mode, blob = stage[_CONFLICT_STAGE_OURS]
-        feature_mode = stage[_CONFLICT_STAGE_THEIRS][0]
-        base_mode = stage.get(1, ("", ""))[0]
-        mode = feature_mode if base_mode == target_mode else target_mode
-        if run_git(
-            ("update-index", "--cacheinfo", f"{mode},{blob},{path}"),
-            cwd=root,
-            label="git-mode-only-resolve",
-        ).returncode != 0:
-            return False
-    return True
+    chosen = (
+        (
+            feature_mode if stage.get(1, ("", ""))[0] == target_mode else target_mode,
+            blob,
+            path,
+        )
+        for path, stage in zip(paths, stages, strict=True)
+        for target_mode, blob in (stage[_CONFLICT_STAGE_OURS],)
+        for feature_mode in (stage[_CONFLICT_STAGE_THEIRS][0],)
+    )
+    return _stage_deterministic_entries(
+        root,
+        chosen,
+        label="git-mode-only-resolve",
+    )
+
+
+def _stage_deterministic_entries(
+    root: Path,
+    entries: Iterable[tuple[str, str, str]],
+    *,
+    label: str,
+) -> bool:
+    """Stage an entire deterministic stop through one atomic index update.
+
+    ``git update-index`` holds its lock until all cacheinfo records validate,
+    so a non-zero exit leaves every conflicted path untouched for the normal
+    resolver. Issuing one command prevents a later failure from partially
+    resolving a stop.
+    """
+    args: list[str] = ["update-index"]
+    for mode, blob, path in entries:
+        args.extend(("--cacheinfo", f"{mode},{blob},{path}"))
+    return run_git(tuple(args), cwd=root, label=label).returncode == 0
 
 
 def _rebase_base_sha(root: Path) -> str | None:

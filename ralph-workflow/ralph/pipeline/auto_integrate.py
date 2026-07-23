@@ -1,4 +1,11 @@
-"""Auto-integration seam: rebase a feature branch and fast-forward its target safely."""
+"""Auto-integration seam: rebase a feature branch and fast-forward its target safely.
+
+The workflow first rebases the feature branch onto its live local target. On a
+conflict, it hands the stop to the conflict-resolution pipeline to resolve the
+rebase in place, prove and stage the result, then run ``git rebase --continue``.
+Only when that resolution cannot land does it merge on unresolved conflict as
+the endpoint fallback before fast-forwarding the target.
+"""
 
 from __future__ import annotations
 
