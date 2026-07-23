@@ -2,7 +2,7 @@
 
 This page documents the agent CLIs Ralph Workflow supports and the per-agent compatibility story.
 
-Ralph Workflow's review phase is agent-agnostic in its prompts. Different agents differ in JSON output format, tool execution behavior, and CLI quirks, so each agent block below lists CLI, transport, parser, and known caveats. Some model providers (CCS/GLM, ZhipuAI, Qwen, DeepSeek) have weaker instruction-following; Ralph Workflow automatically applies the [Universal Review Prompt](#universal-review-prompt) for them. For best results, use Claude Code or Codex as the reviewer. Override with `--reviewer-agent claude` or `--reviewer-agent codex`.
+Ralph Workflow's analysis phase is agent-agnostic in its prompts. Different agents differ in JSON output format, tool execution behavior, and CLI quirks, so each agent block below lists CLI, transport, parser, and known caveats. The agent that runs a given pipeline phase is selected by the policy-driven routing in `[agent_drains]`; see [Agent Chain and Fallback Behavior](#agent-chain-and-fallback-behavior) below for the canonical model. The reviewer / review-phase section of older docs is gone: the codebase removed the review-era CLI flags (`--reviewer-agent`, `--reviewer-model`, `--reviewer-reviews`, `--review-depth`), the `force_universal_prompt` config key, and the `RALPH_REVIEWER_*` environment variables. Pipeline routing is now driven entirely by `[agent_chains]` + `[agent_drains]` in `~/.config/ralph-workflow.toml`.
 
 ## Built-in agents
 
@@ -218,7 +218,7 @@ can_commit = true
 glm = "ccs glm"
 ```
 
-For weaker-instruction-following models (CCS/GLM, ZhipuAI/ZAI, Qwen, DeepSeek), the [Universal Review Prompt](#universal-review-prompt) is automatically applied. Aider uses a generic text-based output format; use the `generic` parser. The standalone `gemini` CLI is parsed by the `gemini` parser but is less mature than AGY.
+For weaker-instruction-following models (CCS/GLM, ZhipuAI/ZAI, Qwen, DeepSeek), the analysis prompt is rendered with a simplified, agent-agnostic shape so those models follow the structured artifacts reliably. Aider uses a generic text-based output format; use the `generic` parser. The standalone `gemini` CLI is parsed by the `gemini` parser but is less mature than AGY.
 
 ```toml
 [agents.gemini]
@@ -230,32 +230,39 @@ json_parser = "gemini"
 
 ## Agent Chain and Fallback Behavior
 
-Ralph Workflow uses an **agent chain** system for fault-tolerant execution. When an agent fails, Ralph Workflow automatically falls back to the next agent in the chain.
+Ralph Workflow uses a policy-driven routing system for fault-tolerant execution: each named `[agent_chains.*]` entry is an ORDERED FALLBACK LIST of agents for a role (tried left-to-right until one succeeds), and each `[agent_drains.*]` entry is a ROUTING LABEL that binds a pipeline phase to one of those chains.
 
 ### Agent Chain Configuration
 
-Configure reusable named chains, then bind the built-in runtime drains in `~/.config/ralph-workflow.toml`:
+Configure reusable named chains, then bind the bundled runtime drains in `~/.config/ralph-workflow.toml`. The drain names below are the ones the bundled pipeline actually reads; each value must name a key in `[agent_chains]` (or be added there if you extend the policy):
 
 ```toml
 [agent_chains]
-developer = ["claude", "codex", "aider"]
-reviewer = ["claude", "codex"]
+planning = ["claude/opus"]
+development = ["claude/sonnet"]
+analysis = ["claude/opus"]
+commit = ["claude/haiku"]
 
 [agent_drains]
-planning = "developer"
-development = "developer"
-analysis = "developer"
-review = "reviewer"
-fix = "reviewer"
+planning = "planning"
+planning_analysis = "analysis"
+development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
+analysis = "analysis"
+commit = "commit"
 ```
+
+The bundled defaults ship with only the `claude` agent active so a first-run user has a satisfiable configuration out of the box. To add `opencode` once it is on `PATH`, extend the relevant chain list (`development = ["claude/sonnet", "opencode/openai/gpt-5.4"]`). To add `codex`, append it the same way. CCS aliases are configured under `[ccs_aliases]` — see [Configuration Reference](configuration.md#ccs_aliases) for the CCS plumbing.
 
 ### Fallback Behavior by Role
 
 | Runtime Drain | Binding | Fallback If Omitted |
 |--------------|---------|--------------------|
-| **Planning / Development / Analysis** | `agent_drains.* -> agent_chains.<name>` | Analysis inherits the resolved planning/development chain |
-| **Review / Fix** | `agent_drains.* -> agent_chains.<name>` | Fix should usually share the review chain unless you want a dedicated fix chain |
-| **Commit** | `agent_drains.commit -> agent_chains.<name>` | Inherits the resolved review/fix binding |
+| `planning` / `planning_analysis` | `agent_drains.* -> agent_chains.<name>` | The policy load fails `validate_chain_exists` if the named chain key is missing — there is no silent default. |
+| `development` / `development_analysis` / `development_commit` | `agent_drains.* -> agent_chains.<name>` | Same `validate_chain_exists` failure as above. |
+| `analysis` | `agent_drains.* -> agent_chains.<name>` | Same `validate_chain_exists` failure as above. |
+| `commit` | `agent_drains.* -> agent_chains.<name>` | Same `validate_chain_exists` failure as above. |
 
 ## JSON Parser Selection
 
@@ -266,26 +273,6 @@ fix = "reviewer"
 | `opencode` | OpenCode | Required for OpenCode |
 | `gemini` | Gemini CLI | Native parser, experimental |
 | `generic` | Any agent; Google Anti Gravity (AGY) | Native parser for AGY (plain-text, not NDJSON); fallback for other agents |
-
-## Universal Review Prompt
-
-The Universal Review Prompt is a simplified, agent-agnostic review prompt designed to work with AI models that have weaker instruction-following capabilities or known compatibility issues with complex structured prompts. Ralph Workflow automatically uses the Universal Review Prompt when the reviewer agent is `ccs/glm` (or any agent containing "glm"), ZhipuAI agents, Qwen agents, or DeepSeek agents.
-
-Force the universal prompt with `RALPH_REVIEWER_UNIVERSAL_PROMPT=1` or add `force_universal_prompt = true` to `[general]` in `~/.config/ralph-workflow.toml`.
-
-## How to use a different reviewer
-
-The most reliable option is to use Claude Code or Codex as the reviewer while keeping GLM/CCS as the developer:
-
-```bash
-ralph --developer-agent ccs/glm --reviewer-agent claude
-```
-
-To skip review entirely:
-
-```bash
-RALPH_REVIEWER_REVIEWS=0 ralph
-```
 
 ## Contributing
 
