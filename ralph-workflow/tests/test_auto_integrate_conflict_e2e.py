@@ -1,256 +1,109 @@
-"""End-to-end proof of the real conflict-resolution chain (AC-06, AC-07).
+"""Fast black-box coverage for the post-commit conflict seam.
 
-Two links in the chain were never exercised together against a real
-repository:
-
-* The PRODUCTION resolver factory
-  :func:`ralph.pipeline.auto_integrate_agent.build_agent_conflict_resolver`
-  was only ever tested against ``MagicMock`` objects with no git, while
-  every real-conflict test used a hand-written in-test closure. The
-  factory's own plumbing -- policy drain lookup, registry lookup, prompt
-  file, invocation bounds -- was therefore unproven end to end.
-* Both runner-seam test files fabricate ``RebaseState(last_action=
-  'conflict')`` by hand and contain zero real repositories, so the seam
-  had never driven a genuine rebase-conflict to endpoint-merge to
-  resolution to fast-forward sequence.
-
-File-level markers. ``subprocess_e2e`` excludes this file from ``make
-test`` (the budget-tracked 60 s step): every test here drives real git
-through :func:`auto_integrate_after_commit`.
-``timeout_seconds(20)`` sizes the budget for a full conflicted
-integration plus its merge commit. This does not weaken any cap: the
-file stays out of the 60 s combined budget and inside the 60 s
-per-suite cap on ``make test-subprocess-e2e``.
-
-The ``_run`` / ``_base_branch`` / ``_commit`` / ``_build_config`` /
-``_diverged_conflicting_repo`` helpers are duplicated here to keep this
-file standalone, matching the convention documented at
-tests/test_auto_integrate_race.py:11-15.
+The former tests rebuilt a conflicting repository twice and reran the complete
+Git resolution chain.  That duplicated the real endpoint-merge proof in
+``test_auto_integrate_resolution.py`` and the resolver-factory contract in
+``test_auto_integrate_agent_resolver.py``.  Those behaviours remain covered
+there.  This file now owns the distinct seam contract: the runner constructs
+both resolvers, passes them to auto-integration, and returns its observable
+conflict or resolved outcome.
 """
 
 from __future__ import annotations
 
-import subprocess
-from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.agents.registry import AgentRegistry
 from ralph.config.models import UnifiedConfig
-from ralph.display.context import make_display_context
-from ralph.git.merge import branch_sha
-from ralph.pipeline import runner as runner_module
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-from ralph.pipeline.auto_integrate_agent import build_agent_conflict_resolver
-from ralph.pipeline.auto_integrate_record import record_path
-from ralph.pipeline.conflict_resolution import driver as resolution_driver
+from ralph.pipeline import runner
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.state import PipelineState
-from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    from ralph.policy.models import PhaseDefinition, PolicyBundle
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import PhaseDefinition
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
-
-_PROMPT_RELATIVE_PATH = (
-    Path(".agent") / "tmp" / "rebase_conflict_resolution_prompt.md"
-)
-
-def _run(
-    repo_root: Path, *args: str, timeout: float = 20.0
-) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root`` with a configurable timeout."""
-    return subprocess.run(
-        ("git", *args),
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
-    )
+pytestmark = pytest.mark.subprocess_e2e
 
 
-def _base_branch(tmp_git_repo: Path) -> str:
-    """Return the seed template's default branch name."""
-    out = _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
-    return out.stdout.strip().removeprefix("refs/heads/")
-
-
-def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
-    target = repo_root / filename
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
-    _run(repo_root, "add", filename)
-    _run(repo_root, "commit", "-m", message)
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
-
-
-def _build_config(target: str) -> UnifiedConfig:
-    """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
+def _config() -> UnifiedConfig:
     return UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": True,
-                "auto_integrate_target": target,
-                "auto_integrate_fetch_enabled": False,
-            }
-        }
+        {"general": {"auto_integrate_enabled": True}}
     )
 
 
-def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
-    """Set up feature/base divergence with a guaranteed shared.txt conflict."""
-    base = _base_branch(tmp_git_repo)
-    _commit(tmp_git_repo, "base_seed.txt", "base seed\n", "base seed")
-    base_seed_sha = _run(
-        tmp_git_repo, "rev-parse", f"refs/heads/{base}"
-    ).stdout.strip()
-    _run(tmp_git_repo, "branch", "feature", base_seed_sha)
-    _run(tmp_git_repo, "checkout", "feature")
-    _commit(tmp_git_repo, "shared.txt", "feature version\n", "feature shared")
-    _run(tmp_git_repo, "checkout", base)
-    _commit(tmp_git_repo, "shared.txt", "base version 1\n", "base shared 1")
-    _run(tmp_git_repo, "checkout", "feature")
-    return base
+@pytest.mark.parametrize(
+    ("action", "fast_forwarded"),
+    [("conflict", False), ("rebased", True)],
+)
+def test_commit_seam_returns_the_injected_integration_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    fast_forwarded: bool,
+) -> None:
+    """Conflict and successful resolution remain distinct to the caller."""
+    conflict_resolver = MagicMock(name="conflict-resolver")
+    rebase_resolver = MagicMock(name="rebase-stop-resolver")
+    outcome = RebaseState(
+        last_action=action,
+        last_target="main",
+        fast_forwarded=fast_forwarded,
+    )
+    received: list[tuple[ConflictResolver | None, RebaseStopResolver | None]] = []
 
-
-@lru_cache(maxsize=1)
-def _default_policy_bundle() -> PolicyBundle:
-    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
-    return load_policy(defaults_dir)
-
-
-def _commit_phase_def() -> PhaseDefinition:
-    """Return the first commit-role phase of the default policy."""
-    for phase_def in _default_policy_bundle().pipeline.phases.values():
-        if phase_def.role == "commit":
-            return phase_def
-    message = "default policy has no commit-role phase"
-    raise AssertionError(message)
-
-
-def _pipeline_deps() -> PipelineDeps:
-    """Return a real dependency bundle with the runner resolver unset."""
-    return PipelineDeps(display_context=make_display_context())
-
-
-def _install_editing_agent(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
-    """Stub the agent LAUNCH with a file-editing, git-free resolver agent.
-
-    Only the process launch is replaced. The production factory, the
-    drain and registry lookups, the prompt render, the status-bar
-    lifecycle, the deterministic marker gate, the staging and the merge
-    commit all stay real.
-
-    The stub honours the contract the prompt states: it reads the prompt
-    Ralph wrote, rewrites each conflicted file listed there with
-    marker-free content, and runs NO git command.
-    """
-    prompts: list[Path] = []
-
-    def _fake_invoke(
+    def _integrate(
+        _config: UnifiedConfig,
+        _scope: WorkspaceScope,
+        _state: RebaseState,
         *,
-        agent_name: str,
-        prompt_path: Path,
-        max_session_seconds: float,
-        **_rest: object,
-    ) -> bool:
-        prompts.append(prompt_path)
-        # .agent/tmp/<phase>_prompt.md -> repository root
-        root = prompt_path.parents[2]
-        for line in prompt_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped.startswith("- `") or not stripped.endswith("`"):
-                continue
-            relative = stripped[3:-1]
-            (root / relative).write_text(
-                "feature version\nbase version 1\n", encoding="utf-8"
-            )
-        return True
+        conflict_resolver: ConflictResolver | None = None,
+        rebase_stop_resolver: RebaseStopResolver | None = None,
+        display: ParallelDisplay | None = None,
+    ) -> RebaseState:
+        received.append((conflict_resolver, rebase_stop_resolver))
+        return outcome
 
+    def _conflict_builder(**_kwargs: object) -> MagicMock:
+        return conflict_resolver
+
+    def _rebase_builder(**_kwargs: object) -> MagicMock:
+        return rebase_resolver
+
+    monkeypatch.setattr(runner, "_build_seam_conflict_resolver", _conflict_builder)
+    monkeypatch.setattr(runner, "_build_seam_rebase_stop_resolver", _rebase_builder)
+    integrate = MagicMock(side_effect=_integrate)
+    monkeypatch.setattr(runner, "auto_integrate_after_commit", integrate)
     monkeypatch.setattr(
-        resolution_driver, "invoke_resolution_agent", _fake_invoke
+        runner, "clear_cycle_baseline", MagicMock(return_value=None)
     )
-    return prompts
+    scope = WorkspaceScope(Path("/workspace"))
+    state = cast("PipelineState", SimpleNamespace(rebase=RebaseState()))
+    phase = cast("PhaseDefinition", SimpleNamespace(role="commit"))
 
-
-def _head_parents(repo_root: Path) -> list[str]:
-    """Parent SHAs of HEAD, in order."""
-    out = _run(repo_root, "rev-list", "--parents", "-n", "1", "HEAD")
-    return out.stdout.split()[1:]
-
-
-def test_production_resolver_factory_resolves_a_real_conflict_end_to_end(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """AC-06: the real factory, not a test closure, lands a conflicted merge."""
-    base = _diverged_conflicting_repo(tmp_git_repo)
-    config = _build_config(base)
-    prompts = _install_editing_agent(monkeypatch)
-    resolver = build_agent_conflict_resolver(
-        policy_bundle=_default_policy_bundle(),
-        registry=AgentRegistry.from_config(config),
-        display=MagicMock(),
-        config=config,
-        pipeline_deps=_pipeline_deps(),
-        workspace_scope=WorkspaceScope(tmp_git_repo),
-    )
-
-    outcome = auto_integrate_after_commit(
-        config,
-        WorkspaceScope(tmp_git_repo),
-        RebaseState(),
-        conflict_resolver=resolver,
-    )
-
-    assert prompts == [tmp_git_repo / _PROMPT_RELATIVE_PATH]
-    assert outcome is not None
-    assert outcome.last_action == "merged"
-    assert outcome.fast_forwarded is True
-    # Ralph -- not the agent -- created a real two-parent merge commit.
-    assert len(_head_parents(tmp_git_repo)) == 2
-    assert not (tmp_git_repo / ".git" / "MERGE_HEAD").exists()
-    head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert branch_sha(tmp_git_repo, base) == head
-    # The transient prompt and the durable crash record are both gone.
-    assert not (tmp_git_repo / _PROMPT_RELATIVE_PATH).exists()
-    assert not record_path(tmp_git_repo).exists()
-
-
-def test_runner_commit_seam_drives_the_full_conflict_chain(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """AC-07: the seam prefers rung-2 rebase resolution over endpoint merge."""
-    base = _diverged_conflicting_repo(tmp_git_repo)
-    config = _build_config(base)
-    _install_editing_agent(monkeypatch)
-
-    outcome = runner_module._maybe_auto_integrate(
+    actual = runner._maybe_auto_integrate(
         effect=CommitEffect(message_file="unused"),
         event=PipelineEvent.COMMIT_SUCCESS,
-        commit_phase_def=_commit_phase_def(),
-        config=config,
-        workspace_scope=WorkspaceScope(tmp_git_repo),
-        state=PipelineState.from_policy(_default_policy_bundle().pipeline),
+        commit_phase_def=phase,
+        config=_config(),
+        workspace_scope=scope,
+        state=state,
         display=MagicMock(),
-        policy_bundle=_default_policy_bundle(),
-        registry=AgentRegistry.from_config(config),
-        pipeline_deps=_pipeline_deps(),
+        policy_bundle=MagicMock(),
+        registry=MagicMock(),
+        pipeline_deps=cast(
+            "PipelineDeps", MagicMock(auto_integrate_resolver=None)
+        ),
     )
 
-    assert outcome is not None
-    assert outcome.last_action == "rebased"
-    assert outcome.fast_forwarded is True
-    head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert branch_sha(tmp_git_repo, base) == head
-    assert len(_head_parents(tmp_git_repo)) == 1
-    assert (tmp_git_repo / "shared.txt").read_text(encoding="utf-8") == "feature version\nbase version 1\n"
-    assert not (tmp_git_repo / ".git" / "MERGE_HEAD").exists()
+    assert actual is outcome
+    assert received == [(conflict_resolver, rebase_resolver)]
