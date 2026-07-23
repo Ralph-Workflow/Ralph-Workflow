@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._document import ParsedDocument
 from ralph.mcp.artifacts.markdown._lenient_enum import LenientEnum
-from ralph.mcp.artifacts.markdown._parser import parse_markdown_document
+from ralph.mcp.artifacts.markdown._parser import parse_markdown_document, stray_line_diagnostic
 from ralph.mcp.artifacts.markdown._references import validate_unique_ids
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
+
+if TYPE_CHECKING:
+    from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 type Content = dict[str, object]
 type DocumentMapper = Callable[[ParsedDocument], Content]
@@ -42,6 +47,9 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         try:
             content = spec.to_content(document)
             normalized = spec.normalize_content(content)
+        except MarkdownArtifactError as exc:
+            diagnostics.extend(exc.diagnostics)
+            return {}, diagnostics
         except (TypeError, ValueError) as exc:
             diagnostics.append(_normalizer_diagnostic(document, str(exc)))
             return {}, diagnostics
@@ -86,9 +94,54 @@ def _validate_structure(
                 section.items, section=section.name, case_sensitive=rule.case_sensitive_ids
             )
         )
+        diagnostics.extend(_validate_section_shapes(section, rule))
     for name, rule in spec.sections.items():
         if rule.required and name not in seen_sections:
             diagnostics.append(Diagnostic(1, name, "SPEC008", f"missing required section {name!r}"))
+    return diagnostics
+
+
+def _validate_section_shapes(section: ParsedSection, rule: SectionRule) -> list[Diagnostic]:
+    """Enforce which content shapes (body, items, blocks) one section admits."""
+    diagnostics: list[Diagnostic] = []
+    if rule.allow_blocks:
+        diagnostics.extend(
+            validate_unique_ids(
+                section.blocks, section=section.name, case_sensitive=rule.case_sensitive_ids
+            )
+        )
+        diagnostics.extend(
+            Diagnostic(
+                item.line, section.name, "SPEC011", "section content must be '### [ID] Title' blocks"
+            )
+            for item in section.items
+        )
+    else:
+        diagnostics.extend(
+            Diagnostic(
+                block.line,
+                section.name,
+                "MD001",
+                "headings must use '## Section' or '### [ID] Title'",
+            )
+            for block in section.blocks
+        )
+    if rule.require_blocks and not section.blocks:
+        diagnostics.append(
+            Diagnostic(
+                section.line,
+                section.name,
+                "SPEC012",
+                "section requires at least one '### [ID] Title' block",
+            )
+        )
+    if not rule.allow_body:
+        diagnostics.extend(stray_line_diagnostic(line, section.name) for line in section.lines)
+        diagnostics.extend(
+            stray_line_diagnostic(field_line, section.name)
+            for item in section.items
+            for field_line in item.fields
+        )
     return diagnostics
 
 

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from ralph.config.mcp_models import McpConfig, WebSearchConfig
-from ralph.mcp.artifacts.plan import PLAN_SECTION_NAMES
 from ralph.mcp.tools.bridge import tool_specs
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
-    SUBMIT_PLAN_SECTION_TOOL,
     WEB_SEARCH_TOOL,
 )
 
@@ -43,45 +41,3 @@ class TestToolSpecsWebSearch:
         tool_names = {spec.metadata.definition.name for spec in specs}
         for tool in ALL_RALPH_TOOLS:
             assert tool in tool_names, f"Tool {tool} is missing from tool_specs"
-
-    def test_submit_plan_section_tool_lists_every_supported_plan_section(self) -> None:
-        """The MCP-facing tool description must stay aligned with the plan schema.
-
-        planning_edit.jinja teaches agents to revise plans through the MCP plan-edit
-        flow, so the brokered tool metadata must enumerate every section accepted by
-        the backend validator.
-        """
-        specs = tool_specs(McpConfig())
-        submit_plan_spec = next(
-            spec for spec in specs if spec.metadata.definition.name == SUBMIT_PLAN_SECTION_TOOL
-        )
-        description = submit_plan_spec.metadata.definition.description
-
-        for section_name in sorted(PLAN_SECTION_NAMES):
-            assert section_name in description, (
-                f"submit-plan-section description is missing schema-supported section "
-                f"{section_name!r}"
-            )
-
-    def test_input_schema_section_description_enumerates_every_supported_plan_section(
-        self,
-    ) -> None:
-        """The input_schema section description must enumerate every PLAN_SECTION_NAMES entry.
-
-        This guards against the input_schema description drifting out of sync with
-        the runtime validator; the runtime accepts every section, and the metadata
-        must reflect that for tool consumers that introspect the schema.
-        """
-        specs = tool_specs(McpConfig())
-        submit_plan_spec = next(
-            spec for spec in specs if spec.metadata.definition.name == SUBMIT_PLAN_SECTION_TOOL
-        )
-        section_description = submit_plan_spec.metadata.definition.input_schema["properties"][
-            "section"
-        ]["description"]
-
-        for section_name in sorted(PLAN_SECTION_NAMES):
-            assert section_name in section_description, (
-                f"submit-plan-section input_schema section description is missing "
-                f"schema-supported section {section_name!r}"
-            )

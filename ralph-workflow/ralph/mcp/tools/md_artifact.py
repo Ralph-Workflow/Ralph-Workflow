@@ -214,17 +214,13 @@ def handle_edit_md_plan_step(
     index = params.get("index")
     if not isinstance(content, str) or not isinstance(action, str) or not isinstance(step_id, str):
         raise InvalidParamsError("content, action, and step_id are required")
-    if replacement is not None and not isinstance(replacement, dict):
-        raise InvalidParamsError("replacement must be an object")
+    if replacement is not None and not isinstance(replacement, str):
+        raise InvalidParamsError(
+            "replacement must be a markdown step block string ('### [S-n] Title' plus body)"
+        )
     if index is not None and not isinstance(index, int):
         raise InvalidParamsError("index must be an integer")
-    edited = edit_plan_step_markdown(
-        content,
-        action,
-        step_id,
-        cast("dict[str, object] | None", replacement),
-        index,
-    )
+    edited = edit_plan_step_markdown(content, action, step_id, replacement, index)
     return ToolResult(content=[ToolContent.json_content({"content": edited})], is_error=False)
 
 

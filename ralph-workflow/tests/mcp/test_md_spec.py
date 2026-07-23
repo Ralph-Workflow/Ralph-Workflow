@@ -55,3 +55,32 @@ def test_shared_validator_rejects_missing_required_document_structure() -> None:
         ("Other", "SPEC004"),
         ("Steps", "SPEC008"),
     }
+
+
+def test_shared_validator_rejects_body_and_blocks_where_a_section_forbids_them() -> None:
+    spec = MdArtifactSpec(
+        artifact_type="example",
+        required_frontmatter=frozenset({"status"}),
+        sections={"Steps": SectionRule(require_items=True)},
+        to_content=_to_content,
+        normalize_content=_normalize,
+    )
+
+    content, diagnostics = parse_and_validate(
+        "---\nstatus: ready\n---\n"
+        "## Steps\n"
+        "- [S1] Build\n"
+        "  Extra: field line\n"
+        "stray prose\n"
+        "- bare bullet\n"
+        "### [B1] Block\n",
+        spec,
+    )
+
+    assert content == {}
+    assert {(diagnostic.line, diagnostic.rule_id) for diagnostic in diagnostics} == {
+        (6, "MD004"),
+        (7, "MD004"),
+        (8, "MD003"),
+        (9, "MD001"),
+    }

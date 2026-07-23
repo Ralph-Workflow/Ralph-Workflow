@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
-
 _ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+
+class StableIdNode(Protocol):
+    """Any parsed node that carries a stable ID and a source line."""
+
+    @property
+    def identifier(self) -> str: ...
+
+    @property
+    def line(self) -> int: ...
 
 
 def normalize_id(identifier: str, *, case_sensitive: bool = True) -> str | None:
@@ -23,7 +31,7 @@ def normalize_id(identifier: str, *, case_sensitive: bool = True) -> str | None:
 
 
 def validate_unique_ids(
-    items: Iterable[ParsedItem],
+    items: Iterable[StableIdNode],
     *,
     section: str | None = None,
     case_sensitive: bool = True,
@@ -120,6 +128,7 @@ def _required_id(identifier: str, case_sensitive: bool) -> str:
 
 
 __all__ = [
+    "StableIdNode",
     "normalize_id",
     "validate_acyclic_dependencies",
     "validate_references",
