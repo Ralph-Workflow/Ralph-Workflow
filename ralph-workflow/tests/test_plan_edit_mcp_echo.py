@@ -1,302 +1,91 @@
-"""Tests for the read-after-write echo payload of the 5 step-mutation MCP tools.
-
-Each test asserts on the new JSON dict shape (not the old literal string).
-The echo payload is documented in
-``.agent/artifact-formats/plan.md`` §'Step-mutation read-after-write echo'.
-
-Tests:
-- insert returns {action, new_step_number, reindex_map, rewritten_depends_on,
-  rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, validation_warnings,
-  total_steps}.
-- replace returns the same shape with step_number preserved (no new_step_number).
-- patch returns the replace echo shape after preserving unspecified fields.
-- remove returns the same shape with removed_step_number and the new total_steps.
-- move returns the same shape with from_step_number and to_index.
-
-The tests use only in-memory Pydantic + the existing tool handlers
-(no real I/O, no real subprocess, no time.sleep). All tests are fully
-type-annotated.
-"""
+"""Wire-result coverage for markdown plan-step edits."""
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
-from ralph.mcp.tools.plan_draft_edit import (
-    handle_insert_plan_step,
-    handle_move_plan_step,
-    handle_patch_step,
-    handle_remove_plan_step,
-    handle_replace_plan_step,
+import pytest
+from pydantic import TypeAdapter
+
+from ralph.mcp.tools.coordination import (
+    CoordinationSessionLike,
+    InvalidParamsError,
+    ToolContent,
+    WorkspaceLike,
 )
-from ralph.workspace.fs import FsWorkspace
+from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step
+from tests.mcp.test_md_plan_spec import _plan_document
 from tests.test_artifact_format_docs_mock_session import planning_session
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from ralph.mcp.tools.tool_content import ToolContent
+_JSON_OBJECT = TypeAdapter(dict[str, object])
 
 
-def _write_draft(tmp_path: Path, draft: dict[str, object]) -> None:
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(json.dumps(draft), encoding="utf-8")
+def _session() -> CoordinationSessionLike:
+    return cast("CoordinationSessionLike", planning_session())
 
 
-def _read_response_text(result: object) -> str:
-    content = cast("list[ToolContent]", result.content)
-    return cast("str", content[0].text)
+def _workspace() -> WorkspaceLike:
+    return cast("WorkspaceLike", None)
 
 
-def _read_response_json(result: object) -> dict[str, object]:
-    return cast("dict[str, object]", json.loads(_read_response_text(result)))
-
-
-def _three_step_draft_with_ac() -> dict[str, object]:
-    return {
-        "schema_version": 1,
-        "started_at": "2026-05-20T00:00:00+00:00",
-        "updated_at": "2026-05-20T00:00:00+00:00",
-        "sections": {
-            "summary": {
-                "context": "ctx",
-                "scope_items": [
-                    {"text": "a", "category": "file_change"},
-                    {"text": "b", "category": "test"},
-                    {"text": "c", "category": "prompt"},
-                ],
-            },
-            "skills_mcp": {"skills": ["writing-plans"], "mcps": []},
-            "steps": [
-                {
-                    "number": 1,
-                    "title": "A",
-                    "content": "a",
-                    "step_type": "action",
-                    "depends_on": [],
-                },
-                {
-                    "number": 2,
-                    "title": "B",
-                    "content": "b",
-                    "step_type": "verify",
-                    "verify_command": "pytest tests/test_b.py -q",
-                    "depends_on": [1],
-                },
-                {
-                    "number": 3,
-                    "title": "C",
-                    "content": "c",
-                    "step_type": "action",
-                    "depends_on": [2],
-                },
-            ],
-            "critical_files": {
-                "primary_files": [{"path": "a.py", "action": "modify"}],
-            },
-            "risks_mitigations": [
-                {"risk": "r", "mitigation": "m", "severity": "low"},
-            ],
-            "verification_strategy": [{"method": "pytest", "expected_outcome": "ok"}],
-            "design": {
-                "acceptance_criteria": {
-                    "criteria": [
-                        {
-                            "id": "AC-01",
-                            "description": "ok",
-                            "satisfied_by_steps": [1, 2, 3],
-                        }
-                    ]
-                }
-            },
-        },
-    }
-
-
-def test_insert_returns_echo_payload_shape(tmp_path: Path) -> None:
-    """insert returns the new_step_number, reindex_map, rewritten lists, and total_steps."""
-    _write_draft(tmp_path, _three_step_draft_with_ac())
-    workspace = FsWorkspace(tmp_path)
-    result = handle_insert_plan_step(
-        planning_session(),
-        workspace,
+def test_edit_tool_echoes_only_the_updated_markdown_document() -> None:
+    result = handle_edit_md_plan_step(
+        _session(),
+        _workspace(),
         {
-            "index": 2,
-            "step": {
-                "number": 99,
-                "title": "Inserted",
-                "content": "inserted",
-                "step_type": "action",
-                "depends_on": [1],
-            },
+            "content": _plan_document(),
+            "action": "replace",
+            "step_id": "S-2",
+            "replacement": (
+                "### [S-2] Run focused tests\n"
+                "Run the focused migration tests.\n\n"
+                "Type: verify\n"
+                "Depends on: S-1\n"
+                "Verify: pytest tests/test_plan_artifact*.py -q\n"
+            ),
         },
     )
-    assert result.is_error is False
-    payload = _read_response_json(result)
-    # Required keys
-    for key in (
-        "action",
-        "new_step_number",
-        "reindex_map",
-        "rewritten_depends_on",
-        "rewritten_ac_satisfied_by_steps",
-        "dropped_ac_satisfied_by_steps",
-        "total_steps",
-        "validation_warnings",
-    ):
-        assert key in payload, f"insert echo missing key {key!r}"
-    assert payload["action"] == "insert"
-    # The inserted step is assigned its post-reindex number.
-    assert isinstance(payload["new_step_number"], int)
-    assert payload["new_step_number"] == 2
-    # Reindex map has 4 entries
-    reindex_map = cast("dict[str, int], object", payload["reindex_map"])
-    assert len(reindex_map) == 4
-    # Total steps is 4 after insert
-    assert payload["total_steps"] == 4
-    # The AC's satisfied_by_steps was rewritten (the old 1, 2, 3 -> new 1, 3, 4)
-    rewritten = cast("list[str], object", payload["rewritten_ac_satisfied_by_steps"])
-    assert "AC-01" in rewritten
+
+    block = result.content[0]
+    assert isinstance(block, ToolContent)
+    payload = _JSON_OBJECT.validate_json(block.text)
+    edited = payload["content"]
+    assert isinstance(edited, str)
+    assert set(payload) == {"content"}
+    assert "### [S-2] Run focused tests" in edited
+    assert "Depends on: S-1" in edited
 
 
-def test_replace_returns_echo_payload_shape(tmp_path: Path) -> None:
-    """replace returns the same shape with step_number preserved (no new_step_number)."""
-    _write_draft(tmp_path, _three_step_draft_with_ac())
-    workspace = FsWorkspace(tmp_path)
-    result = handle_replace_plan_step(
-        planning_session(),
-        workspace,
-        {
-            "step_number": 2,
-            "step": {
-                "title": "Renamed B",
-                "content": "renamed",
-                "step_type": "action",
-                "depends_on": [1],
+@pytest.mark.parametrize(
+    ("params", "message"),
+    [
+        ({"action": "move", "step_id": "S-1"}, "content, action, and step_id"),
+        (
+            {
+                "content": "x",
+                "action": "replace",
+                "step_id": "S-1",
+                "replacement": {"title": "JSON is retired"},
             },
-        },
-    )
-    assert result.is_error is False
-    payload = _read_response_json(result)
-    for key in (
-        "action",
-        "step_number",
-        "reindex_map",
-        "rewritten_depends_on",
-        "rewritten_ac_satisfied_by_steps",
-        "dropped_ac_satisfied_by_steps",
-        "total_steps",
-        "validation_warnings",
-    ):
-        assert key in payload, f"replace echo missing key {key!r}"
-    assert payload["action"] == "replace"
-    assert payload["step_number"] == 2
-    # No new_step_number in replace echo
-    assert "new_step_number" not in payload
-    # Reindex map has 3 entries (number preserved)
-    reindex_map = cast("dict[str, int], object", payload["reindex_map"])
-    assert len(reindex_map) == 3
-    assert payload["total_steps"] == 3
-
-
-def test_patch_returns_echo_payload_shape(tmp_path: Path) -> None:
-    """patch returns the replace echo shape after preserving omitted fields."""
-    _write_draft(tmp_path, _three_step_draft_with_ac())
-    workspace = FsWorkspace(tmp_path)
-    result = handle_patch_step(
-        planning_session(),
-        workspace,
-        {
-            "step_number": 2,
-            "step": {
-                "expected_evidence": [
-                    {"kind": "command_output", "ref": "pytest tests/test_b.py -q"}
-                ]
+            "replacement must be a markdown step block",
+        ),
+        (
+            {
+                "content": "x",
+                "action": "move",
+                "step_id": "S-1",
+                "index": "1",
             },
-        },
-    )
-    assert result.is_error is False
-    payload = _read_response_json(result)
-    for key in (
-        "action",
-        "step_number",
-        "reindex_map",
-        "rewritten_depends_on",
-        "rewritten_ac_satisfied_by_steps",
-        "dropped_ac_satisfied_by_steps",
-        "total_steps",
-        "validation_warnings",
-    ):
-        assert key in payload, f"patch echo missing key {key!r}"
-    assert payload["action"] == "replace"
-    assert payload["step_number"] == 2
-    assert payload["total_steps"] == 3
-    assert payload["validation_warnings"] == []
-
-
-def test_remove_returns_echo_payload_shape(tmp_path: Path) -> None:
-    """remove returns the same shape with removed_step_number and the new total_steps."""
-    _write_draft(tmp_path, _three_step_draft_with_ac())
-    workspace = FsWorkspace(tmp_path)
-    # Remove step 3; nothing depends on it (steps 1 and 2 only depend on each other).
-    result = handle_remove_plan_step(
-        planning_session(),
-        workspace,
-        {"step_number": 3},
-    )
-    assert result.is_error is False
-    payload = _read_response_json(result)
-    for key in (
-        "action",
-        "removed_step_number",
-        "reindex_map",
-        "rewritten_depends_on",
-        "rewritten_ac_satisfied_by_steps",
-        "dropped_ac_satisfied_by_steps",
-        "total_steps",
-        "validation_warnings",
-    ):
-        assert key in payload, f"remove echo missing key {key!r}"
-    assert payload["action"] == "remove"
-    assert payload["removed_step_number"] == 3
-    # total_steps is 2 after removal
-    assert payload["total_steps"] == 2
-    # Removed AC references are preserved as staged JSON and surfaced as warnings
-    # so the validation/finalize gate reports the schema error without losing data.
-    dropped = cast("list[str], object", payload["dropped_ac_satisfied_by_steps"])
-    assert dropped == []
-    warnings = cast("list[str]", payload["validation_warnings"])
-    assert any("satisfied_by_steps" in warning for warning in warnings)
-
-
-def test_move_returns_echo_payload_shape(tmp_path: Path) -> None:
-    """move returns the same shape with from_step_number and to_index."""
-    _write_draft(tmp_path, _three_step_draft_with_ac())
-    workspace = FsWorkspace(tmp_path)
-    result = handle_move_plan_step(
-        planning_session(),
-        workspace,
-        {"from_step_number": 3, "to_index": 1},
-    )
-    assert result.is_error is False
-    payload = _read_response_json(result)
-    for key in (
-        "action",
-        "from_step_number",
-        "to_index",
-        "reindex_map",
-        "rewritten_depends_on",
-        "rewritten_ac_satisfied_by_steps",
-        "dropped_ac_satisfied_by_steps",
-        "total_steps",
-        "validation_warnings",
-    ):
-        assert key in payload, f"move echo missing key {key!r}"
-    assert payload["action"] == "move"
-    assert payload["from_step_number"] == 3
-    assert payload["to_index"] == 1
-    # Reindex map has 3 entries (step numbers preserved by move)
-    reindex_map = cast("dict[str, int], object", payload["reindex_map"])
-    assert len(reindex_map) == 3
+            "index must be an integer",
+        ),
+    ],
+)
+def test_edit_tool_rejects_non_markdown_wire_shapes(
+    params: dict[str, object], message: str
+) -> None:
+    with pytest.raises(InvalidParamsError, match=message):
+        handle_edit_md_plan_step(
+            _session(),
+            _workspace(),
+            params,
+        )
