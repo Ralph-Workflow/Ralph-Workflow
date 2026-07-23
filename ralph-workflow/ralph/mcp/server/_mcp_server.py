@@ -24,7 +24,6 @@ from ralph.mcp.tools.coordination import (
     ToolContent,
     ToolResult,
 )
-from ralph.mcp.tools.json_repair import repair_json_containers
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
 from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 
@@ -557,8 +556,6 @@ class McpServer:
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
         arguments_value = params.get("arguments", {})
-        if isinstance(arguments_value, str):
-            arguments_value = repair_json_containers(arguments_value)
         if not isinstance(arguments_value, dict):
             error = {"code": -32602, "message": "tools/call arguments must be an object"}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)

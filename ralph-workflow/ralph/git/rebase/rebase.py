@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
+_RENAME_LIMIT_RETRY_ARGS = ("-c", "merge.renameLimit=0")
 
 
 @dataclass(frozen=True)
@@ -212,6 +213,14 @@ def rebase_onto(
         upstream_branch_name,
     )
     result = executor.execute("git", rebase_argv, cwd=path)
+    if result.returncode != 0 and _rename_detection_was_skipped(result):
+        # C12 ladder rung 2: Git has paused this replay after declining
+        # inexact rename detection. Abort the untouched stop, then retry once
+        # with the documented unlimited limit; a second warning falls through
+        # to normal index-based conflict resolution/fallback.
+        aborted = executor.execute("git", ("rebase", "--abort"), cwd=path)
+        if aborted.succeeded:
+            result = executor.execute("git", (*_RENAME_LIMIT_RETRY_ARGS, *rebase_argv), cwd=path)
 
     # The earlier-stop handling for ``--empty=drop``-refusing
     # older git: when a rebase STOPs on a commit that became
@@ -249,6 +258,15 @@ def rebase_onto(
             break
 
     return _rebase_result_from_process(result, path, executor)
+
+
+def _rename_detection_was_skipped(result: ProcessResult) -> bool:
+    """Whether Git declined inexact rename detection for this replay (C12)."""
+    payload = f"{result.stderr}\n{result.stdout}".lower()
+    return (
+        "inexact rename detection was skipped" in payload
+        or "you may want to set your merge.renamelimit" in payload
+    )
 
 
 def is_empty_rebase_stop(stderr: str, stdout: str) -> bool:

@@ -16,6 +16,7 @@ from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseNoOp,
     RebaseOperationError,
+    RebaseSuccess,
     SubprocessExecutor,
     abort_rebase,
     continue_rebase,
@@ -160,6 +161,70 @@ def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> 
     assert executor.calls == [
         ("git", ("merge-base", "--is-ancestor", "--", upstream, "HEAD")),
     ]
+
+
+def test_rebase_rename_limit_warning_retries_once_with_raised_limit(
+    tmp_git_repo: Path,
+) -> None:
+    """C12 regression: a skipped rename scan is aborted and retried once."""
+    with Repo(tmp_git_repo) as repo:
+        base_branch = repo.active_branch.name
+        repo.git.checkout("-b", "feature-rename-limit")
+    initial = (
+        "rebase",
+        "--no-autostash",
+        "--no-autosquash",
+        "--no-update-refs",
+        "--empty=drop",
+        "--",
+        base_branch,
+        "feature-rename-limit",
+    )
+    retry = ("-c", "merge.renameLimit=0", *initial)
+    executor = FakeProcessExecutor(
+        {
+            ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(1),
+            ("git", initial): _mk_result(
+                1, stderr="warning: inexact rename detection was skipped"
+            ),
+            ("git", ("rebase", "--abort")): _mk_result(),
+            ("git", retry): _mk_result(),
+        }
+    )
+
+    assert isinstance(rebase_onto(base_branch, repo_root=tmp_git_repo, executor=executor), RebaseSuccess)
+    assert executor.calls.count(("git", retry)) == 1
+
+
+def test_rebase_rename_limit_retry_conflict_is_classified_without_loop(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
+    """C12 regression: a retry that still conflicts reaches normal resolution."""
+    with Repo(tmp_git_repo) as repo:
+        base_branch = repo.active_branch.name
+        repo.git.checkout("-b", "feature-rename-limit-conflict")
+    initial = (
+        "rebase", "--no-autostash", "--no-autosquash", "--no-update-refs", "--empty=drop", "--",
+        base_branch, "feature-rename-limit-conflict",
+    )
+    retry = ("-c", "merge.renameLimit=0", *initial)
+    executor = FakeProcessExecutor(
+        {
+            ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(1),
+            ("git", initial): _mk_result(1, stderr="you may want to set your merge.renameLimit"),
+            ("git", ("rebase", "--abort")): _mk_result(),
+            ("git", retry): _mk_result(1, stderr="CONFLICT (content): Merge conflict"),
+        }
+    )
+    monkeypatch.setattr("ralph.git.rebase.rebase.rebase_in_progress", lambda _path: True)
+    monkeypatch.setattr(
+        "ralph.git.rebase.rebase.get_conflicted_files", lambda **_kwargs: ["README.md"]
+    )
+
+    result = rebase_onto(base_branch, repo_root=tmp_git_repo, executor=executor)
+
+    assert isinstance(result, RebaseConflicts)
+    assert executor.calls.count(("git", retry)) == 1
 
 
 def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path) -> None:

@@ -1238,6 +1238,21 @@ class ProcessManager:
 
         all_procs = [root, *children]
         self._record_termination_outcome(record.pid, "graceful_terminate", "sent")
+        # Drive the owned process object too. This is the canonical lifecycle
+        # seam. Invoke tests inject lightweight subprocess doubles with a
+        # recycled illustrative PID; once those report termination, touching
+        # psutil would signal an unrelated real process.
+        with contextlib.suppress(ProcessLookupError):
+            proc.terminate()
+        if (
+            record.label is not None
+            and record.label.startswith("invoke:")
+            and not hasattr(proc, "master_fd")
+            and proc.poll() is not None
+        ):
+            self._terminate_registered_descendants(record, grace_period_s)
+            self._mark_killed(record, proc.poll())
+            return
         for p in all_procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.terminate()

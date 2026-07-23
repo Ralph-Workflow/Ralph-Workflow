@@ -9,6 +9,7 @@ from typing import cast
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
+from ralph.mcp.artifacts.markdown.specs.plan import edit_plan_step_markdown
 from ralph.mcp.tools.artifact import (
     DEFAULT_ARTIFACT_HANDLER_DEPS,
     ArtifactHandlerDeps,
@@ -72,11 +73,40 @@ def handle_submit_md_artifact(
         workspace_root=workspace_root,
         artifact_type=artifact_type,
         parsed_content=parsed_content,
+        markdown=content,
         deps=effective_deps,
         run_id=_session_run_id(session),
         artifact_dir=_resolve_artifact_dir(session, workspace),
     )
     return result
+
+
+def handle_edit_md_plan_step(
+    session: CoordinationSessionLike,
+    _workspace: WorkspaceLike,
+    params: dict[str, object],
+) -> ToolResult:
+    """Edit one plan step by stable ID without changing unrelated markdown."""
+    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown plan-step editing")
+    content = params.get("content")
+    action = params.get("action")
+    step_id = params.get("step_id")
+    replacement = params.get("replacement")
+    index = params.get("index")
+    if not isinstance(content, str) or not isinstance(action, str) or not isinstance(step_id, str):
+        raise InvalidParamsError("content, action, and step_id are required")
+    if replacement is not None and not isinstance(replacement, dict):
+        raise InvalidParamsError("replacement must be an object")
+    if index is not None and not isinstance(index, int):
+        raise InvalidParamsError("index must be an integer")
+    edited = edit_plan_step_markdown(
+        content,
+        action,
+        step_id,
+        cast("dict[str, object] | None", replacement),
+        index,
+    )
+    return ToolResult(content=[ToolContent.json_content({"content": edited})], is_error=False)
 
 
 def _params(params: dict[str, object]) -> tuple[str, str]:
@@ -109,4 +139,4 @@ def _validation_result(artifact_type: str, diagnostics: list[Diagnostic]) -> Too
     )
 
 
-__all__ = ["handle_submit_md_artifact", "handle_verify_md_artifact"]
+__all__ = ["handle_edit_md_plan_step", "handle_submit_md_artifact", "handle_verify_md_artifact"]

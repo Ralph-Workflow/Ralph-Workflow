@@ -31,7 +31,7 @@ class CommitPromptPayloadConfig:
 
 
 DEFAULT_COMMIT_TEMPLATE_NAME = "commit_message"
-DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME = "ralph_submit_artifact"
+DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME = "ralph_submit_artifact"
 
 
 def prompt_commit_message(
@@ -39,7 +39,7 @@ def prompt_commit_message(
     *,
     template_registry: TemplateRegistry | None = None,
     partials: Mapping[str, str] | None = None,
-    submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME,),
+    submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME,),
     payload_config: CommitPromptPayloadConfig | None = None,
 ) -> str:
     """Return the commit message prompt for the provided diff."""
@@ -51,10 +51,10 @@ def prompt_commit_message(
     template = _select_template(template_registry)
     submit_reference = _format_submit_artifact_tool_reference(submit_artifact_tool_names)
     variables = {
-        "SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
+        "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
             submit_artifact_tool_names
         ),
-        "SUBMIT_ARTIFACT_TOOL_REFERENCE": submit_reference,
+        "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": submit_reference,
         "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
         "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
     }
@@ -86,8 +86,8 @@ def prompt_commit_message_for_opencode(
         "commit_simplified.jinja", root=packaged_template_root()
     )
     variables = {
-        "SUBMIT_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
-        "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{submit_artifact_tool_name}`",
+        "SUBMIT_MD_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
+        "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": f"`{submit_artifact_tool_name}`",
         "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
         "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
     }
@@ -124,7 +124,7 @@ def _format_submit_artifact_tool_instructions(tool_names: Sequence[str]) -> str:
             unique_list.append(name)
     unique_names = tuple(unique_list)
     if not unique_names:
-        unique_names = (DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME,)
+        unique_names = (DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME,)
     if len(unique_names) == 1:
         return f"the tool named `{unique_names[0]}`"
 
@@ -147,7 +147,7 @@ def _format_submit_artifact_tool_reference(tool_names: Sequence[str]) -> str:
         if name and name not in unique_list:
             unique_list.append(name)
     if not unique_list:
-        return f"`{DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME}`"
+        return f"`{DEFAULT_SUBMIT_MD_ARTIFACT_TOOL_NAME}`"
     return f"`{unique_list[0]}`"
 
 

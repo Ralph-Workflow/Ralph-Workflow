@@ -66,7 +66,7 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_artifact,
 )
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
+from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -410,7 +410,7 @@ def _commit_prompt_for_agent(
     if _is_opencode_agent(agent):
         return prompt_commit_message_for_opencode(
             diff,
-            submit_artifact_tool_name=SUBMIT_ARTIFACT_TOOL,
+            submit_artifact_tool_name=SUBMIT_MD_ARTIFACT_TOOL,
             payload_config=CommitPromptPayloadConfig(
                 output_dir=payload_output_dir,
                 name_prefix="commit_plumbing",
@@ -431,10 +431,10 @@ def _submit_artifact_tool_names_for_transport(
     transport: AgentTransport | None,
 ) -> tuple[str, ...]:
     if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        return SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+        return SUBMIT_MD_ARTIFACT_TOOL.prompt_aliases(
             tool_name_prefix=claude_tool_name_prefix(),
         )
-    return (SUBMIT_ARTIFACT_TOOL,)
+    return (SUBMIT_MD_ARTIFACT_TOOL,)
 
 
 def _generate_commit_message_with_agent(

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._document import ParsedDocument
-from ralph.mcp.artifacts.markdown._lenient import LenientEnum
+from ralph.mcp.artifacts.markdown._lenient_enum import LenientEnum
 from ralph.mcp.artifacts.markdown._parser import parse_markdown_document
 from ralph.mcp.artifacts.markdown._references import validate_unique_ids
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
@@ -34,11 +34,7 @@ class MdArtifactSpec:
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
-    """Parse and validate markdown through one shared, pure artifact gate.
-
-    Error diagnostics make the returned content unsuitable for submission;
-    warnings document intentional vocabulary coercion and do not block it.
-    """
+    """Parse and validate markdown through one shared, pure artifact gate."""
     document, diagnostics = parse_markdown_document(text)
     diagnostics.extend(_validate_structure(document, text, spec))
     document = _coerce_lenient_frontmatter(document, spec, diagnostics)

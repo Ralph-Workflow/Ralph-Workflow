@@ -715,7 +715,7 @@ class PtyLineReader:
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
         pid = cast("int | None", getattr(self._handle, "pid", None))
-        if pid is not None:
+        if pid is not None and self._handle.poll() is None:
             teardown_subtree(pid)
         # Real resume-safety from the canonical helper at
         # ``_process_reader._is_resumable_fire_reason`` so the PTY

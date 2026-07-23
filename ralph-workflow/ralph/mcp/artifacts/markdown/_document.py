@@ -1,4 +1,4 @@
-"""Immutable parse result types for the markdown artifact grammar."""
+"""Immutable parse result type for the markdown artifact grammar."""
 
 from __future__ import annotations
 
