@@ -159,7 +159,7 @@ def test_parallel_display_default_mode_reduces_rich_markup_and_streams_copy_past
     assert "Agent Activity" not in rendered_text
 
 
-def test_strip_markup_reduces_rich_markup() -> None:
+def test_strip_markup_removes_valid_rich_markup() -> None:
     assert strip_markup("[green]ok[/green]") == "ok"
     assert strip_markup("plain text") == "plain text"
 

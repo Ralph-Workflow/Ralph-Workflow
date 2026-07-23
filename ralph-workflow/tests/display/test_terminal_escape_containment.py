@@ -100,9 +100,9 @@ def test_sanitize_plain_constants_strips_hostile_line() -> None:
     _assert_no_escape_leak(sanitized, sink_label="_sanitize")
 
 
-def test_sanitize_plain_constants_strips_rich_markup() -> None:
-    """``_sanitize`` removes valid Rich markup and terminal controls."""
-    assert _sanitize("[green]ok[/green]") == "ok"
+def test_sanitize_plain_constants_preserves_literal_rich_markup() -> None:
+    """``_sanitize`` strips controls without mutating copy-pasteable text."""
+    assert _sanitize("[green]ok[/green]") == "[green]ok[/green]"
     assert _sanitize("plain text") == "plain text"
 
 

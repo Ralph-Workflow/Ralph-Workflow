@@ -1619,34 +1619,37 @@ class TestNoExcludedEmitMethod:
         canonical_all: frozenset[str] = frozenset(drift_module._PARALLEL_DISPLAY_ALL_NAMES)
         offenders: list[str] = []
         for path in _emission_target_files():
-            source = _read(path)
-            if "from ralph.display.parallel_display import" not in source:
-                continue
-            try:
-                tree = _parse(path)
-            except SyntaxError:
-                continue
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.ImportFrom):
-                    continue
-                if node.module != "ralph.display.parallel_display":
-                    continue
-                for alias in node.names:
-                    if alias.name in canonical_all:
-                        offenders.extend(
-                            [
-                                (
-                                    f"{path.relative_to(RALPH_ROOT.parent)}:"
-                                    f"{node.lineno}: from ralph.display.parallel_display "
-                                    f"import {alias.name}"
-                                )
-                            ]
-                        )
+            relative_path = path.relative_to(RALPH_ROOT.parent)
+            for line_number, imported_names in _parallel_display_imports(path):
+                offenders.extend(
+                    f"{relative_path}:{line_number}: "
+                    f"from ralph.display.parallel_display import {name}"
+                    for name in imported_names
+                    if name in canonical_all
+                )
         assert not offenders, (
             "Direct instance-method emit_* imports from "
             "ralph.display.parallel_display found in CLI/pipeline/config "
             "(wt-007 anti-drift guard tripped):\n" + "\n".join(offenders)
         )
+
+
+@cache
+def _parallel_display_imports(path: pathlib.Path) -> tuple[tuple[int, tuple[str, ...]], ...]:
+    """Return AST-accurate direct imports from a file that needs inspection."""
+    source = _read(path)
+    if "from ralph.display.parallel_display import" not in source:
+        return ()
+    try:
+        tree = _parse(path)
+    except SyntaxError:
+        return ()
+    return tuple(
+        (node.lineno, tuple(alias.name for alias in node.names))
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "ralph.display.parallel_display"
+    )
 
 
 @cache

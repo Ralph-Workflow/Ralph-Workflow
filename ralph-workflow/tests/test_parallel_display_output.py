@@ -12,7 +12,7 @@ from ralph.display.parallel_display import ParallelDisplay, strip_markup
 from ralph.pipeline.state import PipelineState
 
 
-def test_strip_markup_reduces_rich_markup() -> None:
+def test_strip_markup_removes_valid_rich_markup() -> None:
     assert strip_markup("[green]ok[/green]") == "ok"
     assert strip_markup("plain text") == "plain text"
 
