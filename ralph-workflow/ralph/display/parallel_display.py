@@ -581,29 +581,10 @@ class ParallelDisplay:
 
     @classmethod
     def strip_markup(cls, line: str) -> str:
-        """Strip Rich markup AND terminal control sequences from a line.
+        """Strip Rich markup tags and terminal control sequences from a line.
 
-        Composition order matters: :func:`_strip_markup` runs first so
-        Rich ``[red]...[/red]`` style sequences are removed before
-        the terminal-control strip inspects the result, and
-        :func:`strip_terminal_control` runs second so any CSI / OSC /
-        C0 sequence (alternate screen, erase display, private
-        parameter forms like ``ESC[>0c`` and ``ESC[<35;1;2M``, OSC
-        titles) is also removed. The result is copy-paste-safe plain
-        text that contains no Rich markup and no terminal control
-        sequences.
-
-        A subset of consumers print the result through a Rich Console
-        with ``markup=False``; for those sinks the Rich strip is a
-        defence-in-depth measure (the Console would not interpret the
-        markup as style), and the terminal-control strip is the load-
-        bearing step. A different subset (the
-        :func:`subscriber.record_activity` line, the
-        :meth:`emit` subscriber path) feeds the result into
-        ``subscriber.record_activity`` whose snapshot consumers may
-        re-render the line through a styled Console — for those
-        sinks the Rich strip is the load-bearing step. The
-        composition therefore serves every consumer correctly.
+        Markup is stripped before terminal controls. Malformed markup remains
+        literal text; valid Rich styles reduce to their plain content.
         """
         return strip_terminal_control(_strip_markup(line))
 

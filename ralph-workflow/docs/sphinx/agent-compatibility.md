@@ -34,15 +34,32 @@ its full model ID, including bracket parameters, unchanged.
 
 - **CLI**: `claude`
 - **Transport**: `claude` (interactive) and `claude-headless`
-- **Args**: `--json`, `--prompt <PROMPT>`, plus the autonomy flag the bundled policy declares. With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions`.
+- **Flags**:
+    - Interactive (`claude`): `cmd = "claude"`, `yolo_flag = "--dangerously-skip-permissions"`, `verbose_flag = "--verbose"`, `session_flag = "--resume {}"`, `can_commit = true`. No `output_flag` — interactive Claude streams via the PTY.
+    - Headless (`claude-headless`): `cmd = "claude -p"`, `print_flag = "--print"`, `output_flag = "--output-format=stream-json"`, `streaming_flag = "--include-partial-messages"`, `yolo_flag = "--permission-mode auto"`, `verbose_flag = "--verbose"`, `session_flag = "--resume {}"`, `can_commit = true`.
 - **Parser**: `claude` (native, most reliable)
-- **Caveats**: Claude's MCP config injection routes the Ralph Workflow MCP tools into the agent's tool surface; see [Advanced MCP Configuration](advanced-mcp-configuration.md). `claude` and `claude-headless` are both maintained invocation contracts. Do not remove, deprecate, merge, alias, or silently redirect either one into the other as part of unrelated agent work.
+- **Caveats**: Claude's MCP config injection routes the Ralph Workflow MCP tools into the agent's tool surface; see [Advanced MCP Configuration](advanced-mcp-configuration.md). `claude` and `claude-headless` are both maintained invocation contracts. Do not remove, deprecate, merge, alias, or silently redirect either one into the other as part of unrelated agent work. With `autonomy_mode = "dangerously-skip-permissions"` in interactive mode, the argv includes `--dangerously-skip-permissions`; in headless mode the same autonomy intent maps to `--permission-mode auto`.
 
 ```toml
+# Interactive PTY transport — the canonical reference agent
 [agents.claude]
-name = "claude"
-command = "claude"
-args = ["--json", "--prompt", "<PROMPT>"]
+cmd = "claude"
+yolo_flag = "--dangerously-skip-permissions"
+verbose_flag = "--verbose"
+can_commit = true
+session_flag = "--resume {}"
+json_parser = "claude"
+
+# Headless subprocess transport — same binary, no PTY
+[agents.claude-headless]
+cmd = "claude -p"
+print_flag = "--print"
+output_flag = "--output-format=stream-json"
+streaming_flag = "--include-partial-messages"
+yolo_flag = "--permission-mode auto"
+verbose_flag = "--verbose"
+can_commit = true
+session_flag = "--resume {}"
 json_parser = "claude"
 ```
 
@@ -50,14 +67,16 @@ json_parser = "claude"
 
 - **CLI**: `codex`
 - **Transport**: `codex`
-- **Args**: `exec`, `--json`, `<PROMPT>`, plus `--dangerously-bypass-approvals-and-sandbox` for unattended execution and any resume/session flags the policy declares.
+- **Flags**: `cmd = "codex exec"`, `output_flag = "--json"`, `yolo_flag = "--dangerously-bypass-approvals-and-sandbox"`, `can_commit = true`. Codex has no Ralph-managed resume/session flag and no `print_flag` — its subcommand `exec` is the only way to invoke it unattended.
 - **Parser**: `codex` (native)
+- **Caveats**: With `autonomy_mode = "dangerously-skip-permissions"` mapped to Codex, the argv includes `--dangerously-bypass-approvals-and-sandbox`. Note this is Codex's autonomy flag — it is NOT the Claude/AGY `--dangerously-skip-permissions` flag, despite the shared `autonomy_mode` value.
 
 ```toml
 [agents.codex]
-name = "codex"
-command = "codex"
-args = ["exec", "--json", "<PROMPT>"]
+cmd = "codex exec"
+output_flag = "--json"
+yolo_flag = "--dangerously-bypass-approvals-and-sandbox"
+can_commit = true
 json_parser = "codex"
 ```
 
@@ -65,14 +84,15 @@ json_parser = "codex"
 
 - **CLI**: `opencode`
 - **Transport**: `opencode`
-- **Args**: `--json`, `<PROMPT>`, plus `-m <provider>/<model>` when a model alias is selected.
+- **Flags**: `cmd = "opencode"`, `output_flag = "--json-stream"`, `session_flag = "--session {}"`, `can_commit = false`. OpenCode has no `yolo_flag` (the bundled default policy ships OpenCode without an unattended-execution mode). Model selection uses `-m <provider>/<model>` when a model alias is selected (emitted by the OpenCode command builder, not declared in the agent config).
 - **Parser**: `opencode` (required, not interchangeable with the generic parser)
 
 ```toml
 [agents.opencode]
-name = "opencode"
-command = "opencode"
-args = ["--json", "<PROMPT>"]
+cmd = "opencode"
+output_flag = "--json-stream"
+session_flag = "--session {}"
+can_commit = false
 json_parser = "opencode"
 ```
 
@@ -92,10 +112,10 @@ json_parser = "opencode"
 
 ```toml
 [agents.agy]
-name = "agy"
-command = "agy"
+cmd = "agy"
 print_flag = "--print"
 yolo_flag = "--dangerously-skip-permissions"
+can_commit = false
 json_parser = "generic"
 ```
 
@@ -105,21 +125,39 @@ json_parser = "generic"
 
 - **CLI**: `pi`
 - **Transport**: `pi`
-- **Args**: `--mode json`, `<PROMPT>`. Pi has no native MCP config file or CLI flag, so Ralph Workflow materializes a per-run Pi extension and launches Pi with `--no-builtin-tools --extension <generated file>` when the Ralph Workflow MCP endpoint is available.
+- **Flags**: `cmd = "pi"`, `output_flag = "--mode json"`, `yolo_flag = "--approve"`, `session_flag = "--session {}"`, `can_commit = true`, `display_name = "Pi"`. The `<PROMPT>` argument is emitted by the Pi command builder, not declared in the agent config. Pi has no native MCP config file or CLI flag, so Ralph Workflow materializes a per-run Pi extension and launches Pi with `--no-builtin-tools --extension <generated file>` when the Ralph Workflow MCP endpoint is available.
 - **Parser**: `pi` (NDJSON `AgentSessionEvent` per [pi.dev docs](https://pi.dev/docs/latest/json))
 - **Caveats**:
     - `pi/<model>` shorthand preserves the full suffix (e.g. `pi/anthropic/claude-sonnet-4-20250514` becomes `--model anthropic/claude-sonnet-4-20250514`) using `name.removeprefix('pi/')` so multi-segment `provider/id` patterns round-trip intact.
     - Pi is session-capable in JSON mode: a clean `rc=0` exit without required artifact or completion evidence is retried against the captured Pi session rather than treated as terminal success.
 
+```toml
+[agents.pi]
+cmd = "pi"
+output_flag = "--mode json"
+yolo_flag = "--approve"
+session_flag = "--session {}"
+can_commit = true
+display_name = "Pi"
+json_parser = "pi"
+```
+
 ### Nanocoder
 
 - **CLI**: `nanocoder`
 - **Transport**: `nanocoder`
-- **Args**: Local-only TUI; the builder launches Nanocoder without autonomy flags. Ralph Workflow keeps Nanocoder on its PTY-backed Ink runtime by passing `--no-plain` before `run`.
-- **Parser**: native (Nanocoder's TUI output)
+- **Flags**: `cmd = "nanocoder"`, `can_commit = false`. Local-only TUI; the builder launches Nanocoder without autonomy flags. Ralph Workflow keeps Nanocoder on its PTY-backed Ink runtime by passing `--no-plain` before `run`. No `output_flag` / `yolo_flag` / `session_flag` are declared — Nanocoder has no unattended-execution mode in the bundled default policy.
+- **Parser**: `generic` (native Nanocoder parser; the TUI output, not JSON)
 - **Caveats**:
     - Do not switch Nanocoder to JSON/plain mode as the durable backend; the hidden long-run action limit around 100 actions would re-emerge.
     - Provider/model routing through the same direct-agent syntax used for OpenCode works (e.g. `nanocoder/ollama/llama3.1` resolves to `--provider ollama --model llama3.1`).
+
+```toml
+[agents.nanocoder]
+cmd = "nanocoder"
+can_commit = false
+json_parser = "generic"
+```
 
 ### Cursor (cursor)
 
@@ -137,11 +175,14 @@ json_parser = "generic"
 
 ```toml
 [agents.cursor]
-name = "cursor"
-command = "agent"
+cmd = "agent"
 yolo_flag = "--yolo"
 print_flag = "--print"
 output_flag = "--output-format stream-json"
+streaming_flag = "--stream-partial-output"
+session_flag = "--resume {}"
+can_commit = true
+display_name = "Cursor"
 json_parser = "generic"
 ```
 
@@ -153,10 +194,11 @@ For third-party agents outside the eight built-ins (Aider, Gemini CLI, custom CC
 
 ```toml
 [agents.aider]
-name = "aider"
-command = "aider"
-args = ["--yes", "<PROMPT>"]
+cmd = "aider"
 json_parser = "generic"
+# Aider's own --yes flag and `<PROMPT>` argument are emitted by the
+# command builder from the registered parser/strategy pair; the
+# AgentConfig model only declares cmd + parser, not raw argv.
 ```
 
 CCS (Claude Code Switcher) ALWAYS outputs Claude's stream-json format, regardless of which provider is in use (GLM, Gemini, etc.). The Claude parser is the correct parser for all CCS agents:
@@ -165,8 +207,10 @@ CCS (Claude Code Switcher) ALWAYS outputs Claude's stream-json format, regardles
 [ccs]
 print_flag = "--print"
 output_flag = "--output-format=stream-json"
-yolo_flag = "--dangerously-skip-permissions"
+streaming_flag = "--include-partial-messages"
+yolo_flag = "--permission-mode auto"
 verbose_flag = "--verbose"
+session_flag = "--resume {}"
 json_parser = "claude"
 can_commit = true
 
@@ -178,10 +222,10 @@ For weaker-instruction-following models (CCS/GLM, ZhipuAI/ZAI, Qwen, DeepSeek), 
 
 ```toml
 [agents.gemini]
-name = "gemini"
-command = "gemini"
-args = ["--json", "<PROMPT>"]
+cmd = "gemini"
 json_parser = "gemini"
+# The Gemini CLI's own --json flag and `<PROMPT>` argument are emitted
+# by the command builder from the registered parser/strategy pair.
 ```
 
 ## Agent Chain and Fallback Behavior

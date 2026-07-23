@@ -35,14 +35,14 @@ phases to:
 
 | Built-in name     | CLI          | Transport            | Headless? | Use case                                              |
 | ----------------- | ------------ | -------------------- | --------- | ----------------------------------------------------- |
-| `claude`          | `claude`     | Interactive (PTY)    | Yes (with `--print`) | Anthropic's Claude Code; canonical reference agent |
+| `claude`          | `claude`     | Interactive (PTY)    | Optional via `claude-headless` | Anthropic's Claude Code; canonical reference agent |
 | `claude-headless` | `claude`     | Headless subprocess  | Yes       | Same binary, no PTY                                   |
 | `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
 | `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
 | `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
 | `agy`             | `agy`        | Interactive (PTY)    | Yes (mock-backed) | Google's Antigravity CLI (v1.0.9+)              |
-| `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent; `pi --mode json <prompt>`       |
-| `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; headless `--print` mode; opt-in     |
+| `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent                                  |
+| `cursor`          | `agent`      | Headless subprocess  | Yes       | Cursor Agent CLI; opt-in                              |
 
 The registry resolves dynamic aliases such as
 `agy/Gemini 3.5 Flash (Medium)` at runtime. Their syntax differs by agent;
@@ -128,16 +128,20 @@ you'll launch `ralph` from.
 
 Each transport has a `CommandBuilder` in `ralph/agents/invoke/_command_builders/`
 that assembles the argv passed to the agent subprocess. The argv shapes
-differ by transport:
+differ by transport; the per-agent flag inventory lives in one place only —
+the [model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference)
+plus the per-agent `TOML` examples in [Agent Compatibility](agent-compatibility.md).
+This page documents the *plumbing* of how each command builder fits the
+runtime, not the flag values themselves.
 
 ### Claude Code (interactive, PTY)
 
 The Claude command builder emits the autonomy flag the bundled policy
-declares, plus the session/resume and MCP config injection. With
-`autonomy_mode = "dangerously-skip-permissions"`, the argv includes
-`--dangerously-skip-permissions`. Claude's MCP config injection routes the
-Ralph Workflow MCP tools into the agent's tool surface; see
-[Advanced MCP Configuration](advanced-mcp-configuration.md).
+declares, plus the session/resume and MCP config injection. Claude's MCP
+config injection routes the Ralph Workflow MCP tools into the agent's tool
+surface; see [Advanced MCP Configuration](advanced-mcp-configuration.md).
+For the exact flag values see the [Claude section in Agent
+Compatibility](agent-compatibility.md#claude-code).
 
 `claude` and `claude-headless` are both maintained invocation contracts. Do not
 remove, deprecate, merge, alias, or silently redirect either one into the other
@@ -147,69 +151,74 @@ change either Claude contract.
 ### Claude Code (headless, no PTY)
 
 Same binary, no PTY. Use when the documented non-interactive Claude path fits
-the phase and you do not need live PTY transcript display.
+the phase and you do not need live PTY transcript display. For the exact flag
+values see the [Claude section in Agent
+Compatibility](agent-compatibility.md#claude-code).
 
 ### Codex
 
-The Codex builder uses `--dangerously-bypass-approvals-and-sandbox` for
-unattended execution. Codex has no Ralph-managed resume/session flag.
+The Codex command builder uses Codex's documented unattended-execution
+flag (NOT the Claude `--dangerously-skip-permissions` flag — Codex has its
+own). Codex has no Ralph-managed resume/session flag. For the exact flag
+values see the [Codex section in Agent
+Compatibility](agent-compatibility.md#codex-openai).
 
 ### OpenCode
 
-The OpenCode builder does NOT use an autonomy flag; OpenCode ships without
-a built-in unattended-execution mode in the bundled default policy. Model
-selection uses `-m <provider>/<model>` when a model alias is selected. See
-the complete
-[model and provider syntax reference](agent-compatibility.md#model-and-provider-syntax-reference).
+The OpenCode command builder does NOT emit an autonomy flag; OpenCode ships
+without a built-in unattended-execution mode in the bundled default policy.
+Model selection uses `-m <provider>/<model>` when a model alias is
+selected. For the exact flag values see the [OpenCode section in Agent
+Compatibility](agent-compatibility.md#opencode).
 
 ### Nanocoder
 
-Local-only TUI. The builder launches Nanocoder without autonomy flags —
-Nanocoder has no remote auth surface. Ralph Workflow keeps Nanocoder on its
-PTY-backed Ink runtime because Nanocoder's JSON/plain automation path has a
-hidden long-run action limit, observed around 100 actions. Do not switch
-Nanocoder to JSON/plain mode as the durable backend. The command builder passes
-`--no-plain` before `run` to force the Ink runtime. The maintained path must
-prove prompt submission, parser-visible model text and tool activity, artifact
-completion, and process cleanup through the Nanocoder smoke test.
+Local-only TUI. The command builder launches Nanocoder without autonomy
+flags — Nanocoder has no remote auth surface. Ralph Workflow keeps
+Nanocoder on its PTY-backed Ink runtime because Nanocoder's JSON/plain
+automation path has a hidden long-run action limit, observed around 100
+actions. Do not switch Nanocoder to JSON/plain mode as the durable
+backend. The command builder passes `--no-plain` before `run` to force the
+Ink runtime. The maintained path must prove prompt submission,
+parser-visible model text and tool activity, artifact completion, and
+process cleanup through the Nanocoder smoke test.
 
 ### AGY (PTY)
 
-The AGY builder runs `agy` inside a PTY with a bounded drain so buffered
-stdout is captured end-to-end. The AGY parser classifies live output into
-`text:` / `thinking:` / `tool_use:` events for the smoke report. With
-`autonomy_mode = "dangerously-skip-permissions"`, the argv includes
-`--dangerously-skip-permissions` (AGY's actual autonomy flag — note this
-is the Claude flag, NOT Codex's `--dangerously-bypass-approvals-and-sandbox`,
-which was incorrectly attributed to AGY in earlier docs).
+The AGY command builder runs `agy` inside a PTY with a bounded drain so
+buffered stdout is captured end-to-end. The AGY parser classifies live
+output into `text:` / `thinking:` / `tool_use:` events for the smoke
+report. For the exact flag values (including which autonomy flag AGY
+emits) see the [AGY section in Agent
+Compatibility](agent-compatibility.md#google-anti-gravity-agy).
 
 ### Pi
 
-The Pi builder invokes `pi --mode json <prompt>` and parses the resulting
-NDJSON stream per Pi's documented `AgentSessionEvent` vocabulary at
-<https://pi.dev/docs/latest/json>. Pi has no native MCP config file or CLI
-flag, so Ralph Workflow materializes a per-run Pi extension and launches Pi
-with `--no-builtin-tools --extension <generated file>` when the Ralph Workflow MCP
-endpoint is available. The extension registers Ralph Workflow MCP tools through Pi's
-custom-tool API and proxies calls to the active HTTP MCP endpoint.
-Pi is session-capable in JSON mode: a clean `rc=0` exit without required
-artifact or completion evidence is retried against the captured Pi session
-rather than treated as terminal success.
+The Pi command builder parses the resulting NDJSON stream per Pi's
+documented `AgentSessionEvent` vocabulary at
+<https://pi.dev/docs/latest/json>. Pi has no native MCP config file or
+CLI flag, so Ralph Workflow materializes a per-run Pi extension and
+launches Pi with `--no-builtin-tools --extension <generated file>` when
+the Ralph Workflow MCP endpoint is available. The extension registers
+Ralph Workflow MCP tools through Pi's custom-tool API and proxies calls
+to the active HTTP MCP endpoint. Pi is session-capable in JSON mode: a
+clean `rc=0` exit without required artifact or completion evidence is
+retried against the captured Pi session rather than treated as terminal
+success. For the exact flag values see the [Pi section in Agent
+Compatibility](agent-compatibility.md#pi-pidev).
 
 ### Cursor
 
-The Cursor builder invokes `agent --print --output-format stream-json
---trust --yolo --approve-mcps [--model <id>] <prompt>` and parses the
-resulting NDJSON stream per Cursor's documented `system` / `user` /
-`assistant` / `thinking` / `tool_call` / `tool_result` / `result` envelope.
-`--trust` and `--approve-mcps` are the documented unattended-runner
-overrides that skip the interactive workspace-trust and MCP-approval
-prompts. `--yolo` is the documented autonomy flag for the headless
-transport. Ralph Workflow wires MCP through the documented `.cursor/mcp.json`
-(workspace-local) AND `~/.cursor/mcp.json` (user-global) JSON files so
-the agent picks up the endpoint regardless of the cwd it was launched
-from. The runtime resolver restores the original bytes on exit so
-operator-managed MCP servers are preserved across Ralph Workflow runs.
+The Cursor command builder parses the resulting NDJSON stream per
+Cursor's documented `system` / `user` / `assistant` / `thinking` /
+`tool_call` / `tool_result` / `result` envelope. Ralph Workflow wires MCP
+through the documented `.cursor/mcp.json` (workspace-local) AND
+`~/.cursor/mcp.json` (user-global) JSON files so the agent picks up the
+endpoint regardless of the cwd it was launched from. The runtime
+resolver restores the original bytes on exit so operator-managed MCP
+servers are preserved across Ralph Workflow runs. For the exact flag
+values see the [Cursor section in Agent
+Compatibility](agent-compatibility.md#cursor-cursor).
 
 ## End-to-end verification paths
 

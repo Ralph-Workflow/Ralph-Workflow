@@ -165,33 +165,10 @@ def _strip_markup(text: str) -> str:
 
 
 def _sanitize(text: str) -> str:
-    """Strip terminal control sequences and Rich markup for copy-paste safety.
+    """Strip Rich markup tags and terminal control sequences for copy-paste safety.
 
-    The composition order matters: :func:`_strip_markup` runs first
-    so Rich ``[red]...[/red]`` style sequences are removed before
-    :func:`strip_terminal_control` inspects the result, and the
-    terminal-control strip runs second so any CSI / OSC / C0
-    sequence (alternate screen, erase display, private parameter
-    forms like ``ESC[>0c`` and ``ESC[<35;1;2M``, OSC titles) is
-    also removed. The result is copy-paste-safe plain text that
-    contains no Rich markup and no terminal control sequences.
-
-    The Rich strip is a defence-in-depth measure for the consumers
-    that print the sanitized text through a Rich Console with
-    ``markup=False`` (Rich would not interpret the markup as
-    style), and the load-bearing step for the consumers that
-    route the sanitized text into ``subscriber.record_activity``
-    where downstream snapshot rendering may re-render the line
-    through a styled Console. The terminal-control strip is the
-    load-bearing step for the Console-printing path: it removes
-    every CSI / OSC / C0 sequence that would otherwise paint the
-    real terminal. Literal ``[bracket]`` content the operator
-    authored on purpose (e.g. ``[result] ok``) is preserved when
-    :func:`_strip_markup` recognises the bracketed text as a
-    Rich-style sequence; Rich itself parses the bracket pair as a
-    style and ``Text.from_markup`` returns the inner text. The
-    :func:`_strip_markup` body is wrapped in ``try/except`` so a
-    malformed bracket pair falls back to the literal text rather
-    than raising.
+    Valid Rich tags collapse to their inner text; malformed markup falls
+    back to literal text. Terminal CSI, OSC, and C0 sequences are then
+    removed so the result is safe to print or record in a transcript.
     """
     return strip_terminal_control(_strip_markup(text))

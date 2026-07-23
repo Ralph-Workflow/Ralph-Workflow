@@ -118,19 +118,8 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     ]
 
 
-def test_emit_log_line_strips_rich_markup_for_clean_copy_paste() -> None:
-    """Plain-text emit strips both Rich markup and terminal control sequences.
-
-    The composition is :func:`_sanitize` -> Rich strip ->
-    terminal-control strip, so a literal ``[bold magenta]hello[/bold
-    magenta]`` becomes ``hello`` in the output. The terminal-control
-    strip is also applied (escape sequences are still cleaned). The
-    result is copy-paste-safe plain text with no bracketed
-    sequences the operator did not type literally (a stray
-    ``[result]`` would be eaten; the underlying ``try/except`` in
-    ``_strip_markup`` falls back to the literal text for malformed
-    bracket pairs).
-    """
+def test_emit_log_line_strips_rich_markup_for_copy_paste() -> None:
+    """Plain-text emit strips valid Rich markup and terminal controls."""
     pd, stream = _make_display()
 
     pd.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")

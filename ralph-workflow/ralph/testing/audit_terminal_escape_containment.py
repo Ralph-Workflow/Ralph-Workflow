@@ -520,17 +520,10 @@ _INVARIANTS: tuple[
         ),
     ),
     # parallel_display.ParallelDisplay.strip_markup: the rewrite target.
-    # The helper composes the Rich-markup strip (``_strip_markup``,
-    # which uses ``Text.from_markup`` to remove ``[red]...[/red]``
-    # style sequences) and the terminal-control strip
-    # (``strip_terminal_control`` for CSI / OSC / C0 sequences). The
-    # body MUST delegate to
-    # ``strip_terminal_control(_strip_markup(line))`` so every
-    # consumer (the Console-printing path AND the
-    # ``subscriber.record_activity`` snapshot path) sees plain text
-    # with no Rich markup and no terminal control sequences. A
-    # regression that drops either strip silently re-opens the
-    # escape class the helper was wired to close.
+    # The body MUST run BOTH ``_strip_markup`` (Rich-tag strip) and
+    # ``strip_terminal_control`` (hostile CSI/OSC/C0 strip). The canonical
+    # call shape ensures neither protection regresses.
+
     FunctionBodyInvariant(
         rel_path="display/parallel_display.py",
         qualname="ParallelDisplay.strip_markup",
