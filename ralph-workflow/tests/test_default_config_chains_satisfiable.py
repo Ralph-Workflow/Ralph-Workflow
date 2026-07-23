@@ -24,6 +24,7 @@ import shutil
 import tomllib
 from pathlib import Path
 
+from ralph.agents.catalog import AgentCatalog
 from ralph.agents.registry import AgentRegistry
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -67,7 +68,7 @@ def _claude_only_registry() -> AgentRegistry:
         can_commit=True,
         display_name="Claude",
     )
-    registry = AgentRegistry()
+    registry = AgentRegistry(catalog=AgentCatalog())
     registry.register("claude", claude)
     return registry
 

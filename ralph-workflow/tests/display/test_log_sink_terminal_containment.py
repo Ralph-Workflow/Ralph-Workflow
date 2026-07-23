@@ -318,12 +318,7 @@ def test_logging_configurators_do_not_hand_sys_stderr_to_logger_add() -> None:
     package-wide. This focused regression check stays under the default
     one-second test limit without duplicating that full-tree traversal.
     """
-    from ralph.testing.audit_terminal_escape_containment import _INVARIANTS
+    from ralph.testing.audit_terminal_escape_containment import logging_configurator_violations
 
-    violations = [
-        violation
-        for invariant in _INVARIANTS
-        if getattr(invariant, "rel_path", None) in {"logging.py", "cli/main.py"}
-        for violation in invariant.violations()
-    ]
+    violations = logging_configurator_violations()
     assert not violations, "sanitizing log sink regression:\n" + "\n".join(violations)

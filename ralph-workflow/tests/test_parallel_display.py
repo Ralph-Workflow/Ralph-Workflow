@@ -143,7 +143,7 @@ def test_parallel_display_start_stop_do_not_raise() -> None:
     pd.stop()
 
 
-def test_parallel_display_default_mode_preserves_literal_brackets_and_streams_copy_pasteable_lines() -> None:
+def test_parallel_display_default_mode_reduces_rich_markup_and_streams_copy_pasteable_lines() -> None:
     console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
 
@@ -154,12 +154,13 @@ def test_parallel_display_default_mode_preserves_literal_brackets_and_streams_co
         pd.stop()
 
     rendered_text = console.export_text()
-    assert "[green]some output line[/green]" in rendered_text
+    assert "some output line" in rendered_text
+    assert "[green]some output line[/green]" not in rendered_text
     assert "Agent Activity" not in rendered_text
 
 
-def test_strip_markup_preserves_literal_brackets() -> None:
-    assert strip_markup("[green]ok[/green]") == "[green]ok[/green]"
+def test_strip_markup_reduces_rich_markup() -> None:
+    assert strip_markup("[green]ok[/green]") == "ok"
     assert strip_markup("plain text") == "plain text"
 
 

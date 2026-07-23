@@ -486,6 +486,17 @@ class PackageWideCallSiteInvariant:
         return problems
 
 
+def logging_configurator_violations() -> list[str]:
+    """Return terminal-containment violations in configured logging paths."""
+    return [
+        violation
+        for invariant in _INVARIANTS
+        if isinstance(invariant, (Invariant, FunctionBodyInvariant, CallSiteInvariant))
+        and invariant.rel_path in {"logging.py", "cli/main.py"}
+        for violation in invariant.violations()
+    ]
+
+
 _INVARIANTS: tuple[
     Invariant | FunctionBodyInvariant | CallSiteInvariant | PackageWideCallSiteInvariant, ...
 ] = (

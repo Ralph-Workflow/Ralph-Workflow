@@ -53,31 +53,28 @@ def _string_literals_in_source(source: str) -> set[str]:
     }
 
 
-def _string_literals_in_function(source: str, function_name: str) -> set[str]:
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == function_name:
-            return {
-                n.value
-                for n in ast.walk(node)
-                if isinstance(n, ast.Constant) and isinstance(n.value, str)
-            }
-    return set()
-
-
 class TestRunnerArtifactHandoffIsGeneric:
     """render_phase_artifact_handoff must not hardcode canonical phase name literals."""
 
     @pytest.fixture(scope="class")
-    def activity_stream_source(self) -> str:
-        return (RALPH_ROOT / "pipeline" / "activity_stream.py").read_text(encoding="utf-8")
+    def artifact_handoff_literals(self) -> set[str]:
+        source = (RALPH_ROOT / "pipeline" / "activity_stream.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "render_phase_artifact_handoff"
+        )
+        return {
+            node.value
+            for node in ast.walk(function)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
 
     def test_render_phase_artifact_handoff_has_no_canonical_phase_literals(
-        self, activity_stream_source: str
+        self, artifact_handoff_literals: set[str]
     ) -> None:
-        literals = _string_literals_in_function(
-            activity_stream_source, "render_phase_artifact_handoff"
-        )
+        literals = artifact_handoff_literals
         violations = RUNNER_BANNED_PHASE_NAMES & literals
         assert not violations, (
             f"render_phase_artifact_handoff contains canonical phase name literal(s): "

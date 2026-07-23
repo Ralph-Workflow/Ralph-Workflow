@@ -12,19 +12,20 @@ from ralph.display.parallel_display import ParallelDisplay, strip_markup
 from ralph.pipeline.state import PipelineState
 
 
-def test_strip_markup_preserves_literal_brackets() -> None:
-    assert strip_markup("[green]ok[/green]") == "[green]ok[/green]"
+def test_strip_markup_reduces_rich_markup() -> None:
+    assert strip_markup("[green]ok[/green]") == "ok"
     assert strip_markup("plain text") == "plain text"
 
 
-def test_default_mode_emit_preserves_literal_brackets() -> None:
-    """In the single default mode, literal bracket markup remains copy-pasteable."""
+def test_default_mode_emit_reduces_rich_markup() -> None:
+    """In the single default mode, Rich markup is reduced before rendering."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
     pd.emit("unit-1", "[green]hello[/green]")
     text = buf.getvalue()
-    assert "[green]hello[/green]" in text
+    assert "[content][unit-1] hello\n" in text
+    assert "[green]hello[/green]" not in text
 
 
 def test_emit_analysis_result_in_default_mode_records_to_decision_log() -> None:
@@ -109,7 +110,7 @@ def test_emit_updates_subscriber_snapshot_for_unit_scoped_raw_activity() -> None
     snap = pd.subscriber.build_snapshot(PipelineState(phase="development"))
     assert snap is not None
     assert snap.active_agent == "unit-1"
-    assert snap.last_activity_line == "[green]hello[/green]"
+    assert snap.last_activity_line == "hello"
 
 
 def test_long_unit_id_does_not_hide_payload_content() -> None:
