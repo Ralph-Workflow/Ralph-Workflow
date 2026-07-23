@@ -53,6 +53,29 @@ if TYPE_CHECKING:
 _ACTION_SKIPPED = "skipped"
 _ACTION_RECOVERED = "recovered"
 
+#: Terminal-state invariant marker files. The post-attempt
+#: verification refuses to clear the durable record while ANY of
+#: these is on disk AND no resolution session owns them. The
+#: closed set is small on purpose: a missing file is the loud
+#: signal that the rebase/merge was not terminated cleanly, and
+#: an unknown file (the spec's "A8 benign leftovers") is
+#: deliberately NOT a marker -- git's own bookkeeping
+#: (``AUTO_MERGE``, ``MERGE_MSG``, ``MERGE_MODE``, ``MERGE_RR``,
+#: ``SQUASH_MSG``, ``ORIG_HEAD``) is allowed to survive because
+#: treating it as a blocker permanently disabled integration in
+#: the past.
+_TERMINAL_MARKER_FILES: frozenset[str] = frozenset(
+    {
+        "rebase-merge",
+        "rebase-apply",
+        "REBASE_HEAD",
+        "MERGE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+        "sequencer",
+    }
+)
+
 
 def recovery_retained_record(state: RebaseState | None) -> bool:
     """Whether ``state`` came back still OWNING the durable record.
@@ -82,6 +105,75 @@ def recovery_retained_record(state: RebaseState | None) -> bool:
     return state is not None and state.recovery_record_retained
 
 
+def post_attempt_verify(
+    root: Path,
+    *,
+    expected_head_sha: str | None,
+    owns_resolution: bool,
+) -> tuple[bool, str]:
+    """Terminal-state invariant check used on EVERY exit path (R6).
+
+    Returns ``(ok, detail)``. ``ok`` is True only when:
+
+    * no in-progress marker from :data:`_TERMINAL_MARKER_FILES`
+      remains in the per-worktree git dir, OR ``owns_resolution`` is
+      True (a live resolution session is editing the conflict and
+      will clean up its own state); AND
+    * on the abort path (``expected_head_sha`` is not ``None``),
+      ``HEAD`` resolves to exactly that SHA -- never ``ORIG_HEAD``,
+      which any intervening operation can overwrite.
+
+    A failure raises loudly via the returned ``detail`` string and
+    the caller is expected to surface it as a log line; the
+    function itself does NOT raise because the call site is a
+    post-attempt gate, and raising there would mask the actual
+    exception path the user is trying to debug.
+
+    The function is intentionally side-effect-free: it READS
+    state, never WRITES it. Recovery / abort paths that run AFTER
+    this call decide what to do with a failed invariant.
+    """
+    git_dir = _rebase_bookkeeping_dir(root)
+    if git_dir is None:
+        # Not a git checkout: nothing to verify; pass.
+        return True, "no git dir"
+    if not owns_resolution:
+        for marker in _TERMINAL_MARKER_FILES:
+            if (git_dir / marker).exists():
+                return (
+                    False,
+                    f"terminal-state invariant violated: {marker} present in {git_dir}",
+                )
+    if expected_head_sha is not None and not _head_matches_sha(root, expected_head_sha):
+        actual = _read_head_sha(root)
+        return (
+            False,
+            "terminal-state invariant violated: HEAD is "
+            f"{actual or '<unreadable>'}, expected {expected_head_sha}",
+        )
+    return True, "ok"
+
+
+def _read_head_sha(root: Path) -> str | None:
+    """Read HEAD as a string SHA; ``None`` on any failure.
+
+    Distinct from :func:`_head_matches_sha` because the verifier
+    needs the VALUE for the operator log, not just a boolean
+    match.
+    """
+    try:
+        result = run_git(
+            ("rev-parse", "--verify", "HEAD"),
+            cwd=root,
+            label="git-rev-parse-head-verify",
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
 def _rebase_bookkeeping_dir(root: Path) -> Path | None:
     """Resolve the git dir whose rebase bookkeeping blocks preconditions.
 
@@ -103,7 +195,7 @@ def _rebase_bookkeeping_dir(root: Path) -> Path | None:
     return git_dir
 
 
-def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
+def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:  # noqa: PLR0912
     """Reclaim inert rebase state that no ownership record accounts for.
 
     Failure mode this closes (recorded on wt-23, 2026-07-22):
@@ -131,14 +223,21 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         # reclaim, and the pre-fix contract for the no-record branch --
         # return ``None``, never a synthesized outcome -- must hold.
         return None
-    dirs_present = (git_dir / "rebase-apply").exists() or (
-        git_dir / "rebase-merge"
-    ).exists()
-    marker = git_dir / "REBASE_HEAD"
-    marker_present = marker.exists()
-    merge_marker = git_dir / "MERGE_HEAD"
-    merge_present = merge_marker.exists()
-    if not dirs_present and not marker_present and not merge_present:
+    blocking: list[str] = [name for name in _TERMINAL_MARKER_FILES if (git_dir / name).exists()]
+    # A live ``index.lock`` (E9) is contention, not staleness -- the
+    # reclaim refuses to delete it and returns ``None`` so the
+    # bounded retry can back off.
+    index_lock = git_dir / "index.lock"
+    if index_lock.exists():
+        if _lock_holder_is_dead(index_lock):
+            blocking.append("index.lock")
+        else:
+            logger.warning(
+                "recovery: live index.lock holder PID in {}; leaving it",
+                git_dir,
+            )
+            return None
+    if not blocking:
         return None
     if not is_repo_clean(root):
         # AC-11 case 4: unmerged paths / tracked modifications mean an
@@ -156,24 +255,68 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         root,
     )
     try:
-        if dirs_present:
-            abort_rebase(repo_root=root)
-        if marker.exists() and not rebase_in_progress(root):
-            # ``git rebase --abort`` is not available for a lone marker
-            # file; git itself treats a bare REBASE_HEAD as disposable
-            # bookkeeping, but the precondition check blocks on it.
-            marker.unlink()
-        if merge_present and merge_state(root) != MERGE_STATE_NONE:
-            abort_merge(root)
-        if merge_marker.exists():
-            # ``git merge --abort`` can refuse a synthetic / truncated
-            # MERGE_HEAD; on a clean tree the marker itself is the only
-            # thing blocking preconditions, so remove it directly.
-            merge_marker.unlink()
+        # A3: a corrupted state dir cannot be aborted with git's own
+        # commands because git refuses --abort/--continue when
+        # ``head-name``/``onto``/``todo`` are missing. We trust the
+        # local ``refs/heads/<branch>`` rather than git's state
+        # files, so the recover strategy is "delete the state dir,
+        # then leave the ref alone".
+        rebase_state_dir: Path | None = None
+        if (git_dir / "rebase-merge").exists():
+            rebase_state_dir = git_dir / "rebase-merge"
+        elif (git_dir / "rebase-apply").exists():
+            rebase_state_dir = git_dir / "rebase-apply"
+        if rebase_state_dir is not None:
+            if _rebase_state_dir_is_corrupt(rebase_state_dir):
+                _remove_path(rebase_state_dir)
+            else:
+                abort_rebase(repo_root=root)
+        if (git_dir / "REBASE_HEAD").exists() and not rebase_in_progress(root):
+            # ``git rebase --abort`` is not available for a lone
+            # marker file; git itself treats a bare REBASE_HEAD as
+            # disposable bookkeeping, but the precondition check
+            # blocks on it.
+            _remove_path(git_dir / "REBASE_HEAD")
+        if (git_dir / "MERGE_HEAD").exists() and merge_state(root) != MERGE_STATE_NONE:
+            aborted = abort_merge(root)
+            if not aborted and (git_dir / "MERGE_HEAD").exists():
+                # ``git merge --abort`` can refuse a synthetic /
+                # truncated MERGE_HEAD; on a clean tree the marker
+                # itself is the only thing blocking preconditions,
+                # so remove it directly.
+                _remove_path(git_dir / "MERGE_HEAD")
+        # A6: sequencer operations (cherry-pick / revert) left
+        # CHERRY_PICK_HEAD / REVERT_HEAD / .git/sequencer on disk.
+        # ``sequencer/todo`` exists iff a sequencer op is paused.
+        sequencer_todo = git_dir / "sequencer" / "todo"
+        if (
+            (git_dir / "CHERRY_PICK_HEAD").exists()
+            or (git_dir / "REVERT_HEAD").exists()
+            or sequencer_todo.exists()
+        ):
+            if (git_dir / "CHERRY_PICK_HEAD").exists():
+                _run_sequencer_quit(root, "cherry-pick")
+            if (git_dir / "REVERT_HEAD").exists():
+                _run_sequencer_quit(root, "revert")
+            for marker in ("CHERRY_PICK_HEAD", "REVERT_HEAD"):
+                if (git_dir / marker).exists():
+                    _remove_path(git_dir / marker)
+            sequencer_dir = git_dir / "sequencer"
+            if sequencer_dir.exists():
+                _remove_path(sequencer_dir)
+        # A11: detached-HEAD residue (no state dir, HEAD on a raw
+        # OID) is re-attached to the original branch. The local
+        # ref still holds the branch tip; the HEAD is just
+        # detached, so updating HEAD back to ``refs/heads/<branch>``
+        # is enough.
+        if _detached_head_no_state(root, git_dir):
+            branch = _detached_branch_name(root)
+            if branch is not None:
+                _reattach_head_to_branch(root, branch)
+        # A9: the live-PID guard already cleared the index.lock for
+        # us; nothing more to do.
     except Exception as exc:
-        logger.warning(
-            "recovery: failed to reclaim stale unowned rebase state: {}", exc
-        )
+        logger.warning("recovery: failed to reclaim stale unowned rebase state: {}", exc)
         return _record_skip(
             reason=f"recovery: stale unowned rebase state could not be reclaimed: {exc}",
             target=None,
@@ -181,17 +324,160 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
     return RebaseState(
         last_action=_ACTION_RECOVERED,
         last_reason=(
-            "reclaimed stale unowned rebase/merge state (no ownership"
-            " record, clean worktree)"
+            "reclaimed stale unowned rebase/merge state (no ownership record, clean worktree)"
         ),
         last_target=None,
         fast_forwarded=False,
     )
 
 
-def _record_skip(
-    *, reason: str, target: str | None, record_retained: bool = False
-) -> RebaseState:
+def _remove_path(path: Path) -> None:
+    """Remove a file or directory, recursively; missing-ok; never raises."""
+    if not path.exists():
+        return
+    if path.is_dir():
+        import shutil
+
+        try:
+            shutil.rmtree(path)
+        except Exception as exc:  # pragma: no cover -- defensive
+            logger.warning("recovery: could not rmtree {}: {}", path, exc)
+    else:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return
+
+
+def _lock_holder_is_dead(lock_path: Path) -> bool:  # noqa: PLR0911
+    """True when the index.lock holder PID is provably dead (A9).
+
+    A live holder is contention (E9), not staleness -- the lock
+    MUST be left in place so the concurrent writer finishes, and
+    the bounded retry loop backs off. A PID that is missing,
+    unreadable, or that the OS reports as ``NoSuchProcess`` is
+    treated as dead; any other error (a sandbox that hides
+    ``/proc`` etc.) is treated as LIVE so a missed reclaim costs
+    one backoff rather than a corrupt checkout.
+
+    The PID is read via the standard git convention: a single
+    line of plain text (the writing process's PID) in the lock
+    file itself. Older gits wrote nothing here, so an empty /
+    whitespace-only file is treated as "no PID", which the
+    spec resolves as dead (A9: "liveness check, not age").
+    """
+    try:
+        raw = lock_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return False
+    if not raw:
+        return True
+    try:
+        pid = int(raw.splitlines()[0])
+    except ValueError:
+        return True
+    if pid <= 0:
+        return True
+    try:
+        import os
+
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    except OSError:
+        return False
+    return False
+
+
+def _rebase_state_dir_is_corrupt(state_dir: Path) -> bool:
+    """True when the rebase state dir is missing ``head-name``/``onto``.
+
+    A corrupt state dir cannot be ``--abort``'d or ``--continue``'d
+    (A3). Git's own recovery would fall over; our recover strategy
+    removes the dir entirely and trusts the local ref.
+    """
+    if not state_dir.is_dir():
+        return False
+    return not (state_dir / "head-name").exists() and not (state_dir / "onto").exists()
+
+
+def _run_sequencer_quit(root: Path, op: str) -> None:
+    """Run ``git <op> --quit`` defensively. Never raises."""
+    try:
+        run_git(
+            (op, "--quit"),
+            cwd=root,
+            label=f"recovery:sequencer-quit:{op}",
+        )
+    except Exception as exc:
+        logger.warning("recovery: sequencer --quit for '{}' failed: {}", op, exc)
+
+
+def _detached_head_no_state(root: Path, git_dir: Path) -> bool:
+    """True when HEAD is detached AND no rebase/sequencer state dir exists."""
+    if (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists():
+        return False
+    if (git_dir / "sequencer").exists():
+        return False
+    try:
+        result = run_git(
+            ("symbolic-ref", "--quiet", "HEAD"),
+            cwd=root,
+            label="recovery:head-symbolic-ref",
+        )
+    except Exception:
+        return False
+    return result.returncode != 0
+
+
+def _detached_branch_name(root: Path) -> str | None:
+    """Return the original branch name from the reflog when detached.
+
+    A detached-HEAD residue often still has the original branch name
+    in HEAD (e.g. ``ref: refs/heads/feature\\0<sha>``) -- but
+    ``symbolic-ref`` already returned non-zero above, so we fall
+    through to the reflog: the last entry that points at
+    ``refs/heads/<name>`` is the branch the agent was on before
+    the residue.
+    """
+    try:
+        result = run_git(
+            ("reflog", "--format=%gD", "-n", "1"),
+            cwd=root,
+            label="recovery:head-reflog",
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    line = result.stdout.strip()
+    parts_after_to_count = 2
+    for marker in ("checkout: moving from ", "switch branch to "):
+        idx = line.find(marker)
+        if idx == -1:
+            continue
+        rest = line[idx + len(marker) :]
+        parts = rest.split(" to ")
+        if len(parts) == parts_after_to_count:
+            return parts[1].strip() or None
+    return None
+
+
+def _reattach_head_to_branch(root: Path, branch: str) -> None:
+    """``git symbolic-ref HEAD refs/heads/<branch>`` to repair detached residue."""
+    try:
+        run_git(
+            ("symbolic-ref", "HEAD", f"refs/heads/{branch}"),
+            cwd=root,
+            label="recovery:head-reattach",
+        )
+    except Exception as exc:
+        logger.warning("recovery: could not re-attach HEAD to '{}': {}", branch, exc)
+
+
+def _record_skip(*, reason: str, target: str | None, record_retained: bool = False) -> RebaseState:
     """Build a ``RebaseState`` recording a recovery skip outcome.
 
     ``record_retained`` marks the skips that left the durable record on
@@ -287,15 +573,11 @@ def _continue_fast_forward_from_record(
     if record.integrated_feature_sha is None:
         # Defensive: malformed record. Clear it so we stop retrying.
         _clear_record(workspace_root)
-        return _record_skip(
-            reason="recovery: malformed integrated record", target=record.target
-        )
+        return _record_skip(reason="recovery: malformed integrated record", target=record.target)
     feature_sha = record.integrated_feature_sha
     # ONE refresh, before either verdict: both of them are taken from the
     # target pointer, and the second one clears the record for good.
-    refresh, pointer_is_fresh = _refresh_before_verdict(
-        config, workspace_root, record.target
-    )
+    refresh, pointer_is_fresh = _refresh_before_verdict(config, workspace_root, record.target)
     if not pointer_is_fresh:
         # Fail closed. Neither ancestry verdict below may be taken from
         # a pointer nothing vouched for, because both of them clear the
@@ -305,8 +587,7 @@ def _continue_fast_forward_from_record(
         return record_refresh(
             _record_skip(
                 reason=(
-                    "recovery: target pointer could not be refreshed,"
-                    " record retained for retry"
+                    "recovery: target pointer could not be refreshed, record retained for retry"
                 ),
                 target=record.target,
                 record_retained=True,
@@ -380,9 +661,7 @@ def _land_and_reconcile(
     ff_failed = False
     skip_reason = ""
     try:
-        ok, skip_reason = fast_forward_target(
-            workspace_root, record.target, feature_sha
-        )
+        ok, skip_reason = fast_forward_target(workspace_root, record.target, feature_sha)
     except Exception as exc:
         ff_failed = True
         skip_reason = f"fast-forward raised: {exc}"
@@ -524,8 +803,7 @@ def recover_incomplete_integration(
                 if not aborted and merge_state(root) != MERGE_STATE_NONE:
                     abort_failed = True
                     logger.warning(
-                        "recovery: merge abort did not prove MERGE_HEAD gone"
-                        " in {}",
+                        "recovery: merge abort did not prove MERGE_HEAD gone in {}",
                         root,
                     )
         except Exception as exc:
@@ -556,10 +834,7 @@ def recover_incomplete_integration(
             )
             if not restored_ok:
                 return _record_skip(
-                    reason=(
-                        "recovery: feature branch not restored, record"
-                        " retained for retry"
-                    ),
+                    reason=("recovery: feature branch not restored, record retained for retry"),
                     target=record.target,
                     record_retained=True,
                 )
@@ -577,10 +852,7 @@ def recover_incomplete_integration(
         # the repository with no ownership marker.
         if abort_failed:
             return _record_skip(
-                reason=(
-                    "recovery: owned merge not proven aborted, record"
-                    " retained for retry"
-                ),
+                reason=("recovery: owned merge not proven aborted, record retained for retry"),
                 target=record.target,
                 record_retained=True,
             )
@@ -595,9 +867,7 @@ def recover_incomplete_integration(
         # contract. The named retention branches above are the ones that
         # know a record is on disk.
         logger.warning("recover_incomplete_integration failed: {}", exc)
-        return _record_skip(
-            reason=f"recovery failed: {exc}", target=None
-        )
+        return _record_skip(reason=f"recovery failed: {exc}", target=None)
 
 
 def _head_matches_sha(repo_root: Path, expected_sha: str) -> bool:

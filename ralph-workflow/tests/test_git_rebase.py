@@ -171,7 +171,19 @@ def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_
         ("git", ("merge-base", "--is-ancestor", "--", base_branch, "HEAD")): _mk_result(
             returncode=1
         ),
-        ("git", ("rebase", "--", base_branch)): _mk_result(
+        (
+            "git",
+            (
+                "rebase",
+                "--no-autostash",
+                "--no-autosquash",
+                "--no-update-refs",
+                "--empty=drop",
+                "--",
+                base_branch,
+                "feature-conflict",
+            ),
+        ): _mk_result(
             returncode=1,
             stderr="CONFLICT (content): Merge conflict in README.md",
         ),

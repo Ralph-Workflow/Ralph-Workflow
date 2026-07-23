@@ -136,7 +136,44 @@ def rebase_onto(
     repo_root: Path | str | None = None,
     executor: ProcessExecutor | None = None,
 ) -> RebaseResult:
-    """Rebase the current branch on top of the provided upstream branch."""
+    """Rebase the current branch on top of the provided upstream branch.
+
+    Every flag is set explicitly so no user/system git config can
+    hang, abort, or silently mutate a rebase the agent is watching:
+
+    * ``--no-autostash`` (D4) — a dirty tree never starts
+      integration in the first place; an autostash that
+      ``--abort`` later cannot re-apply is not our problem to
+      inherit.
+    * ``--no-autosquash`` (D5) — user config can turn it on, and
+      ``squash!`` commits would otherwise open an editor.
+    * ``--no-update-refs`` (B9) — ``rebase.updateRefs=true`` would
+      force-move other branches pointing into the replay range and
+      half-skip ones checked out in sibling worktrees.
+    * ``--empty=drop`` (B4) — commits that became empty on replay
+      (change already upstream) are dropped without stopping; the
+      flag also answers the older-git prompt that the empty-result
+      would otherwise trigger.
+    * ``--no-keep-empty`` is NOT here on purpose — we want a stop on
+      the first genuinely-empty commit, because it is the one case
+      where the agent's intent matters.
+    * The ``--`` terminator (B1/B8) — a branch whose name begins
+      with ``-`` would otherwise be parsed as an option, and a
+      target like ``--allow-unrelated-histories`` would be parsed
+      as a flag rather than a revision.
+    * The active branch name is appended AFTER ``--`` so the
+      replay range is unambiguous and independent of any
+      ``branch.<name>.merge``/fork-point heuristic (B8).
+    * The backend is pinned to ``merge`` via
+      :data:`ralph.git.hardening.PINNED_CONFIG_ARGS` (G5); the
+      apply backend has documented unrecoverable-interrupt states
+      and a different state layout.
+    * ``rerere.enabled=false`` (D3) — a recorded wrong resolution
+      would be silently committed with zero conflict signal.
+    * ``commit.gpgsign=false`` / ``tag.gpgsign=false`` (D6) — a
+      locked key or pinentry prompt must never hang or fail a
+      replayed commit.
+    """
 
     path = _resolve_repo_root(repo_root)
     executor = executor or SubprocessExecutor()
@@ -150,13 +187,70 @@ def rebase_onto(
         validation_result = _validate_rebase_request(repo, upstream_branch, executor, path)
         if validation_result is not None:
             return validation_result
+
+        branch_name = _active_branch_name(repo)
     finally:
         repo.close()
 
-    result = executor.execute(
-        "git", ("rebase", "--", upstream_branch), cwd=path
+    # Build the argv. The active branch is passed AFTER the ``--``
+    # terminator as a positional revision so the replay range is
+    # ``<upstream>..<branch>`` and independent of any
+    # ``branch.<name>.merge``/fork-point heuristic (B8). When no
+    # branch is checked out (detached HEAD) we fall through with
+    # ``HEAD`` -- rebase_onto is only ever called from a known
+    # checked-out state, and the precondition check has already
+    # gated this path, so the fallback is purely defensive.
+    upstream_branch_name = (
+        branch_name if branch_name is not None else "HEAD"
     )
+    rebase_argv = (
+        "rebase",
+        "--no-autostash",
+        "--no-autosquash",
+        "--no-update-refs",
+        "--empty=drop",
+        "--",
+        upstream_branch,
+        upstream_branch_name,
+    )
+    result = executor.execute("git", rebase_argv, cwd=path)
+
+    # The earlier-stop handling for ``--empty=drop``-refusing
+    # older git: when a rebase STOPs on a commit that became
+    # empty (older git that ignores ``--empty=drop``), the engine
+    # answers the stop with ``git rebase --skip`` rather than
+    # abandoning to endpoint merge. The skip is the B4/G2 path
+    # that closes the all-empty-replay-abandon bug class.
+    if (
+        result.returncode != 0
+        and rebase_in_progress(path)
+        and _rebase_stop_reports_empty(result)
+    ):
+        skip_result = executor.execute("git", ("rebase", "--skip"), cwd=path)
+        # Re-evaluate from a fresh process result so the rest of
+        # the engine (and the conflict resolution pipeline below)
+        # sees the same ``ProcessResult`` shape it would have
+        # for a clean rebase.
+        result = skip_result
+
     return _rebase_result_from_process(result, path, executor)
+
+
+def _rebase_stop_reports_empty(result: ProcessResult) -> bool:
+    """True when a non-zero rebase stop was an "empty" stop, not a conflict.
+
+    The signal is the substring that older git prints when it
+    stops to ask whether to drop the commit. A genuine content
+    conflict is reported differently and is left to the
+    index-authoritative ``_rebase_result_from_process`` gate
+    below. The substring check is a heuristic; the index is the
+    authority, and a false positive here costs at most one
+    ``--skip`` invocation on a non-empty commit (which the engine
+    answers by re-entering the loop or failing out as
+    ``RebaseFailed``).
+    """
+    payload = f"{result.stderr}\n{result.stdout}".lower()
+    return "nothing to commit" in payload or "is empty" in payload
 
 
 def _validate_rebase_request(

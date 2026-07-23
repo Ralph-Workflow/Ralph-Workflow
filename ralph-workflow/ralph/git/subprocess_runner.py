@@ -20,12 +20,27 @@ from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 #: failure fails fast instead of hanging the process forever (a real agent-hang
 #: vector for any network git op). Merged into the parent environment for every
 #: ``run_git`` call; caller-supplied env still takes precedence.
+#:
+#: Per the auto-integration hardening spec (D1/D14), the baseline also pins
+#: ``LC_ALL=C`` (so stderr substring classification is stable across locales),
+#: ``VISUAL=`` / ``EDITOR=`` (some tools consult these directly rather than
+#: through git's own ``GIT_EDITOR``), and ``GIT_NO_REPLACE_OBJECTS=1`` (H4:
+#: produced history must never silently depend on ``refs/replace/*``). The
+#: ``GIT_*`` family location variables (``GIT_DIR``, ``GIT_WORK_TREE``,
+#: ``GIT_INDEX_FILE``, ``GIT_COMMON_DIR``) are scrubbed from inherited
+#: environments inside :func:`_build_spawn_env` rather than from this dict;
+#: a default-empty value would still win against the inherited one and
+#: silently redirect a subprocess into the wrong repository.
 _GIT_BATCH_MODE_ENV: dict[str, str] = {
     "GIT_TERMINAL_PROMPT": "0",
     "GCM_INTERACTIVE": "Never",
     "GIT_EDITOR": ":",
     "GIT_SEQUENCE_EDITOR": ":",
     "GIT_PAGER": "cat",
+    "EDITOR": ":",
+    "VISUAL": ":",
+    "LC_ALL": "C",
+    "GIT_NO_REPLACE_OBJECTS": "1",
 }
 
 if TYPE_CHECKING:
@@ -39,6 +54,55 @@ if TYPE_CHECKING:
             exc: object,
             tb: object,
         ) -> object: ...
+
+
+#: ``GIT_*`` family location variables scrubbed from every spawned
+#: environment. A non-empty inherited ``GIT_DIR`` would silently
+#: redirect a subprocess into a different repository than the one
+#: the caller asked for; defaulting these to empty in
+#: :data:`_GIT_BATCH_MODE_ENV` would still lose to a non-empty
+#: inherited value. Removing them at every precedence level
+#: (caller / baseline / inherited environ) is the only way the
+#: scrub survives any caller.
+_SCRUBBED_GIT_ENV_KEYS: frozenset[str] = frozenset(
+    {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"}
+)
+
+
+def _build_spawn_env(
+    caller_env: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """Build the environment handed to the git subprocess.
+
+    Order of precedence (highest first):
+
+    1. The caller-supplied env (when provided through
+       :class:`GitRunOptions`).
+    2. The non-interactive batch baseline in
+       :data:`_GIT_BATCH_MODE_ENV`.
+    3. The inherited :data:`os.environ`.
+
+    ``GIT_DIR``, ``GIT_WORK_TREE``, ``GIT_INDEX_FILE`` and
+    ``GIT_COMMON_DIR`` are scrubbed at every precedence level: a
+    fleet agent that inherited any of them from a parent process
+    would silently redirect every later ``git`` call into a
+    different repository (D13). Removing the inherited value BEFORE
+    the batch baseline is applied is the only way a downstream
+    caller cannot re-introduce it through
+    :class:`GitRunOptions`.
+    """
+    merged: dict[str, str] = {}
+    for source in (os.environ, _GIT_BATCH_MODE_ENV):
+        for key, value in source.items():
+            if key in _SCRUBBED_GIT_ENV_KEYS:
+                continue
+            merged[key] = value
+    if caller_env is not None:
+        for key, value in caller_env.items():
+            if key in _SCRUBBED_GIT_ENV_KEYS:
+                continue
+            merged[key] = value
+    return merged
 
 
 @dataclass(frozen=True)
@@ -93,10 +157,7 @@ def run_git(
         if effective_options.timeout is not None
         else GIT_SUBPROCESS_TIMEOUT_SECONDS
     )
-    spawn_env = dict(os.environ)
-    spawn_env.update(_GIT_BATCH_MODE_ENV)
-    if effective_options.env is not None:
-        spawn_env.update(effective_options.env)
+    spawn_env = _build_spawn_env(effective_options.env)
     proc = get_process_manager().spawn(
         cmd,
         SpawnOptions(

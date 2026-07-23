@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
+from ralph.git.hardening import PINNED_CONFIG_ARGS, scrub_git_env
 from ralph.git.operations import GitOperationError, find_repo_root
 from ralph.git.rebase._conflict_remaining_error import ConflictRemainingError
 from ralph.git.rebase._no_rebase_in_progress_error import NoRebaseInProgressError
@@ -155,11 +156,41 @@ def continue_rebase_at(repo_root: Path | str) -> None:
         _close_repo(repo)
 
     try:
+        # The continuation is non-interactive: ``--no-autostash`` /
+        # ``--no-autosquash`` / ``--no-update-refs`` carry the
+        # policy over from the original rebase (the precondition
+        # would have rejected a dirty tree, and we already pinned
+        # those flags on the parent ``rebase_onto`` call). The
+        # pinned -c config from :data:`PINNED_CONFIG_ARGS` keeps
+        # rerere off and the merge backend, so a
+        # ``git rebase --continue`` cannot be steered into a
+        # different backend or replay a recorded wrong resolution.
+        # ``--no-edit`` is intentionally OMITTED: ``rebase
+        # --continue`` only opens an editor when the rebase is
+        # interactive OR a merge-back message is required, and
+        # some git versions (notably 2.x) reject ``--no-edit`` on
+        # the merge backend, so passing it unconditionally is a
+        # hazard. The non-interactive editor env (``GIT_EDITOR=``,
+        # ``GIT_SEQUENCE_EDITOR=``) is already pinned
+        # unconditionally across the suite in
+        # :data:`PINNED_CONFIG_ARGS` + ``_git_env()`` so the
+        # only failure mode left is a hung edit, which the
+        # universal git call timeout closes.
         run_git(
-            ["rebase", "--continue"],
+            [
+                *PINNED_CONFIG_ARGS,
+                "rebase",
+                "--continue",
+                "--no-autostash",
+                "--no-autosquash",
+                "--no-update-refs",
+            ],
             cwd=Path(repo_root),
             label="git-rebase:continue",
-            options=GitRunOptions(env=_git_env(), check=True),
+            options=GitRunOptions(
+                env=scrub_git_env(_git_env()),
+                check=True,
+            ),
         )
     except subprocess.CalledProcessError as exc:
         raw_stderr: object = exc.stderr

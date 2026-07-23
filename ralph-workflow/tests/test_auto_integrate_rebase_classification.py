@@ -66,9 +66,7 @@ _PLAIN_CONFLICT = (
 class FakeProcessExecutor(ProcessExecutor):
     """Executor returning canned :class:`ProcessResult` values per argv."""
 
-    def __init__(
-        self, responses: Mapping[tuple[str, tuple[str, ...]], ProcessResult]
-    ) -> None:
+    def __init__(self, responses: Mapping[tuple[str, tuple[str, ...]], ProcessResult]) -> None:
         self.responses = responses
         self.calls: list[tuple[str, tuple[str, ...]]] = []
 
@@ -81,9 +79,7 @@ class FakeProcessExecutor(ProcessExecutor):
     ) -> ProcessResult:
         key = (command, tuple(args))
         self.calls.append(key)
-        return self.responses.get(
-            key, ProcessResult(returncode=0, stdout="", stderr="")
-        )
+        return self.responses.get(key, ProcessResult(returncode=0, stdout="", stderr=""))
 
 
 def _checkout_feature(repo_root: Path) -> str:
@@ -100,7 +96,7 @@ def _create_rebase_state(repo_root: Path) -> None:
 
 
 def _executor_for(
-    base: str, rebase_result: ProcessResult
+    base: str, rebase_result: ProcessResult, *, branch_name: str = "feature-classify"
 ) -> FakeProcessExecutor:
     """Fake executor driving ``rebase_onto`` to ``rebase_result``."""
     return FakeProcessExecutor(
@@ -111,7 +107,19 @@ def _executor_for(
             ("git", ("merge-base", "--is-ancestor", "--", base, "HEAD")): ProcessResult(
                 returncode=1, stdout="", stderr=""
             ),
-            ("git", ("rebase", "--", base)): rebase_result,
+            (
+                "git",
+                (
+                    "rebase",
+                    "--no-autostash",
+                    "--no-autosquash",
+                    "--no-update-refs",
+                    "--empty=drop",
+                    "--",
+                    base,
+                    branch_name,
+                ),
+            ): rebase_result,
             (
                 "git",
                 ("status", "--porcelain", "--untracked-files=no"),
@@ -128,14 +136,10 @@ def test_rebase_regression_failed_rebase_mentioning_up_to_date_is_not_a_noop(
     _create_rebase_state(tmp_git_repo)
     executor = _executor_for(
         base,
-        ProcessResult(
-            returncode=1, stdout="", stderr=_CONFLICT_MENTIONING_UP_TO_DATE
-        ),
+        ProcessResult(returncode=1, stdout="", stderr=_CONFLICT_MENTIONING_UP_TO_DATE),
     )
 
-    result = rebase_onto(
-        upstream_branch=base, repo_root=tmp_git_repo, executor=executor
-    )
+    result = rebase_onto(upstream_branch=base, repo_root=tmp_git_repo, executor=executor)
 
     assert not isinstance(result, RebaseNoOp)
     assert isinstance(result, RebaseConflicts)
@@ -150,9 +154,7 @@ def test_genuine_up_to_date_rebase_without_rebase_state_is_still_a_noop(
         base, ProcessResult(returncode=1, stdout=_GENUINE_UP_TO_DATE, stderr="")
     )
 
-    result = rebase_onto(
-        upstream_branch=base, repo_root=tmp_git_repo, executor=executor
-    )
+    result = rebase_onto(upstream_branch=base, repo_root=tmp_git_repo, executor=executor)
 
     assert isinstance(result, RebaseNoOp)
 
@@ -162,13 +164,9 @@ def test_conflicting_rebase_result_is_classified_as_conflicts(
 ) -> None:
     """A plain content conflict still classifies as :class:`RebaseConflicts`."""
     base = _checkout_feature(tmp_git_repo)
-    executor = _executor_for(
-        base, ProcessResult(returncode=1, stdout="", stderr=_PLAIN_CONFLICT)
-    )
+    executor = _executor_for(base, ProcessResult(returncode=1, stdout="", stderr=_PLAIN_CONFLICT))
 
-    result = rebase_onto(
-        upstream_branch=base, repo_root=tmp_git_repo, executor=executor
-    )
+    result = rebase_onto(upstream_branch=base, repo_root=tmp_git_repo, executor=executor)
 
     assert isinstance(result, RebaseConflicts)
 
@@ -188,12 +186,12 @@ def test_rebase_onto_non_default_target_from_master_is_not_a_phantom_noop(
         repo.git.checkout("-B", "master")
 
     executor = _executor_for(
-        "develop", ProcessResult(returncode=1, stdout="", stderr=_PLAIN_CONFLICT)
+        "develop",
+        ProcessResult(returncode=1, stdout="", stderr=_PLAIN_CONFLICT),
+        branch_name="master",
     )
 
-    result = rebase_onto(
-        upstream_branch="develop", repo_root=tmp_git_repo, executor=executor
-    )
+    result = rebase_onto(upstream_branch="develop", repo_root=tmp_git_repo, executor=executor)
 
     assert not isinstance(result, RebaseNoOp), (
         "a branch named 'master' rebasing onto 'develop' is a real rebase"
@@ -209,11 +207,11 @@ def test_rebase_onto_the_branch_already_checked_out_is_a_noop(
         repo.git.checkout("-B", "develop")
 
     executor = _executor_for(
-        "develop", ProcessResult(returncode=0, stdout="", stderr="")
+        "develop",
+        ProcessResult(returncode=0, stdout="", stderr=""),
+        branch_name="develop",
     )
 
-    result = rebase_onto(
-        upstream_branch="develop", repo_root=tmp_git_repo, executor=executor
-    )
+    result = rebase_onto(upstream_branch="develop", repo_root=tmp_git_repo, executor=executor)
 
     assert isinstance(result, RebaseNoOp)

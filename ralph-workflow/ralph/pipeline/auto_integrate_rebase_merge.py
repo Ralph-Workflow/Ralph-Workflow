@@ -34,6 +34,7 @@ from ralph.git.rebase.rebase import (
     rebase_in_progress,
     rebase_onto,
 )
+from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
@@ -57,9 +58,31 @@ if TYPE_CHECKING:
 
 #: ``RebaseNoOp`` reason recorded when the bounded retry deliberately
 #: skips ``rebase_onto`` to preserve the previous attempt's merge commit.
-REBASE_SKIPPED_FOR_MERGE = (
-    "rebase skipped on retry to preserve the integration merge commit"
-)
+REBASE_SKIPPED_FOR_MERGE = "rebase skipped on retry to preserve the integration merge commit"
+
+#: Reasons the feature is being routed straight to the endpoint merge
+#: instead of ``rebase_onto`` first. Recorded in the operator log
+#: alongside the ``merged`` headline so the operator can tell a
+#: prescribed rebase-skipping from a fallback-after-failure.
+#:
+#: * B3 — merge commits in the replay range are flattened and dropped
+#:   by a plain ``git rebase``; routing to the endpoint merge
+#:   preserves them. ``rebase --rebase-merges`` exists, but its
+#:   side-effects on history topology and the documented edge cases
+#:   make it unsuitable for the always-on auto-integration path.
+#: * B7 — root commits have no parent to rebase onto. ``rebase
+#:   --root`` exists, but the spec scopes it out of automation
+#:   (B7) because of the operator-clarity cost of replaying
+#:   history.
+#: * B4/B6 — an all-empty replay (every commit became empty on
+#:   replay because the change is already upstream) is the case
+#:   the rebase ``--empty=drop`` flag was supposed to absorb.
+#:   Older gits that ignore the flag abandon to endpoint merge
+#:   anyway; the routing here short-circuits the loop and
+#:   still lands the branch via the merge fallback.
+_REASON_MERGE_COMMITS = "branch contains merge commits; routing to endpoint merge"
+_REASON_ROOT_COMMITS = "branch contains root commits; routing to endpoint merge"
+_REASON_ALL_EMPTY = "branch has no replayable commits; routing to endpoint merge"
 
 __all__ = [
     "REBASE_SKIPPED_FOR_MERGE",
@@ -114,6 +137,15 @@ def run_rebase_or_merge(
     and replay the raw feature commits back into the conflict the
     resolver just settled.
 
+    Before ``rebase_onto`` is called the function also detects ranges
+    a plain rebase would mishandle (B3 merge commits, B7 root commits,
+    B4/B6 all-empty replays) and routes them straight to the endpoint
+    merge so the rebase engine never silently flattens a merge
+    resolution, replays an already-upstream patch into a conflict, or
+    drops a root commit. The rebase ``--empty=drop`` flag from step 2
+    still lands the all-empty case on modern git; this routing is the
+    backstop for older git that ignores the flag.
+
     With a ``rebase_stop_resolver`` a CONFLICTED rebase is resolved in
     place -- commit by commit, through ``git rebase --continue`` -- before
     the abort-and-endpoint-merge fallback is considered at all.
@@ -127,6 +159,21 @@ def run_rebase_or_merge(
             RebaseNoOp(REBASE_SKIPPED_FOR_MERGE),
             conflict_resolver,
         )
+    # Pre-flight routing: detect ranges a plain ``rebase --onto``
+    # would silently mishandle and skip the rebase phase entirely.
+    # The rebase result is replaced with a ``RebaseNoOp`` carrying
+    # the routing reason so the operator log line tells the operator
+    # WHY the merge was chosen; the headline ``merged`` comes from
+    # the endpoint merge that follows.
+    routing_reason = _range_routing_reason(root, target)
+    if routing_reason is not None:
+        logger.info("auto_integrate: {} (target '{}')", routing_reason, target)
+        return _endpoint_merge_result(
+            root,
+            target,
+            RebaseNoOp(routing_reason),
+            conflict_resolver,
+        )
     rebase_outcome = rebase_onto(target, repo_root=root)
     if not isinstance(rebase_outcome, (RebaseConflicts, RebaseFailed)):
         return RebaseRunResult(
@@ -137,15 +184,98 @@ def run_rebase_or_merge(
         )
 
     if isinstance(rebase_outcome, RebaseConflicts) and rebase_stop_resolver is not None:
-        resolved = _resolve_conflicted_rebase(
-            root, target, rebase_stop_resolver, display
-        )
+        resolved = _resolve_conflicted_rebase(root, target, rebase_stop_resolver, display)
         if resolved is not None:
             return resolved
 
-    return _fallback_to_endpoint_merge(
-        root, target, rebase_outcome, conflict_resolver
+    return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver)
+
+
+def _range_routing_reason(root: Path, target: str) -> str | None:
+    """Decide whether the feature range must skip ``rebase_onto``.
+
+    Returns the routing reason (``_REASON_*``) the operator log line
+    should carry, or ``None`` to run the rebase. The check is
+    index-/ref-queries only; no git mutation, so a routing decision
+    that turns out wrong is reversible by retrying with
+    ``prefer_merge=False`` next seam.
+
+    Each predicate is a cheap ``rev-list`` over ``<target>..HEAD``:
+
+    * **B3** — ``rev-list --merges``: nonzero means a merge commit
+      sits in the range; a plain ``rebase`` would drop it. Route to
+      endpoint merge so the resolution the agent was paid to produce
+      survives the integration.
+    * **B7** — ``rev-list --max-parents=0``: nonzero means a root
+      commit sits in the range; ``rebase --root`` is out of scope
+      (B7). Route to endpoint merge.
+    * **B4/B6** — an all-empty replay (every commit becomes empty
+      on replay because the change is already upstream) is the
+      case the rebase ``--empty=drop`` flag was supposed to absorb
+      (B4). Modern git honors the flag; older git abandons.
+      Detection: ``rev-list --count <target>..HEAD`` is the total
+      number of feature commits; ``rev-list --cherry-pick
+      --no-merges <target>..HEAD`` is the number of commits the
+      replay would actually need to apply. When they are equal
+      and the replay-range is non-empty, every commit was
+      already applied, so the rebase would walk through zero
+      meaningful stops and the merge is the only path that
+      moves the ref. The endpoint merge is the B4/B6 backstop.
+    """
+    # Total feature commits in the range; zero means there is
+    # nothing to rebase OR route — the precondition check should
+    # have caught the no-commits case earlier, but we still fail
+    # open to ``rebase_onto`` so the existing NoOp machinery reports
+    # it.
+    if _rev_list_count(root, target, extra_args=()) == 0:
+        return None
+    if _rev_list_count(root, target, extra_args=("--merges",)) > 0:
+        return _REASON_MERGE_COMMITS
+    if _rev_list_count(root, target, extra_args=("--max-parents=0",)) > 0:
+        return _REASON_ROOT_COMMITS
+    if _all_empty_replay(root, target):
+        return _REASON_ALL_EMPTY
+    return None
+
+
+def _rev_list_count(root: Path, target: str, *, extra_args: tuple[str, ...]) -> int:
+    """Run ``git rev-list <args> <target>..HEAD`` and return the count.
+
+    A failed invocation returns ``0`` so the routing reason falls
+    through to ``None`` and the rebase engine takes over. The point
+    of these checks is to skip the rebase on OBVIOUS cases; an
+    unanswerable question is not obvious, so the rebase's own
+    classification is the better answer than a routing guess.
+    """
+    result = run_git(
+        ("rev-list", "--count", *extra_args, "--", f"{target}..HEAD"),
+        cwd=root,
+        label="auto-integrate:rev-list-count",
     )
+    if result.returncode != 0:
+        return 0
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return 0
+
+
+def _all_empty_replay(root: Path, target: str) -> bool:
+    """True when every feature commit is already on ``target`` upstream.
+
+    The cherry-pick walker in ``rev-list`` drops commits whose
+    patch-id matches one already in the upstream history (B6). A
+    non-empty feature range with an EMPTY cherry-picked range is
+    therefore the B4 all-empty-replay case: every commit was
+    already applied, so the rebase will walk through zero
+    meaningful stops regardless of ``--empty=drop``. The endpoint
+    merge is the only path that lands the branch.
+    """
+    feature_count = _rev_list_count(root, target, extra_args=())
+    if feature_count == 0:
+        return False
+    cherry_count = _rev_list_count(root, target, extra_args=("--cherry-pick", "--no-merges"))
+    return cherry_count == 0
 
 
 def _resolve_conflicted_rebase(
@@ -245,9 +375,7 @@ def _fallback_to_endpoint_merge(
             rebase_outcome=rebase_outcome,
             merge_attempted=False,
             merge_outcome=None,
-            short_circuit=record_conflict(
-                reason="rebase in-progress after abort", target=target
-            ),
+            short_circuit=record_conflict(reason="rebase in-progress after abort", target=target),
         )
 
     return _endpoint_merge_result(root, target, rebase_outcome, conflict_resolver)
@@ -265,9 +393,7 @@ def _endpoint_merge_result(
     both paths keep exactly one branch table; ``rebase_outcome`` is the
     marker each caller wants preserved for ``_classify_rebase_outcome``.
     """
-    merge_result = endpoint_merge_with_resolution(
-        root, target, conflict_resolver
-    )
+    merge_result = endpoint_merge_with_resolution(root, target, conflict_resolver)
     if merge_result is None:
         # The merge attempt raised; surface that as the headline
         # conflict state (the merge-attempt reason is more
@@ -325,9 +451,7 @@ def _clear_record_if_no_inflight_op(root: Path) -> None:
     forever.
     """
     try:
-        clean = merge_state(root) == MERGE_STATE_NONE and not rebase_in_progress(
-            root
-        )
+        clean = merge_state(root) == MERGE_STATE_NONE and not rebase_in_progress(root)
     except Exception as state_exc:
         logger.warning(
             "auto_integrate: could not prove no in-flight operation remains"
