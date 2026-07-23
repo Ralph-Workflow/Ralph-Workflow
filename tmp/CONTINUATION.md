@@ -18,6 +18,20 @@ each commit check `git rev-list --count HEAD..main` and rebase onto main if it
 moved (it has been 0 so far); push to `origin wt-043-md-migration` after each
 piece; never create branches; exit on the same branch.
 
+## Git sync protocol (PERIODIC, user-mandated — do this after every piece)
+
+After each committed piece: (1) `git fetch origin` and check
+`git rev-list --count HEAD..main`; if main moved, `git rebase main`, resolve
+conflicts favoring the migration's rewrites (main's changes are usually
+module-split refactors — verify each side with `git show main:<file>`),
+re-run focused tests, `git push --force-with-lease origin wt-043-md-migration`.
+(2) FAST-FORWARD MAIN to this branch so other agents' worktrees receive our
+work: `git -C "/Volumes/Crucial X9/ext-Projects/Ralph-Workflow" merge --ff-only wt-043-md-migration`
+(main is checked out in that primary worktree; confirm its tree is clean
+first with `git -C ... status --porcelain`). Do BOTH periodically — every
+rebase of this branch onto main must be followed by fast-forwarding main to
+the latest branch tip.
+
 ## State when the previous session ended (9 commits pushed, branch 9 ahead / 0 behind main)
 
 Committed and pushed, in order:
