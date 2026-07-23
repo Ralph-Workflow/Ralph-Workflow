@@ -65,6 +65,12 @@ def _parse(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8"))
 
 
+def _mentions_status_bar(path: Path) -> bool:
+    """Return whether ``path`` can contain a lifecycle site of interest."""
+    source = path.read_text(encoding="utf-8")
+    return "StatusBar" in source or "status_bar" in source
+
+
 def _rel(path: Path) -> str:
     """Return ``path`` relative to the ralph-workflow package root."""
     return str(path.relative_to(_RALPH_DIR))
@@ -153,6 +159,8 @@ def test_parallel_display_exclusively_owns_status_bar_lifecycle() -> None:
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
 
     for path in _scan_targets():
+        if not _mentions_status_bar(path):
+            continue
         tree = _parse(path)
         for lineno in _status_bar_constructor_sites(tree):
             if path.name == _CONSTRUCTOR_FILE and _site_is_in_method(
@@ -200,6 +208,8 @@ def test_parallel_display_exclusively_owns_status_bar_lifecycle() -> None:
             forbidden_files.add(path)
 
     for path in sorted(forbidden_files - set(_scan_targets())):
+        if not _mentions_status_bar(path):
+            continue
         tree = _parse(path)
         violations.extend(
             f"{_rel(path)}:{lineno}: StatusBar(...)"
