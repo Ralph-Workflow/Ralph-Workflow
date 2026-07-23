@@ -1028,6 +1028,13 @@ ralph.pipeline.auto_integrate_context
    :members:
    :show-inheritance:
 
+ralph.pipeline.auto_integrate_catchup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.auto_integrate_catchup
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate_ff
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

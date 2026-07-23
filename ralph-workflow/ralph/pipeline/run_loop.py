@@ -34,6 +34,7 @@ from ralph.pipeline.auto_integrate_agent import (
     build_agent_rebase_stop_resolver,
     emit_integration_warn_line,
 )
+from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enabled
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
@@ -137,6 +139,11 @@ class _LoopContext:
     is_quiet: bool
     heartbeat_client: ProHeartbeatClient | None = None
     pro_watcher: ProMarkerWatcher | None = None
+    # Background catch-up fast-forward worker (see
+    # ``ralph.pipeline.auto_integrate_catchup``). Started at run start
+    # when auto-integration is enabled; stopped in ``_cleanup_pipeline``
+    # on every exit path.
+    catchup_worker: AutoIntegrateCatchupWorker | None = None
     snapshot_registry: SnapshotRegistry | None = None
     pipeline_deps: PipelineDeps | None = None
     last_waiting_state_phase: str | None = None
@@ -1427,6 +1434,9 @@ def _cleanup_pipeline(
     if loop_ctx.heartbeat_client is not None:
         with suppress(Exception):
             loop_ctx.heartbeat_client.stop()
+    if loop_ctx.catchup_worker is not None:
+        with suppress(Exception):
+            loop_ctx.catchup_worker.stop()
     emit_final_summary(
         state,
         loop_ctx.workspace_scope.root,
@@ -1665,6 +1675,7 @@ def run(
         pro_watcher=_pro_watcher,
         snapshot_registry=collaborators.snapshot_registry,
         pipeline_deps=pipeline_deps,
+        catchup_worker=start_catchup_worker_if_enabled(config, workspace_scope.root),
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
     )
     _unsubscribe_display = _subscribe_recovery_display(

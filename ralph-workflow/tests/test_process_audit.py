@@ -111,6 +111,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_auto_integrate_conflict_budget.py",  # real-git regression for the bounded conflict-resolution budget
     "test_auto_integrate_conflict_e2e.py",  # real-git end-to-end proof of the production conflict-resolution chain
     "test_auto_integrate_clone_conflict_e2e.py",  # real-git clone + linked-worktree conflict/concurrency regression
+    "test_auto_integrate_catchup_e2e.py",  # git repo setup via subprocess.run in test fixtures (real-git subprocess_e2e suite; background catch-up fast-forward)
     # git worktree setup via subprocess.run in test fixtures (real-git
     # subprocess_e2e suite; prefix-colliding sibling worktree regression)
     "test_auto_integrate_worktree_prefix_e2e.py",

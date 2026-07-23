@@ -43,6 +43,8 @@ and open a fresh `[Unreleased]`.
 
 ### Added
 
+- **feat(integrate): background catch-up fast-forward worker** — a bounded daemon thread (`ralph/pipeline/auto_integrate_catchup.py`) that every 30 seconds fast-forwards a clean, commit-free checkout onto the auto-integrate target via `git merge --ff-only`, so divergence never accumulates between seams and no conflict-resolution agent (or its tokens) is needed for a move git can make for free; started/stopped with the run loop and pinned by `tests/test_auto_integrate_catchup.py` and `tests/test_auto_integrate_catchup_e2e.py`.
+
 - **feat(telemetry): attach a metadata-only agent-config snapshot, the project's policy-schema state, and the Ralph/Python versions to the Sentry session** — pinned by `tests/test_telemetry_sentry.py`. The `agent_config` context is set at the pipeline config-load chokepoint so it rides on every event including crashes; user-authored agent names, raw `cmd` strings, and flag values are dropped by `ralph/telemetry/_agent_config_payload.py` (transports stay closed-vocabulary, model IDs pass through, flags reduce to presence booleans). A `model` value that is a filesystem path or a credentialed endpoint URL — legitimate in ollama/llama.cpp/vLLM/LiteLLM setups — is rejected as `custom` rather than forwarded, since the `before_send` scrubber only rewrites the home/cwd prefix and would leave the rest of such a path (and any inline password) intact.
 
 ### Fixed

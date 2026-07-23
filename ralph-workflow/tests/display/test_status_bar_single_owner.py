@@ -44,8 +44,8 @@ _FORBIDDEN_DIRS = (
     _RALPH_DIR / "runtime",
 )
 _CONSTRUCTOR_FILE = "parallel_display.py"
-_START_LINE_NUMBER = 1495
-_STOP_LINE_NUMBER = 1503
+_START_LINE_NUMBER = 1476
+_STOP_LINE_NUMBER = 1484
 _CTOR_LINE_NUMBER = 534
 
 
@@ -164,7 +164,7 @@ def test_parallel_display_is_only_class_that_starts_status_bar() -> None:
     ``ParallelDisplay.start``.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.start``
-    at line 1382. No other module under ``ralph/display/``, ``ralph/pipeline/``,
+    at line ``_START_LINE_NUMBER``. No other module under ``ralph/display/``, ``ralph/pipeline/``,
     or ``ralph/cli/`` may call ``start()`` on the composed StatusBar.
     """
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
@@ -192,7 +192,7 @@ def test_status_bar_stop_only_inside_parallel_display_stop() -> None:
     ``ParallelDisplay.stop``.
 
     The canonical site is ``ralph/display/parallel_display.py:ParallelDisplay.stop``
-    at line 1390. No other module under ``ralph/display/``, ``ralph/pipeline/``,
+    at line ``_STOP_LINE_NUMBER``. No other module under ``ralph/display/``, ``ralph/pipeline/``,
     or ``ralph/cli/`` may call ``stop()`` on the composed StatusBar.
     """
     receiver_names: frozenset[str] = frozenset({"_status_bar", "status_bar"})
