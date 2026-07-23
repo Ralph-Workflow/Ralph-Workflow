@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import MdArtifactSpec
+from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
 
 if TYPE_CHECKING:
@@ -72,5 +73,7 @@ COMMIT_CLEANUP_SPEC = MdArtifactSpec(
     normalize_content=normalize_commit_cleanup_content,
     validate_document=_validate_document,
 )
+
+register_spec(COMMIT_CLEANUP_SPEC)
 
 __all__ = ["COMMIT_CLEANUP_SPEC"]
