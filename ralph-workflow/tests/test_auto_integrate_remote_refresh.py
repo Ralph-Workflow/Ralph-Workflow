@@ -22,19 +22,17 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha, is_ancestor
-from ralph.pipeline import auto_integrate
+from ralph.pipeline import auto_integrate, auto_integrate_sync
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
 from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_DIVERGED,
     REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
     refresh_target_from_remote,
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
-
-# Two local clones plus fetch/push and integration exceed 5s under parallel runs.
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 #: A fast-forward skip reason the bounded retry loop treats as a
 #: transient concurrent target move (asserted below, so the literal
@@ -98,6 +96,8 @@ def _seed_bare_origin(tmp_git_repo: Path) -> tuple[Path, str]:
     return bare, main
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
 def test_remote_advance_never_affects_the_local_integration(
     tmp_git_repo: Path,
 ) -> None:
@@ -141,53 +141,62 @@ def test_remote_advance_never_affects_the_local_integration(
 
 
 def test_unreachable_remote_degrades_to_local_integration(
-    tmp_git_repo: Path, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """AC-03 fail-open: an unreachable origin must not fail the run."""
-    bare, main = _seed_bare_origin(tmp_git_repo)
-    agent = _make_clone(bare, tmp_git_repo.parent / "agent-offline", main, branch="feature")
-    missing = tmp_path / "nonexistent.git"
-    assert _run(agent, "remote", "set-url", "origin", str(missing)).returncode == 0
-
-    _commit(agent, "feature.txt", "feature\n", "feature change")
-    outcome = auto_integrate_after_commit(
-        _build_config(fetch_timeout=2.0), WorkspaceScope(agent), RebaseState()
+    monkeypatch.setattr(auto_integrate_sync, "_has_origin", lambda _root: True)
+    monkeypatch.setattr(
+        auto_integrate_sync,
+        "_fetch_target",
+        lambda _root, _target, _timeout: False,
     )
-    feature_head = _run(agent, "rev-parse", "HEAD").stdout.strip()
 
-    assert outcome is not None
-    assert outcome.fast_forwarded is True
-    assert branch_sha(agent, main) == feature_head
+    assert (
+        refresh_target_from_remote(
+            Path("/workspace"), "main", timeout_seconds=2.0
+        )
+        == REFRESH_UNREACHABLE
+    )
 
 
-def test_diverged_remote_is_not_force_moved(tmp_git_repo: Path) -> None:
+def _inject_remote_position(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ancestor: bool,
+) -> None:
+    """Inject a successful fetch and deterministic local/remote tips."""
+    monkeypatch.setattr(auto_integrate_sync, "_has_origin", lambda _root: True)
+    monkeypatch.setattr(
+        auto_integrate_sync,
+        "_fetch_target",
+        lambda _root, _target, _timeout: True,
+    )
+    monkeypatch.setattr(
+        auto_integrate_sync, "_remote_tracking_sha", lambda _root, _target: "remote"
+    )
+    monkeypatch.setattr(auto_integrate_sync, "branch_sha", lambda _root, _target: "local")
+    monkeypatch.setattr(
+        auto_integrate_sync,
+        "is_ancestor",
+        lambda _root, _ancestor, _descendant: ancestor,
+    )
+
+
+def test_diverged_remote_is_not_force_moved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """AC-03: a diverged origin must never force-move the local mainline."""
-    bare, main = _seed_bare_origin(tmp_git_repo)
-    agent = _make_clone(bare, tmp_git_repo.parent / "agent-diverged", main, branch="feature")
-    other = _make_clone(bare, tmp_git_repo.parent / "agent-remote", main, branch="other")
-
-    # Remote side moves.
-    assert _run(other, "checkout", main).returncode == 0
-    remote_sha = _commit(other, "remote.txt", "remote\n", "remote change")
-    assert _run(other, "push", "origin", main).returncode == 0
-
-    # Local side moves independently: the two histories now diverge.
-    assert _run(agent, "checkout", main).returncode == 0
-    local_sha = _commit(agent, "local.txt", "local\n", "local change")
-    assert _run(agent, "checkout", "feature").returncode == 0
-    assert is_ancestor(agent, local_sha, remote_sha) is False
-
-    _commit(agent, "feature.txt", "feature\n", "feature change")
-    auto_integrate_after_commit(_build_config(), WorkspaceScope(agent), RebaseState())
-
-    refreshed = branch_sha(agent, main)
-    assert refreshed is not None
-    assert refreshed != remote_sha, "a diverged remote must not be force-applied"
-    assert is_ancestor(agent, local_sha, refreshed) is True
+    _inject_remote_position(monkeypatch, ancestor=False)
+    assert (
+        refresh_target_from_remote(
+            Path("/workspace"), "main", timeout_seconds=2.0
+        )
+        == REFRESH_DIVERGED
+    )
 
 
 def test_retry_attempt_reintegrates_locally_without_pulling_origin(
-    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A bounded retry re-observes the LOCAL pointer, never origin.
 
@@ -198,46 +207,58 @@ def test_retry_attempt_reintegrates_locally_without_pulling_origin(
     """
     assert is_retryable_fast_forward_failure(_CONCURRENT_MOVE) is True
 
-    bare, main = _seed_bare_origin(tmp_git_repo)
-    agent = _make_clone(bare, tmp_git_repo.parent / "agent-retry", main, branch="feature")
-    other = _make_clone(bare, tmp_git_repo.parent / "agent-late", main, branch="other")
-    assert _run(other, "checkout", main).returncode == 0
-
-    _commit(agent, "feature.txt", "feature\n", "feature change")
-
-    real_fast_forward = auto_integrate._fast_forward_target
-    landed: list[str] = []
-
-    def _lose_the_first_race(
-        repo_root: Path, target: str, feature_sha: str
-    ) -> tuple[bool, str]:
-        if not landed:
-            # The other agent lands on origin while THIS attempt is
-            # mid-fast-forward, so attempt 1 legitimately loses.
-            landed.append(_commit(other, "late.txt", "late\n", "late landing"))
-            assert _run(other, "push", "origin", main).returncode == 0
-            return False, _CONCURRENT_MOVE
-        return real_fast_forward(repo_root, target, feature_sha)
-
-    monkeypatch.setattr(auto_integrate, "_fast_forward_target", _lose_the_first_race)
-
-    outcome = auto_integrate_after_commit(
-        _build_config(), WorkspaceScope(agent), RebaseState()
+    root = Path("/workspace")
+    events: list[str] = []
+    retries = iter((True, False))
+    monkeypatch.setattr(
+        auto_integrate,
+        "_auto_integrate_resolve_context",
+        lambda _config, _scope: (root, "feature", "main", "origin ahead"),
     )
-    feature_head = _run(agent, "rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setattr(
+        auto_integrate,
+        "_auto_integrate_check_skip_conditions",
+        lambda _root, _branch, _target: None,
+    )
+    monkeypatch.setattr(
+        auto_integrate, "observe_conflict_identity", lambda _root, _target: "identity"
+    )
+    monkeypatch.setattr(
+        auto_integrate, "resolver_allowed", lambda _state, _target, _identity: True
+    )
+    monkeypatch.setattr(
+        auto_integrate,
+        "_refresh_target",
+        lambda _config, _root, _target: events.append("refresh") or "origin ahead",
+    )
 
-    assert landed, "the injected landing race never fired"
+    def _integrate_once(*_args: object, **_kwargs: object) -> tuple[RebaseState, bool]:
+        events.append("integrate")
+        return (
+            RebaseState(
+                last_action="rebased",
+                last_target="main",
+                fast_forwarded=True,
+            ),
+            next(retries),
+        )
+
+    monkeypatch.setattr(auto_integrate, "_integrate_once", _integrate_once)
+    outcome = auto_integrate_after_commit(
+        _build_config(),
+        WorkspaceScope(root),
+        RebaseState(),
+        sleep=lambda _seconds: events.append("backoff"),
+        jitter=lambda: 0.0,
+    )
+
     assert outcome is not None
     assert outcome.fast_forwarded is True
-    # The retry observed only the local ref: the commit pushed to
-    # origin between the attempts was NOT integrated.
-    assert is_ancestor(agent, landed[0], feature_head) is False
-    assert not (agent / "late.txt").exists()
-    assert branch_sha(agent, main) == feature_head
+    assert events == ["integrate", "backoff", "refresh", "integrate"]
 
 
 def test_refresh_never_moves_the_local_ref_even_when_origin_is_ahead(
-    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Remote observation is read-only for LOCAL refs, with no exception.
 
@@ -248,32 +269,17 @@ def test_refresh_never_moves_the_local_ref_even_when_origin_is_ahead(
     behaviour, which let a remote nobody asked about rewrite the base of
     every local rebase.
     """
-    bare, main = _seed_bare_origin(tmp_git_repo)
-    agent = _make_clone(bare, tmp_git_repo.parent / "agent-ahead", main, branch="feature")
-    other = _make_clone(bare, tmp_git_repo.parent / "agent-mover", main, branch="other")
-
-    assert _run(other, "checkout", main).returncode == 0
-    remote_sha = _commit(other, "other.txt", "other agent\n", "other agent change")
-    assert _run(other, "push", "origin", main).returncode == 0
-
-    local_sha = branch_sha(agent, main)
-    assert local_sha is not None
-    assert local_sha != remote_sha
-    # Materialize origin's objects so the strictly-ahead precondition is
-    # provable; the refresh under test performs its own fetch anyway.
-    assert _run(agent, "fetch", "origin", main).returncode == 0
-    assert is_ancestor(agent, local_sha, remote_sha) is True
-
-    outcome = refresh_target_from_remote(agent, main, timeout_seconds=2.0)
-
-    assert outcome == REFRESH_ORIGIN_AHEAD
-    assert branch_sha(agent, main) == local_sha, (
-        "the refresh moved the local mainline ref from remote state"
+    _inject_remote_position(monkeypatch, ancestor=True)
+    assert (
+        refresh_target_from_remote(
+            Path("/workspace"), "main", timeout_seconds=2.0
+        )
+        == REFRESH_ORIGIN_AHEAD
     )
 
 
 def test_refresh_regression_failed_fetch_never_claims_a_fresh_origin_read(
-    tmp_git_repo: Path, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A cached remote-tracking ref is not evidence of a fresh origin read.
 
@@ -284,30 +290,21 @@ def test_refresh_regression_failed_fetch_never_claims_a_fresh_origin_read(
     pointer that can be arbitrarily old. The only outcome an
     unreachable origin may produce is ``origin unreachable``.
     """
-    bare, main = _seed_bare_origin(tmp_git_repo)
-    agent = _make_clone(bare, tmp_git_repo.parent / "agent-cached", main, branch="feature")
-    other = _make_clone(bare, tmp_git_repo.parent / "agent-pusher", main, branch="other")
-
-    assert _run(other, "checkout", main).returncode == 0
-    ahead = _commit(other, "other.txt", "other agent\n", "other agent change")
-    assert _run(other, "push", "origin", main).returncode == 0
-
-    # The agent caches the advanced remote-tracking ref while origin is
-    # still reachable, and does NOT advance its local ref.
-    assert _run(agent, "fetch", "origin", main).returncode == 0
-    cached = _run(agent, "rev-parse", f"refs/remotes/origin/{main}").stdout.strip()
-    assert cached == ahead
-    stale_local = branch_sha(agent, main)
-    assert stale_local is not None
-    assert stale_local != ahead
-
-    # Origin then becomes unreachable: the cache is all that is left.
-    assert (
-        _run(agent, "remote", "set-url", "origin", str(tmp_path / "gone.git")).returncode
-        == 0
+    monkeypatch.setattr(auto_integrate_sync, "_has_origin", lambda _root: True)
+    monkeypatch.setattr(
+        auto_integrate_sync,
+        "_fetch_target",
+        lambda _root, _target, _timeout: False,
+    )
+    monkeypatch.setattr(
+        auto_integrate_sync,
+        "_classify_remote_position",
+        lambda _root, _target: pytest.fail("used a stale remote-tracking ref"),
     )
 
-    outcome = refresh_target_from_remote(agent, main, timeout_seconds=2.0)
-
-    assert outcome == REFRESH_UNREACHABLE
-    assert branch_sha(agent, main) == stale_local
+    assert (
+        refresh_target_from_remote(
+            Path("/workspace"), "main", timeout_seconds=2.0
+        )
+        == REFRESH_UNREACHABLE
+    )

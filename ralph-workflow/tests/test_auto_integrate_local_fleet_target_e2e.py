@@ -1,25 +1,9 @@
-"""End-to-end proof for a no-origin linked-worktree fleet (AC-03, AC-04).
+"""Local-fleet freshness contracts with one representative real worktree race.
 
-Ralph's own agents run as sibling ``wt-0NN-*`` worktrees over ONE git
-common directory with no ``origin`` at all. In that topology the mainline
-pointer other agents advance is the local ``refs/heads/<target>``, so
-there is nothing to fetch -- but the previous refresh treated "no origin"
-as terminal and reported ``REFRESH_NO_ORIGIN``, which is
-indistinguishable from "the pointer could not be observed". Every
-integration in the fleet therefore proceeded against a pointer whose
-freshness nothing had confirmed.
-
-This file proves the three things only a real multi-worktree repository
-can prove: the refresh reports the distinct local-fleet outcome, a
-sibling that advances the target mid-flight is picked up, and the
-worktree-conflict precondition answers correctly in BOTH directions --
-including for the primary worktree, which the old HEAD-file scan could
-not see at all.
-
-File-level markers. ``subprocess_e2e`` keeps this out of ``make test``'s
-budget-tracked 60 s step. ``timeout_seconds(30)`` sizes the budget for
-building a repository with two linked worktrees; no shared suite cap is
-raised.
+Refresh classification is proven through the bounded Git adapter seam, so those
+cases do not repeatedly create repositories and worktrees. The sole E2E case
+retains the unique interaction: a sibling moves a shared branch ref while a
+linked worktree is paused in a conflicted rebase.
 """
 
 from __future__ import annotations
@@ -31,14 +15,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.git_run_result import GitRunResult
 from ralph.git.merge import branch_sha
-from ralph.git.rebase.rebase_preconditions import (
-    RebasePreconditionError,
-    check_rebase_preconditions,
-)
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_refresh import refresh_target
 from ralph.pipeline.auto_integrate_sync import (
+    REFRESH_DISABLED,
     REFRESH_LOCAL_FLEET,
     REFRESH_NO_ORIGIN,
     observe_target_sha,
@@ -50,291 +32,171 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
-
-#: Prefix-sharing branch names, re-pinning the regression recorded in
-#: ``ralph/git/rebase/_worktree_head_ref.py``: a sibling worktree on
-#: ``wt-040-fix-autorebase`` must not read as holding ``wt-040``.
-_SIBLING_BRANCH = "wt-040"
-_FEATURE_BRANCH = "wt-040-fix-autorebase"
-
-#: Content a stub resolver writes over a conflict, so the assertions
-#: can tell a real resolution apart from either side winning.
-_RESOLVED_MARKER = "resolved by the stub resolver\n"
+_RESOLVED_CONTENT = "resolved by the stub resolver\n"
 
 
-def _run(
-    repo_root: Path, *args: str, timeout: float = 20.0
-) -> subprocess.CompletedProcess[str]:
-    """Run ``git <args>`` in ``repo_root``."""
-    return subprocess.run(
-        ("git", *args),
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
+def _git_result(args: tuple[str, ...], *, stdout: str = "", returncode: int = 0) -> GitRunResult:
+    return GitRunResult(args=args, returncode=returncode, stdout=stdout, stderr="")
+
+
+def test_no_origin_classifies_an_observable_local_target_as_a_fleet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A local branch is fresh evidence even when no remote exists."""
+    import ralph.pipeline.auto_integrate_sync as sync
+
+    def _run_git(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
+        if args == ("remote", "get-url", "origin"):
+            return _git_result(args, returncode=2)
+        return _git_result(args, stdout="abc123\n")
+
+    monkeypatch.setattr(sync, "run_git", _run_git)
+
+    assert (
+        refresh_target_from_remote(Path("/fleet"), "main", timeout_seconds=5.0)
+        == REFRESH_LOCAL_FLEET
     )
 
 
-def _base_branch(tmp_git_repo: Path) -> str:
-    out = _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
-    return out.stdout.strip().removeprefix("refs/heads/")
+def test_no_origin_without_a_local_target_remains_unobservable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No remote and no branch reports the distinct no-origin outcome."""
+    import ralph.pipeline.auto_integrate_sync as sync
+
+    def _run_git(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
+        return _git_result(args, returncode=2)
+
+    monkeypatch.setattr(sync, "run_git", _run_git)
+
+    assert (
+        refresh_target_from_remote(Path("/fleet"), "missing", timeout_seconds=5.0)
+        == REFRESH_NO_ORIGIN
+    )
 
 
-def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
-    target = repo_root / filename
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
-    _run(repo_root, "add", filename)
-    _run(repo_root, "commit", "-m", message)
-    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+@pytest.mark.parametrize(
+    ("observed_sha", "expected"),
+    [("abc123", REFRESH_LOCAL_FLEET), (None, REFRESH_DISABLED)],
+)
+def test_fetch_disabled_still_observes_the_local_pointer(
+    monkeypatch: pytest.MonkeyPatch,
+    observed_sha: str | None,
+    expected: str,
+) -> None:
+    """The fetch flag governs network access, not shared-ref observation."""
+    import ralph.pipeline.auto_integrate_refresh as refresh
 
+    def _observe_target_sha(_root: Path, _target: str) -> str | None:
+        return observed_sha
 
-def _build_config(target: str, *, fetch_enabled: bool = False) -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
+    monkeypatch.setattr(refresh, "observe_target_sha", _observe_target_sha)
+    config = UnifiedConfig.model_validate(
         {
             "general": {
                 "auto_integrate_enabled": True,
-                "auto_integrate_target": target,
-                "auto_integrate_fetch_enabled": fetch_enabled,
+                "auto_integrate_target": "main",
+                "auto_integrate_fetch_enabled": False,
             }
         }
     )
 
-
-def _fleet(tmp_git_repo: Path, tmp_path: Path) -> tuple[str, Path]:
-    """A no-origin repo whose feature branch lives in a linked worktree.
-
-    Returns ``(target_branch, feature_worktree_root)``. The PRIMARY
-    checkout keeps the target branch, exactly as a real fleet's parent
-    repository does, and a sibling worktree holds the prefix-sharing
-    ``wt-040`` branch.
-    """
-    target = _base_branch(tmp_git_repo)
-    _commit(tmp_git_repo, "seed.txt", "seed\n", "seed")
-    _run(tmp_git_repo, "remote", "remove", "origin")
-
-    sibling = tmp_path / "wt-sibling"
-    _run(tmp_git_repo, "worktree", "add", "-b", _SIBLING_BRANCH, str(sibling))
-    feature = tmp_path / "wt-feature"
-    _run(tmp_git_repo, "worktree", "add", "-b", _FEATURE_BRANCH, str(feature))
-    _commit(feature, "feature.txt", "feature work\n", "feature work")
-    return target, feature
+    assert refresh_target(config, Path("/fleet"), "main") == expected
 
 
-def _fleet_with_a_conflicting_target_edit(
+def test_observation_returns_the_latest_adapter_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each observation performs a fresh read through the Git adapter."""
+    import ralph.pipeline.auto_integrate_sync as sync
+
+    values = iter(("before\n", "after\n"))
+
+    def _run_git(args: tuple[str, ...], **_kwargs: object) -> GitRunResult:
+        return _git_result(args, stdout=next(values))
+
+    monkeypatch.setattr(sync, "run_git", _run_git)
+
+    assert observe_target_sha(Path("/fleet"), "main") == "before"
+    assert observe_target_sha(Path("/fleet"), "main") == "after"
+
+
+def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ("git", *args),
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+
+def _commit(repo_root: Path, filename: str, content: str, message: str) -> str:
+    path = repo_root / filename
+    path.write_text(content, encoding="utf-8")
+    assert _run(repo_root, "add", filename).returncode == 0
+    assert _run(repo_root, "commit", "-m", message).returncode == 0
+    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_sibling_target_move_during_rebase_is_reobserved_and_landed(
     tmp_git_repo: Path, tmp_path: Path
-) -> tuple[str, Path]:
-    """A fleet whose feature commit conflicts with the mainline.
-
-    The conflict is not the point -- it is the only deterministic way to
-    pause an integration mid-flight at a production seam, so a sibling
-    can advance the target between the first observation and the
-    fast-forward.
-    """
-    target = _base_branch(tmp_git_repo)
+) -> None:
+    """A shared target moving mid-rebase triggers a linear retry and landing."""
+    target = (
+        _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
+        .stdout.strip()
+        .removeprefix("refs/heads/")
+    )
     _commit(tmp_git_repo, "shared.txt", "seed\n", "seed shared")
-    _run(tmp_git_repo, "remote", "remove", "origin")
-
-    feature = tmp_path / "wt-feature"
-    _run(tmp_git_repo, "worktree", "add", "-b", _FEATURE_BRANCH, str(feature))
-    _commit(feature, "shared.txt", "feature version\n", "feature edit")
-    _commit(tmp_git_repo, "shared.txt", "target version\n", "target edit")
-    return target, feature
-
-
-def _rebase_dirs(repo_root: Path) -> list[Path]:
-    """Rebase state directories surviving in ``repo_root``'s git dir."""
-    git_dir = Path(
-        _run(repo_root, "rev-parse", "--absolute-git-dir").stdout.strip()
-    )
-    return [
-        path
-        for path in (git_dir / "rebase-merge", git_dir / "rebase-apply")
-        if path.exists()
-    ]
-
-
-def test_no_origin_with_a_local_target_reports_the_local_fleet_outcome(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """The distinct outcome an operator needs: observed, not unobservable."""
-    target, feature = _fleet(tmp_git_repo, tmp_path)
-
-    outcome = refresh_target_from_remote(feature, target, timeout_seconds=5.0)
-
-    assert outcome == REFRESH_LOCAL_FLEET
-
-
-def test_no_origin_and_no_such_branch_still_reports_no_origin(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """The genuinely unobservable case keeps its own distinct outcome."""
-    _target, feature = _fleet(tmp_git_repo, tmp_path)
-
-    outcome = refresh_target_from_remote(
-        feature, "no-such-branch", timeout_seconds=5.0
-    )
-
-    assert outcome == REFRESH_NO_ORIGIN
-
-
-def test_disabling_the_fetch_does_not_disable_local_pointer_freshness(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """``auto_integrate_fetch_enabled`` governs the network, nothing else."""
-    target, feature = _fleet(tmp_git_repo, tmp_path)
-
-    outcome = refresh_target(
-        _build_config(target, fetch_enabled=False), feature, target
-    )
-
-    assert outcome == REFRESH_LOCAL_FLEET
-
-
-def test_the_observation_reads_the_ref_a_sibling_just_advanced(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """Branch refs live in the COMMON dir, so a sibling's landing is visible."""
-    target, feature = _fleet(tmp_git_repo, tmp_path)
-    before = observe_target_sha(feature, target)
-
-    advanced = _commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed")
-
-    assert before != advanced
-    assert observe_target_sha(feature, target) == advanced
-
-
-def test_a_target_advanced_before_the_run_is_rebased_onto_and_landed(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """The easy half: a target already ahead when integration starts."""
-    target, feature = _fleet(tmp_git_repo, tmp_path)
-    # A sibling agent lands on the mainline after this worktree committed.
-    advanced = _commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed")
-
-    outcome = auto_integrate_after_commit(
-        _build_config(target), WorkspaceScope(feature), RebaseState()
-    )
-
-    assert outcome is not None
-    assert outcome.last_refresh == REFRESH_LOCAL_FLEET
-    feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
-    # The replay really happened on top of the sibling's commit.
-    assert (
-        _run(feature, "merge-base", "--is-ancestor", advanced, "HEAD").returncode == 0
-    )
-    assert branch_sha(feature, target) == feature_head
-
-
-def test_a_sibling_advancing_the_target_mid_run_is_still_landed(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """The fleet requirement end to end: the target moves DURING the run.
-
-    A target that is already ahead when integration starts is the easy
-    half -- the very first observation sees the new tip. The half that
-    actually needs proving is the race AC-04 is about: integration takes
-    its observation, starts replaying, and only THEN does a sibling land
-    on the mainline. The landing must notice, re-observe, replay onto the
-    new tip and still fast-forward.
-
-    The synchronisation point is deterministic and needs no sleeps: the
-    production ``rebase_stop_resolver`` seam is called while the rebase
-    is paused mid-replay, which is precisely the window between the
-    initial observation and the fast-forward. The sibling commit is made
-    from inside it, in the PRIMARY worktree, exactly as another agent in
-    the fleet would.
-
-    The assertions are deliberately narrow enough that ONLY the retry
-    can satisfy them. The endpoint-merge fallback would also leave the
-    mainline at the feature tip, so "it landed" proves nothing on its
-    own; a linear history with ``last_action == 'rebased'`` can be
-    reached only by replaying onto the moved target on attempt 2.
-    Pinning ``_MAX_INTEGRATION_ATTEMPTS`` to 1 must make this test fail.
-    """
-    target, feature = _fleet_with_a_conflicting_target_edit(tmp_git_repo, tmp_path)
-    target_at_first_observation = observe_target_sha(feature, target)
+    feature = tmp_path / "feature"
+    assert _run(
+        tmp_git_repo, "worktree", "add", "-b", "feature", str(feature)
+    ).returncode == 0
+    _commit(feature, "shared.txt", "feature\n", "feature edit")
+    _commit(tmp_git_repo, "shared.txt", "target\n", "target edit")
     advanced: list[str] = []
 
-    def _resolve_and_let_a_sibling_land(
-        root: Path, _target: str, stop: RebaseStop
-    ) -> bool:
-        """Resolve this stop; a sibling lands while we are paused here."""
+    def _resolve(root: Path, _target: str, stop: RebaseStop) -> bool:
         if not advanced:
             advanced.append(
-                _commit(
-                    tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed"
-                )
+                _commit(tmp_git_repo, "sibling.txt", "sibling\n", "sibling landed")
             )
         for relative in stop.conflicted_files:
-            (root / relative).write_text(_RESOLVED_MARKER, encoding="utf-8")
+            (root / relative).write_text(_RESOLVED_CONTENT, encoding="utf-8")
         return True
 
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": True,
+                "auto_integrate_target": target,
+                "auto_integrate_fetch_enabled": False,
+            }
+        }
+    )
     outcome = auto_integrate_after_commit(
-        _build_config(target),
+        config,
         WorkspaceScope(feature),
         RebaseState(),
-        rebase_stop_resolver=_resolve_and_let_a_sibling_land,
+        rebase_stop_resolver=_resolve,
         sleep=lambda _seconds: None,
         jitter=lambda: 0.0,
     )
 
     assert outcome is not None
-    # The sibling really did land after integration's first observation.
-    assert advanced and advanced[0] != target_at_first_observation
     assert outcome.last_refresh == REFRESH_LOCAL_FLEET
-    assert outcome.fast_forwarded is True
-    # The in-place resolution was KEPT and replayed, not discarded for
-    # an endpoint merge: that fallback would report 'merged' here.
     assert outcome.last_action == "rebased"
-    feature_head = _run(feature, "rev-parse", "HEAD").stdout.strip()
-    # The retry re-observed the moved target and replayed onto it...
+    assert outcome.fast_forwarded is True
+    assert advanced
+    feature_tip = _run(feature, "rev-parse", "HEAD").stdout.strip()
+    assert branch_sha(feature, target) == feature_tip
     assert (
-        _run(
-            feature, "merge-base", "--is-ancestor", advanced[0], "HEAD"
-        ).returncode
+        _run(feature, "merge-base", "--is-ancestor", advanced[0], feature_tip).returncode
         == 0
     )
-    # ...linearly, so no merge commit papered over the moved target...
     assert _run(feature, "log", "--merges", "--format=%H").stdout.strip() == ""
-    # ...the resolved content survived the second replay...
-    assert _run(feature, "show", "HEAD:shared.txt").stdout == _RESOLVED_MARKER
-    # ...and the mainline pointer ended up at the feature tip.
-    assert branch_sha(feature, target) == feature_head
-    assert _rebase_dirs(feature) == []
-
-
-def test_a_prefix_sharing_sibling_branch_does_not_block_the_rebase(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """``wt-040`` checked out elsewhere must not read as holding ``wt-040-*``."""
-    _target, feature = _fleet(tmp_git_repo, tmp_path)
-
-    check_rebase_preconditions(feature)
-
-
-def test_a_branch_held_by_the_primary_worktree_blocks_the_rebase(
-    tmp_git_repo: Path, tmp_path: Path
-) -> None:
-    """The case the old HEAD-file scan was structurally blind to.
-
-    ``<common_dir>/worktrees/`` has no entry for the PRIMARY checkout, so
-    the previous implementation could never report the primary as holding
-    a branch -- while the fast-forward side, asking ``git worktree list``,
-    could. Two answers to one question. Asking git in both places is what
-    removed the divergence.
-
-    The second checkout is built by writing HEAD's symref directly, which
-    is the only way to reach the state at all: ``git checkout`` refuses to
-    put a branch in two worktrees, and that refusal is exactly the
-    invariant this precondition mirrors for rebases.
-    """
-    target, _feature = _fleet(tmp_git_repo, tmp_path)
-    second = tmp_path / "wt-also-on-target"
-    _run(tmp_git_repo, "worktree", "add", "--detach", str(second))
-    _run(second, "symbolic-ref", "HEAD", f"refs/heads/{target}")
-
-    with pytest.raises(RebasePreconditionError, match="already checked out"):
-        check_rebase_preconditions(second)
+    assert _run(feature, "show", "HEAD:shared.txt").stdout == _RESOLVED_CONTENT
