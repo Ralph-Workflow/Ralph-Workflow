@@ -100,6 +100,7 @@ from ralph.pipeline.auto_integrate_record import (
     write_record as _write_record,
 )
 from ralph.pipeline.auto_integrate_recovery import (
+    post_attempt_verify,
     recover_incomplete_integration,
     recovery_retained_record,
 )
@@ -361,10 +362,30 @@ def auto_integrate_on_phase_transition(
                 refresh,
             )
     except Exception as exc:
+        # AC-08: never silently swallow a phase-transition pre-check
+        # exception while ``auto_integrate_enabled`` is true. Surface
+        # the failure as a recorded skip carrying the underlying
+        # exception text so an operator looking at the run log can
+        # tell WHICH precondition tripped (an opaque ``None`` here is
+        # indistinguishable from "the feature is disabled" or "this
+        # boundary decided not to fire", both of which are recorded
+        # states). The boundary hook still costs nothing here --
+        # ``_record_skip`` is a pure dataclass construction, the
+        # WARNING carries the failure detail.
         logger.warning(
-            "auto_integrate: phase-transition pre-check failed: {}", exc
+            "auto_integrate: phase-transition pre-check failed: {}\n"
+            "  recording skip (AC-08); the next seam will retry from a "
+            "fresh live local ref",
+            exc,
         )
-        return None
+        try:
+            recorded_target = resolve_integration_target(config, Path(workspace_scope.root)) or ""
+        except Exception:
+            recorded_target = ""
+        return _record_skip(
+            reason=f"phase-transition pre-check failed: {exc}",
+            target=recorded_target,
+        )
     return auto_integrate_after_commit(
         config,
         workspace_scope,
@@ -704,94 +725,130 @@ def _integrate_once(
             pre_target_sha=pre_target_sha,
         ),
     )
-
-    rebase_result = _run_rebase_or_merge(
-        root,
-        target,
-        conflict_resolver,
-        prefer_merge=prefer_merge,
-        rebase_stop_resolver=rebase_stop_resolver,
-        display=display,
-    )
-    if rebase_result.short_circuit is not None:
-        # Resolved failures clear the record; an abort that leaves a rebase
-        # in progress retains it for startup recovery.
-        return record_refresh(rebase_result.short_circuit, refresh), False
-
-    # Success path: the feature branch contains the target.
-    feature_sha = _read_post_integration_head_sha(root, target)
-    if feature_sha is None:
-        return record_refresh(
-            _record_skip(
-                reason="post-integration HEAD read failed", target=target
-            ),
-            refresh,
-        ), False
-
-    # Flip the durable record to 'integrated' BEFORE any ref move so
-    # a crash between this point and the fast-forward will be
-    # recoverable as a continue-fast-forward rather than a restore
-    # (AC-11).
-    _write_record(
-        root,
-        IntegrationRecord(
-            phase="integrated",
-            target=target,
-            pre_feature_sha=pre_feature_sha,
-            pre_target_sha=pre_target_sha,
-            integrated_feature_sha=feature_sha,
-        ),
-    )
-
-    # Re-read the mainline pointer from origin IMMEDIATELY before the
-    # fast-forward observes it. Several agents land on the same
-    # mainline continuously, so binding the ancestry decision inside
-    # fast_forward_target to a pointer read seconds ago (rather than
-    # before the rebase/merge/resolution sequence) is what keeps the
-    # landing correct under concurrency.
-    refresh_outcome = _refresh_target(config, root, target)
-    ok, skip_reason = _fast_forward_target(root, target, feature_sha)
-    _clear_record(root)
-
-    record = _record_rebase_outcome(
-        rebase_outcome=rebase_result.rebase_outcome,
-        merge_attempted=rebase_result.merge_attempted,
-        merge_outcome=rebase_result.merge_outcome,
-        target=target,
-    ).model_copy(update={"last_refresh": refresh_outcome})
-    if not ok:
-        # Fast-forward skipped: reason is appended but we keep
-        # the rebase/merged action as the headline so the log line
-        # reflects what actually happened to the feature. Only an
-        # explicit concurrent target move merits a bounded retry.
-        record = record.model_copy(
-            update={
-                "last_reason": skip_reason,
-                "fast_forwarded": False,
-            }
+    # B11/E5: backup the original feature tip on a uniquely named
+    # ``refs/rebase-backup/<id>`` ref BEFORE any mutation so a
+    # concurrent ``git gc --prune`` cannot reclaim the in-flight
+    # commits while the rebase / merge is in progress. The ref is
+    # retained through the attempt (the recovery preamble reads it
+    # to restore the pre-attempt tip on a verified abort) and
+    # deleted after a successful land or a verified abort.
+    backup_ref = _create_rebase_backup_ref(root, pre_feature_sha)
+    owns_resolution = conflict_resolver is not None
+    try:
+        rebase_result = _run_rebase_or_merge(
+            root,
+            target,
+            conflict_resolver,
+            prefer_merge=prefer_merge,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
         )
-        return record, is_retryable_fast_forward_failure(skip_reason)
-    # Successful fast-forward: the ``fast_forwarded`` boolean is
-    # the headline signal, so any residual reason from the
-    # rebase/merge phase (including benign rebase NoOp reasons
-    # like ``"Branch is already up-to-date with upstream"``)
-    # is scrubbed here. A clean-success state carries no reason.
-    record = record.model_copy(
-        update={"fast_forwarded": True, "last_reason": None}
-    )
-    # Opt-in multi-remote push. Runs ONLY after the local fast-forward
-    # already landed -- a remote failure cannot undo a local ref
-    # advance. The push is fail-open and best-effort by contract; the
-    # helper never raises, the record is updated to carry the summary
-    # so a partial push is operator-visible, and the (ok, retry_ff)
-    # landing tuple returned above is unchanged. When push is disabled
-    # (default) or the local config has no such flag at all, the field
-    # is left as the inherited None, so legacy checkpoints stay clean.
-    # Shared with the crash-recovery landing site via
-    # ``maybe_push_target`` so every successful advance of the local
-    # target reaches every configured remote when push is enabled.
-    record = maybe_push_target(config, root, target, record)
-    return record, False
+        if rebase_result.short_circuit is not None:
+            # Resolved failures clear the record; an abort that leaves a rebase
+            # in progress retains it for startup recovery.
+            _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
+            return record_refresh(rebase_result.short_circuit, refresh), False
+
+        # Success path: the feature branch contains the target.
+        feature_sha = _read_post_integration_head_sha(root, target)
+        if feature_sha is None:
+            _verify_and_cleanup_backup(
+                root, backup_ref, pre_feature_sha, owns_resolution
+            )
+            return record_refresh(
+                _record_skip(
+                    reason="post-integration HEAD read failed", target=target
+                ),
+                refresh,
+            ), False
+
+        # Flip the durable record to 'integrated' BEFORE any ref move so
+        # a crash between this point and the fast-forward will be
+        # recoverable as a continue-fast-forward rather than a restore
+        # (AC-11).
+        _write_record(
+            root,
+            IntegrationRecord(
+                phase="integrated",
+                target=target,
+                pre_feature_sha=pre_feature_sha,
+                pre_target_sha=pre_target_sha,
+                integrated_feature_sha=feature_sha,
+            ),
+        )
+
+        # Re-read the mainline pointer from origin IMMEDIATELY before the
+        # fast-forward observes it. Several agents land on the same
+        # mainline continuously, so binding the ancestry decision inside
+        # fast_forward_target to a pointer read seconds ago (rather than
+        # before the rebase/merge/resolution sequence) is what keeps the
+        # landing correct under concurrency.
+        refresh_outcome = _refresh_target(config, root, target)
+        ok, skip_reason = _fast_forward_target(root, target, feature_sha)
+        _clear_record(root)
+
+        # R6/AC-06: post-attempt terminal-state verification on EVERY
+        # exit path. The fast-forward either landed (success) or
+        # recorded a loud retryable skip (no force-write). On the
+        # abort-style ff skip, the branch OID must STILL match the
+        # pre-attempt tip (the rebase/merge did not move refs/heads/
+        # <feature>; only the target moved via the bounded ff); on
+        # the success path, the OID naturally moved and the head-sha
+        # match would fail, so we skip the head-sha check by passing
+        # ``None``.
+        _verify_and_cleanup_backup(
+            root,
+            backup_ref,
+            pre_feature_sha if not ok else None,
+            owns_resolution,
+        )
+
+        record = _record_rebase_outcome(
+            rebase_outcome=rebase_result.rebase_outcome,
+            merge_attempted=rebase_result.merge_attempted,
+            merge_outcome=rebase_result.merge_outcome,
+            target=target,
+        ).model_copy(update={"last_refresh": refresh_outcome})
+        if not ok:
+            # Fast-forward skipped: reason is appended but we keep
+            # the rebase/merged action as the headline so the log line
+            # reflects what actually happened to the feature. Only an
+            # explicit concurrent target move merits a bounded retry.
+            record = record.model_copy(
+                update={
+                    "last_reason": skip_reason,
+                    "fast_forwarded": False,
+                }
+            )
+            return record, is_retryable_fast_forward_failure(skip_reason)
+        # Successful fast-forward: the ``fast_forwarded`` boolean is
+        # the headline signal, so any residual reason from the
+        # rebase/merge phase (including benign rebase NoOp reasons
+        # like ``"Branch is already up-to-date with upstream"``)
+        # is scrubbed here. A clean-success state carries no reason.
+        record = record.model_copy(
+            update={"fast_forwarded": True, "last_reason": None}
+        )
+        # Opt-in multi-remote push. Runs ONLY after the local fast-forward
+        # already landed -- a remote failure cannot undo a local ref
+        # advance. The push is fail-open and best-effort by contract; the
+        # helper never raises, the record is updated to carry the summary
+        # so a partial push is operator-visible, and the (ok, retry_ff)
+        # landing tuple returned above is unchanged. When push is disabled
+        # (default) or the local config has no such flag at all, the field
+        # is left as the inherited None, so legacy checkpoints stay clean.
+        # Shared with the crash-recovery landing site via
+        # ``maybe_push_target`` so every successful advance of the local
+        # target reaches every configured remote when push is enabled.
+        record = maybe_push_target(config, root, target, record)
+        return record, False
+    except BaseException:
+        # R6/AC-06: terminal-state verification on the EXCEPTION path.
+        # A failed invariant here raises loudly rather than silently
+        # clearing -- the caller (or the recovery preamble) is then
+        # able to surface the specific cause.
+        _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
+        raise
 
 
 def _check_early_skips(
@@ -951,6 +1008,139 @@ def _auto_integrate_check_skip_conditions(
     return None
 
 
+def _create_rebase_backup_ref(root: Path, pre_feature_sha: str | None) -> str | None:
+    """Create ``refs/rebase-backup/<id>`` on the pre-attempt tip (B11/E5).
+
+    The backup ref keeps the in-flight original feature tip reachable
+    for the duration of an attempt so a concurrent ``git gc --prune``
+    on a shared object store cannot reclaim commits that an abort
+    needs to restore. Returns the ref name on success, ``None`` when
+    the SHA was unobservable (a deleted / unborn branch is its own
+    pre-attempt state and needs no backup).
+
+    The ref is uniquely named (``rebase-backup/<sha[:8]>-<sha>``) so
+    concurrent attempts in the same repository never collide on the
+    same name and the recovery preamble can discover them all.
+
+    Failure modes are loud, never silent: any unexpected git error
+    raises so the attempt is aborted rather than continuing without
+    the protection. The CAS-style update-ref is atomic on its own
+    and does not move the feature ref.
+    """
+    if pre_feature_sha is None:
+        return None
+    backup_name = f"refs/rebase-backup/{pre_feature_sha[:8]}-{pre_feature_sha}"
+    try:
+        result = run_git(
+            ("update-ref", backup_name, pre_feature_sha),
+            cwd=root,
+            label="auto-integrate:backup-ref-create",
+        )
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate: backup-ref creation raised unexpectedly: {}; "
+            "continuing WITHOUT the B11/E5 backup (a concurrent gc could "
+            "prune the in-flight tip)",
+            exc,
+        )
+        return None
+    if result.returncode != 0:
+        logger.warning(
+            "auto_integrate: backup-ref creation failed (rc={}): {}; "
+            "continuing WITHOUT the B11/E5 backup",
+            result.returncode,
+            (result.stderr or result.stdout).strip()[:200],
+        )
+        return None
+    return backup_name
+
+
+def _delete_rebase_backup_ref(root: Path, backup_ref: str | None) -> None:
+    """Delete ``refs/rebase-backup/<id>`` after a verified land or abort.
+
+    Safe to call when the ref does not exist: a stale backup from a
+    previous run is silently cleaned up by ``update-ref -d``. The
+    function never raises -- a backup-ref left around is recoverable
+    on the next run (it does not block integration), while a stuck
+    attempt on a missing backup would.
+    """
+    if backup_ref is None:
+        return
+    try:
+        result = run_git(
+            ("update-ref", "-d", backup_ref),
+            cwd=root,
+            label="auto-integrate:backup-ref-delete",
+        )
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "auto_integrate: backup-ref deletion raised unexpectedly: {}; "
+            "the stale backup will be discovered by the next recovery pass",
+            exc,
+        )
+        return
+    if result.returncode != 0:
+        # ``update-ref -d`` returns 1 when the ref does not exist;
+        # that is the normal "already cleaned" path.
+        stderr = (result.stderr or "").strip()
+        if "not exist" in stderr or result.returncode not in (0, 1):
+            logger.warning(
+                "auto_integrate: backup-ref deletion failed (rc={}): {}; "
+                "the stale backup will be discovered by the next recovery pass",
+                result.returncode,
+                stderr[:200],
+            )
+
+
+def _verify_and_cleanup_backup(
+    root: Path,
+    backup_ref: str | None,
+    expected_head_sha: str | None,
+    owns_resolution: bool,
+) -> None:
+    """Verify the terminal-state invariant and delete the backup ref (R6/B11).
+
+    Composed of:
+
+    * :func:`post_attempt_verify` from
+      :mod:`ralph.pipeline.auto_integrate_recovery` -- asserts the
+      git dir carries no in-progress markers (unless a live
+      resolution session owns them) AND that HEAD resolves to
+      exactly ``expected_head_sha`` on the abort path. A failed
+      invariant logs a loud ``ERROR`` and the caller surfaces it.
+    * :func:`_delete_rebase_backup_ref` -- cleans up the backup ref
+      after a verified land or abort.
+
+    Called from EVERY exit path of
+    :func:`_integrate_once` -- success, conflict, fallback, error,
+    timeout, signal -- and from the outer exception guards. A backup
+    ref without a verified invariant would leave an unverified
+    ``refs/rebase-backup/<id>`` on disk, so the cleanup is gated on
+    the verification passing.
+    """
+    ok, detail = post_attempt_verify(
+        root,
+        expected_head_sha=expected_head_sha,
+        owns_resolution=owns_resolution,
+    )
+    if not ok:
+        # AC-06/AC-08: surface the violation loudly. The recovery
+        # preamble in :func:`recover_incomplete_integration` reads
+        # the same invariant on startup; surfacing it here too
+        # makes the operator log point at the exact attempt that
+        # leaked state, not just the next recovery run that found
+        # the residue.
+        logger.error(
+            "auto_integrate: terminal-state invariant violation: {}; "
+            "this attempt left state that will block rebase "
+            "preconditions at the next seam. The recovery preamble "
+            "will reclaim the leaked state on the next run, but the "
+            "operator should be aware the integration leaked.",
+            detail,
+        )
+    _delete_rebase_backup_ref(root, backup_ref)
+
+
 __all__ = [
     "IntegrationRecord",
     "auto_integrate_after_commit",
@@ -970,6 +1160,10 @@ __all__ = [
 
 # AC-14 rationale: B10
 # ladder rung: 1
+# AC-14 rationale: B11
+# ladder rung: 1
 # AC-14 rationale: E4
 # ladder rung: 4
+# AC-14 rationale: E5
+# ladder rung: 1
 # ----- end AC-14 catalog evidence -----

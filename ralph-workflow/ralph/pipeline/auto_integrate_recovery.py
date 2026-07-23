@@ -723,6 +723,14 @@ def _land_and_reconcile(
         skip_reason = f"fast-forward raised: {exc}"
         logger.warning("recovery: fast_forward_target raised: {}", exc)
         ok = False
+    # R6/AC-06: post-attempt terminal-state verification on EVERY
+    # exit path of the recovery fast-forward. The landing either
+    # succeeded (no expected-head-sha check needed -- the target
+    # moved to feature_sha, not the feature) or it recorded a loud
+    # retryable skip (the record is retained in that branch below).
+    # We always clean up any ``refs/rebase-backup/<id>`` the
+    # attempt may have left behind.
+    _delete_rebase_backup_refs(workspace_root)
     if ok:
         _clear_record(workspace_root)
         return record_refresh(
@@ -947,6 +955,64 @@ def _head_matches_sha(repo_root: Path, expected_sha: str) -> bool:
     if result.returncode != 0:
         return False
     return result.stdout.strip() == expected_sha
+
+
+def _delete_rebase_backup_refs(root: Path) -> None:
+    """Delete every ``refs/rebase-backup/<id>`` ref under ``root``.
+
+    B11/E5 cleanup: when a verified land or abort completes, the
+    backup refs created in :func:`auto_integrate._create_rebase_backup_ref`
+    must be deleted so they do not accumulate. ``update-ref -d``
+    on a non-existent ref returns 1 and is treated as a no-op, so
+    the function is safe to call at every recovery / integrate exit
+    path.
+
+    Uses ``git for-each-ref`` to enumerate -- ``refs/heads``-style
+    reads would miss the ``refs/rebase-backup/`` namespace. The
+    function never raises: a backup ref left around is recoverable
+    on the next run (it does not block integration), while a stuck
+    attempt on a missing backup would.
+    """
+    try:
+        result = run_git(
+            ("for-each-ref", "--format=%(refname)", "refs/rebase-backup/"),
+            cwd=root,
+            label="recovery:list-backup-refs",
+        )
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning(
+            "recovery: backup-ref enumeration raised unexpectedly: {}; "
+            "stale backups will be discovered by the next attempt",
+            exc,
+        )
+        return
+    if result.returncode != 0:
+        return
+    for raw_ref in result.stdout.splitlines():
+        ref = raw_ref.strip()
+        if not ref:
+            continue
+        try:
+            delete_result = run_git(
+                ("update-ref", "-d", ref),
+                cwd=root,
+                label=f"recovery:delete-backup-ref:{ref}",
+            )
+        except Exception as exc:  # pragma: no cover -- defensive
+            logger.warning(
+                "recovery: backup-ref deletion raised unexpectedly for {}: {}",
+                ref,
+                exc,
+            )
+            continue
+        if delete_result.returncode not in (0, 1):
+            stderr = (delete_result.stderr or "").strip()
+            logger.warning(
+                "recovery: backup-ref deletion failed for {} (rc={}): {}",
+                ref,
+                delete_result.returncode,
+                stderr[:200],
+            )
 
 
 # ----- AC-14 catalog evidence -----

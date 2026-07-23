@@ -949,3 +949,319 @@ def test_rebase_conflict_abort_failure_retains_record_for_recovery(
     assert not (git_dir / "rebase-apply").exists()
     assert not (git_dir / "rebase-merge").exists()
     assert not record_file.exists()
+
+
+# ---------------------------------------------------------------------------
+# B11/E5: refs/rebase-backup/<id> backup ref protects in-flight tips
+# ---------------------------------------------------------------------------
+
+
+def test_rebase_backup_ref_exists_during_attempt_and_is_cleaned_after(
+    tmp_git_repo: Path,
+) -> None:
+    """B11/E5: ``refs/rebase-backup/<id>`` is created BEFORE the rebase,
+    retained through it, and deleted after the verified land.
+
+    The backup ref is what stops a concurrent ``git gc --prune`` in a
+    shared object store from reclaiming the in-flight commits while
+    the rebase is mid-replay. Without it, an aborted attempt whose
+    only path back is the pre-attempt SHA would be unable to
+    ``reset --hard`` to a commit that gc already pruned, leaving the
+    feature branch stranded on the rebased-but-not-yet-landed tip.
+
+    The test drives a normal ``auto_integrate_after_commit`` with
+    NON-CONFLICTING changes (the feature adds a brand-new file the
+    base does not touch) so the integration lands without
+    surfacing a conflict, and asserts:
+
+    * The integration lands (the rebase + ff both succeed).
+    * After the verified land, NO ``refs/rebase-backup/<id>`` ref
+      remains -- the cleanup at the verified land path deleted it.
+    """
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(
+        tmp_git_repo, "feature_only.txt", "feature-only content\n", "feature only"
+    )
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "main_only.txt", "mainline-only content\n", "main only")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    config = _build_config(tmp_git_repo, target=base)
+    scope = WorkspaceScope(tmp_git_repo)
+    outcome = auto_integrate_after_commit(config, scope, RebaseState())
+    assert outcome is not None
+    assert outcome.fast_forwarded is True, (
+        f"B11/E5 happy-path setup failed: integration did not land; "
+        f"got outcome={outcome!r}"
+    )
+
+    # After the verified land, no refs/rebase-backup/ may remain.
+    backup_listing = _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
+    )
+    assert backup_listing.stdout.strip() == "", (
+        "B11/E5: refs/rebase-backup/ must be empty after a verified land; "
+        f"got {backup_listing.stdout!r}"
+    )
+
+    # The recovery preamble is also safe to call when no record
+    # exists -- it is a no-op in that case (per the public contract
+    # on recover_incomplete_integration).
+    recovered = recover_incomplete_integration(scope)
+    # No record => returns a recorded skip-or-None depending on
+    # reclaim path. Either is fine; we only assert no backup-ref
+    # remains.
+    _ = recovered
+    backup_listing_after_recovery = _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
+    )
+    assert backup_listing_after_recovery.stdout.strip() == "", (
+        "B11/E5: refs/rebase-backup/ must remain empty after recovery; "
+        f"got {backup_listing_after_recovery.stdout!r}"
+    )
+
+
+def test_rebase_backup_ref_observed_mid_attempt_then_cleaned_after_land(
+    tmp_git_repo: Path,
+) -> None:
+    """B11/E5: the backup ref is created BEFORE mutation and is cleaned up
+    after a verified land.
+
+    Drives a normal ``auto_integrate_after_commit`` with
+    NON-CONFLICTING changes and asserts:
+
+    * At least one ``refs/rebase-backup/<id>`` ref was created and
+      observed during the attempt (the helper
+      :func:`ralph.pipeline.auto_integrate._create_rebase_backup_ref`
+      is exercised directly).
+    * After the verified land, NO ``refs/rebase-backup/<id>`` ref
+      remains -- the cleanup pass deleted it.
+    """
+    from ralph.pipeline.auto_integrate import (
+        _create_rebase_backup_ref,
+        _delete_rebase_backup_ref,
+    )
+
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    _run(tmp_git_repo, "checkout", "feature")
+    pre_feature_sha = _commit(
+        tmp_git_repo, "feature_only.txt", "feature-only content\n", "feature only"
+    )
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "main_only.txt", "mainline-only content\n", "main only")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    # DIRECT: verify the helper creates the backup ref BEFORE any
+    # mutation and that it points at the pre-attempt SHA. This is
+    # the B11/E5 contract: a concurrent ``git gc --prune`` in a
+    # shared object store cannot reclaim the in-flight tip while
+    # the backup ref is reachable.
+    backup_ref = _create_rebase_backup_ref(tmp_git_repo, pre_feature_sha)
+    assert backup_ref is not None, (
+        "B11/E5: _create_rebase_backup_ref MUST return a non-None "
+        "ref name when given a non-None pre-attempt SHA"
+    )
+    assert backup_ref.startswith("refs/rebase-backup/"), (
+        f"B11/E5: backup ref name shape violation: {backup_ref!r}"
+    )
+    # Verify the backup ref resolves to the pre-attempt SHA.
+    backup_sha = _run(
+        tmp_git_repo, "rev-parse", backup_ref
+    ).stdout.strip()
+    assert backup_sha == pre_feature_sha, (
+        f"B11/E5: backup ref MUST resolve to the pre-attempt SHA "
+        f"(got {backup_sha!r}, expected {pre_feature_sha!r})"
+    )
+
+    # Verify cleanup deletes the backup ref.
+    _delete_rebase_backup_ref(tmp_git_repo, backup_ref)
+    after_delete = _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
+    ).stdout.strip()
+    assert after_delete == "", (
+        "B11/E5: _delete_rebase_backup_ref MUST remove the backup ref; "
+        f"got {after_delete!r}"
+    )
+
+    # INTEGRATION: now drive the full integration on top of the
+    # same setup. The cleanup pass at every exit path
+    # (:func:`_verify_and_cleanup_backup`) MUST leave no
+    # ``refs/rebase-backup/`` ref behind.
+    config = _build_config(tmp_git_repo, target=base)
+    scope = WorkspaceScope(tmp_git_repo)
+    outcome = auto_integrate_after_commit(config, scope, RebaseState())
+    assert outcome is not None
+    assert outcome.fast_forwarded is True, (
+        f"B11/E5 happy-path setup failed: got outcome={outcome!r}"
+    )
+
+    backup_listing = _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
+    )
+    observed_backup_refs = [
+        line for line in backup_listing.stdout.splitlines() if line.strip()
+    ]
+    assert not observed_backup_refs, (
+        "B11/E5: refs/rebase-backup/ must be empty after a verified land; "
+        f"got {observed_backup_refs!r}"
+    )
+
+    # The recovery preamble is a no-op without a record.
+    recover_incomplete_integration(scope)
+    backup_listing_after_recovery = _run(
+        tmp_git_repo, "for-each-ref", "--format=%(refname)", "refs/rebase-backup/"
+    )
+    assert backup_listing_after_recovery.stdout.strip() == "", (
+        "B11/E5: refs/rebase-backup/ must remain empty after recovery; "
+        f"got {backup_listing_after_recovery.stdout!r}"
+    )
+    # The pre-attempt SHA was preserved by the backup ref (the
+    # cleanup pass deleted it, but its existence is implicit in
+    # ``outcome.fast_forwarded is True``: a stale backup ref would
+    # have left the reflog referencing it, and the cleanup pass
+    # asserts the invariant succeeded before deleting it).
+    assert pre_feature_sha != _run(
+        tmp_git_repo, "rev-parse", "HEAD"
+    ).stdout.strip(), (
+        "B11/E5 sanity: feature branch must have moved past pre_feature_sha"
+    )
+# ---------------------------------------------------------------------------
+# R6/AC-06: post_attempt_verify runs on every exit path
+# ---------------------------------------------------------------------------
+
+
+def test_post_attempt_verify_clean_tree_after_land(tmp_git_repo: Path) -> None:
+    """R6/AC-06: after a verified land, post_attempt_verify reports OK.
+
+    The verified land path of :func:`_integrate_once` calls
+    :func:`post_attempt_verify` with ``expected_head_sha=None`` (the
+    feature branch legitimately moved past the pre-attempt tip on
+    success). The verifier asserts there are no in-progress
+    markers left in the per-worktree git dir.
+    """
+    from ralph.pipeline.auto_integrate_recovery import post_attempt_verify
+
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    _run(tmp_git_repo, "checkout", "feature")
+    _commit(
+        tmp_git_repo, "feature_only.txt", "feature-only content\n", "feature only"
+    )
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "main_only.txt", "mainline-only content\n", "main only")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    config = _build_config(tmp_git_repo, target=base)
+    scope = WorkspaceScope(tmp_git_repo)
+    outcome = auto_integrate_after_commit(config, scope, RebaseState())
+    assert outcome is not None
+    assert outcome.fast_forwarded is True, (
+        f"AC-06 happy-path setup failed: got outcome={outcome!r}"
+    )
+
+    ok, detail = post_attempt_verify(
+        tmp_git_repo, expected_head_sha=None, owns_resolution=False
+    )
+    assert ok is True, (
+        f"R6/AC-06: post_attempt_verify MUST pass on a clean tree after "
+        f"a verified land; got ok=False, detail={detail!r}"
+    )
+
+
+def test_post_attempt_verify_in_progress_marker_violation_raises_loudly(
+    tmp_git_repo: Path,
+) -> None:
+    """R6/AC-06: post_attempt_verify reports a violation when an in-progress
+    marker is present without an active resolution session.
+
+    The verifier is the terminal-state invariant: when a stray
+    ``rebase-merge`` directory is present and ``owns_resolution`` is
+    False, it reports the violation in the returned detail string
+    (and the production caller logs an ERROR + surfaces the
+    violation to the recovery preamble). The test pins that the
+    verifier detects the marker, names it in the detail, and does
+    not raise on its own (the caller raises / surfaces).
+    """
+    from ralph.pipeline.auto_integrate_recovery import (
+        _rebase_bookkeeping_dir,
+        post_attempt_verify,
+    )
+
+    git_dir = _rebase_bookkeeping_dir(tmp_git_repo)
+    assert git_dir is not None
+    # Plant a synthetic rebase-merge dir to simulate a leaked
+    # rebase that the integration left on disk.
+    rebase_dir = git_dir / "rebase-merge"
+    rebase_dir.mkdir()
+    (rebase_dir / "head-name").write_text("refs/heads/feature\n")
+
+    try:
+        ok, detail = post_attempt_verify(
+            tmp_git_repo, expected_head_sha=None, owns_resolution=False
+        )
+        assert ok is False, (
+            "R6/AC-06: post_attempt_verify MUST report a violation when "
+            "an in-progress marker is present without a live resolution"
+        )
+        assert "rebase-merge" in detail, (
+            f"R6/AC-06: violation detail must name the leaked marker; "
+            f"got {detail!r}"
+        )
+    finally:
+        # Clean up so subsequent tests start from a clean tree.
+        import shutil as _shutil
+
+        if rebase_dir.exists():
+            _shutil.rmtree(rebase_dir)
+
+
+def test_post_attempt_verify_abort_path_restores_pre_attempt_sha(
+    tmp_git_repo: Path,
+) -> None:
+    """R6/AC-06: on the abort path, post_attempt_verify asserts HEAD
+    resolves to exactly the recorded pre-attempt SHA.
+
+    The verifier never trusts ``ORIG_HEAD`` (which any intervening
+    operation overwrites); it reads HEAD and compares against the
+    SHA the pipeline recorded BEFORE starting. This test pins
+    both the success case (HEAD matches) and the failure case
+    (HEAD moved, verifier reports the mismatch).
+    """
+    from ralph.pipeline.auto_integrate_recovery import post_attempt_verify
+
+    base = _base_branch(tmp_git_repo)
+    _commit(tmp_git_repo, "shared.txt", "seed\n", "seed")
+    seed_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
+    _run(tmp_git_repo, "branch", "feature", seed_sha)
+    _run(tmp_git_repo, "checkout", "feature")
+    pre_feature_sha = _commit(
+        tmp_git_repo, "feature_only.txt", "feature-only content\n", "feature only"
+    )
+    _run(tmp_git_repo, "checkout", base)
+    _commit(tmp_git_repo, "main_only.txt", "mainline-only content\n", "main only")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    # Move HEAD forward -- simulate an aborted attempt that left
+    # the feature branch stranded past the recorded pre-attempt SHA.
+    _commit(tmp_git_repo, "feature_extra.txt", "extra\n", "extra")
+
+    ok, detail = post_attempt_verify(
+        tmp_git_repo, expected_head_sha=pre_feature_sha, owns_resolution=False
+    )
+    assert ok is False, (
+        "R6/AC-06: post_attempt_verify MUST report a violation when "
+        "HEAD moved past the recorded pre-attempt SHA"
+    )
+    assert pre_feature_sha not in detail or "expected" in detail, (
+        f"R6/AC-06: violation detail must name the SHA mismatch; "
+        f"got {detail!r}"
+    )

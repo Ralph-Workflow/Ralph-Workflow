@@ -40,6 +40,7 @@ from ralph.pipeline.auto_integrate_outcome import (
     record_rebase_outcome,
 )
 from ralph.pipeline.auto_integrate_record import clear_record, set_resolving_rebase
+from ralph.pipeline.auto_integrate_recovery import post_attempt_verify
 from ralph.pipeline.auto_integrate_resolve import (
     RESOLUTION_FAILED,
     endpoint_merge_with_resolution,
@@ -403,20 +404,63 @@ def _fallback_to_endpoint_merge(
     deterministically, so the integration continues to the
     fast-forward phase instead of giving up (see
     :mod:`ralph.pipeline.auto_integrate_resolve`).
+
+    R6/AC-06: runs :func:`post_attempt_verify` BEFORE the endpoint
+    merge so a rebase abort that left in-progress markers is
+    surfaced loudly before the merge starts. The merge itself
+    runs through the same invariant via :func:`_endpoint_merge_result`
+    on its conflict / resolution paths. The ``owns_resolution``
+    flag is ``True`` when the conflict resolver is mid-edit.
     """
     _abort_rebase_after_conflict(root)
     if rebase_in_progress(root):
         # Keep the pre-mutation record: abort_rebase can fail after the
         # rebase engine has created state, and recovery needs that record
         # to prove ownership and retry the abort/reset on the next run.
+        _verify_terminal_state(
+            root, expected_head_sha=None, owns_resolution=conflict_resolver is not None
+        )
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=False,
             merge_outcome=None,
             short_circuit=record_conflict(reason="rebase in-progress after abort", target=target),
         )
+    _verify_terminal_state(
+        root, expected_head_sha=None, owns_resolution=conflict_resolver is not None
+    )
 
     return _endpoint_merge_result(root, target, rebase_outcome, conflict_resolver)
+
+
+def _verify_terminal_state(
+    root: Path,
+    *,
+    expected_head_sha: str | None,
+    owns_resolution: bool,
+) -> None:
+    """Run :func:`post_attempt_verify` on a merge / fallback exit path.
+
+    Logs a loud ``ERROR`` and never raises on violation -- the
+    caller continues to record its outcome (a merge / fallback
+    can legitimately finish with a feature that already moved, so
+    the only invariant we can check here is the absence of stale
+    in-progress markers). Extracted into its own helper so the
+    three call sites in this module share one diagnostic shape.
+    """
+    ok, detail = post_attempt_verify(
+        root,
+        expected_head_sha=expected_head_sha,
+        owns_resolution=owns_resolution,
+    )
+    if not ok:
+        logger.error(
+            "auto_integrate_rebase_merge: terminal-state invariant "
+            "violation: {}; the recovery preamble will reclaim this on "
+            "the next run, but the operator should be aware the merge / "
+            "fallback path leaked state.",
+            detail,
+        )
 
 
 def _endpoint_merge_result(

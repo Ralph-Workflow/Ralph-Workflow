@@ -160,6 +160,7 @@ def _compute_width(
     *,
     prefer_configured_width: bool = True,
     injected_console: bool = False,
+    explicit_env: bool = False,
 ) -> int:
     """Resolve effective terminal width from overrides, env, and console.
 
@@ -170,15 +171,19 @@ def _compute_width(
         prefer_configured_width: Whether the console's configured
             (``_width``) attribute may short-circuit env resolution.
         injected_console: When ``True`` (the caller passed an explicit
-            ``console=`` argument), the console's own width is
-            AUTHORITATIVE: a host ``COLUMNS=200`` inherited from the
-            test runner must NOT override the test's explicit
-            40-column Console fixture. The previous precedence order
-            consulted ``COLUMNS`` first and silently widened a
-            40-column test fixture to whatever the host terminal
-            reported, breaking the
-            ``test_truncation_stability_across_widths`` invariant
-            under non-default environments.
+            ``console=`` argument) AND no explicit ``env=`` was passed,
+            the console's own width is AUTHORITATIVE: the
+            caller-injected console is the source of truth.
+        explicit_env: When ``True`` the caller passed ``env=...`` to
+            :func:`make_display_context`. In that mode a ``COLUMNS``
+            value in the explicit env wins over both Ralph-built and
+            caller-injected consoles (because the operator who set
+            the env meant to control the rendered width). When
+            ``False`` (default; the caller did NOT pass ``env=``),
+            host-shell ``COLUMNS`` inherited via ``os.environ`` is
+            NOT authoritative -- the injected console's width is
+            instead, so a 40-column test fixture is not silently
+            widened to whatever the host terminal reported.
 
     Returns:
         Effective terminal width in characters.
@@ -190,6 +195,7 @@ def _compute_width(
         console,
         prefer_configured_width=prefer_configured_width,
         injected_console=injected_console,
+        explicit_env=explicit_env,
     )
 
 
@@ -199,6 +205,7 @@ def _compute_width_uncached(
     *,
     prefer_configured_width: bool,
     injected_console: bool,
+    explicit_env: bool,
 ) -> int:
     """Body of :func:`_compute_width` after the ``force_width`` short-circuit.
 
@@ -206,20 +213,49 @@ def _compute_width_uncached(
     ``PLR0911`` (too-many-return-statements) cap while
     preserving the per-rule return so the precedence order
     reads top-to-bottom.
+
+    Precedence (top to bottom):
+
+    1. Explicit ``COLUMNS`` env override -- wins over both Ralph-built
+       and caller-injected consoles ONLY when the caller passed
+       ``env=...`` to :func:`make_display_context` (because the operator
+       who set the env meant to control the rendered width regardless
+       of which console Ralph happened to be holding).
+    2. Caller-injected ``console=`` -- the caller's own width is the
+       source of truth when no explicit env override was provided.
+    3. The console's ``_width`` attribute when ``prefer_configured_width``
+       is set (Ralph-built console path).
+    4. The console's live width attribute.
+    5. ``80`` as a final fallback when nothing else resolves.
+
+    Note: the *previous* precedence order consulted
+    ``resolved_env.columns`` BEFORE the injected console's width
+    regardless of whether the caller passed ``env=...``. That
+    silently widened a 40-column test fixture (which used
+    ``make_display_context(console=...)`` with no explicit ``env=``)
+    to whatever the host shell reported for ``COLUMNS``, breaking
+    the ``test_truncation_stability_across_widths`` invariant under
+    non-default environments. The fix below gates the
+    ``COLUMNS``-wins branch on ``explicit_env=True`` so the two
+    invariants are mutually compatible:
+    * ``test_columns_env_overrides_console_width`` -- caller passes
+      ``env={"COLUMNS": "40"}`` so ``explicit_env=True`` and
+      ``resolved_env.columns`` wins over the console's injected width.
+    * ``test_truncation_stability_across_widths`` -- caller passes
+      no ``env=`` so ``explicit_env=False``; host-shell ``COLUMNS``
+      is ignored and the injected console's width is authoritative.
     """
+    if explicit_env and resolved_env.columns is not None:
+        return resolved_env.columns
     if injected_console:
         # The caller passed an explicit console; its own width is the
-        # source of truth. Env ``COLUMNS`` only applies when Ralph
-        # itself built the console from scratch (the
-        # ``injected_console=False`` branch below).
+        # source of truth when no explicit env override was provided.
         configured_width = cast("object", getattr(console, "_width", None))
         if isinstance(configured_width, int) and configured_width > 0:
             return configured_width
         if console.width > 0:
             return console.width
         return 80
-    if resolved_env.columns is not None:
-        return resolved_env.columns
     configured_width = cast("object", getattr(console, "_width", None))
     if prefer_configured_width and isinstance(configured_width, int) and configured_width > 0:
         return configured_width
@@ -302,6 +338,7 @@ class DisplayContext:
     )
     _force_width: int | None = field(default=None, repr=False, compare=False)
     _force_glyphs: bool | None = field(default=None, repr=False, compare=False)
+    _explicit_env: bool = field(default=False, repr=False, compare=False)
 
     def glyph_for(self, name: str) -> str:
         """Return the glyph string for the given logical name.
@@ -339,6 +376,7 @@ class DisplayContext:
             self.console,
             self._force_width,
             prefer_configured_width=False,
+            explicit_env=self._explicit_env,
         )
 
         return DisplayContext(
@@ -361,6 +399,7 @@ class DisplayContext:
             env=self.env,
             _force_width=self._force_width,
             _force_glyphs=self._force_glyphs,
+            _explicit_env=self._explicit_env,
         )
 
 
@@ -397,6 +436,7 @@ def make_display_context(
         resolved_console,
         force_width,
         injected_console=injected_console,
+        explicit_env=env_was_provided,
     )
     if injected_console:
         _set_injected_console_width(resolved_console, width)
@@ -441,6 +481,7 @@ def make_display_context(
         _resolved_env=resolved_env,
         _force_width=force_width,
         _force_glyphs=force_glyphs,
+        _explicit_env=env_was_provided,
     )
 
 

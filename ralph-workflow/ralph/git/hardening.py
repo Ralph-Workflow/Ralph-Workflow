@@ -221,6 +221,10 @@ def parse_porcelain_z(blob: str) -> list[PorcelainEntry]:
     parts = blob.split("\0")
     if parts and parts[-1] == "":
         parts.pop()
+    # Minimum ``XY<path>`` porcelain piece length (see
+    # :data:`_MIN_PORCELAIN_PIECE_LEN`): 2 status chars + at least
+    # 1 path char. Anything shorter cannot be a valid ``-z`` status
+    # record.
     i = 0
     while i < len(parts):
         piece = parts[i]

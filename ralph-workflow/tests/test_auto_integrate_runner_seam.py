@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
+
+if TYPE_CHECKING:
+    import pytest
 from ralph.git.merge import WORKTREE_FOUND
 from ralph.pipeline import (
     auto_integrate,
@@ -78,12 +82,27 @@ def test_default_config_resolves_main_and_lands_via_ff_only(monkeypatch) -> None
     cas.assert_not_called()
 
 
-def test_refused_ff_only_falls_back_to_observed_sha_cas(monkeypatch) -> None:
-    """AC-04/AC-08: when git refuses the merge, the CAS still lands the ref.
+def test_refused_ff_only_leaves_ref_untouched_and_records_loud_skip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC-10/E2: when merge --ff-only refuses on a checked-out target, the
+    shared ref is LEFT UNTOUCHED and a loud retryable skip is recorded.
 
-    The CAS oldvalue must remain the SAME observed target SHA the
-    ancestry check was bound to, so a concurrent landing between the two
-    fails closed instead of overwriting.
+    AC-10 forbids the previous CAS fallback on a checked-out target --
+    a bare ``update-ref`` there would silently desync the worktree's
+    index and working tree (its ``git status`` would describe the
+    freshly landed work as a local reverse diff, and ``reset --hard``
+    there would destroy work). The new contract: ``merge --ff-only``
+    is the ONLY accepted landing path when the target is checked out
+    somewhere, and on refusal the shared ref is left untouched with a
+    loud ``_TARGET_CHECKED_OUT_REFUSED`` reason so the next clean
+    seam retries.
+
+    The CAS primitive is also never called in this path -- the
+    worktree_query-failed-or-found contract routes through
+    ``fast_forward_via_target_worktree`` and returns
+    ``(False, _TARGET_CHECKED_OUT_REFUSED)`` directly without
+    invoking ``compare_and_swap_branch``.
     """
     root = Path("/workspace/feature")
     _stub_ff_environment(monkeypatch, root)
@@ -93,8 +112,19 @@ def test_refused_ff_only_falls_back_to_observed_sha_cas(monkeypatch) -> None:
     cas = MagicMock(return_value=True)
     monkeypatch.setattr(auto_integrate_ff, "compare_and_swap_branch", cas)
 
-    assert auto_integrate_ff.fast_forward_target(root, "main", "feature-head") == (True, "")
-    assert cas.call_args.args == (root, "main", "old-main", "feature-head")
+    landed, reason = auto_integrate_ff.fast_forward_target(
+        root, "main", "feature-head"
+    )
+    assert landed is False, (
+        "AC-10/E2: a refused merge --ff-only on a checked-out target "
+        "MUST NOT advance the shared ref -- the previous CAS fallback "
+        "silently desynced the worktree's index and working tree"
+    )
+    assert reason == auto_integrate_ff._TARGET_CHECKED_OUT_REFUSED, (
+        f"AC-08/AC-10: the refusal reason must name merge --ff-only and "
+        f"the checked-out sibling worktree, got {reason!r}"
+    )
+    cas.assert_not_called()
 
 
 def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:

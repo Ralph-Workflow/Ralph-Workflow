@@ -26,7 +26,7 @@ from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
 # ---------------------------------------------------------------------------
@@ -488,34 +488,77 @@ def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_dirty_target_worktree_advances_ref_without_touching_files(tmp_git_repo: Path) -> None:
-    """AC-09: a dirty target worktree leaves files alone while CAS advances its ref.
+def test_dirty_target_worktree_leaves_ref_and_files_unchanged(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-10/E2: a dirty checked-out target worktree is LEFT UNTOUCHED.
 
-    The test exercises the real dirty-worktree fallback in
-    :mod:`ralph.pipeline.auto_integrate_ff`, rather than the
-    ``no commits beyond target`` skip. Steps:
+    The previous behaviour CAS-advanced ``refs/heads/<target>`` while
+    a sibling worktree held the target with uncommitted changes. That
+    silently desynced the worktree's index and working tree -- a
+    ``reset --hard`` there would destroy the operator's work, and
+    ``git status`` described the freshly landed work as a local
+    reverse diff. AC-10/E2 forbids that path.
 
-    1. Seed a tracked file on the base branch.
+    The new contract: when the target is checked out in a sibling
+    worktree AND ``merge --ff-only`` refuses there (because the
+    worktree's dirty changes would conflict with the merge, the
+    requested SHA is not a descendant, or any other precondition
+    fails), the shared ref is LEFT UNTOUCHED and the attempt returns
+    a loud, retryable diagnostic. The next clean seam on that
+    worktree will retry the same ``merge --ff-only`` and land once
+    the operator's uncommitted work is resolved.
+
+    To make ``merge --ff-only`` actually REFUSE, the dirty change in
+    the linked worktree must conflict with the merge -- the rebased
+    feature must modify a tracked file that the linked worktree has
+    ALSO modified with a different content. A bare fast-forward of a
+    branch that doesn't touch the dirty file would succeed (the
+    fast-forward only moves the branch pointer, not the file
+    content), so the test setup MUST introduce a file the rebased
+    feature rewrites AND the dirty worktree also modifies.
+
+    This test exercises the dirty-worktree refusal:
+
+    1. Seed a tracked file ``conflict.txt`` on the base branch.
     2. Fork ``wt_branch`` off the seed base.
-    3. Add a commit on the primary ``feature`` branch so ``feature``
-       is genuinely ahead of ``wt_branch``.
-    4. Link a SECOND worktree on ``wt_branch`` and modify the seeded
-       tracked file (untracked changes are ignored by
+    3. Add a commit on the primary ``feature`` branch that rewrites
+       ``conflict.txt`` to a different value, so ``feature`` is
+       genuinely ahead of ``wt_branch`` AND the merge into wt_branch
+       would conflict with the linked worktree's local modification.
+    4. Link a SECOND worktree on ``wt_branch`` and modify
+       ``conflict.txt`` (untracked changes are ignored by
        ``is_repo_clean`` which uses ``--untracked-files=no``).
     5. Configure the integration target as ``wt_branch`` and run.
-    6. Assert: the shared target ref advances atomically while the dirty
-       worktree's files remain UNTOUCHED.
+    6. Assert: the shared target ref does NOT advance; the dirty
+       worktree's files are UNTOUCHED; the integration surfaces a
+       loud retryable skip carrying the
+       ``_TARGET_CHECKED_OUT_REFUSED`` reason.
+
+    Then the test cleans the dirty file and re-runs integration, and
+    asserts the same ``merge --ff-only`` now lands the target into
+    the previously-dirty worktree atomically -- proving the
+    "next clean seam" self-resume contract holds.
     """
     base = _base_branch(tmp_git_repo)
     wt_branch = "wt-target"
-    # Seed a tracked file so the linked worktree has something to
-    # modify (untracked changes are ignored by ``is_repo_clean``).
-    _commit(tmp_git_repo, "seed_tracked.txt", "seed content\n", "seed tracked")
+    # Seed a tracked file so the rebased feature can conflict with
+    # the linked worktree's local modification. Without a CONFLICT
+    # in the merged content, ``merge --ff-only`` would happily move
+    # the branch pointer past the dirty file (a fast-forward is
+    # purely a branch-pointer move when the merged commit doesn't
+    # touch the dirty file).
+    _commit(tmp_git_repo, "conflict.txt", "base content\n", "seed base")
     _run(tmp_git_repo, "branch", wt_branch, base)
     # Add a commit on the primary base branch so wt_branch is behind.
     _commit(tmp_git_repo, "base_marker.txt", "base marker\n", "base marker")
     _run(tmp_git_repo, "checkout", "-b", "feature")
-    feature_sha = _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
+    feature_sha = _commit(
+        tmp_git_repo,
+        "conflict.txt",
+        "feature content\n",
+        "feature rewrites conflict.txt",
+    )
     wt_branch_sha_before = _run(
         tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
     ).stdout.strip()
@@ -524,13 +567,17 @@ def test_dirty_target_worktree_advances_ref_without_touching_files(tmp_git_repo:
     wt_path = tmp_git_repo.parent / f"{tmp_git_repo.name}-wt"
     _run(tmp_git_repo, "worktree", "add", str(wt_path), wt_branch)
     try:
-        # Modify the seeded tracked file in the worktree.
-        tracked_in_wt = wt_path / "seed_tracked.txt"
-        tracked_in_wt.write_text("uncommitted tracked change\n", encoding="utf-8")
+        # Modify conflict.txt in the worktree -- the rebased feature
+        # rewrites the same file, so ``merge --ff-only`` of the
+        # feature tip into the dirty worktree will refuse (the local
+        # change to conflict.txt conflicts with the merge's intended
+        # update).
+        tracked_in_wt = wt_path / "conflict.txt"
+        tracked_in_wt.write_text("worktree dirty content\n", encoding="utf-8")
         wt_status = _run(
             wt_path, "status", "--porcelain", "--untracked-files=no"
         ).stdout.strip()
-        assert "seed_tracked.txt" in wt_status, (
+        assert "conflict.txt" in wt_status, (
             f"preflight: linked worktree must report the tracked dirty"
             f" file, got {wt_status!r}"
         )
@@ -538,37 +585,90 @@ def test_dirty_target_worktree_advances_ref_without_touching_files(tmp_git_repo:
         scope = WorkspaceScope(tmp_git_repo)
         outcome = auto_integrate_after_commit(config, scope, RebaseState())
         assert outcome is not None
-        # Integration must reach the ff phase (the rebase replay
-        # produced a feature tip that is a fast-forward of wt_branch
-        # before the dirty guard kicked in).
+        # The integration rebase replay produced a feature tip that
+        # IS a fast-forward of wt_branch; the live worktree's
+        # ``merge --ff-only`` is the only landing path. The dirty
+        # worktree causes ``merge --ff-only`` to refuse (the worktree
+        # modified conflict.txt and the rebased feature rewrote the
+        # same file with a different value), so the shared ref is
+        # LEFT UNTOUCHED and the record carries a loud retryable
+        # skip.
         assert outcome.last_action in {"rebased", "merged"}, (
-            f"AC-09: integration must reach the ff phase (last_action"
-            f" reflects the rebase outcome), got last_action="
-            f"{outcome.last_action!r}"
+            f"AC-10: integration must still reach the rebase phase"
+            f" (last_action reflects the rebase outcome), got"
+            f" last_action={outcome.last_action!r}"
         )
         assert outcome.last_target == wt_branch
-        assert outcome.fast_forwarded is True
-        assert outcome.last_reason is None
-        # The shared ref advances through CAS without updating the dirty checkout.
-        wt_branch_sha_after = _run(
+        assert outcome.fast_forwarded is False, (
+            "AC-10: shared target ref MUST NOT advance while the "
+            "checked-out sibling worktree refused merge --ff-only -- "
+            "the previous CAS fallback silently desynced that checkout"
+        )
+        assert outcome.last_reason is not None, (
+            "AC-08: integration MUST surface a loud retryable skip "
+            "when the target's checked-out worktree refused merge --ff-only"
+        )
+        assert (
+            "merge --ff-only" in outcome.last_reason
+            or "checked out" in outcome.last_reason
+        ), (
+            f"AC-08: skip reason must name merge --ff-only and the "
+            f"checked-out sibling, got {outcome.last_reason!r}"
+        )
+        # The shared ref is BYTE-UNCHANGED while the dirty worktree
+        # refuses -- AC-10's central invariant.
+        wt_branch_sha_after_dirty = _run(
             tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
         ).stdout.strip()
-        assert wt_branch_sha_after != wt_branch_sha_before
-        assert wt_branch_sha_after == _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-        # The dirty worktree's files are UNTOUCHED.
-        assert (wt_path / "seed_tracked.txt").exists(), (
-            "AC-09: dirty file in the target worktree must not be removed"
+        assert wt_branch_sha_after_dirty == wt_branch_sha_before, (
+            f"AC-10: target ref MUST be byte-unchanged while the "
+            f"sibling worktree refuses merge --ff-only, before="
+            f"{wt_branch_sha_before!r} after={wt_branch_sha_after_dirty!r}"
         )
-        assert (wt_path / "seed_tracked.txt").read_text(
+        # The dirty worktree's files are UNTOUCHED.
+        assert (wt_path / "conflict.txt").exists(), (
+            "AC-10: dirty file in the target worktree must not be removed"
+        )
+        assert (wt_path / "conflict.txt").read_text(
             encoding="utf-8"
-        ) == "uncommitted tracked change\n", (
-            "AC-09: dirty file in the target worktree must not be modified"
+        ) == "worktree dirty content\n", (
+            "AC-10: dirty file in the target worktree must not be modified"
         )
         wt_status_after = _run(
             wt_path, "status", "--porcelain", "--untracked-files=no"
         ).stdout.strip()
-        assert "seed_tracked.txt" in wt_status_after, (
-            f"AC-09: linked worktree must remain dirty, got status={wt_status_after!r}"
+        assert "conflict.txt" in wt_status_after, (
+            f"AC-10: linked worktree must remain dirty, got status="
+            f"{wt_status_after!r}"
+        )
+        # Now clean the worktree and re-run integration -- the
+        # next clean seam contract holds, and the same
+        # ``merge --ff-only`` path lands atomically. The ref moves
+        # AND the worktree's index+working tree advance together.
+        tracked_in_wt.write_text("base content\n", encoding="utf-8")
+        wt_status_clean = _run(
+            wt_path, "status", "--porcelain", "--untracked-files=no"
+        ).stdout.strip()
+        assert wt_status_clean == "", (
+            f"preflight: worktree must be clean before next-seam test, "
+            f"got {wt_status_clean!r}"
+        )
+        outcome_clean = auto_integrate_after_commit(config, scope, RebaseState())
+        assert outcome_clean is not None
+        assert outcome_clean.fast_forwarded is True, (
+            f"AC-09: next clean seam MUST land via merge --ff-only "
+            f"with fast_forwarded=True, got {outcome_clean!r}"
+        )
+        wt_branch_sha_after_clean = _run(
+            tmp_git_repo, "rev-parse", f"refs/heads/{wt_branch}"
+        ).stdout.strip()
+        assert wt_branch_sha_after_clean != wt_branch_sha_before, (
+            "AC-09: clean seam MUST advance the target ref"
+        )
+        assert wt_branch_sha_after_clean == feature_sha, (
+            f"AC-09: clean seam MUST land the target at the rebased "
+            f"feature tip, got {wt_branch_sha_after_clean!r} vs "
+            f"{feature_sha!r}"
         )
     finally:
         _run(tmp_git_repo, "worktree", "remove", "--force", str(wt_path))

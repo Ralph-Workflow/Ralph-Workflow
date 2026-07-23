@@ -3,30 +3,39 @@
 Houses the worktree-aware / atomic-CAS fast-forward path so the
 main :mod:`ralph.pipeline.auto_integrate` module stays under the
 repo-structure ``_MAX_FILE_LINES`` cap. The helpers here are
-a coherent unit (the AC-08 / AC-09 fast-forward branch table)
+a coherent unit (the AC-08 / AC-09 / AC-10 fast-forward branch table)
 and have no callers outside :mod:`ralph.pipeline.auto_integrate`.
 
-When the target branch is checked out somewhere, the landing order is
-``git merge --ff-only`` in that worktree FIRST, then the atomic CAS as
-a fallback. ``merge --ff-only`` advances the ref, the index and the
-working tree together and exits non-zero WITHOUT mutating anything
-when local changes would be overwritten; the CAS advances only the
-shared ref, leaving that checkout's index behind so ``git status``
-there describes the freshly landed work as a local reverse diff.
-Trying the consistent path first is therefore strictly safer, and the
-CAS still keeps the ref moving when git refuses the merge.
+When the target branch is checked out somewhere, the ONLY accepted
+landing path is ``git merge --ff-only`` in that worktree: ``merge
+--ff-only`` advances the ref, the index and the working tree together
+and exits non-zero WITHOUT mutating anything when local changes would
+be overwritten. There is no CAS fallback when the target has a live
+checkout -- AC-10/E2 forbids bare ``update-ref`` on a checked-out
+target because it silently desyncs that checkout's index and working
+tree (its ``git status`` would describe the freshly landed work as a
+local reverse diff, and a ``reset --hard`` there would destroy work).
 
-What neither path can do is overwrite FILE CONTENT or lose a
-concurrent landing: ``merge --ff-only`` refuses rather than clobber a
-working tree, and the CAS is conditioned on the exact SHA it observed,
-so a sibling that landed in between wins. What the CAS fallback
-deliberately DOES do is advance ``refs/heads/<target>`` while that
-target's checkout is dirty -- the merge was refused precisely because
-that checkout has uncommitted work -- which leaves the checkout's
-index behind the ref until its owner catches up. That is intentional,
-not an oversight: a fleet must not stop synchronising because one
-agent left a tracked file modified. It is announced with a WARN naming
-the worktree (see :func:`_fast_forward_via_target_worktree`).
+When ``merge --ff-only`` refuses (the worktree is dirty, the requested
+SHA is not a fast-forward, or git refuses for any other reason), the
+shared target ref is LEFT UNTOUCHED and the attempt returns a loud,
+retryable diagnostic: the next clean seam on that worktree will
+re-attempt the same ``merge --ff-only`` and land once the operator's
+uncommitted work is committed or stashed. A dirty sibling worktree
+must NOT desynchronise the fleet -- it must self-resume on the next
+seam. The previous behaviour (CAS-advance the shared ref even when
+the target had a live dirty checkout) violated AC-10/E2: it advanced
+the shared ref while leaving that checkout's index and working tree
+behind, and the test
+``test_dirty_target_worktree_advances_ref_without_touching_files``
+that blessed it is the exact shape AC-10 forbids.
+
+When the target is NOT checked out anywhere, ``_fast_forward_via_cas``
+is the only path: the CAS is conditioned on the exact SHA the
+function observed, so a sibling that landed in between wins and the
+loser never force-writes (AC-08). ``merge --ff-only`` cannot be used
+when no worktree holds the target because it would have to operate in
+the integration worktree, which sits on a different branch.
 """
 
 from __future__ import annotations
@@ -52,17 +61,31 @@ _TARGET_QUERY_FAILED = "target branch could not be read at fast-forward time"
 _TARGET_NOT_ANCESTOR = "target advanced concurrently (not an ancestor of feature)"
 _TARGET_CAS_MISMATCH = "target advanced concurrently (CAS mismatch)"
 _TARGET_WORKTREE_QUERY_FAILED = "target worktree lookup failed"
+#: The target is checked out in a sibling worktree and ``merge
+#: --ff-only`` was refused there. The shared ref is LEFT UNTOUCHED
+#: (AC-10/E2 forbids a CAS fallback on a checked-out target -- it
+#: would desync that checkout's index and working tree). The next
+#: clean seam on that worktree will re-attempt the same
+#: ``merge --ff-only`` and land; the failure is loud, retryable,
+#: and never permanently disables integration.
+_TARGET_CHECKED_OUT_REFUSED = (
+    "target is checked out in a sibling worktree that refused merge --ff-only; "
+    "shared ref left untouched, next clean seam will retry"
+)
 #: Reasons the bounded integration loop should re-attempt. Every one of
-#: them says "another agent was moving this ref while I looked", never
-#: "this cannot work". :data:`_TARGET_MISSING` is deliberately absent:
-#: a target that genuinely does not exist will not exist on the retry
-#: either, and burning the attempt budget on it hides the real cause.
+#: them says "another agent was moving this ref while I looked" or
+#: "the only path is the worktree's ``merge --ff-only`` and that path
+#: was refused -- try again on the next clean seam". ``_TARGET_MISSING``
+#: is deliberately absent: a target that genuinely does not exist will
+#: not exist on the retry either, and burning the attempt budget on
+#: it hides the real cause.
 _RETRYABLE_REASONS = frozenset(
     {
         _TARGET_NOT_ANCESTOR,
         _TARGET_CAS_MISMATCH,
         _TARGET_QUERY_FAILED,
         _TARGET_WORKTREE_QUERY_FAILED,
+        _TARGET_CHECKED_OUT_REFUSED,
     }
 )
 
@@ -202,27 +225,43 @@ def _fast_forward_via_target_worktree(
     target: str,
     feature_sha: str,
 ) -> tuple[bool, str]:
-    """Fast-forward the target branch checked out in ``worktree_root`` (AC-09).
+    """Fast-forward the target branch checked out in ``worktree_root`` (AC-09/AC-10).
 
-    ``git merge --ff-only`` is attempted first regardless of how dirty
-    that checkout is: it is its own guard, refusing with a non-zero exit
-    and no mutation when local changes would be overwritten or when
-    ``feature_sha`` is not a descendant. Only once git has refused do we
-    fall back to the CAS, which advances the shared ref alone and so
-    leaves that checkout's index behind — a transient but operator-
-    visible state, hence the WARN.
+    ``git merge --ff-only`` is the ONLY accepted landing path when the
+    target is checked out somewhere. ``merge --ff-only`` is its own
+    atomic guard: it advances the ref + index + working tree together
+    on success, and exits non-zero WITHOUT mutating anything when
+    local changes would be overwritten, ``feature_sha`` is not a
+    descendant, or any other precondition fails. AC-10/E2 forbids a
+    CAS fallback on a checked-out target -- a bare ``update-ref``
+    there would silently desync that checkout's index and working
+    tree (``git status`` would describe the freshly landed work as a
+    local reverse diff, and ``reset --hard`` there would destroy work).
+
+    When ``merge --ff-only`` refuses, the shared ref is LEFT UNTOUCHED
+    and the attempt returns the loud, retryable
+    :data:`_TARGET_CHECKED_OUT_REFUSED` reason. The next clean seam on
+    that worktree will re-attempt the same ``merge --ff-only`` and
+    land once the operator's uncommitted work is committed, stashed,
+    or otherwise resolved. A dirty sibling worktree must NOT
+    desynchronise the fleet -- it must self-resume on the next seam.
+    The previous behaviour (CAS-advance the shared ref even when the
+    target had a live dirty checkout) violated AC-10/E2 and was
+    removed; the test that blessed it
+    (``test_dirty_target_worktree_advances_ref_without_touching_files``)
+    is the exact shape AC-10 forbids.
     """
     if fast_forward_via_worktree(worktree_root, feature_sha):
         return True, ""
-    landed, reason = _fast_forward_via_cas(repo_root, target, feature_sha)
-    if landed:
-        logger.warning(
-            "auto_integrate: advanced '{}' by ref while its worktree at {} "
-            "could not fast-forward; that checkout's index is now behind",
-            target,
-            worktree_root,
-        )
-    return landed, reason
+    logger.warning(
+        "auto_integrate: target '{}' is checked out in {} and refused "
+        "merge --ff-only; leaving shared ref untouched and recording "
+        "a loud retryable skip (AC-10/E2). The next clean seam will "
+        "retry the same merge --ff-only once the worktree is clean.",
+        target,
+        worktree_root,
+    )
+    return False, _TARGET_CHECKED_OUT_REFUSED
 
 
 def _fast_forward_via_cas(

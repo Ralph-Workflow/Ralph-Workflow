@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-from pathlib import Path
 from typing import NamedTuple
 
 import pytest
@@ -331,7 +330,7 @@ def test_disabled_path_byte_identity() -> None:
     """
     from ralph.pipeline import auto_integrate
 
-    src = Path(auto_integrate.__file__).read_text(encoding="utf-8")
+    src = inspect.getsource(auto_integrate)
     assert "auto_integrate_enabled" in src, (
         "auto_integrate.py lost the auto_integrate_enabled check; "
         "the AC-01 disabled path is the ONE bare return the spec "
@@ -422,7 +421,7 @@ def test_known_silent_skip_promotion_is_recorded() -> None:
     """
     from ralph.pipeline import auto_integrate
 
-    src = Path(auto_integrate.__file__).read_text(encoding="utf-8")
+    src = inspect.getsource(auto_integrate)
     assert "phase-transition pre-check failed" in src, (
         "auto_integrate.py lost the 'phase-transition pre-check "
         "failed' log; AC-08 expects this surface to be recorded "

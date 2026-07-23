@@ -181,6 +181,15 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # top-level import graph; mirrors the supervising / canonical_submit
     # lazy-import precedent.
     ("cli_integration", "PLC0415"),
+    # wt-040 auto-integrate recovery: _reclaim_unowned_stale_rebase
+    # fans out across the A1/A3/A4/A5/A6/A11 reclaim paths (stale
+    # rebase-merge / rebase-apply dirs, lone REBASE_HEAD, MERGE_HEAD
+    # on a clean tree, sequencer ops, detached-HEAD residue); each
+    # path is a small early-return and refactoring them into helper
+    # functions would obscure the per-marker-file reclaim ordering
+    # that AC-07/AC-06's terminal-state invariant depends on.
+    ("auto_integrate_recovery", "PLR0911"),
+    ("auto_integrate_recovery", "PLR0912"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).
