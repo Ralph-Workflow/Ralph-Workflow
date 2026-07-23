@@ -49,6 +49,9 @@ class TestPipelineOwnedArtifactRequiredPolicy:
                 }
             )
 
+    def test_artifact_contract_does_not_publish_retired_json_path_override(self) -> None:
+        assert "artifact_json_path" not in ArtifactContract.model_json_schema()["properties"]
+
     def test_phase_required_artifact_uses_pipeline_owned_required_flag(
         self, tmp_path: Path
     ) -> None:

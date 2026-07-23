@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.prompts import template_engine
 from ralph.prompts.developer.developer_prompt_inputs import DeveloperPromptInputs
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
@@ -61,12 +60,6 @@ def prompt_developer_iteration_xml_with_context(
     payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
 
     base_vars: dict[str, str] = {
-        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
-            ".agent/artifacts/development_result.json"
-        ),
-        "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(
-            ".agent/artifacts/development_result.schema.json"
-        ),
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
@@ -151,8 +144,6 @@ def prompt_planning_xml_with_context(
     payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
 
     base_vars: dict[str, str] = {
-        "PLAN_XML_PATH": workspace.absolute_path(PLAN_ARTIFACT_PATH),
-        "PLAN_XSD_PATH": workspace.absolute_path(".agent/artifacts/plan.schema.json"),
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",

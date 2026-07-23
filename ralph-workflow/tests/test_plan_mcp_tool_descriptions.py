@@ -64,7 +64,9 @@ def test_plan_edit_schema_uses_stable_ids_and_markdown_replacements() -> None:
 
     assert typed_action["enum"] == ["insert", "replace", "remove", "move"]
     assert typed_properties["replacement"] == {"type": "string"}
-    assert schema["required"] == ["content", "action", "step_id"]
+    assert "content" not in typed_properties
+    assert schema["required"] == ["action", "step_id"]
+    assert "persisted markdown plan draft" in definition.description
     assert "stable S-id" in definition.description
     assert "markdown step block" in definition.description
     assert "never JSON" in definition.description

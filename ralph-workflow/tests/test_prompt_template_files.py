@@ -133,3 +133,11 @@ def test_commit_and_development_templates_reference_canonical_markdown_docs() ->
         text = _template(name)
         assert format_doc in text
         assert "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE" in text
+
+
+def test_commit_cleanup_template_classifies_markdown_artifacts_as_generated() -> None:
+    text = _template("commit_cleanup.jinja")
+
+    assert ".agent/artifacts/commit_cleanup.md" in text
+    assert ".agent/artifacts/commit_cleanup.json" not in text
+    assert "Generated text/Markdown artifacts" in text

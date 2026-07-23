@@ -59,7 +59,7 @@ def test_edit_tool_echoes_only_the_updated_markdown_document() -> None:
 @pytest.mark.parametrize(
     ("params", "message"),
     [
-        ({"action": "move", "step_id": "S-1"}, "content, action, and step_id"),
+        ({"step_id": "S-1"}, "action and step_id"),
         (
             {
                 "content": "x",

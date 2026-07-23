@@ -33,7 +33,7 @@ The following paths are Ralph Workflow runtime artifacts. They are unconditional
 - **Files inside engine-internal directories ONLY when their extension matches the engine-written file types for that directory**:
   - ``.agent/raw/`` -- ``.log`` files only (e.g. ``.agent/raw/opencode.log``)
   - ``.agent/tmp/`` -- ``.log``, ``.md``, ``.json`` files (e.g. ``.agent/tmp/mcp-server.log``)
-  - ``.agent/artifacts/`` -- ``.json`` files (e.g. ``.agent/artifacts/commit_cleanup.json``)
+  - ``.agent/artifacts/`` -- ``.md`` files (e.g. ``.agent/artifacts/commit_cleanup.md``)
   - ``.agent/receipts/<run-id>/`` -- ``.json`` files (e.g. ``.agent/receipts/run-1/commit_cleanup.json``)
   - ``.agent/prompt_history/`` -- ``.json`` files
   - ``.agent/artifact-formats/`` -- ``.md`` files (e.g. ``.agent/artifact-formats/commit_message.md``)
@@ -45,7 +45,7 @@ The directory allowlist above is RESTRICTED by file extension. Files under the l
 
 - ``.agent/raw/script.py``, ``.agent/raw/main.go``, ``.agent/raw/notes.md`` -- only ``.log`` is deletable in ``raw/``
 - ``.agent/tmp/config.yaml``, ``.agent/tmp/main.py`` -- only ``.log``, ``.md``, ``.json`` are deletable in ``tmp/``
-- ``.agent/artifacts/notes.md`` -- only ``.json`` is deletable in ``artifacts/``
+- ``.agent/artifacts/notes.json`` -- only ``.md`` is deletable in ``artifacts/``
 - ``.agent/receipts/run-1/note.md`` -- only ``.json`` is deletable in ``receipts/``
 - ``.agent/artifact-formats/data.json`` -- only ``.md`` is deletable in ``artifact-formats/``
 - ``.agent/workers/unit-a/src/main.py``, ``.agent/workers/unit-a/src/foo.go`` -- only ``.log``, ``.md``, ``.json`` are deletable in ``workers/``
@@ -87,7 +87,7 @@ For files OUTSIDE the Ralph Workflow runtime-artifact allowlist above, recommend
 - ``.env``, ``.env.local``, ``.env.*.local``, ``secrets.yml``, ``credentials.json``
 - Use ``add_to_git_exclude`` for these, NEVER ``delete_file``
 
-**Generated text/JSON artifacts (untracked only):**
+**Generated text/Markdown artifacts (untracked only):**
 - Untracked ``.txt`` or ``.json`` files with a name token such as ``session``, ``transcript``, ``prompt``, ``analysis``, ``checkpoint``, ``verify``, ``output``, ``report``, ``log``, ``trace``, ``debug``, ``dump``, ``temp``, ``tmp``, ``artifact``, ``capture``, ``generated``, ``completion``, ``note``, ``pipeline``, ``response``, ``review``, ``summary``, ``worker``, ``chat``, ``message``, ``plan``, ``model``, ``llm``, ``brainstorm``, ``interaction``, ``inference`` (e.g. ``verify-output.txt``, ``session-transcript.txt``, ``analysis-output.json``).
 
 **Generated source-code files (untracked only):**

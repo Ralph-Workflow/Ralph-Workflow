@@ -579,6 +579,17 @@ def test_default_artifacts_policy_uses_plan_artifact_type() -> None:
 
     assert 'artifact_type = "plan"' in content
     assert 'artifact_type = "planning_json"' not in content
+    assert "artifact_json_path" not in content
+    assert "typed JSON artifacts" not in content
+
+
+def test_developer_prompt_defaults_do_not_name_retired_json_artifact_paths() -> None:
+    source_path = Path(__file__).parents[1] / "ralph" / "prompts" / "developer" / "__init__.py"
+    source = source_path.read_text(encoding="utf-8")
+
+    assert ".agent/artifacts/development_result.json" not in source
+    assert ".agent/artifacts/development_result.schema.json" not in source
+    assert ".agent/artifacts/plan.schema.json" not in source
 
 
 def test_planning_prompt_with_artifact_history_path_shows_history_section(tmp_path: Path) -> None:

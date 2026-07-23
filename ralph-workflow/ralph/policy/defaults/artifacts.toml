@@ -15,7 +15,7 @@
 #
 # MCP-artifact-only: Unlike the legacy Rust implementation, the Python Ralph Workflow
 # does not support XML/XSD structured output. All agent output flows through
-# typed JSON artifacts submitted via the MCP bridge.
+# validated markdown documents submitted via the MCP bridge.
 #
 # decision_vocabulary defines the allowed analysis decision strings for each artifact.
 # Their routing is policy-owned in pipeline.toml via phases.<name>.decisions, not implied
@@ -83,14 +83,12 @@ drain = "development_commit"
 artifact_type = "commit_message"
 decision_vocabulary = []
 prompt_template = "commit_message.jinja"
-artifact_json_path = ".agent/tmp/commit_message.json"
 
 [artifacts.development_commit_cleanup_artifact]
 drain = "commit"
 artifact_type = "commit_cleanup"
 decision_vocabulary = []
 prompt_template = "commit_cleanup.jinja"
-artifact_json_path = ".agent/artifacts/commit_cleanup.json"
 
 # ---------------------------------------------------------------------------
 # Edit this only if you are changing the policy-remediation artifact.
@@ -101,7 +99,7 @@ artifact_json_path = ".agent/artifacts/commit_cleanup.json"
 # no pipeline phase; the contract exists so the analysis agent has a real,
 # schema-validated way to return its routing decision, and so the driver in
 # ralph/project_policy/pipeline_driver.py can read that decision back from the
-# artifact JSON -- exactly as ralph/phases/analysis.py does for the in-graph
+# markdown artifact -- exactly as ralph/phases/analysis.py does for the in-graph
 # analysis phases.
 
 [artifacts.policy_remediation_analysis_decision]

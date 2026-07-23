@@ -202,26 +202,46 @@ def _submit_canonical(
 
 def handle_edit_md_plan_step(
     session: CoordinationSessionLike,
-    _workspace: WorkspaceLike,
+    workspace: WorkspaceLike,
     params: dict[str, object],
+    *,
+    deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Edit one plan step by stable ID without changing unrelated markdown."""
+    """Edit one stable-ID step in the persisted plan draft."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown plan-step editing")
-    content = params.get("content")
     action = params.get("action")
     step_id = params.get("step_id")
     replacement = params.get("replacement")
     index = params.get("index")
-    if not isinstance(content, str) or not isinstance(action, str) or not isinstance(step_id, str):
-        raise InvalidParamsError("content, action, and step_id are required")
+    if not isinstance(action, str) or not isinstance(step_id, str):
+        raise InvalidParamsError("action and step_id are required")
     if replacement is not None and not isinstance(replacement, str):
         raise InvalidParamsError(
             "replacement must be a markdown step block string ('### [S-n] Title' plus body)"
         )
     if index is not None and not isinstance(index, int):
         raise InvalidParamsError("index must be an integer")
-    edited = edit_plan_step_markdown(content, action, step_id, replacement, index)
-    return ToolResult(content=[ToolContent.json_content({"content": edited})], is_error=False)
+    direct_content = params.get("content")
+    if direct_content is not None and not isinstance(direct_content, str):
+        raise InvalidParamsError("content must be markdown when supplied by an internal caller")
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    artifact_dir = (
+        _resolve_artifact_dir(session, workspace) if direct_content is None else None
+    )
+    draft = (
+        load_md_draft(artifact_dir, "plan", backend=backend)
+        if artifact_dir is not None
+        else direct_content
+    )
+    if draft is None:
+        raise InvalidParamsError(
+            "no staged draft exists for 'plan'; stage it with ralph_stage_md_artifact first"
+        )
+    edited = edit_plan_step_markdown(draft, action, step_id, replacement, index)
+    if artifact_dir is None:
+        return ToolResult(content=[ToolContent.json_content({"content": edited})], is_error=False)
+    save_md_draft(artifact_dir, "plan", edited, backend=backend)
+    return _draft_status_result("plan", edited, exists=True)
 
 
 def _params(params: dict[str, object]) -> tuple[str, str]:

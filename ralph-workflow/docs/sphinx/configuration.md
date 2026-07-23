@@ -608,7 +608,7 @@ Each phase can declare a `display_style` override to control its banner colour. 
 
 ## `artifacts.toml` in plain language
 
-`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain (`drain`, `artifact_type`, `decision_vocabulary`, `prompt_template`, `markdown_summary_path`, `artifact_json_path`). See [Advanced Artifact Configuration](advanced-artifact-configuration.md) for the deeper reference.
+`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain (`drain`, `artifact_type`, `decision_vocabulary`, `prompt_template`, `markdown_summary_path`). Canonical artifacts are validated markdown documents stored at `.agent/artifacts/<artifact_type>.md`. See [Advanced Artifact Configuration](advanced-artifact-configuration.md) for the deeper reference.
 
 ## `mcp.toml` in plain language
 

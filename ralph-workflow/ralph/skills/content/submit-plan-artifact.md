@@ -127,8 +127,8 @@ For a long plan:
 1. Append chunks with `ralph_stage_md_artifact` (`mode: append`), or replace
    the draft with `mode: replace_all`.
 2. Inspect the full draft with `ralph_get_md_draft`.
-3. Edit a step by stable ID with `ralph_edit_md_plan_step`; re-stage the
-   returned document with `mode: replace_all`.
+3. Edit a step by stable ID with `ralph_edit_md_plan_step`; the tool saves the
+   updated draft.
 4. Submit the assembled draft with `ralph_finalize_md_artifact`. Failed
    validation preserves the draft.
 5. Use `ralph_discard_md_draft` only when intentionally starting over.

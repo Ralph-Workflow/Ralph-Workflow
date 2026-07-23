@@ -198,7 +198,7 @@ Workflow regression. The Session and Parser events columns may show
 session ID or parser-friendly stdout stream in `--print` mode. Because
 AGY's headless `--print` mode does not reliably call Ralph Workflow's
 streamable-HTTP MCP tools, the smoke prompt instructs AGY to write the
-`smoke_test_result` artifact directly to `.agent/artifacts/smoke_test_result.json`;
+`smoke_test_result` artifact directly to `.agent/artifacts/smoke_test_result.md`;
 tool activity is then inferred from that artifact.
 
 If AGY exits 0 but the parity table reports no file, no artifact, and

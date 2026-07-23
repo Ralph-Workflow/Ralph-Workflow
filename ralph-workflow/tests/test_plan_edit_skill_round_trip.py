@@ -36,7 +36,7 @@ def test_skill_names_the_native_markdown_edit_and_submission_flow() -> None:
     body = _skill_body()
 
     assert "ralph_edit_md_plan_step" in body
-    assert "ralph_submit_md_artifact" in body
+    assert "ralph_finalize_md_artifact" in body
     assert "replacement: |" in body
     assert "### [S-2]" in body
     assert "ralph_submit_plan_section" not in body

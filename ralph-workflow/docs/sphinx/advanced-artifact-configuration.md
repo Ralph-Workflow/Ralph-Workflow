@@ -32,7 +32,6 @@ It owns:
 - artifact types
 - decision vocabularies for analysis artifacts
 - summary markdown output paths
-- explicit artifact JSON output paths
 - which prompt template is responsible for producing that artifact
 
 ## The major fields
@@ -44,7 +43,6 @@ Each `[artifacts.<name>]` block usually contains:
 - `decision_vocabulary`
 - `prompt_template`
 - `markdown_summary_path`
-- `artifact_json_path`
 
 Example:
 
@@ -78,10 +76,6 @@ If you add or rename a decision in `artifacts.toml`, you must update the matchin
 
 Edit `markdown_summary_path`.
 
-### I want a different commit-message artifact path
-
-Edit `artifact_json_path` on the commit artifact block.
-
 ### I want to add a new drain artifact
 
 Add a new `[artifacts.<name>]` block and ensure the matching drain/phase expects it.
@@ -92,41 +86,15 @@ Add a new `[artifacts.<name>]` block and ensure the matching drain/phase expects
 - renaming an artifact block without updating the phase/drain that expects it
 - treating `artifacts.toml` like generic docs instead of a strict contract file
 
-## Weak-model-compatible JSON schema conventions
+## Markdown artifact conventions
 
-Artifact schemas submitted to the MCP artifact submission flow should
-be designed to stay well-formed under weaker model outputs. The rules
-below are the bundled convention; violations are caught at submit time
-and surface as a `PolicyValidationError`.
+Each artifact type has a short, closed markdown format. Agents read its
+bundled format document, author the complete markdown document, and submit it
+through `ralph_submit_md_artifact`. Ralph validates the same document before
+storing it at `.agent/artifacts/<artifact_type>.md`.
 
-1. **Maximum nesting depth: 3 levels.** No deeper. If you need more
-   depth, flatten the structure.
-2. **No `$ref`.** All types must be inlined. Weak models lose context
-   when navigating reference chains.
-3. **No `oneOf`.** Use `anyOf` with flat discriminated objects instead.
-4. **Enum policy: maximum 7 values.** Each enum value must also be
-   listed in the property's `description` field. When more than 7
-   values are needed, split into multiple properties or use a category
-   + subcategory pattern.
-5. **Explicit `required` arrays.** Every object must have an explicit
-   `required` array listing ALL mandatory fields. Never rely on
-   defaults or implicit optionality.
-6. **`anyOf` pattern for discriminated unions.** When a property can
-   be one of several shapes, use `anyOf` with flat discriminated
-   objects. Each variant must be a complete, self-contained object
-   with a `type` property with a `const` value as the discriminator
-   and its own `required` array.
-7. **No `additionalProperties: true`.** Always set
-   `additionalProperties: false` on objects. This prevents models from
-   inventing fields and makes validation errors specific.
-8. **String content for rich text.** Use `"type": "string"` for any
-   content that was previously mixed XML content.
-9. **Array items must be specified.** Every array must have an explicit
-   `items` schema. Use `minItems` and `maxItems` where there are
-   known bounds.
-10. **Description on every property.** Every property MUST have a
-    `description` field that explains what the field represents, what
-    values are valid, and any constraints.
+Keep custom prompt guidance aligned with the bundled format document. Do not
+introduce a second schema or instruct agents to write artifact files directly.
 
 ## Related
 

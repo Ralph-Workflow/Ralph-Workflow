@@ -36,6 +36,12 @@ class TestArchitectureDoc:
             "from its ## Adding a new agent section"
         )
 
+    def test_smoke_artifact_uses_canonical_markdown_path(self) -> None:
+        content = DOC_PATH.read_text(encoding="utf-8")
+
+        assert ".agent/artifacts/smoke_test_result.md" in content
+        assert ".agent/artifacts/smoke_test_result.json" not in content
+
     def test_architecture_doc_does_not_describe_a_third_add_path(self) -> None:
         """Assert the doc does not describe COMMAND_BUILDERS[...] as a way to add an agent.
 

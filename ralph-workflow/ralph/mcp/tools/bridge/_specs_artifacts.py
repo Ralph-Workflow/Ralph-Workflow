@@ -87,8 +87,8 @@ def artifact_specs() -> list[ToolSpec]:
         ToolSpec(
             metadata=_metadata(
                 name=EDIT_MD_PLAN_STEP_TOOL,
-                description="Edit one markdown plan step by stable S-id and return the updated document; replacement is a markdown step block ('### [S-n] Title' heading plus its body lines), never JSON. Step IDs are stable across edits, so 'Depends on:'/'Satisfied by:' references survive insert, move, and replace.",
-                input_schema={"type": "object", "properties": {"content": {"type": "string"}, "action": {"enum": ["insert", "replace", "remove", "move"]}, "step_id": {"type": "string"}, "replacement": {"type": "string"}, "index": {"type": "integer"}}, "required": ["content", "action", "step_id"]},
+                description="Edit one step in the persisted markdown plan draft by stable S-id. Stage the plan first; replacement is a markdown step block ('### [S-n] Title' heading plus body), never JSON or a full document. The updated draft is saved atomically and returned with diagnostics; stable 'Depends on:' and 'Satisfied by:' references survive edits.",
+                input_schema={"type": "object", "properties": {"action": {"enum": ["insert", "replace", "remove", "move"]}, "step_id": {"type": "string"}, "replacement": {"type": "string"}, "index": {"type": "integer"}}, "required": ["action", "step_id"]},
                 required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.md_artifact",

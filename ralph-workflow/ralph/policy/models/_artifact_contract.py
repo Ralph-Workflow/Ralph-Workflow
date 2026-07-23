@@ -25,13 +25,6 @@ class ArtifactContract(_FrozenPolicyModel):
         default=None,
         description="Optional custom prompt template path",
     )
-    artifact_json_path: str | None = Field(
-        default=None,
-        description=(
-            "Override path for the artifact JSON file. "
-            "When None, falls back to '.agent/artifacts/<artifact_type>.json'."
-        ),
-    )
     markdown_summary_path: str | None = Field(
         default=None,
         description=(

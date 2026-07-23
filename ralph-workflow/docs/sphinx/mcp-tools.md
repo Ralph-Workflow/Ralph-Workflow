@@ -50,7 +50,7 @@ The table below uses a few drain groupings:
 | `ralph_get_md_draft` | `artifact.plan_read` | all | Return the staged markdown draft and its current diagnostics (resume after interruption) |
 | `ralph_discard_md_draft` | `artifact.submit` | all | Discard the staged markdown draft for one artifact type |
 | `ralph_finalize_md_artifact` | `artifact.submit` | all | Validate the assembled draft with the submission gate and submit it canonically; on failure the draft is kept for repair |
-| `ralph_edit_md_plan_step` | `artifact.submit` | all | Edit one markdown plan step by stable S-id and return the updated document |
+| `ralph_edit_md_plan_step` | `artifact.submit` | all | Edit one step by stable S-id in the persisted markdown plan draft |
 | `ralph_index_status` | `workspace.metadata_read` | all | Report the indexed exploration index health and freshness (lexical + Python/Markdown structure + graph) |
 | `ralph_reindex` | `workspace.read` | all | Run a bounded changed/full reindex of the indexed exploration index |
 | `report_progress` | `run.report_progress` | write drains, commit drains | Report progress to the pipeline |
@@ -182,8 +182,9 @@ diagnostic rejects the submission and nothing is persisted; `warning` diagnostic
 reported but do not block. The repair loop is: fix the markdown the diagnostics point
 at (the format docs under `.agent/artifact-formats/` describe each type's expected
 shape), optionally re-check with `ralph_verify_md_artifact`, then retry
-`ralph_submit_md_artifact`. For `plan` documents, `ralph_edit_md_plan_step` applies a
-single step edit by stable `S-<n>` ID and returns the updated markdown for resubmission.
+`ralph_submit_md_artifact`. For staged `plan` documents,
+`ralph_edit_md_plan_step` applies and persists a single step edit by stable
+`S-<n>` ID.
 
 Large documents can be authored incrementally: `ralph_stage_md_artifact` accumulates
 markdown into a persisted per-type draft (reporting a section outline and non-gating

@@ -8,8 +8,8 @@ version: 2.0.0
 
 ## Overview
 
-`ralph_edit_md_plan_step` applies one edit to `## Steps`, validates the full
-plan, and returns the edited markdown. It does not persist the result.
+`ralph_edit_md_plan_step` applies one edit to `## Steps` in the persisted plan
+draft, validates the full plan, and saves the edited markdown.
 
 Step IDs are stable identifiers and are never renumbered. Moving a step changes
 only its position. Insert with a new unused ID. Replace with one complete
@@ -17,7 +17,6 @@ only its position. Insert with a new unused ID. Replace with one complete
 
 ## Call shape
 
-- `content`: full current plan markdown.
 - `action`: `insert`, `replace`, `remove`, or `move`.
 - `step_id`: stable `S-<positive-number>` ID.
 - `replacement`: required for insert/replace; one complete markdown step block.
@@ -35,7 +34,6 @@ only its position. Insert with a new unused ID. Replace with one complete
 Replace `S-2` with a full native-markdown block:
 
 ```text
-content: <full plan markdown>
 action: replace
 step_id: S-2
 replacement: |
@@ -53,8 +51,8 @@ The replacement heading, prose, and labeled fields travel together. For a
 verify step, use `Type: verify` plus `Verify:` or `Location:`. For a file
 change, use `Type: file_change` plus `Files:` bullets.
 
-Take the returned `content`, perform any next edit, then submit it with
-`ralph_submit_md_artifact`. References are not rewritten: if remove makes a
+Perform any next edit against the same persisted draft, then submit it with
+`ralph_finalize_md_artifact`. References are not rewritten: if remove makes a
 `Depends on:`, `Satisfies:`, or `Satisfied by:` reference dangle, update the
 dependent plan content before retrying.
 
