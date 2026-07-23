@@ -798,3 +798,82 @@ def test_standalone_spinner_label_with_ellipsis_is_thinking() -> None:
     event = parser._event_for_text("Symbioting\u2026 Symbioting\u2026")
 
     assert event is None
+
+
+def test_vt_normalizer_strips_charset_designation_and_cursor_save_escapes() -> None:
+    # Observed live with Claude Code 2.1.218: ESC(B (G0 charset), SI (\x0f),
+    # and DECSC/DECRC (ESC7/ESC8) survived normalization and leaked into
+    # parsed agent text.
+    raw = "/rc\x1b(B\x0f\x1b(B\x0f\x1b7\x1b8\x1b(B\x0f\x1b7\x1b8\n"
+
+    normalized = normalize_vt_text(raw)
+
+    assert normalized == "/rc\n"
+
+
+def test_vt_normalizer_strips_shift_out_and_keypad_mode_escapes() -> None:
+    raw = "\x0ehello\x0f world\x1b=\x1b>\n"
+
+    normalized = normalize_vt_text(raw)
+
+    assert normalized == "hello world\n"
+
+
+def test_exit_banner_resume_line_is_chrome_even_in_output_mode() -> None:
+    # Claude Code >= 2.1.x prints the exit banner on two lines:
+    #   Resume this session with:
+    #   claude --resume <id>
+    # The bare first line must never be classified as agent output.
+    parser = ClaudeInteractiveTranscriptParser()
+    parser._current_content_mode = "output"
+
+    event = parser._event_for_text("Resume this session with:")
+
+    assert event is None
+
+
+def test_exit_banner_resume_id_line_still_yields_session() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+    parser._current_content_mode = "output"
+
+    event = parser._event_for_text("claude --resume e36e8e23-cefd-45e0-9f73-4e43ac761a2a")
+
+    assert event is not None
+    assert event.kind == "session"
+    assert parser.session_id == "e36e8e23-cefd-45e0-9f73-4e43ac761a2a"
+
+
+def test_slash_command_echo_is_chrome_even_in_output_mode() -> None:
+    # The PTY echoes typed slash commands (e.g. the auto-exit "/exit");
+    # a lone slash-command token is TUI echo, never agent output.
+    parser = ClaudeInteractiveTranscriptParser()
+    parser._current_content_mode = "output"
+
+    assert parser._event_for_text("/exit") is None
+    assert parser._event_for_text("/rc") is None
+
+
+def test_final_text_not_contaminated_by_exit_banner_end_to_end() -> None:
+    # Regression from a live claude/haiku run: the flushed final text
+    # accumulated "Resume this session with:" and slash-command echo.
+    parser = ClaudeInteractiveParser()
+    assistant_text = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "text", "text": "The sum of alpha (41) and beta (7) is 48."}]
+            },
+        }
+    )
+    lines = [
+        assistant_text + "\n",
+        "/exit\n",
+        "Resume this session with:\n",
+        "claude --resume d3f0f675-744f-4181-8f6b-2cdeeb113425\n",
+    ]
+
+    parsed = list(parser.parse(iter(lines)))
+
+    texts = [line for line in parsed if line.type == "text"]
+    assert len(texts) == 1
+    assert texts[0].content == "The sum of alpha (41) and beta (7) is 48."

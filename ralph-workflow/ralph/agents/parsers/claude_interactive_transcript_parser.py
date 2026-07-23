@@ -78,6 +78,12 @@ _TUI_CHROME_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*⏵⏵"),
     re.compile(r"^\s*(shift\+tab|ctrl\+[cd]|esc)\s+to\s+(cycle|interrupt|cancel)", re.IGNORECASE),
     re.compile(r"^\s*[⬆↑]\s*[/\w-]+\s*│", re.UNICODE),
+    # Exit banner (Claude Code >= 2.1.x prints the resume hint on two lines;
+    # the id-carrying second line is matched by _SESSION_ID_PATTERNS first,
+    # so this only ever drops the bare banner line).
+    re.compile(r"^\s*Resume this session\b", re.IGNORECASE),
+    # PTY echo of a typed slash command (e.g. the auto-exit "/exit").
+    re.compile(r"^\s*/[A-Za-z][A-Za-z0-9_-]{0,30}\s*$"),
 )
 
 _BOX_DRAWING_STRUCTURAL_RATIO = 0.6
