@@ -1,212 +1,96 @@
 ---
 name: submit-artifact
-description: Use when submitting non-plan Ralph Workflow artifacts (development_result, commit_message, planning_analysis_decision, development_analysis_decision, review_analysis_decision, issues, fix_result, smoke_test_result, commit_cleanup, product_spec) via ralph_submit_artifact, or when a validation error mentions artifact_type and you need the canonical envelope shape
+description: Use when submitting any Ralph Workflow artifact as a markdown document via ralph_submit_md_artifact, when pre-checking a draft with ralph_verify_md_artifact, or when a submission returned diagnostics with codes like MD001-MD008, SPEC001-SPEC010, or REF001-REF002 and you need the closed markdown grammar
+version: 2.0.0
 ---
 
 # submit-artifact
 
 ## Overview
 
-This is an **OPTIONAL** skill that lives alongside the canonical artifact
-format docs under `.agent/artifact-formats/`. Use it as a quick lookup
-before submitting any artifact, not as a substitute for the per-type format
-doc. The format docs and the index are the source of truth.
+Every Ralph Workflow artifact is one markdown document written in a small,
+closed grammar. There is no JSON envelope and no escaping: you author a
+readable document and pass it as a plain string.
 
-**Skill name vs MCP tool name.** This skill is named `submit-artifact`. It
-shares a prefix with the MCP tool `ralph_submit_artifact`, but they are
-different identifiers: the skill is a passive reference document; the MCP
-tool is the active submission entry point. Always invoke the MCP tool by its
-full name `ralph_submit_artifact`.
+Two MCP tools operate on every artifact type:
 
-## When to Use
+- `ralph_verify_md_artifact({"artifact_type": "<type>", "content": "<markdown>"})`
+  — validate without persisting. Safe to call any number of times.
+- `ralph_submit_md_artifact({"artifact_type": "<type>", "content": "<markdown>"})`
+  — validate and persist atomically. Rejected documents persist nothing.
 
-Use this skill when you are about to call `ralph_submit_artifact` with an
-`artifact_type` and `content` as either a native JSON object/array or a
-JSON-serialized string. It is the right skill for any
-artifact type whose format lives under `.agent/artifact-formats/<type>.md`:
+Supported `artifact_type` values: `plan`, `development_result`,
+`commit_message`, `commit_cleanup`, `fix_result`, `issues`,
+`smoke_test_result`, `product_spec`, `planning_analysis_decision`,
+`development_analysis_decision`, `review_analysis_decision`.
 
-- `commit_message`, `commit_cleanup`
-- `development_result`
-- `issues`, `fix_result`
-- `development_analysis_decision`, `planning_analysis_decision`,
-  `review_analysis_decision` (and the generic `analysis_decision` alias
-  inside an analysis drain)
-- `smoke_test_result`, `product_spec`
+For `plan`, `development_result`, `commit_message`, and `commit_cleanup`,
+use the dedicated companion skills (`submit-plan-artifact`,
+`submit-development-result-artifact`, `submit-commit-message-artifact`,
+`submit-commit-cleanup-artifact`). This skill teaches the shared grammar
+that every type builds on.
 
-If you are submitting a plan, this is the wrong skill. Use
-`submit-plan-artifact` and the planning tools (`ralph_submit_plan_section`,
-`ralph_submit_plan_sections`, `ralph_finalize_plan`) instead.
+## The Closed Grammar
 
-## Core Flow (canonical submission)
+Follow these rules exactly; anything else is a diagnostic:
 
-1. Read `.agent/artifact-formats/artifact_formats_index.md` to pick the
-   correct `artifact_type` from the supported list.
-2. Read `.agent/artifact-formats/<artifact_type>.md` for the type-specific
-   required fields, optional fields, and worked examples.
-3. Build the inner payload as a plain JSON object (e.g. `{"type": "commit",
-   "subject": "..."}` for `commit_message`).
-4. Pass the inner payload as `content` either as that native JSON object/array
-   or as a JSON-serialized string. Do NOT wrap it in an outer
-   `{"type": ..., "content": ...}` envelope — Ralph Workflow adds artifact
-   metadata itself.
-5. Call `ralph_submit_artifact` with the concrete envelope for that type,
-   such as the `commit_message` example below, or the equivalent
-   stringified-content envelope.
+1. Start with a frontmatter block: a `---` line, one `key: value` field per
+   line, then a closing `---` line. Values are single-line and must not
+   start or end with whitespace. Every type requires at least `type: <type>`.
+2. After the frontmatter, use only `## Section Name` headings (exactly two
+   `#`, one space). No `#`, `###`, or other heading levels.
+3. Inside a section, every content line is a stable-ID list item:
+   `- [ID] text` (or `- [ ] [ID] text` with a checkbox). The ID starts with
+   a letter and uses only letters, digits, `_`, `-`. Item text is one line.
+4. IDs must be unique within their section.
+5. Blank lines are ignored. Any other content — prose outside a list item,
+   text before the first heading, unknown sections, unknown frontmatter
+   fields — is rejected.
 
-**Canonical envelope** for `commit_message`:
+Which sections a type requires, and what each item's text must contain, is
+defined per type in `.agent/artifact-formats/<artifact_type>.md`.
 
-```json
-{
-  "artifact_type": "commit_message",
-  "content": {
-    "type": "commit",
-    "subject": "fix(auth): prevent token expiry race",
-    "body": "Concurrent refresh requests could invalidate a token while another request was still using it. This change serializes refresh operations per token so callers see a stable credential."
-  }
-}
+## Core Flow
+
+1. Read `.agent/artifact-formats/<artifact_type>.md` for the type's
+   frontmatter fields and sections.
+2. Write the markdown document.
+3. Optionally call `ralph_verify_md_artifact` to check it.
+4. Call `ralph_submit_md_artifact` with the same `artifact_type` and
+   `content`.
+
+Minimal example (`fix_result`):
+
+```markdown
+---
+type: fix_result
+---
+
+## Summary
+
+- [SUM-1] Clamped the foo() index and re-ran the focused test suite green.
+
+## Files Changed
+
+- [F-1] src/foo.py
+- [F-2] tests/test_foo.py
 ```
 
-**Canonical proof envelope** for `development_result`:
+## Error Recovery
 
-```json
-{
-  "artifact_type": "development_result",
-  "content": {
-    "status": "completed",
-    "summary": "Added the foo() regression test, clamped the index in src/foo.py, and verified the focused test passes.",
-    "files_changed": "- src/foo.py\n- tests/test_foo.py",
-    "plan_items_proven": [
-      {
-        "plan_item": "Step 1: Add the foo() regression test",
-        "proof": "tests/test_foo.py contains test_clamp_handles_out_of_range_index."
-      },
-      {
-        "plan_item": "Step 2: Clamp the foo() index",
-        "proof": "src/foo.py clamps the index before lookup while preserving the public foo() signature."
-      }
-    ],
-    "analysis_items_addressed": [
-      {
-        "how_to_fix_item": "Add a focused regression test for the out-of-range index.",
-        "proof": "tests/test_foo.py contains test_clamp_handles_out_of_range_index."
-      },
-      {
-        "how_to_fix_item": "Clamp the index before lookup while preserving foo()'s public signature.",
-        "proof": "src/foo.py prevents the crash and pytest tests/test_foo.py -q passes."
-      }
-    ]
-  }
-}
-```
+Both tools return `{"artifact_type", "valid", "diagnostics"}`. Each
+diagnostic has `line`, `section`, `code`, `message`, and `severity`.
+Fix every `"severity": "error"` at the named line and resubmit; `warning`
+diagnostics (unknown enum values coerced to a documented default) do not
+block submission.
 
-## Recovery from a Bad Payload
+- `MD001`–`MD008` — grammar violations: bad heading level, content outside
+  a section, a list line missing its `[ID]`, malformed or unterminated
+  frontmatter, duplicate frontmatter field.
+- `SPEC001`–`SPEC010` — structure violations: missing/unknown/duplicate
+  section or frontmatter field, section item-count limits, and canonical
+  content validation failures (SPEC010 carries the exact message).
+- `REF001`/`REF002` — malformed or duplicate stable ID in a section.
 
-When `ralph_submit_artifact` rejects a payload, the helpers
-`_raise_format_doc_error` and `_raise_index_format_error` raise an
-`InvalidParamsError` whose message points at the relevant format doc (or the
-index) and names `ralph_submit_artifact` as the retry tool. Read the message,
-then:
-
-1. If the message mentions `artifact_formats_index.md`, your `artifact_type`
-   is missing or unknown. Re-check `.agent/artifact-formats/artifact_formats_index.md`
-   for the exact spelling.
-2. If the message mentions `<artifact_type>.md`, your inner payload failed
-   type-specific validation. Re-read `.agent/artifact-formats/<artifact_type>.md`
-   for the required fields and retry.
-3. If the helper `_artifact_content_format_error` is raised, your payload
-   is missing the `content` field. Re-issue the call with `content` set to a
-   native JSON object or JSON-serialized string and `artifact_type` set to the exact type
-   name.
-
-**Worked retry envelope** for a `_raise_format_doc_error` style failure on
-`development_result`:
-
-```json
-{
-  "artifact_type": "development_result",
-  "content": {
-    "status": "completed",
-    "summary": "Added the foo() regression test, clamped the index in src/foo.py, and verified the focused test passes.",
-    "files_changed": "- src/foo.py\n- tests/test_foo.py",
-    "plan_items_proven": [
-      {
-        "plan_item": "Step 1: Add the foo() regression test",
-        "proof": "tests/test_foo.py contains test_clamp_handles_out_of_range_index."
-      }
-    ],
-    "analysis_items_addressed": []
-  }
-}
-```
-
-**Worked retry envelope** for a `_raise_index_format_error` style failure
-(unknown `artifact_type`):
-
-```json
-{
-  "artifact_type": "commit_message",
-  "content": {
-    "type": "commit",
-    "subject": "fix(auth): prevent token expiry race",
-    "body": "Use the exact artifact_type from the index, then rebuild content from that type's format doc."
-  }
-}
-```
-
-## Source of Truth Reference
-
-- `.agent/artifact-formats/artifact_formats_index.md` — the index that lists
-  every supported `artifact_type` and points to its format doc. Start here
-  when choosing a type.
-- `.agent/artifact-formats/<artifact_type>.md` — the per-type format doc
-  with required fields, optional fields, and worked examples. Read this
-  before crafting the inner payload.
-
-If this skill and a format doc ever disagree, the format doc wins.
-
-## Common Mistakes
-
-- Treating this skill as authoritative. The format doc at
-  `.agent/artifact-formats/<artifact_type>.md` is the source of truth; this
-  skill is a quick pointer, not a substitute.
-- Conflating `submit-artifact` (this skill) with the MCP tool
-  `ralph_submit_artifact`. The skill is the passive reference; the MCP tool
-  is the active submission entry point.
-- Wrapping the inner payload in an outer `{"type": "commit_message", "content": {"type": "commit"}}`
-  envelope. The canonical envelope is `{"artifact_type": "commit_message",
-  "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"}}`
-  with no outer wrapper.
-- Using `content_path` instead of `content` for agent-facing artifact
-  submissions. Use `content` with a native JSON object or JSON-serialized string;
-  `content_path` is reserved for non-agent callers.
-- Treating a native JSON object as invalid. `content` may be a native JSON
-  object/array or a JSON-serialized string; the handler parses both. For
-  `commit_message`, keep the envelope as `{"artifact_type": "commit_message",
-  "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"}}`.
-- Inventing an `artifact_type` value. The closed set lives in the index;
-  unknown types are rejected with a pointer to the index.
-- Using the generic `analysis_decision` alias outside an analysis drain.
-  The alias is only valid when the session drain is
-  `development_analysis`, `planning_analysis`, or `review_analysis`.
-
-## Red Flags - STOP and Start Over
-
-- "I have read the format doc so I do not need the skill." STOP. The
-  skill is a per-artifact-type retry envelope; the format doc is the
-  schema. They cover different failure modes.
-- "The skill is OPTIONAL therefore ignorable." STOP. The OPTIONAL
-  marker means the agent may consult the skill, not that the agent may
-  skip the source-of-truth format doc. The skill names the format doc
-  explicitly.
-- "I will reuse a payload from a prior artifact type." STOP. Every
-  artifact type has its own closed enums, required fields, and
-  validation rules; copying a payload from one type re-runs every
-  validation failure of that type.
-- "I will invent an `artifact_type` because the index is missing it."
-  STOP. The closed set lives in
-  `.agent/artifact-formats/artifact_formats_index.md`; unknown types
-  are rejected with a pointer to the index.
-- "I will wrap the inner payload in `{"type": "commit_message", "content": {"type": "commit"}}`."
-  STOP. Use the canonical envelope `{"artifact_type": "commit_message",
-  "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"}}`
-  with no outer wrapper.
+An unknown `artifact_type` is rejected before parsing; use one of the
+supported values listed above, spelled exactly.
