@@ -143,6 +143,42 @@ def test_disabled_config_never_touches_git(tmp_path: Path) -> None:
     assert _head_sha(repo) != advanced
 
 
+def test_quiet_resolver_matches_seam_resolver(tmp_path: Path) -> None:
+    """The in-process target resolver answers exactly like the seams' resolver.
+
+    The catch-up moving the checkout toward a DIFFERENT branch than the
+    seams integrate onto would be actively harmful, so the quiet
+    GitPython mirror is pinned byte-identical to
+    :func:`ralph.pipeline.auto_integrate.resolve_integration_target`
+    across the precedence rungs: configured-and-existing, configured-
+    but-missing, and the main/master auto-detection fallbacks.
+    """
+    from ralph.pipeline.auto_integrate import (
+        resolve_integration_target as seam_resolve,
+    )
+
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    assert _run(repo, "branch", _FEATURE).returncode == 0
+
+    configured = _build_config()
+    missing = UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_target": "no-such-branch"}}
+    )
+    autodetect = UnifiedConfig.model_validate({"general": {}})
+    for config in (configured, missing, autodetect):
+        assert catchup.resolve_integration_target(config, repo) == seam_resolve(
+            config, repo
+        )
+
+    master_repo = tmp_path / "master-repo"
+    _init_repo(master_repo)
+    assert _run(master_repo, "branch", "-M", "master").returncode == 0
+    assert catchup.resolve_integration_target(autodetect, master_repo) == seam_resolve(
+        autodetect, master_repo
+    )
+
+
 def test_worker_thread_lands_the_catchup_end_to_end(tmp_path: Path) -> None:
     """The daemon worker itself performs the fast-forward on its cadence."""
     repo, advanced = _repo_with_feature_behind_main(tmp_path)

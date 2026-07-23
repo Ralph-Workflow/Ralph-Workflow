@@ -13,49 +13,56 @@ thread wakes every :data:`DEFAULT_CATCHUP_INTERVAL_SECONDS` seconds and
 attempts one :func:`attempt_catchup_fast_forward` tick. A tick mutates
 the repository ONLY when every one of these holds:
 
-* auto-integration is enabled and a target branch resolves
-  (:func:`~ralph.pipeline.auto_integrate.resolve_integration_target`
-  -- the same stateless, local-refs-only resolution the seams use);
+* auto-integration is enabled and a target branch resolves (same
+  refs-only precedence as
+  :func:`~ralph.pipeline.auto_integrate.resolve_integration_target`);
 * HEAD is on a branch (a detached HEAD means a rebase or similar is in
   flight -- never interfere) and that branch is NOT the target;
-* the worktree has no uncommitted tracked changes (same definition of
-  clean as the boundary seams,
-  :func:`~ralph.pipeline.auto_integrate_worktree_state._worktree_is_clean`);
 * the current branch tip is a strict ancestor of the target tip, i.e.
-  the move is a genuine fast-forward.
+  the move is a genuine fast-forward;
+* the worktree has no uncommitted tracked changes (same tracked-only
+  definition of clean as the boundary seams).
 
-The mutation itself is ``git merge --ff-only <target-sha>`` via
-:func:`~ralph.git.merge.fast_forward_via_worktree`, which is its own
-atomic guard: it advances ref + index + working tree together and
-refuses non-destructively when anything changed between the checks and
-the merge (an agent started editing, a seam integration began, the
-target moved). Every skip is silent-by-design at debug level; a landed
-catch-up logs at info level.
+QUIET-PROBE CONTRACT. The tick fires every 30 seconds for the whole
+run, so its skip paths must be invisible: no display lines, no log
+lines at ANY level, and no :func:`~ralph.git.subprocess_runner.run_git`
+subprocesses -- every ProcessManager spawn writes RUNNING/EXITED
+lifecycle lines to the log, which turned the early run_git-based probes
+into a 30-second drumbeat of log noise. All read-only observation
+therefore happens IN-PROCESS via GitPython (the
+:mod:`ralph.git.operations` precedent): branch name, target resolution,
+and both tip SHAs are plain ref-file reads that spawn nothing. The
+ancestry and cleanliness checks go through GitPython's own git wrapper
+(not ProcessManager), and only run once the SHAs prove a fast-forward
+is even possible. The single ProcessManager subprocess left is the
+``git merge --ff-only`` that actually lands -- an event worth its log
+line. ``merge --ff-only`` is also its own atomic guard: it advances
+ref + index + working tree together and refuses non-destructively when
+anything changed between the checks and the merge (an agent started
+editing, a seam integration began, the target moved).
 
 Threading contract (mirrors :class:`ralph.pro_support.heartbeat.ProHeartbeatClient`):
 the worker runs in a **daemon thread** so the process can always exit;
 ``start()`` is idempotent; ``stop()`` only sets a ``threading.Event``
 and never joins, so shutdown can never block on a slow git subprocess.
-The run loop starts the worker at pipeline start
-(:func:`start_catchup_worker_if_enabled`) and stops it in the run-loop
-cleanup path alongside the other background collaborators.
+The thread parks in ``Event.wait`` between ticks and every git touch is
+ref-file I/O or a subprocess wait, all of which release the GIL -- the
+worker cannot stall the pipeline thread. The run loop starts the worker
+at pipeline start (:func:`start_catchup_worker_if_enabled`) and stops
+it in the run-loop cleanup path alongside the other background
+collaborators.
 """
 
 from __future__ import annotations
 
 import threading
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
+from git import Repo, SymbolicReference
 from loguru import logger
 
-from ralph.git.merge import (
-    fast_forward_via_worktree,
-    is_ancestor,
-    observe_branch_sha,
-)
-from ralph.git.subprocess_runner import run_git
-from ralph.pipeline.auto_integrate import resolve_integration_target
-from ralph.pipeline.auto_integrate_worktree_state import _worktree_is_clean
+from ralph.git.merge import fast_forward_via_worktree
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -64,10 +71,17 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 #: Cadence of the background catch-up probe. Each tick costs a handful
-#: of local git subprocesses (status / rev-parse / merge-base), so a
+#: of in-process ref reads (no subprocess, no log lines), so a
 #: 30-second cadence is negligible next to the conflict-resolution
 #: tokens an accumulated divergence costs later.
 DEFAULT_CATCHUP_INTERVAL_SECONDS: float = 30.0
+
+#: Target auto-detection candidates when no target is configured and
+#: ``origin/HEAD`` does not name a local branch. MUST stay in lockstep
+#: with ``ralph.pipeline.auto_integrate._AUTO_DETECT_TARGET_CANDIDATES``:
+#: the catch-up moving the checkout toward a DIFFERENT branch than the
+#: seams integrate onto would be actively harmful.
+_AUTO_DETECT_TARGET_CANDIDATES: tuple[str, ...] = ("main", "master")
 
 #: Tick outcome tags. Exactly one is returned per
 #: :func:`attempt_catchup_fast_forward` call; only
@@ -88,21 +102,160 @@ CATCHUP_FAST_FORWARDED = "fast-forwarded"
 def _current_branch_name(root: Path) -> str | None:
     """Name of the branch HEAD is on, or ``None`` when detached / unreadable.
 
-    ``git symbolic-ref --quiet --short HEAD`` is used instead of
-    GitPython's ``active_branch`` because a detached HEAD (a rebase in
-    flight, a direct SHA checkout) must be an ordinary skip here, not
-    an exception: the catch-up worker fires on a timer and a rebase
-    being in progress is one of its EXPECTED observations.
+    In-process ref read (``.git/HEAD``); spawns nothing. A detached
+    HEAD (a rebase in flight, a direct SHA checkout) must be an
+    ordinary skip here, not an exception: the catch-up worker fires on
+    a timer and a rebase being in progress is one of its EXPECTED
+    observations, so GitPython's ``active_branch`` ``TypeError`` (and
+    any other failure to read HEAD) collapses to ``None``.
     """
-    result = run_git(
-        ("symbolic-ref", "--quiet", "--short", "HEAD"),
-        cwd=root,
-        label="git-catchup-current-branch",
-    )
-    if result.returncode != 0:
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+        return repo.active_branch.name
+    except Exception:
         return None
-    name = result.stdout.strip()
-    return name or None
+    finally:
+        _close_repo(repo)
+
+
+def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
+    """Quiet in-process mirror of the seams' target resolution.
+
+    Same precedence, same refs-only contract as
+    :func:`ralph.pipeline.auto_integrate.resolve_integration_target`
+    (configured target verbatim when it exists locally, else the
+    ``origin/HEAD`` default-branch NAME when a local branch of that
+    name exists, else the first of ``('main', 'master')`` that exists
+    locally, else ``None``) -- but observed through GitPython ref reads
+    instead of ``run_git`` subprocesses, honouring this module's
+    quiet-probe contract. ``tests/test_auto_integrate_catchup_e2e.py``
+    pins the two resolvers to identical answers so the catch-up can
+    never drift toward a different branch than the seams land on.
+    """
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+        configured_attr: object = getattr(config.general, "auto_integrate_target", None)
+        if isinstance(configured_attr, str) and configured_attr:
+            if _local_branch_exists(repo, configured_attr):
+                return configured_attr
+            return None
+        origin_default = _origin_head_branch_name(repo)
+        if origin_default is not None and _local_branch_exists(repo, origin_default):
+            return origin_default
+        for candidate in _AUTO_DETECT_TARGET_CANDIDATES:
+            if _local_branch_exists(repo, candidate):
+                return candidate
+        return None
+    except Exception:
+        return None
+    finally:
+        _close_repo(repo)
+
+
+def _local_branch_exists(repo: Repo, name: str) -> bool:
+    """Whether ``refs/heads/<name>`` exists, via in-process ref lookup."""
+    try:
+        _ = repo.heads[name]
+    except (IndexError, AttributeError):
+        return False
+    return True
+
+
+def _origin_head_branch_name(repo: Repo) -> str | None:
+    """Branch NAME behind ``origin/HEAD``, or ``None`` when unset.
+
+    In-process read of the ``refs/remotes/origin/HEAD`` symbolic ref --
+    the quiet twin of :func:`ralph.git.merge.resolve_origin_head_branch`
+    (which shells out and would log). Only the NAME crosses this
+    boundary; remote state never influences which local refs exist,
+    matching the local-only integration contract.
+    """
+    try:
+        sym = SymbolicReference(repo, "refs/remotes/origin/HEAD")
+        ref_name = sym.reference.name
+    except Exception:
+        return None
+    prefix = "origin/"
+    if ref_name.startswith(prefix):
+        return ref_name[len(prefix) :]
+    return None
+
+
+def observe_branch_sha(root: Path, name: str) -> tuple[str | None, bool]:
+    """Read ``refs/heads/<name>``'s tip SHA in-process.
+
+    Returns ``(sha, query_ok)`` with the same shape as
+    :func:`ralph.git.merge.observe_branch_sha` (which shells out and
+    would log): ``(None, True)`` when the branch does not exist,
+    ``(None, False)`` when the repository itself cannot be read.
+    """
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+    except Exception:
+        return None, False
+    try:
+        head = repo.heads[name]
+    except (IndexError, AttributeError):
+        return None, True
+    except Exception:
+        return None, False
+    try:
+        return head.commit.hexsha, True
+    except Exception:
+        return None, False
+    finally:
+        _close_repo(repo)
+
+
+def is_ancestor(root: Path, ancestor_sha: str, descendant_sha: str) -> bool:
+    """Whether ``ancestor_sha`` is an ancestor of ``descendant_sha``.
+
+    Delegates to GitPython's ``merge-base --is-ancestor`` wrapper --
+    a git subprocess, but NOT a ProcessManager one, so it emits no
+    lifecycle log lines. Only reached once the two SHAs are known to
+    differ. Fails closed (``False``) so an unreadable repository can
+    never be mistaken for "safe to fast-forward".
+    """
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+        return repo.is_ancestor(repo.commit(ancestor_sha), repo.commit(descendant_sha))
+    except Exception:
+        return False
+    finally:
+        _close_repo(repo)
+
+
+def _worktree_is_clean(root: Path) -> bool:
+    """True when no uncommitted TRACKED modification is present.
+
+    Same tracked-only definition of clean as the boundary seams
+    (``ralph.pipeline.auto_integrate_worktree_state._worktree_is_clean``,
+    i.e. ``git status --porcelain --untracked-files=no``), expressed as
+    GitPython's ``is_dirty(untracked_files=False)`` so the probe stays
+    off the ProcessManager/log path. Untracked files deliberately do
+    not block: ``merge --ff-only`` refuses non-destructively per-file
+    for any untracked path it would overwrite. Fails closed (``False``)
+    on any error so the worker never fast-forwards a worktree it cannot
+    prove clean.
+    """
+    repo: Repo | None = None
+    try:
+        repo = Repo(root)
+        return not repo.is_dirty(index=True, working_tree=True, untracked_files=False)
+    except Exception:
+        return False
+    finally:
+        _close_repo(repo)
+
+
+def _close_repo(repo: Repo | None) -> None:
+    if repo is not None:
+        with suppress(Exception):
+            repo.close()
 
 
 def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
@@ -113,6 +266,13 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
     never cached across observations. Returns one of the ``CATCHUP_*``
     outcome tags; the repository is mutated only on
     :data:`CATCHUP_FAST_FORWARDED`.
+
+    Gate order is cheapest-first under the quiet-probe contract: the
+    config read and every ref observation are in-process and free, so
+    the two checks that shell out through GitPython (ancestry, then
+    cleanliness) run only once the SHAs prove the checkout is strictly
+    behind the target -- the steady states (up to date, diverged-with-
+    own-commits, on the target) never spawn anything at all.
 
     The final ``merge --ff-only`` is handed the observed target SHA,
     not the ref name, so a target that advances between the ancestry
@@ -125,12 +285,6 @@ def attempt_catchup_fast_forward(config: UnifiedConfig, root: Path) -> str:
     enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
     if not (isinstance(enabled_raw, bool) and enabled_raw):
         return CATCHUP_DISABLED
-    # The clean check runs FIRST among the git gates: on an active run
-    # the worktree is dirty most of the time (an agent is mid-edit), so
-    # the steady-state tick bails after ONE git subprocess instead of
-    # paying the branch-name and target-resolution probes for a skip.
-    if not _worktree_is_clean(root):
-        return CATCHUP_DIRTY
     current = _current_branch_name(root)
     if current is None:
         return CATCHUP_NOT_ON_BRANCH
@@ -147,22 +301,40 @@ def _fast_forward_if_strictly_behind(root: Path, target: str, current: str) -> s
 
     Split from :func:`attempt_catchup_fast_forward` so each half stays
     under the return-count lint budget; the split line is the natural
-    one between the config/branch gates (no SHA reads) and the
-    observation-bound fast-forward decision.
+    one between the config/branch-name gates and the SHA observations.
     """
-    target_sha, target_ok = observe_branch_sha(root, target)
-    if not target_ok or target_sha is None:
-        return CATCHUP_TARGET_UNREADABLE
-    current_sha, current_ok = observe_branch_sha(root, current)
-    if not current_ok or current_sha is None:
-        return CATCHUP_HEAD_UNREADABLE
-    if current_sha == target_sha:
-        return CATCHUP_UP_TO_DATE
-    if not is_ancestor(root, current_sha, target_sha):
-        return CATCHUP_DIVERGED
+    target_sha, skip_reason = _observe_strictly_behind(root, target, current)
+    if target_sha is None:
+        return skip_reason
+    if not _worktree_is_clean(root):
+        return CATCHUP_DIRTY
     if fast_forward_via_worktree(root, target_sha):
         return CATCHUP_FAST_FORWARDED
     return CATCHUP_REFUSED
+
+
+def _observe_strictly_behind(
+    root: Path, target: str, current: str
+) -> tuple[str | None, str]:
+    """Observe both tips; return ``(target_sha, skip_reason)``.
+
+    Exactly one slot is populated: the target SHA when the checkout is
+    strictly behind the target (a fast-forward is possible), else the
+    skip tag explaining why not. Pure observation -- in-process ref
+    reads plus the GitPython ancestry check -- so the caller owns every
+    mutation decision.
+    """
+    target_sha, target_ok = observe_branch_sha(root, target)
+    if not target_ok or target_sha is None:
+        return None, CATCHUP_TARGET_UNREADABLE
+    current_sha, current_ok = observe_branch_sha(root, current)
+    if not current_ok or current_sha is None:
+        return None, CATCHUP_HEAD_UNREADABLE
+    if current_sha == target_sha:
+        return None, CATCHUP_UP_TO_DATE
+    if not is_ancestor(root, current_sha, target_sha):
+        return None, CATCHUP_DIVERGED
+    return target_sha, ""
 
 
 class AutoIntegrateCatchupWorker:
@@ -240,10 +412,11 @@ class AutoIntegrateCatchupWorker:
                 tick_exc,
             )
             return
-        # Skips are deliberately UNLOGGED: the tick fires every 30
-        # seconds for the whole run and a per-tick skip line (even at
-        # debug level) is pure noise in the log stream. Only the tick
-        # that actually moved the checkout says anything.
+        # Skips are deliberately UNLOGGED (quiet-probe contract): the
+        # tick fires every 30 seconds for the whole run and a per-tick
+        # skip line (even at debug level) is pure noise in the log
+        # stream. Only the tick that actually moved the checkout says
+        # anything.
         if outcome == CATCHUP_FAST_FORWARDED:
             logger.info(
                 "auto_integrate catch-up: fast-forwarded the checkout onto the target"
@@ -287,5 +460,6 @@ __all__ = [
     "DEFAULT_CATCHUP_INTERVAL_SECONDS",
     "AutoIntegrateCatchupWorker",
     "attempt_catchup_fast_forward",
+    "resolve_integration_target",
     "start_catchup_worker_if_enabled",
 ]
