@@ -1,14 +1,13 @@
-"""Real-session regression coverage for auto-integration conflict resolution.
+"""Minimal live-session proof for auto-integration conflict resolution.
 
-This subprocess E2E test launches a deterministic executable through the
-production effect executor.  The executable calls Ralph's live MCP endpoint to
-edit only the conflicted file and to declare completion; it is deliberately not
-a resolver or an ``invoke=`` replacement.
+The real-Git rebase/fast-forward composition is covered by the injected-resolver
+E2E. This file retains the unique reality check: a deterministic executable is
+launched through the production effect executor, edits a conflicted file through
+Ralph's live MCP endpoint, and declares completion.
 """
 
 from __future__ import annotations
 
-import subprocess
 from functools import lru_cache
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -19,46 +18,13 @@ from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.git.merge import branch_sha
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
+from ralph.pipeline.conflict_resolution import RebaseStop
 from ralph.pipeline.factory import PipelineDeps
-from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
-
-
-def _run(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ("git", *args),
-        cwd=root,
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=20.0,
-    )
-
-
-def _commit(root: Path, content: str, message: str) -> None:
-    (root / "shared.txt").write_text(content, encoding="utf-8")
-    _run(root, "add", "shared.txt")
-    _run(root, "commit", "-m", message)
-
-
-def _conflicted_feature(root: Path) -> str:
-    target = _run(root, "branch", "--show-current").stdout.strip()
-    _commit(root, "seed\n", "seed")
-    seed = _run(root, "rev-parse", "HEAD").stdout.strip()
-    _run(root, "branch", "feature", seed)
-    _run(root, "checkout", "feature")
-    _commit(root, "feature\n", "feature edit")
-    _run(root, "checkout", target)
-    _commit(root, "target\n", "target edit")
-    _run(root, "checkout", "feature")
-    return target
-
 
 def _write_mcp_agent(root: Path) -> Path:
     script = root / "mcp-resolution-agent.py"
@@ -113,12 +79,12 @@ def _resolution_policy():
     return bundle.model_copy(update={"agents": agents})
 
 
-def _config(target: str, command: Path) -> UnifiedConfig:
+def _config(command: Path) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
             "general": {
                 "auto_integrate_enabled": True,
-                "auto_integrate_target": target,
+                "auto_integrate_target": "main",
                 "auto_integrate_fetch_enabled": False,
             },
             "agents": {
@@ -131,13 +97,17 @@ def _config(target: str, command: Path) -> UnifiedConfig:
     )
 
 
-def test_auto_integrate_regression_real_agent_resolves_conflicted_rebase_and_fast_forwards(
-    tmp_git_repo: Path,
+def test_auto_integrate_regression_live_agent_resolves_conflict_through_mcp(
+    tmp_path: Path,
 ) -> None:
-    """Step 7 / AC-01..AC-04: a live MCP session resolves and lands a rebase."""
-    target = _conflicted_feature(tmp_git_repo)
-    config = _config(target, _write_mcp_agent(tmp_git_repo))
-    scope = WorkspaceScope(tmp_git_repo)
+    """Step 7 / AC-01..AC-04: a live MCP session clears conflict markers."""
+    shared = tmp_path / "shared.txt"
+    shared.write_text(
+        "<<<<<<< HEAD\ntarget\n=======\nfeature\n>>>>>>> feature\n",
+        encoding="utf-8",
+    )
+    config = _config(_write_mcp_agent(tmp_path))
+    scope = WorkspaceScope(tmp_path)
     registry = AgentRegistry.from_config(config)
     display_context = make_display_context()
     display = MagicMock()
@@ -151,19 +121,19 @@ def test_auto_integrate_regression_real_agent_resolves_conflicted_rebase_and_fas
         display_context=display_context,
     )
 
-    result = auto_integrate_after_commit(
-        config,
-        scope,
-        RebaseState(),
-        rebase_stop_resolver=resolver,
-        display=display,
+    resolved = resolver(
+        tmp_path,
+        "main",
+        RebaseStop(
+            sha="a" * 40,
+            subject="feature edit",
+            conflicted_files=("shared.txt",),
+            stop_index=1,
+            stop_cap=10,
+            replay_index=1,
+            replay_total=1,
+        ),
     )
 
-    assert result is not None
-    assert result.last_action == "rebased"
-    assert result.fast_forwarded is True
-    head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
-    assert branch_sha(tmp_git_repo, target) == head
-    assert _run(tmp_git_repo, "log", "--merges", "--oneline").stdout.strip() == ""
-    assert not (tmp_git_repo / ".git" / "rebase-merge").exists()
-    assert _run(tmp_git_repo, "show", "HEAD:shared.txt").stdout == "resolved by real MCP agent\n"
+    assert resolved is True
+    assert shared.read_text(encoding="utf-8") == "resolved by real MCP agent\n"

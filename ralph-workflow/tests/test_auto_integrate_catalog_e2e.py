@@ -99,8 +99,8 @@ def _matches_glob(name: str, glob: str) -> bool:
     return False
 
 
-def test_audit_e2e_catalog_covers_every_ac() -> None:
-    """Every AC-03..AC-15 entry resolves to a real subprocess_e2e test file.
+def test_audit_e2e_catalog_is_exact() -> None:
+    """Every catalog entry resolves exactly to a subprocess-E2E proof.
 
     The PLAN step 12 requires this catalog to be the make-verify
     wired checklist. A regression that drops a real-git proof
@@ -110,6 +110,7 @@ def test_audit_e2e_catalog_covers_every_ac() -> None:
     """
     repo_root = _resolve_repo_root()
     missing: list[tuple[str, str, str]] = []
+    resolved: dict[tuple[str, str], tuple[str, ...]] = {}
     for ac, evidence_file, glob in _CATALOG:
         path = repo_root / evidence_file
         if not path.exists():
@@ -119,7 +120,9 @@ def test_audit_e2e_catalog_covers_every_ac() -> None:
             missing.append((ac, evidence_file, glob))
             continue
         names = _iter_test_functions(path)
-        if not any(_matches_glob(name, glob) for name in names):
+        matches = tuple(name for name in names if _matches_glob(name, glob))
+        resolved[(ac, evidence_file)] = matches
+        if not matches:
             missing.append((ac, evidence_file, glob))
     assert not missing, (
         "AC-14 catalog coverage gap: the following ACs have no real-git "
@@ -128,31 +131,7 @@ def test_audit_e2e_catalog_covers_every_ac() -> None:
         "subprocess_e2e-marked, or the test names have drifted. "
         f"Missing entries: {missing}"
     )
-
-
-def test_audit_e2e_catalog_test_node_ids_are_unique() -> None:
-    """Each AC-03..AC-15 entry maps to at least one unique test node.
-
-    The catalog's consolidation path is allowed to reuse nodes
-    across ACs, but every entry MUST resolve to a non-empty set
-    of source-defined tests. A single empty result above already
-    fails the coverage test; this test is a defence-in-depth
-    pin that no entry collapses to nothing in a future refactor.
-    """
-    repo_root = _resolve_repo_root()
-    seen: dict[tuple[str, str], list[str]] = {}
-    for ac, evidence_file, glob in _CATALOG:
-        path = repo_root / evidence_file
-        if path.exists():
-            names = [
-                name
-                for name in _iter_test_functions(path)
-                if _matches_glob(name, glob)
-            ]
-        else:
-            names = []
-        seen[(ac, evidence_file)] = names
-    for (ac, evidence_file), names in seen.items():
+    for (ac, evidence_file), names in resolved.items():
         assert names, (
             f"AC catalog entry ({ac!r}, {evidence_file!r}) resolves to "
             "zero test functions in the source -- the file is missing "

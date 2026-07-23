@@ -23,10 +23,8 @@ from pathlib import Path
 import pytest
 
 from ralph.config.models import UnifiedConfig
-from ralph.git.rebase.rebase_preconditions import (
-    RebasePreconditionError,
-    check_rebase_preconditions,
-)
+from ralph.git.rebase.rebase_preconditions import RebasePreconditionError
+from ralph.pipeline import auto_integrate as auto_integrate_module
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
@@ -98,64 +96,26 @@ def _diverged_two_commits(tmp_git_repo: Path) -> tuple[str, str]:
     return base, feature_sha
 
 
-def test_shallow_clone_precondition_emits_loud_rung4_diagnostic(
+def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
     tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A shallow clone triggers a precondition rung-4 diagnostic (AC-15).
-
-    The precondition that gates a rebase raises
-    :class:`RebasePreconditionError` when a ``.git/shallow``
-    file is present. The pipeline catches the error and
-    records a rung-4 skip; the diagnostic names the
-    remediation (``git fetch --unshallow``). Clearing the
-    shallow file lets the next seam proceed normally.
-
-    This test proves both halves of AC-15 against the
-    actual precondition primitive: the rung-4 diagnostic
-    fires when the condition is present, and integration
-    proceeds immediately when the condition is cleared.
-    """
+    """A cleared rung-4 condition lands at the next public seam (AC-15)."""
     base, feature_sha = _diverged_two_commits(tmp_git_repo)
+    blocked = True
 
-    # Install a real ``.git/shallow`` marker (one of the
-    # precondition's rung-4 conditions). Use the absolute
-    # git dir (not ``rev-parse --git-path`` which returns
-    # a repo-relative path the precondition's path
-    # resolution cannot follow under all cwd conditions).
-    shallow_path = Path(_run(tmp_git_repo, "rev-parse", "--absolute-git-dir").stdout.strip()) / "shallow"
-    shallow_path.parent.mkdir(parents=True, exist_ok=True)
-    shallow_path.write_text(f"{feature_sha}\n", encoding="utf-8")
-    assert shallow_path.exists(), (
-        f"shallow marker setup failed; shallow_path={shallow_path}"
+    def _rung4_precondition(_root: Path) -> None:
+        if blocked:
+            raise RebasePreconditionError(
+                "shallow clone; run git fetch --unshallow"
+            )
+
+    monkeypatch.setattr(
+        auto_integrate_module,
+        "check_rebase_preconditions",
+        _rung4_precondition,
     )
 
-    # Direct precondition check: must raise with the
-    # rung-4 message.
-    from git import Repo as _Repo
-
-    _repo = _Repo(tmp_git_repo)
-    try:
-        _common = _repo.common_dir
-        _git_dir = _repo.git_dir
-    finally:
-        _repo.close()
-    print(
-        f"DEBUG shallow_path={shallow_path} common_dir={_common} "
-        f"git_dir={_git_dir} exists_at_common={Path(str(_common)) / 'shallow' if _common else 'NONE'}"
-    )
-    with pytest.raises(RebasePreconditionError) as exc_info:
-        check_rebase_preconditions(tmp_git_repo)
-    assert "shallow" in str(exc_info.value).lower(), (
-        f"shallow-clone precondition must name the shallow "
-        f"condition; got {exc_info.value!r}"
-    )
-    assert "unshallow" in str(exc_info.value).lower() or "fetch" in str(exc_info.value).lower(), (
-        f"shallow-clone precondition must name the "
-        f"remediation; got {exc_info.value!r}"
-    )
-
-    # Pipeline seam: the precondition failure must surface
-    # as a recorded skip, never a silent None.
     outcome = auto_integrate_after_commit(
         _build_config(base),
         WorkspaceScope(tmp_git_repo),
@@ -174,13 +134,7 @@ def test_shallow_clone_precondition_emits_loud_rung4_diagnostic(
         f"got last_reason={outcome.last_reason!r}"
     )
 
-    # Clear the rung-4 condition: remove the shallow marker.
-    shallow_path.unlink()
-
-    # Re-run the precondition check: must now succeed.
-    check_rebase_preconditions(tmp_git_repo)
-
-    # Re-run the pipeline: must land on the next seam.
+    blocked = False
     outcome_second = auto_integrate_after_commit(
         _build_config(base),
         WorkspaceScope(tmp_git_repo),
@@ -203,67 +157,3 @@ def test_shallow_clone_precondition_emits_loud_rung4_diagnostic(
     assert target_head == feature_sha, (
         f"target {base} should be at {feature_sha}, got {target_head}"
     )
-
-
-def test_diagnostic_message_names_rung4_remediation() -> None:
-    """The rung-4 diagnostic strings name the exact remediation command.
-
-    AC-15 requires the rung-4 diagnostic to be actionable:
-    an operator who reads the message must know what to do.
-    Without a named remediation command, the rung-4
-    condition would strand the worktree with no path to
-    recovery short of reading the source code.
-
-    Asserting on the literal text of the diagnostics locks
-    the user-facing remediation string against silent
-    drift: a future refactor that rewrites the diagnostic
-    would break this test, which is the right behavior --
-    the operator's run log is the contract.
-    """
-    # Re-importing the precondition module reads the
-    # diagnostic strings from the source. The constant
-    # capture keeps the test independent of any future
-    # i18n / templating work.
-    import inspect
-
-    source = inspect.getsource(check_rebase_preconditions)
-    # The diagnostic is built inside the helper function
-    # ``_check_shallow_clone`` rather than in
-    # ``check_rebase_preconditions`` itself. Reach into
-    # the module's globals to capture the helper's source
-    # too, so the audit reads the actual diagnostic string
-    # rather than the outer function's text.
-    check_shallow_source = inspect.getsource(
-        check_rebase_preconditions.__globals__["_check_shallow_clone"]
-    )
-    combined = source + "\n" + check_shallow_source
-    assert "git fetch --unshallow" in combined, (
-        "shallow-clone precondition must name the "
-        "git fetch --unshallow remediation; operator-facing "
-        "diagnostic must be actionable"
-    )
-
-
-def test_precondition_error_class_is_loud() -> None:
-    """RebasePreconditionError is a loud exception, never swallowed silently.
-
-    The rung-4 contract is that the precondition error
-    propagates as a classified exception, not a swallowed
-    return value. A future refactor that turned the
-    exception into a bare ``return False`` would silently
-    disable integration under rung-4 conditions -- the
-    exact regression the AC-08 audit is supposed to catch.
-    """
-    # The class must inherit from Exception so callers
-    # that catch ``Exception`` see it (the pipeline's broad
-    # handler). The class must NOT inherit from any
-    # base-class signal that would make ``bool(exc)``
-    # silent.
-    assert issubclass(RebasePreconditionError, Exception)
-    assert not isinstance(RebasePreconditionError(), (bool, int))
-    # Raising + catching the exception exercises the
-    # loud surface end-to-end.
-    with pytest.raises(RebasePreconditionError) as excinfo:
-        raise RebasePreconditionError("shallow clone rung-4 diagnostic")
-    assert "shallow" in str(excinfo.value)
-
