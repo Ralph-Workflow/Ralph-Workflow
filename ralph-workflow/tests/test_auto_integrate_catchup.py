@@ -14,15 +14,11 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_catchup as catchup
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 _TARGET_SHA = "b" * 40
 _FEATURE_SHA = "a" * 40
@@ -83,8 +79,19 @@ def _open_all_gates(
     return ff_calls
 
 
-class _TestAttemptCatchupFastForward:
-    """Every gate in the tick chain, in order."""
+def _stop_and_wait(worker: catchup.AutoIntegrateCatchupWorker) -> None:
+    worker.stop()
+    thread = worker._thread
+    assert thread is not None
+    thread.join(timeout=0.5)
+    assert not worker.is_running
+
+
+# Each test section remains flat so the repo-structure audit enforces one public class.
+
+
+class TestAutoIntegrateCatchup:
+    """Catch-up tick gates and bounded worker lifecycle."""
 
     def test_disabled_short_circuits_before_any_git(self, tmp_path: Path) -> None:
         outcome = catchup.attempt_catchup_fast_forward(
@@ -172,15 +179,6 @@ class _TestAttemptCatchupFastForward:
         assert outcome == catchup.CATCHUP_REFUSED
 
 
-def _wait_until(predicate: Callable[[], bool]) -> bool:
-    """Yield once for the event-signalled daemon to observe ``stop()``."""
-    threading.Event().wait(timeout=0.01)
-    return predicate()
-
-
-class _TestAutoIntegrateCatchupWorker:
-    """Lifecycle of the bounded daemon worker."""
-
     def test_rejects_non_positive_interval(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="interval_seconds"):
             catchup.AutoIntegrateCatchupWorker(
@@ -202,9 +200,7 @@ class _TestAutoIntegrateCatchupWorker:
             assert fired.wait(timeout=0.5)
             assert worker.is_running
         finally:
-            worker.stop()
-        assert _wait_until(lambda: not worker.is_running)
-    """Remaining lifecycle cases for the catch-up worker."""
+            _stop_and_wait(worker)
 
     def test_stop_is_idempotent_and_start_restarts(self, tmp_path: Path) -> None:
         worker = catchup.AutoIntegrateCatchupWorker(
@@ -216,12 +212,10 @@ class _TestAutoIntegrateCatchupWorker:
         worker.start()
         worker.start()  # idempotent while alive
         worker.stop()
-        worker.stop()
-        assert _wait_until(lambda: not worker.is_running)
+        _stop_and_wait(worker)
         worker.start()  # a stopped worker can be restarted
         assert worker.is_running
-        worker.stop()
-        assert _wait_until(lambda: not worker.is_running)
+        _stop_and_wait(worker)
 
     def test_tick_exception_does_not_kill_the_loop(self, tmp_path: Path) -> None:
         second_tick = threading.Event()
@@ -241,12 +235,8 @@ class _TestAutoIntegrateCatchupWorker:
         try:
             assert second_tick.wait(timeout=0.5)
         finally:
-            worker.stop()
-        assert _wait_until(lambda: not worker.is_running)
+            _stop_and_wait(worker)
 
-
-class _TestStartCatchupWorkerIfEnabled:
-    """The run-loop entry point spawns only when the feature is on."""
 
     def test_disabled_returns_none(self, tmp_path: Path) -> None:
         assert (
@@ -264,13 +254,4 @@ class _TestStartCatchupWorkerIfEnabled:
         try:
             assert worker.is_running
         finally:
-            worker.stop()
-        assert _wait_until(lambda: not worker.is_running)
-
-
-class TestAutoIntegrateCatchup(
-    _TestAttemptCatchupFastForward,
-    _TestAutoIntegrateCatchupWorker,
-    _TestStartCatchupWorkerIfEnabled,
-):
-    """Collect the catch-up behavior groups through one public test class."""
+            _stop_and_wait(worker)

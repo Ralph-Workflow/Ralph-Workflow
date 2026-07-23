@@ -384,7 +384,7 @@ _ARTIFACTS_DIR: str = ".agent/artifacts"
 
 
 def strip_markup(line: str) -> str:
-    """Strip terminal controls from a line, preserving literal brackets."""
+    """Strip terminal control sequences while preserving literal bracket markup."""
     return ParallelDisplay.strip_markup(line)
 
 
@@ -588,12 +588,12 @@ class ParallelDisplay:
 
     @classmethod
     def strip_markup(cls, line: str) -> str:
-        """Strip Rich markup tags and terminal control sequences from a line.
+        """Strip terminal controls while preserving literal bracket markup.
 
-        Valid Rich markup is reduced to its plain content before terminal
-        controls are removed; malformed markup remains literal text.
+        Display output uses ``markup=False``, so bracketed text remains literal
+        and copy-pasteable while terminal CSI / OSC controls are removed.
         """
-        return _strip_markup(strip_terminal_control(line))
+        return strip_terminal_control(line)
 
     # -- Structured log emit (inlined from PlainLogRenderer) ---------------
 

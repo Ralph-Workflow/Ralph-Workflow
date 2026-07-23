@@ -264,10 +264,10 @@ def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_contro
     path = "display/parallel_display.py"
 
     def _transform(src: str) -> str:
-        # Replacing the composed sanitization with ``return line`` drops both
-        # Rich-markup and terminal-control stripping; the body invariant catches it.
+        # Replacing terminal-control sanitization with ``return line`` drops the
+        # control-strip invariant while preserving the current literal-bracket design.
         return src.replace(
-            "return _strip_markup(strip_terminal_control(line))",
+            "return strip_terminal_control(line)",
             "return line",
         )
 

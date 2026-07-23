@@ -73,12 +73,10 @@ def test_ansi_escapes_in_content_are_stripped() -> None:
     assert "red text" in out
 
 
-def test_rich_markup_in_content_is_stripped() -> None:
+def test_rich_markup_in_content_preserves_literal_brackets() -> None:
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "[bold]x[/bold]")
-    out = buf.getvalue()
-    assert "[bold]x[/bold]" not in out
-    assert "x" in out
+    assert "[bold]x[/bold]" in buf.getvalue()
 
 
 def test_condensed_ref_appended_only_when_condensed_flag() -> None:

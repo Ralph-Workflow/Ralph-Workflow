@@ -1,38 +1,4 @@
-"""Auto-integration: rebase the feature branch onto the mainline after each commit.
-
-After every commit phase that actually creates a commit, the Ralph
-pipeline runs :func:`auto_integrate_after_commit` to keep the
-feature branch and the local mainline ref in lockstep:
-
-1. **Rebase first.** Rebase the feature branch onto the resolved
-   target tip.
-2. **Resolve the rebase in place.** A rebase that stops on a
-   conflict is not abandoned. Each conflicted stop is handed to the
-   conflict-resolution pipeline; once Ralph has proved the stop
-   resolved it stages the paths itself and runs
-   ``git rebase --continue``, then repeats for the next stop. A
-   resolution that lands leaves linear history and no merge commit.
-3. **Merge on unresolved conflict.** Only when resolution declines,
-   exhausts a budget, errors or is unavailable is the rebase
-   aborted cleanly and one merge of the target branch into the
-   feature branch attempted. A single endpoint three-way merge often
-   succeeds where commit-by-commit replay conflicts, and it still
-   makes the target an ancestor of the feature branch, preserving
-   fast-forwardability.
-4. **Give up gracefully.** If the merge also conflicts, abort it,
-   leave the feature branch bit-for-bit untouched, record the
-   outcome, and let the run continue. The step retries after the
-   next commit phase.
-
-Once the feature branch fully contains the target, fast-forward
-the local mainline ref to the feature tip — never force-moved, only
-forwarded via the atomic compare-and-swap path or the worktree's
-own ``git merge --ff-only``.
-
-Crash safety is provided by :func:`recover_incomplete_integration`
-which runs at startup and reconciles any durable, atomically-written
-``IntegrationRecord`` left by an interrupted run.
-"""
+"""Auto-integration seam: rebase a feature branch and fast-forward its target safely."""
 
 from __future__ import annotations
 
@@ -55,8 +21,13 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
-from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
+from ralph.pipeline.auto_integrate_backup_refs import (
+    create_rebase_backup_ref as _create_rebase_backup_ref,
+)
+from ralph.pipeline.auto_integrate_backup_refs import (
+    delete_rebase_backup_ref as _delete_rebase_backup_ref,
+)
 from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
 from ralph.pipeline.auto_integrate_budget_seam import (
     carry_budget_through_skip,
@@ -103,7 +74,6 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     _reclaim_unowned_stale_rebase,
-    post_attempt_verify,
     recover_incomplete_integration,
     recovery_retained_record,
 )
@@ -111,6 +81,9 @@ from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_SUPPRESSED
+from ralph.pipeline.auto_integrate_terminal import (
+    verify_and_cleanup_backup as _verify_and_cleanup_backup,
+)
 from ralph.pipeline.auto_integrate_worktree_state import (
     _worktree_is_clean,
 )
@@ -135,26 +108,7 @@ def resolve_integration_target(
     config: UnifiedConfig,
     repo_root: Path | str,
 ) -> str | None:
-    """Resolve the integration target branch name from config and the repo.
-
-    Resolution is a STATELESS, local-refs-only check, re-derived from
-    the repository at every seam. Remote metadata (``origin/HEAD``) may
-    at most pick BETWEEN branches that already exist locally; it never
-    creates a local branch from a remote-tracking ref and never moves
-    one, so remote state cannot influence the base of a local rebase --
-    including at the very first seam of a fresh checkout.
-
-    Precedence:
-
-    1. ``config.general.auto_integrate_target`` when set: used verbatim
-       when the branch exists locally (AC-13).
-    2. Else: the ``origin/HEAD`` default-branch NAME, when a local
-       branch of that name exists.
-    3. Else: the first existing local branch in
-       ``('main', 'master')``.
-    4. Else: ``None`` — the step skips with a recorded reason and
-       mutates nothing.
-    """
+    """Resolve a configured local branch, origin's local default, main, or master."""
     repo_root_path = Path(repo_root)
     configured: str | None = None
     configured_attr: object = getattr(config.general, "auto_integrate_target", None)
@@ -212,42 +166,7 @@ def auto_integrate_after_commit(
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
-    """Run the auto-integration step after a successful commit.
-
-    Args:
-        config: Unified run configuration (enable flag + target).
-        workspace_scope: Scope whose root is the feature repository.
-        state: Prior rebase state. Carries the consecutive-conflict
-            count and the conflict identity that bound how often the
-            dev-agent resolver is invoked for one unresolved conflict.
-        conflict_resolver: Optional callable handed a conflicted
-            in-progress endpoint merge to resolve and stage (in
-            production a focused dev-agent invocation). The merge
-            commit itself is always created deterministically here,
-            never by the resolver.
-        rebase_stop_resolver: Optional callable handed ONE stopped commit
-            of a conflicted rebase. Supplying it is what lets a
-            conflicted rebase be resolved in place and land as
-            ``rebased``; without it a conflicted rebase is aborted and
-            retried as a single endpoint merge, exactly as before.
-        display: Active display, used only so the resolution loop can own
-            the status-bar footer for its whole duration.
-        sleep: Wait seam used between bounded landing retries. Injected
-            so deterministic tests assert the schedule without waiting.
-        jitter: Uniform ``[0, 1)`` source for the retry backoff, injected
-            for the same reason.
-
-    Returns:
-        ``None`` when the feature is disabled (AC-01: byte-identical
-        no-op for runs with ``auto_integrate_enabled = false``).
-        Otherwise a :class:`RebaseState` recording either an
-        outcome (``rebased``/``merged``/``fast_forwarded``), a skip
-        (with ``last_reason``), or a conflict (``last_action='conflict'``).
-
-    Never raises: the entire body is wrapped in a broad try/except
-    that converts an unexpected failure into a skip record so a
-    broken integration step can never abort the surrounding run.
-    """
+    """Integrate after a commit, recording skips and surfacing terminal-state violations."""
     try:
         return _auto_integrate_after_commit_inner(
             config,
@@ -284,59 +203,7 @@ def auto_integrate_on_phase_transition(
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
-    """Run the integration step at a phase boundary when it can help.
-
-    The commit seam already integrates after every real commit; this
-    hook keeps the feature branch in lockstep with the target between
-    commits too (e.g. the target advanced while an analysis phase
-    ran). This is the ONLY seam that can carry another agent's landing
-    to an agent that is not committing right now, so its own
-    short-circuits are the difference between cross-agent
-    synchronisation working and appearing dead.
-
-    It is deliberately quiet: phase boundaries are frequent, so the
-    hook returns ``None`` without recording anything when
-
-    * the worktree holds uncommitted TRACKED changes AND the resolved
-      target is already contained in ``HEAD`` — a routine mid-phase
-      boundary with no catch-up work to lose. When the target DOES
-      carry commits this checkout lacks, the same deferral is
-      RECORDED as a skip instead, because a suppressed cross-agent
-      sync the operator cannot see is indistinguishable from a
-      feature that does not work, or
-    * the resolved target already sits at the feature tip (nothing to
-      rebase, nothing to land) AND the origin refresh that pointer was
-      read through was healthy. When the refresh could not confirm the
-      pointer (unreachable origin, diverged remote, lost refresh race)
-      the same nothing-to-do case is RECORDED as a skip carrying
-      ``last_refresh`` instead, because a silent no-op computed from an
-      unverifiable pointer is indistinguishable from a healthy one.
-
-    The dirty-boundary ancestry probe is fetch-THROTTLED rather than
-    fetch-free. Phase boundaries fire on eleven events, so an
-    unconditional fetch on every dirty one is a per-cycle cost
-    regression; but a probe that reads a pointer another agent moved
-    minutes ago reports "nothing to catch up" from stale data, and that
-    silent staleness is indistinguishable from the feature being dead.
-    :data:`~ralph.pipeline.auto_integrate_boundary_refresh.BOUNDARY_REFRESH_THROTTLE`
-    (default 30.0 s) therefore permits at most one SUCCESSFUL refresh
-    per interval per ``(repository root, target)`` pair -- keyed, so two
-    worktrees or two targets sharing one process cannot steal each
-    other's window, and consume-on-success, so one unreachable-origin
-    blip does not blind the next whole interval. The fetch is bounded by
-    ``general.auto_integrate_fetch_timeout_seconds`` and fails open: an
-    unreachable origin yields ``REFRESH_UNREACHABLE`` and integration
-    continues against the local ref. In the linked-worktree topology
-    this feature exists for, ``refs/heads/<target>`` is shared across
-    every agent, so the local ref IS the authoritative pointer, and
-    re-reading it there records ``REFRESH_LOCAL_FLEET``.
-    ``REFRESH_NO_ORIGIN`` is reserved for the target that could not be
-    observed at all, and is NOT treated as healthy.
-
-    Otherwise it runs the full integration (rebase → endpoint merge →
-    optional agent conflict resolution → fast-forward) and returns
-    the recorded outcome. Never raises.
-    """
+    """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
     try:
         root = Path(workspace_scope.root)
         # Cheap stat guard BEFORE any subprocess: phase boundaries are
@@ -409,21 +276,7 @@ def auto_integrate_on_phase_transition(
 
 
 def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
-    """Whether ``target_sha`` carries commits ``HEAD`` does not have.
-
-    An unreadable target pointer is NOT divergence: there is nothing to
-    catch up on that this function can prove, and the caller's quiet
-    path is the right answer for a question git could not be asked.
-
-    Kept in this module (not extracted to
-    :mod:`ralph.pipeline.auto_integrate_worktree_state` with
-    :func:`_worktree_is_clean`) because the test suite patches
-    ``is_ancestor`` / ``get_head_sha`` on the
-    ``ralph.pipeline.auto_integrate`` namespace to drive this
-    helper; moving it would silently bypass the existing
-    monkeypatch seams in
-    ``tests/test_auto_integrate_boundary_refresh.py``.
-    """
+    """Return whether the target carries commits HEAD does not have."""
     if target_sha is None:
         return False
     return not is_ancestor(root, target_sha, get_head_sha(root))
@@ -432,44 +285,7 @@ def _target_is_ahead(root: Path, target_sha: str | None) -> bool:
 def _defer_dirty_boundary(
     config: UnifiedConfig, root: Path, target: str
 ) -> RebaseState | None:
-    """Defer a boundary integration, recording it only when it cost something.
-
-    A dirty boundary is routine and fires on eleven phase-transition
-    events, so it stays an INFO log line and returns ``None`` when the
-    resolved target is already contained in ``HEAD``: nothing was lost.
-
-    When the target carries commits this checkout LACKS, the deferral
-    suppressed a genuine cross-agent catch-up, and a suppression the
-    operator cannot see is the whole reason auto-integration reads as
-    broken. That case is recorded so it surfaces in the
-    ``auto-integrate:`` line, carrying the ``REFRESH_*`` outcome so the
-    operator can also see how the pointer it was decided from was read.
-
-    The ancestry probe runs against a THROTTLED refresh rather than a
-    fetch-free local read: see
-    :func:`auto_integrate_on_phase_transition` for the interval, the
-    bound and the fail-open behaviour. When the throttle declines, the
-    record carries
-    :data:`~ralph.pipeline.auto_integrate_sync.REFRESH_SUPPRESSED`
-    rather than nothing at all: a boundary decided from a pointer this
-    round never re-read is exactly as unverifiable as one whose refresh
-    failed, and hiding that behind an absent ``last_refresh`` is what
-    made a suppressed cross-agent catch-up indistinguishable from a
-    verified one.
-
-    One case overrides the throttle: when it declined AND the local
-    pointer ALREADY shows the target carrying commits this checkout
-    lacks, a single refresh runs and the verdict is retaken from the
-    re-read pointer. That is the only case where the answer matters --
-    an operator-visible catch-up is about to be recorded -- and gating
-    it on local evidence of divergence keeps the common dirty boundary
-    free of any fetch at all.
-
-    A healthy forced refresh consumes one separate override permit for
-    this throttle interval, so a burst of still-divergent dirty
-    boundaries does not become a fetch storm. An unhealthy forced
-    refresh leaves that permit available for an immediate retry.
-    """
+    """Defer dirty-boundary integration, recording only meaningful missed catch-up."""
     refresh = REFRESH_SUPPRESSED
     if BOUNDARY_REFRESH_THROTTLE.should_refresh(root, target):
         refresh = _refresh_target(config, root, target)
@@ -523,30 +339,7 @@ def _auto_integrate_after_commit_inner(
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[], float] = random.random,
 ) -> RebaseState | None:
-    """Internal worker for :func:`auto_integrate_after_commit`.
-
-    The body is split into three narrow phases so each phase keeps a
-    sensible branch / statement count without losing the
-    skip-condition table from the product brief:
-
-    1. :func:`_auto_integrate_resolve_context` -- handle the
-       ``enabled`` / env-lookup / on-target / no-commits-beyond /
-       preconditions skip conditions.
-    2. :func:`_integrate_once` -- write the crash record, run the
-       rebase engine, resolve any conflicted rebase stop in place,
-       fall back to the endpoint merge (optionally agent-resolved)
-       only when that resolution does not land, then fast-forward.
-    3. Bounded retry -- when the fast-forward did not land because
-       the target moved concurrently, refresh the target from origin
-       and re-integrate onto the moved tip up to
-       :data:`_MAX_INTEGRATION_ATTEMPTS` times.
-
-    The incoming ``state`` is the seam its docstring promised: it
-    carries the consecutive-unresolved-conflict count that
-    :mod:`ralph.pipeline.auto_integrate_conflict_budget` uses to stop
-    re-invoking the dev agent on a conflict it has already failed to
-    resolve.
-    """
+    """Resolve context, integrate, and retry bounded fast-forward races."""
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
     # The refresh outcome every decision below is made against. Carried
     # down instead of discarded so the conflict and short-circuit
@@ -703,34 +496,7 @@ def _integrate_once(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
 ) -> tuple[RebaseState | None, bool]:
-    """Run one full integrate-and-fast-forward pass.
-
-    Returns ``(record, retry_ff)``. ``retry_ff`` is True ONLY when the
-    rebase/merge phase completed but the fast-forward did not land —
-    the one case where an immediate re-integration onto the moved
-    target can still succeed. Every skip / conflict short-circuit
-    returns ``retry_ff=False``.
-
-    ``config`` is threaded in for the pre-landing target refresh: the
-    rebase, the endpoint merge and any dev-agent conflict resolution
-    (bounded at 900 s by default) all run between context resolution
-    and the fast-forward, so the pointer read at context-resolution
-    time can be minutes old by the time the landing needs it.
-
-    ``prefer_merge`` is set by the retry loop when the PREVIOUS attempt
-    produced a merge commit; it routes this pass straight to the
-    endpoint merge so that merge commit is preserved rather than
-    dropped by a non-``--rebase-merges`` rebase.
-
-    ``refresh`` is the ``REFRESH_*`` outcome the caller resolved the
-    target pointer through, and it is deliberately the CALLER's job to
-    have taken it immediately beforehand. Both call paths do: attempt 0
-    is entered straight after the context-resolution refresh, and every
-    retry re-refreshes at the top of the loop before calling in. A third
-    refresh here would sit between two reads that already bracket the
-    rebase, and ``rebase_onto`` resolves the target BY NAME, so git
-    re-reads the freshest ref itself when the replay actually starts.
-    """
+    """Run one rebase-or-merge integration and report whether a landing race merits retry."""
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
     # Write the durable crash record BEFORE any git mutation so the
@@ -1162,158 +928,10 @@ def _handle_precondition_failure(
     return _record_skip(reason=f"preconditions not met: {exc}", target=target)
 
 
-def _create_rebase_backup_ref(root: Path, pre_feature_sha: str | None) -> str | None:
-    """Create ``refs/rebase-backup/<id>`` on the pre-attempt tip (B11/E5).
-
-    The backup ref keeps the in-flight original feature tip reachable
-    for the duration of an attempt so a concurrent ``git gc --prune``
-    on a shared object store cannot reclaim commits that an abort
-    needs to restore. Returns the ref name on success, ``None`` when
-    the SHA was unobservable (a deleted / unborn branch is its own
-    pre-attempt state and needs no backup).
-
-    The ref is uniquely named (``rebase-backup/<sha[:8]>-<sha>``) so
-    concurrent attempts in the same repository never collide on the
-    same name and the recovery preamble can discover them all.
-
-    Failure modes are loud and FAIL CLOSED (B11/E5 contract): if
-    ``update-ref`` raises or returns non-zero, this function raises
-    so the attempt is aborted BEFORE any rebase/merge mutation.
-    Continuing without the B11/E5 backup would risk a concurrent
-    ``git gc --prune`` reclaiming the in-flight tip while the
-    pipeline is mutating it (an unrecoverable history loss on a
-    shared object store). The CAS-style update-ref is atomic on
-    its own and does not move the feature ref.
-    """
-    if pre_feature_sha is None:
-        return None
-    backup_name = f"refs/rebase-backup/{pre_feature_sha[:8]}-{pre_feature_sha}"
-    try:
-        result = run_git(
-            ("update-ref", backup_name, pre_feature_sha),
-            cwd=root,
-            label="auto-integrate:backup-ref-create",
-        )
-    except Exception as exc:
-        # B11/E5 fail-closed: the attempt cannot proceed without a
-        # backup ref because a concurrent gc could prune the
-        # in-flight tip mid-run. Raise loudly; the outer
-        # _integrate_once exception handler runs the verified-abort
-        # path (post_attempt_verify + record retention) so no
-        # state is left behind and the next seam can resume.
-        raise RuntimeError(
-            f"auto_integrate: B11/E5 backup-ref creation raised "
-            f"unexpectedly; refusing to start the attempt without "
-            f"recovery reachability for the in-flight tip: {exc}"
-        ) from exc
-    if result.returncode != 0:
-        stderr = (result.stderr or result.stdout).strip()[:200]
-        # B11/E5 fail-closed: see the docstring above. Raising here
-        # routes through the outer exception handler which clears
-        # the durable integration record via the verified-abort
-        # path. We do NOT silently continue without the backup.
-        raise RuntimeError(
-            f"auto_integrate: B11/E5 backup-ref creation failed "
-            f"(rc={result.returncode}): {stderr}; refusing to start "
-            f"the attempt without recovery reachability for the "
-            f"in-flight tip"
-        )
-    return backup_name
-
-
-def _delete_rebase_backup_ref(root: Path, backup_ref: str | None) -> None:
-    """Delete ``refs/rebase-backup/<id>`` after a verified land or abort.
-
-    Safe to call when the ref does not exist: a stale backup from a
-    previous run is silently cleaned up by ``update-ref -d``. The
-    function never raises -- a backup-ref left around is recoverable
-    on the next run (it does not block integration), while a stuck
-    attempt on a missing backup would.
-    """
-    if backup_ref is None:
-        return
-    try:
-        result = run_git(
-            ("update-ref", "-d", backup_ref),
-            cwd=root,
-            label="auto-integrate:backup-ref-delete",
-        )
-    except Exception as exc:  # pragma: no cover -- defensive
-        logger.warning(
-            "auto_integrate: backup-ref deletion raised unexpectedly: {}; "
-            "the stale backup will be discovered by the next recovery pass",
-            exc,
-        )
-        return
-    if result.returncode != 0:
-        # ``update-ref -d`` returns 1 when the ref does not exist;
-        # that is the normal "already cleaned" path.
-        stderr = (result.stderr or "").strip()
-        if "not exist" in stderr or result.returncode not in (0, 1):
-            logger.warning(
-                "auto_integrate: backup-ref deletion failed (rc={}): {}; "
-                "the stale backup will be discovered by the next recovery pass",
-                result.returncode,
-                stderr[:200],
-            )
-
-
-def _verify_and_cleanup_backup(
-    root: Path,
-    backup_ref: str | None,
-    expected_head_sha: str | None,
-    owns_resolution: bool,
-) -> None:
-    """Verify the terminal-state invariant and delete the backup ref (R6/B11).
-
-    Composed of:
-
-    * :func:`post_attempt_verify` from
-      :mod:`ralph.pipeline.auto_integrate_recovery` -- asserts the
-      git dir carries no in-progress markers (unless a live
-      resolution session owns them) AND that HEAD resolves to
-      exactly ``expected_head_sha`` on the abort path. RAISES
-      :class:`TerminalStateViolationError` on failure so the caller
-      surfaces a loud diagnostic AND the recovery code path retains
-      the durable record / backup ref until the invariant is
-      restored (the analysis feedback's AC-06 contract: a failed
-      invariant must be loud, not silent-and-ignored).
-    * :func:`_delete_rebase_backup_ref` -- cleans up the backup ref
-      ONLY after a verified pass; the call is skipped when the
-      invariant failed so the next recovery pass can still read the
-      backup ref to restore the pre-attempt tip.
-
-    Called from EVERY exit path of
-    :func:`_integrate_once` -- success, conflict, fallback, error,
-    timeout, signal -- and from the outer exception guards. A backup
-    ref without a verified invariant would leave an unverified
-    ``refs/rebase-backup/<id>`` on disk, so the cleanup is gated on
-    the verification passing.
-
-    A failed verification RE-RAISES :class:`TerminalStateViolationError`
-    so the caller (and any outer exception guard) can either record
-    a loud skip and propagate, or hand the violation to the recovery
-    preamble. The earlier swallow-and-log shape was the AC-06
-    regression the analysis feedback flagged: a leaked
-    ``rebase-merge``/``REBASE_HEAD`` was reported as an ordinary
-    return and the next seam started without the recovery path
-    being aware the previous attempt leaked. This function is the
-    single chokepoint for every exit path's terminal-state check,
-    so swallowing here is swallowing for the whole subsystem.
-    """
-    post_attempt_verify(
-        root,
-        expected_head_sha=expected_head_sha,
-        owns_resolution=owns_resolution,
-    )
-    # R6/AC-06: the invariant passed -- the backup ref is safe to
-    # delete. The cleanup is unconditional: a verified pass means
-    # the next recovery run has no need for this backup.
-    _delete_rebase_backup_ref(root, backup_ref)
-
-
 __all__ = [
     "IntegrationRecord",
+    "_create_rebase_backup_ref",
+    "_delete_rebase_backup_ref",
     "auto_integrate_after_commit",
     "auto_integrate_on_phase_transition",
     "recover_incomplete_integration",

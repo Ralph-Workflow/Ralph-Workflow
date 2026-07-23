@@ -39,6 +39,15 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_record import (
     read_record as _read_record,
 )
+from ralph.pipeline.auto_integrate_recovery_terminal import (
+    _TERMINAL_MARKER_FILES,
+    TerminalStateViolationError,
+    _head_matches_sha,
+    post_attempt_verify,
+)
+from ralph.pipeline.auto_integrate_recovery_terminal import (
+    delete_rebase_backup_refs as _delete_rebase_backup_refs,
+)
 from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.rebase_state import RebaseState
@@ -53,42 +62,12 @@ if TYPE_CHECKING:
 _ACTION_SKIPPED = "skipped"
 _ACTION_RECOVERED = "recovered"
 
-
-class TerminalStateViolationError(RuntimeError):
-    """Raised when the R6/AC-06 terminal-state invariant is violated.
-
-    The pipeline contract: an integration attempt that exits MUST leave
-    the git dir in a state where ``check_rebase_preconditions`` would
-    pass (no in-progress markers unless a live resolution session owns
-    them), AND on the abort path HEAD must resolve to the recorded
-    pre-attempt SHA. When either condition fails, this exception is
-    raised after the diagnostic is logged so the caller surfaces the
-    leak loudly and the recovery code path retains the durable record
-    / backup ref until the invariant is restored.
-    """
-
-#: Terminal-state invariant marker files. The post-attempt
-#: verification refuses to clear the durable record while ANY of
-#: these is on disk AND no resolution session owns them. The
-#: closed set is small on purpose: a missing file is the loud
-#: signal that the rebase/merge was not terminated cleanly, and
-#: an unknown file (the spec's "A8 benign leftovers") is
-#: deliberately NOT a marker -- git's own bookkeeping
-#: (``AUTO_MERGE``, ``MERGE_MSG``, ``MERGE_MODE``, ``MERGE_RR``,
-#: ``SQUASH_MSG``, ``ORIG_HEAD``) is allowed to survive because
-#: treating it as a blocker permanently disabled integration in
-#: the past.
-_TERMINAL_MARKER_FILES: frozenset[str] = frozenset(
-    {
-        "rebase-merge",
-        "rebase-apply",
-        "REBASE_HEAD",
-        "MERGE_HEAD",
-        "CHERRY_PICK_HEAD",
-        "REVERT_HEAD",
-        "sequencer",
-    }
-)
+__all__ = [
+    "TerminalStateViolationError",
+    "post_attempt_verify",
+    "recover_incomplete_integration",
+    "recovery_retained_record",
+]
 
 
 def recovery_retained_record(state: RebaseState | None) -> bool:
@@ -117,78 +96,6 @@ def recovery_retained_record(state: RebaseState | None) -> bool:
     retained.
     """
     return state is not None and state.recovery_record_retained
-
-
-def post_attempt_verify(
-    root: Path,
-    *,
-    expected_head_sha: str | None,
-    owns_resolution: bool,
-) -> None:
-    """Terminal-state invariant check used on EVERY exit path (R6).
-
-    RAISES :class:`TerminalStateViolationError` on failure so the caller
-    surfaces a loud diagnostic AND the recovery code path retains
-    the durable record / backup ref until the invariant is restored
-    (the analysis feedback's AC-06 contract: a failed invariant
-    must be loud, not silent-and-ignored).
-
-    A failure is detected when:
-
-    * any in-progress marker from :data:`_TERMINAL_MARKER_FILES`
-      remains in the per-worktree git dir, AND ``owns_resolution``
-      is False (a live resolution session is editing the conflict
-      and will clean up its own state); OR
-    * on the abort path (``expected_head_sha`` is not ``None``),
-      ``HEAD`` resolves to something other than that SHA -- never
-      ``ORIG_HEAD``, which any intervening operation can overwrite.
-
-    The function is intentionally side-effect-free: it READS
-    state, never WRITES it. Recovery / abort paths that run AFTER
-    this call decide what to do with a failed invariant (the
-    standard contract is: do not delete the backup ref or clear
-    the durable record until the invariant passes).
-    """
-    git_dir = _rebase_bookkeeping_dir(root)
-    if git_dir is None:
-        # Not a git checkout: nothing to verify; pass.
-        return
-    if not owns_resolution:
-        for marker in _TERMINAL_MARKER_FILES:
-            # A4: git can leave REBASE_HEAD after the final --continue.
-            if marker == "REBASE_HEAD" and not rebase_in_progress(root):
-                continue
-            if (git_dir / marker).exists():
-                raise TerminalStateViolationError(
-                    f"terminal-state invariant violated: {marker} "
-                    f"present in {git_dir}"
-                )
-    if expected_head_sha is not None and not _head_matches_sha(root, expected_head_sha):
-        actual = _read_head_sha(root)
-        raise TerminalStateViolationError(
-            "terminal-state invariant violated: HEAD is "
-            f"{actual or '<unreadable>'}, expected {expected_head_sha}"
-        )
-
-
-def _read_head_sha(root: Path) -> str | None:
-    """Read HEAD as a string SHA; ``None`` on any failure.
-
-    Distinct from :func:`_head_matches_sha` because the verifier
-    needs the VALUE for the operator log, not just a boolean
-    match.
-    """
-    try:
-        result = run_git(
-            ("rev-parse", "--verify", "HEAD"),
-            cwd=root,
-            label="git-rev-parse-head-verify",
-        )
-    except Exception:
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
 
 
 def _rebase_bookkeeping_dir(root: Path) -> Path | None:
@@ -1021,87 +928,6 @@ def recover_incomplete_integration(
         # know a record is on disk.
         logger.warning("recover_incomplete_integration failed: {}", exc)
         return _record_skip(reason=f"recovery failed: {exc}", target=None)
-
-
-def _head_matches_sha(repo_root: Path, expected_sha: str) -> bool:
-    """Return True when ``HEAD`` resolves to ``expected_sha``.
-
-    Uses ``git rev-parse --verify HEAD`` (a substring match is
-    accepted since git treats an unambiguous prefix as a SHA).
-    Returns False on any failure so the recovery path retains the
-    durable record when verification is impossible -- a defensive
-    fail-closed against a half-restored feature branch that we
-    cannot prove equals ``pre_feature_sha``.
-    """
-    try:
-        result = run_git(
-            ("rev-parse", "--verify", "HEAD"),
-            cwd=repo_root,
-            label="git-rev-parse-head",
-        )
-    except Exception:
-        return False
-    if result.returncode != 0:
-        return False
-    return result.stdout.strip() == expected_sha
-
-
-def _delete_rebase_backup_refs(root: Path) -> None:
-    """Delete every ``refs/rebase-backup/<id>`` ref under ``root``.
-
-    B11/E5 cleanup: when a verified land or abort completes, the
-    backup refs created in :func:`auto_integrate._create_rebase_backup_ref`
-    must be deleted so they do not accumulate. ``update-ref -d``
-    on a non-existent ref returns 1 and is treated as a no-op, so
-    the function is safe to call at every recovery / integrate exit
-    path.
-
-    Uses ``git for-each-ref`` to enumerate -- ``refs/heads``-style
-    reads would miss the ``refs/rebase-backup/`` namespace. The
-    function never raises: a backup ref left around is recoverable
-    on the next run (it does not block integration), while a stuck
-    attempt on a missing backup would.
-    """
-    try:
-        result = run_git(
-            ("for-each-ref", "--format=%(refname)", "refs/rebase-backup/"),
-            cwd=root,
-            label="recovery:list-backup-refs",
-        )
-    except Exception as exc:  # pragma: no cover -- defensive
-        logger.warning(
-            "recovery: backup-ref enumeration raised unexpectedly: {}; "
-            "stale backups will be discovered by the next attempt",
-            exc,
-        )
-        return
-    if result.returncode != 0:
-        return
-    for raw_ref in result.stdout.splitlines():
-        ref = raw_ref.strip()
-        if not ref:
-            continue
-        try:
-            delete_result = run_git(
-                ("update-ref", "-d", ref),
-                cwd=root,
-                label=f"recovery:delete-backup-ref:{ref}",
-            )
-        except Exception as exc:  # pragma: no cover -- defensive
-            logger.warning(
-                "recovery: backup-ref deletion raised unexpectedly for {}: {}",
-                ref,
-                exc,
-            )
-            continue
-        if delete_result.returncode not in (0, 1):
-            stderr = (delete_result.stderr or "").strip()
-            logger.warning(
-                "recovery: backup-ref deletion failed for {} (rc={}): {}",
-                ref,
-                delete_result.returncode,
-                stderr[:200],
-            )
 
 
 # ----- AC-14 catalog evidence -----
