@@ -91,6 +91,26 @@ class TestRefineAcceptLoop:
         # Only the initial artifact-producing turn ran; Accept does not re-invoke.
         assert mock_invoke.call_count == 1
 
+    def test_run_does_not_delete_retired_json_artifact(
+        self,
+        workspace_root: Path,
+        config_with_helper_agent: UnifiedConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Prompt-helper no longer owns cleanup of the retired JSON artifact path."""
+        self._setup_base_runtime(monkeypatch)
+        legacy_artifact = workspace_root / ".agent" / "artifacts" / "product_spec.json"
+        legacy_artifact.parent.mkdir(parents=True)
+        legacy_artifact.write_text('{"title": "legacy"}', encoding="utf-8")
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.Prompt.ask",
+            lambda *args, **kwargs: "An idea" if kwargs.get("choices") is None else "Accept",
+        )
+
+        run_prompt_helper(config_with_helper_agent, workspace_root)
+
+        assert legacy_artifact.read_text(encoding="utf-8") == '{"title": "legacy"}'
+
     def test_refine_reinvokes_agent_then_accept_writes_prompt_md(
         self,
         workspace_root: Path,

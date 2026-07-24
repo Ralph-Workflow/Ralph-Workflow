@@ -164,13 +164,6 @@ def _write_prompt_md(
     display.emit_status("PROMPT.md written from product specification.")
 
 
-def _clear_draft_artifact(workspace_root: Path) -> None:
-    """Delete the draft artifact file if it exists."""
-    artifact_file = workspace_root / ".agent" / "artifacts" / "product_spec.json"
-    if artifact_file.exists():
-        artifact_file.unlink()
-
-
 def _display_agent_line(
     line: str,
     *,
@@ -410,7 +403,6 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
         agent_config=agent_config,
         request=_prompt_helper_session_request(),
     ) as runtime:
-        _clear_draft_artifact(workspace_root)
         spec, session_id = _produce_initial_artifact(
             workspace_root,
             runtime,

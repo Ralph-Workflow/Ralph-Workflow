@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+from typing import cast
 
 _EXISTING_PROMPT_CONTEXT_BLOCK = """\
 **CURRENT PROMPT CONTEXT:**
@@ -35,6 +35,19 @@ specification.
 
 """
 
+_PRODUCT_SPEC_SECTIONS = (
+    ("Title", "title", "T"),
+    ("Scope", "scope", "SC"),
+    ("Goals", "goals", "G"),
+    ("Users", "users", "U"),
+    ("Constraints", "constraints", "CN"),
+    ("Success Criteria", "success_criteria", "C"),
+    ("Product Behavior", "product_behavior", "PB"),
+    ("UX UI Requirements", "ux_ui_requirements", "UX"),
+    ("Scope Boundaries", "scope_boundaries", "SB"),
+    ("Open Questions", "open_questions", "OQ"),
+)
+
 
 def _fenced_block(content: str, *, info: str) -> str:
     """Return a fenced markdown block that remains valid even when content contains backticks."""
@@ -48,6 +61,23 @@ def _fenced_block(content: str, *, info: str) -> str:
             current_run = 0
     fence = "`" * max(3, longest_run + 1)
     return f"{fence}{info}\n{content}\n{fence}"
+
+
+def _render_draft_markdown(draft: dict[str, object]) -> str:
+    """Render normalized product-spec content as canonical Markdown context."""
+    lines = ["---", "type: product_spec", "---", ""]
+    for heading, field, id_prefix in _PRODUCT_SPEC_SECTIONS:
+        raw_value = draft.get(field)
+        items = cast("list[object]", raw_value) if isinstance(raw_value, list) else [raw_value]
+        text_items = [str(item) for item in items if item is not None and str(item)]
+        if not text_items:
+            continue
+        lines.extend((f"## {heading}",))
+        lines.extend(
+            f"- [{id_prefix}-{index}] {item}" for index, item in enumerate(text_items, start=1)
+        )
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def build_prompt_helper_prompt(
@@ -70,7 +100,7 @@ def build_prompt_helper_prompt(
     ----------
     submit_artifact_tool_name : str
         The MCP tool name to use when submitting the product_spec artifact,
-        e.g. "mcp__ralph__ralph_submit_artifact".
+        e.g. "mcp__ralph__ralph_submit_md_artifact".
     existing_prompt_context : str | None
         Existing PROMPT.md content injected by the host when refining an
         existing prompt before the first helper turn.
@@ -91,9 +121,9 @@ def build_prompt_helper_prompt(
 
     draft_block = ""
     if has_draft and current_draft is not None:
-        draft_json = json.dumps(current_draft, indent=2)
+        draft_markdown = _render_draft_markdown(current_draft)
         draft_block = _DRAFT_CONTEXT_BLOCK.format(
-            current_draft_block=_fenced_block(draft_json, info="json")
+            current_draft_block=_fenced_block(draft_markdown, info="markdown")
         )
 
     idea_block = ""
@@ -161,9 +191,37 @@ Submit the product specification as an artifact using the following tool:
 
 Submit with:
 - `artifact_type`: "product_spec"
-- `content`: A JSON string containing the product specification
+- `content`: The full markdown document as a plain string, never JSON
 
-The content should include: title, scope, goals (non-empty list), users
-(non-empty list), success_criteria (non-empty list), and optionally:
-constraints, product_behavior, ux_ui_requirements, scope_boundaries,
-open_questions."""
+Author the document with this grammar:
+
+```markdown
+---
+type: product_spec
+---
+
+## Title
+- [T-1] A concise product title
+
+## Scope
+- [SC-1] A clear statement of what the product or feature covers
+
+## Goals
+- [G-1] A measurable product goal
+
+## Users
+- [U-1] A user group and its need
+
+## Success Criteria
+- [C-1] An observable outcome that demonstrates success
+```
+
+`Title`, `Scope`, `Goals`, `Users`, and `Success Criteria` are required.
+Title and Scope each contain exactly one stable-ID list item. The other
+required sections contain at least one. Add relevant optional sections named
+`Constraints`, `Product Behavior`, `UX UI Requirements`, `Scope Boundaries`,
+and `Open Questions`, using the same `- [ID] text` item form.
+
+If the submit tool is unavailable, write the same complete markdown document
+to `.agent/tmp/product_spec.md` for fallback promotion. Do not create or write
+a JSON product-spec artifact."""

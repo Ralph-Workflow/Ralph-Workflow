@@ -11,7 +11,7 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_instructs_one_shot_submit_without_questions(self) -> None:
         """Prompt tells the agent to submit immediately and not to ask the user."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         lowered = result.lower()
         assert "immediately" in lowered
@@ -20,7 +20,7 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_includes_user_idea_when_provided(self) -> None:
         """The host-supplied idea is embedded as a request block for the agent."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
             user_idea="A notes app with tags and search.",
         )
         assert "A notes app with tags and search." in result
@@ -29,14 +29,14 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_without_user_idea_omits_user_request_block(self) -> None:
         """Without an idea, no user-request block is included."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert "USER REQUEST" not in result
 
     def test_prompt_contains_follow_up_domains(self) -> None:
         """Prompt contains follow-up domains: users, goals, constraints, success, behavior."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert "users" in result.lower()
         assert "goals" in result.lower()
@@ -52,7 +52,7 @@ class TestBuildPromptHelperPrompt:
         user and the host orchestrator, not the agent.
         """
         lowered = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         ).lower()
         assert "ask the user" not in lowered
         assert "follow-up question" not in lowered
@@ -61,7 +61,7 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_contains_ux_ui_capture_guidance(self) -> None:
         """Prompt contains explicit UX/UI capture guidance."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert (
             "ux/ui" in result.lower()
@@ -72,20 +72,34 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_contains_implementation_detail_avoidance(self) -> None:
         """Prompt contains explicit instruction to avoid implementation details."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert "implementation" in result.lower()
         assert "avoid" in result.lower() or "not" in result.lower()
 
     def test_prompt_injects_submit_artifact_tool_name(self) -> None:
         """Prompt contains the submit_artifact_tool_name value."""
-        tool_name = "mcp__ralph__ralph_submit_artifact"
+        tool_name = "mcp__ralph__ralph_submit_md_artifact"
         result = build_prompt_helper_prompt(submit_artifact_tool_name=tool_name)
         assert tool_name in result
 
+    def test_prompt_uses_markdown_submission_and_fallback_contract(self) -> None:
+        """Prompt authors raw Markdown and names only the Markdown fallback path."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
+        )
+
+        assert "type: product_spec" in result
+        assert "## Success Criteria" in result
+        assert "full markdown document" in result.lower()
+        assert ".agent/tmp/product_spec.md" in result
+        assert "ralph_submit_artifact" not in result
+        assert "product_spec.json" not in result
+        assert "JSON string containing the product specification" not in result
+
     def test_prompt_injects_different_tool_name(self) -> None:
         """Prompt correctly injects a different tool name when provided."""
-        tool_name = "mcp__ralph__ralph_submit_artifact"
+        tool_name = "mcp__ralph__ralph_submit_md_artifact"
         result = build_prompt_helper_prompt(submit_artifact_tool_name=tool_name)
         assert tool_name in result
 
@@ -97,21 +111,21 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_contains_scale_adaptation_guidance(self) -> None:
         """Prompt contains scale-to-fit guidance for adapting structure to scope."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert "scale to fit" in result.lower()
 
     def test_prompt_contains_long_spec_handling_guidance(self) -> None:
         """Prompt contains guidance for managing long specifications."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert "chunk" in result.lower() or "regroup" in result.lower()
 
     def test_prompt_with_existing_prompt_context_includes_context_not_menu(self) -> None:
         """Existing prompt context is injected as background, not an agent-owned menu."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
             existing_prompt_context="# Existing prompt\nBuild a notes app.",
         )
         assert "Build a notes app." in result
@@ -121,7 +135,7 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_without_existing_prompt_context_omits_existing_block(self) -> None:
         """Without existing context, the helper prompt stays focused on fresh intake."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert "CURRENT PROMPT CONTEXT" not in result
 
@@ -133,7 +147,7 @@ class TestBuildPromptHelperPrompt:
         the session continues; the host presents the review choices.
         """
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         # The agent should not be told to present post-artifact choices
         # (those are shown by the host via Prompt.ask)
@@ -145,7 +159,7 @@ class TestBuildPromptHelperPrompt:
     ) -> None:
         """Existing prompt text is injected by the host, so the agent is not told to read files."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
             existing_prompt_context="# Existing prompt\nBuild a notes app.",
         )
         assert "read_file" not in result
@@ -155,7 +169,7 @@ class TestBuildPromptHelperPrompt:
     ) -> None:
         """Existing prompt context stays inside the wrapper block when it contains fences."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
             existing_prompt_context="Before\n```py\nprint('x')\n```\nAfter",
         )
         assert "````md" in result
@@ -163,7 +177,7 @@ class TestBuildPromptHelperPrompt:
         assert "\n````\n\nYou are a product manager" in result
 
     def test_prompt_with_has_draft_includes_draft_context(self) -> None:
-        """When has_draft=True with a current_draft, prompt includes draft content."""
+        """An existing draft is supplied to the agent as Markdown, not JSON."""
         draft = {
             "title": "Test Title",
             "scope": "Test scope",
@@ -172,17 +186,19 @@ class TestBuildPromptHelperPrompt:
             "success_criteria": ["Criterion 1"],
         }
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
             has_draft=True,
             current_draft=draft,
         )
         assert "CURRENT DRAFT SPECIFICATION" in result
         assert "Test Title" in result
+        assert "```markdown" in result
+        assert "```json" not in result
 
     def test_prompt_without_has_draft_omits_draft_context(self) -> None:
         """When has_draft=False, prompt does not include draft context."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
             has_draft=False,
         )
         assert "CURRENT DRAFT SPECIFICATION" not in result
@@ -190,7 +206,7 @@ class TestBuildPromptHelperPrompt:
     def test_prompt_does_not_reference_declare_complete(self) -> None:
         """Prompt does not reference declare_complete tool."""
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         assert "declare_complete" not in result.lower()
 
@@ -202,7 +218,7 @@ class TestBuildPromptHelperPrompt:
         the host presents the review choices via Prompt.ask.
         """
         result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact"
         )
         # The FINISH contract no longer exists - host owns the review loop
         assert "FINISH" not in result
