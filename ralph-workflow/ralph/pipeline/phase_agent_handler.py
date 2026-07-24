@@ -258,7 +258,7 @@ def _render_success_artifact(
     if artifact_type == "development_result":
         _emit_via_display(display_context, "emit_development_artifact", workspace_root)
         produced = (
-            "result produced" if (workspace_root / ra.json_path).exists() else "no result artifact"
+            "result produced" if (workspace_root / ra.artifact_path).exists() else "no result artifact"
         )
         _emit_close(produced)
         return
@@ -267,7 +267,7 @@ def _render_success_artifact(
         _emit_via_display(display_context, "emit_review_artifact", workspace_root)
         with suppress(Exception):
             issue_count = 0
-            issues_path = workspace_root / ra.json_path
+            issues_path = workspace_root / ra.artifact_path
             if issues_path.exists():
                 try:
                     issues_text = issues_path.read_text(encoding="utf-8")

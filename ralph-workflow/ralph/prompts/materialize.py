@@ -987,7 +987,7 @@ def _resolve_loopback_analysis_feedback(
                 content, path = _resolve_agent_handoff(
                     workspace,
                     artifact_type=ra.artifact_type,
-                    artifact_path=ra.json_path,
+                    artifact_path=ra.artifact_path,
                 )
                 return content or "", path
     return "", ""
@@ -1011,7 +1011,7 @@ def _resolve_partial_development_result(
     markdown, _path = _resolve_agent_handoff(
         workspace,
         artifact_type=required_artifact.artifact_type,
-        artifact_path=required_artifact.json_path,
+        artifact_path=required_artifact.artifact_path,
     )
     if not markdown:
         markdown = _read_optional(workspace, PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)
@@ -1057,7 +1057,7 @@ def _snapshot_partial_execution_result(
     markdown, _path = _resolve_agent_handoff(
         workspace,
         artifact_type=required_artifact.artifact_type,
-        artifact_path=required_artifact.json_path,
+        artifact_path=required_artifact.artifact_path,
     )
     if not markdown:
         return
@@ -1097,7 +1097,7 @@ def _latest_artifact_content(
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type=ra.artifact_type,
-        artifact_path=ra.json_path,
+        artifact_path=ra.artifact_path,
     )
     return content or "", path
 

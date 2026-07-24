@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing
 
 from ralph.pipeline.effects import FanOutEffect
@@ -87,12 +86,9 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
             VerificationResult(ran=True, passed=False, exit_code=_EXIT_CODE_VERIFY_FAIL),
         )
 
-        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
+        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
         assert summary_path.exists()
-        summary = json.loads(summary_path.read_text())
-        assert summary["verification"]["ran"] is True
-        assert summary["verification"]["passed"] is False
-        assert summary["verification"]["exit_code"] == _EXIT_CODE_VERIFY_FAIL
-        assert summary["any_failed"] is True
-        workers = {w["unit_id"]: w for w in summary["workers"]}
-        assert "__verify__" in workers
+        summary = summary_path.read_text(encoding="utf-8")
+        assert "Ran: yes — failed (exit code 2)" in summary
+        assert "- any_failed: true" in summary
+        assert "- **__verify__**: failed (0 artifact(s))" in summary

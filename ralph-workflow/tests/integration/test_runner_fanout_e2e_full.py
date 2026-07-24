@@ -12,7 +12,6 @@ Uses monkeypatched coordinator and verification hook; no real subprocesses.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -28,6 +27,7 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
+from tests.plan_fixtures import development_result_markdown
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -82,17 +82,9 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
 def _seed_artifact(repo_root: Path, unit_id: str) -> None:
     artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "development_result.json").write_text(
-        json.dumps(
-            {
-                "name": "development_result",
-                "type": "development_result",
-                "content": {"summary": f"Worker {unit_id} done", "changes": []},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "development_result.md").write_text(
+        development_result_markdown(unit_id),
+        encoding="utf-8",
     )
 
 

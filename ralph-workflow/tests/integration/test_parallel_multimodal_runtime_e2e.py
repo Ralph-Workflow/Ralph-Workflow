@@ -26,7 +26,6 @@ correct observable outcomes for multimodal-capable workers.
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
@@ -242,14 +241,11 @@ def _assert_workers_succeeded_in_summary(tmp_path: Path, unit_ids: tuple[str, ..
     so the persisted summary is the post-wave observable for worker outcomes.
     Returns the number of verified workers.
     """
-    summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
-    assert summary_path.exists(), "fan-out must write parallel_development_summary.json"
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    statuses = {w["unit_id"]: w["status"] for w in summary["workers"]}
+    summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
+    assert summary_path.exists(), "fan-out must write parallel_development_summary.md"
+    summary = summary_path.read_text(encoding="utf-8")
     for unit_id in unit_ids:
-        assert statuses.get(unit_id) == "succeeded", (
-            f"Worker {unit_id} expected succeeded, got {statuses.get(unit_id)!r}"
-        )
+        assert f"- **{unit_id}**: succeeded" in summary
     return len(unit_ids)
 
 
@@ -460,12 +456,12 @@ def test_worker_handoff_contains_multimodal_artifacts(
 
 
 @pytest.mark.integration
-def test_worker_artifacts_contain_plan_json(
+def test_worker_artifacts_contain_plan_markdown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Worker artifacts directory must contain plan.json after completion.
+    """Worker artifacts directory must contain plan.md after completion.
 
-    Black-box observable: the plan.json artifact proves the worker produced
+    Black-box observable: the plan.md artifact proves the worker produced
     its expected output in the correct location.
     """
     unit = _make_work_unit("unit-artifacts")
@@ -485,10 +481,11 @@ def test_worker_artifacts_contain_plan_json(
     )
 
     worker_artifacts = tmp_path / ".agent" / "workers" / "unit-artifacts" / "artifacts"
-    plan_path = worker_artifacts / "plan.json"
+    plan_path = worker_artifacts / "plan.md"
     assert plan_path.is_file(), (
-        f"Expected plan.json in worker artifacts, got: {list(worker_artifacts.iterdir())}"
+        f"Expected plan.md in worker artifacts, got: {list(worker_artifacts.iterdir())}"
     )
-    plan_data = json.loads(plan_path.read_text())
-    assert plan_data["type"] == "plan"
+    plan_document = plan_path.read_text(encoding="utf-8")
+    assert "type: plan" in plan_document
+    assert "## Steps" in plan_document
     assert not (tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json").exists()

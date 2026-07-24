@@ -11,7 +11,6 @@ with multi-iteration loops that cannot fit the per-test 1 s budget.
 from __future__ import annotations
 
 import gc
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -40,6 +39,13 @@ from tests.integration._development_analysis_always_loopback_invoker import (
 from tests.integration._loopback_once_invoker import LoopbackOnceInvoker
 from tests.integration._planning_analysis_request_changes_once_invoker import (
     PlanningAnalysisRequestChangesOnceInvoker,
+)
+from tests.plan_fixtures import (
+    MINIMAL_PLAN_MARKDOWN,
+    analysis_decision_markdown,
+    commit_cleanup_markdown,
+    commit_message_markdown,
+    development_result_markdown,
 )
 
 if TYPE_CHECKING:
@@ -80,10 +86,10 @@ def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
 
 
-def _write_artifact(root: Path, relative_path: str, payload: dict[str, object]) -> None:
+def _write_artifact(root: Path, relative_path: str, content: str) -> None:
     path = root / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload))
+    path.write_text(content, encoding="utf-8")
 
 
 @lru_cache(maxsize=1)
@@ -360,39 +366,8 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
             if effect.phase == "planning":
                 _write_artifact(
                     tmp_path,
-                    ".agent/artifacts/plan.json",
-                    {
-                        "type": "plan",
-                        "content": {
-                            "summary": {
-                                "context": "Minimal planning artifact for integration coverage.",
-                                "scope_items": [
-                                    {"text": "one"},
-                                    {"text": "two"},
-                                    {"text": "three"},
-                                ],
-                            },
-                            "steps": [
-                                {
-                                    "number": 1,
-                                    "title": "Touch file",
-                                    "content": "Modify a tracked file.",
-                                    "step_type": "file_change",
-                                    "targets": [{"path": "foo.py", "action": "modify"}],
-                                }
-                            ],
-                            "critical_files": {
-                                "primary_files": [{"path": "foo.py", "action": "modify"}]
-                            },
-                            "risks_mitigations": [
-                                {"risk": "minimal risk", "mitigation": "covered by test"}
-                            ],
-                            "verification_strategy": [
-                                {"method": "pytest", "expected_outcome": "passes"}
-                            ],
-                            "work_units": [],
-                        },
-                    },
+                    ".agent/artifacts/plan.md",
+                    MINIMAL_PLAN_MARKDOWN,
                 )
                 return PipelineEvent.AGENT_SUCCESS
             if effect.phase == "planning_analysis":
@@ -404,8 +379,8 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
                 )
                 _write_artifact(
                     tmp_path,
-                    ".agent/artifacts/planning_analysis_decision.json",
-                    {"type": "planning_analysis_decision", "content": {"status": decision}},
+                    ".agent/artifacts/planning_analysis_decision.md",
+                    analysis_decision_markdown("planning_analysis_decision", decision),
                 )
                 return PipelineEvent.AGENT_SUCCESS
             raise AssertionError(f"Unexpected invoke phase before development exit: {effect.phase}")
@@ -422,16 +397,12 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         **_kwargs: object,
     ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect) and effect.phase == "planning_analysis":
-            try:
-                data = json.loads(
-                    (tmp_path / ".agent/artifacts/planning_analysis_decision.json").read_text()
-                )
-                status = data["content"]["status"]
-                if status == "completed":
-                    return PipelineEvent.ANALYSIS_SUCCESS
-                return PipelineEvent.ANALYSIS_LOOPBACK
-            except Exception:
-                return PipelineEvent.ANALYSIS_LOOPBACK
+            decision = (
+                tmp_path / ".agent/artifacts/planning_analysis_decision.md"
+            ).read_text(encoding="utf-8")
+            if "status: completed" in decision:
+                return PipelineEvent.ANALYSIS_SUCCESS
+            return PipelineEvent.ANALYSIS_LOOPBACK
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -544,44 +515,9 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     )
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted development analysis.")
     (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".agent" / "artifacts" / "plan.json").write_text(
-        json.dumps(
-            {
-                "type": "plan",
-                "content": {
-                    "summary": {
-                        "context": "Minimal planning artifact for development analysis coverage.",
-                        "scope_items": [
-                            {"text": "one"},
-                            {"text": "two"},
-                            {"text": "three"},
-                        ],
-                    },
-                    "skills_mcp": {
-                        "skills": [
-                            "test-driven-development",
-                            "verification-before-completion",
-                        ],
-                        "mcps": [],
-                    },
-                    "steps": [
-                        {
-                            "number": 1,
-                            "title": "Touch file",
-                            "content": "Modify a tracked file.",
-                            "step_type": "file_change",
-                            "targets": [{"path": "foo.py", "action": "modify"}],
-                        }
-                    ],
-                    "critical_files": {"primary_files": [{"path": "foo.py", "action": "modify"}]},
-                    "risks_mitigations": [
-                        {"risk": "minimal risk", "mitigation": "covered by test"}
-                    ],
-                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-                    "work_units": [],
-                },
-            }
-        )
+    (tmp_path / ".agent" / "artifacts" / "plan.md").write_text(
+        MINIMAL_PLAN_MARKDOWN,
+        encoding="utf-8",
     )
 
     development_analysis_calls = 0
@@ -608,21 +544,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
             if effect.phase == "development":
                 _write_artifact(
                     tmp_path,
-                    ".agent/artifacts/development_result.json",
-                    {
-                        "type": "development_result",
-                        "content": {
-                            "status": "completed",
-                            "summary": "Development artifact present.",
-                            "files_changed": "foo.py",
-                            "plan_items_proven": [
-                                {
-                                    "plan_item": "Step 1: Touch file",
-                                    "proof": "Updated foo.py as planned.",
-                                }
-                            ],
-                        },
-                    },
+                    ".agent/artifacts/development_result.md",
+                    development_result_markdown("development"),
                 )
                 return PipelineEvent.AGENT_SUCCESS
             if effect.phase == "development_analysis":
@@ -634,8 +557,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 )
                 _write_artifact(
                     tmp_path,
-                    ".agent/artifacts/development_analysis_decision.json",
-                    {"type": "development_analysis_decision", "content": {"status": decision}},
+                    ".agent/artifacts/development_analysis_decision.md",
+                    analysis_decision_markdown("development_analysis_decision", decision),
                 )
                 return PipelineEvent.AGENT_SUCCESS
             if effect.phase in {
@@ -645,8 +568,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 return (
                     _write_artifact(
                         tmp_path,
-                        ".agent/artifacts/commit_cleanup.json",
-                        {"analysis_complete": True, "actions": []},
+                        ".agent/artifacts/commit_cleanup.md",
+                        commit_cleanup_markdown([]),
                     )
                     or PipelineEvent.AGENT_SUCCESS
                 )
@@ -654,18 +577,10 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 return (
                     _write_artifact(
                         tmp_path,
-                        ".agent/tmp/commit_message.json",
-                        {
-                            "name": "commit_message",
-                            "type": "commit_message",
-                            "content": {
-                                "type": "commit",
-                                "subject": "fix: continue development analysis loop",
-                            },
-                            "created_at": "STATIC",
-                            "updated_at": "STATIC",
-                            "metadata": {},
-                        },
+                        ".agent/artifacts/commit_message.md",
+                        commit_message_markdown(
+                            "fix: continue development analysis loop"
+                        ),
                     )
                     or PipelineEvent.AGENT_SUCCESS
                 )

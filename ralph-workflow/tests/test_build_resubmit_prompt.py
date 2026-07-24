@@ -16,7 +16,7 @@ def _ra(phase: str, artifact_type: str, artifact_path: str) -> RequiredArtifact:
     return RequiredArtifact(
         phase=phase,
         artifact_type=artifact_type,
-        json_path=artifact_path,
+        artifact_path=artifact_path,
         markdown_path=None,
         normalizer=None,
     )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -41,11 +40,11 @@ _ = _load_default_policy_bundle()
 def _write_artifact_files(
     workspace: FsWorkspace,
     artifact_type: str,
-    json_path: str,
+    artifact_path: str,
     md_path: str | None,
 ) -> None:
-    workspace.mkdirs(Path(json_path).parent.as_posix())
-    workspace.write(json_path, json.dumps({"type": artifact_type, "content": "test"}))
+    workspace.mkdirs(Path(artifact_path).parent.as_posix())
+    workspace.write(artifact_path, f"---\ntype: {artifact_type}\n---\n\n# Test\n")
     if md_path is not None:
         workspace.write(md_path, f"# {artifact_type}\n\ntest content")
 

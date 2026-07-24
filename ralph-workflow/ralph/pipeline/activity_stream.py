@@ -199,7 +199,7 @@ def _render_success_artifact(artifact_type: str, ctx: _ArtifactRenderCtx) -> Non
         _emit_via_display(ctx.display_context, "emit_development_artifact", ctx.workspace_root)
         produced = (
             "result produced"
-            if (ctx.workspace_root / ctx.ra.json_path).exists()
+            if (ctx.workspace_root / ctx.ra.artifact_path).exists()
             else "no result artifact"
         )
         _emit_close(produced)
@@ -208,7 +208,7 @@ def _render_success_artifact(artifact_type: str, ctx: _ArtifactRenderCtx) -> Non
     if artifact_type == "issues":
         _emit_via_display(ctx.display_context, "emit_review_artifact", ctx.workspace_root)
         with suppress(Exception):
-            issue_count = _count_issues(ctx.workspace_root / ctx.ra.json_path)
+            issue_count = _count_issues(ctx.workspace_root / ctx.ra.artifact_path)
             _emit_close(f"{issue_count} issue(s)")
         return
 

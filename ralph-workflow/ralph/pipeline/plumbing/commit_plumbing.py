@@ -159,7 +159,7 @@ def _commit_required_artifact() -> RequiredArtifact:
     return RequiredArtifact(
         phase="commit",
         artifact_type=COMMIT_MESSAGE_TYPE,
-        json_path=COMMIT_MESSAGE_ARTIFACT,
+        artifact_path=COMMIT_MESSAGE_ARTIFACT,
         markdown_path=None,
         normalizer=normalize_commit_message_content,
         artifact_required=True,

@@ -303,13 +303,13 @@ def test_classify_artifact_agent_artifacts() -> None:
     """A path under ``.agent/artifacts`` is ARTIFACT with weight 0.0.
 
     This is the PA-001 closure: pre-fix, the ``.agent`` top-level was
-    in CACHE_PARENT_DIRS, so ``.agent/artifacts/plan.json`` was
+    in CACHE_PARENT_DIRS, so ``.agent/artifacts/plan.md`` was
     classified CACHE not ARTIFACT. The fixed rule order checks
     ``.agent/tmp``/``.agent/raw`` explicitly and reserves
     ``.agent/artifacts`` for ARTIFACT.
     """
     classifier = WorkspaceChangeClassifier()
-    kind, weight = classifier.classify("/repo/.agent/artifacts/plan.json")
+    kind, weight = classifier.classify("/repo/.agent/artifacts/plan.md")
     assert kind is WorkspaceChangeKind.ARTIFACT
     assert weight == 0.0
 
@@ -513,7 +513,7 @@ def test_workspace_monitor_drops_cache_events(tmp_path: Path) -> None:
 
 
 def test_workspace_monitor_drops_artifact_events(tmp_path: Path) -> None:
-    """A ``.agent/artifacts/plan.json`` change is ARTIFACT and DROPPED.
+    """A ``.agent/artifacts/plan.md`` change is ARTIFACT and DROPPED.
 
     This is the PA-001 closure: pre-fix the .agent top-level was in
     CACHE_PARENT_DIRS and the test for the artifact path failed.
@@ -524,7 +524,7 @@ def test_workspace_monitor_drops_artifact_events(tmp_path: Path) -> None:
         callback_invocations.append((kind, weight))
 
     monitor = WorkspaceMonitor(tmp_path, on_event=on_event, classifier=WorkspaceChangeClassifier())
-    monitor.record_event("/repo/.agent/artifacts/plan.json")
+    monitor.record_event("/repo/.agent/artifacts/plan.md")
     assert callback_invocations == []
     assert monitor.last_event_at is None
 

@@ -200,7 +200,6 @@ def _submit(
     *,
     backend: MemoryBackend,
     run_id: str = "run-1",
-    name: str | None = None,
 ) -> SubmitResult:
     return submit_artifact_canonical(
         workspace_root=tmp_path,
@@ -209,7 +208,6 @@ def _submit(
         markdown=markdown,
         deps=_deps(backend),
         run_id=run_id,
-        name=name,
     )
 
 
@@ -297,22 +295,6 @@ def test_submit_artifact_canonical_plan_has_receipt_without_sentinel(
     assert backend.read_text(result.handoff_path) == PLAN
 
 
-def test_named_artifact_uses_markdown_extension(
-    tmp_path: Path,
-    backend: MemoryBackend,
-) -> None:
-    result = _submit(
-        tmp_path,
-        "commit_message",
-        COMMIT_MESSAGE,
-        backend=backend,
-        name="custom-name",
-    )
-
-    assert result.artifact_path == tmp_path / ".agent" / "artifacts" / "custom-name.md"
-    assert backend.read_text(result.artifact_path) == COMMIT_MESSAGE
-
-
 def test_fallback_promotion_stamps_receipt_and_removes_tmp_markdown(
     tmp_path: Path,
     backend: MemoryBackend,
@@ -339,6 +321,25 @@ def test_fallback_promotion_rejects_malformed_markdown(
     assert not is_artifact_submitted(tmp_path, "run-2", "smoke_test_result", deps=deps)
     assert backend.exists(fallback)
     assert not artifact_receipt_present(tmp_path, "run-2", "smoke_test_result", backend=backend)
+
+
+def test_new_run_clears_markdown_fallbacks_without_cleaning_unrelated_json(
+    tmp_path: Path,
+    backend: MemoryBackend,
+) -> None:
+    markdown_fallback = tmp_path / ".agent" / "tmp" / "commit_message.md"
+    unrelated_state = tmp_path / ".agent" / "tmp" / "worker-state.json"
+    backend.write_text(markdown_fallback, COMMIT_MESSAGE)
+    backend.write_text(unrelated_state, "opaque internal state")
+
+    canonical_submit_module._clear_fallback_artifacts(
+        tmp_path,
+        "run-1",
+        backend=backend,
+    )
+
+    assert not backend.exists(markdown_fallback)
+    assert backend.read_text(unrelated_state) == "opaque internal state"
 
 
 def test_default_backend_is_used_when_deps_is_none(tmp_path: Path) -> None:

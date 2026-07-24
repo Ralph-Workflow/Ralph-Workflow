@@ -14,7 +14,6 @@ changes are substantive.
 
 from __future__ import annotations
 
-import json
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,15 +39,6 @@ from ralph.pipeline.events import Event, PipelineEvent
 
 REVIEW_BASELINE_MARKER = ".agent/tmp/last_reviewed_sha.txt"
 REVIEW_ISSUES_ARTIFACT_PATH = ".agent/artifacts/issues.md"
-_LEGACY_REVIEW_ISSUES_ARTIFACT_PATH = ".agent/artifacts/issues.json"
-
-
-def _review_issues_artifact_path(ctx: PhaseContext) -> str:
-    if ctx.workspace.exists(REVIEW_ISSUES_ARTIFACT_PATH):
-        return REVIEW_ISSUES_ARTIFACT_PATH
-    if ctx.workspace.exists(_LEGACY_REVIEW_ISSUES_ARTIFACT_PATH):
-        return _LEGACY_REVIEW_ISSUES_ARTIFACT_PATH
-    return REVIEW_ISSUES_ARTIFACT_PATH
 
 
 def _workspace_absolute_path(ctx: PhaseContext, rel: str) -> str | None:
@@ -136,6 +126,20 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
         ctx.workspace.write(hint_path, hint)
 
 
+def _load_review_issues(ctx: PhaseContext) -> dict[str, object]:
+    artifact_wrapper = load_phase_artifact(
+        ctx.workspace,
+        REVIEW_ISSUES_ARTIFACT_PATH,
+        artifact_type="issues",
+    )
+    if artifact_wrapper.get("type") != "issues":
+        raise PhaseArtifactError("Review issues artifact must declare type='issues'")
+    return unwrap_phase_artifact_content(
+        artifact_wrapper,
+        expected_type="issues",
+    )
+
+
 def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Handle the review phase.
 
@@ -160,20 +164,9 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
             return [PipelineEvent.REVIEW_CLEAN]
 
         logger.info("Review phase: processing review result after agent run")
-        artifact_path = _review_issues_artifact_path(ctx)
         try:
-            artifact_wrapper = load_phase_artifact(
-                ctx.workspace,
-                artifact_path,
-                artifact_type="issues",
-            )
-            if artifact_wrapper.get("type") != "issues":
-                raise PhaseArtifactError("Review issues artifact must declare type='issues'")
-            unwrap_phase_artifact_content(
-                artifact_wrapper,
-                expected_type="issues",
-            )
-        except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
+            content = _load_review_issues(ctx)
+        except (PhaseArtifactError, TypeError, ValueError) as exc:
             detail = str(exc)
             logger.warning("Review phase missing fresh issues artifact: {}", detail)
             _write_retry_hint(ctx, effect.phase, detail)
@@ -188,19 +181,9 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         if head is not None:
             _write_review_baseline(ctx, head)
 
-        # Check if issues were found and emit REVIEW_ISSUES_FOUND if so
-        try:
-            artifact_wrapper = load_phase_artifact(
-                ctx.workspace,
-                artifact_path,
-                artifact_type="issues",
-            )
-            content: object = artifact_wrapper.get("content", {})
-            issues: object = content.get("issues", []) if isinstance(content, dict) else []
-            if isinstance(issues, list) and issues:
-                return [PipelineEvent.REVIEW_ISSUES_FOUND]
-        except Exception:
-            pass
+        issues = content.get("issues", [])
+        if isinstance(issues, list) and issues:
+            return [PipelineEvent.REVIEW_ISSUES_FOUND]
 
         return [PipelineEvent.AGENT_SUCCESS]
 

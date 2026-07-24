@@ -91,7 +91,6 @@ Migrated from (consolidation map)
 from __future__ import annotations
 
 import contextlib
-import json
 import queue
 import time
 import uuid
@@ -2352,7 +2351,7 @@ class ParallelDisplay:
     # unified with the rest of the transcript.
 
     def emit_plan_artifact(self, workspace_root: Path) -> None:
-        """Render the agent-facing plan handoff, falling back to the JSON summary.
+        """Render the agent-facing plan handoff or canonical Markdown summary.
 
         Port of :func:`ralph.display.artifact_renderer.render_plan_artifact`.
         """
@@ -2399,17 +2398,6 @@ class ParallelDisplay:
             )
             if markdown:
                 self._render_text_block("DEVELOPMENT RESULT", markdown, "execution")
-                return
-            found = self._read_json_defensive(
-                workspace_root / _ARTIFACTS_DIR / "development_result.json"
-            )
-            if found is None:
-                return
-            self._render_text_block(
-                "DEVELOPMENT RESULT",
-                json.dumps(found, indent=2),
-                "execution",
-            )
 
     def emit_review_artifact(self, workspace_root: Path) -> None:
         """Render review findings using the authoritative Markdown handoff.
@@ -2426,15 +2414,6 @@ class ParallelDisplay:
             )
             if markdown:
                 self._render_text_block("REVIEW ISSUES", markdown, "review")
-                return
-            found = self._read_json_defensive(workspace_root / _ARTIFACTS_DIR / "issues.json")
-            if found is None:
-                return
-            self._render_text_block(
-                "REVIEW ISSUES",
-                json.dumps(found, indent=2),
-                "review",
-            )
 
     def emit_fix_artifact(self, workspace_root: Path) -> None:
         """Render fix result artifacts as a titled block.
@@ -2451,15 +2430,6 @@ class ParallelDisplay:
             )
             if markdown:
                 self._render_text_block("FIX", markdown, "fix")
-                return
-            found = self._first_json_candidate(
-                workspace_root / _ARTIFACTS_DIR / "fix_result.json",
-                workspace_root / _ARTIFACTS_DIR / "issues.json",
-            )
-            if found is None:
-                return
-            lines = self._render_fix_json_summary(found)
-            self._render_titled_lines("FIX", "fix", lines)
 
     def emit_analysis_decision(self, workspace_root: Path, drain: str) -> None:
         """Render an analysis decision artifact as a titled block.
@@ -2579,9 +2549,7 @@ class ParallelDisplay:
             Rule(title, style=_phase_style(style_phase)), markup=False, highlight=False
         )
         for line in lines:
-            self._console.print(
-                strip_terminal_control(line), markup=False, highlight=False
-            )
+            self._console.print(strip_terminal_control(line), markup=False, highlight=False)
         self._console.print(Rule(style=_phase_style(style_phase)), markup=False, highlight=False)
 
     def _render_text_block(
@@ -2596,54 +2564,6 @@ class ParallelDisplay:
         if indent:
             lines = [f"  {lines[0]}", *[f"    {line}" for line in lines[1:]]] if lines else []
         self._render_titled_lines(title, style_phase, lines)
-
-    @staticmethod
-    def _read_json_defensive(path: Path) -> dict[str, object] | None:
-        raw = ParallelDisplay._read_text_defensive(path)
-        if raw is None:
-            return None
-        try:
-            parsed_obj: object = json.loads(raw)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(parsed_obj, dict):
-            return None
-        return cast("dict[str, object]", parsed_obj)
-
-    @staticmethod
-    def _first_json_candidate(*candidates: Path) -> dict[str, object] | None:
-        for candidate in candidates:
-            found = ParallelDisplay._read_json_defensive(candidate)
-            if found is not None:
-                return found
-        return None
-
-    @staticmethod
-    def _render_fix_json_summary(found: dict[str, object]) -> list[str]:
-        if "issues" in found and isinstance(found["issues"], list):
-            return ParallelDisplay._render_issues_summary(found["issues"])
-        if "fixed" in found:
-            return ParallelDisplay._render_fixed_summary(found["fixed"])
-        return [f"  Fix artifact: {list(found.keys())[:5]}"]
-
-    @staticmethod
-    def _render_issues_summary(issues: list[object]) -> list[str]:
-        lines = [f"  {len(issues)} issue(s) addressed:"]
-        for issue in issues[:10]:
-            if isinstance(issue, dict):
-                desc_obj = issue.get("description") or issue.get("message") or str(issue)
-            else:
-                desc_obj = str(issue)
-            lines.append(f"    - {str(desc_obj)[:120]}")
-        return lines
-
-    @staticmethod
-    def _render_fixed_summary(fixed: object) -> list[str]:
-        if isinstance(fixed, list):
-            lines = [f"  {len(fixed)} item(s) fixed:"]
-            lines.extend(f"    - {str(item)[:120]}" for item in fixed[:10])
-            return lines
-        return [f"  Fixed: {fixed}"]
 
     # -- Welcome-banner, first-run-panel, table, capability-summary, status -
 
@@ -2705,9 +2625,7 @@ class ParallelDisplay:
             table.add_column("Parser", style="theme.cat.cont")
             table.add_column("Can Commit", justify="center")
             if not agents:
-                table.add_row(
-                    Text("No agents configured", style="theme.text.muted"), "", "", ""
-                )
+                table.add_row(Text("No agents configured", style="theme.text.muted"), "", "", "")
             else:
                 for name, agent in agents.items():
                     cmd = getattr(agent, "cmd", "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

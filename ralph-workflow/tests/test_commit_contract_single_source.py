@@ -24,4 +24,4 @@ def test_policy_and_writer_constant_agree_on_commit_path() -> None:
     ra = resolve_required_artifact(bundle.artifacts, drain=_COMMIT_DRAIN)
     assert ra is not None, f"no artifact contract for drain {_COMMIT_DRAIN!r}"
     assert ra.artifact_type == COMMIT_MESSAGE_TYPE
-    assert ra.json_path == COMMIT_MESSAGE_ARTIFACT
+    assert ra.artifact_path == COMMIT_MESSAGE_ARTIFACT

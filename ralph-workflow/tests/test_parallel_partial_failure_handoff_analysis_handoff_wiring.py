@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.effects import FanOutEffect
@@ -33,24 +32,10 @@ def _make_effect(*unit_specs: tuple[str, list[str]]) -> FanOutEffect:
 def _write_fake_artifact(tmp_path: Path, unit_id: str) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "result.json").write_text(
-        json.dumps(
-            {
-                "name": "development_result",
-                "type": "development_result",
-                "content": {"summary": f"done by {unit_id}"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "development_result.md").write_text(
+        f"---\ntype: development_result\nstatus: complete\n---\n\n# Result\n\nDone by {unit_id}.\n",
+        encoding="utf-8",
     )
-
-
-def _read_summary(tmp_path: Path) -> dict[str, object]:
-    summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
-    assert summary_path.exists(), f"Summary not written: {summary_path}"
-    return json.loads(summary_path.read_text())
 
 
 class TestAnalysisHandoffWiring:
@@ -116,17 +101,14 @@ class TestAnalysisHandoffWiring:
         assert "all_succeeded: false" in content
 
     def test_analysis_handoff_not_clobbered_by_parallel_summary(self, tmp_path: Path) -> None:
-        """The normal development_result.json is NOT overwritten by the parallel summary."""
-        dev_result_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        """The normal development-result Markdown is not overwritten by the parallel summary."""
+        dev_result_path = tmp_path / ".agent" / "artifacts" / "development_result.md"
         dev_result_path.parent.mkdir(parents=True, exist_ok=True)
-        original_content = json.dumps(
-            {
-                "name": "development_result",
-                "type": "development_result",
-                "content": {"summary": "original serial development"},
-            }
+        original_content = (
+            "---\ntype: development_result\nstatus: complete\n---\n\n"
+            "# Result\n\nOriginal serial development.\n"
         )
-        dev_result_path.write_text(original_content)
+        dev_result_path.write_text(original_content, encoding="utf-8")
 
         effect = _make_effect(("unit-a", ["src/a"]))
         _write_fake_artifact(tmp_path, "unit-a")
@@ -144,9 +126,7 @@ class TestAnalysisHandoffWiring:
             state,
         )
 
-        # parallel_development_summary.json exists separately
-        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
+        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
         assert summary_path.exists()
 
-        # Original development_result.json must be untouched
-        assert dev_result_path.read_text() == original_content
+        assert dev_result_path.read_text(encoding="utf-8") == original_content

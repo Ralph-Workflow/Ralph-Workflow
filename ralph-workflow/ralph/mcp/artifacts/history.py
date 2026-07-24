@@ -237,8 +237,6 @@ def clear_artifact_history(
     if not backend.exists(hist_dir):
         return
 
-    for path in list(backend.glob(hist_dir, "*.json")):
-        backend.unlink(path, missing_ok=True)
     for path in list(backend.glob(hist_dir, "*.md")):
         backend.unlink(path, missing_ok=True)
 

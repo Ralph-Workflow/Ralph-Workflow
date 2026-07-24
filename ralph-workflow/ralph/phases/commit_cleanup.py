@@ -75,7 +75,6 @@ if TYPE_CHECKING:
     from ralph.phases import PhaseContext
 
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
-_LEGACY_COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
 
 _UNSAFE_EXTENSIONS: frozenset[str] = frozenset(
     {
@@ -440,13 +439,7 @@ def _load_cleanup_artifact(
 
     Returns the validated cleanup model, or None if loading/validation failed.
     """
-    artifact_path = COMMIT_CLEANUP_ARTIFACT_PATH
-    if not ctx.workspace.exists(artifact_path) and ctx.workspace.exists(
-        _LEGACY_COMMIT_CLEANUP_ARTIFACT_PATH
-    ):
-        artifact_path = _LEGACY_COMMIT_CLEANUP_ARTIFACT_PATH
-
-    if not ctx.workspace.exists(artifact_path):
+    if not ctx.workspace.exists(COMMIT_CLEANUP_ARTIFACT_PATH):
         logger.warning(
             "{}: missing commit_cleanup artifact at {}",
             phase_name,
@@ -457,7 +450,7 @@ def _load_cleanup_artifact(
     try:
         raw_artifact = load_phase_artifact(
             ctx.workspace,
-            artifact_path,
+            COMMIT_CLEANUP_ARTIFACT_PATH,
             artifact_type="commit_cleanup",
         )
         artifact_content = unwrap_phase_artifact_content(
@@ -530,9 +523,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
     # cases.
     with suppress(Exception):
         untracked = untrack_engine_internal_files(repo_root, is_agent_internal_path)
-        logger.info(
-            "Pre-emptively untracked {} engine-internal file(s)", len(untracked)
-        )
+        logger.info("Pre-emptively untracked {} engine-internal file(s)", len(untracked))
 
     # Direct calls so audit_agent_internal_paths._check_auto_seed_placement
     # can locate the seed helpers via ast.Call inspection. Both helpers
@@ -565,15 +556,11 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
         return _missing_artifact_failure(phase_name)
 
     try:
-        skipped_delete_paths, failed_delete_paths = _apply_cleanup_actions(
-            repo_root, cleanup
-        )
+        skipped_delete_paths, failed_delete_paths = _apply_cleanup_actions(repo_root, cleanup)
     except Exception as exc:
         return _cleanup_failed_event(phase_name, exc)
 
-    return _decide_cleanup_outcome(
-        phase_name, cleanup, skipped_delete_paths, failed_delete_paths
-    )
+    return _decide_cleanup_outcome(phase_name, cleanup, skipped_delete_paths, failed_delete_paths)
 
 
 def _missing_artifact_failure(phase_name: str) -> list[Event]:
@@ -582,8 +569,7 @@ def _missing_artifact_failure(phase_name: str) -> list[Event]:
         PhaseFailureEvent(
             phase=phase_name,
             reason=(
-                f"Missing or invalid commit_cleanup artifact at "
-                f"{COMMIT_CLEANUP_ARTIFACT_PATH}"
+                f"Missing or invalid commit_cleanup artifact at {COMMIT_CLEANUP_ARTIFACT_PATH}"
             ),
             recoverable=True,
             retry_in_session=True,

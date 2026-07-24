@@ -40,9 +40,9 @@ Not submitting the revised plan is a FAILURE.
 
 Revise the plan as ONE markdown document (grammar: `.agent/artifact-formats/plan.md`):
 1. Read the current plan at `.agent/artifacts/plan.md` with read-only tools and rewrite every section the feedback invalidates.
-2. For a fix confined to individual steps, call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`content` = the document, `action` = replace/insert/remove/move, `step_id` like `S-3`; `replacement` = one complete matching `### [S-3] Title` block for insert/replace). IDs are stable and never renumbered; the tool returns the edited document.
-3. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document); repair every line/section/rule-anchored diagnostic in one pass.
-4. Submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same two arguments) — resubmission replaces the prior plan.
+2. For a fix confined to individual steps, stage the complete current plan with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document, `mode="replace_all"`). Then call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against the persisted draft with `action` and `step_id` only. `replacement` is required for `insert` and `replace` and must be one complete matching `### [S-3] Title` block; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument. The editor saves the draft, and IDs are stable and never renumbered.
+3. Inspect the edited draft with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), repair every line/section/rule-anchored diagnostic, then finalize it with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
+4. For a holistic rewrite that does not use the step editor, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments.
 Your target is a revised plan that returns `completed` on the next planning-analysis pass.
 
 - Do not localize your revision pass to only the sections explicitly cited by the analyzer; you must perform your own repo-grounded analysis before submitting.
@@ -54,5 +54,5 @@ Your target is a revised plan that returns `completed` on the next planning-anal
 - This continuation exists because the prior planning pass failed. If your runtime provides a subagent gate, you MUST use it as a hard stop against the plan-quality rubric and your replanning self-audit; until a subagent review reports no remaining rubric-grounded findings, you MUST NOT submit the revised plan artifact.
 - Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
 - If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files; do not preserve the prior target cluster as the starting scope.
-- Do not write `.agent/artifacts/plan.md` directly — the submit tool is the only valid path. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent.
+- Do not write `.agent/artifacts/plan.md` directly — the submit and finalize tools are the only valid paths. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent.
 - Do not submit a plan that still has any known unresolved analyzer finding, even if some sections improved. Rewrite every affected section of the document when that is the simplest way to restore global coherence.

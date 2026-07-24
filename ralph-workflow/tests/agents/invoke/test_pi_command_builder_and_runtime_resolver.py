@@ -448,7 +448,7 @@ class TestPiCompletionEnforcement:
         required = RequiredArtifact(
             phase="planning",
             artifact_type="plan",
-            json_path=".agent/artifacts/plan.json",
+            artifact_path=".agent/artifacts/plan.md",
             markdown_path=None,
             normalizer=None,
         )

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections import Counter
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
@@ -16,6 +15,7 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -58,18 +58,7 @@ def _fake_executor_for(unit_ids: list[str]) -> FakeAgentExecutor:
 def _seed_worker_artifact(worker_namespace_root: Path, unit_id: str) -> None:
     artifact_dir = worker_namespace_root / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps(
-            {
-                "name": "plan",
-                "type": "plan",
-                "content": {"summary": "done"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
-    )
+    (artifact_dir / "plan.md").write_text(MINIMAL_PLAN_MARKDOWN, encoding="utf-8")
 
 
 def _setup_patches(
@@ -235,14 +224,11 @@ class TestParallelResume:
         launched_ids = {u.unit_id for u in fake_executor.calls}
         assert launched_ids == {"unit-2", "unit-3", "unit-4"}
 
-        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
-        assert summary_path.exists(), "fan-out must write parallel_development_summary.json"
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        statuses = {w["unit_id"]: w["status"] for w in summary["workers"]}
+        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
+        assert summary_path.exists(), "fan-out must write parallel_development_summary.md"
+        summary = summary_path.read_text(encoding="utf-8")
         for i in range(5):
             uid = f"unit-{i}"
-            assert statuses.get(uid) == "succeeded", (
-                f"{uid} expected succeeded in summary, got {statuses.get(uid)!r}"
-            )
+            assert f"- **{uid}**: succeeded" in summary
         assert final_state.work_units == (), "fully successful wave must clear work_units"
         assert final_state.worker_states == {}, "fully successful wave must clear worker tracking"

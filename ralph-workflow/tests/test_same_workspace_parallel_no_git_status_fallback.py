@@ -4,19 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
-
-import pytest
 
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.mcp.artifacts.store import list_artifacts
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
-from ralph.pipeline.parallel.coordinator import (
-    WorkerContext,
-    WorkerFailureError,
-)
+from ralph.pipeline.parallel.coordinator import WorkerContext
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.work_units import (
     WorkUnit,
@@ -40,32 +33,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
 
 
 class TestNoGitStatusFallback:
-    def test_worker_success_requires_worker_local_artifact(self, tmp_path: Path) -> None:
-        """Worker success is determined by artifacts, never by git status."""
-        unit = _make_unit("unit-a")
-        artifact_dir = tmp_path / ".agent" / "workers" / "unit-a" / "artifacts"
-        artifact_dir.mkdir(parents=True)
-
-        # No artifacts in artifact_dir → should be considered failure
-        assert list_artifacts(artifact_dir) == []
-
-        # Verify the coordinator raises _WorkerFailureError when no artifacts
-        mock_result = MagicMock()
-        mock_result.exit_code = 0
-        mock_result.unit_id = "unit-a"
-
-        with pytest.raises(WorkerFailureError, match="no worker-local artifact evidence"):
-            if not list_artifacts(artifact_dir):
-                raise WorkerFailureError(
-                    unit_id=unit.unit_id,
-                    exit_code=mock_result.exit_code,
-                    error=(
-                        f"Worker {unit.unit_id!r} produced no worker-local artifact "
-                        f"evidence under {artifact_dir} "
-                        f"(exit_code={mock_result.exit_code})"
-                    ),
-                )
-
     def test_coordinator_worker_exit0_no_artifact_produces_worker_failed_event(
         self, tmp_path: Path
     ) -> None:

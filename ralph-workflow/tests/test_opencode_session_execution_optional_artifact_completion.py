@@ -52,7 +52,7 @@ class TestOptionalArtifactCompletion:
         ra = RequiredArtifact(
             phase="development",
             artifact_type="development_result",
-            json_path=".agent/artifacts/development_result.json",
+            artifact_path=".agent/artifacts/development_result.md",
             markdown_path=None,
             normalizer=None,
             artifact_required=False,
@@ -91,7 +91,7 @@ class TestOptionalArtifactCompletion:
         ra = RequiredArtifact(
             phase="development",
             artifact_type="development_result",
-            json_path=".agent/artifacts/development_result.json",
+            artifact_path=".agent/artifacts/development_result.md",
             markdown_path=None,
             normalizer=None,
             artifact_required=False,
@@ -131,7 +131,7 @@ class TestOptionalArtifactCompletion:
         ra = RequiredArtifact(
             phase="development",
             artifact_type="development_result",
-            json_path=".agent/artifacts/development_result.json",
+            artifact_path=".agent/artifacts/development_result.md",
             markdown_path=None,
             normalizer=None,
             artifact_required=False,
@@ -162,7 +162,7 @@ class TestOptionalArtifactCompletion:
         ra = RequiredArtifact(
             phase="development_analysis",
             artifact_type="development_analysis_decision",
-            json_path=".agent/artifacts/development_analysis_decision.json",
+            artifact_path=".agent/artifacts/development_analysis_decision.md",
             markdown_path=None,
             normalizer=None,
             artifact_required=True,

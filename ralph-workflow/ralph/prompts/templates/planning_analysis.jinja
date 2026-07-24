@@ -134,7 +134,7 @@ Every entry you put in `what_came_up_short` must pass BOTH tests:
 1. **Provable**: you personally observed the defect in this session — in the plan content, the
    repository, or the output of a command you ran — and the entry cites that observation.
 2. **Actionable**: the planner can close the gap by revising the plan document (rewritten sections
-   or `ralph_edit_md_plan_step` step edits, resubmitted via `ralph_submit_md_artifact`), and closure is
+   or `ralph_edit_md_plan_step` edits applied to a staged draft and finalized), and closure is
    provable from plan content, repository evidence, or runnable commands in a session like this one.
 
 If a claim can only be verified outside this session — a CI pipeline, a deployed environment,
@@ -200,7 +200,7 @@ Before issuing `request_changes`, enumerate all currently visible repo-grounded 
 Judge the plan against the ORIGINAL PROMPT scope, not only against the most recent review comments.
 If the task is repository-wide, check that inventories, remediation scope, critical files, risks, and verification are repository-wide rather than example-scoped or subset-scoped.
 If defect scope is `repo_wide`, say explicitly that the next planning pass must re-derive the plan globally rather than patching only the cited sections.
-When describing remediation, target the planner's revision workflow: tell it which plan document sections to rewrite and what repository evidence those revised sections must incorporate. When a fix is limited to specific executor steps, suggest the matching `ralph_edit_md_plan_step` action: `replace` for a vague or wrong step, `insert` for missing work, `move` for reordering dependencies, or `remove` for unsupported work — the revised document is then resubmitted with `ralph_submit_md_artifact`. Do not tell the planner to edit `.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
+When describing remediation, target the planner's revision workflow: tell it which plan document sections to rewrite and what repository evidence those revised sections must incorporate. When a fix is limited to specific executor steps, tell the planner to stage the complete plan with `ralph_stage_md_artifact`, use the matching `ralph_edit_md_plan_step` action (`replace` for a vague or wrong step, `insert` for missing work, `move` for reordering dependencies, or `remove` for unsupported work), inspect the saved draft with `ralph_get_md_draft`, and submit it with `ralph_finalize_md_artifact`. The editor accepts `action` and `step_id`, plus `replacement` for `insert`/`replace` or `index` for `move`/positioned `insert`; it does not accept the full document as `content`. Do not tell the planner to edit `.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
 Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL PROMPT to count as working, even when the prompt states them only implicitly.
 Use this reasoning chain explicitly when needed: Goal → required workflow → prerequisite action/state → plan coverage. If a required workflow or prerequisite is missing from the plan, treat that as missing work rather than as an optional product idea.
 Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
@@ -374,7 +374,7 @@ For every item in `what_came_up_short`, provide a corresponding fix entry:
 2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
 3. **Preserve the same stable gap ID from the corresponding `what_came_up_short` entry** so the planner can prove closure without ambiguity.
 4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
-5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, use `ralph_edit_md_plan_step` for targeted step edits, resubmit via `ralph_submit_md_artifact`; restart only when truly unsalvageable).
+5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, then for targeted edits use `ralph_stage_md_artifact` → `ralph_edit_md_plan_step` → `ralph_get_md_draft` → `ralph_finalize_md_artifact`; restart only when truly unsalvageable).
 6. **Commands or checks to validate the revised plan.**
 7. **What passing evidence looks like.**
 
@@ -399,7 +399,7 @@ status: request_changes
 - [PA-003] Dimension: Verification gap | Defect: V-1 says run tests without an exact pytest target | Evidence: V-1 method is "run tests" | Missing: exact command and expected passing result
 
 ## How To Fix
-- [PA-001] Use ralph_edit_md_plan_step with action "replace" on S-2 so it names the exact policy, prompt, and artifact files the executor must change and the concrete routing behavior to implement, then resubmit the document.
+- [PA-001] Stage the complete plan with ralph_stage_md_artifact, use ralph_edit_md_plan_step with action "replace", step_id "S-2", and a complete replacement step block that names the exact policy, prompt, and artifact files plus the routing behavior to implement, inspect the saved draft with ralph_get_md_draft, then submit it with ralph_finalize_md_artifact.
 - [PA-002] Rewrite the affected Steps and Critical Files entries so the nonexistent tests/test_planning_analysis.py reference is replaced with real target files and an existing test file whose pattern should be mirrored.
 - [PA-003] Rewrite the Verification section with exact commands such as `uv run pytest -q tests/test_policy_loader.py` and name the expected passing evidence, then resubmit the document.
 ```

@@ -30,7 +30,6 @@ Testing rules followed:
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -46,6 +45,7 @@ from ralph.phases.commit_cleanup import handle_commit_cleanup_phase
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.fs import FsWorkspace
+from tests.plan_fixtures import commit_cleanup_markdown
 
 pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
@@ -123,17 +123,20 @@ def _pre_stage_innocent_symlink(tmp_git_repo: Path) -> None:
 
 def _write_artifact(workspace_root: Path, cleanup: CommitCleanup) -> None:
     """Write the commit_cleanup artifact to ``workspace_root``."""
-    artifact_path = workspace_root / ".agent" / "artifacts" / "commit_cleanup.json"
+    artifact_path = workspace_root / ".agent" / "artifacts" / "commit_cleanup.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    actions = (
+        (
+            action.action,
+            action.path if action.action == "delete_file" else action.pattern,
+        )
+        for action in cleanup.actions
+    )
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "commit_cleanup",
-                "type": "commit_cleanup",
-                "content": cleanup.model_dump(),
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z",
-            }
+        commit_cleanup_markdown(
+            (action, value)
+            for action, value in actions
+            if value is not None
         ),
         encoding="utf-8",
     )

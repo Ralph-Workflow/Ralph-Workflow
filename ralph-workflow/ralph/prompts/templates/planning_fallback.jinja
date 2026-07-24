@@ -64,9 +64,16 @@ Submit one native-markdown document:
    (`artifact_type="plan"`, `content` = the document), then repair every
    line/section/rule diagnostic.
 4. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same arguments).
-   Targeted insert/replace edits pass one complete matching step block as
-   `replacement` to {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}}.
-5. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
+5. For a targeted step change, stage the complete plan first with
+   {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` =
+   the complete document, `mode="replace_all"`). Then call
+   {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} with `action` and `step_id` only.
+   `replacement` is required for `insert` and `replace`; `index` is required for `move`
+   and optional for a positioned `insert`; `content` is not an accepted argument.
+   The editor saves the draft. Inspect it with
+   {{GET_MD_DRAFT_TOOL_REFERENCE}}, then finalize it with
+   {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
+6. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
    {{GET_MD_DRAFT_TOOL_REFERENCE}}, and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}};
    {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} intentionally restarts the draft.
 

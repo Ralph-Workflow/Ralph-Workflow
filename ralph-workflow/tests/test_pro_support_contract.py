@@ -544,7 +544,6 @@ def _run_pipeline_with_heartbeat(
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                json_path=".agent/artifacts/plan.json",
             )
         }
     )
@@ -844,7 +843,6 @@ def test_section_7_heartbeat_adopts_late_marker(
                 "plan": ArtifactContract(
                     drain="planning",
                     artifact_type="plan",
-                    json_path=".agent/artifacts/plan.json",
                 )
             }
         ),

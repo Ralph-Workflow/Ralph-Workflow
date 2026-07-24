@@ -4,7 +4,7 @@ The plan grammar is JSON-free: prose lives as prose, machine-readable
 values live on labeled ``Field: value`` lines, and every cross-referenced
 entity carries a stable ID (``S-1`` steps, ``AC-01`` criteria) that other
 entities reference by ID only. The mapper translates the document into
-the legacy content dict shape and hands it to the canonical
+the canonical plan content mapping and hands it to the
 ``normalize_plan_artifact_content`` gate, so every pydantic-era guarantee
 (required presence, per-step contracts, cycles, caps, shell-invocation
 guards) still hard-fails.
@@ -690,7 +690,7 @@ def _work_units_content(
 
 
 def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
-    """Map the parsed document onto the legacy plan content dict, collecting diagnostics."""
+    """Map the parsed document to canonical plan content, collecting diagnostics."""
     diagnostics: list[Diagnostic] = []
     type_value = document.frontmatter.get("type")
     if type_value != PLAN_ARTIFACT_TYPE:

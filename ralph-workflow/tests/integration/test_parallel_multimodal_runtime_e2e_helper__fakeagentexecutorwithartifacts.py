@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,17 +36,9 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
 
         artifacts_dir = worker_ns / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
-        (artifacts_dir / "plan.json").write_text(
-            json.dumps(
-                {
-                    "name": "plan",
-                    "type": "plan",
-                    "content": {"summary": f"done-{unit.unit_id}"},
-                    "created_at": "2024-01-01T00:00:00+00:00",
-                    "updated_at": "2024-01-01T00:00:00+00:00",
-                    "metadata": {},
-                }
-            )
+        (artifacts_dir / "plan.md").write_text(
+            MINIMAL_PLAN_MARKDOWN,
+            encoding="utf-8",
         )
 
         handoffs_dir = worker_ns / "handoffs"

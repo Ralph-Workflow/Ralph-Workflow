@@ -9,7 +9,6 @@ future use. Re-arm by setting ``[phases.<phase>.parallelization] dispatch_mode
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 import uuid
 from dataclasses import dataclass
@@ -27,7 +26,6 @@ from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
 from ralph.pipeline import checkpoint as ckpt
@@ -136,14 +134,14 @@ def write_parallel_development_summary(
     state: PipelineState,
     verification: VerificationResult | None = None,
 ) -> None:
-    """Write .agent/artifacts/parallel_development_summary.json after fan-out completes."""
+    """Write the Markdown parallel-development summary after fan-out completes."""
     v = verification or VerificationResult(ran=False, passed=None, exit_code=None)
     workers: list[dict[str, object]] = []
     for unit in effect.work_units:
         uid = unit.unit_id
         ws = state.worker_states.get(uid)
         artifact_dir = workspace_scope.root / ".agent" / "workers" / uid / "artifacts"
-        artifact_count = len(list_artifacts(artifact_dir)) if artifact_dir.exists() else 0
+        artifact_count = len(list(artifact_dir.glob("*.md"))) if artifact_dir.exists() else 0
 
         if ws is None:
             status = "failed"
@@ -197,12 +195,13 @@ def write_parallel_development_summary(
         },
     }
 
+    markdown = _render_parallel_summary_markdown(summary)
     agent_artifacts = workspace_scope.root / ".agent" / "artifacts"
-    summary_path = agent_artifacts / "parallel_development_summary.json"
+    summary_path = agent_artifacts / "parallel_development_summary.md"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    write_text_if_changed(DEFAULT_FILE_BACKEND, summary_path, markdown, encoding="utf-8")
     logger.debug(
-        "Wrote parallel_development_summary.json: any_failed={f} all_succeeded={s}",
+        "Wrote parallel_development_summary.md: any_failed={f} all_succeeded={s}",
         f=any_failed,
         s=all_succeeded,
     )
@@ -697,7 +696,11 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         verification_passed = (
             not ctx.effect.run_post_fanout_verification or verification.passed is True
         )
-        if all_workers_succeeded and verification_passed and ctx.on_successful_completion is not None:
+        if (
+            all_workers_succeeded
+            and verification_passed
+            and ctx.on_successful_completion is not None
+        ):
             return ctx.on_successful_completion(current)
         return current
     except KeyboardInterrupt:

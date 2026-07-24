@@ -540,7 +540,7 @@ class TestExecuteAgentEffectA:
         stale_artifacts = [tmp_path / artifact_path for artifact_path in artifact_paths]
         for stale_artifact in stale_artifacts:
             stale_artifact.parent.mkdir(parents=True, exist_ok=True)
-            stale_artifact.write_text('{"type":"stale"}', encoding="utf-8")
+            stale_artifact.write_text("---\ntype: stale\n---\n", encoding="utf-8")
 
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),

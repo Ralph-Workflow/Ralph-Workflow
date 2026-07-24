@@ -150,29 +150,6 @@ def test_shutil_copy_outside_protected_path_is_not_flagged(tmp_path: Path) -> No
     assert not findings
 
 
-def test_store_submit_artifact_call_is_flagged(tmp_path: Path) -> None:
-    f = _write(
-        tmp_path,
-        "mod.py",
-        "store.submit_artifact('plan', content={})\n",
-    )
-    findings = audit_file(f, "mod.py")
-    assert len(findings) == 1
-    assert findings[0].category == "store_submit_artifact"
-
-
-def test_direct_import_submit_artifact_call_is_flagged(tmp_path: Path) -> None:
-    f = _write(
-        tmp_path,
-        "mod.py",
-        "from ralph.mcp.artifacts.store import submit_artifact\n"
-        "submit_artifact('plan', content={})\n",
-    )
-    findings = audit_file(f, "mod.py")
-    assert len(findings) == 1
-    assert findings[0].category == "store_submit_artifact"
-
-
 def test_write_artifact_receipt_call_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,

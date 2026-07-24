@@ -74,53 +74,19 @@ def _payload_from_markdown_text(text: str) -> dict[str, object] | None:
     return content
 
 
-_LEGACY_STALE_GLOBS = (
-    "commit_message.json",
-    "commit-message.txt",
-    "commit_message.xml.processed",
-    "commit_message.xsd",
-    "commit_diff.txt",
-    "commit_diff.model_safe.txt",
-)
-
-
 def delete_commit_message_artifacts(
     repo_root: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> None:
-    """Remove the commit message artifact and legacy stale files."""
+    """Remove the canonical commit-message artifact."""
     artifact_path = commit_message_artifact_path(repo_root)
     if backend.exists(artifact_path):
         backend.unlink(artifact_path)
 
-    tmp_dir = repo_root / ".agent" / "tmp"
-    for name in _LEGACY_STALE_GLOBS:
-        stale = tmp_dir / name
-        if backend.exists(stale):
-            backend.unlink(stale)
 
-
-def normalize_commit_message_content(content: str | dict[str, object]) -> dict[str, object]:
+def normalize_commit_message_content(content: dict[str, object]) -> dict[str, object]:
     """Validate and normalize a commit message payload to a canonical dict form."""
-    if isinstance(content, str):
-        stripped = content.strip()
-        if not stripped:
-            raise ValueError("commit_message content cannot be empty")
-        if stripped.upper().startswith(_SKIP_PREFIX):
-            reason = stripped[len(_SKIP_PREFIX) :].strip()
-            if not reason:
-                raise ValueError("skip commit_message content requires a reason")
-            return {"type": _SKIP_KIND, "reason": reason}
-        _validate_commit_subject(stripped)
-        return {"type": _COMMIT_KIND, "subject": stripped}
-
     if not isinstance(content, dict):
         raise ValueError("commit_message content must be a dictionary")
-
-    legacy_message = content.get("message")
-    if isinstance(legacy_message, str) and legacy_message.strip():
-        return normalize_commit_message_content(legacy_message)
-    if "message" in content:
-        raise ValueError("legacy commit_message payload must use a non-empty 'message' string")
 
     kind = _required_string_field(content, "type")
     if kind == _COMMIT_KIND:

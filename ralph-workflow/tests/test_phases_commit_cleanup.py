@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -25,7 +24,7 @@ from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.recovery.classifier import FailureCategory
 from ralph.workspace.fs import FsWorkspace
 
-COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
+COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
 
 # Most tests in this module exercise real git operations against the
 # ``tmp_git_repo`` fixture (per-test process-isolated git repository).
@@ -38,19 +37,27 @@ pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 def _write_commit_cleanup_artifact(
     workspace: FsWorkspace,
-    content: dict,
+    content: dict[str, object],
 ) -> None:
-    """Write a commit_cleanup artifact to the workspace."""
-    artifact = {
-        "name": "commit_cleanup",
-        "type": "commit_cleanup",
-        "content": content,
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z",
-    }
+    """Write a canonical commit-cleanup Markdown artifact."""
+    analysis_complete = str(content["analysis_complete"]).lower()
+    lines = [
+        "---",
+        "type: commit_cleanup",
+        f"analysis_complete: {analysis_complete}",
+        "---",
+        "## Actions",
+    ]
+    actions = content.get("actions", [])
+    assert isinstance(actions, list)
+    for index, action in enumerate(actions, start=1):
+        assert isinstance(action, dict)
+        action_name = action["action"]
+        value = action.get("path", action.get("pattern"))
+        lines.append(f"- [A{index}] {action_name} | {value}")
     path = Path(workspace.root) / COMMIT_CLEANUP_ARTIFACT_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(artifact), encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def test_prepare_prompt_returns_prompt_prepared() -> None:
@@ -108,28 +115,9 @@ def test_agent_success_when_analysis_complete(tmp_git_repo: Path) -> None:
     assert result == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_markdown_artifact_takes_precedence_over_stale_legacy_json(
-    tmp_git_repo: Path,
-) -> None:
-    """A canonical markdown submission must override stale legacy JSON."""
+def test_missing_markdown_artifact_fails_closed(tmp_git_repo: Path) -> None:
+    """The phase must not infer cleanup completion without the canonical document."""
     workspace = FsWorkspace(tmp_git_repo)
-    _write_commit_cleanup_artifact(
-        workspace,
-        {
-            "analysis_complete": False,
-            "actions": [{"action": "add_to_gitignore", "pattern": "*.stale"}],
-        },
-    )
-    workspace.write(
-        ".agent/artifacts/commit_cleanup.md",
-        """---
-type: commit_cleanup
-analysis_complete: true
----
-
-## Actions
-""",
-    )
     ctx = PhaseContext.construct(
         workspace=workspace,
         registry=object(),
@@ -146,8 +134,8 @@ analysis_complete: true
 
     result = handle_commit_cleanup_phase(effect, ctx)
 
-    assert result == [PipelineEvent.AGENT_SUCCESS]
-    assert "*.stale" not in (tmp_git_repo / ".gitignore").read_text(encoding="utf-8")
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
 
 
 def test_phase_loopback_when_has_actions(tmp_git_repo: Path) -> None:
@@ -1852,8 +1840,8 @@ def test_delete_tracked_random_json_in_agent_root_rejected(tmp_git_repo: Path) -
         # .agent/tmp/ only accepts .log, .md, .json
         ".agent/tmp/config.yaml",
         ".agent/tmp/main.py",
-        # .agent/artifacts/ only accepts .json
-        ".agent/artifacts/notes.md",
+        # .agent/artifacts/ only accepts .md
+        ".agent/artifacts/plan.json",
         # .agent/receipts/ only accepts .json
         ".agent/receipts/run-1/note.md",
         # .agent/prompt_history/ only accepts .json

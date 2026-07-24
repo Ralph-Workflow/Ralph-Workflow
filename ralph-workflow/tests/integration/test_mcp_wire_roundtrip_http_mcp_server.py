@@ -276,12 +276,18 @@ class TestHttpMcpServer:
         assert "write_file" in tool_names
         assert "list_directory" in tool_names
         assert "exec" in tool_names
-        assert "ralph_submit_artifact" in tool_names
+        assert "ralph_submit_md_artifact" in tool_names
+        assert "ralph_verify_md_artifact" in tool_names
+        assert "ralph_stage_md_artifact" in tool_names
+        assert "ralph_finalize_md_artifact" in tool_names
+        assert "ralph_submit_artifact" not in tool_names
+        assert "ralph_submit_plan_section" not in tool_names
         assert "visit_url" in tool_names
 
-    def test_tools_call_invalid_plan_section_returns_iserror_result_not_jsonrpc_error(
+    def test_retired_plan_section_tool_returns_markdown_replacement_error(
         self, temp_workspace: Path
     ) -> None:
+        """Retired JSON tools stay absent and fail with actionable replacement guidance."""
         server = _build_server(temp_workspace, drain="planning")
         state = _do_initialize(server)
         response = _do_tool_call_response(
@@ -297,9 +303,11 @@ class TestHttpMcpServer:
             },
         )
 
-        assert getattr(response, "error", None) is None
-        result = cast("dict[str, Any]", response.result)
-        assert result["isError"] is True
+        error = cast("dict[str, object]", response.error)
+        assert error["code"] == -32603
+        message = str(error["message"])
+        assert "removed in the markdown artifact migration" in message
+        assert "ralph_stage_md_artifact" in message
 
     def test_new_workspace_tools_roundtrip(self, temp_workspace: Path) -> None:
         """In-process roundtrip for the expanded workspace tool surface.

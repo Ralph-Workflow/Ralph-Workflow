@@ -68,7 +68,7 @@ def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
                 required_artifact=RequiredArtifact(
                     phase="development",
                     artifact_type="development_result",
-                    json_path=".agent/artifacts/development_result.json",
+                    artifact_path=".agent/artifacts/development_result.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -104,7 +104,7 @@ def test_declare_complete_marker_with_sentinel_satisfies_completion_contract(
             required_artifact=RequiredArtifact(
                 phase="development",
                 artifact_type="development_result",
-                json_path=".agent/artifacts/development_result.json",
+                artifact_path=".agent/artifacts/development_result.md",
                 markdown_path=None,
                 normalizer=None,
             ),
@@ -152,7 +152,7 @@ def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
             required_artifact=RequiredArtifact(
                 phase="development",
                 artifact_type="development_result",
-                json_path=".agent/artifacts/development_result.json",
+                artifact_path=".agent/artifacts/development_result.md",
                 markdown_path=None,
                 normalizer=None,
             ),
@@ -174,7 +174,7 @@ def test_sentinel_check_fn_true_prevents_invocation_error(tmp_path: Path) -> Non
             required_artifact=RequiredArtifact(
                 phase="development",
                 artifact_type="development_result",
-                json_path=".agent/artifacts/development_result.json",
+                artifact_path=".agent/artifacts/development_result.md",
                 markdown_path=None,
                 normalizer=None,
             ),
@@ -202,7 +202,7 @@ def test_sentinel_check_fn_false_still_raises_invocation_error(tmp_path: Path) -
                 required_artifact=RequiredArtifact(
                     phase="development",
                     artifact_type="development_result",
-                    json_path=".agent/artifacts/development_result.json",
+                    artifact_path=".agent/artifacts/development_result.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -232,7 +232,7 @@ def test_sentinel_check_fn_receives_completion_run_id(tmp_path: Path) -> None:
             required_artifact=RequiredArtifact(
                 phase="development",
                 artifact_type="development_result",
-                json_path=".agent/artifacts/development_result.json",
+                artifact_path=".agent/artifacts/development_result.md",
                 markdown_path=None,
                 normalizer=None,
             ),
@@ -262,7 +262,7 @@ def test_sentinel_completion_without_pty_echo(tmp_path: Path) -> None:
             required_artifact=RequiredArtifact(
                 phase="development",
                 artifact_type="development_result",
-                json_path=".agent/artifacts/development_result.json",
+                artifact_path=".agent/artifacts/development_result.md",
                 markdown_path=None,
                 normalizer=None,
             ),
@@ -287,7 +287,7 @@ def test_sentinel_absent_without_pty_echo_raises(tmp_path: Path) -> None:
                 required_artifact=RequiredArtifact(
                     phase="development",
                     artifact_type="development_result",
-                    json_path=".agent/artifacts/development_result.json",
+                    artifact_path=".agent/artifacts/development_result.md",
                     markdown_path=None,
                     normalizer=None,
                 ),

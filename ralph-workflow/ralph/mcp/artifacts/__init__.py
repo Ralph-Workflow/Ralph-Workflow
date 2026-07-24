@@ -1,8 +1,7 @@
-"""Artifact storage and validation for MCP.
+"""Markdown artifact validation and canonical persistence for MCP.
 
-This sub-package contains the artifact store, file backend, and per-type
-validators (plan, development_result, commit_message) plus the audit adapter.
-These are the backends that MCP *tool handlers* call into.
+This sub-package contains the canonical Markdown submission backend, file
+backend, per-type validators, and audit adapter used by MCP tool handlers.
 """
 
 from __future__ import annotations
@@ -17,34 +16,12 @@ from ralph.mcp.artifacts.canonical_submit import (
     promote_fallback_artifact,
     submit_artifact_canonical,
 )
-from ralph.mcp.artifacts.store import (
-    Artifact,
-    ArtifactExistsError,
-    ArtifactNotFoundError,
-    ArtifactSubmitOptions,
-    ArtifactUpdateOptions,
-    delete_artifact,
-    get_artifact,
-    list_artifacts,
-    submit_artifact,
-    update_artifact,
-)
 
 __all__ = [
     "DEFAULT_ARTIFACT_PERSISTENCE",
-    "Artifact",
     "ArtifactError",
-    "ArtifactExistsError",
-    "ArtifactNotFoundError",
     "ArtifactPersistence",
-    "ArtifactSubmitOptions",
-    "ArtifactUpdateOptions",
     "SubmitResult",
-    "delete_artifact",
-    "get_artifact",
-    "list_artifacts",
     "promote_fallback_artifact",
-    "submit_artifact",
     "submit_artifact_canonical",
-    "update_artifact",
 ]

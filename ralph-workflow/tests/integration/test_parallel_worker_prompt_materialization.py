@@ -8,13 +8,13 @@ materialize the worker prompt, exactly like the serial pipeline does.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ralph.display.context import make_display_context
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
+from tests.plan_fixtures import MINIMAL_PLAN_MARKDOWN
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -25,27 +25,7 @@ if TYPE_CHECKING:
 def _write_plan_artifact(root: Path) -> None:
     artifact_dir = root / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    content = {
-        "summary": {
-            "context": "Two modules",
-            "scope_items": [{"text": "one"}, {"text": "two"}, {"text": "three"}],
-        },
-        "skills_mcp": {"skills": ["test-driven-development"], "mcps": []},
-        "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
-        "critical_files": {
-            "primary_files": [{"path": "src/a/mod.py", "action": "create"}],
-            "reference_files": [],
-        },
-        "risks_mitigations": [{"risk": "none", "mitigation": "none"}],
-        "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
-        "work_units": [
-            {"unit_id": "unit-a", "description": "A", "allowed_directories": ["src/a"]},
-            {"unit_id": "unit-b", "description": "B", "allowed_directories": ["src/b"]},
-        ],
-    }
-    (artifact_dir / "plan.json").write_text(
-        json.dumps({"type": "plan", "content": content}), encoding="utf-8"
-    )
+    (artifact_dir / "plan.md").write_text(MINIMAL_PLAN_MARKDOWN, encoding="utf-8")
 
 
 def test_worker_materializes_prompt_from_shared_workspace_inputs(

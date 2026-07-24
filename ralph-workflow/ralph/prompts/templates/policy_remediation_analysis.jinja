@@ -153,7 +153,12 @@ step is a defect in the policy.
 
 ## Report your decision
 
-Submit a `{{ artifact_type }}` artifact.
+Read `.agent/artifact-formats/policy_remediation_analysis_decision.md` and its
+validator-backed example before authoring. Submit one markdown document with
+`ralph_submit_md_artifact`, passing
+`artifact_type="{{ artifact_type }}"` and `content` set to the complete
+document. You may first call `ralph_verify_md_artifact` with the same arguments;
+repair every line-anchored diagnostic before submitting.
 
 - `completed` — every fact verifies, every declared gate resolves, every script
   obeys the gate-script policy. Nothing is left to fix.

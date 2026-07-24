@@ -1,4 +1,4 @@
-"""Tests for ralph/mcp/artifacts/bridge.py — MCP bridge layer."""
+"""Tests for the live upstream MCP registry."""
 
 from __future__ import annotations
 
@@ -8,19 +8,6 @@ from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.registry import RegistryCollisionError, UpstreamRegistry
-
-METHOD_NOT_FOUND_CODE = -32601
-INVALID_REQUEST_CODE = -32600
-
-
-def _object_dict(value: object) -> dict[str, object]:
-    assert isinstance(value, dict)
-    return value
-
-
-def _object_list(value: object) -> list[object]:
-    assert isinstance(value, list)
-    return value
 
 
 class TestUpstreamRegistry:

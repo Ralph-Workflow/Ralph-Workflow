@@ -86,7 +86,7 @@ def test_read_commit_message_from_path_returns_none_when_missing(tmp_path: Path)
     assert read_commit_message_from_path(tmp_path / "commit_message.md") is None
 
 
-def test_delete_commit_message_artifacts_removes_markdown_and_legacy_files(
+def test_delete_commit_message_artifacts_removes_only_canonical_markdown(
     tmp_path: Path,
 ) -> None:
     artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
@@ -94,16 +94,13 @@ def test_delete_commit_message_artifacts_removes_markdown_and_legacy_files(
     artifact_file.write_text(COMMIT_DOC, encoding="utf-8")
     legacy_dir = tmp_path / ".agent" / "tmp"
     legacy_dir.mkdir(parents=True, exist_ok=True)
-    legacy_json = legacy_dir / "commit_message.json"
-    legacy_json.write_text("{}", encoding="utf-8")
-    legacy_text = legacy_dir / "commit-message.txt"
-    legacy_text.write_text("stale", encoding="utf-8")
+    unrelated_file = legacy_dir / "worker-state.txt"
+    unrelated_file.write_text("keep", encoding="utf-8")
 
     delete_commit_message_artifacts(tmp_path)
 
     assert not artifact_file.exists()
-    assert not legacy_json.exists()
-    assert not legacy_text.exists()
+    assert unrelated_file.read_text(encoding="utf-8") == "keep"
 
 
 def test_normalize_commit_message_content_accepts_excluded_files_payload() -> None:
@@ -121,6 +118,16 @@ def test_normalize_commit_message_content_accepts_excluded_files_payload() -> No
 def test_normalize_commit_message_content_rejects_non_conventional_subject() -> None:
     with pytest.raises(ValueError, match="conventional commit format"):
         normalize_commit_message_content({"type": "commit", "subject": "update files"})
+
+
+def test_normalize_commit_message_content_rejects_legacy_message_field() -> None:
+    with pytest.raises(ValueError):
+        normalize_commit_message_content({"message": "fix: legacy JSON payload"})
+
+
+def test_normalize_commit_message_content_rejects_string_payload() -> None:
+    with pytest.raises(ValueError, match="dictionary"):
+        normalize_commit_message_content("fix: legacy string payload")
 
 
 @pytest.mark.parametrize(

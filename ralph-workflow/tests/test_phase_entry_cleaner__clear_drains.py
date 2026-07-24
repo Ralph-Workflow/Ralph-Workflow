@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -71,12 +70,12 @@ def _make_minimal_pipeline(
 def _write_artifact_files(
     ws: FsWorkspace,
     artifact_type: str,
-    json_path: str,
+    artifact_path: str,
     md_path: str | None,
 ) -> None:
     """Write minimal artifact files for a given artifact type."""
-    ws.mkdirs(Path(json_path).parent.as_posix())
-    ws.write(json_path, json.dumps({"type": artifact_type, "content": "test"}))
+    ws.mkdirs(Path(artifact_path).parent.as_posix())
+    ws.write(artifact_path, f"---\ntype: {artifact_type}\n---\n\n# Test\n")
     if md_path:
         ws.write(md_path, f"# {artifact_type}\n\ntest content")
 
@@ -95,40 +94,40 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(
             ws,
             "plan",
-            ".agent/artifacts/plan.json",
+            ".agent/artifacts/plan.md",
             ".agent/PLAN.md",
         )
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         # Also create a development artifact (should NOT be cleared on planning entry)
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
         clear_phase_entry_drains(ws, "planning", None, pipeline, artifacts_policy)
 
         # planning, planning_analysis, and development_analysis artifacts are cleared
-        assert not ws.exists(".agent/artifacts/plan.json")
+        assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
-        assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
         # development artifact is NOT cleared (not in planning's clear_drains_on_fresh_entry)
-        assert ws.exists(".agent/artifacts/development_result.json")
+        assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_loopback_does_not_clear(self, tmp_path: Path) -> None:
@@ -141,7 +140,7 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(
             ws,
             "plan",
-            ".agent/artifacts/plan.json",
+            ".agent/artifacts/plan.md",
             ".agent/PLAN.md",
         )
 
@@ -149,7 +148,7 @@ class TestClearPhaseEntryDrains:
         clear_phase_entry_drains(ws, "planning", "planning_analysis", pipeline, artifacts_policy)
 
         # Files must still exist (loopback, not fresh)
-        assert ws.exists(".agent/artifacts/plan.json")
+        assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
 
     def test_same_phase_does_not_clear(self, tmp_path: Path) -> None:
@@ -162,7 +161,7 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
@@ -170,7 +169,7 @@ class TestClearPhaseEntryDrains:
         clear_phase_entry_drains(ws, "development", "development", pipeline, artifacts_policy)
 
         # Files must still exist
-        assert ws.exists(".agent/artifacts/development_result.json")
+        assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_fresh_entry_absent_files_no_error(self, tmp_path: Path) -> None:
@@ -211,11 +210,11 @@ class TestClearPhaseEntryDrains:
         ws = FsWorkspace(root)
 
         # Pre-create any file
-        ws.write(".agent/artifacts/plan.json", json.dumps({"type": "plan"}))
+        ws.write(".agent/artifacts/plan.md", "---\ntype: plan\n---\n")
 
         # Empty list → nothing deleted, no exception
         clear_phase_entry_drains(ws, "empty_phase", None, pipeline, artifacts_policy)
-        assert ws.exists(".agent/artifacts/plan.json")
+        assert ws.exists(".agent/artifacts/plan.md")
 
     def test_planning_from_dev_commit_clears_planning_and_planning_analysis_drains(
         self, tmp_path: Path
@@ -232,25 +231,25 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(
             ws,
             "plan",
-            ".agent/artifacts/plan.json",
+            ".agent/artifacts/plan.md",
             ".agent/PLAN.md",
         )
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
@@ -258,14 +257,14 @@ class TestClearPhaseEntryDrains:
         clear_phase_entry_drains(ws, "planning", "development_commit", pipeline, artifacts_policy)
 
         # planning, planning_analysis, and development_analysis artifacts are cleared
-        assert not ws.exists(".agent/artifacts/plan.json")
+        assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
-        assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
         # development artifact is NOT cleared (not in planning's clear_drains_on_fresh_entry)
-        assert ws.exists(".agent/artifacts/development_result.json")
+        assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_planning_from_dev_final_commit_clears_dev_analysis(self, tmp_path: Path) -> None:
@@ -281,25 +280,25 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(
             ws,
             "plan",
-            ".agent/artifacts/plan.json",
+            ".agent/artifacts/plan.md",
             ".agent/PLAN.md",
         )
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
@@ -307,13 +306,13 @@ class TestClearPhaseEntryDrains:
             ws, "planning", "development_final_commit", pipeline, artifacts_policy
         )
 
-        assert not ws.exists(".agent/artifacts/plan.json")
+        assert not ws.exists(".agent/artifacts/plan.md")
         assert not ws.exists(".agent/PLAN.md")
-        assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
-        assert ws.exists(".agent/artifacts/development_result.json")
+        assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
     def test_development_from_planning_analysis_clears_analysis_dev_drains(
@@ -328,25 +327,25 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(
             ws,
             "plan",
-            ".agent/artifacts/plan.json",
+            ".agent/artifacts/plan.md",
             ".agent/PLAN.md",
         )
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
@@ -354,14 +353,14 @@ class TestClearPhaseEntryDrains:
         clear_phase_entry_drains(ws, "development", "planning_analysis", pipeline, artifacts_policy)
 
         # planning artifact is NOT cleared (not in development's clear_drains_on_fresh_entry)
-        assert ws.exists(".agent/artifacts/plan.json")
+        assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
         # planning_analysis, development, and development_analysis artifacts ARE cleared
-        assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
-        assert not ws.exists(".agent/artifacts/development_result.json")
+        assert not ws.exists(".agent/artifacts/development_result.md")
         assert not ws.exists(".agent/DEVELOPMENT_RESULT.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_development_commit_from_dev_analysis_clears_dev_drains(self, tmp_path: Path) -> None:
@@ -374,25 +373,25 @@ class TestClearPhaseEntryDrains:
         _write_artifact_files(
             ws,
             "plan",
-            ".agent/artifacts/plan.json",
+            ".agent/artifacts/plan.md",
             ".agent/PLAN.md",
         )
         _write_artifact_files(
             ws,
             "development_result",
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
             ws,
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/artifacts/development_analysis_decision.md",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
             ws,
             "planning_analysis_decision",
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
 
@@ -402,12 +401,12 @@ class TestClearPhaseEntryDrains:
         )
 
         # development and development_analysis artifacts are cleared
-        assert not ws.exists(".agent/artifacts/development_result.json")
+        assert not ws.exists(".agent/artifacts/development_result.md")
         assert not ws.exists(".agent/DEVELOPMENT_RESULT.md")
-        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.md")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
         # planning and planning_analysis artifacts are NOT cleared
-        assert ws.exists(".agent/artifacts/plan.json")
+        assert ws.exists(".agent/artifacts/plan.md")
         assert ws.exists(".agent/PLAN.md")
-        assert ws.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert ws.exists(".agent/artifacts/planning_analysis_decision.md")
         assert ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")

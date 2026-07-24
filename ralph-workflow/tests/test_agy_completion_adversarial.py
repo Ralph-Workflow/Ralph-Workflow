@@ -89,7 +89,7 @@ def _required_artifact() -> RequiredArtifact:
     return RequiredArtifact(
         phase="smoke",
         artifact_type=ARTIFACT_TYPE,
-        json_path=f".agent/artifacts/{ARTIFACT_TYPE}.json",
+        artifact_path=f".agent/artifacts/{ARTIFACT_TYPE}.md",
         markdown_path=None,
         normalizer=None,
         artifact_required=True,
@@ -144,7 +144,7 @@ def test_broker_written_receipt_accepted_with_secret(workspace: Path) -> None:
 def test_evaluate_completion_rejects_stale_canonical_artifact(
     workspace: Path,
 ) -> None:
-    """A stale canonical artifact at ``.agent/artifacts/<type>.json``
+    """A stale legacy JSON artifact at ``.agent/artifacts/<type>.json``
     from a previous run does NOT satisfy ``required_artifact_present``
     for a new run that has no current-run receipt.
 

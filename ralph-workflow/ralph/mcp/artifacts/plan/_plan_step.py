@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from loguru import logger as _logger
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef
@@ -35,14 +34,6 @@ _ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^[A-Z]+-\d{2,}$")
 # max_evidence_per_step cap. The per-entry length is enforced inside
 # _evidence_ref.EvidenceRef.
 _MAX_EVIDENCE_ENTRIES = 500
-_MAX_EVIDENCE_ENTRY_LENGTH = 1000
-
-_STEP_TYPE_ALIASES: dict[str, str] = {
-    "test": "verify",
-    "tests": "verify",
-    "check": "verify",
-    "run": "verify",
-}
 
 
 class PlanStep(RalphBaseModel):
@@ -116,35 +107,6 @@ class PlanStep(RalphBaseModel):
         ),
     )
 
-    @field_validator("step_type", mode="before")
-    @classmethod
-    def _coerce_step_type_aliases(cls, value: object) -> object:
-        """Coerce common step_type mistakes to the likely intended value.
-
-        Cheap models sometimes use ``step_type='test'`` (or ``'tests'``,
-        ``'check'``, ``'run'``) when they really mean ``'verify'``. A
-        before-validator lowercases the trimmed string, looks it up in
-        the closed allowlist ``_STEP_TYPE_ALIASES``, and returns the
-        mapped value with a WARNING log. Unknown values fall through
-        so the closed StrEnum rejects them with a clear error.
-
-        The before-validator is a pure function: raw in, coerced out.
-        No ClassVar, no module-level mutable state, no thread-local —
-        the observable ``step_type`` value is the contract.
-        """
-        if not isinstance(value, str):
-            return value
-        lowered = value.strip().lower()
-        coerced = _STEP_TYPE_ALIASES.get(lowered)
-        if coerced is None:
-            return value
-        _logger.warning(
-            "plan step_type coerced from {!r} to {!r} (likely intended value)",
-            value,
-            coerced,
-        )
-        return coerced
-
     @field_validator("satisfies")
     @classmethod
     def _validate_satisfies(cls, value: list[str]) -> list[str]:
@@ -168,13 +130,11 @@ class PlanStep(RalphBaseModel):
     def _validate_expected_evidence(cls, value: object) -> list[EvidenceRef]:
         """Validate and dedupe ``expected_evidence`` entries.
 
-        Each entry is converted to ``EvidenceRef`` (the model-level
-        before-validator handles bare strings). Dedup is case-insensitive
-        on ``(kind, ref.lower())`` with last-wins so a later
-        ``EvidenceRef`` overrides an earlier one with the same key.
-        The ``_MAX_EVIDENCE_ENTRIES=500`` cap and the per-entry
-        ``max_length=1000`` (enforced by ``EvidenceRef``) together bound
-        the size of the evidence list.
+        Each structured entry is converted to ``EvidenceRef``. Dedup is
+        case-insensitive on ``(kind, ref.lower())`` with last-wins so a
+        later ``EvidenceRef`` overrides an earlier one with the same key.
+        The ``_MAX_EVIDENCE_ENTRIES=500`` cap and ``EvidenceRef.ref`` field
+        limit together bound the size of the evidence list.
         """
         if value is None:
             return []
@@ -184,8 +144,6 @@ class PlanStep(RalphBaseModel):
         cleaned: list[EvidenceRef] = []
         position_by_key: dict[tuple[str, str], int] = {}
         for entry in value:
-            if isinstance(entry, str) and not entry.strip():
-                continue
             ref = entry if isinstance(entry, EvidenceRef) else EvidenceRef.model_validate(entry)
             key = (str(ref.kind), ref.ref.lower())
             if key in position_by_key:
@@ -196,7 +154,6 @@ class PlanStep(RalphBaseModel):
         if len(cleaned) > _MAX_EVIDENCE_ENTRIES:
             msg = f"expected_evidence has more than {_MAX_EVIDENCE_ENTRIES} entries"
             raise ValueError(msg)
-        _ = _MAX_EVIDENCE_ENTRY_LENGTH  # per-entry cap enforced inside EvidenceRef
         return cleaned
 
     @field_validator("verify_command")

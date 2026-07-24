@@ -263,9 +263,7 @@ def _reject_symlink_in_commit_scope(normalized_path: str, repo_root: Path | None
     repo_root_resolved = Path(repo_root).resolve(strict=False)
     candidate = repo_root / normalized_path
     if candidate.is_symlink():
-        raise ValueError(
-            f"Refusing to stage symlink in commit scope: {normalized_path!r}"
-        )
+        raise ValueError(f"Refusing to stage symlink in commit scope: {normalized_path!r}")
     for parent in candidate.parents:
         if parent == repo_root_resolved or parent == Path(repo_root):
             break
@@ -279,8 +277,7 @@ def _reject_symlink_in_commit_scope(normalized_path: str, repo_root: Path | None
         resolved_candidate.relative_to(repo_root_resolved)
     except ValueError as exc:
         raise ValueError(
-            f"Refusing to stage path outside repository root in commit scope: "
-            f"{normalized_path!r}"
+            f"Refusing to stage path outside repository root in commit scope: {normalized_path!r}"
         ) from exc
 
 
@@ -379,14 +376,14 @@ def phase_output_artifact_paths(
         else None
     )
     if ra is not None:
-        paths.append(ra.json_path)
+        paths.append(ra.artifact_path)
         if ra.markdown_path is not None:
             paths.append(ra.markdown_path)
     if policy_bundle is not None:
         phase_def = policy_bundle.pipeline.phases.get(phase)
         if phase_def is not None:
             if phase_def.parallelization is not None:
-                paths.append(".agent/artifacts/parallel_development_summary.json")
+                paths.append(".agent/artifacts/parallel_development_summary.md")
             if phase_def.role == "commit" and ra is None:
                 paths.append(COMMIT_MESSAGE_ARTIFACT)
     return tuple(paths)

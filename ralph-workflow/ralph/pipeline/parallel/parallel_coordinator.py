@@ -11,7 +11,6 @@ from loguru import logger
 
 from ralph import logging as ralph_logging
 from ralph.agents import subprocess_executor
-from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.protocol.env import (
     AGENT_LABEL_SCOPE_ENV,
     MCP_ENDPOINT_ENV,
@@ -410,7 +409,7 @@ async def _run_worker(
 
             if bundle is not None and worker_namespace is not None:
                 artifact_dir = worker_namespace / "artifacts"
-                if not list_artifacts(artifact_dir):
+                if not any(artifact_dir.glob("*.md")):
                     display.set_status(unit.unit_id, WorkerStatus.FAILED)
                     raise _WorkerFailureError(
                         unit_id=unit.unit_id,

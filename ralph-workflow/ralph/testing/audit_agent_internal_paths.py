@@ -564,7 +564,7 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     # extension per ``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``).
     ".agent/raw/opencode.log",
     ".agent/tmp/mcp-server.log",
-    ".agent/artifacts/x.json",
+    ".agent/artifacts/plan.md",
     ".agent/workers/unit-a/tmp/checkpoint.json",
     ".agent/receipts/run-1/commit_cleanup.json",
     ".agent/prompt_history/x.json",

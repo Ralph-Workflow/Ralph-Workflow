@@ -70,7 +70,7 @@ If any feedback item reveals repo-wide incompleteness, invalid inventory, incorr
 
 ## MCP PLAN EDIT WORKFLOW
 
-The plan is ONE markdown document; the canonical copy lives at `.agent/artifacts/plan.md` (grammar: `.agent/artifact-formats/plan.md`). Revise the document, then resubmit the whole document — resubmission replaces the prior plan.
+The plan is ONE markdown document; the canonical copy lives at `.agent/artifacts/plan.md` (grammar: `.agent/artifact-formats/plan.md`). Revise the document, then either resubmit the whole document or finalize its staged draft — either path replaces the prior plan.
 Your target is to submit the strongest revised plan you can so the next planning-analysis pass returns `completed`, not another partial patch cycle.
 
 Recommended edit flow:
@@ -81,11 +81,11 @@ Recommended edit flow:
 5. Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before you decide the revision is ready.
 6. When subagents are available, fan out one scout per analyzer finding to verify its closure against the repository, plus one reviewer per rubric dimension to hunt for the next rejection (see ## PLANNING WITH SUBAGENTS); without subagents, run the same checks sequentially yourself.
 7. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then rewrite every affected section in the document.
-8. For a fix confined to individual steps, call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} (`content` = the document, `action` = replace/insert/remove/move, `step_id` like `S-3`; `replacement` = one complete matching `### [S-3] Title` block for insert/replace). IDs are stable and never renumbered; the tool returns the edited document.
-9. Validate the revised document with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document); each diagnostic names the line, section, and rule — repair them all in one pass.
-10. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same two arguments) only after the revised plan passes the self-audit below.
+8. For a fix confined to individual steps, stage the complete plan first with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete current document, `mode="replace_all"`). Then call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against that persisted plan draft with `action` and `step_id` only. `replacement` is required for `insert` and `replace` and must be one complete matching `### [S-3] Title` block; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument. Each call saves the edited draft. IDs are stable and never renumbered.
+9. After targeted edits, inspect the saved content and diagnostics with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), repair any errors, then finalize the edited draft with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). Finalization validates and submits the draft; do not also resubmit it as `content`.
+10. For a holistic document revision that does not use the step editor, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments. Use either this direct path or the staged path only after the revised plan passes the self-audit below.
 
-Do not write `.agent/artifacts/plan.md` directly — the submit tool is the only valid path. Do not throw away valid sections just because one part of the plan was rejected, but do rewrite every section whose correctness depends on changed scope, inventory, paths, or verification. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent. When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
+Do not write `.agent/artifacts/plan.md` directly — the submit and finalize tools are the only valid paths. Do not throw away valid sections just because one part of the plan was rejected, but do rewrite every section whose correctness depends on changed scope, inventory, paths, or verification. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent. When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
 
 ## REVISION REQUIREMENTS
 

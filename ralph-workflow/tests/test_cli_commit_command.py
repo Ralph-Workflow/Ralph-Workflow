@@ -283,7 +283,7 @@ def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> N
     opts = captured_options[0]
     assert opts.required_artifact is not None
     assert opts.required_artifact.artifact_type == "commit_message"
-    assert opts.required_artifact.json_path == ".agent/artifacts/commit_message.md"
+    assert opts.required_artifact.artifact_path == ".agent/artifacts/commit_message.md"
     assert opts.required_artifact.artifact_required is True
 
 

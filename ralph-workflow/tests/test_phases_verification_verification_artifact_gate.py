@@ -87,9 +87,11 @@ class TestVerificationArtifactGate:
             on_failure_route=None,
         )
         ctx = _make_context(tmp_path, drain, verification)
-        artifact_path = tmp_path / ".agent" / "artifacts" / f"{drain}_verification.json"
+        artifact_path = tmp_path / ".agent" / "artifacts" / f"{drain}_verification.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text('{"verified": true}', encoding="utf-8")
+        artifact_path.write_text(
+            "## Verification\n\nAll focused checks passed.\n", encoding="utf-8"
+        )
 
         result = handle_verification_phase(_invoke_effect(drain), ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
@@ -118,7 +120,7 @@ class TestVerificationArtifactGate:
             on_failure_route=None,
         )
         ctx = _make_context(tmp_path, drain, verification)
-        artifact_path = tmp_path / ".agent" / "artifacts" / f"{drain}_verification.json"
+        artifact_path = tmp_path / ".agent" / "artifacts" / f"{drain}_verification.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text("", encoding="utf-8")
 

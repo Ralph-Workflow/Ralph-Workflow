@@ -64,6 +64,7 @@ vocabulary choices such as a status or intent label. Diagnostics carry
 | `development_analysis_decision` | Development analysis decision | `.agent/artifact-formats/development_analysis_decision.md` |
 | `planning_analysis_decision` | Planning analysis decision | `.agent/artifact-formats/planning_analysis_decision.md` |
 | `review_analysis_decision` | Review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |
+| `policy_remediation_analysis_decision` | Project-policy remediation analysis decision | `.agent/artifact-formats/policy_remediation_analysis_decision.md` |
 | `smoke_test_result` | Manual runtime smoke-test outcome | `.agent/artifact-formats/smoke_test_result.md` |
 | `product_spec` | Product specification | `.agent/artifact-formats/product_spec.md` |
 | `plan` | Structured execution plan | `.agent/artifact-formats/plan.md` |

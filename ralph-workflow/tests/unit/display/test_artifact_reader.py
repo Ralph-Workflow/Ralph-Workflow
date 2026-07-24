@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -82,6 +81,23 @@ def _text_loader(content: str | None) -> Callable[[Path], str | None]:
     return lambda _path: content
 
 
+def _analysis_decision_document(
+    artifact_type: str,
+    *,
+    status: str,
+    summary: str,
+) -> str:
+    return f"""---
+type: {artifact_type}
+status: {status}
+---
+
+## Summary
+
+- [SUM-1] {summary}
+"""
+
+
 def test_read_plan_artifact_missing_returns_none() -> None:
     assert read_plan_artifact(Path("/workspace"), _text_loader=_text_loader(None)) is None
 
@@ -111,39 +127,58 @@ def test_read_latest_analysis_decision_missing_returns_none(tmp_path: Path) -> N
     assert read_latest_analysis_decision(tmp_path, "development_analysis") is None
 
 
-def test_read_latest_analysis_decision_prefers_canonical_name(tmp_path: Path) -> None:
+def test_read_latest_analysis_decision_loads_canonical_markdown(tmp_path: Path) -> None:
     artifacts = tmp_path / ".agent" / "artifacts"
     artifacts.mkdir(parents=True)
-    (artifacts / "development_analysis_decision.json").write_text(
-        json.dumps(
-            {
-                "content": {
-                    "decision": "proceed",
-                    "reason": "all tests passed",
-                }
-            }
-        )
+    (artifacts / "development_analysis_decision.md").write_text(
+        _analysis_decision_document(
+            "development_analysis_decision",
+            status="completed",
+            summary="All tests passed",
+        ),
+        encoding="utf-8",
     )
+
     result = read_latest_analysis_decision(tmp_path, "development_analysis")
+
     assert result is not None
-    assert result.decision == "proceed"
-    assert result.reason == "all tests passed"
+    assert result.decision == "completed"
+    assert result.reason == "All tests passed"
 
 
-def test_read_latest_analysis_decision_falls_back_to_drain_json(tmp_path: Path) -> None:
+def test_read_latest_analysis_decision_prefers_markdown_over_old_state(tmp_path: Path) -> None:
     artifacts = tmp_path / ".agent" / "artifacts"
     artifacts.mkdir(parents=True)
-    (artifacts / "review_analysis.json").write_text(
-        json.dumps(
-            {
-                "content": {
-                    "decision": "revise",
-                    "reason": "needs more tests",
-                }
-            }
-        )
+    (artifacts / "review_analysis_decision.md").write_text(
+        _analysis_decision_document(
+            "review_analysis_decision",
+            status="completed",
+            summary="Canonical decision",
+        ),
+        encoding="utf-8",
     )
+    (artifacts / "review_analysis_decision.json").write_text(
+        "this must never be parsed",
+        encoding="utf-8",
+    )
+
     result = read_latest_analysis_decision(tmp_path, "review_analysis")
+
     assert result is not None
-    assert result.decision == "revise"
-    assert result.reason == "needs more tests"
+    assert result.decision == "completed"
+    assert result.reason == "Canonical decision"
+
+
+def test_read_latest_analysis_decision_rejects_json_only_state(tmp_path: Path) -> None:
+    artifacts = tmp_path / ".agent" / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "review_analysis_decision.json").write_text(
+        '{"type":"review_analysis_decision","content":{"decision":"completed"}}',
+        encoding="utf-8",
+    )
+    (artifacts / "review_analysis.json").write_text(
+        '{"type":"review_analysis_decision","content":{"decision":"completed"}}',
+        encoding="utf-8",
+    )
+
+    assert read_latest_analysis_decision(tmp_path, "review_analysis") is None

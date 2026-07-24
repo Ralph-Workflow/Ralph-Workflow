@@ -352,6 +352,29 @@ def test_development_missing_dev_result_returns_phase_failure() -> None:
     )
 
 
+def test_required_artifact_regression_legacy_json_only_has_actionable_markdown_retry() -> None:
+    """Regression for PROMPT.md: old-format artifacts must fail with an actionable message."""
+    workspace = MemoryWorkspace()
+    workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
+    workspace.write(
+        ".agent/artifacts/development_result.json",
+        '{"type":"development_result","content":{"status":"completed"}}',
+    )
+    ctx = _make_ctx(workspace)
+
+    events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
+
+    failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
+    assert failure_events
+    assert "unsupported legacy JSON" in failure_events[0].reason
+    assert "re-author" in failure_events[0].reason
+    hint = workspace.read(retry_hint_path("development"))
+    assert ".agent/artifacts/development_result.json" in hint
+    assert ".agent/artifacts/development_result.md" in hint
+    assert "ralph_submit_md_artifact" in hint
+    assert "Do not author or resubmit JSON" in hint
+
+
 def test_development_missing_dev_result_uses_pipeline_owned_required_policy(
     tmp_path: Path,
 ) -> None:
@@ -399,7 +422,7 @@ def test_retry_hint_content_includes_artifact_info(phase: str) -> None:
     ra = REQUIRED_ARTIFACTS[phase]
     hint = build_retry_hint(phase, "the agent forgot to submit", registry=REQUIRED_ARTIFACTS)
     assert ra.artifact_type in hint, f"Hint for {phase} must mention artifact type"
-    assert ra.json_path in hint, f"Hint for {phase} must mention artifact path"
+    assert ra.artifact_path in hint, f"Hint for {phase} must mention artifact path"
 
 
 def test_retry_hint_is_error_first_and_artifact_centered() -> None:
@@ -527,7 +550,7 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
 
     # Step 2: write valid artifact, then materialize prompt which surfaces hint as LAST_RETRY_ERROR
     ra = REQUIRED_ARTIFACTS[phase]
-    workspace.write(ra.json_path, _PHASE_VALID_ARTIFACT[phase])
+    workspace.write(ra.artifact_path, _PHASE_VALID_ARTIFACT[phase])
 
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(

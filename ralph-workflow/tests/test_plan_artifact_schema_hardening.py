@@ -115,20 +115,28 @@ def test_evidence_ref_max_length() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. test_evidence_ref_string_coercion
+# 4. test_evidence_ref_rejects_bare_string
 # ---------------------------------------------------------------------------
 
 
-def test_evidence_ref_string_coercion() -> None:
-    """EvidenceRef('foo.py') coerces a bare string to kind='file', ref='foo.py'.
+def test_evidence_ref_rejects_bare_string() -> None:
+    """Evidence entries require the structured shape emitted by the Markdown parser."""
+    with pytest.raises(ValueError):
+        EvidenceRef.model_validate("foo.py")
 
-    PA-001 regression test that the legacy string-typed fixture at
-    test_plan_artifact.py:1239 continues to work via the model-level
-    coercion path.
-    """
-    r = EvidenceRef("foo.py")
-    assert r.kind == "file"
-    assert r.ref == "foo.py"
+
+@pytest.mark.parametrize("alias", ["test", "tests", "check", "run"])
+def test_plan_step_rejects_obsolete_step_type_aliases(alias: str) -> None:
+    """Plan steps accept canonical Markdown vocabulary, not JSON-era aliases."""
+    plan = _base_plan_dict()
+    steps = plan["steps"]
+    assert isinstance(steps, list)
+    step = steps[0]
+    assert isinstance(step, dict)
+    step["step_type"] = alias
+
+    with pytest.raises(PlanArtifactValidationError, match="step_type"):
+        normalize_plan_artifact_content(plan)
 
 
 # ---------------------------------------------------------------------------

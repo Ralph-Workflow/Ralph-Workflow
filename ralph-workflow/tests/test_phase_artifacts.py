@@ -25,7 +25,7 @@ def test_load_phase_artifact_raises_phase_artifact_error_when_file_missing(
     workspace = FsWorkspace(tmp_path)
 
     with pytest.raises(PhaseArtifactError, match="Artifact not found"):
-        load_phase_artifact(workspace, ".agent/artifacts/missing.json")
+        load_phase_artifact(workspace, ".agent/artifacts/missing.md")
 
 
 def test_phase_artifacts_regression_loads_validated_markdown_as_legacy_envelope() -> None:
@@ -52,7 +52,9 @@ type: fix_result
             "files_changed": "- ralph/phases/artifacts.py",
         },
     }
-    assert unwrap_phase_artifact_content(artifact, expected_type="fix_result") == artifact["content"]
+    assert (
+        unwrap_phase_artifact_content(artifact, expected_type="fix_result") == artifact["content"]
+    )
 
 
 def test_phase_artifacts_regression_reports_markdown_validation_errors() -> None:
@@ -125,10 +127,16 @@ def test_load_phase_artifact_with_unknown_explicit_artifact_type_raises() -> Non
         load_phase_artifact(workspace, ".agent/artifacts/mystery.md", artifact_type="mystery")
 
 
-def test_phase_artifacts_regression_keeps_legacy_json_artifacts_readable() -> None:
-    """PLAN step 15: existing JSON artifacts remain valid phase input."""
+def test_phase_artifacts_regression_rejects_legacy_json_without_loading_it() -> None:
+    """PROMPT.md: required-artifact runtime is intentionally Markdown-only."""
     workspace = MemoryWorkspace()
-    legacy = {"type": "fix_result", "content": {"summary": "Kept", "files_changed": "x.py"}}
-    workspace.write(".agent/artifacts/fix_result.json", '{"type":"fix_result","content":{"summary":"Kept","files_changed":"x.py"}}')
+    workspace.write(
+        ".agent/artifacts/fix_result.json",
+        '{"type":"fix_result","content":{"summary":"Kept","files_changed":"x.py"}}',
+    )
 
-    assert load_phase_artifact(workspace, ".agent/artifacts/fix_result.json") == legacy
+    with pytest.raises(
+        PhaseArtifactError,
+        match=r"unsupported legacy JSON.*re-author.*fix_result\.md",
+    ):
+        load_phase_artifact(workspace, ".agent/artifacts/fix_result.json")

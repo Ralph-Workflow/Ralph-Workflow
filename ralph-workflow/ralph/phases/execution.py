@@ -16,7 +16,6 @@ pre-validation for plan and development_result drains.
 
 from __future__ import annotations
 
-import json
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -34,6 +33,7 @@ from ralph.mcp.artifacts.plan import (
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     artifact_validation_failure_event,
+    legacy_json_rejection_detail,
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
@@ -155,16 +155,16 @@ def _validate_plan_output(
 ) -> list[Event]:
     """Validate the plan artifact produced by a planning-type phase."""
     phase = effect.phase
-    if not ctx.workspace.exists(ra.json_path):
-        detail = (
-            f"Missing required plan artifact at {ra.json_path}; "
+    if not ctx.workspace.exists(ra.artifact_path):
+        detail = legacy_json_rejection_detail(ctx.workspace, ra.artifact_path) or (
+            f"Missing required plan artifact at {ra.artifact_path}; "
             "the agent must submit plan before declaring completion"
         )
-        logger.warning("Planning agent completed without producing {}", ra.json_path)
+        logger.warning("Planning agent completed without producing {}", ra.artifact_path)
         _write_retry_hint(ctx, phase, detail)
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
-        artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
+        artifact_wrapper = load_phase_artifact(ctx.workspace, ra.artifact_path)
         raw_content = unwrap_phase_artifact_content(
             artifact_wrapper, expected_type=ra.artifact_type
         )
@@ -179,7 +179,6 @@ def _validate_plan_output(
                 parsed, ctx.pipeline_policy, phase=successor or phase
             )
     except (
-        json.JSONDecodeError,
         PlanArtifactValidationError,
         ValueError,
         WorkUnitsValidationError,
@@ -215,16 +214,11 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
         artifact_content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
         if is_noop_plan(artifact_content):
             return []
-        artifact = (
-            artifact_content
-            if _is_legacy_work_units_payload(artifact_content)
-            else normalize_plan_artifact_content(artifact_content)
-        )
+        artifact = normalize_plan_artifact_content(artifact_content)
         parsed = parse_work_units_from_artifact(artifact)
         if parsed is not None:
             validate_work_units_against_policy(parsed, ctx.pipeline_policy, phase=phase)
     except (
-        json.JSONDecodeError,
         PlanArtifactValidationError,
         PhaseArtifactError,
         ValueError,
@@ -252,26 +246,28 @@ def _validate_output_artifact(
     and normalized.
     """
     phase = effect.phase
-    if not ctx.workspace.exists(ra.json_path):
+    if not ctx.workspace.exists(ra.artifact_path):
         if not ra.artifact_required:
             logger.debug(
                 "Execution phase '{}': optional artifact at {} absent — treating as success",
                 phase,
-                ra.json_path,
+                ra.artifact_path,
             )
             return None, None
-        detail = (
-            f"Missing required artifact at {ra.json_path}; "
+        detail = legacy_json_rejection_detail(ctx.workspace, ra.artifact_path) or (
+            f"Missing required artifact at {ra.artifact_path}; "
             f"the agent must submit {ra.artifact_type} before declaring completion"
         )
-        logger.warning("Execution phase '{}' missing required artifact at {}", phase, ra.json_path)
+        logger.warning(
+            "Execution phase '{}' missing required artifact at {}", phase, ra.artifact_path
+        )
         _write_retry_hint(ctx, phase, detail)
         return [artifact_validation_failure_event(phase=phase, reason=detail)], None
 
     try:
         artifact = load_phase_artifact(
             ctx.workspace,
-            ra.json_path,
+            ra.artifact_path,
             artifact_type=ra.artifact_type,
         )
         content = unwrap_phase_artifact_content(
@@ -282,7 +278,7 @@ def _validate_output_artifact(
     except PhaseArtifactError as exc:
         invalid_detail = str(exc)
     except ValueError as exc:
-        invalid_detail = f"Artifact at {ra.json_path} failed validation: {exc}"
+        invalid_detail = f"Artifact at {ra.artifact_path} failed validation: {exc}"
     else:
         return None, normalized
 
@@ -441,9 +437,9 @@ def _get_canonical_analysis_how_to_fix_refs(ctx: PhaseContext, phase: str) -> fr
             if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
                 continue
             ra = resolve_required_artifact(ctx.artifacts_policy, drain=phase_def.drain)
-            if ra is None or not ctx.workspace.exists(ra.json_path):
+            if ra is None or not ctx.workspace.exists(ra.artifact_path):
                 return frozenset()
-            artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
+            artifact_wrapper = load_phase_artifact(ctx.workspace, ra.artifact_path)
             content = unwrap_phase_artifact_content(
                 artifact_wrapper, expected_type=ra.artifact_type
             )
@@ -485,10 +481,6 @@ def _validate_development_result_proof(
     detail = "\n".join(errors)
     _write_proof_failure_hint(ctx, phase, detail)
     return [artifact_validation_failure_event(phase=phase, reason=detail)]
-
-
-def _is_legacy_work_units_payload(content: dict[str, object]) -> bool:
-    return "work_units" in content and "summary" not in content
 
 
 def _transitions_on_success(phase_def: PhaseDefinition | None) -> str | None:

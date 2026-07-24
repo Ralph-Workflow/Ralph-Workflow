@@ -12,12 +12,8 @@ from ralph.prompts.template_context import TemplateContext
 PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE = (
     "Infer the complete user-visible workflow required by the request"
 )
-PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE = (
-    "If one finding invalidates another section"
-)
-PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE = (
-    "search for adjacent issues"
-)
+PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE = "If one finding invalidates another section"
+PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE = "search for adjacent issues"
 PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE = "closure ledger"
 PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE = "ARTIFACT HISTORY"
 PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE = "repository-wide"
@@ -60,7 +56,9 @@ def test_planning_worked_examples_use_native_step_blocks() -> None:
     examples: list[str] = []
     for name in ("planning.jinja", "planning_fallback.jinja"):
         text = _template(name)
-        examples.extend(re.findall(r"```markdown\n(---\ntype: plan\n.*?)(?:\n```)", text, re.DOTALL))
+        examples.extend(
+            re.findall(r"```markdown\n(---\ntype: plan\n.*?)(?:\n```)", text, re.DOTALL)
+        )
 
     assert examples
     for example in examples:
@@ -73,9 +71,7 @@ def test_planning_worked_examples_use_native_step_blocks() -> None:
 
 
 def test_planning_prompts_use_author_facing_plan_vocabulary() -> None:
-    text = "\n".join(
-        _template(name) for name in ("planning.jinja", "planning_analysis.jinja")
-    )
+    text = "\n".join(_template(name) for name in ("planning.jinja", "planning_analysis.jinja"))
 
     for label in (
         "## Critical Files",
@@ -104,10 +100,49 @@ def test_plan_format_doc_embedded_examples_validate() -> None:
 def test_planning_edit_templates_explain_stable_targeted_edits() -> None:
     for name in ("planning_edit.jinja", "planning_edit_fallback.jinja"):
         text = _template(name)
+        assert "STAGE_MD_ARTIFACT_TOOL_REFERENCE" in text
+        assert "GET_MD_DRAFT_TOOL_REFERENCE" in text
+        assert "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE" in text
+        assert "`content` is not an accepted argument" in text
         assert "replacement" in text
+        assert "`index` is required for `move`" in text
         assert "### [S-3] Title" in text
         assert "stable" in text.lower()
         assert "never renumbered" in text
+
+
+def test_planning_author_templates_use_the_persisted_step_edit_flow() -> None:
+    for name in (
+        "planning.jinja",
+        "planning_fallback.jinja",
+        "planning_edit.jinja",
+        "planning_edit_fallback.jinja",
+    ):
+        text = _template(name)
+        assert "STAGE_MD_ARTIFACT_TOOL_REFERENCE" in text
+        assert "EDIT_MD_PLAN_STEP_TOOL_REFERENCE" in text
+        assert "GET_MD_DRAFT_TOOL_REFERENCE" in text
+        assert "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE" in text
+        assert "`content` is not an accepted argument" in text
+        assert "`replacement` is required for `insert` and `replace`" in text
+        assert "`index` is required for `move`" in text
+
+
+def test_planning_analysis_teaches_targeted_edits_through_the_saved_draft() -> None:
+    text = _template("planning_analysis.jinja")
+
+    for tool_name in (
+        "ralph_stage_md_artifact",
+        "ralph_edit_md_plan_step",
+        "ralph_get_md_draft",
+        "ralph_finalize_md_artifact",
+    ):
+        assert tool_name in text
+    assert "resubmitted via `ralph_submit_md_artifact`" not in text
+    assert (
+        'Use ralph_edit_md_plan_step with action "replace" on S-2 '
+        "so it names the exact policy"
+    ) not in text
 
 
 def test_analysis_templates_require_markdown_submission_and_actionable_repair() -> None:
@@ -120,6 +155,15 @@ def test_analysis_templates_require_markdown_submission_and_actionable_repair() 
         assert "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE" in text
         assert ".agent/artifact-formats/" in text
         assert "JSON" not in text
+
+
+def test_policy_remediation_analysis_names_its_markdown_contract_and_tools() -> None:
+    text = _template("policy_remediation_analysis.jinja")
+
+    assert "ralph_submit_md_artifact" in text
+    assert "ralph_verify_md_artifact" in text
+    assert ".agent/artifact-formats/policy_remediation_analysis_decision.md" in text
+    assert 'artifact_type="{{ artifact_type }}"' in text
 
 
 def test_commit_and_development_templates_reference_canonical_markdown_docs() -> None:

@@ -132,18 +132,18 @@ _AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB: str = "completion_seen_*.json"
 #   any other extension is user-authored content (e.g. ``script.py``).
 # * ``tmp`` -- MCP server logs (``*.log``), prompt payloads (``*.md``),
 #   and small JSON scratch (``*.json``); no source code lives here.
-# * ``artifacts`` -- artifact submissions are always ``*.json``.
+# * ``artifacts`` -- artifact submissions are always ``*.md``.
 # * ``receipts`` -- completion receipts are always ``*.json``.
 # * ``prompt_history`` -- prompt-payload snapshots are always ``*.json``.
 # * ``artifact-formats`` -- materialized format docs are always ``*.md``.
 # * ``workers`` -- per-worker engine-managed tree: prompt payloads
-#   (``*.md``), agent logs (``*.log``), and per-worker artifacts
-#   (``*.json``). Source files under ``workers/`` are user-authored and
+#   (``*.md``), agent logs (``*.log``), per-worker artifacts
+#   (``*.md``), and bounded internal state (``*.json``). Source files under ``workers/`` are user-authored and
 #   MUST be rejected.
 _AGENT_INTERNAL_DIR_FILE_EXTENSIONS: dict[str, frozenset[str]] = {
     "raw": frozenset({".log"}),
     "tmp": frozenset({".log", ".md", ".json"}),
-    "artifacts": frozenset({".json"}),
+    "artifacts": frozenset({".md"}),
     "receipts": frozenset({".json"}),
     "prompt_history": frozenset({".json"}),
     "artifact-formats": frozenset({".md"}),

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, NoReturn
 
 from loguru import logger
 
+from ralph.phases.artifacts import legacy_json_rejection_detail
 from ralph.phases.required_artifacts import build_required_artifacts
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
@@ -42,9 +43,14 @@ def _check_artifact_gate(
     registry = build_required_artifacts(ctx.artifacts_policy)
     ra = registry.get(phase_def.drain)
     artifact_path = (
-        ra.json_path if ra is not None else f".agent/artifacts/{phase_def.drain}_verification.json"
+        ra.artifact_path
+        if ra is not None
+        else f".agent/artifacts/{phase_def.drain}_verification.md"
     )
     if not ctx.workspace.exists(artifact_path):
+        legacy_detail = legacy_json_rejection_detail(ctx.workspace, artifact_path)
+        if legacy_detail is not None:
+            return False, legacy_detail
         return False, (
             f"Missing required verification artifact at '{artifact_path}'; "
             f"the agent must submit {phase_def.drain}_verification "

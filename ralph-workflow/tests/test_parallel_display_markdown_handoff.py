@@ -57,6 +57,57 @@ def test_emit_review_artifact_falls_back_to_markdown_artifact_document(tmp_path:
     assert "Found a defect" in text
 
 
+def test_parallel_display_regression_development_ignores_retired_json_artifact(
+    tmp_path: Path,
+) -> None:
+    """Cover the markdown-migration task: JSON is not a display fallback."""
+    artifact = tmp_path / ".agent" / "artifacts" / "development_result.json"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text('{"summary":"retired development payload"}', encoding="utf-8")
+    display, buf = _display()
+
+    display.emit_development_artifact(tmp_path)
+
+    assert "retired development payload" not in buf.getvalue()
+
+
+def test_parallel_display_regression_review_ignores_retired_json_artifact(
+    tmp_path: Path,
+) -> None:
+    """Cover the markdown-migration task: JSON is not a display fallback."""
+    artifact = tmp_path / ".agent" / "artifacts" / "issues.json"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text('{"summary":"retired review payload"}', encoding="utf-8")
+    display, buf = _display()
+
+    display.emit_review_artifact(tmp_path)
+
+    assert "retired review payload" not in buf.getvalue()
+
+
+def test_parallel_display_regression_fix_ignores_retired_json_artifacts(
+    tmp_path: Path,
+) -> None:
+    """Cover the markdown-migration task: JSON is not a display fallback."""
+    artifacts = tmp_path / ".agent" / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    (artifacts / "fix_result.json").write_text(
+        '{"fixed":["retired fix payload"]}',
+        encoding="utf-8",
+    )
+    (artifacts / "issues.json").write_text(
+        '{"issues":[{"description":"retired issues payload"}]}',
+        encoding="utf-8",
+    )
+    display, buf = _display()
+
+    display.emit_fix_artifact(tmp_path)
+
+    text = buf.getvalue()
+    assert "retired fix payload" not in text
+    assert "retired issues payload" not in text
+
+
 def test_emit_plan_artifact_hints_when_nothing_on_disk(tmp_path: Path) -> None:
     display, buf = _display()
 

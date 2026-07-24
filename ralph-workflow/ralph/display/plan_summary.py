@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True, slots=True)
 class PlanSummary:
-    """A stable, presentation-friendly projection of a plan.json artifact."""
+    """A stable, presentation-friendly projection of a plan Markdown artifact."""
 
     summary: str | None = None
     scope_items: tuple[str, ...] = ()

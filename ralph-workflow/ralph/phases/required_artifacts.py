@@ -43,7 +43,7 @@ class RequiredArtifact:
 
     phase: str
     artifact_type: str
-    json_path: str
+    artifact_path: str
     markdown_path: str | None
     normalizer: Callable[[dict[str, object]], dict[str, object]] | None
     artifact_required: bool = True
@@ -61,16 +61,15 @@ def build_required_artifacts(
     for contract in artifacts_policy.artifacts.values():
         drain = str(contract.drain)
         artifact_type = contract.artifact_type
-        # Migrated artifacts are markdown source documents; keep the historic
-        # field name so consumers retain a narrow stable interface.
-        json_path = f".agent/artifacts/{artifact_type}.md"
+        # Migrated artifacts are markdown source documents at one canonical path.
+        artifact_path = f".agent/artifacts/{artifact_type}.md"
         markdown_path = contract.markdown_summary_path
         normalizer = _ARTIFACT_TYPE_NORMALIZERS.get(artifact_type)
 
         result[drain] = RequiredArtifact(
             phase=drain,
             artifact_type=artifact_type,
-            json_path=json_path,
+            artifact_path=artifact_path,
             markdown_path=markdown_path,
             normalizer=normalizer,
             artifact_required=True,
@@ -108,7 +107,7 @@ def resolve_phase_required_artifact(
     return RequiredArtifact(
         phase=phase,
         artifact_type=ra.artifact_type,
-        json_path=ra.json_path,
+        artifact_path=ra.artifact_path,
         markdown_path=ra.markdown_path,
         normalizer=ra.normalizer,
         artifact_required=required,
@@ -159,15 +158,23 @@ def build_retry_hint(
     else:
         block = build_retry_error_block(
             failure_summary=(
-                f"required artifact '{ra.artifact_type}' at '{ra.json_path}' "
+                f"required artifact '{ra.artifact_type}' at '{ra.artifact_path}' "
                 "was not submitted or was invalid"
             ),
             detail=detail,
         )
-        artifact_type, artifact_path = ra.artifact_type, ra.json_path
+        artifact_type, artifact_path = ra.artifact_type, ra.artifact_path
 
     lines = [block, "", "Submit the artifact now. Do not restart the task from scratch."]
     tool = submit_tool_name or "the submit-artifact MCP tool"
+    if artifact_path is not None and artifact_path.endswith(".md"):
+        legacy_path = f"{artifact_path[:-3]}.json"
+        lines.append(
+            f"Legacy JSON at '{legacy_path}' is not accepted as '{artifact_type}'. "
+            f"Resubmit the artifact as Markdown at '{artifact_path}' with "
+            "ralph_submit_md_artifact. "
+            "Do not author or resubmit JSON."
+        )
     lines.append(
         f'Call {tool} with artifact_type="{artifact_type}" and put the complete markdown document in '
         "the content field."

@@ -15,7 +15,6 @@ artifact schema; routing uses the raw status string, not a StrEnum.
 
 from __future__ import annotations
 
-import json
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
@@ -26,6 +25,7 @@ from ralph.phases.artifacts import (
     PhaseArtifactError,
     artifact_validation_failure_event,
     decision_vocabulary_for_drain,
+    legacy_json_rejection_detail,
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
@@ -70,9 +70,13 @@ def parse_analysis_decision_status(
     policy_phase_name = phase_name if phase_name is not None else drain_name
     artifact_type = f"{drain_name}_decision"
     ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
-    artifact_path = ra.json_path if ra is not None else f".agent/artifacts/{artifact_type}.md"
+    artifact_path = ra.artifact_path if ra is not None else f".agent/artifacts/{artifact_type}.md"
 
     if not ctx.workspace.exists(artifact_path):
+        legacy_detail = legacy_json_rejection_detail(ctx.workspace, artifact_path)
+        if legacy_detail is not None:
+            logger.warning(legacy_detail)
+            return None
         logger.warning(
             "No analysis artifact found at {}. Cannot determine decision status.",
             artifact_path,
@@ -126,7 +130,6 @@ def _has_noop_plan(ctx: PhaseContext) -> bool:
     if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
         return False
     with suppress(
-        json.JSONDecodeError,
         PlanArtifactValidationError,
         PhaseArtifactError,
         ValueError,
@@ -176,11 +179,11 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
             registry = None
         ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
         artifact_path = (
-            ra.json_path if ra is not None else f".agent/artifacts/{drain_name}_decision.md"
+            ra.artifact_path if ra is not None else f".agent/artifacts/{drain_name}_decision.md"
         )
 
         if not ctx.workspace.exists(artifact_path):
-            detail = (
+            detail = legacy_json_rejection_detail(ctx.workspace, artifact_path) or (
                 f"Missing required analysis artifact at {artifact_path}; "
                 f"the agent must submit {drain_name}_decision before declaring completion"
             )

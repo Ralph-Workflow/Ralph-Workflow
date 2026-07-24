@@ -26,6 +26,7 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.prompts import materialize as materialize_module
 from ralph.workspace.scope import WorkspaceScope
+from tests.plan_fixtures import development_result_markdown
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -123,7 +124,10 @@ def test_parallel_workers_would_collide_on_shared_prompt_and_checkpoint_files_wi
             worker_ns = Path(self._extra_env[str(WORKER_NAMESPACE_ENV)])
             artifact_dir = worker_ns / "artifacts"
             artifact_dir.mkdir(parents=True, exist_ok=True)
-            (artifact_dir / "development_result.json").write_text("{}", encoding="utf-8")
+            (artifact_dir / "development_result.md").write_text(
+                development_result_markdown(unit.unit_id),
+                encoding="utf-8",
+            )
             fan_out_module.ckpt.save(
                 PipelineState(phase="development", work_units=(unit,)),
                 path=worker_checkpoint_path(worker_ns),

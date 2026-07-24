@@ -13,7 +13,6 @@ artifact layout modules, and ``tests/``). Uses AST analysis to find:
   ``.agent/artifacts/<canonical-type>.json``, or
   ``.agent/tmp/<canonical-type>.json`` (via ``write_text``, ``write_bytes``,
   ``open(...)``, or equivalent file-copy helpers).
-- Calls to the lower-level ``store.submit_artifact`` outside allowlisted sites.
 - Calls to ``write_artifact_receipt`` / ``delete_artifact_receipt`` outside
   allowlisted sites.
 
@@ -93,14 +92,7 @@ _FORBIDDEN_PATH_PATTERNS: tuple[tuple[str, str, str], ...] = (
 )
 
 # Lower-level functions that may only be called from allowlisted sites.
-# ``submit_artifact`` matches both ``store.submit_artifact(...)`` and the
-# directly-imported ``submit_artifact(...)`` form used by bridge.py.
 _FORBIDDEN_CALLS: tuple[tuple[str, str, str], ...] = (
-    (
-        "submit_artifact",
-        "store_submit_artifact",
-        "call to submit_artifact (store helper) outside canonical submit",
-    ),
     (
         "write_artifact_receipt",
         "receipt_helper",

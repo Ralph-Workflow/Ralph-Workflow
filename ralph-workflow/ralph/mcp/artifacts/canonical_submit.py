@@ -56,16 +56,13 @@ def submit_artifact_canonical(
     deps: ArtifactHandlerDeps | None = None,
     run_id: str | None = None,
     artifact_dir: Path | None = None,
-    name: str | None = None,
-    overwrite: bool = True,
-    metadata: dict[str, object] | None = None,
 ) -> SubmitResult:
     """Write the validated markdown source of truth and receipt atomically by order.
 
     ``parsed_content`` is retained only for callers that need to validate before
     persistence; the stored artifact is always ``.md`` and never a JSON envelope.
     """
-    del parsed_content, overwrite, metadata
+    del parsed_content
     if markdown is None:
         raise ValueError("markdown source is required for migrated artifacts")
     if deps is None:
@@ -75,11 +72,12 @@ def submit_artifact_canonical(
         )
     backend = deps.backend
     directory = artifact_dir or _artifact_dir(workspace_root)
-    stem = name or artifact_type
-    artifact_path = directory / f"{stem}.md"
+    artifact_path = directory / f"{artifact_type}.md"
     backend.mkdir(directory, parents=True, exist_ok=True)
     if deps.history_enabled and backend.exists(artifact_path):
-        snapshot_current_artifact(directory, workspace_root, artifact_type, backend=backend, now_iso=deps.now_iso)
+        snapshot_current_artifact(
+            directory, workspace_root, artifact_type, backend=backend, now_iso=deps.now_iso
+        )
     write_text_if_changed(backend, artifact_path, markdown, encoding="utf-8")
 
     handoff_relative = handoff_path_for_artifact(artifact_type)
@@ -99,7 +97,12 @@ def submit_artifact_canonical(
             receipt_secret=deps.receipt_secret,
         )
         receipt_path = _receipt_path(workspace_root, run_id, artifact_type)
-        if artifact_type not in {"plan", "planning_analysis_decision", "development_analysis_decision", "review_analysis_decision"}:
+        if artifact_type not in {
+            "plan",
+            "planning_analysis_decision",
+            "development_analysis_decision",
+            "review_analysis_decision",
+        }:
             try:
                 state = RunStateDB(workspace_root)
                 try:
@@ -109,7 +112,9 @@ def submit_artifact_canonical(
             except (OSError, RuntimeError, sqlite3.Error):
                 pass
             sentinel_path = _sentinel_path(workspace_root, run_id)
-    return SubmitResult(artifact_path, receipt_path, sentinel_path, handoff_path, artifact_type, run_id)
+    return SubmitResult(
+        artifact_path, receipt_path, sentinel_path, handoff_path, artifact_type, run_id
+    )
 
 
 def _registered_markdown_types() -> tuple[str, ...]:
@@ -122,14 +127,14 @@ def _fallback_path(workspace_root: Path, artifact_type: str) -> Path:
     return workspace_root / ".agent" / "tmp" / f"{artifact_type}.md"
 
 
-def _clear_fallback_artifacts(workspace_root: Path, run_id: str, *, backend: FileBackend = DEFAULT_FILE_BACKEND) -> None:
-    """Clear obsolete fallback files (legacy JSON and markdown) from a newly started run."""
+def _clear_fallback_artifacts(
+    workspace_root: Path, run_id: str, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> None:
+    """Clear stale Markdown fallback files from a newly started run."""
     del run_id
     tmp = workspace_root / ".agent" / "tmp"
     if not backend.exists(tmp):
         return
-    for path in backend.glob(tmp, "*.json"):
-        backend.unlink(path, missing_ok=True)
     for artifact_type in _registered_markdown_types():
         backend.unlink(_fallback_path(workspace_root, artifact_type), missing_ok=True)
 
@@ -187,4 +192,9 @@ def promote_fallback_artifact(
     return result
 
 
-__all__ = ["SubmitResult", "_clear_fallback_artifacts", "promote_fallback_artifact", "submit_artifact_canonical"]
+__all__ = [
+    "SubmitResult",
+    "_clear_fallback_artifacts",
+    "promote_fallback_artifact",
+    "submit_artifact_canonical",
+]

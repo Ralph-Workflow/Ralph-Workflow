@@ -7,7 +7,6 @@ the missing / can't-parse / wrong-format detection cannot drift between callers.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ralph.phases.artifacts import validate_artifact_on_disk
@@ -18,13 +17,24 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
+VALID_FIX_RESULT = """\
+---
+type: fix_result
+---
+## Summary
+- [S1] Fixed validation
+## Files Changed
+- [F1] ralph/phases/artifacts.py
+"""
+
+
 def _ra(
     normalizer: Callable[[dict[str, object]], dict[str, object]] | None = None,
 ) -> RequiredArtifact:
     return RequiredArtifact(
-        phase="planning",
-        artifact_type="plan",
-        json_path=".agent/artifacts/plan.json",
+        phase="fix",
+        artifact_type="fix_result",
+        artifact_path=".agent/artifacts/fix_result.md",
         markdown_path=None,
         normalizer=normalizer,
     )
@@ -32,7 +42,7 @@ def _ra(
 
 def test_returns_none_when_present_and_valid() -> None:
     ws = MemoryWorkspace()
-    ws.write(".agent/artifacts/plan.json", json.dumps({"type": "plan", "content": {"a": 1}}))
+    ws.write(".agent/artifacts/fix_result.md", VALID_FIX_RESULT)
     assert validate_artifact_on_disk(ws, _ra()) is None
 
 
@@ -45,15 +55,30 @@ def test_detail_when_missing() -> None:
 
 def test_detail_when_unparseable() -> None:
     ws = MemoryWorkspace()
-    ws.write(".agent/artifacts/plan.json", "{ not json")
+    ws.write(".agent/artifacts/fix_result.md", "---\ntype: [\n---\n")
     detail = validate_artifact_on_disk(ws, _ra())
     assert detail is not None
-    assert "json" in detail.lower()
+    assert "invalid" in detail.lower()
 
 
 def test_detail_when_wrong_type() -> None:
     ws = MemoryWorkspace()
-    ws.write(".agent/artifacts/plan.json", json.dumps({"type": "issues", "content": {"a": 1}}))
+    ws.write(
+        ".agent/artifacts/fix_result.md",
+        """\
+---
+type: issues
+---
+## Summary
+Review found issues.
+## Issues
+- [ISS-1] Fix artifact loading
+  Severity: high
+  Location: ralph/phases/artifacts.py
+  Evidence: JSON was accepted
+  How to fix: reject legacy JSON
+""",
+    )
     detail = validate_artifact_on_disk(ws, _ra())
     assert detail is not None
     assert "type" in detail.lower()
@@ -61,7 +86,7 @@ def test_detail_when_wrong_type() -> None:
 
 def test_detail_when_normalizer_rejects() -> None:
     ws = MemoryWorkspace()
-    ws.write(".agent/artifacts/plan.json", json.dumps({"type": "plan", "content": {"a": 1}}))
+    ws.write(".agent/artifacts/fix_result.md", VALID_FIX_RESULT)
 
     def _bad(_content: dict[str, object]) -> dict[str, object]:
         raise ValueError("bad schema: missing field")

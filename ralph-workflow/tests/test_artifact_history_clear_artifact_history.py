@@ -48,3 +48,14 @@ class TestClearArtifactHistory:
         clear_artifact_history(artifact_dir, "plan")
 
         assert hist_dir.exists()
+
+    def test_non_markdown_files_are_not_treated_as_artifact_history(self, tmp_path: Path) -> None:
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        hist_dir = history_dir_for_artifact(artifact_dir, "plan")
+        hist_dir.mkdir(parents=True)
+        unrelated_file = hist_dir / "worker-state.json"
+        unrelated_file.write_text("opaque internal state", encoding="utf-8")
+
+        clear_artifact_history(artifact_dir, "plan")
+
+        assert unrelated_file.read_text(encoding="utf-8") == "opaque internal state"

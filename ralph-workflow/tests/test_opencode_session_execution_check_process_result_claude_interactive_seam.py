@@ -123,7 +123,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
                 required_artifact=RequiredArtifact(
                     phase="development",
                     artifact_type="development_result",
-                    json_path=".agent/artifacts/development_result.json",
+                    artifact_path=".agent/artifacts/development_result.md",
                     markdown_path=None,
                     normalizer=None,
                 ),
@@ -146,7 +146,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
                     required_artifact=RequiredArtifact(
                         phase="development",
                         artifact_type="development_result",
-                        json_path=".agent/artifacts/development_result.json",
+                        artifact_path=".agent/artifacts/development_result.md",
                         markdown_path=None,
                         normalizer=None,
                     ),

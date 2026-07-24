@@ -6,7 +6,6 @@ per-unit status is reported correctly for all workers.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
@@ -31,22 +30,15 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.workspace.scope import WorkspaceScope
 from tests.integration._fake_display_partial_failure import _FakeDisplay
+from tests.plan_fixtures import development_result_markdown
 
 
 def _seed_artifact(tmp_path: Path, unit_id: str) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "development_result.json").write_text(
-        json.dumps(
-            {
-                "name": "development_result",
-                "type": "development_result",
-                "content": {"summary": f"Worker {unit_id} done", "changes": []},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "development_result.md").write_text(
+        development_result_markdown(unit_id),
+        encoding="utf-8",
     )
 
 
@@ -147,18 +139,16 @@ class TestPartialFailureHandoffContent:
             "DEVELOPMENT_RESULT.md must report all_succeeded: false"
         )
 
-    def test_parallel_development_summary_json_has_per_unit_status(
+    def test_parallel_development_summary_markdown_has_per_unit_status(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """parallel_development_summary.json lists per-unit status on partial failure.
+        """parallel_development_summary.md lists per-unit status on partial failure.
 
         Asserts:
-        - .agent/artifacts/parallel_development_summary.json exists
+        - .agent/artifacts/parallel_development_summary.md exists
         - any_failed = true
         - all_succeeded = false
-        - workers list contains entries for both unit-a and unit-b
-        - unit-a entry has status 'succeeded'
-        - unit-b entry has a non-success status
+        - worker entries name unit-a as succeeded and unit-b as failed
         """
 
         unit_a = _make_work_unit("unit-a")
@@ -200,26 +190,13 @@ class TestPartialFailureHandoffContent:
             workspace_scope=scope,
         )
 
-        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
+        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.md"
         assert summary_path.exists(), (
-            ".agent/artifacts/parallel_development_summary.json must be written after fan-out"
+            ".agent/artifacts/parallel_development_summary.md must be written after fan-out"
         )
-        summary = json.loads(summary_path.read_text())
+        summary = summary_path.read_text(encoding="utf-8")
 
-        assert summary["any_failed"] is True, (
-            f"parallel_development_summary.json must have any_failed=true, got: {summary!r}"
-        )
-        assert summary["all_succeeded"] is False, (
-            f"parallel_development_summary.json must have all_succeeded=false, got: {summary!r}"
-        )
-
-        workers_by_id = {w["unit_id"]: w for w in summary["workers"]}
-        assert "unit-a" in workers_by_id, "unit-a must appear in workers list"
-        assert "unit-b" in workers_by_id, "unit-b must appear in workers list"
-
-        assert workers_by_id["unit-a"]["status"] == "succeeded", (
-            f"unit-a must be succeeded, got: {workers_by_id['unit-a']!r}"
-        )
-        assert workers_by_id["unit-b"]["status"] != "succeeded", (
-            f"unit-b must not be succeeded, got: {workers_by_id['unit-b']!r}"
-        )
+        assert "- any_failed: true" in summary
+        assert "- all_succeeded: false" in summary
+        assert "- **unit-a**: succeeded" in summary
+        assert "- **unit-b**: failed" in summary

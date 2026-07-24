@@ -357,6 +357,41 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> 
     assert workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md") in prompt
 
 
+def test_planning_prompts_regression_step_editor_uses_staged_draft_contract(
+    tmp_path: Path,
+) -> None:
+    """Cover the planning-prompt/schema-mismatch task's staged-draft contract."""
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+    prompts = (
+        prompt_planning_xml_with_context(
+            context=context,
+            inputs=PlanningPromptInputs(prompt_content="Plan the work"),
+            workspace=workspace,
+            session_caps=session_caps,
+        ),
+        prompt_planning_xml_with_context(
+            context=context,
+            inputs=PlanningPromptInputs(
+                prompt_content="Revise the plan",
+                analysis_feedback_content="Replace S-2.",
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+            template_name="planning_edit.jinja",
+        ),
+    )
+
+    for prompt in prompts:
+        assert "persisted plan draft" in prompt
+        assert "stage the complete plan first" in prompt
+        assert "`content` is not an accepted argument" in prompt
+        assert "`replacement` is required for `insert` and `replace`" in prompt
+        assert "`index` is required for `move`" in prompt
+        assert "finalize the edited draft" in prompt
+
+
 def test_planning_analysis_prompt_teaches_core_workflow_inference(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))

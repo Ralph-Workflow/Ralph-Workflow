@@ -11,11 +11,12 @@ Tests cover:
 from __future__ import annotations
 
 import importlib
+from dataclasses import fields
 from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.phases.required_artifacts import RequiredArtifact, resolve_phase_required_artifact
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
     ArtifactContract,
@@ -51,6 +52,13 @@ class TestPipelineOwnedArtifactRequiredPolicy:
 
     def test_artifact_contract_does_not_publish_retired_json_path_override(self) -> None:
         assert "artifact_json_path" not in ArtifactContract.model_json_schema()["properties"]
+
+    def test_required_artifact_regression_uses_format_neutral_artifact_path(self) -> None:
+        """Cover the markdown-migration task: the model exposes no JSON-named path."""
+        field_names = {field.name for field in fields(RequiredArtifact)}
+
+        assert "artifact_path" in field_names
+        assert "json_path" not in field_names
 
     def test_phase_required_artifact_uses_pipeline_owned_required_flag(
         self, tmp_path: Path

@@ -6,6 +6,9 @@ they declare actually RESOLVE. Author markdown and submit with
 `ralph_submit_md_artifact`
 (`artifact_type: policy_remediation_analysis_decision`).
 
+See the complete sample artifact — valid format and a model of the craft:
+`.agent/artifact-formats/examples/policy_remediation_analysis_decision.md`
+
 ## The one rule that decides your status
 
 If the script is broken, call it. If the script works and the code it

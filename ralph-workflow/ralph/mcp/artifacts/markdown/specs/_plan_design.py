@@ -1,13 +1,13 @@
 """Design-section field mapping for the plan markdown grammar.
 
-Maps the ``## Design`` section's labeled fields onto the legacy
-``design`` content dict consumed by the canonical plan validator. Field
+Maps the ``## Design`` section's labeled fields to the canonical
+``design`` content mapping consumed by the plan validator. Field
 groups mirror the canonical sub-models: a group is emitted only when its
 fields appear, and a group whose canonical model requires an anchor
 field (``Constraints:``, ``Black box:``, ``DI required:``, ``Refactor
 approach:``) hard-fails with a line-anchored diagnostic when dependents
-appear without it. Closed-enum values inside design stay hard-validated
-by the canonical pydantic models, exactly as the JSON grammar did.
+appear without it. Closed-enum values inside design remain hard-validated
+by the canonical pydantic models.
 """
 
 from __future__ import annotations

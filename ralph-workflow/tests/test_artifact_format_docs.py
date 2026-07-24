@@ -25,6 +25,8 @@ from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
+_POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
+
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
 def test_every_supported_type_has_a_nonempty_format_doc(artifact_type: str) -> None:
@@ -33,6 +35,29 @@ def test_every_supported_type_has_a_nonempty_format_doc(artifact_type: str) -> N
     assert doc.startswith(f"# {artifact_type} artifact format")
     assert "ralph_submit_md_artifact" in doc
     assert "```markdown" in doc
+
+
+def test_policy_remediation_analysis_decision_ships_a_validated_format_contract() -> None:
+    assert _POLICY_REMEDIATION_ANALYSIS_DECISION in FORMAT_DOC_ARTIFACT_TYPES
+    assert _POLICY_REMEDIATION_ANALYSIS_DECISION in EXAMPLE_ARTIFACT_TYPES
+
+    doc = load_bundled_format_doc(_POLICY_REMEDIATION_ANALYSIS_DECISION)
+    example = load_bundled_example(_POLICY_REMEDIATION_ANALYSIS_DECISION)
+    index = load_bundled_format_index()
+
+    assert doc is not None
+    assert example is not None
+    assert example_workspace_path(_POLICY_REMEDIATION_ANALYSIS_DECISION) in doc
+    assert _POLICY_REMEDIATION_ANALYSIS_DECISION in index
+    assert "json" not in doc.lower()
+    assert "json" not in example.lower()
+
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    _, diagnostics = parse_and_validate(
+        example,
+        get_spec(_POLICY_REMEDIATION_ANALYSIS_DECISION),
+    )
+    assert [item for item in diagnostics if item.severity == "error"] == []
 
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
@@ -59,9 +84,7 @@ def test_unknown_types_have_no_bundled_doc_or_example() -> None:
 def test_workspace_paths_are_canonical_markdown_paths() -> None:
     assert format_doc_workspace_path("plan") == ".agent/artifact-formats/plan.md"
     assert example_workspace_path("plan") == ".agent/artifact-formats/examples/plan.md"
-    assert format_index_workspace_path() == (
-        ".agent/artifact-formats/artifact_formats_index.md"
-    )
+    assert format_index_workspace_path() == (".agent/artifact-formats/artifact_formats_index.md")
 
 
 def test_materialize_format_doc_and_example_round_trip() -> None:
@@ -73,9 +96,7 @@ def test_materialize_format_doc_and_example_round_trip() -> None:
 
     assert doc_path == format_doc_workspace_path("commit_message")
     assert example_path == example_workspace_path("commit_message")
-    assert backend.read_text(workspace_root / doc_path) == load_bundled_format_doc(
-        "commit_message"
-    )
+    assert backend.read_text(workspace_root / doc_path) == load_bundled_format_doc("commit_message")
     assert backend.read_text(workspace_root / example_path) == load_bundled_example(
         "commit_message"
     )

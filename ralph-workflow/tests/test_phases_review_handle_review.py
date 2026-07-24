@@ -58,15 +58,26 @@ class TestHandleReview:
     def test_invoke_agent_effect_returns_agent_success(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
-        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/issues.json"
-        ctx.workspace.read.return_value = (
-            '{"type":"issues","content":{"status":"clean","summary":"ok","issues":[]}}'
-        )
+        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/issues.md"
+        ctx.workspace.read.return_value = """---
+type: issues
+status: clean
+---
+
+## Summary
+- [SUM-1] Review passed.
+
+## Issues
+
+## What Came Up Short
+
+## How To Fix
+"""
 
         result = handle_review(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
-    def test_markdown_artifact_takes_precedence_over_stale_legacy_json(self) -> None:
+    def test_markdown_artifact_ignores_stale_legacy_json(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "review"
         ctx = self._make_context()
@@ -99,7 +110,25 @@ status: issues_found
 
         assert result == [PipelineEvent.REVIEW_ISSUES_FOUND]
         ctx.workspace.read.assert_any_call(".agent/artifacts/issues.md")
-        assert ctx.workspace.read.call_count == 2
+        assert ctx.workspace.read.call_count == 1
+
+    def test_review_regression_stray_json_is_ignored(self) -> None:
+        """Regression for PROMPT.md's Markdown-only tooling requirement."""
+        effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "review"
+        ctx = self._make_context()
+        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/issues.json"
+        ctx.workspace.read.side_effect = FileNotFoundError
+
+        result = handle_review(effect, ctx)
+
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.recoverable is True
+        assert ".agent/artifacts/issues.md" in event.reason
+        assert ".json" not in event.reason
+        ctx.workspace.read.assert_called_once_with(".agent/artifacts/issues.md")
 
     def test_invoke_agent_effect_without_issues_artifact_returns_phase_failure_recoverable(
         self,
@@ -145,10 +174,23 @@ status: issues_found
         marker_path = tmp_git_repo / REVIEW_BASELINE_MARKER
         marker_path.parent.mkdir(parents=True, exist_ok=True)
         marker_path.write_text(baseline, encoding="utf-8")
-        issues_path = tmp_git_repo / ".agent" / "artifacts" / "issues.json"
+        issues_path = tmp_git_repo / ".agent" / "artifacts" / "issues.md"
         issues_path.parent.mkdir(parents=True, exist_ok=True)
         issues_path.write_text(
-            '{"type":"issues","content":{"status":"clean","summary":"ok","issues":[]}}',
+            """---
+type: issues
+status: clean
+---
+
+## Summary
+- [SUM-1] Review passed.
+
+## Issues
+
+## What Came Up Short
+
+## How To Fix
+""",
             encoding="utf-8",
         )
 
@@ -171,10 +213,23 @@ status: issues_found
 
     def test_review_first_pass_has_no_baseline(self, tmp_git_repo: Path) -> None:
         ctx = _fs_context(tmp_git_repo)
-        issues_path = tmp_git_repo / ".agent" / "artifacts" / "issues.json"
+        issues_path = tmp_git_repo / ".agent" / "artifacts" / "issues.md"
         issues_path.parent.mkdir(parents=True, exist_ok=True)
         issues_path.write_text(
-            '{"type":"issues","content":{"status":"clean","summary":"ok","issues":[]}}',
+            """---
+type: issues
+status: clean
+---
+
+## Summary
+- [SUM-1] Review passed.
+
+## Issues
+
+## What Came Up Short
+
+## How To Fix
+""",
             encoding="utf-8",
         )
         effect = InvokeAgentEffect(
