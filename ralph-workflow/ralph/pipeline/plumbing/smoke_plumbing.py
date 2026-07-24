@@ -258,11 +258,29 @@ def _build_smoke_prompt(
     subagent_prompt: str | None = None,
 ) -> str:
     """Return the prompt used for the parity smoke test."""
-    artifact_content_schema = (
-        'status: one of "passed", "failed", or "partial"; '
-        f'output_file: "{output_relpath}"; '
-        "observed_working: string[]; observed_breaks: string[]; "
-        "headless_guide_checks: string[]; summary: non-empty string."
+    artifact_document = (
+        "---\n"
+        "type: smoke_test_result\n"
+        "status: passed\n"
+        f"output_file: {output_relpath}\n"
+        "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] The smoke test completed successfully.\n"
+        "\n"
+        "## Observed Working\n"
+        "\n"
+        "- [OK-1] Created todo-list.js.\n"
+        "- [OK-2] Submitted the smoke test result.\n"
+        "\n"
+        "## Headless Guide Checks\n"
+        "\n"
+        "- [HG-1] Session capture.\n"
+        "- [HG-2] Tool activity.\n"
+        "- [HG-3] Completion signal.\n"
+        "- [HG-4] Parser events.\n"
+        "- [HG-5] Tmp artifact creation."
     )
 
     subagent_requirements = ""
@@ -277,67 +295,12 @@ def _build_smoke_prompt(
             "artifact and completing.\n"
         )
 
-    if transport == AgentTransport.AGY:
-        # AGY's current headless mode does not reliably call Ralph's
-        # streamable-HTTP MCP tools, but it can write files directly. We
-        # therefore instruct it to persist the smoke_test_result artifact as a
-        # file. The completion-signal layer auto-promotes this direct write to
-        # a canonical receipt at completion-check time, and the receipt is the
-        # authoritative completion signal for AGY — the prompt intentionally
-        # does NOT instruct the model to print a transcript marker, because
-        # transcript text can be spoofed by ordinary model output and is not a
-        # trusted completion signal on its own (see
-        # ``_explicit_completion_seen`` for the AGY branch and the regression
-        # test ``test_agy_smoke_completion_requires_receipt_not_transcript_marker``
-        # in tests/test_agy_execution_contract.py).
-        artifact_path = ".agent/artifacts/smoke_test_result.json"
-        artifact_wrapper = (
-            "{\n"
-            '  "name": "smoke_test_result",\n'
-            '  "type": "smoke_test_result",\n'
-            '  "content": {\n'
-            '    "status": "passed",\n'
-            f'    "output_file": "{output_relpath}",\n'
-            '    "observed_working": [\n'
-            '      "created todo-list.js",\n'
-            '      "wrote smoke_test_result artifact"\n'
-            "    ],\n"
-            '    "observed_breaks": [],\n'
-            '    "headless_guide_checks": [\n'
-            '      "tool activity",\n'
-            '      "parser events",\n'
-            '      "tmp artifact creation"\n'
-            "    ],\n"
-            '    "summary": "AGY smoke test completed successfully"\n'
-            "  },\n"
-            '  "created_at": "2026-01-01T00:00:00+00:00",\n'
-            '  "updated_at": "2026-01-01T00:00:00+00:00",\n'
-            '  "metadata": {}\n'
-            "}"
-        )
-        return (
-            "Create a small JavaScript todo list implementation at "
-            f"`{output_relpath}`.\n\n"
-            "Requirements:\n"
-            "- Keep it tiny: one file only.\n"
-            "- Export a small in-memory todo list API.\n"
-            "- Do not touch files outside the workspace-managed paths `tmp/` and "
-            "`.agent/artifacts/`. The `.agent/artifacts/` path is the Ralph-Workflow-managed "
-            "directory where the `smoke_test_result` artifact must land; do not write to any "
-            "other `.agent/` subdirectory or to the workspace root.\n"
-            "- Use the headless semantic guide as a rubric: session capture, tool activity, "
-            "completion signal, parser events, and tmp artifact creation.\n"
-            f"{subagent_requirements}"
-            f"- Write a JSON artifact to `{artifact_path}` with this exact wrapper "
-            "(do not change the outer keys):\n"
-            f"```json\n{artifact_wrapper}\n```\n"
-            f"The inner content schema is: {artifact_content_schema}\n"
-            "- Do not nest extra objects like rubric/details/metadata "
-            "inside the artifact content.\n"
-            "- The smoke_test_result artifact write is the authoritative completion "
-            "signal. Do NOT print a transcript completion marker; the harness will not "
-            "trust one.\n"
-        )
+    completion_requirement = (
+        "- The canonical smoke_test_result submission is the authoritative completion "
+        "signal. Do NOT print a transcript completion marker; the harness will not trust one.\n"
+        if transport == AgentTransport.AGY
+        else "- When finished, call declare_complete.\n"
+    )
 
     return (
         "Create a small JavaScript todo list implementation at "
@@ -351,10 +314,10 @@ def _build_smoke_prompt(
         f"{subagent_requirements}"
         f"- Call `{submit_artifact_tool_name}` with "
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
-        "and use this exact content schema: "
-        f"{artifact_content_schema}\n"
-        "- Do not nest extra objects like rubric/details/metadata inside the artifact content.\n"
-        "- When finished, call declare_complete.\n"
+        "and put this complete Markdown document in the content argument:\n"
+        f"```markdown\n{artifact_document}\n```\n"
+        "- Submit through the tool; do not write an artifact file directly.\n"
+        f"{completion_requirement}"
     )
 
 
@@ -623,7 +586,7 @@ def _execute_smoke_turns(
 
 def _clear_smoke_artifact(workspace_root: Path) -> None:
     artifact_path = (
-        workspace_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.json"
+        workspace_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     )
     artifact_path.unlink(missing_ok=True)
 

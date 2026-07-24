@@ -40,27 +40,28 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
 )
 
 
-def test_agy_prompt_allows_agent_artifacts() -> None:
-    """The AGY smoke prompt explicitly allows ``.agent/artifacts/`` writes."""
+def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
+    """The AGY smoke prompt submits Markdown through the canonical MCP tool."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
-        submit_artifact_tool_name="ralph_submit_artifact",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
         transport=AgentTransport.AGY,
     )
-    assert ".agent/artifacts/" in prompt_text
-    assert "Do not touch files outside the workspace-managed paths" in prompt_text
-    assert "Do not touch files outside tmp/" not in prompt_text
+    assert "Call `ralph_submit_md_artifact`" in prompt_text
+    assert 'artifact_type="smoke_test_result"' in prompt_text
+    assert "```markdown" in prompt_text
 
 
-def test_agy_prompt_forbids_other_agent_subdirectories() -> None:
-    """The AGY smoke prompt forbids writes outside ``tmp/`` and ``.agent/artifacts/``."""
+def test_agy_prompt_forbids_direct_artifact_writes() -> None:
+    """The AGY smoke prompt keeps agent writes under ``tmp/``."""
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
-        submit_artifact_tool_name="ralph_submit_artifact",
+        submit_artifact_tool_name="ralph_submit_md_artifact",
         transport=AgentTransport.AGY,
     )
-    assert "do not write to any other `.agent/` subdirectory" in prompt_text
-    assert "workspace root" in prompt_text
+    assert "Do not touch files outside tmp/" in prompt_text
+    assert "do not write an artifact file directly" in prompt_text
+    assert ".agent/artifacts/" not in prompt_text
 
 
 def test_smoke_invariants_hold() -> None:

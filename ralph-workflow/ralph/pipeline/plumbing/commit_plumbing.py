@@ -945,13 +945,15 @@ def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str], agent: 
     and submit-tool name are supplied here.
     """
     required = _commit_required_artifact()
-    example_content: dict[str, str] = {
-        "type": "commit",
-        "subject": "fix(auth): prevent token expiry race",
-    }
+    example_content = (
+        "---\n"
+        "type: commit\n"
+        "subject: fix(auth): prevent token expiry race\n"
+        "---"
+    )
     example_arguments: dict[str, str] = {
         "artifact_type": required.artifact_type,
-        "content": json.dumps(example_content),
+        "content": example_content,
     }
     tool_names = _submit_artifact_tool_names_for_transport(agent.transport)
     hint = build_retry_hint(

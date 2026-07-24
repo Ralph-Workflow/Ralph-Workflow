@@ -100,19 +100,20 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
 def test_build_smoke_prompt_targets_tmp_javascript_todo_list() -> None:
     prompt = smoke_module.build_smoke_prompt(
         "tmp/interactive-claude-smoke/todo-list.js",
-        submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
     )
 
     assert "tmp/interactive-claude-smoke/todo-list.js" in prompt
     assert "JavaScript todo list" in prompt
     assert "declare_complete" in prompt
     assert "smoke_test_result" in prompt
-    assert "mcp__ralph__ralph_submit_artifact" in prompt
-    assert 'status: one of "passed", "failed", or "partial"' in prompt
-    assert 'output_file: "tmp/interactive-claude-smoke/todo-list.js"' in prompt
-    assert "observed_working" in prompt
-    assert "observed_breaks" in prompt
-    assert "headless_guide_checks" in prompt
+    assert "mcp__ralph__ralph_submit_md_artifact" in prompt
+    assert "type: smoke_test_result" in prompt
+    assert "status: passed" in prompt
+    assert "output_file: tmp/interactive-claude-smoke/todo-list.js" in prompt
+    assert "## Observed Working" in prompt
+    assert "## Headless Guide Checks" in prompt
+    assert "JSON artifact" not in prompt
 
 
 def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
