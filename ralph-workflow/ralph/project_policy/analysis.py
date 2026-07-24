@@ -24,7 +24,7 @@ Decision handoff
 
 :func:`ralph.pipeline.effect_executor.execute_agent_effect` returns a bare
 ``PipelineEvent`` enum with no payload, so the decision cannot ride back on the
-return value. It is read from the artifact JSON the agent submits through MCP --
+return value. It is read from the Markdown artifact the agent submits through MCP --
 exactly how :mod:`ralph.phases.analysis` reads the in-graph analysis decisions.
 
 The stale-artifact rule is the sharpest edge in the whole pipeline: the decision

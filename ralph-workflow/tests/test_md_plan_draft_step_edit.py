@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
-from ralph.mcp.tools.coordination import ToolContent, ToolResult, WorkspaceLike
+from ralph.mcp.tools.coordination import InvalidParamsError, ToolContent, ToolResult, WorkspaceLike
 from ralph.mcp.tools.md_artifact import (
     handle_edit_md_plan_step,
     handle_get_md_draft,
@@ -70,3 +72,36 @@ def test_edit_plan_step_updates_the_persisted_draft_for_a_fresh_session() -> Non
         "str", resumed_payload["content"]
     )
     assert resumed_payload["valid"] is True
+
+
+def test_edit_plan_step_rejects_a_direct_content_document() -> None:
+    """Passing 'content' must fail loudly instead of silently skipping persistence."""
+    backend = MemoryBackend()
+    deps = ArtifactHandlerDeps(backend=backend)
+    workspace = cast("WorkspaceLike", _Workspace())
+    handle_stage_md_artifact(
+        planning_session(),
+        workspace,
+        {"artifact_type": "plan", "content": _plan_document()},
+        deps=deps,
+    )
+
+    with pytest.raises(InvalidParamsError, match="ralph_stage_md_artifact"):
+        handle_edit_md_plan_step(
+            planning_session(),
+            workspace,
+            {
+                "content": _plan_document(),
+                "action": "replace",
+                "step_id": "S-2",
+                "replacement": "### [S-2] Anything\nBody.\n\nType: action\n",
+            },
+            deps=deps,
+        )
+
+    resumed = _payload(
+        handle_get_md_draft(
+            planning_session(), workspace, {"artifact_type": "plan"}, deps=deps
+        )
+    )
+    assert resumed["content"] == _plan_document()

@@ -63,16 +63,16 @@ The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. B
 
 {% endif %}
 
-## PARALLEL EXECUTION (when the plan declares `work_units` or `parallel_plan`)
+## PARALLEL EXECUTION (when the plan declares `## Work Units` or `## Parallel Plan`)
 
-When the EXECUTION PLAN above declares `work_units` or `parallel_plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within the `allowed_directories` of each work unit, and producing the matching `plan_items_proven` evidence for each unit. Ralph Workflow exposes no coordination command for plan work — dispatching, supervising, and reconciling sub-agents is entirely your job. If your agent runtime does not support sub-agents, execute the same plan sequentially in `unit_id` order.
+When the EXECUTION PLAN above declares `## Work Units` or `## Parallel Plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within each work unit's declared `Directories:`, and producing the matching `## Plan Items Proven` evidence for each unit. Ralph Workflow exposes no coordination command for plan work — dispatching, supervising, and reconciling sub-agents is entirely your job. If your agent runtime does not support sub-agents, execute the same plan sequentially in `[unit-ID]` order.
 
 Sub-agents are not limited to declared work units. Even when the plan declares neither field, use them whenever it genuinely helps:
 - **Information gathering**: fan out read-only sub-agents to locate code, map call sites, or research APIs instead of reading file after file in your own context.
 - **Naturally concurrent steps**: plan steps with no dependency between them and disjoint target files may run as separate sub-agents at the same time.
 - **Independent checks**: investigations or verifications that do not depend on each other can run concurrently while you continue the next step.
 
-When to stay sequential: steps that touch the same files, steps ordered by `depends_on`, and any work whose outcome decides what the next step should do. Never let two sub-agents edit the same file. Integration, final verification, and artifact submission always happen in your main session.
+When to stay sequential: steps that touch the same files, steps ordered by `Depends on:`, and any work whose outcome decides what the next step should do. Never let two sub-agents edit the same file. Integration, final verification, and artifact submission always happen in your main session.
 
 ABSOLUTE RULE: this continuation exists because the previous development pass was not complete. If your runtime provides a sub-agent gate, you MUST use at least one sub-agent as a hard gate before artifact submission. Have it review the remaining work against the EXECUTION PLAN, available continuation context, and the DEVELOPMENT RESULT ARTIFACT proof requirements below. Until that sub-agent review reports no remaining gaps, you MUST NOT submit the artifact or declare completion. If your runtime has no sub-agent mechanism, run the same gate yourself sequentially before submission.
 
@@ -82,11 +82,11 @@ You MUST submit a `development_result` artifact before declaring completion: a m
 
 **## Plan Items Proven** (required when the execution plan has steps): one `- [S-N] <proof>` item per plan step, where `S-N` EXACTLY matches the step's stable ID from the plan document and the proof cites concrete evidence, e.g. `- [S-1] Modified src/validation.py lines 10-25; pytest tests/test_validation.py -q passes.`
 
-**## Plan Items Proven** (when the plan uses work_units instead): one `- [<unit_id>] <proof>` item for the work unit you were assigned, where the ID EXACTLY matches the plan's `unit_id`.
+**## Plan Items Proven** (when the plan uses `## Work Units` instead): one `- [unit-ID] <proof>` item for the work unit you were assigned, where the bracketed ID EXACTLY matches the plan's `[unit-ID]` bracket ID.
 
 **## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per `How To Fix` entry from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
 
-Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step, work_unit id, or analysis item) also fail validation and trigger a re-prompt.
+Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step ID, work-unit bracket ID, or analysis item ID) also fail validation and trigger a re-prompt.
 
 {% set development_result_example %}
 ---

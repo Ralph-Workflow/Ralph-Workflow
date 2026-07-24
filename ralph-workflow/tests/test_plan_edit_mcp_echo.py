@@ -2,22 +2,30 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
 import pytest
 from pydantic import TypeAdapter
 
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
     WorkspaceLike,
 )
-from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step
+from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step, handle_stage_md_artifact
 from tests.mcp.test_md_plan_spec import _plan_document
+from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_session import planning_session
 
 _JSON_OBJECT = TypeAdapter(dict[str, object])
+
+
+class _Workspace:
+    def absolute_path(self, path: str) -> str:
+        return str(Path("/workspace") / path)
 
 
 def _session() -> CoordinationSessionLike:
@@ -25,15 +33,25 @@ def _session() -> CoordinationSessionLike:
 
 
 def _workspace() -> WorkspaceLike:
-    return cast("WorkspaceLike", None)
+    return cast("WorkspaceLike", _Workspace())
 
 
-def test_edit_tool_echoes_only_the_updated_markdown_document() -> None:
+def _staged_deps() -> ArtifactHandlerDeps:
+    deps = ArtifactHandlerDeps(backend=MemoryBackend())
+    handle_stage_md_artifact(
+        _session(),
+        _workspace(),
+        {"artifact_type": "plan", "content": _plan_document()},
+        deps=deps,
+    )
+    return deps
+
+
+def test_edit_tool_returns_the_updated_persisted_draft() -> None:
     result = handle_edit_md_plan_step(
         _session(),
         _workspace(),
         {
-            "content": _plan_document(),
             "action": "replace",
             "step_id": "S-2",
             "replacement": (
@@ -44,6 +62,7 @@ def test_edit_tool_echoes_only_the_updated_markdown_document() -> None:
                 "Verify: pytest tests/test_plan_artifact*.py -q\n"
             ),
         },
+        deps=_staged_deps(),
     )
 
     block = result.content[0]
@@ -51,9 +70,24 @@ def test_edit_tool_echoes_only_the_updated_markdown_document() -> None:
     payload = _JSON_OBJECT.validate_json(block.text)
     edited = payload["content"]
     assert isinstance(edited, str)
-    assert set(payload) == {"content"}
+    assert payload["exists"] is True
     assert "### [S-2] Run focused tests" in edited
     assert "Depends on: S-1" in edited
+
+
+def test_edit_tool_rejects_a_full_document_passed_as_content() -> None:
+    with pytest.raises(InvalidParamsError, match="not an accepted argument"):
+        handle_edit_md_plan_step(
+            _session(),
+            _workspace(),
+            {
+                "content": _plan_document(),
+                "action": "replace",
+                "step_id": "S-2",
+                "replacement": "### [S-2] Anything\nBody.\n\nType: action\n",
+            },
+            deps=_staged_deps(),
+        )
 
 
 @pytest.mark.parametrize(
@@ -62,7 +96,6 @@ def test_edit_tool_echoes_only_the_updated_markdown_document() -> None:
         ({"step_id": "S-1"}, "action and step_id"),
         (
             {
-                "content": "x",
                 "action": "replace",
                 "step_id": "S-1",
                 "replacement": {"title": "JSON is retired"},
@@ -71,7 +104,6 @@ def test_edit_tool_echoes_only_the_updated_markdown_document() -> None:
         ),
         (
             {
-                "content": "x",
                 "action": "move",
                 "step_id": "S-1",
                 "index": "1",
@@ -88,4 +120,5 @@ def test_edit_tool_rejects_non_markdown_wire_shapes(
             _session(),
             _workspace(),
             params,
+            deps=_staged_deps(),
         )

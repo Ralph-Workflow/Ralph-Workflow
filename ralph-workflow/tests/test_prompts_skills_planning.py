@@ -15,11 +15,11 @@ SHIPPED_SKILLS_DISCOVERY_HINTS = (
     "## SHIPPED SKILLS",
     "discovers them automatically",
     "Do not Read",
-    "skills_mcp.skills",
+    "`Skills:` line",
 )
 
 PLANNING_SKILLS_MCP_HINTS = (
-    "Before staging `skills_mcp`",
+    "Before authoring the plan's `## Skills MCP` section",
     "already available to you",
 )
 

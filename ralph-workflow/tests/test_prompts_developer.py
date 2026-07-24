@@ -14,10 +14,6 @@ from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-PLANNING_EDIT_GET_DRAFT_TEXT = (
-    "Use `ralph_get_plan_draft` to inspect the current finalized plan "
-    "or staged draft before editing."
-)
 PLANNING_EDIT_DEFECT_SCOPE_TEXT = (
     "Before revising any section, classify the feedback scope as one of:"
 )
@@ -25,11 +21,6 @@ PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT = (
     "If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, "
     "narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan"
 )
-PLANNING_EDIT_FINALIZE_TEXT = (
-    "Use `ralph_finalize_plan` after revising the affected sections so "
-    "the updated plan replaces the prior finalized plan."
-)
-PLANNING_EDIT_SELF_AUDIT_TEXT = "Before `ralph_finalize_plan`, perform this self-audit:"
 PLANNING_EDIT_RISK_COVERAGE_TEXT = (
     "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
 )
@@ -54,44 +45,11 @@ PLANNING_EDIT_SCOPE_DERIVATION_TEXT = (
 PLANNING_EDIT_PASS_TARGET_TEXT = (
     "Your target is to submit the strongest revised plan you can so the next planning-analysis pass"
 )
-PLANNING_EDIT_NO_KNOWN_GAPS_TEXT = (
-    "Do not finalize a draft that still has any known unresolved analyzer finding"
-)
-PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_TEXT = (
-    "If fixing one section changes the truth of another section, replace every dependent section"
-)
-PLANNING_EDIT_NEXT_ANALYZER_TEXT = (
-    "Before finalizing, proactively search for any additional repo-grounded failure"
-)
-PLANNING_EDIT_SURFACED_BLOCKER_TEXT = (
-    "If a canonical verification command or repo-wide audit already surfaces a blocker "
-    "during replanning"
-)
-PLANNING_EDIT_RULE_CATEGORY_TEXT = (
-    "When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory"
-)
-PLANNING_EDIT_NO_EXCEPTION_TEXT = (
-    "Do not preserve prompt-violating tests, files, or workflows as justified exceptions"
-)
 PLANNING_EDIT_STARTING_POINT_TEXT = (
     "Treat the planning-analysis feedback as a starting point, not as the full list of issues"
 )
 PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT = (
     "Do not localize your revision pass to only the sections explicitly cited by the analyzer"
-)
-PLANNING_EDIT_SELF_ANALYSIS_TEXT = (
-    "You must perform your own repo-grounded analysis before finalizing"
-)
-PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
-    "Every analyzer issue must map to concrete revised sections or an explicit verified reason"
-)
-PLANNING_EDIT_CLOSURE_LEDGER_TEXT = "Build a closure ledger before finalizing the revised draft"
-PLANNING_EDIT_ADJACENT_ISSUES_TEXT = "the adjacent or implied issues your own analysis discovered"
-PLANNING_EDIT_CONTINUATION_GATE_TEXT = (
-    "If your runtime provides a subagent gate, you MUST use it as a hard stop"
-)
-PLANNING_EDIT_NO_SUBMISSION_BEFORE_GATE_TEXT = (
-    "you MUST NOT finalize or submit the revised plan artifact"
 )
 PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT = (
     "Infer the core user-facing workflows and prerequisite actions that must exist"
@@ -122,17 +80,6 @@ PLANNING_PARALLEL_ANALYSIS_TEXT = (
 PLANNING_SUBAGENT_REVIEW_FANOUT_TEXT = "dispatch one reviewer per rubric dimension"
 PLANNING_RUBRIC_RISK_AUDIT_TEXT = (
     "**Risk Coverage** — concrete failure modes with actionable mitigations"
-)
-PLANNING_EDIT_FINDING_CLOSURE_SCOUT_TEXT = "fan out one scout per analyzer finding"
-PLANNING_EDIT_FALLBACK_SCOUT_TEXT = (
-    "fan out read-only scouts to verify each analyzer finding's closure"
-)
-PLANNING_ANALYSIS_FORMAT_TEXT = "Use this exact string format for each `what_came_up_short` entry"
-PLANNING_EDIT_FALLBACK_HISTORY_TEXT = (
-    "Inspect this history to understand what plans have been tried and rejected before"
-)
-PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_TEXT = (
-    "If the defect scope is `repo_wide`, replace the summary, scope, and early steps"
 )
 DEVELOPER_SMALL_CHANGE_TEXT = "Make the smallest self-contained change that solves the problem"
 DEVELOPER_NATIVE_CHECKS_TEXT = (
@@ -197,7 +144,7 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
     assert plan_text in prompt
     assert "ARTIFACT SUBMISSION" not in prompt
     assert "development_result" in prompt
-    assert "plan_items_proven" in prompt
+    assert "## Plan Items Proven" in prompt
     assert "content_path" not in prompt
     assert DEVELOPER_SMALL_CHANGE_TEXT in prompt
     assert DEVELOPER_NATIVE_CHECKS_TEXT in prompt
@@ -506,7 +453,7 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: Path) -> No
     assert "{%" not in prompt
 
 
-def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: Path) -> None:
+def test_developer_prompt_fallback_states_result_artifact_contract(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -525,7 +472,10 @@ def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: Path
             session_caps=session_caps,
         )
 
-    assert "development_result" not in prompt
+    assert "## Development result artifact contract" in prompt
+    assert ".agent/artifact-formats/development_result.md" in prompt
+    assert "ralph_submit_md_artifact" in prompt
+    assert ".agent/tmp/development_result.md" in prompt
     assert "content_path" not in prompt
     assert "ralph_submit_artifact" not in prompt
     assert "<ralph-development-result>" not in prompt

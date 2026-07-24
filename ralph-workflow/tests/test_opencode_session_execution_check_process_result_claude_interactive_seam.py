@@ -101,7 +101,15 @@ class TestCheckProcessResultClaudeInteractiveSeam:
         run_id = "seam-claude-on-disk-run-id"
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
-        (artifact_dir / "development_result.json").write_text('{"summary": "done"}')
+        (artifact_dir / "development_result.md").write_text(
+            "---\n"
+            "type: development_result\n"
+            "status: completed\n"
+            "---\n\n"
+            "## Summary\n\n- [SUM-1] done\n\n"
+            "## Files Changed\n\n- [F-1] src/x.py\n",
+            encoding="utf-8",
+        )
         receipt_dir = tmp_path / ".agent" / "receipts" / run_id
         receipt_dir.mkdir(parents=True)
         (receipt_dir / "development_result.json").write_text(

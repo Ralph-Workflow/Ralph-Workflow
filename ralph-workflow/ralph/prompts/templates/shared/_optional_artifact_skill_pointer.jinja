@@ -11,10 +11,10 @@
 
      ## OPTIONAL: <skill_name> skill
 
-     The `<skill_name>` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a worked example and a recovery path for rejected documents. The canonical document grammar and section shapes remain in `<format_doc>` — that is the source of truth.
+     The `<skill_name>` skill is OPTIONAL — invoke it by name through your agent's skill mechanism. You may consult it for a worked example and a recovery path for rejected documents. The canonical document grammar and section shapes remain in `<format_doc>` — that is the source of truth.
 #}
 {% macro render_optional_artifact_skill_pointer(skill_name, format_doc) -%}
 ## OPTIONAL: {{ skill_name }} skill
 
-The `{{ skill_name }}` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a worked example and a recovery path for rejected documents. The canonical document grammar and section shapes remain in `{{ format_doc }}` — that is the source of truth.
+The `{{ skill_name }}` skill is OPTIONAL — invoke it by name through your agent's skill mechanism. You may consult it for a worked example and a recovery path for rejected documents. The canonical document grammar and section shapes remain in `{{ format_doc }}` — that is the source of truth.
 {%- endmacro %}

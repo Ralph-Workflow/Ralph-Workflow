@@ -184,11 +184,11 @@ def test_commit_opencode_simplified_uses_cache() -> None:
     try:
         first = commit.prompt_commit_message_for_opencode(
             "diff --git a/x b/x\n+x",
-            submit_artifact_tool_name="ralph_submit_artifact",
+            submit_artifact_tool_name="ralph_submit_md_artifact",
         )
         second = commit.prompt_commit_message_for_opencode(
             "diff --git a/x b/x\n+y",
-            submit_artifact_tool_name="ralph_submit_artifact",
+            submit_artifact_tool_name="ralph_submit_md_artifact",
         )
     finally:
         _packaged_template_cache._reader = original_reader

@@ -48,7 +48,8 @@ status: completed
 - `## Plan Items Proven` — optional section, but proof policy requires one
   item per plan step. The item ID is the plan-step stable ID itself
   (`S-1`, `S-2`, … exactly as in the plan's `## Steps` section; for
-  work-unit plans use your assigned work-unit `unit_id`). The item text is
+  work-unit plans use your assigned `[unit-ID]` bracket ID exactly as it
+  appears in the plan's `## Work Units` items). The item text is
   the proof. Never write "Step N: title" — reference by ID only.
 - `## Analysis Items Addressed` — optional section; when analysis feedback
   exists, one item per prior `## How To Fix` item, using that item's

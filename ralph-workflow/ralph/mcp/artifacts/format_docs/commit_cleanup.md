@@ -50,7 +50,7 @@ warning-level coercions exist for this type.
 
 Only obvious build artifacts in the diff and Ralph runtime artifacts
 (e.g. `checkpoint.json`, `.agent/PLAN.md`, `.agent/tmp/*.log`,
-`.agent/artifacts/*.json`). Never delete source code, tests, docs, or
+`.agent/artifacts/*.md`). Never delete source code, tests, docs, or
 intentionally modified configuration, and never recommend deleting whole
 directories — the runtime safety boundary silently drops unsafe deletes.
 Use `add_to_gitignore` for project-wide patterns and `add_to_git_exclude`

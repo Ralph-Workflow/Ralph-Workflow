@@ -38,9 +38,10 @@ def _write_pro_owned_config_files(workspace_root: Path) -> None:
     (agent_dir / "artifacts.toml").write_text(
         (
             "[artifacts]\n"
-            "[artifacts.drains.planning]\n"
+            "[artifacts.planning_output]\n"
+            'drain = "planning"\n'
             'artifact_type = "plan"\n'
-            'json_path = ".agent/artifacts/plan.json"\n'
+            'markdown_summary_path = ".agent/PLAN.md"\n'
         ),
         encoding="utf-8",
     )
@@ -116,9 +117,10 @@ def test_engine_does_not_reinterpret_pro_owned_config_in_memory_workspace() -> N
         ".agent/artifacts.toml",
         (
             "[artifacts]\n"
-            "[artifacts.drains.planning]\n"
+            "[artifacts.planning_output]\n"
+            'drain = "planning"\n'
             'artifact_type = "plan"\n'
-            'json_path = ".agent/artifacts/plan.json"\n'
+            'markdown_summary_path = ".agent/PLAN.md"\n'
         ),
     )
     mem.write(".agent/mcp.toml", "[mcp]\n")

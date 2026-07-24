@@ -1035,9 +1035,7 @@ def test_generate_commit_applies_message_from_persisted_artifact(
 
     commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
 
-    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert committed_messages == ["fix: persist then commit"]
     assert not artifact_file.exists()
-    assert not commit_file.exists()
     assert "Created commit" in stream.getvalue()

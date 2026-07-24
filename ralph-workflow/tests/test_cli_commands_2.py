@@ -247,9 +247,9 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
-    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
-    commit_file.parent.mkdir(parents=True, exist_ok=True)
-    commit_file.write_text("feat: old message", encoding="utf-8")
+    artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+    _write_commit_message_doc(tmp_path, "feat: old message")
+    assert artifact_file.exists()
 
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
@@ -287,7 +287,7 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    assert not commit_file.exists()
+    assert not artifact_file.exists()
     assert "Skipping commit: agent requested skip" in stream.getvalue()
 
 
@@ -493,7 +493,7 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
         return iter(
             [
                 '{"type":"item.completed","item":'
-                '{"type":"mcp_tool_result","tool":"ralph_submit_artifact",'
+                '{"type":"mcp_tool_result","tool":"ralph_submit_md_artifact",'
                 '"result":{"status":"failed","reason":"invalid payload"}}}\n'
             ]
         )
@@ -506,7 +506,7 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
     )
 
     output = stream.getvalue()
-    assert "ralph_submit_artifact" in output
+    assert "ralph_submit_md_artifact" in output
     assert 'result={"reason": "invalid' in output
     assert 'payload", "status": "failed"}' in output
 

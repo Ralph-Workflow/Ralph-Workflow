@@ -1,7 +1,7 @@
 ---
 name: submit-plan-step-edits
 description: Use when editing one native-markdown plan step by stable S-<n> ID with ralph_edit_md_plan_step, or recovering from an invalid replacement block, unknown ID, index, dependency, or acceptance-criteria reference
-version: 2.0.0
+version: 2.1.0
 ---
 
 # submit-plan-step-edits

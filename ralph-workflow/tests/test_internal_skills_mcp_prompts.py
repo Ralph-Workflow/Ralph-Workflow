@@ -30,7 +30,7 @@ def test_packaged_artifact_skills_are_trigger_oriented_markdown_guides() -> None
         frontmatter = re.match(r"---\n(.*?)\n---", text, re.DOTALL)
         assert frontmatter is not None
         assert "description: Use when" in frontmatter.group(1)
-        assert "version: 2.0.0" in frontmatter.group(1)
+        assert "version: 2.1.0" in frontmatter.group(1)
         assert "ralph_submit_md_artifact" in text or name == "submit-plan-step-edits.md"
         assert "ralph_submit_artifact" not in text
 

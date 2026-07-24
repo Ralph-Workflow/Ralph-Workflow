@@ -124,9 +124,9 @@ class TestOptionalArtifactCompletion:
         When artifact_required=False the exit is terminal regardless of what the
         file contains; content validation is the execution.py layer's job.
         """
-        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text("not valid json {{{")
+        artifact_path.write_text("not a valid markdown artifact: no frontmatter {{{")
 
         ra = RequiredArtifact(
             phase="development",

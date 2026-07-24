@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import json
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, cast
 
@@ -65,17 +64,9 @@ def make_worker_context(
 def _seed_artifact(repo_root: Path, unit_id: str) -> None:
     artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps(
-            {
-                "name": "plan",
-                "type": "plan",
-                "content": {"summary": "done"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "plan.md").write_text(
+        "---\ntype: plan\n---\n## Summary\ndone\n",
+        encoding="utf-8",
     )
 
 

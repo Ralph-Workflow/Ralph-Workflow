@@ -51,8 +51,27 @@ Inspect this history when you want to understand what has been tried before
 and what development-analysis feedback they received.
 {% endif %}
 
-If the EXECUTION PLAN declares `work_units` or `parallel_plan`, dispatch your own sub-agents to carry out the parallel work in dependency order within each unit's `allowed_directories`; if your runtime has no sub-agents, execute the same units sequentially in `unit_id` order. Ralph Workflow exposes no coordination command for plan work — dispatch is entirely your job. Even without declared work units, you may fan out read-only sub-agents for information gathering and run independent, non-overlapping steps concurrently; never let two sub-agents edit the same file.
+If the EXECUTION PLAN declares `## Work Units` or `## Parallel Plan`, dispatch your own sub-agents to carry out the parallel work in dependency order within each unit's declared `Directories:`; if your runtime has no sub-agents, execute the same units sequentially in `[unit-ID]` order. Ralph Workflow exposes no coordination command for plan work — dispatch is entirely your job. Even without declared work units, you may fan out read-only sub-agents for information gathering and run independent, non-overlapping steps concurrently; never let two sub-agents edit the same file.
 
 Native file and shell tools are disabled in this brokered fallback; native orchestration tools (sub-agents/tasks, skills, todo tracking, web fetch/search) remain enabled — use them whenever they help. Use `{{EXEC_TOOL_NAME}}` for shell commands and `{{REPORT_PROGRESS_TOOL_NAME}}` to report status instead of native tools like `bash`.
+
+## Development result artifact contract
+
+You MUST submit a `development_result` artifact before declaring completion.
+The complete grammar lives in `.agent/artifact-formats/development_result.md`.
+
+Submit one native-markdown document:
+
+1. Use `type: development_result` and `status: completed|partial` frontmatter,
+   then `## Summary` (exactly one item), `## Files Changed` (one item per
+   file), and `## Plan Items Proven` — one `- [S-n] <proof>` item per plan
+   step (or one `- [unit-ID] <proof>` item per work unit), the bracketed ID
+   copied EXACTLY from the plan. When analysis feedback exists, add
+   `## Analysis Items Addressed` with one item per prior `## How To Fix`
+   entry, reusing that entry's stable ID.
+2. Submit with ralph_submit_md_artifact (`artifact_type="development_result"`,
+   `content` = the full markdown document — never JSON).
+3. If the submit tool is unavailable, write the same complete document to
+   `.agent/tmp/development_result.md` instead.
 
 {% include 'shared/_developer_iteration_guidance.j2' %}

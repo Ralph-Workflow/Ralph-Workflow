@@ -10,7 +10,7 @@ Ralph Workflow installs skills where your agent discovers them automatically. Cl
 Invoke relevant available skills through your agent's skill mechanism before proceeding. Do not Read or browse skill files from disk yourself.
 {% if shipped_skills_mode|default('') == 'planning' %}
 
-Before staging `skills_mcp`, choose task-relevant skills from those already available to you, then record their names in `skills_mcp.skills`.
+Before authoring the plan's `## Skills MCP` section, choose task-relevant skills from those already available to you, then record their names on its `Skills:` line.
 {% elif shipped_skills_mode|default('') == 'development' %}
 
 When the execution plan includes a Skills and MCPs section, invoke those skills through your agent's skill mechanism before proceeding.

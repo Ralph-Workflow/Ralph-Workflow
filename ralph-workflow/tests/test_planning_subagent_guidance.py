@@ -123,7 +123,7 @@ class TestPlannerSubagentGuidance:
         source = (packaged_template_root() / "developer_iteration_fallback.jinja").read_text(
             encoding="utf-8"
         )
-        assert "work_units" in source
+        assert "## Work Units" in source
         assert "sub-agents" in source
         assert "sequentially" in source
 

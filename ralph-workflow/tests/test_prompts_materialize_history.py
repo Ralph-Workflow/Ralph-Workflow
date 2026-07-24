@@ -182,8 +182,8 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_json = hist_dir / "20260506T120000_development_result.json"
-    archived_json.write_text('{"type":"development_result"}', encoding="utf-8")
+    archived_md = hist_dir / "20260506T120000_development_result.md"
+    archived_md.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     index_file = history_index_path(artifact_dir, "development_result")
     index_file.write_text("# History", encoding="utf-8")
 
@@ -201,5 +201,5 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
         ),
     )
 
-    assert not archived_json.exists(), "archive json must be removed on fresh development entry"
+    assert not archived_md.exists(), "archive must be removed on fresh development entry"
     assert not index_file.exists(), "history index must be removed on fresh development entry"

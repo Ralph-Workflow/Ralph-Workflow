@@ -112,8 +112,13 @@ status: issues_found
         ctx.workspace.read.assert_any_call(".agent/artifacts/issues.md")
         assert ctx.workspace.read.call_count == 1
 
-    def test_review_regression_stray_json_is_ignored(self) -> None:
-        """Regression for PROMPT.md's Markdown-only tooling requirement."""
+    def test_review_regression_stray_json_fails_closed(self) -> None:
+        """Regression for PROMPT.md's Markdown-only tooling requirement.
+
+        A stray legacy ``issues.json`` must never be parsed. The phase fails
+        closed with an actionable error naming the canonical ``.md`` path and
+        the Markdown submit tool.
+        """
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "review"
         ctx = self._make_context()
@@ -126,8 +131,9 @@ status: issues_found
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
         assert event.recoverable is True
+        assert "unsupported legacy JSON" in event.reason
         assert ".agent/artifacts/issues.md" in event.reason
-        assert ".json" not in event.reason
+        assert "ralph_submit_md_artifact" in event.reason
         ctx.workspace.read.assert_called_once_with(".agent/artifacts/issues.md")
 
     def test_invoke_agent_effect_without_issues_artifact_returns_phase_failure_recoverable(

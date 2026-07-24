@@ -1,7 +1,7 @@
 """Audit: every single-shot artifact template uses the shared submission macro.
 
 A single-shot artifact template is one that submits exactly one
-``artifact_type`` via ``ralph_submit_artifact`` (or its alias) in a
+``artifact_type`` via ``ralph_submit_md_artifact`` (or its alias) in a
 single round-trip. The planning multi-step flow (submit_plan_section +
 finalize_plan) is explicitly excluded — its staging protocol lives
 in planning.jinja.
@@ -29,7 +29,7 @@ from pathlib import Path
 
 TEMPLATES_DIR = Path("ralph/prompts/templates")
 
-# Single-shot templates: submit exactly one artifact_type via ralph_submit_artifact.
+# Single-shot templates: submit exactly one artifact_type via ralph_submit_md_artifact.
 # Planning multi-step templates (planning.jinja, planning_fallback.jinja,
 # planning_edit.jinja, planning_edit_fallback.jinja) are excluded — they use
 # the submit_plan_section / finalize_plan staging flow, which is a different
@@ -150,7 +150,7 @@ def test_shared_macro_renders_canonical_tool_name() -> None:
     """The shared macro must accept the submit tool reference and use it verbatim.
 
     This pins the contract that ``submit_tool_reference`` is the rendered
-    tool alias the runtime exposes (e.g. ``ralph_submit_artifact``), not
+    tool alias the runtime exposes (e.g. ``ralph_submit_md_artifact``), not
     a free-form string the template can lie about.
     """
     macro = (TEMPLATES_DIR / "shared" / "_artifact_submission.j2").read_text(encoding="utf-8")

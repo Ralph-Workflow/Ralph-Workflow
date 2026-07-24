@@ -55,8 +55,8 @@ PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT = (
     "narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan"
 )
 PLANNING_EDIT_FINALIZE_TEXT = (
-    "Revise the document, then resubmit the whole document — "
-    "resubmission replaces the prior plan."
+    "Revise the document, then either resubmit the whole document or finalize "
+    "its staged draft — either path replaces the prior plan."
 )
 PLANNING_EDIT_SELF_AUDIT_TEXT = "Before submitting the revised plan, perform this self-audit:"
 PLANNING_EDIT_RISK_COVERAGE_TEXT = (

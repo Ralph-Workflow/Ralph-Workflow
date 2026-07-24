@@ -44,7 +44,6 @@ capped at 5s (well under the 60s combined budget enforced by
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -73,7 +72,7 @@ ORIGINALLY_FAILING_PATHS: tuple[str, ...] = (
     ".agent/tmp/mcp-server.log",
 )
 
-COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
+COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.md"
 
 # Canonical patterns the on-entry auto-seed writes into .gitignore.
 # The root-anchored form (/checkpoint.json) is the canonical shape that
@@ -107,17 +106,25 @@ EXPECTED_GIT_EXCLUDE_FRAGMENTS: tuple[str, ...] = (
 
 
 def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict) -> None:
-    """Write a commit_cleanup artifact to the workspace."""
-    artifact = {
-        "name": "commit_cleanup",
-        "type": "commit_cleanup",
-        "content": content,
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z",
-    }
+    """Write a canonical commit-cleanup Markdown artifact."""
+    analysis_complete = str(content["analysis_complete"]).lower()
+    lines = [
+        "---",
+        "type: commit_cleanup",
+        f"analysis_complete: {analysis_complete}",
+        "---",
+        "## Actions",
+    ]
+    actions = content.get("actions", [])
+    assert isinstance(actions, list)
+    for index, action in enumerate(actions, start=1):
+        assert isinstance(action, dict)
+        action_name = action["action"]
+        value = action.get("path", action.get("pattern"))
+        lines.append(f"- [A{index}] {action_name} | {value}")
     path = Path(workspace.root) / COMMIT_CLEANUP_ARTIFACT_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(artifact), encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _track_and_commit(repo_root: Path, *rel_paths: str) -> None:

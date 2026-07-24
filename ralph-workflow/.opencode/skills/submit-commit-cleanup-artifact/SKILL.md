@@ -1,7 +1,7 @@
 ---
 name: submit-commit-cleanup-artifact
 description: Use when submitting a commit_cleanup artifact as markdown via ralph_submit_md_artifact with delete_file / add_to_gitignore / add_to_git_exclude actions, or when an action was rejected by the printable-ASCII rule or silently dropped by the security boundary
-version: 2.0.0
+version: 2.1.0
 ---
 
 # submit-commit-cleanup-artifact
@@ -52,10 +52,18 @@ cross it are silently dropped, not applied:
 - NEVER recommend blanket `.agent/`, `artifacts/`, or `reports/`
   directory deletion; only specific allowlisted basenames and
   per-directory extensions are deletable.
-- Ralph runtime artifacts (e.g. `.agent/PLAN.md`, `.agent/checkpoint.json`,
-  `.agent/raw/*.log`) ARE unconditionally deletable — the full allowlist
-  matrix lives in `.agent/artifact-formats/commit_cleanup.md`; consult it
-  before recommending any `.agent/` path.
+- Ralph runtime artifacts ARE unconditionally deletable. The allowlist is:
+  the canonical `.agent/` top-level runtime basenames (e.g. `.agent/PLAN.md`,
+  `.agent/ISSUES.md`, `.agent/CURRENT_PROMPT.md`, `.agent/checkpoint.json`,
+  `.agent/mcp.toml`, the `*_RESULT.md` / `*_ANALYSIS_DECISION.md` files),
+  `.agent/completion_seen_*.json`, bare `checkpoint.json` at the repo root,
+  and files inside engine-internal directories ONLY when the extension
+  matches that directory's engine-written types: `.agent/raw/` (`.log`
+  only), `.agent/tmp/` (`.log`/`.md`/`.json`), `.agent/artifacts/` (`.md`),
+  `.agent/receipts/<run-id>/` (`.json`), `.agent/prompt_history/`
+  (`.json`), `.agent/artifact-formats/` (`.md`), `.agent/workers/<unit>/`
+  (`.log`/`.md`/`.json` at any depth). Anything else under `.agent/` is
+  user-authored — do not delete it.
 - NEVER remove lock files (`package-lock.json`, `uv.lock`, `Cargo.lock`,
   `poetry.lock`, `go.sum`, …) — they are intentional committed manifests.
 - Machine-local files go to `add_to_git_exclude`, project-wide junk
@@ -110,6 +118,6 @@ analysis_complete: true
 - Printable-ASCII / `#`-prefix rejections — replace the offending path or
   pattern; the constraint is a security guard, do not work around it.
 - Actions silently dropped at commit time — you crossed the security
-  boundary. Re-read the allowlist in
-  `.agent/artifact-formats/commit_cleanup.md`, narrow to allowlisted
-  basenames/extensions, or reclassify as `add_to_git_exclude`.
+  boundary. Re-read the allowlist in the Security Boundary section above,
+  narrow to allowlisted basenames/extensions, or reclassify as
+  `add_to_git_exclude`.

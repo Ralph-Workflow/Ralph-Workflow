@@ -3,7 +3,7 @@
 
 You are a worker agent assigned to implement the following task.
 
-You share the repository checkout with other parallel workers. Your declared allowed_directories are the ONLY paths outside .agent/workers/{{ unit_id }}/ you may modify. Do not infer your success from repo-wide git status — submit your worker artifact before exiting.
+You share the repository checkout with other parallel workers. The directories declared for your work unit (its `Directories:` field, listed below) are the ONLY paths outside .agent/workers/{{ unit_id }}/ you may modify. Do not infer your success from repo-wide git status — submit your worker artifact before exiting.
 
 ## Your Task
 
@@ -42,6 +42,6 @@ status: completed
 ## Plan Items Proven
 - [{{ unit_id }}] Implemented this work unit; updated src/main.py and ran pytest tests/test_main.py -q; it passes.
 {% endset %}
-In `## Plan Items Proven`, the bracketed ID must EXACTLY match your assigned `unit_id` (`{{ unit_id }}`), and the item text must cite concrete evidence of what you implemented.
+In `## Plan Items Proven`, the bracketed ID must EXACTLY match your assigned work-unit bracket ID (`[{{ unit_id }}]`), and the item text must cite concrete evidence of what you implemented.
 
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

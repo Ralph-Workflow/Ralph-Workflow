@@ -84,7 +84,6 @@ def _make_fake_bundle() -> PolicyBundle:
             "plan": ArtifactContract(
                 drain="planning",
                 artifact_type="plan",
-                artifact_path=".agent/artifacts/plan.json",
             )
         }
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,6 +13,8 @@ from ralph.cli.commands import smoke as smoke_module
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.artifacts.smoke_test_result import SmokeTestResult
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.factory import DefaultPipelineFactory
@@ -22,6 +24,8 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     run_smoke_plumbing,
 )
 from ralph.workspace.scope import WorkspaceScope
+
+import_module("ralph.mcp.artifacts.markdown.specs")
 
 if TYPE_CHECKING:
     from collections import deque
@@ -175,11 +179,14 @@ def test_agy_harness_produces_real_output_with_mock(
 def test_agy_harness_writes_artifact_with_correct_schema(
     cached_default_smoke: tuple[SmokeRunResult, Path],
 ) -> None:
-    """The persisted artifact content validates against SmokeTestResult."""
+    """The canonical Markdown artifact validates against the spec and SmokeTestResult."""
     _result, workspace = cached_default_smoke
-    artifact_path = workspace / ".agent" / "artifacts" / "smoke_test_result.json"
-    raw = json.loads(artifact_path.read_text(encoding="utf-8"))
-    validated = SmokeTestResult.model_validate(raw["content"])
+    artifact_path = workspace / ".agent" / "artifacts" / "smoke_test_result.md"
+    markdown = artifact_path.read_text(encoding="utf-8")
+    content, diagnostics = parse_and_validate(markdown, get_spec("smoke_test_result"))
+    errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    assert errors == [], f"Expected a spec-clean canonical artifact, got: {errors}"
+    validated = SmokeTestResult.model_validate(content)
     assert validated.status == "passed"
     assert validated.output_file == "tmp/interactive-agy-smoke/todo-list.js"
     assert validated.observed_breaks == []
@@ -258,9 +265,10 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     by the live regression suite and by the smoke CLI default). Asserts
     the four contract surfaces the user explicitly asked for:
 
-    1. The agent's direct artifact file write exists at
-       ``tmp_path / '.agent' / 'artifacts' / 'smoke_test_result.json'``
-       (the AGY-side write that the prompt instructs the model to perform).
+    1. The canonical Markdown artifact exists at
+       ``tmp_path / '.agent' / 'artifacts' / 'smoke_test_result.md'``
+       (the mock authors the fallback ``.agent/tmp/smoke_test_result.md``
+       document; promotion validates it and writes the canonical artifact).
     2. The canonical receipt is durably present for
        ``(run_id, artifact_type)`` — under RFC-013 P3 the canonical
        receipt store is the per-workspace ``.agent/state.db`` (one row
@@ -296,8 +304,8 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     assert result.artifact_submitted is True
     assert result.file_created is True
 
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    assert artifact_path.is_file(), f"Expected the agent's direct artifact write at {artifact_path}"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
+    assert artifact_path.is_file(), f"Expected the promoted canonical artifact at {artifact_path}"
 
     todo_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     assert todo_path.is_file(), f"Expected the mock-written todo file at {todo_path}"
@@ -308,9 +316,10 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     # path is read-only fallback during the dual-read rollout window,
     # so production writes don't double-write to both stores. Asserting
     # via artifact_receipt_present (the public read API) verifies the
-    # behavioral promotion contract -- the agent's direct
-    # .agent/artifacts/ write was promoted to a durable receipt -- without
-    # coupling to which physical store the receipt landed in.
+    # behavioral promotion contract -- the agent's fallback
+    # .agent/tmp/smoke_test_result.md write was promoted to a durable
+    # receipt -- without coupling to which physical store the receipt
+    # landed in.
     assert artifact_receipt_present(tmp_path, expected_run_id, "smoke_test_result") is True, (
         f"Expected a canonical receipt for run_id={expected_run_id!r} "
         f"artifact_type='smoke_test_result'. The harness's "

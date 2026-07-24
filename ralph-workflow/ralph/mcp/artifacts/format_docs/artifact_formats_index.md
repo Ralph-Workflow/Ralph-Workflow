@@ -33,10 +33,15 @@ key: value
 ```
 
 - Frontmatter is a leading `---` block of single-line `key: value` fields.
-- Section headings are `## Name` (two hashes, one space). The plan format adds
-  `### [S-n]` step blocks as documented in `plan.md`.
+  Values are taken literally and must be unquoted — quotes become part of
+  the value.
+- Section headings are `## Name` (two hashes, one space).
 - Every content line is one list item: `- [ID] text` (checkbox form
   `- [ ] [ID] text` is also accepted). Item text stays on one line.
+- The plan format extends this grammar as documented in `plan.md`: `### [S-n]`
+  step blocks with description prose, Summary prose, labeled field lines
+  (`Intent:`, `Skills:`, `Directories:`, `Depends on:`, `Expect:`,
+  `Satisfies:`, …), and indented per-item fields under list items.
 - IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within a section.
 - Blank lines are ignored. Anything else — stray prose, other heading
   levels, unknown sections or frontmatter fields — is an error.

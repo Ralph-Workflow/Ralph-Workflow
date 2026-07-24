@@ -683,9 +683,17 @@ class TestCheckProcessResultWaitsForLiveChildren:
         current-run receipt at ``.agent/receipts/<run_id>/<type>.json``.
         """
         run_id = "seam-waits-on-disk-run-id"
-        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text('{"summary": "done"}')
+        artifact_path.write_text(
+            "---\n"
+            "type: development_result\n"
+            "status: completed\n"
+            "---\n\n"
+            "## Summary\n\n- [SUM-1] done\n\n"
+            "## Files Changed\n\n- [F-1] src/x.py\n",
+            encoding="utf-8",
+        )
         receipt_dir = tmp_path / ".agent" / "receipts" / run_id
         receipt_dir.mkdir(parents=True, exist_ok=True)
         (receipt_dir / "development_result.json").write_text(

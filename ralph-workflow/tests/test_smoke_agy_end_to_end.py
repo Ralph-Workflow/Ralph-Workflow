@@ -46,8 +46,10 @@ def _run_fresh_agy_smoke(
     """Drive the smoke command against the mock binary in an isolated workspace.
 
     The mock binary is the always-green contract proof: it writes the
-    ``tmp/interactive-agy-smoke/todo-list.js`` file, the
-    ``.agent/artifacts/smoke_test_result.json`` artifact, and emits the
+    ``tmp/interactive-agy-smoke/todo-list.js`` file, the fallback
+    ``.agent/tmp/smoke_test_result.md`` Markdown artifact (which the
+    harness promotes to the canonical
+    ``.agent/artifacts/smoke_test_result.md`` plus a receipt), and emits the
     canonical output lines (including the ``[plain] tool: createTodoList``
     line the GenericParser classifies as ``type='tool_use'`` so the
     authoritative tool-activity signal is present in the transcript).
@@ -154,11 +156,12 @@ def test_mock_smoke_log_documents_real_agy_invocation(tmp_path: Path) -> None:
 def test_mock_smoke_invoking_line_uses_single_model_argv_token(tmp_path: Path) -> None:
     """The --model flag carries the canonical display name as a single argv token."""
     log_text = _run_fresh_agy_smoke(tmp_path)
-    invoking_line = next(
-        (line for line in log_text.splitlines() if "Invoking agent:" in line),
-        None,
-    )
-    assert invoking_line is not None, "No 'Invoking agent:' line found in log"
+    invoking_idx = log_text.find("Invoking agent:")
+    assert invoking_idx != -1, "No 'Invoking agent:' line found in log"
+    # The display wraps long command lines at the console width (long
+    # workspace paths force a wrap), so normalize whitespace across the
+    # wrapped segment instead of matching a single physical line.
+    invoking_line = " ".join(log_text[invoking_idx : invoking_idx + 2000].split())
 
     canonical_models = (
         "Gemini 3.5 Flash (Medium)",

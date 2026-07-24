@@ -26,8 +26,8 @@ Note: the phase PRE-EMPTIVELY UNTRACKS tracked engine-internal files at startup 
 
 The following paths are Ralph Workflow runtime artifacts. They are unconditionally deletable from any commit, even when tracked in HEAD. Recommend them with ``delete_file`` without hesitation:
 
-- **Top-level basenames under ``.agent/``** (the canonical 14):
-  ``.agent/CURRENT_PROMPT.md``, ``.agent/PLAN.md``, ``.agent/ISSUES.md``, ``.agent/DEVELOPMENT_RESULT.md``, ``.agent/FIX_RESULT.md``, ``.agent/DEVELOPMENT_ANALYSIS_DECISION.md``, ``.agent/PLANNING_ANALYSIS_DECISION.md``, ``.agent/REVIEW_ANALYSIS_DECISION.md``, ``.agent/checkpoint.json``, ``.agent/rebase_checkpoint.json``, ``.agent/rebase_checkpoint.json.bak``, ``.agent/rebase.lock``, ``.agent/start_commit``, ``.agent/mcp.toml``.
+- **Top-level basenames under ``.agent/``** (the canonical allowlist):
+  ``.agent/CURRENT_PROMPT.md``, ``.agent/PLAN.md``, ``.agent/ISSUES.md``, ``.agent/DEVELOPMENT_RESULT.md``, ``.agent/FIX_RESULT.md``, ``.agent/DEVELOPMENT_ANALYSIS_DECISION.md``, ``.agent/PLANNING_ANALYSIS_DECISION.md``, ``.agent/REVIEW_ANALYSIS_DECISION.md``, ``.agent/checkpoint.json``, ``.agent/rebase_checkpoint.json``, ``.agent/rebase_checkpoint.json.bak``, ``.agent/auto_integrate_in_progress.json``, ``.agent/rebase.lock``, ``.agent/start_commit``, ``.agent/mcp.toml``, ``.agent/state.db``, ``.agent/state.db-wal``, ``.agent/state.db-shm``.
 - **Completion sentinels**: any ``.agent/completion_seen_*.json`` (the filename glob is ``completion_seen_*.json``, NOT ``completion_sentinel_*.json``).
 - **Root-level**: bare ``checkpoint.json`` at the repo root.
 - **Files inside engine-internal directories ONLY when their extension matches the engine-written file types for that directory**:

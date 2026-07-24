@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -9,17 +10,24 @@ from pydantic import TypeAdapter
 
 from ralph.mcp.artifacts.markdown import MarkdownArtifactError, parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     ToolContent,
     ToolResult,
     WorkspaceLike,
 )
-from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step
+from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step, handle_stage_md_artifact
 from tests.mcp.test_md_plan_spec import _plan_document
+from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_session import planning_session
 
 _JSON_OBJECT = TypeAdapter(dict[str, object])
+
+
+class _Workspace:
+    def absolute_path(self, path: str) -> str:
+        return str(Path("/workspace") / path)
 
 
 def _session() -> CoordinationSessionLike:
@@ -27,7 +35,18 @@ def _session() -> CoordinationSessionLike:
 
 
 def _workspace() -> WorkspaceLike:
-    return cast("WorkspaceLike", None)
+    return cast("WorkspaceLike", _Workspace())
+
+
+def _staged_deps(document: str) -> ArtifactHandlerDeps:
+    deps = ArtifactHandlerDeps(backend=MemoryBackend())
+    handle_stage_md_artifact(
+        _session(),
+        _workspace(),
+        {"artifact_type": "plan", "content": document},
+        deps=deps,
+    )
+    return deps
 
 
 def _edited_content(result: ToolResult) -> str:
@@ -52,11 +71,11 @@ Verify: pytest tests/test_plan_artifact*.py -q
         _session(),
         _workspace(),
         {
-            "content": _plan_document(),
             "action": "replace",
             "step_id": "S-2",
             "replacement": replacement,
         },
+        deps=_staged_deps(_plan_document()),
     )
 
     edited = _edited_content(result)
@@ -69,11 +88,11 @@ Verify: pytest tests/test_plan_artifact*.py -q
 
 
 def test_insert_and_move_keep_ids_instead_of_renumbering() -> None:
-    inserted = handle_edit_md_plan_step(
+    deps = _staged_deps(_plan_document())
+    handle_edit_md_plan_step(
         _session(),
         _workspace(),
         {
-            "content": _plan_document(),
             "action": "insert",
             "step_id": "S-3",
             "index": 2,
@@ -84,16 +103,17 @@ def test_insert_and_move_keep_ids_instead_of_renumbering() -> None:
                 "Depends on: S-1\n"
             ),
         },
+        deps=deps,
     )
     moved = handle_edit_md_plan_step(
         _session(),
         _workspace(),
         {
-            "content": _edited_content(inserted),
             "action": "move",
             "step_id": "S-3",
             "index": 1,
         },
+        deps=deps,
     )
 
     content, diagnostics = parse_and_validate(_edited_content(moved), get_spec("plan"))
@@ -109,7 +129,8 @@ def test_remove_referenced_step_is_rejected() -> None:
         handle_edit_md_plan_step(
             _session(),
             _workspace(),
-            {"content": _plan_document(), "action": "remove", "step_id": "S-1"},
+            {"action": "remove", "step_id": "S-1"},
+            deps=_staged_deps(_plan_document()),
         )
 
     assert any(item.rule_id == "PLAN021" for item in excinfo.value.diagnostics)
@@ -121,9 +142,9 @@ def test_replacement_block_id_must_match_addressed_step() -> None:
             _session(),
             _workspace(),
             {
-                "content": _plan_document(),
                 "action": "replace",
                 "step_id": "S-2",
                 "replacement": "### [S-9] Wrong step\nBody.\n\nType: action\n",
             },
+            deps=_staged_deps(_plan_document()),
         )

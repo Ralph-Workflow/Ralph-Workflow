@@ -169,7 +169,7 @@ def test_smoke_cli_uses_default_pipeline_factory(
     monkeypatch.setattr(
         smoke_module,
         "submit_artifact_tool_name_for_transport",
-        lambda _transport: "mcp__ralph__ralph_submit_artifact",
+        lambda _transport: "mcp__ralph__ralph_submit_md_artifact",
     )
     monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
     monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)

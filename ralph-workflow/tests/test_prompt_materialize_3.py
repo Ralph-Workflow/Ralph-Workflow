@@ -41,84 +41,6 @@ class _ArtifactSubmitSession:
         return capability == "artifact.submit"
 
 
-PLANNING_EDIT_GET_DRAFT_TEXT = (
-    "Use `ralph_get_plan_draft` to inspect the current finalized plan "
-    "or staged draft before editing."
-)
-PLANNING_EDIT_DEFECT_SCOPE_TEXT = (
-    "Before revising any section, classify the feedback scope as one of:"
-)
-PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT = (
-    "If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, "
-    "narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan"
-)
-PLANNING_EDIT_FINALIZE_TEXT = (
-    "Use `ralph_finalize_plan` after revising the affected sections so "
-    "the updated plan replaces the prior finalized plan."
-)
-PLANNING_EDIT_SELF_AUDIT_TEXT = "Before `ralph_finalize_plan`, perform this self-audit:"
-PLANNING_EDIT_RISK_COVERAGE_TEXT = (
-    "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
-)
-PLANNING_EDIT_PARALLELIZATION_TEXT = (
-    "- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant"
-)
-PLANNING_EDIT_MAINTAINABILITY_TEXT = (
-    "- Maintainability and handoff quality: the plan stays concise, "
-    "non-redundant, and explicit for development handoff"
-)
-PLANNING_EDIT_SCOPE_INVALIDATION_TEXT = (
-    "If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan "
-    "narrowed scope before running repository-wide discovery"
-)
-PLANNING_EDIT_DISCOVERY_FIRST_TEXT = (
-    "replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery"
-)
-PLANNING_EDIT_SCOPE_DERIVATION_TEXT = (
-    "- Scope derivation: when the task is repo-wide, implementation scope comes from an "
-    "explicit repo-wide discovery step rather than a guessed subsystem"
-)
-PLANNING_EDIT_PASS_TARGET_TEXT = (
-    "Your target is to submit the strongest revised plan you can so the next planning-analysis pass"
-)
-PLANNING_EDIT_NO_KNOWN_GAPS_TEXT = (
-    "Do not finalize a draft that still has any known unresolved analyzer finding"
-)
-PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_TEXT = (
-    "If fixing one section changes the truth of another section, replace every dependent section"
-)
-PLANNING_EDIT_NEXT_ANALYZER_TEXT = (
-    "Before finalizing, proactively search for any additional repo-grounded failure"
-)
-PLANNING_EDIT_SURFACED_BLOCKER_TEXT = (
-    "If a canonical verification command or repo-wide audit already surfaces a blocker "
-    "during replanning"
-)
-PLANNING_EDIT_RULE_CATEGORY_TEXT = (
-    "When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory"
-)
-PLANNING_EDIT_NO_EXCEPTION_TEXT = (
-    "Do not preserve prompt-violating tests, files, or workflows as justified exceptions"
-)
-PLANNING_EDIT_STARTING_POINT_TEXT = (
-    "Treat the planning-analysis feedback as a starting point, not as the full list of issues"
-)
-PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT = (
-    "Do not localize your revision pass to only the sections explicitly cited by the analyzer"
-)
-PLANNING_EDIT_SELF_ANALYSIS_TEXT = (
-    "You must perform your own repo-grounded analysis before finalizing"
-)
-PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
-    "Every analyzer issue must map to concrete revised sections or an explicit verified reason"
-)
-PLANNING_ANALYSIS_MCP_REMEDIATION_TEXT = (
-    "When describing remediation, target the planner's MCP revision workflow"
-)
-PLANNING_ANALYSIS_SECTION_RESUBMIT_TEXT = (
-    "Exact plan sections to resubmit via the MCP plan-edit tools."
-)
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -376,15 +298,15 @@ def test_fresh_planning_clears_all_artifact_history_on_entry(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_plan_json = plan_hist_dir / "20260506T120000_plan.json"
-    archived_plan_json.write_text('{"type":"plan"}', encoding="utf-8")
+    archived_plan_md = plan_hist_dir / "20260506T120000_plan.md"
+    archived_plan_md.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index_file = history_index_path(artifact_dir, "plan")
     plan_index_file.write_text("# History", encoding="utf-8")
 
     development_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     development_hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_development_json = development_hist_dir / "20260506T120000_development_result.json"
-    archived_development_json.write_text('{"type":"development_result"}', encoding="utf-8")
+    archived_development_md = development_hist_dir / "20260506T120000_development_result.md"
+    archived_development_md.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     development_index_file = history_index_path(artifact_dir, "development_result")
     development_index_file.write_text("# History", encoding="utf-8")
 
@@ -402,14 +324,12 @@ def test_fresh_planning_clears_all_artifact_history_on_entry(
         ),
     )
 
-    assert not archived_plan_json.exists(), (
-        "plan archive json must be removed on fresh planning entry"
-    )
+    assert not archived_plan_md.exists(), "plan archive must be removed on fresh planning entry"
     assert not plan_index_file.exists(), (
         "plan history index must be removed on fresh planning entry"
     )
-    assert not archived_development_json.exists(), (
-        "development archive json must be removed on fresh planning entry"
+    assert not archived_development_md.exists(), (
+        "development archive must be removed on fresh planning entry"
     )
     assert not development_index_file.exists(), (
         "development history index must be removed on fresh planning entry"
@@ -457,8 +377,8 @@ def test_planning_loopback_from_analysis_preserves_history(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_json = hist_dir / "20260506T120000_plan.json"
-    archived_json.write_text('{"type":"plan"}', encoding="utf-8")
+    archived_md = hist_dir / "20260506T120000_plan.md"
+    archived_md.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     index_file = history_index_path(artifact_dir, "plan")
     index_file.write_text("# History", encoding="utf-8")
 
@@ -477,7 +397,7 @@ def test_planning_loopback_from_analysis_preserves_history(
             ),
         )
 
-    assert archived_json.exists(), "archive json must be preserved on planning loopback"
+    assert archived_md.exists(), "archive must be preserved on planning loopback"
     assert index_file.exists(), "history index must be preserved on planning loopback"
 
 

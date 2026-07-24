@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.invalid_params_error import InvalidParamsError
 from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step, handle_stage_md_artifact
 
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools.tool_content import ToolContent
 
+from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_plan_edit_mcp_tools import _PLAN
 
 
@@ -36,16 +38,29 @@ class _Workspace:
         return str(self.root / path)
 
 
+class _MemoryWorkspace:
+    def absolute_path(self, path: str) -> str:
+        return f"/workspace/{path}"
+
+
 def _edit(replacement: str) -> str:
+    deps = ArtifactHandlerDeps(backend=MemoryBackend())
+    workspace = cast("object", _MemoryWorkspace())
+    handle_stage_md_artifact(
+        _Session(),
+        workspace,
+        {"artifact_type": "plan", "content": _PLAN},
+        deps=deps,
+    )
     result = handle_edit_md_plan_step(
         _Session(),
-        cast("object", None),
+        workspace,
         {
-            "content": _PLAN,
             "action": "insert",
             "step_id": "S-9",
             "replacement": replacement,
         },
+        deps=deps,
     )
     payload = json.loads(cast("ToolContent", result.content[0]).text)
     return cast("str", payload["content"])

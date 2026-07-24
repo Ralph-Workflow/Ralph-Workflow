@@ -15,4 +15,4 @@ status: request_changes
 ## How To Fix
 
 - [FIX-1] Add a file_change step creating a failing-backend regression test, and make the lock-cleanup step depend on it.
-- [FIX-2] Rewrite V-2's expected_outcome to name the exact command output that constitutes success (e.g. "47 passed, 0 failed in tests/auth").
+- [FIX-2] Rewrite V-2's `Expect:` field to name the exact command output that constitutes success (e.g. "47 passed, 0 failed in tests/auth").

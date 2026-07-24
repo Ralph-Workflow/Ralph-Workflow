@@ -36,11 +36,11 @@ Submission protocol — the plan is ONE markdown document:
 4. For a targeted step change, stage the complete plan first with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete document, `mode="replace_all"`). Then call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against that persisted plan draft with `action` and `step_id` only. `replacement` is required for `insert` and `replace`; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument. The tool saves the edited draft; inspect it with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then finalize the edited draft with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). IDs are stable and never renumbered.
 - Staged flow for long plans: build the document in chunks with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the next chunk; `mode="replace_all"` restarts the draft), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then call {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`) to validate and submit the assembled draft — on failure the draft is kept with the same line/section/rule diagnostics for repair. Use {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} only to throw the draft away.
 - Do not write `.agent/artifacts/plan.md` or any plan file directly; the submit and finalize tools are the only valid paths.
-- Include `## Design` for non-trivial plans, especially when steps use `satisfies`, acceptance criteria are part of planning-analysis feedback, or the plan needs explicit engineering tradeoffs.
+- Include `## Design` for non-trivial plans, especially when steps use `Satisfies:`, acceptance criteria are part of planning-analysis feedback, or the plan needs explicit engineering tradeoffs.
 
 ## OPTIONAL: submit-plan-artifact skill
 
-The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a worked plan-document example and a recovery path for rejected documents. For step-edit examples, the bundled `submit-plan-step-edits` skill is OPTIONAL and lives alongside it. The canonical grammar and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
+The `submit-plan-artifact` skill is OPTIONAL — invoke it by name through your agent's skill mechanism. You may consult it for a worked plan-document example and a recovery path for rejected documents. For step-edit examples, the `submit-plan-step-edits` skill is OPTIONAL and invoked the same way. The canonical grammar and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
 
 USER REQUIREMENTS:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
@@ -140,18 +140,18 @@ Parallel plan execution is delegated to the executing AI agent. When a plan decl
 
 When you include `## Work Units` or `## Parallel Plan`, follow these rules. They describe how the agent should consume the plan, not how Ralph should run it.
 
-**1. Every `## Work Units` item must declare `Directories:`.**
-List the specific subdirectories the sub-agent may edit.
+**1. Declare `Directories:` for every `## Work Units` item.**
+List the specific subdirectories the sub-agent may edit. The validator treats `Directories:` as optional, but a unit without it gives the executing agent no scope contract — always declare it.
 ```markdown
 ## Work Units
 - [backend] Implement and test the API changes
   Directories: src/api/, tests/api/
 ```
 
-**2. `Directories:` values must be disjoint across units.**
-No two units may declare paths where one is a prefix of the other.
+**2. Keep `Directories:` values disjoint across units.**
+Never declare paths where one is a prefix of the other — the validator accepts them, but overlapping units can race on the same files.
 - OK: `src/api/` and `src/db/` (different trees)
-- REJECTED: `src/` and `src/api/` (one is a prefix of the other)
+- Do NOT write: `src/` and `src/api/` (one is a prefix of the other)
 
 **3. Never declare reserved paths.**
 Never list these paths under `Directories:`:

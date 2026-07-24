@@ -290,10 +290,7 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
             _commit_document("fix: pipeline artifact message"), encoding="utf-8"
@@ -310,7 +307,6 @@ class TestExecuteCommitEffect:
         stage_all.assert_called_once_with(str(tmp_path))
         create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
         assert not message_file.exists()
-        assert not text_file.exists()
 
     def test_stages_only_files_declared_in_commit_artifact(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -319,10 +315,7 @@ class TestExecuteCommitEffect:
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
@@ -357,10 +350,7 @@ class TestExecuteCommitEffect:
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
@@ -392,10 +382,7 @@ class TestExecuteCommitEffect:
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
@@ -427,10 +414,7 @@ class TestExecuteCommitEffect:
         stage_files = MagicMock()
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
@@ -644,10 +628,7 @@ class TestExecuteCommitEffect:
                 side_effect=GitOperationError("create_commit", "index.lock contention")
             )
             message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-            text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
             message_file.parent.mkdir(parents=True, exist_ok=True)
-            text_file.parent.mkdir(parents=True, exist_ok=True)
-            text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
             monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
             message_file.write_text(
                 _commit_document("fix: pipeline artifact message"), encoding="utf-8"
@@ -701,10 +682,7 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         create_commit = MagicMock(return_value="sha")
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
             _commit_document("fix: pipeline artifact message"), encoding="utf-8"
@@ -729,17 +707,13 @@ class TestExecuteCommitEffect:
         assert "COMMIT MESSAGE" in output.getvalue()
         assert "fix: pipeline artifact message" in output.getvalue()
         assert not message_file.exists()
-        assert not text_file.exists()
 
     def test_returns_failure_when_create_commit_raises(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
         stage_all = MagicMock()
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
             _commit_document("fix: pipeline artifact message"), encoding="utf-8"
@@ -757,7 +731,6 @@ class TestExecuteCommitEffect:
 
         assert result == PipelineEvent.COMMIT_FAILURE
         assert message_file.exists()
-        assert text_file.exists()
 
     def test_returns_failure_when_message_file_missing(self, tmp_path: Path) -> None:
         stage_all = MagicMock()
@@ -801,10 +774,7 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         create_commit = MagicMock()
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("fix: skip empty worktree", encoding="utf-8")
         message_file.write_text(_commit_document("fix: skip empty worktree"), encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: False)
 
@@ -819,7 +789,6 @@ class TestExecuteCommitEffect:
         stage_all.assert_not_called()
         create_commit.assert_not_called()
         assert not message_file.exists()
-        assert not text_file.exists()
 
     def test_skips_commit_when_message_is_skip_artifact(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -832,10 +801,7 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         create_commit = MagicMock()
         message_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
-        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.parent.mkdir(parents=True, exist_ok=True)
-        text_file.write_text("SKIP: no pending changes visible in diff", encoding="utf-8")
         message_file.write_text(
             "---\ntype: skip\nreason: no pending changes visible in diff\n---\n",
             encoding="utf-8",
@@ -853,4 +819,3 @@ class TestExecuteCommitEffect:
         stage_all.assert_not_called()
         create_commit.assert_not_called()
         assert not message_file.exists()
-        assert not text_file.exists()

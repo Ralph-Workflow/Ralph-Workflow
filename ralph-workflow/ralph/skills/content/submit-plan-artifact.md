@@ -1,7 +1,7 @@
 ---
 name: submit-plan-artifact
 description: Use when authoring, validating, staging, or submitting a native-markdown plan, or recovering from plan section, stable-ID, dependency, acceptance-criteria, or step-contract diagnostics
-version: 2.0.0
+version: 2.1.0
 ---
 
 # submit-plan-artifact

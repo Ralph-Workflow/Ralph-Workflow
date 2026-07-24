@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
@@ -219,25 +218,16 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
     workspace.write("PROMPT.md", "Implement the feature")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
     workspace.write(
-        ".agent/artifacts/development_analysis_decision.json",
-        json.dumps(
-            {
-                "type": "development_analysis_decision",
-                "content": {
-                    "status": "request_changes",
-                    "summary": "Need more tests.",
-                    "what_came_up_short": ["Missing coverage."],
-                    "how_to_fix": ["Add tests."],
-                },
-            }
-        ),
+        ".agent/artifacts/development_analysis_decision.md",
+        "---\ntype: development_analysis_decision\nstatus: request_changes\n---\n"
+        "## Summary\n- [S1] Need more tests: coverage is missing, add tests.\n",
     )
     # Create history files on disk
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_json = hist_dir / "20260506T120000_development_result.json"
-    archived_json.write_text('{"type":"development_result"}', encoding="utf-8")
+    archived_md = hist_dir / "20260506T120000_development_result.md"
+    archived_md.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     index_file = history_index_path(artifact_dir, "development_result")
     index_file.write_text("# History", encoding="utf-8")
 
@@ -255,7 +245,7 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
         ),
     )
 
-    assert archived_json.exists(), "archive json must be preserved on development loopback"
+    assert archived_md.exists(), "archive must be preserved on development loopback"
     assert index_file.exists(), "history index must be preserved on development loopback"
 
 
@@ -394,16 +384,16 @@ def test_fresh_planning_entry_clears_plan_history_preserves_analysis_history(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create planning_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.json"
-    analysis_archived.write_text('{"type":"planning_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: planning_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
@@ -500,24 +490,24 @@ def test_planning_analysis_to_development_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create planning_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.json"
-    analysis_archived.write_text('{"type":"planning_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: planning_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
 
@@ -643,23 +633,23 @@ def test_development_analysis_to_development_commit_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
     # Create development_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.json"
-    analysis_archived.write_text('{"type":"development_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: development_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "development_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
@@ -760,24 +750,24 @@ def test_planning_analysis_bypass_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create planning_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.json"
-    analysis_archived.write_text('{"type":"planning_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: planning_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
 
@@ -906,24 +896,24 @@ def test_development_analysis_bypass_clears_history_per_policy(
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
     plan_hist_dir.mkdir(parents=True, exist_ok=True)
-    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
-    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_archived = plan_hist_dir / "20260506T120000_plan.md"
+    plan_archived.write_text("---\ntype: plan\n---\n", encoding="utf-8")
     plan_index = history_index_path(artifact_dir, "plan")
     plan_index.write_text("# History", encoding="utf-8")
 
     # Create development_result history files
     dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
     dev_hist_dir.mkdir(parents=True, exist_ok=True)
-    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
-    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.md"
+    dev_archived.write_text("---\ntype: development_result\n---\n", encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
 
     # Create development_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
-    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.json"
-    analysis_archived.write_text('{"type":"development_analysis_decision"}', encoding="utf-8")
+    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.md"
+    analysis_archived.write_text("---\ntype: development_analysis_decision\n---\n", encoding="utf-8")
     analysis_index = history_index_path(artifact_dir, "development_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 

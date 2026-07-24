@@ -34,14 +34,14 @@ Most commits need a body. A body provides context, rationale, and impact that th
 
 For commits requiring a body, choose the right structure:
 
-**Use `body` (single string) when:**
+**Use `## Body` (a single item) when:**
 - The explanation is concise and self-contained (1-2 paragraphs)
 - The rationale is straightforward and doesn't need separation
 
-**Use detailed body fields when the change is complex:**
-- `body_summary`: What changed and why in 1-2 sentences
-- `body_details`: Deep dive — edge cases handled, design decisions, alternatives considered, behavioral notes
-- `body_footer`: Breaking changes, migration steps, deprecation warnings, "Fixes #123", "Closes #456"
+**Use the detailed body sections when the change is complex (never combined with `## Body`):**
+- `## Body Summary`: What changed and why in 1-2 sentences
+- `## Body Details`: Deep dive — edge cases handled, design decisions, alternatives considered, behavioral notes
+- `## Body Footer`: Breaking changes, migration steps, deprecation warnings, "Fixes #123", "Closes #456"
 
 Complex refactors, architecture changes, new features with non-obvious behavior, and any change affecting multiple subsystems should use the detailed structure.
 

@@ -1,7 +1,7 @@
 ---
 name: submit-artifact
-description: Use when submitting any Ralph Workflow artifact as a markdown document via ralph_submit_md_artifact, when pre-checking a draft with ralph_verify_md_artifact, or when a submission returned diagnostics with codes like MD001-MD008, SPEC001-SPEC010, or REF001-REF002 and you need the closed markdown grammar
-version: 2.0.0
+description: Use when submitting any Ralph Workflow artifact as a markdown document via ralph_submit_md_artifact, when pre-checking a draft with ralph_verify_md_artifact, or when a submission returned diagnostics with codes like MD001-MD007, SPEC001-SPEC012, or REF001-REF004 and you need the closed markdown grammar
+version: 2.1.0
 ---
 
 # submit-artifact
@@ -21,7 +21,8 @@ Two MCP tools operate on every artifact type:
 Supported `artifact_type` values: `plan`, `development_result`,
 `commit_message`, `commit_cleanup`, `fix_result`, `issues`,
 `smoke_test_result`, `product_spec`, `planning_analysis_decision`,
-`development_analysis_decision`, `review_analysis_decision`.
+`development_analysis_decision`, `review_analysis_decision`,
+`policy_remediation_analysis_decision`.
 
 For `plan`, `development_result`, `commit_message`, and `commit_cleanup`,
 use the dedicated companion skills (`submit-plan-artifact`,
@@ -37,15 +38,24 @@ Follow these rules exactly; anything else is a diagnostic:
    line, then a closing `---` line. Values are single-line and must not
    start or end with whitespace. Every type requires at least `type: <type>`.
 2. After the frontmatter, use `## Section Name` headings (exactly two `#`, one
-   space). The plan companion skill documents its additional `### [S-n]` step
-   blocks.
-3. Inside a section, every content line is a stable-ID list item:
-   `- [ID] text` (or `- [ ] [ID] text` with a checkbox). The ID starts with
-   a letter and uses only letters, digits, `_`, `-`. Item text is one line.
+   space).
+3. Inside a section the grammar knows exactly four content shapes, and each
+   type's spec decides which shapes a given section accepts:
+   - Stable-ID list items: `- [ID] text` (or `- [ ] [ID] text` with a
+     checkbox). The ID starts with a letter and uses only letters, digits,
+     `_`, `-`. This is the default shape for most sections.
+   - Indented continuation lines under a list item — per-item labeled
+     fields such as `  Category: test` or `  Verify: pytest -q`.
+   - Stable-ID sub-blocks: a `### [ID] Title` heading followed by free body
+     lines (e.g. the plan's `### [S-n]` step blocks with `Type:`, `Files:`,
+     `Depends on:`, `Satisfies:` lines).
+   - Plain body lines — prose and labeled lines like `Intent:` or
+     `Skills:`, allowed only where the type's spec says so (e.g. the plan's
+     `## Summary` and `## Skills MCP` sections).
 4. IDs must be unique within their section.
-5. Blank lines are ignored. Any other content — prose outside a list item,
-   text before the first heading, unknown sections, unknown frontmatter
-   fields — is rejected.
+5. Blank lines are ignored. Content in a shape the section does not accept —
+   prose in a list-only section, text before the first heading, unknown
+   sections, unknown frontmatter fields — is rejected.
 
 Which sections a type requires, and what each item's text must contain, is
 defined per type in `.agent/artifact-formats/<artifact_type>.md`.
@@ -79,18 +89,24 @@ type: fix_result
 ## Error Recovery
 
 Both tools return `{"artifact_type", "valid", "diagnostics"}`. Each
-diagnostic has `line`, `section`, `code`, `message`, and `severity`.
+diagnostic has `line`, `section`, `rule_id`, `message`, and `severity`.
 Fix every `"severity": "error"` at the named line and resubmit. Warning
 diagnostics identify accepted vocabulary choices for which the documented
 default was applied.
 
-- `MD001`–`MD008` — grammar violations: bad heading level, content outside
-  a section, a list line missing its `[ID]`, malformed or unterminated
-  frontmatter, duplicate frontmatter field.
-- `SPEC001`–`SPEC010` — structure violations: missing/unknown/duplicate
-  section or frontmatter field, section item-count limits, and canonical
-  content validation failures (SPEC010 carries the exact message).
-- `REF001`/`REF002` — malformed or duplicate stable ID in a section.
+- `MD001`–`MD007` — grammar violations: bad heading shape, content outside
+  a section, a list line missing its `[ID]`, non-list content in a
+  list-only section, malformed or duplicate frontmatter field,
+  unterminated frontmatter block.
+- `SPEC001`–`SPEC012` — structure violations: character limit, missing/
+  unknown/duplicate section or frontmatter field, empty or over-limit
+  sections, canonical content validation failures (SPEC010 carries the
+  exact message), list items in a block-only section (SPEC011), and a
+  block-only section with no `### [ID] Title` block (SPEC012). SPEC009 is
+  a warning: an accepted vocabulary value was coerced to its documented
+  default.
+- `REF001`–`REF004` — reference violations: malformed ID, duplicate ID in
+  a section, a reference to an unknown ID, or a dependency cycle.
 
 An unknown `artifact_type` is rejected before parsing; use one of the
 supported values listed above, spelled exactly.

@@ -49,7 +49,6 @@ Persistent artifact storage and per-type validators. Used by **both** Ralph's se
 |------|---------|
 | `markdown/` | Closed markdown artifact grammar: `MdArtifactSpec`, `parse_and_validate`, `Diagnostic`, per-type specs under `markdown/specs/`, spec registry |
 | `canonical_submit.py` | `submit_artifact_canonical` — the single canonical writer for `.agent/artifacts/<type>.md`, handoff copies, receipts, and sentinels |
-| `store.py` | `Artifact`, `submit_artifact`, `get_artifact`, `list_artifacts`, `update_artifact`, `delete_artifact` |
 | `file_backend.py` | `FileBackend`, `PathFileBackend`, `DEFAULT_FILE_BACKEND` |
 | `plan/` | Normalized plan models and cross-reference validation used by the markdown spec |
 | `commit_message.py` | Commit message artifact helpers |
@@ -57,7 +56,6 @@ Persistent artifact storage and per-type validators. Used by **both** Ralph's se
 | `format_docs/` | Package of bundled dumb-proof Markdown reference docs — `load_bundled_format_doc`, `materialize_format_doc`, `FORMAT_DOC_ARTIFACT_TYPES`; one `.md` per non-plan artifact type loaded via `importlib.resources` |
 | `policy_outcomes.py` | `is_policy_approved` — shared policy interpretation |
 | `audit_adapter.py` | `RalphAuditSinkAdapter`, audit record translation |
-| `bridge.py` | `MCPBridge`, `BridgeConfig` — phase system ↔ MCP bridge |
 
 **Canonical import path:** `from ralph.mcp.artifacts import ...` or `from ralph.mcp.artifacts.<module> import ...`
 
@@ -333,8 +331,7 @@ The following table lists the canonical import path for each public symbol:
 | `UpstreamRegistry`, `ProxiedTool` | `from ralph.mcp.upstream.registry import ...` |
 | `validate_upstream_mcp_servers` | `from ralph.mcp.upstream.validation import ...` |
 | `probe_agent_transports` | `from ralph.mcp.upstream.agent_probe import ...` |
-| `Artifact`, `submit_artifact`, etc. | `from ralph.mcp.artifacts.store import ...` |
-| `MCPBridge`, `BridgeConfig` | `from ralph.mcp.artifacts.bridge import ...` |
+| `SubmitResult`, `submit_artifact_canonical`, `promote_fallback_artifact` | `from ralph.mcp.artifacts.canonical_submit import ...` |
 | `FileBackend`, `PathFileBackend` | `from ralph.mcp.artifacts.file_backend import ...` |
 | `RalphAuditSinkAdapter` | `from ralph.mcp.artifacts.audit_adapter import ...` |
 | `PlanArtifact`, `validate_plan_artifact`, etc. | `from ralph.mcp.artifacts.plan import ...` |
@@ -347,26 +344,22 @@ The following table lists the canonical import path for each public symbol:
 
 ```
 ralph/mcp/
-├── __init__.py          # Public API: MCPBridge, ToolBridge, access_mode_for_drain, etc.
+├── __init__.py          # Public API: ToolBridge, access_mode_for_drain, etc.
 ├── ARCHITECTURE.md      # This file
 ├── artifacts/           # Artifact storage (both Ralph-as-server and Ralph-as-client)
 │   ├── __init__.py
 │   ├── audit_adapter.py
-│   ├── bridge.py
 │   ├── commit_message.py
 │   ├── development_result.py
 │   ├── file_backend.py
 │   ├── format_docs/     # Package: bundled Markdown reference docs (one per artifact type)
 │   │   ├── __init__.py  # Public API: FORMAT_DOC_ARTIFACT_TYPES, materialize_format_doc, etc.
-│   │   ├── commit_message.md
-│   │   ├── development_result.md
-│   │   ├── issues.md
-│   │   ├── fix_result.md
-│   │   ├── development_analysis_decision.md
-│   │   └── review_analysis_decision.md
-│   ├── plan.py
-│   ├── policy_outcomes.py
-│   └── store.py
+│   │   ├── artifact_formats_index.md
+│   │   ├── <type>.md    # One per registered artifact type (plan, issues, ...)
+│   │   └── examples/    # Validator-backed example documents
+│   ├── markdown/        # Closed markdown grammar, per-type specs, spec registry
+│   ├── plan/            # Normalized plan models and cross-reference validation
+│   └── policy_outcomes.py
 ├── explore/             # Phase 0-4 indexed exploration substrate (SQLite + FTS5 + graph)
 │   ├── __init__.py
 │   ├── audit_register.py  # Per-tool outcome register (keep/add_argument/rework_internals/defer)
@@ -442,7 +435,6 @@ ralph/mcp/
 ```
 ralph.mcp (public API via __init__.py)
 ├── ralph.mcp.artifacts.*         → artifacts/*
-├── ralph.mcp.artifacts.bridge.*  → artifacts/bridge.py
 ├── ralph.mcp.protocol.*          → protocol/*
 ├── ralph.mcp.server.*            → server/*
 ├── ralph.mcp.tools.*             → tools/*

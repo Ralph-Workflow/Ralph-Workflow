@@ -70,12 +70,12 @@ def test_continuation_template_encourages_proactive_subagent_use() -> None:
 
 
 def test_continuation_template_keeps_allowed_directories_contract() -> None:
-    """The continuation template must mention ``allowed_directories`` so
-    a sub-agent dispatched for a work unit knows the per-unit scope
-    contract.
+    """The continuation template must mention the plan's ``Directories:``
+    field so a sub-agent dispatched for a work unit knows the per-unit
+    scope contract.
     """
     source = _read_continuation_template()
-    assert "allowed_directories" in source
+    assert "Directories:" in source
 
 
 def test_continuation_template_new_section_warns_about_fan_out() -> None:
@@ -85,7 +85,7 @@ def test_continuation_template_new_section_warns_about_fan_out() -> None:
     """
     source = _read_continuation_template()
     assert "dispatching your own sub-agents" in source
-    assert "unit_id" in source
+    assert "[unit-ID]" in source
 
 
 def test_continuation_template_requires_subagent_gate_before_submission() -> None:

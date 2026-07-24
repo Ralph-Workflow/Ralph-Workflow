@@ -9,7 +9,6 @@ phase-close → completion.
 from __future__ import annotations
 
 import contextlib
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -136,38 +135,53 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     monkeypatch.setenv("CI", "1")
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
-    # Write a minimal plan.json so the subscriber sees plan_present=True
+    # Write a minimal valid plan.md so the subscriber sees plan_present=True
     artifacts_dir = tmp_path / ".agent" / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    plan_data = {
-        "summary": {
-            "context": "Test plan",
-            "scope_items": [
-                {"text": "step 1"},
-                {"text": "step 2"},
-                {"text": "step 3"},
-            ],
-        },
-        "skills_mcp": {
-            "skills": [
-                "test-driven-development",
-                "verification-before-completion",
-            ],
-            "mcps": [],
-        },
-        "steps": [{"number": 1, "title": "Validate", "content": "Do the work"}],
-        "critical_files": {
-            "primary_files": [{"path": "ralph/pipeline/runner.py", "action": "modify"}],
-            "reference_files": [],
-        },
-        "risks_mitigations": [
-            {"risk": "Risk A", "mitigation": "Mitigation A"},
-        ],
-        "verification_strategy": [
-            {"method": "pytest", "expected_outcome": "passes"},
-        ],
-    }
-    (artifacts_dir / "plan.json").write_text(json.dumps(plan_data), encoding="utf-8")
+    plan_markdown = (
+        "---\n"
+        "type: plan\n"
+        "---\n"
+        "## Summary\n"
+        "Test plan\n"
+        "\n"
+        "Intent: Exercise the transcript pipeline.\n"
+        "Coverage: test\n"
+        "\n"
+        "## Scope\n"
+        "- [SC-1] step 1\n"
+        "  Category: test\n"
+        "- [SC-2] step 2\n"
+        "  Category: test\n"
+        "- [SC-3] step 3\n"
+        "  Category: test\n"
+        "\n"
+        "## Skills MCP\n"
+        "Skills: test-driven-development, verification-before-completion\n"
+        "\n"
+        "## Steps\n"
+        "\n"
+        "### [S-1] Validate\n"
+        "Do the work\n"
+        "\n"
+        "Type: verify\n"
+        "Verify: pytest -q\n"
+        "\n"
+        "## Critical Files\n"
+        "- [CF-1] ralph/pipeline/runner.py\n"
+        "  Action: modify\n"
+        "  Changes: exercise transcript ordering\n"
+        "\n"
+        "## Risks\n"
+        "- [R-1] Risk A\n"
+        "  Severity: low\n"
+        "  Mitigation: Mitigation A\n"
+        "\n"
+        "## Verification\n"
+        "- [V-1] pytest -q\n"
+        "  Expect: passes\n"
+    )
+    (artifacts_dir / "plan.md").write_text(plan_markdown, encoding="utf-8")
 
     _invoked_phases, captured_console, _captured_displays = _install_runner_stubs(
         monkeypatch, policy_bundle, tmp_path

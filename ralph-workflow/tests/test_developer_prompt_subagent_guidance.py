@@ -28,7 +28,7 @@ def _read_developer_template() -> str:
 def test_developer_prompt_includes_parallel_execution_section() -> None:
     source = _read_developer_template()
     assert "## PARALLEL EXECUTION" in source
-    assert "work_units" in source
+    assert "## Work Units" in source
     assert "sub-agents" in source
 
 

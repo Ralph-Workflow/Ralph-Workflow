@@ -34,8 +34,11 @@ reason: No committable changes; only generated files were touched.
 
 - `type` — required; `commit` or `skip`.
 - `subject` — required for `commit`; must be a conventional-commit subject:
-  `kind(scope)?: lowercase description` with kind one of feat, fix, docs,
-  refactor, test, style, perf, build, ci, chore.
+  `kind(scope)?!?: lowercase description` with kind one of feat, fix, docs,
+  refactor, test, style, perf, build, ci, chore. An optional `!` before the
+  colon marks a breaking change (`feat!: ...`, `feat(api)!: ...`).
+  Frontmatter values are taken literally and must be unquoted — quotes
+  become part of the value and fail subject validation.
 - `reason` — required for `skip`.
 
 ## Sections (all optional; commit only)

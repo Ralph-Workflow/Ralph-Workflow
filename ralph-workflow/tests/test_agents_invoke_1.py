@@ -1072,7 +1072,7 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
-            claude_tool_name("ralph_submit_artifact"),
+            claude_tool_name("ralph_submit_md_artifact"),
         ),
     )
 

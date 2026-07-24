@@ -1889,7 +1889,7 @@ ralph.mcp
 ralph.mcp.artifacts
 ~~~~~~~~~~~~~~~~~~~
 
-.. Note: ralph.mcp.artifacts re-exports from ralph.mcp.artifacts.store;
+.. Note: ralph.mcp.artifacts re-exports from its submodules;
    using :no-members: avoids duplicate object warnings.
 
 .. automodule:: ralph.mcp.artifacts
@@ -1899,13 +1899,6 @@ ralph.mcp.artifacts.audit_adapter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.audit_adapter
-   :members:
-   :show-inheritance:
-
-ralph.mcp.artifacts.bridge
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.artifacts.bridge
    :members:
    :show-inheritance:
 
@@ -1972,13 +1965,6 @@ ralph.mcp.artifacts.history
    :members:
    :show-inheritance:
 
-ralph.mcp.artifacts.legacy_json
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.artifacts.legacy_json
-   :members:
-   :show-inheritance:
-
 ralph.mcp.artifacts.md_draft_io
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2006,13 +1992,6 @@ ralph.mcp.artifacts.policy_outcomes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.policy_outcomes
-   :members:
-   :show-inheritance:
-
-ralph.mcp.artifacts.store
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.artifacts.store
    :members:
    :show-inheritance:
 

@@ -209,16 +209,26 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         output_path = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("export const todos = [];\n", encoding="utf-8")
-        artifact_dir = tmp_path / ".agent" / "artifacts"
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        (artifact_dir / "smoke_test_result.json").write_text(
-            '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
-            '"content":{"status":"passed","summary":"ok",'
-            '"output_file":"tmp/interactive-claude-smoke/todo-list.js",'
-            '"observed_working":["tmp artifact created"],'
-            '"observed_breaks":[],'
-            '"headless_guide_checks":["session capture"]},'
-            '"created_at":"now","updated_at":"now","metadata":{}}',
+        fallback_dir = tmp_path / ".agent" / "tmp"
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        (fallback_dir / "smoke_test_result.md").write_text(
+            "---\n"
+            "type: smoke_test_result\n"
+            "status: passed\n"
+            "output_file: tmp/interactive-claude-smoke/todo-list.js\n"
+            "---\n"
+            "\n"
+            "## Summary\n"
+            "\n"
+            "- [SUM-1] ok\n"
+            "\n"
+            "## Observed Working\n"
+            "\n"
+            "- [OK-1] tmp artifact created\n"
+            "\n"
+            "## Headless Guide Checks\n"
+            "\n"
+            "- [HG-1] session capture\n",
             encoding="utf-8",
         )
         raw_lines = [
@@ -320,7 +330,7 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     monkeypatch.setattr(
         smoke_module,
         "submit_artifact_tool_name_for_transport",
-        lambda _transport: "mcp__ralph__ralph_submit_artifact",
+        lambda _transport: "mcp__ralph__ralph_submit_md_artifact",
     )
     monkeypatch.setattr(
         smoke_module,

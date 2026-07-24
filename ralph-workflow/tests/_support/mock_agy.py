@@ -9,8 +9,9 @@ Controlled by environment variables:
 
 * ``MOCK_AGY_BEHAVIOR`` - ``normal`` (default), ``quota_exhausted``, or
   ``invalid_model``.
-* ``MOCK_AGY_ARTIFACT_DIR`` - directory where ``.agent/artifacts/`` and
-  ``tmp/`` are written. Defaults to the current working directory.
+* ``MOCK_AGY_ARTIFACT_DIR`` - directory where ``.agent/tmp/``,
+  ``.agent/artifacts/``, and ``tmp/`` are written. Defaults to the current
+  working directory.
 
 The simulator honors the flag set measured from the real binary:
 ``--print``/``-p``, ``--dangerously-skip-permissions``, ``--model``,
@@ -21,7 +22,6 @@ single positional prompt argument.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -41,7 +41,11 @@ CANONICAL_MODELS: frozenset[str] = frozenset(
 )
 
 OUTPUT_FILE_RELPATH = "tmp/interactive-agy-smoke/todo-list.js"
-ARTIFACT_RELPATH = ".agent/artifacts/smoke_test_result.json"
+# The mock authors the fallback Markdown document that
+# ``ralph.mcp.artifacts.canonical_submit.promote_fallback_artifact`` consumes
+# and promotes to the canonical ``.agent/artifacts/smoke_test_result.md``
+# artifact plus a durable submission receipt.
+ARTIFACT_RELPATH = ".agent/tmp/smoke_test_result.md"
 PROMPT_RECEIVED_RELPATH = ".agent/artifacts/.mock_agy_prompt.txt"
 
 
@@ -86,29 +90,29 @@ def _write_prompt_received(artifact_dir: Path, prompt: str | None) -> None:
 def _write_smoke_test_result_artifact(artifact_dir: Path) -> Path:
     artifact_path = artifact_dir / ARTIFACT_RELPATH
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact = {
-        "name": "smoke_test_result",
-        "type": "smoke_test_result",
-        "content": {
-            "status": "passed",
-            "output_file": OUTPUT_FILE_RELPATH,
-            "observed_working": [
-                "created todo-list.js",
-                "wrote smoke_test_result artifact",
-            ],
-            "observed_breaks": [],
-            "headless_guide_checks": [
-                "tool activity",
-                "parser events",
-                "tmp artifact creation",
-            ],
-            "summary": "AGY smoke test completed successfully",
-        },
-        "created_at": "2026-01-01T00:00:00+00:00",
-        "updated_at": "2026-01-01T00:00:00+00:00",
-        "metadata": {},
-    }
-    artifact_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+    artifact_path.write_text(
+        "---\n"
+        "type: smoke_test_result\n"
+        "status: passed\n"
+        f"output_file: {OUTPUT_FILE_RELPATH}\n"
+        "---\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "- [SUM-1] AGY smoke test completed successfully\n"
+        "\n"
+        "## Observed Working\n"
+        "\n"
+        "- [OK-1] created todo-list.js\n"
+        "- [OK-2] wrote smoke_test_result artifact\n"
+        "\n"
+        "## Headless Guide Checks\n"
+        "\n"
+        "- [HG-1] tool activity\n"
+        "- [HG-2] parser events\n"
+        "- [HG-3] tmp artifact creation\n",
+        encoding="utf-8",
+    )
     return artifact_path
 
 
@@ -132,7 +136,7 @@ def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
     # The smoke prompt for AGY (see ``smoke_plumbing._build_smoke_prompt``)
     # intentionally does NOT instruct the model to print a transcript
     # completion marker; the authoritative completion signal is the canonical
-    # receipt promoted from the agent's direct artifact write. The mock
+    # receipt promoted from the agent's fallback Markdown artifact. The mock
     # faithfully omits the transcript marker so test coverage matches the
     # current prompt contract.
 

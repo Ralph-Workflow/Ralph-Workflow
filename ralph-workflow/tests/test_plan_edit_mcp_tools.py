@@ -9,10 +9,12 @@ import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.session_plan import build_session_mcp_plan
+from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
-from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step
+from ralph.mcp.tools.md_artifact import handle_edit_md_plan_step, handle_stage_md_artifact
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.fs import FsWorkspace
+from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -93,8 +95,21 @@ class _Session:
         return capability == "artifact.submit"
 
 
-def _edited(params: dict[str, object]) -> str:
-    result = handle_edit_md_plan_step(_Session(), cast("object", None), params)
+class _EchoWorkspace:
+    def absolute_path(self, path: str) -> str:
+        return f"/workspace/{path}"
+
+
+def _edited(params: dict[str, object], *, document: str = _PLAN) -> str:
+    deps = ArtifactHandlerDeps(backend=MemoryBackend())
+    workspace = cast("object", _EchoWorkspace())
+    handle_stage_md_artifact(
+        _Session(),
+        workspace,
+        {"artifact_type": "plan", "content": document},
+        deps=deps,
+    )
+    result = handle_edit_md_plan_step(_Session(), workspace, params, deps=deps)
     payload = json.loads(cast("ToolContent", result.content[0]).text)
     return cast("str", payload["content"])
 
@@ -137,7 +152,6 @@ Files:
 
     edited = _edited(
         {
-            "content": _PLAN,
             "action": "insert",
             "step_id": "S-9",
             "replacement": replacement,
@@ -153,7 +167,6 @@ def test_replace_requires_a_matching_stable_id() -> None:
     with pytest.raises(ValueError, match="must match step_id"):
         _edited(
             {
-                "content": _PLAN,
                 "action": "replace",
                 "step_id": "S-1",
                 "replacement": "### [S-3] Wrong ID\nText.\n\nType: action",
@@ -163,12 +176,12 @@ def test_replace_requires_a_matching_stable_id() -> None:
 
 def test_remove_rejects_a_dangling_dependency() -> None:
     with pytest.raises(Exception, match="unknown step ID 'S-1'"):
-        _edited({"content": _PLAN, "action": "remove", "step_id": "S-1"})
+        _edited({"action": "remove", "step_id": "S-1"})
 
 
 def test_move_changes_order_without_renumbering() -> None:
     edited = _edited(
-        {"content": _PLAN, "action": "move", "step_id": "S-2", "index": 1}
+        {"action": "move", "step_id": "S-2", "index": 1}
     )
 
     assert edited.index("### [S-2]") < edited.index("### [S-1]")
@@ -179,7 +192,6 @@ def test_replacement_is_markdown_not_a_json_object() -> None:
     with pytest.raises(ValueError, match="single '### \\[S-n\\] Title' step block"):
         _edited(
             {
-                "content": _PLAN,
                 "action": "replace",
                 "step_id": "S-1",
                 "replacement": '{"title": "retired JSON shape"}',

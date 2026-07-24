@@ -39,7 +39,7 @@ status: request_changes
 
 ## How To Fix
 
-- [FIX-1] Add the target file to primary_files and resubmit the plan.
+- [FIX-1] Add the target file to `## Critical Files` and resubmit the plan.
 ```
 
 ## Frontmatter

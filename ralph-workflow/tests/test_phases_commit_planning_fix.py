@@ -725,7 +725,7 @@ def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
     """Missing analysis evidence should retry instead of terminally failing.
 
     When a real development run finishes without submitting
-    development_analysis_decision.json, Ralph should treat that as an incomplete
+    development_analysis_decision.md, Ralph should treat that as an incomplete
     agent attempt and route it through normal retry/fallback handling.
     """
     ctx = _stub_context_no_exists()

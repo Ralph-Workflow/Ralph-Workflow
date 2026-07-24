@@ -96,7 +96,7 @@ evidence into a gap.
 
 **You CANNOT request changes for anything you cannot yourself prove in this session.**
 
-Every entry you put in `what_came_up_short` must pass BOTH tests:
+Every entry you put in `## What Came Up Short` must pass BOTH tests:
 
 1. **Provable**: you personally observed the defect in this session — in the code, the diff, or
    the output of a command you ran — and the entry cites that observation.
@@ -105,7 +105,7 @@ Every entry you put in `what_came_up_short` must pass BOTH tests:
 
 If a claim can only be verified outside this session — a CI pipeline, a deployed environment,
 an external device, a third-party signoff, or any deploy-time-only behavior — it is not evaluatable.
-Not evaluatable is NOT a gap: it never appears in `what_came_up_short` and it NEVER justifies
+Not evaluatable is NOT a gap: it never appears in `## What Came Up Short` and it NEVER justifies
 `request_changes` or `failed`. Disclose material limits in the summary and move on.
 
 If an unprovable requirement is genuinely important, the strongest action you may take is to note
@@ -148,7 +148,7 @@ Not submitting the analysis artifact is a FAILURE.
 You are evaluating the quality and completeness of the review that was performed. A thorough review
 catches real problems. A shallow one misses them. For each dimension below that is evaluatable from
 code, diff, or commands you can run in this session, determine whether the review adequately covered
-it. If it did not, that belongs in `what_came_up_short`. If a dimension is not evaluatable from
+it. If it did not, that belongs in `## What Came Up Short`. If a dimension is not evaluatable from
 observable evidence, skip it rather than scoring it.
 
 ### 1. PLAN COMPLIANCE CHECK
@@ -213,8 +213,9 @@ If the implementation added new functions without tests, the review should have 
 
 Evaluate the review output itself, not just the implementation:
 
-- **Severity classification**: Are findings categorized correctly (CRITICAL/HIGH/MEDIUM/LOW)?
-  A CRITICAL security finding classified as MEDIUM is a review quality problem.
+- **Severity classification**: Are findings categorized correctly? The issues grammar's
+  severity set is `high`, `medium`, `low` — critical-impact findings belong at `high`.
+  A critical-impact security finding classified as `medium` is a review quality problem.
 - **Evidence quality**: Does each finding cite exact file paths, function names, and the nature
   of the problem? "There are issues" without specifics is insufficient.
 - **Actionable fixes**: Does each finding include a concrete remediation step, or just a
@@ -268,7 +269,7 @@ status: request_changes
 
 ---
 
-## `what_came_up_short` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## What Came Up Short` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
 1. **List every gap found** across all dimensions. Do not stop after the first problem.
 
@@ -299,16 +300,16 @@ status: request_changes
 Example `## What Came Up Short` items:
 
 ```markdown
-- [RA-001] [Security] api/auth.py:23 contains a hardcoded fallback API key — a CRITICAL severity finding in the code that the review should have surfaced.
-- [RA-002] [Review Structure] The SQL injection finding in db/queries.py:15 is classified as MEDIUM but should be CRITICAL — the query concatenates user input directly.
+- [RA-001] [Security] api/auth.py:23 contains a hardcoded fallback API key — a `high` severity finding in the code that the review should have surfaced.
+- [RA-002] [Review Structure] The SQL injection finding in db/queries.py:15 is classified as `medium` but should be `high` — the query concatenates user input directly.
 - [RA-003] [Testing] I ran the relevant test suite and searched the repository: no test exercises the new error path in api/auth.py, a coverage gap the review should have surfaced.
 ```
 
 ---
 
-## `how_to_fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## How To Fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
-For every item in `what_came_up_short`, provide a corresponding fix entry:
+For every item in `## What Came Up Short`, provide a corresponding fix entry:
 
 1. **What the review needs to re-examine or add.** Be specific — not "fix the review" but
    "re-examine `api/auth.py` for hardcoded credentials."
@@ -320,8 +321,8 @@ For every item in `what_came_up_short`, provide a corresponding fix entry:
 Example `## How To Fix` items (IDs match the gaps above):
 
 ```markdown
-- [RA-001] Re-examine api/auth.py for hardcoded credentials; add a CRITICAL finding for the hardcoded fallback API key at line 23 with remediation to load it from os.environ.get("API_TOKEN").
-- [RA-002] Reclassify the SQL injection finding in db/queries.py:15 as CRITICAL and update the review severity table and summary accordingly.
+- [RA-001] Re-examine api/auth.py for hardcoded credentials; add a `high` severity finding for the hardcoded fallback API key at line 23 with remediation to load it from os.environ.get("API_TOKEN").
+- [RA-002] Reclassify the SQL injection finding in db/queries.py:15 as `high` and update the review severity table and summary accordingly.
 - [RA-003] Run the relevant test suite yourself and record the observed output; if no test covers the new error path, add a Testing gap finding with the specific failing command and result.
 ```
 
@@ -339,12 +340,12 @@ status: request_changes
 - [SUM-1] The review is structurally present but missed several critical findings and misclassified at least one severity level.
 
 ## What Came Up Short
-- [RA-001] [Security] api/auth.py:23 contains a hardcoded fallback API key — CRITICAL severity, and the review should have surfaced it.
-- [RA-002] [Review Structure] SQL injection in db/queries.py:15 is classified as MEDIUM but should be CRITICAL — user input concatenated directly into SQL.
+- [RA-001] [Security] api/auth.py:23 contains a hardcoded fallback API key — `high` severity, and the review should have surfaced it.
+- [RA-002] [Review Structure] SQL injection in db/queries.py:15 is classified as `medium` but should be `high` — user input concatenated directly into SQL.
 - [RA-003] [Testing] No test exercises the new error path in api/auth.py, a coverage gap the review should have surfaced.
 
 ## How To Fix
-- [RA-001] Re-examine api/auth.py for hardcoded credentials; add a CRITICAL finding for the hardcoded key at line 23 with remediation to load it from os.environ.get("API_TOKEN").
-- [RA-002] Reclassify the SQL injection in db/queries.py:15 as CRITICAL and update the review summary and severity table accordingly.
+- [RA-001] Re-examine api/auth.py for hardcoded credentials; add a `high` severity finding for the hardcoded key at line 23 with remediation to load it from os.environ.get("API_TOKEN").
+- [RA-002] Reclassify the SQL injection in db/queries.py:15 as `high` and update the review summary and severity table accordingly.
 - [RA-003] Run the relevant test suite and record whether tests for new code run and pass; if not, add a Testing gap finding with the specific command output.
 ```

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -25,28 +24,24 @@ from ralph.workspace.memory import MemoryWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
-_MINIMAL_DEVELOPMENT_RESULT = json.dumps(
-    {
-        "type": "development_result",
-        "content": {
-            "status": "completed",
-            "summary": "Implemented the requested change.",
-            "files_changed": "- ralph/prompts/materialize.py",
-        },
-    }
+_MINIMAL_DEVELOPMENT_RESULT = (
+    "---\n"
+    "type: development_result\n"
+    "status: completed\n"
+    "---\n\n"
+    "## Summary\n\n- [SUM-1] Implemented the requested change.\n\n"
+    "## Files Changed\n\n- [F-1] ralph/prompts/materialize.py\n"
 )
 
 
-_MINIMAL_PLANNING_ANALYSIS_DECISION = json.dumps(
-    {
-        "type": "planning_analysis_decision",
-        "content": {
-            "status": "request_changes",
-            "summary": "Revise the plan.",
-            "what_came_up_short": ["Verification is too vague."],
-            "how_to_fix": ["Edit the existing plan instead of starting over."],
-        },
-    }
+_MINIMAL_PLANNING_ANALYSIS_DECISION = (
+    "---\n"
+    "type: planning_analysis_decision\n"
+    "status: request_changes\n"
+    "---\n\n"
+    "## Summary\n\n- [SUM-1] Revise the plan.\n\n"
+    "## What Came Up Short\n\n- [GAP-1] Verification is too vague.\n\n"
+    "## How To Fix\n\n- [FIX-1] Edit the existing plan instead of starting over.\n"
 )
 
 
@@ -70,12 +65,12 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
 
     if phase in {"development_analysis"}:
         workspace.write(
-            ".agent/artifacts/development_result.json",
+            ".agent/artifacts/development_result.md",
             _MINIMAL_DEVELOPMENT_RESULT,
         )
     if previous_phase == "planning_analysis":
         workspace.write(
-            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/artifacts/planning_analysis_decision.md",
             _MINIMAL_PLANNING_ANALYSIS_DECISION,
         )
 
@@ -111,7 +106,7 @@ def test_review_role_requires_existing_plan_handoff(tmp_path: Path) -> None:
     review.jinja is never part of the default pipeline, so the default policy
     cannot cover it. This test constructs a minimal custom policy and verifies
     that prompt materialization raises the expected MissingPlanHandoffError when
-    no .agent/PLAN.md (or plan.json) is present.
+    no .agent/PLAN.md (or .agent/artifacts/plan.md) is present.
     """
     pipeline_policy = PipelinePolicy(
         phases={

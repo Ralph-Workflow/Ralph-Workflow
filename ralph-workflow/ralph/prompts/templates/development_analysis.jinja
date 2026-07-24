@@ -113,7 +113,7 @@ into a gap.
 
 **You CANNOT request changes for anything you cannot yourself prove in this session.**
 
-Every entry you put in `what_came_up_short` must pass BOTH tests:
+Every entry you put in `## What Came Up Short` must pass BOTH tests:
 
 1. **Provable**: you personally observed the defect in this session — in the current work product
    or in the output of a command you ran — and the entry cites that observation.
@@ -122,7 +122,7 @@ Every entry you put in `what_came_up_short` must pass BOTH tests:
 
 If a requirement can only be verified outside this session — a CI pipeline, a deployed environment,
 an external device, a third-party signoff, or any deploy-time-only behavior — it is `not_evaluatable`.
-`not_evaluatable` is NOT a gap: it never appears in `what_came_up_short` and it NEVER justifies
+`not_evaluatable` is NOT a gap: it never appears in `## What Came Up Short` and it NEVER justifies
 `request_changes` or `failed`, no matter how strongly the PLAN or any binding document mandates that
 verification. Disclose material limits in the summary and move on.
 
@@ -181,7 +181,7 @@ evidence, mark it `not_evaluatable` and do not use it as a reason to fail.
 
 For every task, requirement, and acceptance criterion in the PLAN that can be checked from current
 code or commands you can run:
-- Is it implemented? If not, it belongs in `what_came_up_short`.
+- Is it implemented? If not, it belongs in `## What Came Up Short`.
 - Is it implemented correctly? Incorrect implementation counts as not done.
 - Is it verified? If the PLAN requires evidence (test output, command run), does your own
   verification establish that evidence and that it passes?
@@ -286,7 +286,7 @@ status: request_changes
 
 ---
 
-## `what_came_up_short` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## What Came Up Short` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
 1. **List every gap found** across all dimensions. Do not stop after the first problem.
 
@@ -320,9 +320,9 @@ Example `## What Came Up Short` items:
 
 ---
 
-## `how_to_fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## How To Fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
-For every item in `what_came_up_short`, provide a corresponding fix entry:
+For every item in `## What Came Up Short`, provide a corresponding fix entry:
 
 1. **Exact files to edit.** Not just "the workflow" — `'.github/workflows/release-binaries.yml'`.
 2. **Exact behaviors to change.** What should the code do differently?

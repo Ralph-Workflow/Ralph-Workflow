@@ -1,7 +1,7 @@
 ---
 name: submit-commit-message-artifact
 description: Use when submitting a commit_message artifact as markdown via ralph_submit_md_artifact with a commit or skip frontmatter variant, or when the conventional-commit subject was rejected and you need the exact subject rule
-version: 2.0.0
+version: 2.1.0
 ---
 
 # submit-commit-message-artifact

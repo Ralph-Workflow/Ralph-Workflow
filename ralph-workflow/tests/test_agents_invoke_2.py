@@ -294,7 +294,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
-            claude_tool_name("ralph_submit_artifact"),
+            claude_tool_name("ralph_submit_md_artifact"),
         ),
     )
 
@@ -371,7 +371,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
-            claude_tool_name("ralph_submit_artifact"),
+            claude_tool_name("ralph_submit_md_artifact"),
         ),
     )
 
@@ -417,7 +417,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         ",".join(
             [
                 claude_tool_name("read_file"),
-                claude_tool_name("ralph_submit_artifact"),
+                claude_tool_name("ralph_submit_md_artifact"),
                 *CLAUDE_NATIVE_TOOLS_TO_KEEP,
             ]
         ),
@@ -440,14 +440,14 @@ def test_provider_allowed_mcp_tool_names_maps_live_ralph_endpoint_to_claude_alia
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.discover_http_mcp_tool_names",
-        lambda endpoint: ["read_file", "ralph_submit_artifact"],
+        lambda endpoint: ["read_file", "ralph_submit_md_artifact"],
     )
 
     allowed = provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
 
     assert allowed == (
         claude_tool_name("read_file"),
-        claude_tool_name("ralph_submit_artifact"),
+        claude_tool_name("ralph_submit_md_artifact"),
     )
 
 

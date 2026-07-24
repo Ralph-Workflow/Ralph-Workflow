@@ -107,7 +107,7 @@ def _build_live_env() -> dict[str, str]:
     We therefore override HOME in the env returned here to the user's real
     home (captured from the parent process before the autouse fixture ran)
     so the live AGY can authenticate via the keychain. The test outputs
-    (``.agent/artifacts/smoke_test_result.json``, ``.agent/receipts/...``)
+    (``.agent/artifacts/smoke_test_result.md``, ``.agent/receipts/...``)
     are still isolated to the workspace dir because the smoke CLI derives
     ``workspace_root`` from ``Path.cwd()`` (the test's ``cwd=`` argument),
     not from ``$HOME``.
@@ -289,16 +289,16 @@ def test_live_agy_produces_green_parity_table(
 def test_live_agy_artifact_present(live_smoke_session: _LiveSmokeResult) -> None:
     """After the live smoke run, the smoke_test_result artifact is present.
 
-    Reads the session-shared smoke workspace and asserts
-    ``.agent/artifacts/smoke_test_result.json`` is on disk. There is NO
-    auth/quota permits allowance; the upstream-blocked xfail gate
-    converts documented transient conditions into a clear xfail.
+    Reads the session-shared smoke workspace and asserts the canonical
+    Markdown artifact ``.agent/artifacts/smoke_test_result.md`` is on
+    disk. There is NO auth/quota permits allowance; the upstream-blocked
+    xfail gate converts documented transient conditions into a clear xfail.
     """
     _xfail_if_upstream_blocked(live_smoke_session.cli_log_tail)
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
 
-    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.md"
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -493,11 +493,12 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     """The AGY-side direct file write is promoted to a canonical receipt.
 
     Reads the session-shared smoke workspace and asserts the canonical
-    artifact submission path: the live AGY writes
-    ``.agent/artifacts/smoke_test_result.json`` directly and the
+    artifact submission path: the live AGY authors the fallback
+    ``.agent/tmp/smoke_test_result.md`` Markdown document and the
     ``promote_fallback_artifact`` / ``write_artifact_receipt`` machinery
-    in ``ralph.mcp.artifacts`` durably stamps a canonical receipt keyed
-    on ``(run_id, artifact_type)``. Under RFC-013 P3 that receipt lives
+    in ``ralph.mcp.artifacts`` writes the canonical
+    ``.agent/artifacts/smoke_test_result.md`` artifact and durably stamps
+    a canonical receipt keyed on ``(run_id, artifact_type)``. Under RFC-013 P3 that receipt lives
     in the per-workspace ``.agent/state.db`` (one row per
     ``(run_id, artifact_type)``); the legacy
     ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is
@@ -514,7 +515,7 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
 
-    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.md"
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -567,7 +568,7 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
     output = live_smoke_session.output
 
     expected_run_id = live_smoke_session.expected_run_id
-    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.md"
 
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "

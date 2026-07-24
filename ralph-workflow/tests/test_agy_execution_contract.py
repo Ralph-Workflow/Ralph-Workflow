@@ -115,7 +115,7 @@ def test_declare_complete_marker_with_sentinel_satisfies_completion_contract(
 def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
     """AGY with artifact on disk does not raise even without declare_complete.
 
-    The legacy schema-validity fallback for ``.agent/artifacts/<type>.json``
+    The legacy schema-validity fallback for on-disk canonical artifacts
     was removed (analysis how_to_fix item 3): a stale canonical artifact
     from a previous run can no longer satisfy the current run's
     completion gate. The hardened contract requires either a current-run
@@ -126,7 +126,15 @@ def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
     """
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True)
-    (artifact_dir / "development_result.json").write_text('{"summary": "done"}')
+    (artifact_dir / "development_result.md").write_text(
+        "---\n"
+        "type: development_result\n"
+        "status: completed\n"
+        "---\n\n"
+        "## Summary\n\n- [SUM-1] done\n\n"
+        "## Files Changed\n\n- [F-1] src/x.py\n",
+        encoding="utf-8",
+    )
     # The current-run receipt is what the AGY smoke plumbing now relies
     # on (the receipt is promoted from the agent's direct write via
     # ``promote_fallback_artifact``).

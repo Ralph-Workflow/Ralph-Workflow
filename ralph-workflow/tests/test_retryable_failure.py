@@ -2,7 +2,7 @@
 
 The cross-caller drift: a model that connects, reasons, and returns an empty
 turn with NO tool call (e.g. nanocoder/MiniMax-M3 over-reasoning a commit
-message and never calling ``ralph_submit_artifact``) is retried by the pipeline
+message and never calling ``ralph_submit_md_artifact``) is retried by the pipeline
 path (the classifier treats it as recoverable), but the direct-MCP recovery path
 used by `ralph --generate-commit` did NOT retry it because the empty-response
 signal was gated on prior tool activity. These tests pin that BOTH a

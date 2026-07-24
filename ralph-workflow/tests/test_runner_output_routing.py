@@ -166,10 +166,10 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         del kwargs
         assert isinstance(effect, InvokeAgentEffect)
         if effect.phase == "planning":
-            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.json"
+            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.md"
             plan_path.parent.mkdir(parents=True, exist_ok=True)
             plan_path.write_text(
-                '{"type":"plan","content":{"noop":true}}',
+                "---\ntype: plan\n---\n## Summary\nNoop plan\n",
                 encoding="utf-8",
             )
         phase_mat, sys_mat = _fast_materializers(workspace_scope, effect)
@@ -266,10 +266,10 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         del kwargs
         assert isinstance(effect, InvokeAgentEffect)
         if effect.phase == "planning":
-            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.json"
+            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.md"
             plan_path.parent.mkdir(parents=True, exist_ok=True)
             plan_path.write_text(
-                '{"type":"plan","content":{"noop":true}}',
+                "---\ntype: plan\n---\n## Summary\nNoop plan\n",
                 encoding="utf-8",
             )
             handoff_path = workspace_scope.root / ".agent" / "PLAN.md"

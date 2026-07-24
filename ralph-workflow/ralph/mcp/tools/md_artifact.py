@@ -209,6 +209,13 @@ def handle_edit_md_plan_step(
 ) -> ToolResult:
     """Edit one stable-ID step in the persisted plan draft."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown plan-step editing")
+    if "content" in params:
+        raise InvalidParamsError(
+            "'content' is not an accepted argument: ralph_edit_md_plan_step edits the "
+            "persisted staged plan draft and does not take a full document. Resubmit "
+            "the document with ralph_stage_md_artifact, or edit staged steps "
+            "individually by step_id."
+        )
     action = params.get("action")
     step_id = params.get("step_id")
     replacement = params.get("replacement")
@@ -221,25 +228,14 @@ def handle_edit_md_plan_step(
         )
     if index is not None and not isinstance(index, int):
         raise InvalidParamsError("index must be an integer")
-    direct_content = params.get("content")
-    if direct_content is not None and not isinstance(direct_content, str):
-        raise InvalidParamsError("content must be markdown when supplied by an internal caller")
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
-    artifact_dir = (
-        _resolve_artifact_dir(session, workspace) if direct_content is None else None
-    )
-    draft = (
-        load_md_draft(artifact_dir, "plan", backend=backend)
-        if artifact_dir is not None
-        else direct_content
-    )
+    artifact_dir = _resolve_artifact_dir(session, workspace)
+    draft = load_md_draft(artifact_dir, "plan", backend=backend)
     if draft is None:
         raise InvalidParamsError(
             "no staged draft exists for 'plan'; stage it with ralph_stage_md_artifact first"
         )
     edited = edit_plan_step_markdown(draft, action, step_id, replacement, index)
-    if artifact_dir is None:
-        return ToolResult(content=[ToolContent.json_content({"content": edited})], is_error=False)
     save_md_draft(artifact_dir, "plan", edited, backend=backend)
     return _draft_status_result("plan", edited, exists=True)
 

@@ -56,25 +56,25 @@ def test_resolve_smoke_harness_spec_claude_uses_legacy_layout() -> None:
 def test_build_smoke_prompt_adds_shared_subagent_scenario_only_when_requested() -> None:
     basic = smoke_plumbing_module._build_smoke_prompt(
         "tmp/interactive-claude-smoke/todo-list.js",
-        submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
     )
     subagents = smoke_plumbing_module._build_smoke_prompt(
         "tmp/interactive-claude-smoke/todo-list.js",
-        submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
         subagents=True,
     )
 
     assert "delegate exactly one bounded, read-only task" not in basic
     assert "delegate exactly one bounded, read-only task" in subagents
     assert "After the subagent result" in subagents
-    assert "mcp__ralph__ralph_submit_artifact" in subagents
+    assert "mcp__ralph__ralph_submit_md_artifact" in subagents
     assert "declare_complete" in subagents
 
 
 def test_build_smoke_prompt_uses_custom_subagent_task_without_losing_harness_contract() -> None:
     prompt = smoke_plumbing_module._build_smoke_prompt(
         "tmp/interactive-claude-smoke/todo-list.js",
-        submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+        submit_artifact_tool_name="mcp__ralph__ralph_submit_md_artifact",
         subagents=True,
         subagent_prompt="Inspect the parser and report two possible edge cases.",
     )
@@ -412,14 +412,6 @@ def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
     output_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("export const todos = [];\n", encoding="utf-8")
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "smoke_test_result.json").write_text(
-        '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
-        '"content":{"status":"passed","summary":"ok"},'
-        '"created_at":"now","updated_at":"now","metadata":{}}',
-        encoding="utf-8",
-    )
 
     result = smoke_plumbing_module.run_smoke_plumbing(
         config=_fake_config(),
@@ -487,14 +479,6 @@ def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output(
     output_file = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_path.write_text(
-        '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
-        '"content":{"status":"passed","summary":"ok"},'
-        '"created_at":"now","updated_at":"now","metadata":{}}',
-        encoding="utf-8",
-    )
     config = AgentConfig(
         cmd="claude",
         json_parser=JsonParserType.CLAUDE,
@@ -595,18 +579,6 @@ class TestSmokePlumbingCharacterization:
         output_path = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("export const todos = [];\n", encoding="utf-8")
-        artifact_dir = tmp_path / ".agent" / "artifacts"
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        (artifact_dir / "smoke_test_result.json").write_text(
-            '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
-            '"content":{"status":"passed","summary":"ok",'
-            '"output_file":"tmp/interactive-claude-smoke/todo-list.js",'
-            '"observed_working":["tmp artifact created"],'
-            '"observed_breaks":[],'
-            '"headless_guide_checks":["session capture"]},'
-            '"created_at":"now","updated_at":"now","metadata":{}}',
-            encoding="utf-8",
-        )
 
         monkeypatch.setattr(smoke_plumbing_module, "invoke_agent", _fake_invoke_agent)
 
@@ -694,25 +666,6 @@ def _fake_execute_agent_effect_for_config(
             output_path = workspace_root / output_relpath
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text("export const todos = [];\n", encoding="utf-8")
-            artifact_dir = workspace_root / ".agent" / "artifacts"
-            artifact_dir.mkdir(parents=True, exist_ok=True)
-            (artifact_dir / "smoke_test_result.json").write_text(
-                json.dumps(
-                    {
-                        "name": "smoke_test_result",
-                        "artifact_type": "smoke_test_result",
-                        "content": {
-                            "status": "passed",
-                            "summary": "ok",
-                            "output_file": output_relpath,
-                            "observed_working": ["tmp artifact created"],
-                            "observed_breaks": [],
-                            "headless_guide_checks": ["tool activity"],
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
         if raw_sink is not None:
             cast("deque[str]", raw_sink).extend(raw_lines)
             cast("deque[str]", raw_sink).append(
@@ -1005,7 +958,7 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
     # CRUCIALLY: do NOT write the artifact. The smoke run must report the
     # missing-receipt completion failure, not the legacy transcript-marker
     # failure.
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
     if artifact_path.exists():
         artifact_path.unlink()
 
@@ -1087,26 +1040,28 @@ def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
     # CRUCIALLY: do NOT write the workspace file. The file write is the
     # authoritative AGY tool-activity signal, so a pre-created file would
     # mask the regression.
-    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    # Self-reporting artifact: the headless_guide_checks declare "tool
-    # activity" but no actual tool activity is observed (no parser event,
-    # no file write). The harness must NOT trust the self-report.
+    # Self-reporting artifact: a spec-valid canonical Markdown document whose
+    # Headless Guide Checks declare "tool activity" while no actual tool
+    # activity is observed (no parser event, no file write). The harness
+    # must NOT trust the self-report.
     artifact_path.write_text(
-        json.dumps(
-            {
-                "name": "smoke_test_result",
-                "artifact_type": "smoke_test_result",
-                "content": {
-                    "status": "passed",
-                    "summary": "ok",
-                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
-                    "observed_working": ["tmp artifact created"],
-                    "observed_breaks": [],
-                    "headless_guide_checks": ["tool activity"],
-                },
-            }
-        ),
+        """\
+---
+type: smoke_test_result
+status: passed
+output_file: tmp/interactive-agy-smoke/todo-list.js
+---
+## Summary
+- [SUM-1] ok
+
+## Observed Working
+- [OK-1] tmp artifact created
+
+## Headless Guide Checks
+- [HG-1] tool activity
+""",
         encoding="utf-8",
     )
 

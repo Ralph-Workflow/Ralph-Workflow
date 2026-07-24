@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import importlib
-import json
 import sys
 from typing import TYPE_CHECKING, cast
 
@@ -99,17 +98,9 @@ def _make_unit(unit_id: str) -> WorkUnit:
 
 def _seed_artifact(artifact_dir: Path) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "plan.json").write_text(
-        json.dumps(
-            {
-                "name": "plan",
-                "type": "plan",
-                "content": {"summary": "done"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            }
-        )
+    (artifact_dir / "plan.md").write_text(
+        "---\ntype: plan\n---\n## Summary\ndone\n",
+        encoding="utf-8",
     )
 
 

@@ -129,7 +129,7 @@ convert missing evidence into a gap.
 
 **You CANNOT request changes for anything you cannot yourself prove in this session.**
 
-Every entry you put in `what_came_up_short` must pass BOTH tests:
+Every entry you put in `## What Came Up Short` must pass BOTH tests:
 
 1. **Provable**: you personally observed the defect in this session — in the plan content, the
    repository, or the output of a command you ran — and the entry cites that observation.
@@ -139,7 +139,7 @@ Every entry you put in `what_came_up_short` must pass BOTH tests:
 
 If a claim can only be verified outside this session — a CI pipeline, a deployed environment,
 an external device, a third-party signoff, or any deploy-time-only behavior — it is not evaluatable.
-Not evaluatable is NOT a gap: it never appears in `what_came_up_short` and it NEVER justifies
+Not evaluatable is NOT a gap: it never appears in `## What Came Up Short` and it NEVER justifies
 `request_changes` or `failed`. Disclose material limits in the summary and move on.
 
 If an unprovable requirement is genuinely important, the strongest action you may take is to note
@@ -206,13 +206,13 @@ Use this reasoning chain explicitly when needed: Goal → required workflow → 
 Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
 Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
 If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before deciding it is sound.
-Write each `what_came_up_short` entry as `- [PA-###] Dimension: ... | Defect: ... | Evidence: ... | Missing: ...` and each `how_to_fix` entry as `- [PA-###] <fix>` with the SAME ID.
+Write each `## What Came Up Short` entry as `- [PA-###] Dimension: ... | Defect: ... | Evidence: ... | Missing: ...` and each `## How To Fix` entry as `- [PA-###] <fix>` with the SAME ID.
 
 ### 1. PROMPT COMPLIANCE
 
 For every task, requirement, and acceptance criterion in the PROMPT that can be checked from the
 PLAN, repository contents, or commands you can run:
-- Is it represented in the plan? If not, it belongs in `what_came_up_short`.
+- Is it represented in the plan? If not, it belongs in `## What Came Up Short`.
 - Is it represented concretely enough to execute? Vague gestures count as not done.
 - Is the proposed verification aligned with the requirement? If the PROMPT requires proof, does the
   plan give exact runnable checks?
@@ -333,7 +333,7 @@ status: request_changes
 - [PA-001] Dimension: Verification gap | Defect: verification section omits the exact pytest command | Evidence: V-1 says "run tests" | Missing: exact command and expected passing result
 
 ## How To Fix
-- [PA-001] Rewrite the Verification section with method `pytest tests/test_foo.py -q` and an expected_outcome describing the passing regression test, then resubmit the plan document.
+- [PA-001] Rewrite the Verification section with method `pytest tests/test_foo.py -q` and an `Expect:` field describing the passing regression test, then resubmit the plan document.
 {% endset %}
 {{ render_artifact_submission('planning_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, planning_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}
 
@@ -341,7 +341,7 @@ status: request_changes
 
 ---
 
-## `what_came_up_short` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## What Came Up Short` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
 1. **List every gap found** across all dimensions. Do not stop after the first problem.
 
@@ -366,13 +366,13 @@ status: request_changes
 
 ---
 
-## `how_to_fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
+## `## How To Fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
-For every item in `what_came_up_short`, provide a corresponding fix entry:
+For every item in `## What Came Up Short`, provide a corresponding fix entry:
 
 1. **Exact plan sections to resubmit via the MCP plan-edit tools.** If repository files matter, cite them as evidence the revised sections must incorporate, not as files the planner should edit.
 2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
-3. **Preserve the same stable gap ID from the corresponding `what_came_up_short` entry** so the planner can prove closure without ambiguity.
+3. **Preserve the same stable gap ID from the corresponding `## What Came Up Short` entry** so the planner can prove closure without ambiguity.
 4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
 5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, then for targeted edits use `ralph_stage_md_artifact` → `ralph_edit_md_plan_step` → `ralph_get_md_draft` → `ralph_finalize_md_artifact`; restart only when truly unsalvageable).
 6. **Commands or checks to validate the revised plan.**

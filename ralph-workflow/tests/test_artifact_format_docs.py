@@ -22,7 +22,7 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_format_index,
 )
 from ralph.mcp.artifacts.markdown import parse_and_validate
-from ralph.mcp.artifacts.markdown.registry import get_spec
+from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
@@ -74,6 +74,17 @@ def test_every_bundled_example_validates_with_the_registered_spec(artifact_type:
     assert example is not None
     _, diagnostics = parse_and_validate(example, get_spec(artifact_type))
     assert [item for item in diagnostics if item.severity == "error"] == []
+
+
+def test_format_doc_types_match_the_spec_registry_exactly() -> None:
+    """Every registered markdown spec has a format doc, and vice versa.
+
+    Guards against a future spec silently escaping format-doc/example
+    validation because the hardcoded tuple was not extended.
+    """
+    import_module("ralph.mcp.artifacts.markdown.specs")
+    registered = {spec.artifact_type for spec in registered_specs()}
+    assert set(FORMAT_DOC_ARTIFACT_TYPES) == registered
 
 
 def test_unknown_types_have_no_bundled_doc_or_example() -> None:

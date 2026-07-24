@@ -26,6 +26,22 @@ def _template(name: str) -> str:
     return TemplateContext.default().registry.get_template(name)
 
 
+def test_commit_cleanup_top_level_basename_list_matches_code_allowlist() -> None:
+    """The commit_cleanup prompt's ``.agent/`` top-level basename list must
+    stay byte-synced with ``AGENT_INTERNAL_TOP_LEVEL_BASENAMES`` — a drift
+    means the cleanup agent is told a different deletable set than the
+    runtime safety boundary enforces."""
+    from ralph.phases._agent_internal_paths import AGENT_INTERNAL_TOP_LEVEL_BASENAMES
+
+    text = _template("commit_cleanup")
+    match = re.search(
+        r"the canonical allowlist\):\n(.+?)\n- \*\*", text, re.DOTALL
+    )
+    assert match is not None, "canonical allowlist bullet not found in commit_cleanup.jinja"
+    listed = set(re.findall(r"``\.agent/([^`]+)``", match.group(1)))
+    assert listed == set(AGENT_INTERNAL_TOP_LEVEL_BASENAMES)
+
+
 def test_planning_templates_name_only_the_markdown_artifact_surface() -> None:
     text = "\n".join(
         _template(name)
