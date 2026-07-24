@@ -24,7 +24,13 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
-from ralph.pipeline.events import AnalysisDecisionEvent, Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
+    Event,
+    ExecutionResultEvent,
+    PhaseFailureEvent,
+    PipelineEvent,
+)
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
@@ -512,7 +518,9 @@ def test_handle_planning_invokes_agent_successfully() -> None:
         prompt_file="planning.txt",
     )
 
-    assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+    assert handle_execution_phase(effect, ctx) == [
+        ExecutionResultEvent(phase="development", status="completed")
+    ]
 
 
 def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
