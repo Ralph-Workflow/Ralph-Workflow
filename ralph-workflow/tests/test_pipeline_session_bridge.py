@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -381,6 +382,13 @@ class TestBuildSessionBridge:
         the materialization MUST happen there — before the prompt is
         rendered, before the agent runs. This test pins that contract.
         """
+        stale_doc = tmp_path / ".agent" / "artifact-formats" / "commit_message.md"
+        stale_doc.parent.mkdir(parents=True)
+        stale_doc.write_text(
+            "Call ralph_submit_artifact with a JSON-serialized content payload.",
+            encoding="utf-8",
+        )
+
         build_session_bridge(
             workspace_root=tmp_path,
             drain="commit",
@@ -411,6 +419,10 @@ class TestBuildSessionBridge:
             f"build_session_bridge did not materialize format docs: "
             f"missing {sorted(missing)} in {formats_dir}"
         )
+        bundled_commit_doc = load_bundled_format_doc("commit_message")
+        assert bundled_commit_doc is not None
+        assert stale_doc.read_text(encoding="utf-8") == bundled_commit_doc
+        assert "ralph_submit_artifact" not in bundled_commit_doc
 
 
 class TestBridgeEnvFor:

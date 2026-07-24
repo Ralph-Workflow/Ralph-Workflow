@@ -108,6 +108,27 @@ def test_materialize_all_includes_docs_examples_and_index() -> None:
     assert all(backend.exists(workspace_root / path) for path in expected)
 
 
+def test_materialized_surface_regression_stale_docs_match_bundled_markdown(
+    materialized_format_doc_contents: dict[str, str],
+) -> None:
+    """Regression: every agent-facing generated file must match its bundled source."""
+    expected_content = {
+        **{
+            format_doc_workspace_path(item): load_bundled_format_doc(item)
+            for item in FORMAT_DOC_ARTIFACT_TYPES
+        },
+        **{
+            example_workspace_path(item): load_bundled_example(item)
+            for item in EXAMPLE_ARTIFACT_TYPES
+        },
+        format_index_workspace_path(): load_bundled_format_index(),
+    }
+
+    for relative_path, bundled_content in expected_content.items():
+        assert bundled_content is not None
+        assert materialized_format_doc_contents[relative_path] == bundled_content
+
+
 def test_materialize_unknown_type_has_no_side_effect() -> None:
     backend = MemoryBackend()
     workspace_root = Path("/virtual-ws")

@@ -207,17 +207,27 @@ def _materialized_format_docs() -> Path:
 
     This session-scope fixture writes every bundled format doc into
     ``ralph-workflow/.agent/artifact-formats/`` once per pytest session so the
-    on-disk copy always matches the bundled source. The fixture is side-effect
-    free beyond the local ``.agent/`` directory (which is gitignored), runs in
-    well under one second on the bundled set, and is skipped when the directory
-    is already populated to avoid redundant writes.
+    on-disk copy always matches the bundled source. The fixture always invokes
+    the idempotent materializer so a partially populated or stale generated
+    tree is refreshed while byte-identical files avoid physical rewrites. It is
+    side-effect free beyond the local ``.agent/`` directory (which is
+    gitignored) and runs in well under one second on the bundled set.
     """
     workspace_root = Path(__file__).resolve().parent.parent
-    artifact_dir = workspace_root / ".agent" / "artifact-formats"
-    plan_doc = artifact_dir / "plan.md"
-    if not plan_doc.exists():
-        materialize_all_format_docs(workspace_root)
+    materialize_all_format_docs(workspace_root)
     return workspace_root
+
+
+@pytest.fixture
+def materialized_format_doc_contents(
+    _materialized_format_docs: Path,
+) -> dict[str, str]:
+    """Return the live agent-facing format-doc tree as plain text values."""
+    formats_root = _materialized_format_docs / ".agent" / "artifact-formats"
+    return {
+        str(path.relative_to(_materialized_format_docs)): path.read_text(encoding="utf-8")
+        for path in formats_root.rglob("*.md")
+    }
 
 
 def _configure_repo_identity(repo: object) -> None:
