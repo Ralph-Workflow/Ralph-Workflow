@@ -14,7 +14,9 @@ from rich.console import Console
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import ExecutionResultEvent, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.reducer import reduce as reducer_reduce
+from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 
 _VALID_PLAN_MARKDOWN = """---
@@ -66,6 +68,23 @@ status: completed
 ## Plan Items Proven
 - [S-1] Implemented.
 ## Analysis Items Addressed
+"""
+
+_VALID_PARTIAL_DEV_RESULT_MARKDOWN = """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Implemented the first increment.
+## Files Changed
+- [F-1] src/a.py
+## Plan Items Proven
+- [S-1] Implemented.
+## Analysis Items Addressed
+## Next Steps
+- [N-1] Finish the remaining increment.
+## Continuation
+- [C-1] session-1
 """
 
 
@@ -132,7 +151,7 @@ class TestHandleDevelopment:
         assert event.phase == "development"
         assert event.recoverable is True
 
-    def test_invoke_agent_effect_with_valid_work_units_returns_agent_success(self) -> None:
+    def test_invoke_agent_effect_with_completed_result_emits_execution_result(self) -> None:
         workspace = MagicMock()
         workspace.exists.side_effect = lambda path: (
             path
@@ -150,7 +169,7 @@ class TestHandleDevelopment:
 
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
         result = handle_execution_phase(effect, ctx)
-        assert result == [PipelineEvent.AGENT_SUCCESS]
+        assert result == [ExecutionResultEvent(phase="development", status="completed")]
 
     def test_invoke_agent_effect_succeeds_even_when_console_is_present(self) -> None:
         workspace = MagicMock()
@@ -171,7 +190,45 @@ class TestHandleDevelopment:
 
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
         result = handle_execution_phase(effect, ctx)
-        assert result == [PipelineEvent.AGENT_SUCCESS]
+        assert result == [ExecutionResultEvent(phase="development", status="completed")]
+
+    def test_partial_result_flows_through_cleanup_and_commit_back_to_development(self) -> None:
+        workspace = MagicMock()
+        workspace.exists.side_effect = lambda path: (
+            path
+            in {
+                ".agent/artifacts/plan.md",
+                ".agent/artifacts/development_result.md",
+            }
+        )
+        workspace.read.side_effect = lambda path: (
+            _VALID_PARTIAL_DEV_RESULT_MARKDOWN
+            if path == ".agent/artifacts/development_result.md"
+            else _VALID_PLAN_MARKDOWN
+        )
+        ctx = self._make_context(workspace)
+        policy = ctx.pipeline_policy
+        effect = InvokeAgentEffect(
+            agent_name="dev",
+            phase="development",
+            prompt_file="dev.txt",
+        )
+
+        result = handle_execution_phase(effect, ctx)
+        cleanup_state, _ = reducer_reduce(
+            PipelineState(phase="development", last_agent_session_id="session-1"),
+            result[0],
+            policy,
+        )
+        commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
+        next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+        assert result == [ExecutionResultEvent(phase="development", status="partial")]
+        assert cleanup_state.phase == "development_commit_cleanup"
+        assert commit_state.phase == "development_commit"
+        assert next_state.phase == "development"
+        assert next_state.last_agent_session_id is None
+        assert next_state.post_commit_phase_override is None
 
     def test_invoke_agent_effect_without_development_result_returns_phase_failure(
         self,

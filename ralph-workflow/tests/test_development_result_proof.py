@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import ExecutionResultEvent, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
@@ -190,7 +190,7 @@ def test_proof_policy_can_be_disabled_explicitly(tmp_path: Path) -> None:
 
     events = handle_execution_phase(_invoke(), ctx)
 
-    assert events == [PipelineEvent.AGENT_SUCCESS]
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
 def test_steps_plan_fails_when_no_proof_is_submitted() -> None:
@@ -354,4 +354,4 @@ def test_analysis_feedback_passes_with_exact_text() -> None:
 
     events = handle_execution_phase(_invoke(), ctx)
 
-    assert events == [PipelineEvent.AGENT_SUCCESS]
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]

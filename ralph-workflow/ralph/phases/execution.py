@@ -36,7 +36,6 @@ from ralph.phases.artifacts import (
     artifact_validation_failure_event,
     load_phase_artifact,
     unwrap_phase_artifact_content,
-    validate_artifact_on_disk,
 )
 from ralph.phases.required_artifacts import (
     build_missing_input_hint,
@@ -48,7 +47,7 @@ from ralph.phases.required_artifacts import (
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
@@ -108,19 +107,27 @@ def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
             events = plan_result if plan_result else [PipelineEvent.AGENT_SUCCESS]
 
     if events is None and ra is not None:
-        failure = _validate_output_artifact(effect, ctx, ra)
+        failure, validated_content = _validate_output_artifact(effect, ctx, ra)
         if failure is not None:
             events = failure
-        elif (
-            ra.artifact_type == "development_result"
-            and phase_def is not None
-            and phase_def.artifact_proof_policy is not None
-        ):
-            proof_failure = _validate_development_result_proof(
-                ctx, phase, phase_def.artifact_proof_policy, ra
-            )
-            if proof_failure is not None:
-                events = proof_failure
+        elif ra.artifact_type == "development_result" and validated_content is not None:
+            development_result = DevelopmentResult.model_validate(validated_content)
+            if phase_def is not None and phase_def.artifact_proof_policy is not None:
+                proof_failure = _validate_development_result_proof(
+                    ctx,
+                    phase,
+                    phase_def.artifact_proof_policy,
+                    development_result,
+                )
+                if proof_failure is not None:
+                    events = proof_failure
+            if events is None:
+                events = [
+                    ExecutionResultEvent(
+                        phase=phase,
+                        status=development_result.status,
+                    )
+                ]
 
     if events is None:
         events = [PipelineEvent.AGENT_SUCCESS]
@@ -237,11 +244,12 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
 
 def _validate_output_artifact(
     effect: InvokeAgentEffect, ctx: PhaseContext, ra: RequiredArtifact
-) -> list[Event] | None:
-    """Validate the output artifact contract. Returns failure events if invalid, else None.
+) -> tuple[list[Event] | None, dict[str, object] | None]:
+    """Validate an output artifact and retain its normalized content.
 
-    When ra.artifact_required is False and the artifact is absent, returns None
-    (treat as success). A present optional artifact is still parsed and type-checked.
+    When ``artifact_required`` is false and the artifact is absent, the empty
+    result treats it as success. A present optional artifact is still parsed
+    and normalized.
     """
     phase = effect.phase
     if not ctx.workspace.exists(ra.json_path):
@@ -251,16 +259,34 @@ def _validate_output_artifact(
                 phase,
                 ra.json_path,
             )
-            return None
+            return None, None
         detail = (
             f"Missing required artifact at {ra.json_path}; "
             f"the agent must submit {ra.artifact_type} before declaring completion"
         )
         logger.warning("Execution phase '{}' missing required artifact at {}", phase, ra.json_path)
         _write_retry_hint(ctx, phase, detail)
-        return [artifact_validation_failure_event(phase=phase, reason=detail)]
-    invalid_detail = validate_artifact_on_disk(ctx.workspace, ra)
-    if invalid_detail is not None:
+        return [artifact_validation_failure_event(phase=phase, reason=detail)], None
+
+    try:
+        artifact = load_phase_artifact(
+            ctx.workspace,
+            ra.json_path,
+            artifact_type=ra.artifact_type,
+        )
+        content = unwrap_phase_artifact_content(
+            artifact,
+            expected_type=ra.artifact_type,
+        )
+        normalized = ra.normalizer(content) if ra.normalizer is not None else content
+    except PhaseArtifactError as exc:
+        invalid_detail = str(exc)
+    except ValueError as exc:
+        invalid_detail = f"Artifact at {ra.json_path} failed validation: {exc}"
+    else:
+        return None, normalized
+
+    if invalid_detail:
         logger.warning(
             "Invalid {} artifact in execution phase '{}': {}",
             ra.artifact_type,
@@ -268,13 +294,12 @@ def _validate_output_artifact(
             invalid_detail,
         )
         _write_retry_hint(ctx, phase, invalid_detail)
-        return [
-            artifact_validation_failure_event(
-                phase=phase,
-                reason=f"Invalid {ra.artifact_type} artifact: {invalid_detail}",
-            )
-        ]
-    return None
+    return [
+        artifact_validation_failure_event(
+            phase=phase,
+            reason=f"Invalid {ra.artifact_type} artifact: {invalid_detail}",
+        )
+    ], None
 
 
 def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
@@ -309,7 +334,7 @@ def _step_proof_errors(required_refs: frozenset[str], submitted_list: list[str])
     if missing:
         errors.append(
             "PROOF INCOMPLETE: The following plan step(s) have no proof entry: "
-            f'{sorted(missing)}. Each plan_item must exactly match a stable S-id.'
+            f"{sorted(missing)}. Each plan_item must exactly match a stable S-id."
         )
     if extra:
         errors.append(
@@ -343,11 +368,15 @@ def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[s
     errors: list[str] = []
     submitted = frozenset(submitted_list)
     if len(submitted) < len(submitted_list):
-        errors.append("PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed.")
+        errors.append(
+            "PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed."
+        )
     missing = required_refs - submitted
     extra = submitted - required_refs
     if missing:
-        errors.append(f"PROOF INCOMPLETE: Missing proof for analysis item ID(s): {sorted(missing)}.")
+        errors.append(
+            f"PROOF INCOMPLETE: Missing proof for analysis item ID(s): {sorted(missing)}."
+        )
     if extra:
         errors.append(f"PROOF INVALID: Unknown how_to_fix_item ID(s): {sorted(extra)}.")
     return errors
@@ -435,17 +464,8 @@ def _validate_development_result_proof(
     ctx: PhaseContext,
     phase: str,
     proof_policy: ArtifactProofPolicy,
-    ra: RequiredArtifact,
+    dev_result: DevelopmentResult,
 ) -> list[Event] | None:
-    try:
-        artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
-        raw_content = unwrap_phase_artifact_content(
-            artifact_wrapper, expected_type=ra.artifact_type
-        )
-        dev_result = DevelopmentResult.model_validate(raw_content)
-    except Exception:
-        return None
-
     errors: list[str] = []
     if proof_policy.require_plan_proof:
         errors.extend(_plan_proof_errors(ctx, dev_result))

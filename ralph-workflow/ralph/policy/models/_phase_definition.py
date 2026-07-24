@@ -70,6 +70,13 @@ class PhaseDefinition(_FrozenPolicyModel):
         default_factory=dict,
         description="Named bypass routes (outcome -> target phase)",
     )
+    result_status_post_commit: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Execution artifact status routes applied after the next commit outcome. "
+            "Statuses absent from this map follow the phase's normal analyzer flow."
+        ),
+    )
     clean_outcome: str | None = Field(
         default=None,
         description=(

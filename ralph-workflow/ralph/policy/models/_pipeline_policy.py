@@ -181,6 +181,18 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
+    def result_status_post_commit_targets_known_phases(self) -> Self:
+        ts = self.terminal_states()
+        for phase_name, phase_def in self.phases.items():
+            for status, target in phase_def.result_status_post_commit.items():
+                if target not in ts and target not in self.phases:
+                    raise ValueError(
+                        f"Phase '{phase_name}' result_status_post_commit['{status}'] "
+                        f"targets unknown phase '{target}'"
+                    )
+        return self
+
+    @model_validator(mode="after")
     def loop_counter_references_valid(self) -> Self:
         if not self.loop_counters:
             return self

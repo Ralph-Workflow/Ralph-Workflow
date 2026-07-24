@@ -52,6 +52,7 @@ from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     AnalysisDecisionEvent,
     Event,
+    ExecutionResultEvent,
     PhaseFailureEvent,
     PipelineEvent,
     PostFanoutVerificationEvent,
@@ -206,6 +207,16 @@ def _reduce_phase_failure(
     return _handle_phase_failure(state, event, policy=pipeline_policy)
 
 
+def _reduce_result_event(
+    state: PipelineState,
+    event: AnalysisDecisionEvent | ExecutionResultEvent,
+    pipeline_policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    if isinstance(event, AnalysisDecisionEvent):
+        return _handle_analysis_decision(state, event, pipeline_policy)
+    return _handle_execution_result(state, event, pipeline_policy)
+
+
 _EVENT_HANDLERS: dict[  # bounded-accumulator-ok: static
     PipelineEvent,
     Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
@@ -278,8 +289,8 @@ def reduce(
         return _reduce_post_fanout_verification(state, event, pipeline_policy)
     if isinstance(event, PhaseFailureEvent):
         return _reduce_phase_failure(state, event, pipeline_policy, recovery)
-    if isinstance(event, AnalysisDecisionEvent):
-        return _handle_analysis_decision(state, event, pipeline_policy)
+    if isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
+        return _reduce_result_event(state, event, pipeline_policy)
     worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)
     if worker_result is not None:
         return worker_result
@@ -577,6 +588,33 @@ def _handle_analysis_success(
         )
 
 
+def _handle_execution_result(
+    state: PipelineState,
+    event: ExecutionResultEvent,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Route an execution result while carrying any policy-declared commit override."""
+    if policy is None:
+        return _advance_to_failed(state, "No policy loaded for execution result routing", policy)
+    if event.phase != state.phase:
+        return _advance_to_failed(
+            state,
+            f"Execution result phase '{event.phase}' does not match active phase '{state.phase}'",
+            policy,
+        )
+    phase_def = policy.phases.get(event.phase)
+    if phase_def is None or phase_def.role != "execution":
+        return _advance_to_failed(
+            state,
+            f"Execution result references non-execution phase '{event.phase}'",
+            policy,
+        )
+    routed_state = state.copy_with(
+        post_commit_phase_override=phase_def.result_status_post_commit.get(event.status)
+    )
+    return _resolve_or_terminal(routed_state, "success", policy, "execution result")
+
+
 def _handle_analysis_loopback(
     state: PipelineState,
     policy: PipelinePolicy | None,
@@ -825,6 +863,8 @@ def _handle_commit_success(
     try:
         progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
         next_phase = resolve_post_commit_phase(progress_state, policy)
+        if progress_state.post_commit_phase_override is not None:
+            progress_state = progress.consume_post_commit_phase_override(progress_state)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects
     except ValueError as exc:
@@ -848,6 +888,8 @@ def _handle_commit_skipped(
     try:
         progress_state = progress.apply_commit_outcome(state, state, skipped=True, policy=policy)
         next_phase = resolve_post_commit_phase(progress_state, policy)
+        if progress_state.post_commit_phase_override is not None:
+            progress_state = progress.consume_post_commit_phase_override(progress_state)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects
     except ValueError as exc:

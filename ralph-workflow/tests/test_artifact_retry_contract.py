@@ -34,7 +34,12 @@ from ralph.phases.required_artifacts import (
     retry_hint_path,
 )
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
+    ExecutionResultEvent,
+    PhaseFailureEvent,
+    PipelineEvent,
+)
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
@@ -482,7 +487,7 @@ def test_development_proof_failure_uses_retry_hint_contract(
     )
     ctx2 = _make_ctx(workspace, policy)
     events2 = _execution_handler_for("development")(_invoke_effect("development"), ctx2)
-    assert PipelineEvent.AGENT_SUCCESS in events2
+    assert events2 == [ExecutionResultEvent(phase="development", status="completed")]
 
 
 @pytest.mark.parametrize(

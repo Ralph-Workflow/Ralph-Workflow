@@ -125,6 +125,7 @@ prompt_template = "developer_iteration.jinja"
 continuation_template = "developer_iteration_continuation.jinja"
 display_style = "theme.phase.development"
 clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
+result_status_post_commit = { partial = "development" }
 [blocks.development.phase.transitions]
 on_success = "development_commit_cleanup"
 on_loopback = "development"
