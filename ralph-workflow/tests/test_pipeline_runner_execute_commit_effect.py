@@ -285,6 +285,12 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
 
 
 class TestExecuteCommitEffect:
+    # Real-git test: two commits plus `git diff --cached` / `git ls-files`
+    # and the production staging path all fork real `git` processes. Process
+    # spawn latency under a fully parallel `make test` intermittently pushed
+    # this past the 1.0s default per-test alarm even though the test measures
+    # ~0.4s standalone. The combined 60s suite budget is unaffected.
+    @pytest.mark.timeout_seconds(5)
     def test_pipeline_staging_excludes_tracked_and_untracked_secrets(
         self,
         tmp_git_repo: Path,
