@@ -26,8 +26,8 @@ from ralph.policy.models import (
     PhaseCommitPolicy,
     PhaseDefinition,
     PhaseTransition,
-    PolicyBundle,
     PipelinePolicy,
+    PolicyBundle,
 )
 from ralph.prompts import materialize as materialize_module
 from ralph.prompts.materialize import (
