@@ -63,6 +63,7 @@ from ralph.mcp.artifacts.markdown.specs._plan_evaluatability import (
     is_specific_artifact,
     is_specific_expected_output,
 )
+from ralph.mcp.artifacts.markdown.specs._plan_evidence import evidence_content
 from ralph.mcp.artifacts.markdown.specs._plan_step_edit import (
     edit_plan_step_markdown as _edit_plan_step_markdown,
 )
@@ -81,7 +82,6 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
     from ralph.mcp.artifacts.markdown._parsed_line import ParsedLine
 
-_EVIDENCE_ENTRY = re.compile(r"^(?P<kind>[a-z_]+): (?P<ref>\S(?:.*\S)?)$")
 _ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^AC-[0-9]{2,}$")
 _VERIFICATION_ITEM_ID_PATTERN = re.compile(r"^V-[0-9]+$")
 
@@ -192,9 +192,7 @@ def _fan_out_unit_items(
                 for line in section.lines
             ]
         )
-        section_units = [
-            item for item in section.items if not _is_acceptance_criterion(item)
-        ]
+        section_units = [item for item in section.items if not _is_acceptance_criterion(item)]
         if not section_units:
             diagnostics.append(
                 Diagnostic(
@@ -339,15 +337,6 @@ def _target_content(entry: ParsedLine, context: str, diagnostics: list[Diagnosti
     return {"path": entry.text, "action": "modify"}
 
 
-def _evidence_content(entry: ParsedLine) -> Content:
-    match = _EVIDENCE_ENTRY.fullmatch(entry.text)
-    if match is None:
-        return {"kind": "file", "ref": entry.text}
-    kind = cast("str", match.group("kind"))
-    ref = cast("str", match.group("ref"))
-    return {"kind": kind, "ref": ref}
-
-
 def _steps_content(
     document: ParsedDocument,
     numbers: Mapping[str, int],
@@ -405,7 +394,7 @@ def _steps_content(
         evidence = fields.lists.get("evidence")
         if evidence is not None:
             step["expected_evidence"] = [
-                _evidence_content(entry) for entry in evidence
+                evidence_content(entry, context, diagnostics) for entry in evidence
             ]
         verify = step.get("verify_command")
         if (
@@ -553,8 +542,7 @@ def _acceptance_criteria_content(
         item
         for section in document.sections
         for item in section.items
-        if section.name == "Acceptance Criteria"
-        or _is_acceptance_criterion(item)
+        if section.name == "Acceptance Criteria" or _is_acceptance_criterion(item)
     ]
     if not items:
         return None
@@ -775,9 +763,7 @@ def _work_units_content(
         entry: Content = {
             "unit_id": item.identifier,
             "description": item.text,
-            "allowed_directories": [
-                entry.text for entry in fields.lists.get("directories", [])
-            ],
+            "allowed_directories": [entry.text for entry in fields.lists.get("directories", [])],
             "dependencies": [entry.text for entry in fields.lists.get("depends on", [])],
         }
         entries.append(entry)
@@ -803,10 +789,7 @@ def _validate_unit_graph(
     diagnostics: list[Diagnostic],
 ) -> None:
     identifiers = [cast("str", entry[id_key]) for entry in entries]
-    line_by_id = {
-        item.identifier: item.line
-        for item in items
-    }
+    line_by_id = {item.identifier: item.line for item in items}
     references: dict[str, list[tuple[str, int, str | None]]] = {}
     dependencies: dict[str, list[str]] = {}
     for entry in entries:

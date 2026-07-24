@@ -235,6 +235,24 @@ def test_static_discovery_finds_pytest_patterns_and_required_files() -> None:
     assert set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES) <= set(discovered)
 
 
+def test_auto_worker_count_scales_with_cores_between_floor_and_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PYTEST_WORKERS", raising=False)
+
+    for cores, expected in ((4, "8"), (8, "8"), (12, "12"), (64, "16")):
+        monkeypatch.setattr(test_suites_module.multiprocessing, "cpu_count", lambda c=cores: c)
+        assert test_suites_module._pytest_workers() == expected
+
+
+def test_explicit_worker_count_overrides_the_auto_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "3")
+
+    assert test_suites_module._pytest_workers() == "3"
+
+
 def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

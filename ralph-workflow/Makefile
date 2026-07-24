@@ -2,7 +2,14 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: 8 — the 1.0 s SIGALRM budget charges wall clock, so the worker
+# Default: `auto` — resolved by ralph/test_suites.py to
+# `min(max(cpu_count, 8), 16)`, i.e. never below the measured floor of 8 and
+# never above the host's core count. A pinned 8 left four cores idle on a
+# 12-core host and ran past the 60 s parent deadline when the checkout lives
+# on an external volume; 12 shards finished the same suite in ~36 s with zero
+# per-test SIGALRM failures.
+#
+# Floor rationale — the 1.0 s SIGALRM budget charges wall clock, so the worker
 # count has a floor (too few workers and the suite runs past the immutable
 # 60 s combined budget) and a ceiling (too many workers and a trivial test
 # is starved past its own 1 s cap). The suite has grown to 12,137 collected
@@ -19,9 +26,9 @@
 # literally, so this exported default governs both ralph.test_suites and
 # the raw-target paths. Keep conditional assignment so operators can
 # override:
-#   PYTEST_WORKERS=auto make test
+#   PYTEST_WORKERS=8  make test   # pin the floor
 #   PYTEST_WORKERS=2  make test
-#   PYTEST_WORKERS=12 make test   # may exceed 1s per-test under load
+#   PYTEST_WORKERS=24 make test   # may exceed 1s per-test under load
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
@@ -29,7 +36,7 @@
 # extension — increasing parallelism keeps wall-clock under the budget,
 # but past a saturation point it starves individual workers past the
 # per-test 1 s SIGALRM cap instead.
-PYTEST_WORKERS ?= 8
+PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
 # ``uv run`` refuses to honor an inherited ``VIRTUAL_ENV`` that points

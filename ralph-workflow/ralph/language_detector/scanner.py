@@ -65,6 +65,29 @@ def should_skip_dir_name(name: str) -> bool:
     return lowered.startswith(".") or lowered in SKIP_DIR_NAMES
 
 
+def is_scannable_dir(workspace: Workspace, path: str) -> bool:
+    """Return True if ``path`` is a directory reachable inside the workspace root.
+
+    Directory listings surface symlinks that point outside the
+    workspace root (uv caches, interpreter shims, tool bin/ links).
+    Probing one raises ``ValueError`` from the workspace boundary
+    check, so such an entry is reported as non-scannable instead of
+    aborting the whole scan.
+    """
+    try:
+        return workspace.is_dir(path)
+    except ValueError:
+        return False
+
+
+def is_scannable_file(workspace: Workspace, path: str) -> bool:
+    """Return True if ``path`` is a file reachable inside the workspace root."""
+    try:
+        return workspace.is_file(path)
+    except ValueError:
+        return False
+
+
 def iter_files(workspace: Workspace, root: str = "") -> Iterator[str]:
     """Yield every file path under ``root`` up to ``MAX_FILES_TO_SCAN`` files."""
     queue: deque[str] = deque([normalize_path(root)])
@@ -84,11 +107,11 @@ def iter_files(workspace: Workspace, root: str = "") -> Iterator[str]:
 
         for entry in entries:
             child_path = join_path(current, entry)
-            if workspace.is_dir(child_path):
+            if is_scannable_dir(workspace, child_path):
                 if not should_skip_dir_name(entry):
                     queue.append(child_path)
                 continue
-            if workspace.is_file(child_path):
+            if is_scannable_file(workspace, child_path):
                 scanned += 1
                 yield child_path
                 if scanned >= MAX_FILES_TO_SCAN:
@@ -122,11 +145,11 @@ def collect_signature_files(workspace: Workspace, root: str = "") -> dict[str, l
         for entry in entries:
             entry_lower = entry.lower()
             child_path = join_path(current, entry)
-            if workspace.is_dir(child_path):
+            if is_scannable_dir(workspace, child_path):
                 if depth < MAX_SIGNATURE_SEARCH_DEPTH and not should_skip_dir_name(entry_lower):
                     queue.append((child_path, depth + 1))
                 continue
-            if workspace.is_file(child_path) and entry_lower in SIGNATURE_FILE_NAMES:
+            if entry_lower in SIGNATURE_FILE_NAMES and is_scannable_file(workspace, child_path):
                 signatures.setdefault(entry_lower, []).append(child_path)
 
     return signatures
@@ -187,14 +210,14 @@ def detect_tests(workspace: Workspace, root: str = "", primary_language: str = "
         for entry in entries:
             entry_path = join_path(current, entry)
             entry_lower = entry.lower()
-            if workspace.is_dir(entry_path):
+            if is_scannable_dir(workspace, entry_path):
                 if entry_lower in TEST_DIRECTORY_NAMES:
                     return True
                 if should_skip_dir_name(entry_lower):
                     continue
                 queue.append(entry_path)
                 continue
-            if workspace.is_file(entry_path):
+            if is_scannable_file(workspace, entry_path):
                 scanned += 1
                 components = [part.lower() for part in PurePosixPath(entry_path).parts]
                 if is_test_file_name(entry, primary_language, components):

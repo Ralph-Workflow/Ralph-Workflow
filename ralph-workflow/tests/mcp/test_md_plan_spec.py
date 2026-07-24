@@ -266,6 +266,17 @@ def test_plan_spec_preserves_descriptive_execution_vocabularies() -> None:
     assert risks[0]["severity"] == "invented"
 
 
+def test_canonical_evidence_kind_prefix_is_preserved_without_diagnostics() -> None:
+    document = _plan_document().replace("- file: ralph", "- command_output: ralph")
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    steps = _steps(content)
+    evidence = cast("list[dict[str, object]]", steps[0]["expected_evidence"])
+    assert evidence[0]["kind"] == "command_output"
+
+
 def test_critical_file_action_is_free_form_descriptive_content() -> None:
     document = _plan_document().replace("Action: modify", "Action: inspect-only")
 

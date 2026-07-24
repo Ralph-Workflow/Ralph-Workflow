@@ -14,6 +14,7 @@ from ralph.language_detector.scanner import (
     is_test_file_name,
 )
 from ralph.language_detector.signatures import DetectionResults, detect_signature_files
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
@@ -152,6 +153,22 @@ def test_count_extensions_and_collect_signature_files_skip_ignored_paths_and_exc
         "package.json": ["repo/services/api/package.json"],
         "pom.xml": ["repo/services/api/pom.xml"],
     }
+
+
+def test_scanner_skips_entries_resolving_outside_the_workspace_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "python3").write_text("#!/bin/sh\n", encoding="utf-8")
+    root = tmp_path / "repo"
+    (root / "cache").mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (root / "cache" / "python3").symlink_to(outside / "python3")
+
+    workspace = FsWorkspace(root)
+
+    assert count_extensions(workspace) == {"toml": 1}
+    assert collect_signature_files(workspace) == {"pyproject.toml": ["pyproject.toml"]}
+    assert detect_tests(workspace, primary_language="Python") is False
 
 
 def test_is_test_file_name_supports_language_specific_patterns() -> None:

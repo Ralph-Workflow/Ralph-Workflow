@@ -105,7 +105,9 @@ item containing your session ID).
 
 If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} does not exist, write the same
 complete markdown document with {{ WRITE_FILE_TOOL_REFERENCE }} to
-`{{ WORKER_FALLBACK_PATH }}`, then call
-{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final action. The completion gate
-then validates and promotes that worker-local fallback and completes only when
-both the sentinel and durable receipt exist.
+`{{ WORKER_FALLBACK_PATH }}`. Writing that file never completes the phase on
+its own: the completion gate must validate and promote that worker-local
+fallback into a durable receipt. Only after that receipt exists alongside your
+completion sentinel is this phase complete, so call
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final action immediately after
+writing the document.

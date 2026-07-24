@@ -72,19 +72,29 @@ if TYPE_CHECKING:
 # that no longer clears the floor -- measured on a 12-core host, two workers
 # need ~160 s and four reach only ~50 % of the suite before the 60 s cap
 # fires. Eight workers complete the same suite (12111 passed, 26 skipped)
-# in 38.09 s with zero per-test SIGALRM failures, so the cap is 8.
+# in 38.09 s with zero per-test SIGALRM failures, so 8 is the FLOOR.
+#
+# Eight is only a floor, not the answer for every host: a shard runs its
+# assignment sequentially, so pinning 8 shards on a 12-core host leaves
+# four cores idle and stretches each shard. On a 12-core host with the
+# checkout on an external volume, 8 shards run past the 60 s parent
+# deadline while 12 shards finish the same suite in ~36 s with zero
+# per-test SIGALRM failures. ``auto`` therefore scales with the host --
+# ``min(max(cpu_count, 8), 16)`` -- never dropping below the measured
+# floor and never oversubscribing beyond the core count.
 # The maintained profile partitions test files before pytest starts so each
 # process imports and collects only its disjoint assignment. Shards intentionally
 # do not run xdist.
 #
-# This is a concurrency cap, not a budget change:
+# This is a concurrency bound, not a budget change:
 # ``_TOTAL_TEST_BUDGET_SECONDS`` (60.0) and
 # ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1.0) are unchanged. Override via
 # the ``PYTEST_WORKERS`` env var if needed. Note that ``make test`` exports
-# ``PYTEST_WORKERS`` from the Makefile, so this cap governs only the
-# ``auto`` path (a bare ``python -m ralph.test_suites`` with no env var).
+# ``PYTEST_WORKERS`` from the Makefile, so these bounds govern only the
+# ``auto`` path (which the Makefile default also selects).
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 8
+_MIN_PYTEST_WORKERS = 8
+_MAX_PYTEST_WORKERS = 16
 
 #: Exact subprocess-E2E files required by the authoritative verification
 #: profile. This registry also drives the focused Make target, so the two
@@ -207,9 +217,10 @@ def _pytest_workers() -> str:
     if raw != "auto":
         return raw
     try:
-        return str(min(multiprocessing.cpu_count(), _MAX_PYTEST_WORKERS))
+        cores = multiprocessing.cpu_count()
     except Exception:
-        return str(_MAX_PYTEST_WORKERS)
+        return str(_MIN_PYTEST_WORKERS)
+    return str(min(max(cores, _MIN_PYTEST_WORKERS), _MAX_PYTEST_WORKERS))
 
 
 def _default_spawner(

@@ -946,9 +946,6 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/pydantic_validation_errors.py", 168),
         ("ralph/supervising.py", 209),
         ("ralph/testing/audit_lint_bypass.py", 498),
-        ("ralph/testing/audit_test_policy.py", 315),
-        ("ralph/testing/audit_test_policy.py", 597),
-        ("ralph/testing/audit_test_policy.py", 664),
         ("ralph/testing/audit_typecheck_bypass.py", 286),
         ("ralph/testing/audit_typecheck_bypass.py", 301),
         # wt-034 (mcp optimization) extracted carrier files; grandfathered.
@@ -993,9 +990,9 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/testing/audit_typecheck_bypass.py", 340),
         # audit_test_policy.py: pre-existing noqa markers for justifiable
         # complexity in the test-policy audit walker itself.
-        ("ralph/testing/audit_test_policy.py", 319),
-        ("ralph/testing/audit_test_policy.py", 601),
-        ("ralph/testing/audit_test_policy.py", 668),
+        ("ralph/testing/audit_test_policy.py", 301),
+        ("ralph/testing/audit_test_policy.py", 558),
+        ("ralph/testing/audit_test_policy.py", 608),
         # wt-040 auto-integrate: _reclaim_unowned_stale_rebase fans out
         # across A1/A3/A4/A5/A6/A11 reclaim paths and _lock_holder_is_dead
         # consults the live lock holder before allowing reclaim (A9/A10/E9).

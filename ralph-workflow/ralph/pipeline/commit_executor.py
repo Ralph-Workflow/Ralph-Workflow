@@ -46,13 +46,13 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
-_SECRET_EXCLUDE_PATTERNS = [
+_SECRET_EXCLUDE_PATTERNS: tuple[str, ...] = (
     ".env",
     ".env.local",
     ".env.*.local",
     "secrets.yml",
     "credentials.json",
-]
+)
 
 
 def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
@@ -164,7 +164,7 @@ def _stage_commit_scope(
     stage_all_fn: _StageAllFn,
 ) -> None:
     if stage_all_fn is stage_all:
-        add_to_git_exclude(repo_root, _SECRET_EXCLUDE_PATTERNS)
+        add_to_git_exclude(repo_root, list(_SECRET_EXCLUDE_PATTERNS))
     include_paths = _commit_include_paths(repo_root, payload)
     if include_paths is None:
         stage_all_fn(str(repo_root))
