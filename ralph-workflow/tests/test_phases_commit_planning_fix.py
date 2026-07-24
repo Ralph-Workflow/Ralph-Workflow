@@ -518,9 +518,7 @@ def test_handle_planning_invokes_agent_successfully() -> None:
         prompt_file="planning.txt",
     )
 
-    assert handle_execution_phase(effect, ctx) == [
-        ExecutionResultEvent(phase="development", status="completed")
-    ]
+    assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
 def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
@@ -581,7 +579,9 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
 
     effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
-    assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+    assert handle_execution_phase(effect, ctx) == [
+        ExecutionResultEvent(phase="development", status="completed")
+    ]
     workspace.read.assert_called_once_with(".agent/artifacts/plan.md")
 
 
