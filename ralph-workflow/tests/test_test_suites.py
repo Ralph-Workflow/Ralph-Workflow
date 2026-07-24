@@ -177,6 +177,27 @@ class TestCases:
     assert test_suites_module.estimate_test_file_weight("# helper only\n") == 1
 
 
+def test_required_real_git_file_weight_accounts_for_process_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    relative_path = "tests/test_real_git.py"
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda _path, *, encoding: "def test_real_git() -> None:\n    pass\n",
+    )
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        (relative_path,),
+    )
+
+    assert test_suites_module._test_file_weight(
+        Path("/unused"),
+        relative_path,
+    ) == test_suites_module._REQUIRED_E2E_WEIGHT_MULTIPLIER
+
+
 def test_validate_exact_file_assignment_rejects_duplicate_file() -> None:
     selected = ("tests/test_alpha.py", "tests/test_bravo.py")
     shards = (("tests/test_alpha.py",), ("tests/test_alpha.py", "tests/test_bravo.py"))

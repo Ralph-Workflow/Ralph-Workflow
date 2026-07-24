@@ -120,6 +120,7 @@ _VERIFICATION_MARK_EXPRESSION = (
 )
 _SHARD_POLL_INTERVAL_SECONDS = 0.01
 _SHARD_TERMINATION_DRAIN_SECONDS = 5.0
+_REQUIRED_E2E_WEIGHT_MULTIPLIER = 60
 _TEST_DEFINITION_PATTERN = re.compile(r"^\s*(?:async\s+)?def\s+test_", re.MULTILINE)
 
 if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
@@ -264,7 +265,10 @@ def estimate_test_file_weight(source: str) -> int:
 
 def _test_file_weight(cwd: Path, relative_path: str) -> int:
     source = (cwd / relative_path).read_text(encoding="utf-8")
-    return estimate_test_file_weight(source)
+    weight = estimate_test_file_weight(source)
+    if relative_path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
+        return weight * _REQUIRED_E2E_WEIGHT_MULTIPLIER
+    return weight
 
 
 def _remaining_seconds(deadline: float, monotonic: Callable[[], float]) -> float:

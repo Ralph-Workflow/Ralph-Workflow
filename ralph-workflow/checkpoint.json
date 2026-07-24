@@ -44,6 +44,7 @@
   "policy_entry_phase": "__unset__",
   "policy_format_version": null,
   "current_drain": null,
+  "post_commit_phase_override": null,
   "work_units": [],
   "worker_states": {},
   "recovery_cycle_count": 0,
