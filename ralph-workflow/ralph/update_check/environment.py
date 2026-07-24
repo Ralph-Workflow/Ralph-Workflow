@@ -30,7 +30,7 @@ class InstallInfo:
 
 def _find_source_repo_root(package_file: Path, path_exists: Callable[[Path], bool]) -> Path | None:
     """Walk upward from ``package_file`` looking for a ``.git`` work tree root."""
-    for directory in package_file.resolve().parents:
+    for directory in package_file.parents:
         if path_exists(directory / ".git"):
             return directory
     return None
