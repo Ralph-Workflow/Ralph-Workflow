@@ -17,10 +17,8 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
-from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import PhaseContext, handle_phase
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 
 if TYPE_CHECKING:
@@ -31,7 +29,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.pipeline.effects import Effect
+    from ralph.pipeline.effects import Effect, InvokeAgentEffect
     from ralph.pipeline.events import Event
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
@@ -289,11 +287,6 @@ def _render_success_artifact(
         _emit_close("applied")
 
 
-def _commit_effect(workspace_root: Path) -> CommitEffect:
-    return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
-
-
 phase_event_after_agent_run = _phase_event_after_agent_run
 render_phase_artifact_handoff = _render_phase_artifact_handoff
 render_success_artifact = _render_success_artifact
-commit_effect = _commit_effect

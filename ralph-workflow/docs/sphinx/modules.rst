@@ -1290,13 +1290,6 @@ ralph.pipeline.exhausted_analysis_skip
    :members:
    :show-inheritance:
 
-ralph.pipeline.frozen_work_unit_model
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.frozen_work_unit_model
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.state_models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

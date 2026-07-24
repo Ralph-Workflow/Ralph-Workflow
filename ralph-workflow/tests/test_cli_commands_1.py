@@ -6,8 +6,8 @@ import sys
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
+import pytest
 from git import Repo
 from rich.console import Console
 
@@ -24,14 +24,11 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
-if TYPE_CHECKING:
-    import pytest
-
 
 def _write_commit_message_doc(repo_root: Path, message: str) -> None:
     """Write the markdown commit_message artifact the way MCP submission does."""
     if message.upper().startswith("SKIP:"):
-        reason = message[len("SKIP:"):].strip()
+        reason = message[len("SKIP:") :].strip()
         document = f"---\ntype: skip\nreason: {reason}\n---\n"
     else:
         document = f"---\ntype: commit\nsubject: {message}\n---\n"
@@ -250,8 +247,13 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     assert "No staged changes to commit" not in output
 
 
+@pytest.mark.timeout_seconds(5)
 def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path) -> None:
     """_working_tree_diff must exclude files committed in earlier mid-cycle commits.
+
+    Real git subprocess work against ``tmp_git_repo`` regularly exceeds the
+    1-second default ceiling under parallel xdist load, so this test carries
+    the elevated per-test ceiling used by the other real-git tests.
 
     The standalone commit plumbing must use HEAD-only diff semantics so that
     files committed during an earlier dev iteration do not appear in the prompt
@@ -878,10 +880,7 @@ def test_generate_commit_msg_writes_commit_message_artifact(
     artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert artifact_file.exists()
     assert artifact_file.read_text(encoding="utf-8") == (
-        "---\n"
-        "type: commit\n"
-        "subject: feat: persist generated commit message\n"
-        "---\n"
+        "---\ntype: commit\nsubject: feat: persist generated commit message\n---\n"
     )
     output = stream.getvalue()
     assert "Generated commit message" in output
@@ -929,10 +928,7 @@ def test_generate_commit_msg_reads_subject_from_markdown_artifact(
 
     artifact_file = tmp_path / ".agent" / "artifacts" / "commit_message.md"
     assert artifact_file.read_text(encoding="utf-8") == (
-        "---\n"
-        "type: commit\n"
-        "subject: fix: normalize commit subject\n"
-        "---\n"
+        "---\ntype: commit\nsubject: fix: normalize commit subject\n---\n"
     )
     output = stream.getvalue()
     assert "fix: normalize commit subject" in output

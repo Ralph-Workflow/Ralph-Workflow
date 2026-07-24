@@ -143,7 +143,7 @@ class PhaseDefinition(_FrozenPolicyModel):
         description=(
             "Drain names to clear on every genuine fresh phase entry. "
             "On fresh entry (program start, cross-phase transition, or last-commit re-entry), "
-            "Ralph Workflow deletes the primary artifact JSON and Markdown handoff for each "
+            "Ralph Workflow deletes the canonical Markdown artifact and its handoff for each "
             "listed drain. Empty list means no drain-based clearing on entry. "
             "Contrast with artifact_history.clear_on_fresh_entry which clears only the history."
         ),

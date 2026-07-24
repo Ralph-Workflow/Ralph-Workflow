@@ -11,7 +11,6 @@ partial checkpoint corruption.
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 
 from loguru import logger
@@ -146,7 +145,7 @@ def load(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
         state = _sanitize_last_error(state)
         logger.debug("Checkpoint loaded from {}", path)
         return state
-    except (json.JSONDecodeError, ValueError) as exc:
+    except ValueError as exc:
         logger.warning("Corrupt checkpoint at {}: {}", path, exc)
         return None
 

@@ -57,7 +57,7 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
 #:
 #: Its analysis counterpart is denied ``artifact.plan_read`` only. It DOES
 #: submit an artifact -- its routing decision is the whole point of the phase,
-#: and the driver reads it back from the artifact JSON -- but there is no plan
+#: and the driver reads it back from the Markdown artifact -- but there is no plan
 #: at startup preflight for it to read. Note what the ``analysis`` class does NOT
 #: grant: any workspace-write tool. It does grant ``process.exec_bounded`` (the
 #: reviewer must RUN the declared gates to check they resolve), and a shell can

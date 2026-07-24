@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -203,7 +202,6 @@ def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]
         parsed = parse_work_units_from_artifact(artifact)
     except (
         PhaseArtifactError,
-        json.JSONDecodeError,
         PlanArtifactValidationError,
         ValueError,
         WorkUnitsValidationError,

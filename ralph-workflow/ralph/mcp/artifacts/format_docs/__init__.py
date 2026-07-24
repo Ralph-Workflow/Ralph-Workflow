@@ -39,11 +39,6 @@ EXAMPLE_ARTIFACT_TYPES: tuple[str, ...] = FORMAT_DOC_ARTIFACT_TYPES
 EXAMPLES_WORKSPACE_DIR = f"{FORMAT_DOCS_WORKSPACE_DIR}/examples"
 
 
-def has_format_doc(artifact_type: str) -> bool:
-    """Return True if a bundled format doc exists for the given artifact type."""
-    return artifact_type in FORMAT_DOC_ARTIFACT_TYPES
-
-
 def format_doc_workspace_path(artifact_type: str) -> str:
     """Return the workspace-relative path for an artifact format doc."""
     return f"{FORMAT_DOCS_WORKSPACE_DIR}/{artifact_type}.md"
@@ -162,7 +157,6 @@ __all__ = [
     "example_workspace_path",
     "format_doc_workspace_path",
     "format_index_workspace_path",
-    "has_format_doc",
     "load_bundled_example",
     "load_bundled_format_doc",
     "load_bundled_format_index",
