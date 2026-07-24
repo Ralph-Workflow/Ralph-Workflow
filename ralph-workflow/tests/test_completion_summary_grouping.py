@@ -156,11 +156,6 @@ def test_group_decision_badges_warn() -> None:
     assert "[WARN]" in out
 
 
-def test_group_contains_verification_section() -> None:
-    out = _render_group(_make_snapshot())
-    assert "Verification" in out
-
-
 def test_group_no_decisions_shows_none_recorded() -> None:
     out = _render_group(_make_snapshot(decision_log=()))
     assert "none recorded" in out
@@ -178,11 +173,11 @@ def test_group_sections_appear_in_order() -> None:
         "Pipeline Complete": out.index("Pipeline Complete"),
         "Metrics": out.index("Metrics"),
         "Decisions": out.index("Decisions"),
-        "Verification": out.index("Verification"),
+        "Activity": out.index("Activity"),
     }
     assert positions["Pipeline Complete"] < positions["Metrics"]
     assert positions["Metrics"] < positions["Decisions"]
-    assert positions["Decisions"] < positions["Verification"]
+    assert positions["Decisions"] < positions["Activity"]
 
 
 def test_emit_completion_summary_uses_group_format() -> None:
@@ -229,11 +224,6 @@ def test_group_activity_summary_shows_overflow_path_when_provided() -> None:
 def test_group_activity_summary_no_overflow_path_when_none() -> None:
     out = _render_group(_make_snapshot(), overflow_path=None)
     assert "raw_overflow=" not in out
-
-
-def test_group_activity_summary_appears_before_verification() -> None:
-    out = _render_group(_make_snapshot())
-    assert out.index("Activity") < out.index("Verification")
 
 
 def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:

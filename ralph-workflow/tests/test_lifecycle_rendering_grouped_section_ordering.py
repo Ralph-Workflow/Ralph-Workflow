@@ -94,10 +94,6 @@ class TestGroupedSectionOrdering:
         console.print(group, markup=False, highlight=False)
         return buf.getvalue()
 
-    def test_activity_summary_before_verification(self) -> None:
-        out = self._render(_blank_snapshot())
-        assert out.index("Activity") < out.index("Verification")
-
     def test_debug_after_error_section(self) -> None:
         snapshot = _blank_snapshot(
             is_terminal_failure=True,

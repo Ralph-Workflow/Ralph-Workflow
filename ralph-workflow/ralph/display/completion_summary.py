@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from importlib import import_module
@@ -47,8 +46,6 @@ if TYPE_CHECKING:
             options: CompletionSummaryOptions,
         ) -> Group: ...
 
-
-_VERIFICATION_ARTIFACT = ".agent/artifacts/verification.json"
 
 _BADGE_THEME_KEYS: dict[str, str] = {
     "PASS": "theme.status.success",
@@ -97,35 +94,6 @@ def _children_persist_diagnostic_line(error: str) -> str | None:
     )
 
 
-def _artifact_content(parsed: dict[str, object]) -> dict[str, object]:
-    content = parsed.get("content")
-    if isinstance(content, dict):
-        return content
-    return parsed
-
-
-def _read_verification_status(workspace_root: Path | None) -> tuple[str, str | None]:
-    if workspace_root is None:
-        return ("unknown", None)
-    path = workspace_root / _VERIFICATION_ARTIFACT
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except (FileNotFoundError, OSError, PermissionError):
-        return ("unknown", None)
-    try:
-        parsed: object = json.loads(raw)
-    except json.JSONDecodeError:
-        return ("unknown", None)
-    if not isinstance(parsed, dict):
-        return ("unknown", None)
-    parsed_dict = _artifact_content(parsed)
-    status = parsed_dict.get("status") or parsed_dict.get("outcome")
-    reason = parsed_dict.get("reason") or parsed_dict.get("summary") or parsed_dict.get("message")
-    label = status if isinstance(status, str) and status else "unknown"
-    reason_text = reason if isinstance(reason, str) and reason else None
-    return (label, reason_text)
-
-
 def _commit_message_lines(workspace_root: Path | None) -> list[str]:
     if workspace_root is None:
         return []
@@ -140,20 +108,6 @@ def _commit_message_lines(workspace_root: Path | None) -> list[str]:
     rendered = [f"Commit Message: {lines[0]}"]
     rendered.extend(f"  {line}" for line in lines[1:])
     return rendered
-
-
-def _verification_line(workspace_root: Path | None) -> str:
-    """Return a human-readable verification status line.
-
-    Only reports a positive status when the verification artifact is present and
-    readable. A missing or unreadable artifact yields 'not verified' \u2014 the
-    pipeline's own phase/error state is not used as a proxy for verification.
-    """
-    status, reason = _read_verification_status(workspace_root)
-    if status == "unknown":
-        return "Verification: not verified"
-    suffix = f" \u2014 {reason}" if reason else ""
-    return f"Verification: {status}{suffix}"
 
 
 def _debug_breadcrumb_lines(snapshot: PipelineSnapshot) -> list[str]:
@@ -323,7 +277,6 @@ def _plain_tail_lines(
     dropped_count: int,
 ) -> list[str]:
     lines: list[str] = []
-    lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
     if snapshot.pr_url:
         lines.append(f"PR: {snapshot.pr_url}")

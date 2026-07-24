@@ -303,8 +303,8 @@ def evaluate_completion(
             pre-P3 contract (no HMAC verification). Threading a secret through
             this parameter stops a model with workspace write capabilities from
             forging a receipt — the matching write side must also thread the
-            same secret (see ``handle_submit_artifact`` in
-            ``ralph.mcp.tools.artifact``).
+            same secret (see ``handle_submit_md_artifact`` in
+            ``ralph.mcp.tools.md_artifact``).
 
     Returns:
         CompletionSignals reflecting current artifact state and explicit completion.

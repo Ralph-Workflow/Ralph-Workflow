@@ -18,4 +18,19 @@ IMPORTANT: The previous attempt ended without producing the required artifact be
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
+## Fix result artifact contract
+
+You MUST submit a `fix_result` artifact before declaring completion.
+The complete grammar lives in `.agent/artifact-formats/fix_result.md`.
+
+Submit one native-markdown document:
+
+1. Use `type: fix_result` frontmatter, then `## Summary` (exactly one item:
+   what you fixed and the evidence), `## Files Changed` (one item per file),
+   and optionally `## Next Steps` (one item).
+2. Submit with ralph_submit_md_artifact (`artifact_type="fix_result"`,
+   `content` = the full markdown document — never JSON).
+3. If the submit tool is unavailable, write the same complete document to
+   `.agent/tmp/fix_result.md` instead.
+
 {% include 'shared/_analysis_context.j2' %}

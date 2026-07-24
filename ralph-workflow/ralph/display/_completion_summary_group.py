@@ -27,7 +27,6 @@ from ralph.display.completion_summary import (
     _has_iteration_context,
     _iteration_context_lines,
     _review_summary_line,
-    _verification_line,
     analysis_decision_badge,
     make_badge_text,
     style_for_role,
@@ -260,8 +259,6 @@ def render_completion_summary_group(
         renderables.extend(Text(f"  {line}") for line in _iteration_context_lines(snapshot))
 
     renderables.extend(_activity_section(snapshot, options, style))
-    renderables.append(Rule("Verification", style=style))
-    renderables.append(Text(f"  {_verification_line(options.workspace_root)}"))
     renderables.extend(
         _commit_section(options.workspace_root, options.pipeline_policy, snapshot.pr_url)
     )

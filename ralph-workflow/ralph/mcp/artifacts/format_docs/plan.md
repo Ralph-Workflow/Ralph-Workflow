@@ -92,7 +92,11 @@ Verify: pytest tests/test_foo.py -q
 
 Frontmatter requires `type: plan`. Optional fields are `schema_version` and
 `intent_verb` (add, fix, refactor, migrate, document, investigate, improve,
-configure, or remove).
+configure, or remove). When `intent_verb` is set, every `## Scope` item's
+`Category:` must be compatible with it (for example `intent_verb: fix` allows
+only bugfix/file_change/other/unknown categories); on a mismatch the validator
+rejects the plan and its error names the conflicting verb and category —
+change the verb, fix the category, or omit `intent_verb`.
 
 Required sections:
 

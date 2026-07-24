@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from queue import Queue
 from typing import TYPE_CHECKING
@@ -118,55 +117,6 @@ def test_render_metrics_line_included() -> None:
     text = _render_plain(_make_snapshot())
     assert "agent_calls=7" in text
     assert "pushes=2" in text
-
-
-def test_render_verification_missing_artifact_shows_not_verified(tmp_path: Path) -> None:
-    snapshot = _make_snapshot()
-    text = _render_plain(snapshot, workspace_root=tmp_path)
-    assert "Verification" in text
-    assert "not verified" in text
-
-
-def test_render_verification_missing_artifact_never_claims_passed(tmp_path: Path) -> None:
-    # A missing verification artifact must not report 'passed' — the pipeline's
-    # own phase/error state is not a substitute for actual verification evidence.
-    snapshot = _make_snapshot(phase="complete", last_error=None)
-    text = _render_plain(snapshot, workspace_root=tmp_path)
-    assert "Verification: passed" not in text
-
-
-def test_render_verification_reads_artifact_when_present(tmp_path: Path) -> None:
-    artifacts = tmp_path / ".agent" / "artifacts"
-    artifacts.mkdir(parents=True)
-    (artifacts / "verification.json").write_text(
-        json.dumps({"status": "failed", "reason": "lint errors"})
-    )
-    text = _render_plain(_make_snapshot(), workspace_root=tmp_path)
-    assert "Verification" in text
-    assert "failed" in text
-    assert "lint errors" in text
-
-
-def test_render_verification_reads_wrapped_artifact_content(tmp_path: Path) -> None:
-    artifacts = tmp_path / ".agent" / "artifacts"
-    artifacts.mkdir(parents=True)
-    (artifacts / "verification.json").write_text(
-        json.dumps(
-            {
-                "name": "verification",
-                "type": "verification",
-                "content": {
-                    "status": "failed",
-                    "reason": "wrapped lint errors",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    text = _render_plain(_make_snapshot(), workspace_root=tmp_path)
-    assert "Verification" in text
-    assert "failed" in text
-    assert "wrapped lint errors" in text
 
 
 def test_render_includes_commit_message_artifact_when_present(tmp_path: Path) -> None:
