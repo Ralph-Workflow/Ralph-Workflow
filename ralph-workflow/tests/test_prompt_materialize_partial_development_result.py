@@ -42,6 +42,14 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 
+class _RootedMemoryWorkspace(MemoryWorkspace):
+    """Memory workspace exposing the path contract used by prompt preparation."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root=str(root))
+        self.root = root
+
+
 def _policy() -> tuple[PipelinePolicy, ArtifactsPolicy]:
     pipeline = PipelinePolicy(
         phases={
@@ -228,7 +236,7 @@ def test_partial_pipeline_regression_commits_integrates_and_restarts_before_anal
     )
     bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
     workspace_root = Path("/in-memory-partial-pipeline")
-    workspace = MemoryWorkspace(root=str(workspace_root))
+    workspace = _RootedMemoryWorkspace(workspace_root)
     workspace.write("PROMPT.md", "Finish the policy-selected implementation.")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Finish the implementation.\n")
     partial_result = """---
@@ -313,6 +321,12 @@ status: completed
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
     monkeypatch.setattr(runner_module, "FsWorkspace", lambda *_args, **_kwargs: workspace)
     monkeypatch.setattr(prompt_prep, "FsWorkspace", lambda *_args, **_kwargs: workspace)
+    monkeypatch.setattr(
+        prompt_prep,
+        "_prompt_changed_since_last_materialization",
+        lambda _root: True,
+    )
+    monkeypatch.setattr(materialize_module, "_git_diff", lambda _root: "")
     monkeypatch.setattr(
         materialize_module,
         "_persist_current_prompt",
