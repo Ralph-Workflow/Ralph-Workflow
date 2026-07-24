@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from pathlib import Path
@@ -224,7 +225,7 @@ def _default_spawner(
     )
 
 
-def _shard_command(files: Sequence[str]) -> tuple[str, ...]:
+def _shard_command(files: Sequence[str], *, basetemp: Path) -> tuple[str, ...]:
     return (
         sys.executable,
         "-m",
@@ -233,6 +234,8 @@ def _shard_command(files: Sequence[str]) -> tuple[str, ...]:
         "-q",
         "-m",
         _VERIFICATION_MARK_EXPRESSION,
+        "--basetemp",
+        str(basetemp),
     )
 
 
@@ -314,6 +317,7 @@ def _run_shards(
     *,
     cwd: Path,
     env: Mapping[str, str],
+    basetemp_root: Path,
     deadline: float,
     spawner: ShardSpawner,
     monotonic: Callable[[], float],
@@ -321,7 +325,7 @@ def _run_shards(
 ) -> int:
     processes: list[ShardProcess] = []
     try:
-        for shard in shards:
+        for shard_index, shard in enumerate(shards):
             if _remaining_seconds(deadline, monotonic) <= 0:
                 outputs = _terminate_and_reap(
                     processes,
@@ -330,7 +334,16 @@ def _run_shards(
                 )
                 _print_shard_outputs(outputs)
                 return TIMEOUT_EXIT_CODE
-            processes.append(spawner(_shard_command(shard), cwd=cwd, env=env))
+            processes.append(
+                spawner(
+                    _shard_command(
+                        shard,
+                        basetemp=basetemp_root / f"shard-{shard_index}",
+                    ),
+                    cwd=cwd,
+                    env=env,
+                )
+            )
     except OSError as exc:
         outputs = _terminate_and_reap(processes, deadline=deadline, monotonic=monotonic)
         _print_shard_outputs(outputs)
@@ -452,15 +465,23 @@ def run_test_suites(
         },
     )
     validate_exact_file_assignment(selected_files, shards)
-    return _run_shards(
-        shards,
-        cwd=cwd,
-        env=env,
-        deadline=deadline,
-        spawner=spawner,
-        monotonic=monotonic,
-        wait=wait,
-    )
+    profile = "auto-integrate-e2e" if auto_integrate_e2e_only else "verification"
+    basetemp_parent = cwd / "tmp" / "pytest-shards"
+    basetemp_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=f"{profile}-",
+        dir=basetemp_parent,
+    ) as basetemp_root:
+        return _run_shards(
+            shards,
+            cwd=cwd,
+            env=env,
+            basetemp_root=Path(basetemp_root),
+            deadline=deadline,
+            spawner=spawner,
+            monotonic=monotonic,
+            wait=wait,
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

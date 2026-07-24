@@ -230,9 +230,9 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
     )
 
     assert exit_code == 0
-    assert [call[0] for call in spawner.calls] == [
-        test_suites_module._shard_command(("tests/test_alpha.py",)),
-        test_suites_module._shard_command(("tests/test_bravo.py",)),
+    assert [command[3 : command.index("-q")] for command, _cwd, _env in spawner.calls] == [
+        ("tests/test_alpha.py",),
+        ("tests/test_bravo.py",),
     ]
     assert all("-n" not in call[0] and "--dist" not in call[0] for call in spawner.calls)
     assert all(process.reaped for process in processes)
@@ -244,6 +244,41 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
         test_suites_module.DEFAULT_SUITE_TIMEOUT_SECONDS
     )
     assert "RALPH_VERIFY_REQUIRED_AUTO_INTEGRATE_E2E" not in env
+
+
+def test_pytest_tmpdir_regression_shards_use_isolated_repo_basetemps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each shard bypasses pytest's shared numbered temporary root."""
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_alpha.py", "tests/test_bravo.py"),
+    )
+    spawner = StubSpawner([FakeShardProcess([0]), FakeShardProcess([0])])
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        spawner=spawner,
+        file_discoverer=lambda _cwd: (
+            "tests/test_alpha.py",
+            "tests/test_bravo.py",
+        ),
+        file_weigher=lambda _cwd, _path: 1,
+        wait=lambda _seconds: None,
+    )
+
+    basetemps = tuple(
+        Path(command[command.index("--basetemp") + 1])
+        for command, _cwd, _env in spawner.calls
+    )
+    assert exit_code == 0
+    assert len(set(basetemps)) == 2
+    assert {path.name for path in basetemps} == {"shard-0", "shard-1"}
+    assert all(path.is_relative_to(tmp_path / "tmp" / "pytest-shards") for path in basetemps)
+    assert not any(path.parent.exists() for path in basetemps)
 
 
 def test_required_auto_integrate_e2e_registry_matches_verification_contract() -> None:
