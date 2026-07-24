@@ -798,6 +798,13 @@ ralph.pipeline.events.analysis_decision_event
    :members:
    :show-inheritance:
 
+ralph.pipeline.events.execution_result_event
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.events.execution_result_event
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.events.phase_failure_event
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
