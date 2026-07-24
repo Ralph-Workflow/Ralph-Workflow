@@ -579,9 +579,7 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
 
     effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
-    assert handle_execution_phase(effect, ctx) == [
-        ExecutionResultEvent(phase="development", status="completed")
-    ]
+    assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
     workspace.read.assert_called_once_with(".agent/artifacts/plan.md")
 
 
@@ -634,7 +632,9 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
         agent_name="developer", phase="development", prompt_file="development.txt"
     )
 
-    assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+    assert handle_execution_phase(effect, ctx) == [
+        ExecutionResultEvent(phase="development", status="completed")
+    ]
     workspace.read.assert_any_call(".agent/artifacts/plan.md")
 
 
