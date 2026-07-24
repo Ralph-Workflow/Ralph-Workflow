@@ -413,6 +413,8 @@ def test_retry_hint_is_error_first_and_artifact_centered() -> None:
     assert first_line == "ERROR RECOVERY REQUIRED"
     assert "development_result" in hint
     assert ".agent/artifacts/development_result.md" in hint
+    assert ".agent/tmp/development_result.md" in hint
+    assert "JSON fallback" not in hint
     assert "do not restart the task from scratch" in hint.lower()
     assert "internet outage" in hint.lower() or "external" in hint.lower()
 

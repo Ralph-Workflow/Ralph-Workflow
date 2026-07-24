@@ -1,7 +1,7 @@
 """Centralized required-artifact metadata for all pipeline phases.
 
 Artifact metadata is split across two policy surfaces. ``artifacts.toml`` owns
-artifact type, JSON path, markdown handoff path, and schema normalizer lookup.
+artifact type, canonical artifact path, markdown handoff path, and normalizer lookup.
 ``pipeline.toml`` owns whether a phase's output artifact is required for
 success. There are no built-in override tables — artifact paths must be
 declared in ``artifacts.toml`` and requiredness must be declared on the phase
@@ -142,7 +142,7 @@ def build_retry_hint(
         phase: Pipeline phase / drain name.
         detail: Error detail message.
         registry: Optional artifact registry; when provided the hint names the
-            specific artifact type and json path.
+            specific artifact type and canonical path.
         prior_output: The agent's prior output lines, echoed back as context.
         submit_tool_name: The submit-artifact tool the agent must call.
         example_payload: An example submit-tool arguments payload, if available.
@@ -155,7 +155,7 @@ def build_retry_hint(
             ),
             detail=detail,
         )
-        artifact_type, json_path = "the required artifact", None
+        artifact_type, artifact_path = "the required artifact", None
     else:
         block = build_retry_error_block(
             failure_summary=(
@@ -164,7 +164,7 @@ def build_retry_hint(
             ),
             detail=detail,
         )
-        artifact_type, json_path = ra.artifact_type, ra.json_path
+        artifact_type, artifact_path = ra.artifact_type, ra.json_path
 
     lines = [block, "", "Submit the artifact now. Do not restart the task from scratch."]
     tool = submit_tool_name or "the submit-artifact MCP tool"
@@ -174,10 +174,11 @@ def build_retry_hint(
     )
     if example_payload:
         lines.append(f"Example MCP arguments: {example_payload}")
-    if json_path is not None:
+    if artifact_path is not None:
+        fallback_path = f".agent/tmp/{artifact_type}.md"
         lines.append(
-            f"If the submit tool is unavailable, write the complete markdown document to {json_path}. "
-            "Do not write a JSON fallback."
+            "If the submit tool is unavailable, write the complete markdown document to "
+            f"{fallback_path}."
         )
     if prior_output:
         echoed = "\n".join(prior_output[-12:])

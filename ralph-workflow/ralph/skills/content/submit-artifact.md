@@ -8,9 +8,8 @@ version: 2.0.0
 
 ## Overview
 
-Every Ralph Workflow artifact is one markdown document written in a small,
-closed grammar. There is no JSON envelope and no escaping: you author a
-readable document and pass it as a plain string.
+Every Ralph Workflow artifact is one readable markdown document written in a
+small, closed grammar and passed to the tools as plain text.
 
 Two MCP tools operate on every artifact type:
 
@@ -37,8 +36,9 @@ Follow these rules exactly; anything else is a diagnostic:
 1. Start with a frontmatter block: a `---` line, one `key: value` field per
    line, then a closing `---` line. Values are single-line and must not
    start or end with whitespace. Every type requires at least `type: <type>`.
-2. After the frontmatter, use only `## Section Name` headings (exactly two
-   `#`, one space). No `#`, `###`, or other heading levels.
+2. After the frontmatter, use `## Section Name` headings (exactly two `#`, one
+   space). The plan companion skill documents its additional `### [S-n]` step
+   blocks.
 3. Inside a section, every content line is a stable-ID list item:
    `- [ID] text` (or `- [ ] [ID] text` with a checkbox). The ID starts with
    a letter and uses only letters, digits, `_`, `-`. Item text is one line.
@@ -80,9 +80,9 @@ type: fix_result
 
 Both tools return `{"artifact_type", "valid", "diagnostics"}`. Each
 diagnostic has `line`, `section`, `code`, `message`, and `severity`.
-Fix every `"severity": "error"` at the named line and resubmit; `warning`
-diagnostics (unknown enum values coerced to a documented default) do not
-block submission.
+Fix every `"severity": "error"` at the named line and resubmit. Warning
+diagnostics identify accepted vocabulary choices for which the documented
+default was applied.
 
 - `MD001`–`MD008` — grammar violations: bad heading level, content outside
   a section, a list line missing its `[ID]`, malformed or unterminated

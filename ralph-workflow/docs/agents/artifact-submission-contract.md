@@ -31,6 +31,9 @@ Artifact submission touches several run-scoped files:
 - ``.agent/tmp/<artifact_type>.json`` — the **obsolete** prompt-side JSON
   fallback file from the pre-markdown era; new runs clear any leftovers
   (``_clear_fallback_artifacts``) and nothing promotes them anymore
+- ``.agent/tmp/<artifact_type>.md`` — an agent-written markdown fallback;
+  ``promote_fallback_artifact`` validates it through the same registered
+  markdown spec as the MCP tools before routing it through canonical submit
 
 The classification matters: ``.agent/receipts/<run_id>/<artifact_type>.json``
 and ``.agent/completion_seen_<run_id>.json`` are **legacy paths**, not the
@@ -69,10 +72,12 @@ The only allowed writers are:
    ``smoke_test_result.py``) that are explicitly allowlisted because they
    implement the file-format details used by the canonical backend.
 
-``promote_fallback_artifact`` still exists for API compatibility but is a
-no-op that always returns ``None`` — markdown artifacts have no JSON
-fallback promotion path. ``ralph.agents.completion_signals.is_artifact_submitted``
-therefore reduces to a receipt-presence check.
+``promote_fallback_artifact`` supports the markdown fallback path used when an
+agent writes ``.agent/tmp/<artifact_type>.md`` instead of calling the MCP tool.
+It validates the document with the registered markdown spec, routes valid
+content through ``submit_artifact_canonical``, and removes the fallback only
+after successful submission. Invalid or absent fallback documents return
+``None`` and never stamp a receipt.
 
 No other module may:
 
@@ -167,24 +172,24 @@ the legacy file path. See ``commit_plumbing.py:611-620`` for the prior fix
 that locked the ``run_id`` binding into the commit plumbing path, and
 ``ralph/mcp/artifacts/state_db.py`` for the canonical SQLite surface.
 
-## Fallback promotion (removed)
+## Markdown fallback promotion
 
-The pre-markdown pipeline allowed prompts to write a JSON payload to
-``.agent/tmp/<type>.json`` (or ``.agent/artifacts/<type>.json``) and promoted
-it into the canonical chain later. That path was removed with the markdown
-migration:
+When an agent cannot call the submit tool, it may write the complete document
+to ``.agent/tmp/<type>.md``. The completion gate then uses the same validation
+and submission path as an MCP submission:
 
-- ``promote_fallback_artifact`` is retained only as an API-compatible no-op
-  and always returns ``None``.
-- ``_clear_fallback_artifacts`` deletes any leftover ``.agent/tmp/*.json``
-  files from a newly started run so obsolete JSON payloads cannot linger.
-- ``is_artifact_submitted`` therefore reports ``True`` only when a canonical
-  receipt exists (in ``.agent/state.db``, or on the legacy file path during
-  the dual-read rollout window / after a durable-fallback write).
+- ``promote_fallback_artifact`` reads ``.agent/tmp/<type>.md``, validates it
+  with the registered ``MdArtifactSpec``, and calls
+  ``submit_artifact_canonical`` only when there are no error diagnostics.
+- Successful promotion removes the temporary markdown file. Missing, unreadable,
+  unknown-type, and invalid documents remain unsubmitted and stamp no receipt.
+- ``_clear_fallback_artifacts`` removes stale temporary markdown documents and
+  obsolete ``.agent/tmp/*.json`` files when a new run starts.
+- ``is_artifact_submitted`` attempts markdown fallback promotion before checking
+  for the run-scoped receipt.
 
-The only way to submit an artifact is the ``ralph_submit_md_artifact`` MCP
-tool (or ``ralph_finalize_md_artifact`` over a staged draft), both routing
-through ``submit_artifact_canonical``.
+The MCP tools, staged-draft finalization, and markdown fallback promotion all
+converge on ``submit_artifact_canonical``.
 
 ## Audit
 

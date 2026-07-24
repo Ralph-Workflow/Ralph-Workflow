@@ -1,8 +1,8 @@
 # Artifact Formats Index
 
 Ralph artifacts are single markdown documents with a small, closed grammar.
-You author the markdown directly — there is no JSON envelope and nothing to
-escape.
+Write the document directly as readable frontmatter, sections, and stable-ID
+items.
 
 ## How to submit
 
@@ -18,7 +18,7 @@ to drop it, and `ralph_finalize_md_artifact` to validate and submit the
 staged document. To change one plan step without resubmitting the whole
 document, use `ralph_edit_md_plan_step`.
 
-## The grammar (same for every type)
+## Shared grammar
 
 ```markdown
 ---
@@ -33,7 +33,8 @@ key: value
 ```
 
 - Frontmatter is a leading `---` block of single-line `key: value` fields.
-- Every section heading is exactly `## Name` (two hashes, one space).
+- Section headings are `## Name` (two hashes, one space). The plan format adds
+  `### [S-n]` step blocks as documented in `plan.md`.
 - Every content line is one list item: `- [ID] text` (checkbox form
   `- [ ] [ID] text` is also accepted). Item text stays on one line.
 - IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within a section.
@@ -47,8 +48,8 @@ frontmatter fields and sections, duplicate sections, missing required
 sections or items, malformed or duplicate IDs, references to unknown IDs,
 size caps, and each type's canonical content rules.
 
-Warnings (accepted, value coerced to a documented default): vocabulary
-choices such as an unknown `status` or `intent_verb`. Diagnostics carry
+Warnings (accepted, with the documented default applied): unrecognized
+vocabulary choices such as a status or intent label. Diagnostics carry
 `line`, `section`, `rule_id`, `message`, and `severity`.
 
 ## Supported artifact types
