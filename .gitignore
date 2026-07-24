@@ -280,6 +280,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .playwright-mcp/
+# Temporary handoffs and scratch files are local-only; never force-add them.
 tmp/
 **/tmp/
 
