@@ -59,7 +59,7 @@ class GeneralConfig(RalphBaseModel):
         ),
     )
     workflow: GeneralWorkflowFlags = Field(default_factory=GeneralWorkflowFlags)
-    developer_iters: int = Field(default=5, ge=1)
+    developer_iters: int = Field(default=2, ge=1)
     developer_context: int = Field(default=1, ge=1)
     prompt_path: Path | None = None
     templates_dir: Path | None = None

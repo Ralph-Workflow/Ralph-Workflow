@@ -201,8 +201,8 @@ select = [
 [tool.ruff.lint.pylint]
 # CLI entry-point functions (e.g., typer commands) necessarily have one parameter per flag.
 # The ruff default of 5 is too low for production CLI functions.
-# main() in cli/main.py has ~33 parameters representing CLI flags.
-max-args = 40
+# main() in cli/main.py has ~41 parameters representing CLI flags.
+max-args = 41
 # main() in cli/main.py is a single typer callback that fans out to ~12 early-exit
 # branches (--init, --regenerate-config, --force-init-skills, --diagnose, --check-mcp,
 # --check-config, --init-local-config, --inspect-checkpoint, --list-agents,

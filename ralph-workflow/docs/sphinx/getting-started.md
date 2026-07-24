@@ -195,7 +195,7 @@ Override the spec location through `PROMPT_PATH`. See
 
 ### Picking the right depth preset
 
-Depth presets (`-Q` quick, default standard, `-T` thorough) live in
+Depth presets (`-Q` quick, default standard, `-L` long, `-T` thorough) live in
 [CLI Reference](cli.md). Most first-run tasks fit the default.
 
 ## First-task prompt templates

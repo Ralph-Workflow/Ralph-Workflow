@@ -98,21 +98,33 @@ See [MCP Architecture](mcp-architecture.md) for the server internals.
 
 ## Thorough mode
 
+Use the long preset when the default two iterations are not enough:
+
+```bash
+ralph -L
+```
+
+`-L` / `--long` forces `developer_iters=5`.
+
 Use the thorough preset when you want a longer unattended run budget:
 
 ```bash
 ralph -T
 ```
 
-`-T` / `--thorough` forces `developer_iters=10`. It cannot be combined with `-Q`.
+`-T` / `--thorough` forces `developer_iters=10`.
+
+The three depth presets are mutually exclusive — `-Q`, `-L`, and `-T`
+cannot be combined with one another. Each one overrides an explicit `-D`.
 
 ## Pipeline tuning
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` |
-| `--developer-iters N` | `-D` | `5` | Maximum developer iterations per run |
+| `--developer-iters N` | `-D` | `2` | Maximum developer iterations per run |
 | `--quick` | `-Q` | `False` | Quick mode: one developer iteration with optional inline prompt |
+| `--long` | `-L` | `False` | Long mode: five developer iterations |
 | `--thorough` | `-T` | `False` | Thorough mode: ten developer iterations |
 | `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |
 | `--developer-model <flag>` | | (from config) | Forward a model flag to the developer agent binary |

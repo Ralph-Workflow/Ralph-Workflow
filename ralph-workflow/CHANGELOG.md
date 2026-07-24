@@ -43,7 +43,13 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **feat(cli): `--long` / `-L` depth preset — five developer iterations** — sits between `-Q` (1) and `-T` (10) and pairs with the new default of 2; overrides an explicit `-D`, and the three presets are now mutually exclusive with one another. Locked by `tests/test_cli_long_mode_semantics.py`.
+
+### Changed
+
+- **chore(config): default `developer_iters` is now `2` instead of `5`** — most tasks converge in two outer developer iterations; longer work opts up with `-L` (5) or `-T` (10). Default lives in `ralph/config/general_config.py`; the `-D` table row in `docs/sphinx/cli.md` follows.
 
 ## [0.9.0] - 2026-07-24
 

@@ -123,6 +123,7 @@ def _get_cli_context() -> DisplayContext:
 
 _KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup", "star", "contribute"})
 _QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
+_LONG_DEVELOPER_ITERS = 5
 _THOROUGH_DEVELOPER_ITERS = 10
 
 
@@ -480,6 +481,7 @@ Args:
     developer_iters: ``--developer-iters/-D`` maximum developer agent
         iterations per run.
     quick: ``--quick/-Q`` single-developer-iteration shortcut.
+    long_run: ``--long/-L`` five-iteration preset.
     thorough: ``--thorough/-T`` ten-iteration preset.
     counter: ``--counter NAME=VALUE`` repeatable policy-counter override.
     developer_agent: ``--developer-agent/-a`` developer agent name.
@@ -572,6 +574,17 @@ def main(
             "--quick",
             "-Q",
             help="Quick mode: run a single developer iteration (equivalent to -D 1).",
+        ),
+    ] = False,
+    long_run: Annotated[
+        bool,
+        typer.Option(
+            "--long",
+            "-L",
+            help=(
+                "Long mode: run five developer iterations "
+                f"(equivalent to -D {_LONG_DEVELOPER_ITERS})."
+            ),
         ),
     ] = False,
     thorough: Annotated[
@@ -832,8 +845,9 @@ def main(
       commit artifact from the latest development_result; ``--generate-commit``
       applies the commit. Always dogfood this for the AGENTS.md commit
       rule rather than hand-rolling ``git commit``.
-    - ``--quick`` / ``-Q`` and ``--thorough`` / ``-T`` — depth presets
-      that map to developer-iteration counts (1 and 10 respectively).
+    - ``--quick`` / ``-Q``, ``--long`` / ``-L``, and ``--thorough`` /
+      ``-T`` — mutually exclusive depth presets that map to
+      developer-iteration counts (1, 5, and 10 respectively).
     - ``--developer-iters`` / ``-D``, ``--reviewer-reviews`` / ``-R`` —
       explicit iteration caps (overridden by the depth presets).
     - ``--resume`` / ``-r`` and ``--no-resume`` — checkpoint handling.
@@ -858,6 +872,7 @@ def main(
         developer_iters: ``--developer-iters`` / ``-D`` developer-agent
             iteration cap.
         quick: ``--quick`` / ``-Q`` single-iteration preset.
+        long_run: ``--long`` / ``-L`` five-iteration preset.
         thorough: ``--thorough`` / ``-T`` ten-iteration preset.
         counter: ``--counter`` repeatable ``NAME=VALUE`` overrides.
         developer_agent: ``--developer-agent`` / ``-a`` agent name.
@@ -926,7 +941,13 @@ def main(
         counter_overrides=counter_overrides,
     )
 
-    _validate_mode_flags(quick=quick, thorough=thorough, resume=resume, no_resume=no_resume)
+    _validate_mode_flags(
+        quick=quick,
+        long_run=long_run,
+        thorough=thorough,
+        resume=resume,
+        no_resume=no_resume,
+    )
     policy_mode = _resolve_policy_mode(
         redo_policy=redo_policy,
         run_policy_agents=run_policy_agents,
@@ -952,6 +973,7 @@ def main(
     # Mode presets imply developer iteration counts and override explicit -D when supplied.
     effective_developer_iters = _resolve_effective_developer_iters(
         quick=quick,
+        long_run=long_run,
         thorough=thorough,
         developer_iters=developer_iters,
     )
@@ -1253,13 +1275,26 @@ app.command(name="smoke-interactive-opencode")(smoke_interactive_opencode)
 app.command()(star)
 
 
-def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume: bool) -> None:
+#: Depth presets are mutually exclusive: each pins ``developer_iters`` to a
+#: different value, so any two of them are a contradiction.
+_DEPTH_PRESET_FLAGS: tuple[tuple[str, str], ...] = (
+    ("quick", "--quick/-Q"),
+    ("long_run", "--long/-L"),
+    ("thorough", "--thorough/-T"),
+)
+
+
+def _validate_mode_flags(
+    *, quick: bool, long_run: bool, thorough: bool, resume: bool, no_resume: bool
+) -> None:
     if resume and no_resume:
         raise click.UsageError(
             "Conflicting flags: --resume and --no-resume cannot be used together"
         )
-    if quick and thorough:
-        raise click.UsageError("--quick/-Q and --thorough/-T cannot be used together")
+    selected = {"quick": quick, "long_run": long_run, "thorough": thorough}
+    names = [label for key, label in _DEPTH_PRESET_FLAGS if selected[key]]
+    if len(names) > 1:
+        raise click.UsageError(f"{' and '.join(names)} cannot be used together")
 
 
 #: (redo_policy, run_policy_agents, policy_only) -> the selected policy mode.
@@ -1310,10 +1345,12 @@ def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
 
 
 def _resolve_effective_developer_iters(
-    *, quick: bool, thorough: bool, developer_iters: int | None
+    *, quick: bool, long_run: bool, thorough: bool, developer_iters: int | None
 ) -> int | None:
     if quick:
         return 1
+    if long_run:
+        return _LONG_DEVELOPER_ITERS
     if thorough:
         return _THOROUGH_DEVELOPER_ITERS
     return developer_iters
@@ -1595,6 +1632,7 @@ prepare_init_args = _prepare_init_args
 build_cli_overrides = _build_cli_overrides
 RunPipelineOpts = _RunPipelineOpts
 invoke_pipeline = _run_pipeline
+LONG_DEVELOPER_ITERS = _LONG_DEVELOPER_ITERS
 THOROUGH_DEVELOPER_ITERS = _THOROUGH_DEVELOPER_ITERS
 
 
