@@ -93,7 +93,7 @@ def _spec(artifact_type: str) -> MdArtifactSpec:
         },
         to_content=_to_content,
         normalize_content=_normalize,
-        validate_frontmatter=_validate_frontmatter(artifact_type),
+        validate_document=_validate_frontmatter(artifact_type),
     )
 
 

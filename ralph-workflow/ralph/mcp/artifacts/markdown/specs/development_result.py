@@ -109,7 +109,7 @@ DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=normalize_development_result_content,
-    validate_frontmatter=_validate_frontmatter,
+    validate_document=_validate_frontmatter,
 )
 
 register_spec(DEVELOPMENT_RESULT_SPEC)

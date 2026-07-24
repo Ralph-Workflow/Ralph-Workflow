@@ -77,7 +77,7 @@ SMOKE_TEST_RESULT_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    validate_frontmatter=_validate_frontmatter,
+    validate_document=_validate_frontmatter,
 )
 
 register_spec(SMOKE_TEST_RESULT_SPEC)

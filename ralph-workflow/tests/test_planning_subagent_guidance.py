@@ -8,13 +8,16 @@ and must surface the exact quality dimensions planning analysis judges on.
 
 from pathlib import Path
 
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.prompts.developer import (
+    DeveloperPromptInputs,
     PlanningPromptInputs,
+    prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_registry import packaged_template_root
-from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.prompts.types import SessionCapabilities
 from ralph.workspace.memory import MemoryWorkspace
 
 PLANNER_SUBAGENT_HINTS = (
@@ -68,20 +71,33 @@ def _render(template: str | None, tmp_path: Path) -> str:
         analysis_feedback_content="Feedback: tighten verification",
         has_docs_mcp=False,
     )
-    kwargs: dict = {
-        "context": context,
-        "inputs": inputs,
-        "workspace": workspace,
-        "session_caps": session_caps,
-    }
-    if template is not None:
-        kwargs["template_name"] = template
-    return prompt_planning_xml_with_context(**kwargs)
+    if template is None:
+        return prompt_planning_xml_with_context(context, inputs, workspace, session_caps)
+    return prompt_planning_xml_with_context(
+        context,
+        inputs,
+        workspace,
+        session_caps,
+        template_name=template,
+    )
 
 
 def _assert_hints(prompt: str, hints: tuple[str, ...]) -> None:
     for hint in hints:
         assert hint in prompt, f"Missing hint: {hint!r}"
+
+
+def _render_developer_fallback(tmp_path: Path) -> str:
+    return prompt_developer_iteration_xml_with_context(
+        TemplateContext.default(),
+        DeveloperPromptInputs(
+            prompt_content="Implement the feature",
+            plan_content="## Work Units\n- [unit-a] Implement the feature",
+        ),
+        MemoryWorkspace(root=str(tmp_path)),
+        SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        template_name="developer_iteration_fallback.jinja",
+    )
 
 
 class TestPlannerSubagentGuidance:
@@ -118,14 +134,14 @@ class TestPlannerSubagentGuidance:
             prompt = _render(template, tmp_path)
             _assert_hints(prompt, FALLBACK_SUBAGENT_HINTS)
 
-    def test_developer_fallback_keeps_work_unit_subagent_dispatch_hint(self) -> None:
+    def test_developer_fallback_keeps_work_unit_subagent_dispatch_hint(
+        self, tmp_path: Path
+    ) -> None:
         """Even the developer fallback must route work_units to agent sub-agents."""
-        source = (packaged_template_root() / "developer_iteration_fallback.jinja").read_text(
-            encoding="utf-8"
-        )
-        assert "## Work Units" in source
-        assert "sub-agents" in source
-        assert "sequentially" in source
+        prompt = _render_developer_fallback(tmp_path)
+        assert "## Work Units" in prompt
+        assert "sub-agents" in prompt
+        assert "sequentially" in prompt
 
     def test_no_template_references_phantom_coordinate_command(self) -> None:
         """``ralph coordinate`` does not exist in the Python CLI; no bundled

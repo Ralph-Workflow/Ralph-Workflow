@@ -113,7 +113,7 @@ status: issues_found
     assert [(diagnostic.rule_id, diagnostic.severity) for diagnostic in diagnostics] == [
         ("ISSUES003", "warning")
     ]
-    assert "SPEC010" in _error_ids(
+    assert "ISSUES002" in _error_ids(
         """---
 type: issues
 status: issues_found

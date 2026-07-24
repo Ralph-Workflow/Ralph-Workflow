@@ -104,7 +104,11 @@ def test_planning_prompts_use_author_facing_plan_vocabulary() -> None:
 def test_plan_format_doc_embedded_examples_validate() -> None:
     text = load_bundled_format_doc("plan")
     assert text is not None
-    examples = re.findall(r"```markdown\n(---\ntype: plan\n.*?)(?:\n```)", text, re.DOTALL)
+    examples = re.findall(
+        r"```markdown[^\n]*\n(---\ntype: plan\n.*?)(?:\n```)",
+        text,
+        re.DOTALL,
+    )
 
     assert examples
     for example in examples:

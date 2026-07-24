@@ -81,7 +81,7 @@ def _validate_frontmatter(document: ParsedDocument) -> list[Diagnostic]:
 
 
 def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
+    diagnostics = _validate_frontmatter(document)
     issues = document.section("Issues")
     if issues is None:
         return diagnostics
@@ -124,7 +124,6 @@ ISSUES_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    validate_frontmatter=_validate_frontmatter,
     validate_document=_validate_document,
 )
 

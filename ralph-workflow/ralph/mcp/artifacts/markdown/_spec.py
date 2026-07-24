@@ -35,7 +35,6 @@ class MdArtifactSpec:
     normalize_content: ContentNormalizer
     optional_frontmatter: frozenset[str] = frozenset()
     lenient_enums: Mapping[str, LenientEnum] = field(default_factory=dict)
-    validate_frontmatter: DocumentValidator | None = None
     validate_document: DocumentValidator | None = None
     minimal_variant: MinimalVariantParser | None = None
     max_characters: int | None = None
@@ -58,12 +57,8 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         )
     )
     document = _coerce_lenient_frontmatter(document, spec, diagnostics)
-    if (
-        not _has_errors(diagnostics)
-        and spec.validate_frontmatter is not None
-        and minimal_content is None
-    ):
-        diagnostics.extend(spec.validate_frontmatter(document))
+    if not _has_errors(diagnostics) and spec.validate_document is not None and minimal_content is None:
+        diagnostics.extend(spec.validate_document(document))
     if not _has_errors(diagnostics):
         try:
             content = minimal_content if minimal_content is not None else spec.to_content(document)
@@ -74,8 +69,6 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         except (TypeError, ValueError) as exc:
             diagnostics.append(_normalizer_diagnostic(document, str(exc)))
             return {}, diagnostics
-        if spec.validate_document is not None and minimal_content is None:
-            diagnostics.extend(spec.validate_document(document))
         return normalized, diagnostics
     return {}, diagnostics
 

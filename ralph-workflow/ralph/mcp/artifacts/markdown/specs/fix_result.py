@@ -61,7 +61,7 @@ FIX_RESULT_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    validate_frontmatter=_validate_type,
+    validate_document=_validate_type,
 )
 
 register_spec(FIX_RESULT_SPEC)

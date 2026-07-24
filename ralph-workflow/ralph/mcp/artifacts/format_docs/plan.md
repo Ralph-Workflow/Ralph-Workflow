@@ -12,8 +12,8 @@ remove never renumber IDs. A replacement is one complete
 `### [S-n] Title` block whose ID matches `step_id`. Resubmit the whole document
 to edit steps placed under custom or nested headings.
 
-Parallel work is delegated to agent-managed sub-agents. Ralph-managed fan-out
-is dormant in this build, but work-unit markers are still validated when used.
+Parallel work is delegated to agent-managed sub-agents. Ralph-managed fan-out is dormant
+in this build, but work-unit markers are still validated when used.
 
 See the complete opinionated sample:
 `.agent/artifact-formats/examples/plan.md`.
@@ -269,8 +269,8 @@ Only machine-consumed structure is hard:
   `## Verification` item declares `Expect:`. A step declared
   `Type: verify` supplies `Verify:` or `Location:`.
 
-Use direct verification commands; commands beginning with `bash -c`, `sh -c`,
-or `eval` are rejected. A step declared `Type: file_change` supplies at least
+Use direct verification commands; they must not start with `bash -c`, `sh -c`, or `eval`.
+A step declared `Type: file_change` supplies at least
 one `Files:` target.
 
 ## Conventional syntax
