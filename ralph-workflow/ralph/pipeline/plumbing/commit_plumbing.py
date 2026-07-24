@@ -36,7 +36,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
@@ -126,8 +126,6 @@ __all__ = [
     "run_commit_plumbing",
 ]
 
-
-_T = TypeVar("_T")
 
 _VERBOSE_THRESHOLD = 2
 _SKIP_PREFIX = "skip:"
@@ -1331,19 +1329,19 @@ write_commit_prompt_file = _write_commit_prompt_file
 render_commit_agent_activity_line = _render_commit_agent_activity_line
 
 
-def _get_patched(  # noqa: UP047
+def _get_patched[T](
     module: types.ModuleType,
     name: str,
-    fallback: _T,
-) -> _T:
+    fallback: T,
+) -> T:
     """Return ``getattr(module, name, fallback)`` with proper typing.
 
     Tests patch the corresponding names on
     ``ralph.cli.commands.commit`` at runtime. We can't statically type
-    ``getattr`` as ``_T`` (mypy would warn) without an explicit cast,
+    ``getattr`` as ``T`` (mypy would warn) without an explicit cast,
     so this helper centralises the cast pattern.
     """
-    value: _T = getattr(module, name, fallback)
+    value: T = getattr(module, name, fallback)
     if value is None:
         return fallback
     return value
