@@ -43,7 +43,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
 )
 
 
-class FakeShardProcess:
+class _FakeShardProcess:
     def __init__(
         self,
         returncodes: list[int | None],
@@ -86,8 +86,8 @@ class FakeShardProcess:
         self.orphans_cleaned = True
 
 
-class StubSpawner:
-    def __init__(self, processes: list[FakeShardProcess]) -> None:
+class _StubSpawner:
+    def __init__(self, processes: list[_FakeShardProcess]) -> None:
         self._processes = list(processes)
         self.calls: list[tuple[tuple[str, ...], Path, dict[str, str]]] = []
 
@@ -97,12 +97,12 @@ class StubSpawner:
         *,
         cwd: Path,
         env: Mapping[str, str],
-    ) -> FakeShardProcess:
+    ) -> _FakeShardProcess:
         self.calls.append((tuple(command), cwd, dict(env)))
         return self._processes.pop(0)
 
 
-class FakeClock:
+class _FakeClock:
     def __init__(self) -> None:
         self.value = 0.0
 
@@ -244,10 +244,10 @@ def test_run_test_suites_runs_disjoint_plain_pytest_shards(
         ("tests/test_alpha.py", "tests/test_bravo.py"),
     )
     processes = [
-        FakeShardProcess([0], stdout=b"alpha passed\n"),
-        FakeShardProcess([0], stdout=b"bravo passed\n"),
+        _FakeShardProcess([0], stdout=b"alpha passed\n"),
+        _FakeShardProcess([0], stdout=b"bravo passed\n"),
     ]
-    spawner = StubSpawner(processes)
+    spawner = _StubSpawner(processes)
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
@@ -288,7 +288,7 @@ def test_pytest_tmpdir_regression_shards_use_isolated_repo_basetemps(
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
         ("tests/test_alpha.py", "tests/test_bravo.py"),
     )
-    spawner = StubSpawner([FakeShardProcess([0]), FakeShardProcess([0])])
+    spawner = _StubSpawner([_FakeShardProcess([0]), _FakeShardProcess([0])])
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
@@ -345,8 +345,8 @@ def test_focused_auto_integrate_profile_shards_exact_registry_without_discovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PYTEST_WORKERS", "2")
-    processes = [FakeShardProcess([0]), FakeShardProcess([0])]
-    spawner = StubSpawner(processes)
+    processes = [_FakeShardProcess([0]), _FakeShardProcess([0])]
+    spawner = _StubSpawner(processes)
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
@@ -376,9 +376,9 @@ def test_run_test_suites_terminates_and_reaps_siblings_on_first_failure(
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
         ("tests/test_alpha.py", "tests/test_bravo.py"),
     )
-    failed = FakeShardProcess([1], stderr=b"failed\n")
-    sibling = FakeShardProcess([None])
-    spawner = StubSpawner([failed, sibling])
+    failed = _FakeShardProcess([1], stderr=b"failed\n")
+    sibling = _FakeShardProcess([None])
+    spawner = _StubSpawner([failed, sibling])
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
@@ -408,9 +408,9 @@ def test_run_test_suites_uses_one_parent_deadline_and_reaps_all_on_timeout(
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
         ("tests/test_alpha.py", "tests/test_bravo.py"),
     )
-    processes = [FakeShardProcess([None]), FakeShardProcess([None])]
-    spawner = StubSpawner(processes)
-    clock = FakeClock()
+    processes = [_FakeShardProcess([None]), _FakeShardProcess([None])]
+    spawner = _StubSpawner(processes)
+    clock = _FakeClock()
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
@@ -439,11 +439,11 @@ def test_completed_shard_cleans_descendants_before_draining_output(
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
         ("tests/test_alpha.py",),
     )
-    process = FakeShardProcess([0])
+    process = _FakeShardProcess([0])
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
-        spawner=StubSpawner([process]),
+        spawner=_StubSpawner([process]),
         file_discoverer=lambda _cwd: ("tests/test_alpha.py",),
         file_weigher=lambda _cwd, _path: 1,
         wait=lambda _seconds: None,
@@ -464,11 +464,11 @@ def test_pipe_drain_timeout_still_cleans_shard_descendants(
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
         ("tests/test_alpha.py",),
     )
-    process = FakeShardProcess([0], communicate_times_out=True)
+    process = _FakeShardProcess([0], communicate_times_out=True)
 
     exit_code = test_suites_module.run_test_suites(
         cwd=tmp_path,
-        spawner=StubSpawner([process]),
+        spawner=_StubSpawner([process]),
         file_discoverer=lambda _cwd: ("tests/test_alpha.py",),
         file_weigher=lambda _cwd, _path: 1,
         wait=lambda _seconds: None,
@@ -488,8 +488,8 @@ def test_run_test_suites_charges_static_discovery_to_parent_deadline(
         "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
         ("tests/test_alpha.py",),
     )
-    clock = FakeClock()
-    spawner = StubSpawner([])
+    clock = _FakeClock()
+    spawner = _StubSpawner([])
 
     def discover(_cwd: Path) -> tuple[str, ...]:
         clock.advance(5.0)
