@@ -318,11 +318,6 @@ status: completed
         "_persist_current_prompt",
         lambda *_args, **_kwargs: ".agent/CURRENT_PROMPT.md",
     )
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_agent_prompt_if_needed",
-        lambda *_args, **_kwargs: None,
-    )
     monkeypatch.setattr(runner_module.ckpt, "save", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda _root: None)
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
