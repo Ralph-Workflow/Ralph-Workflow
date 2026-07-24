@@ -293,7 +293,7 @@ def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:
             "http://localhost:0/mcp",
             workspace_path=tmp_path,
             existing_home=str(fake_home),
-            system_prompt_file=None,
+            master_prompt_file=None,
         )
 
 
@@ -308,7 +308,7 @@ def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=str(fake_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
@@ -321,7 +321,7 @@ def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> No
         None,
         workspace_path=tmp_path,
         existing_home=None,
-        system_prompt_file="/tmp/sp.md",
+        master_prompt_file="/tmp/sp.md",
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
@@ -363,7 +363,7 @@ def test_codex_logs_best_effort_warning_when_mcp_endpoint_wired(tmp_path: Path) 
             "http://localhost:0/mcp",
             workspace_path=tmp_path,
             existing_home=None,
-            system_prompt_file=None,
+            master_prompt_file=None,
         )
         output = buf.getvalue()
         assert "best-effort" in output, f"Expected 'best-effort' in warning, got: {output!r}"
@@ -381,7 +381,7 @@ def test_codex_does_not_log_warning_when_no_endpoint(tmp_path: Path) -> None:
             None,
             workspace_path=tmp_path,
             existing_home=None,
-            system_prompt_file="/tmp/sp.md",
+            master_prompt_file="/tmp/sp.md",
         )
         assert "best-effort" not in buf.getvalue(), "No warning when endpoint is None"
     finally:

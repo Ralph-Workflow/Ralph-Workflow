@@ -27,7 +27,7 @@
 {% macro render_artifact_submission(artifact_type, submit_tool_reference, example_doc, write_file_tool_reference='', verify_tool_reference='') -%}
 ## Submit a `{{ artifact_type }}` artifact
 
-**Do steps 1-5 in order. If step 3 is unavailable and the write-file fallback is present, use step 6 instead. Step 5 is mandatory.**
+**Do steps 1-5 in order. If calling the submit tool in step 3 fails because the tool does not exist and the write-file fallback is present, use step 6 instead. Step 5 is mandatory.**
 
 1. **Read the format doc** at `.agent/artifact-formats/{{ artifact_type }}.md`
    (or `artifact_formats_index.md`). Do NOT guess the grammar.
@@ -35,7 +35,7 @@
 2. **Author the artifact as ONE markdown document**: a `---`-delimited
    frontmatter block (`key: value` lines), then `## Section` headings whose
    content is stable-ID list items of the form `- [ID] text` (one line per
-   item). Example for `{{ artifact_type }}`:
+   item) when the format doc defines sections. Example for `{{ artifact_type }}`:
 
    ```markdown
 {{ example_doc | trim | indent(3, true) }}
@@ -49,10 +49,10 @@
    arguments to validate without persisting.
 {%- endif %}
 
-4. **Wait for the tool result.** If it reports diagnostics, each one carries
-   a line number, section, and rule code — fix every reported line in the
-   document and resubmit ONCE with all repairs applied. A success result is
-   NOT completion.
+4. **Wait for the tool result.** If it reports valid: false, each diagnostic
+   carries a line number, section, and rule code — fix every reported line and
+   resubmit ONCE with all repairs applied. A valid: true result (even with
+   warnings) means submitted — but submitted is NOT completion.
 
 5. **>>> CALL `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}` AS YOUR FINAL ACTION. <<<**
 
@@ -60,7 +60,7 @@
    `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}(summary="{{ artifact_type }}")`.
 
 {% if write_file_tool_reference %}
-6. **If the submit tool is unavailable, use this INSTEAD OF step 3**: write the
+6. **If calling the submit tool fails because the tool does not exist, use this INSTEAD OF step 3**: write the
    same complete markdown document to `.agent/tmp/{{ artifact_type }}.md` via
    {{ write_file_tool_reference }}, then do steps 4 and 5.
 {% endif %}

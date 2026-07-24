@@ -11,4 +11,4 @@ if TYPE_CHECKING:
 class _AgentBridgeCtx:
     bridge: RestartAwareMcpBridge
     session: object
-    system_prompt_file: str
+    master_prompt_file: str

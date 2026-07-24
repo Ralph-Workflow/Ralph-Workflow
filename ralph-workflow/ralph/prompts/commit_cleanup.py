@@ -8,10 +8,10 @@ from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL
 from ralph.prompts._commit_diff import commit_cleanup_diff
 from ralph.prompts.commit import _format_submit_artifact_tool_instructions
 from ralph.prompts.materialize_support import (
-    current_prompt_variables as _current_prompt_variables,
+    merged_variables as _merged_variables,
 )
 from ralph.prompts.materialize_support import (
-    merged_variables as _merged_variables,
+    product_criteria_variables as _product_criteria_variables,
 )
 from ralph.prompts.payload_refs import (
     build_prompt_payload_variables,
@@ -31,7 +31,7 @@ def render_commit_cleanup_prompt(
     workspace_root: Path,
     worker_namespace: Path | None,
     prompt_content: str | None,
-    current_prompt_path: str,
+    product_criteria_path: str,
     template_name: str,
     tmpl_ctx: TemplateContext,
     session_caps: SessionCapabilities,
@@ -56,7 +56,7 @@ def render_commit_cleanup_prompt(
                 content,
             ),
         ),
-        **_current_prompt_variables(prompt_content, current_prompt_path),
+        **_product_criteria_variables(prompt_content, product_criteria_path),
     }
     return render_template(
         tmpl_ctx.registry.get_template(template_name),

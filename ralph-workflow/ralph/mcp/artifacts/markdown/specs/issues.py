@@ -1,10 +1,20 @@
-"""Markdown spec for review issues."""
+"""Markdown spec for review issues.
+
+Consumed structure (stays strict): frontmatter ``type`` and ``status``
+(closed vocabulary ``issues_found`` | ``no_issues`` — review routing
+reads it, so a wrong status is a hard error naming the valid values),
+the required-section skeleton, and the ``path | severity | summary``
+shape of ``Issues`` items. Per-issue severity is descriptive (no
+consumer gates on it), so unknown severities warn-coerce to ``low``.
+Section bodies tolerate multi-line prose and unknown continuation
+lines under items.
+"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.mcp.artifacts.markdown import LenientEnum, MdArtifactSpec, SectionRule
+from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_issues_content
@@ -14,6 +24,7 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
 _SEVERITIES = frozenset({"high", "medium", "low"})
+_STATUSES = ("issues_found", "no_issues")
 _ISSUE_PARTS = 3
 
 
@@ -46,7 +57,7 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
     }
 
 
-def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
+def _validate_frontmatter(document: ParsedDocument) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     if document.frontmatter["type"] != "issues":
         diagnostics.append(
@@ -57,6 +68,20 @@ def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
                 "frontmatter 'type' must be 'issues'",
             )
         )
+    if document.frontmatter["status"] not in _STATUSES:
+        diagnostics.append(
+            Diagnostic(
+                document.frontmatter_lines["status"],
+                None,
+                "SPEC010",
+                "frontmatter 'status' must be one of: issues_found, no_issues",
+            )
+        )
+    return diagnostics
+
+
+def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
     issues = document.section("Issues")
     if issues is None:
         return diagnostics
@@ -92,16 +117,14 @@ ISSUES_SPEC = MdArtifactSpec(
     artifact_type="issues",
     required_frontmatter=frozenset({"type", "status"}),
     sections={
-        "Summary": SectionRule(require_items=True, max_items=1),
-        "Issues": SectionRule(required=False),
-        "What Came Up Short": SectionRule(required=False),
-        "How To Fix": SectionRule(required=False),
+        "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
+        "Issues": SectionRule(required=False, allow_body=True),
+        "What Came Up Short": SectionRule(required=False, allow_body=True),
+        "How To Fix": SectionRule(required=False, allow_body=True),
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    lenient_enums={
-        "status": LenientEnum(frozenset({"issues_found", "no_issues"}), "no_issues"),
-    },
+    validate_frontmatter=_validate_frontmatter,
     validate_document=_validate_document,
 )
 

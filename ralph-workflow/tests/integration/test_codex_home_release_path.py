@@ -427,7 +427,7 @@ def test_invoke_agent_setup_failure_releases_codex_home(tmp_path: Path) -> None:
     config = AgentConfig(cmd="codex", transport=AgentTransport.CODEX)
     options = InvokeOptions(
         workspace_path=tmp_path,
-        system_prompt_file=None,
+        master_prompt_file=None,
         extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:1/mcp"},
     )
 

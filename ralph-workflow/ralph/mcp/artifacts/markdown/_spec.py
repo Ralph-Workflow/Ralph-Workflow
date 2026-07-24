@@ -35,9 +35,11 @@ class MdArtifactSpec:
     normalize_content: ContentNormalizer
     optional_frontmatter: frozenset[str] = frozenset()
     lenient_enums: Mapping[str, LenientEnum] = field(default_factory=dict)
+    validate_frontmatter: DocumentValidator | None = None
     validate_document: DocumentValidator | None = None
     minimal_variant: MinimalVariantParser | None = None
     max_characters: int | None = None
+    unknown_section_rule: SectionRule | None = None
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
@@ -56,6 +58,12 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
         )
     )
     document = _coerce_lenient_frontmatter(document, spec, diagnostics)
+    if (
+        not _has_errors(diagnostics)
+        and spec.validate_frontmatter is not None
+        and minimal_content is None
+    ):
+        diagnostics.extend(spec.validate_frontmatter(document))
     if not _has_errors(diagnostics):
         try:
             content = minimal_content if minimal_content is not None else spec.to_content(document)
@@ -82,8 +90,8 @@ def _validate_structure(
     diagnostics: list[Diagnostic] = []
     if spec.max_characters is not None and len(text) > spec.max_characters:
         diagnostics.append(Diagnostic(1, None, "SPEC001", "document exceeds its character limit"))
-    allowed_frontmatter = spec.required_frontmatter | spec.optional_frontmatter | frozenset(
-        spec.lenient_enums
+    allowed_frontmatter = (
+        spec.required_frontmatter | spec.optional_frontmatter | frozenset(spec.lenient_enums)
     )
     diagnostics.extend(
         Diagnostic(1, None, "SPEC002", f"missing required frontmatter {key!r}")
@@ -92,20 +100,32 @@ def _validate_structure(
     )
     for key, line in document.frontmatter_lines.items():
         if key not in allowed_frontmatter:
-            diagnostics.append(Diagnostic(line, None, "SPEC003", f"unknown frontmatter field {key!r}"))
+            diagnostics.append(
+                Diagnostic(line, None, "SPEC003", f"unknown frontmatter field {key!r}")
+            )
     seen_sections: set[str] = set()
     for section in document.sections:
         rule = spec.sections.get(section.name)
         if rule is None:
-            diagnostics.append(Diagnostic(section.line, section.name, "SPEC004", "unknown section"))
-            continue
-        if section.name in seen_sections:
-            diagnostics.append(Diagnostic(section.line, section.name, "SPEC005", "duplicate section"))
+            if spec.unknown_section_rule is None:
+                diagnostics.append(
+                    Diagnostic(section.line, section.name, "SPEC004", "unknown section")
+                )
+                continue
+            rule = spec.unknown_section_rule
+        if section.name in seen_sections and not rule.repeatable:
+            diagnostics.append(
+                Diagnostic(section.line, section.name, "SPEC005", "duplicate section")
+            )
         seen_sections.add(section.name)
         if rule.require_items and not section.items:
-            diagnostics.append(Diagnostic(section.line, section.name, "SPEC006", "section requires list items"))
+            diagnostics.append(
+                Diagnostic(section.line, section.name, "SPEC006", "section requires list items")
+            )
         if rule.max_items is not None and len(section.items) > rule.max_items:
-            diagnostics.append(Diagnostic(section.line, section.name, "SPEC007", "section exceeds its item limit"))
+            diagnostics.append(
+                Diagnostic(section.line, section.name, "SPEC007", "section exceeds its item limit")
+            )
         diagnostics.extend(
             validate_unique_ids(
                 section.items, section=section.name, case_sensitive=rule.case_sensitive_ids
@@ -127,12 +147,16 @@ def _validate_section_shapes(section: ParsedSection, rule: SectionRule) -> list[
                 section.blocks, section=section.name, case_sensitive=rule.case_sensitive_ids
             )
         )
-        diagnostics.extend(
-            Diagnostic(
-                item.line, section.name, "SPEC011", "section content must be '### [ID] Title' blocks"
+        if not rule.items_allowed:
+            diagnostics.extend(
+                Diagnostic(
+                    item.line,
+                    section.name,
+                    "SPEC011",
+                    "section content must be '### [ID] Title' blocks",
+                )
+                for item in section.items
             )
-            for item in section.items
-        )
     else:
         diagnostics.extend(
             Diagnostic(
@@ -186,7 +210,11 @@ def _normalizer_diagnostic(document: ParsedDocument, message: str) -> Diagnostic
     field_name = message.split(" ", 1)[0].split(".", 1)[0]
     line = document.frontmatter_lines.get(field_name, 1)
     section = next(
-        (section.name for section in document.sections if section.name.casefold() == field_name.casefold()),
+        (
+            section.name
+            for section in document.sections
+            if section.name.casefold() == field_name.casefold()
+        ),
         None,
     )
     return Diagnostic(line, section, "SPEC010", message or "canonical validation failed")

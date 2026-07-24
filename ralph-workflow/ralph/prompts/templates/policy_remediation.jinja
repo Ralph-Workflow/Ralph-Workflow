@@ -38,6 +38,7 @@ evidence that is missing, and the outcome that resolves it.
 
 {{ findings_block }}
 {% if analysis_feedback_block %}
+
 ## Review feedback from the last round
 
 A reviewer examined your previous attempt and REJECTED it. This is not advice;
@@ -48,8 +49,10 @@ it is the list of things you must fix before the policy can be accepted.
 {{ analysis_feedback_block }}
 
 Do not re-derive the policy from scratch and do not repeat the work that was
-already accepted. Fix exactly what came up short, then stop.
+already accepted. Fix exactly what came up short and any still-open findings
+listed above, then stop.
 {% endif %}
+
 ## Writing scripts: the gate-script policy binds YOU
 
 If you write ANY script, make target, or command to wire up a gate, it MUST
@@ -128,7 +131,15 @@ The distinction agents most often get wrong is deferral vs never-applies:
 "we will have this, just not yet" is ALWAYS `RALPH-PENDING`, never
 `RALPH-INAPPLICABLE`. Every `RALPH-PENDING` needs a real intended tool (gate
 form), an `(assumed <YYYY-MM-DD>)` stamp with a real date, and a concrete
-`review trigger:`; it is a debt a future dev cycle must repay.
+`review trigger:`; it is a debt a future dev cycle must repay. The two
+deferral forms, byte-exact:
+
+- Gate form (may replace a `RALPH-COMMAND` / `RALPH-INAPPLICABLE`, including
+  inside a `RALPH-LANG:` block; the first token MUST be an approved gate tool
+  so the eventual gate is real):
+  `RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed`
+- Fact form (the `RALPH-PENDING` sentinel leads the fact value):
+  `RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); review trigger: once a scanner is chosen`
 
 **Facts and schema**
 
@@ -214,29 +225,15 @@ make a red gate green. Document any command that cannot be run and the reason.
 If a gate or fact genuinely cannot be resolved yet — the tool is not installed,
 the scanner is not chosen, the fact is too young — do NOT build it now and do
 NOT leave a bare `TODO` (readiness treats `TODO` as an unresolved placeholder
-and blocks on it). Record it as a **deferral** with `RALPH-PENDING`, the
-first-class "applies but not resolvable yet" state. It reaches readiness (a new
-project is never blocked on it) and is resolved by ordinary dev-cycle agents
-when its trigger fires — never by re-running this remediation. Every
-`RALPH-PENDING` line carries an `(assumed <YYYY-MM-DD>)` stamp with a real date
-and a `review trigger: <condition>` clause:
-
-- Gate form (may replace a `RALPH-COMMAND` / `RALPH-INAPPLICABLE`, including
-  inside a `RALPH-LANG:` block). The first token MUST be an approved gate tool
-  so the eventual gate is real:
-  `RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed`
-- Fact form (the `RALPH-PENDING` sentinel leads the fact value):
-  `RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); review trigger: once a scanner is chosen`
-
-`RALPH-PENDING` is accepted on EVERY policy, including the testing and
-verification gates — a new project whose test runner is not installed may defer
-it (`RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps
-are installed`), trusting a dev-cycle agent to wire it when the trigger fires.
-Prefer a real `RALPH-COMMAND` when the gate can be declared now (the validator
-never executes it, so an uninstalled-but-named tool is fine), and reserve
+and blocks on it). Record it as a **deferral** using the `RALPH-PENDING` gate
+or fact form from the Marker states vocabulary in step 2 — the syntax examples
+there are the ones to copy. A deferral reaches readiness (a new project is
+never blocked on it) and is repaid by ordinary dev-cycle agents when its
+trigger fires — never by re-running this remediation. Prefer a real
+`RALPH-COMMAND` when the intended tool can be named now (the validator never
+executes it, so an uninstalled-but-named tool is fine), and reserve
 `RALPH-INAPPLICABLE` for a gate that genuinely NEVER applies (not merely
-"not yet"). Every RALPH-PENDING you write is a debt a future dev cycle must
-repay, so name the real intended tool and a concrete review trigger.
+"not yet").
 
 ### 5. INTEGRATE the pointer into AGENTS.md
 

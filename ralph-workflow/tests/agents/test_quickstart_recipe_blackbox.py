@@ -114,7 +114,7 @@ def _build_default_options() -> BuildCommandOptions:
         mcp_endpoint=None,
         allowed_mcp_tool_names=(),
         unsafe_mode=False,
-        system_prompt_file=None,
+        master_prompt_file=None,
         workspace_path=None,
         initial_session_id=None,
         settings_json=None,

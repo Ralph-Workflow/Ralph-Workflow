@@ -545,7 +545,7 @@ def _check_best_effort_invariants() -> list[str]:
 # Accept set: every canonical Ralph runtime artifact.
 _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     # Top-level basenames under .agent/ (15 total per AGENT_INTERNAL_TOP_LEVEL_BASENAMES).
-    ".agent/CURRENT_PROMPT.md",
+    ".agent/PRODUCT_CRITERIA.md",
     ".agent/PLAN.md",
     ".agent/ISSUES.md",
     ".agent/DEVELOPMENT_RESULT.md",

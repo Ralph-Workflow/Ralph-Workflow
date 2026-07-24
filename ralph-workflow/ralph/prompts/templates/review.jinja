@@ -12,7 +12,16 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
 
-Read the changed files and compare the implementation against the plan and requirements.
+Read the changed files and compare the implementation against the plan and requirements. Grade the change on every one of these dimensions — they are the same dimensions the downstream judge scores your review against:
+
+- **Plan compliance** — check every plan item against the implementation; a skipped or half-done item is a finding.
+- **Security** — injection, XSS, hardcoded secrets, auth bypass, unvalidated input.
+- **Correctness** — error paths, edge cases, race conditions.
+- **Performance** — N+1 queries, inefficient algorithms.
+- **Maintainability** — structure, clarity, and duplication that will hurt future changes.
+- **Test coverage** — new behavior without tests, and regressions the suite would not catch.
+
+When a dimension has no relevant code in the change, say so explicitly in the summary instead of skipping it silently. Run tests, lint, and type checks yourself when verification matters — do not take the diff's word for it.
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
@@ -26,7 +35,7 @@ The `issues` artifact is a markdown document (grammar: `.agent/artifact-formats/
 `---` frontmatter with `type: issues` and `status: no_issues|issues_found`, then:
 - `## Summary` — exactly one item: a one-sentence summary of the review.
 - `## Issues` — one item per finding, text formatted `path | severity | summary` (severity: `high`, `medium`, or `low`).
-- `## What Came Up Short` — one item per defect, regression, missing requirement, unsafe change, or verification gap.
+- `## What Came Up Short` — one item per defect, regression, missing requirement, unsafe change, or verification gap. This is the prose account of the same defects listed in `## Issues` — the two sections cover the same findings.
 - `## How To Fix` — one item per gap: ordered, concrete remediation the fixer can execute directly (exact files, changes, checks to run, expected outcomes).
 
 Rules:

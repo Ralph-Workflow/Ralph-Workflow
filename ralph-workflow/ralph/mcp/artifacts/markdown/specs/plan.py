@@ -20,6 +20,28 @@ Steps are ``### [S-n] Title`` blocks whose body mixes description prose
 with step fields; list-item sections (Scope, Critical Files, Acceptance
 Criteria, Risks, Verification, Parallel Plan, Work Units) attach fields
 to an item as indented ``  Field: value`` lines.
+
+Consumed-structure map (what stays strict vs. what is descriptive):
+
+- STRICT — structure a downstream consumer parses out of the plan:
+  section presence (the opinionated skeleton), ``### [S-n]`` step IDs
+  and their uniqueness/shape (development_result "Plan Items Proven"
+  proof IDs cross-reference ``steps[].number`` in
+  ``ralph/phases/execution.py``), ``Depends on:`` / ``Satisfied by:``
+  step references and cycle checks, step-type contracts (``file_change``
+  needs ``Files:``, ``verify`` needs ``Verify:``/``Location:``), and
+  ``## Parallel Plan`` / ``## Work Units`` item fields (worker fan-out
+  parses unit IDs, edit areas, and dependencies in
+  ``ralph/pipeline/work_units.py`` / ``fan_out.py``). The
+  shell-invocation guard on verification commands also stays hard.
+- TOLERANT — descriptive content nothing downstream machine-parses:
+  Scope, Critical Files, Acceptance Criteria, Risks, Verification,
+  Skills MCP, and Constraints bodies accept free multi-line prose;
+  unknown or malformed field lines there degrade to prose with at most
+  a warning (fields required by the canonical model — ``Mitigation:``,
+  ``Expect:``, ``Skills:`` — remain required). Design accepts free
+  prose and free-form ``Profile:`` / ``Architecture:`` values (the
+  documented vocabularies are suggestions, not validation errors).
 """
 
 from __future__ import annotations
@@ -30,16 +52,28 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._fields import FieldKind, ParsedFields, parse_fields
-from ralph.mcp.artifacts.markdown._parser import parse_markdown_document
+from ralph.mcp.artifacts.markdown._references import validate_unique_ids
 from ralph.mcp.artifacts.markdown._spec import (
     Content,
     LenientEnum,
     MdArtifactSpec,
     SectionRule,
-    parse_and_validate,
 )
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.markdown.specs._plan_design import design_content
+from ralph.mcp.artifacts.markdown.specs._plan_evaluatability import (
+    is_concrete_command,
+    is_concrete_verification,
+    is_specific_artifact,
+)
+from ralph.mcp.artifacts.markdown.specs._plan_step_edit import (
+    edit_plan_step_markdown as _edit_plan_step_markdown,
+)
+from ralph.mcp.artifacts.markdown.specs._plan_steps import (
+    PLAN_STEP_ID_PATTERN,
+    resolve_step_references,
+    step_number_map,
+)
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_TYPE, normalize_plan_artifact_content
 
 if TYPE_CHECKING:
@@ -50,22 +84,52 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._parsed_line import ParsedLine
     from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
-_STEP_ID = re.compile(r"^S-(?P<number>[1-9][0-9]*)$")
 _EVIDENCE_ENTRY = re.compile(r"^(?P<kind>[a-z_]+): (?P<ref>\S(?:.*\S)?)$")
 
 _INTENT_VERBS = frozenset(
-    {"add", "fix", "refactor", "migrate", "document", "investigate", "improve", "configure", "remove"}
+    {
+        "add",
+        "fix",
+        "refactor",
+        "migrate",
+        "document",
+        "investigate",
+        "improve",
+        "configure",
+        "remove",
+    }
 )
 _SCOPE_CATEGORIES = frozenset(
     {
-        "bugfix", "feature", "refactor", "test", "docs", "infra", "migration", "security",
-        "performance", "cleanup", "research", "unknown", "file_change", "prompt", "other",
+        "bugfix",
+        "feature",
+        "refactor",
+        "test",
+        "docs",
+        "infra",
+        "migration",
+        "security",
+        "performance",
+        "cleanup",
+        "research",
+        "unknown",
+        "file_change",
+        "prompt",
+        "other",
     }
 )
 _COVERAGE_AREAS = frozenset(
     {
-        "bugfix", "feature", "refactor", "test", "docs", "infra", "security", "performance",
-        "migration", "release",
+        "bugfix",
+        "feature",
+        "refactor",
+        "test",
+        "docs",
+        "infra",
+        "security",
+        "performance",
+        "migration",
+        "release",
     }
 )
 _STEP_TYPES = frozenset({"file_change", "action", "research", "verify"})
@@ -121,16 +185,29 @@ _WORK_UNIT_FIELDS: dict[str, FieldKind] = {
 }
 
 
-def _required_section(document: ParsedDocument, name: str) -> ParsedSection:
-    section = document.section(name)
-    if section is None:
-        raise ValueError(f"missing required section {name!r}")
-    return section
+def _merged_lines(document: ParsedDocument, name: str) -> list[ParsedLine]:
+    """Concatenate the body lines of every same-named (repeatable) section."""
+    return [line for section in document.sections_named(name) for line in section.lines]
 
 
-def _reject_section_lines(
-    section: ParsedSection, hint: str, diagnostics: list[Diagnostic]
+def _merged_items(document: ParsedDocument, name: str) -> list[ParsedItem]:
+    """Concatenate the list items of every same-named (repeatable) section."""
+    return [item for section in document.sections_named(name) for item in section.items]
+
+
+def _cross_section_unique_items(
+    document: ParsedDocument, name: str, diagnostics: list[Diagnostic]
 ) -> None:
+    """Reject item IDs duplicated ACROSS repeats of one section name.
+
+    Per-section duplicates are already caught by the shared structure
+    validator, so this only runs when the section actually repeats.
+    """
+    if len(document.sections_named(name)) > 1:
+        diagnostics.extend(validate_unique_ids(_merged_items(document, name), section=name))
+
+
+def _reject_section_lines(section: ParsedSection, hint: str, diagnostics: list[Diagnostic]) -> None:
     diagnostics.extend(
         Diagnostic(line.line, section.name, "PLAN020", f"{section.name}: {hint}")
         for line in section.lines
@@ -142,15 +219,23 @@ def _item_fields(
     table: Mapping[str, FieldKind],
     section: str,
     diagnostics: list[Diagnostic],
+    *,
+    prose_allowed: bool = True,
 ) -> ParsedFields:
     return parse_fields(
         item.fields,
         table,
         section=section,
         context=f"item {item.identifier!r}",
-        prose_allowed=False,
+        prose_allowed=prose_allowed,
         diagnostics=diagnostics,
     )
+
+
+def _with_prose(text: str, fields: ParsedFields) -> str:
+    """Join an item's lead text with its tolerated multi-line prose continuation."""
+    prose = "\n".join(line.text for line in fields.prose)
+    return f"{text}\n{prose}" if prose else text
 
 
 def _coerced_scalar(
@@ -182,53 +267,9 @@ def _coerced_scalar(
     return fallback
 
 
-def _step_number_map(document: ParsedDocument, diagnostics: list[Diagnostic]) -> dict[str, int]:
-    numbers: dict[str, int] = {}
-    for block in _required_section(document, "Steps").blocks:
-        match = _STEP_ID.fullmatch(block.identifier)
-        if match is None:
-            diagnostics.append(
-                Diagnostic(
-                    block.line,
-                    "Steps",
-                    "PLAN022",
-                    f"step ID {block.identifier!r} must use the S-<positive-number> form",
-                )
-            )
-            continue
-        numbers[block.identifier] = int(match.group("number"))
-    return numbers
-
-
-def _resolve_step_references(
-    entries: list[ParsedLine],
-    numbers: Mapping[str, int],
-    *,
-    section: str,
-    context: str,
-    diagnostics: list[Diagnostic],
-) -> list[int]:
-    resolved: list[int] = []
-    for entry in entries:
-        number = numbers.get(entry.text)
-        if number is None:
-            diagnostics.append(
-                Diagnostic(
-                    entry.line,
-                    section,
-                    "PLAN021",
-                    f"{context} references unknown step ID {entry.text!r}",
-                )
-            )
-            continue
-        resolved.append(number)
-    return resolved
-
-
 def _summary_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> Content:
-    section = _required_section(document, "Summary")
     fields = parse_fields(
-        section.lines,
+        _merged_lines(document, "Summary"),
         _SUMMARY_FIELDS,
         section="Summary",
         context="Summary",
@@ -236,7 +277,9 @@ def _summary_content(document: ParsedDocument, diagnostics: list[Diagnostic]) ->
         diagnostics=diagnostics,
     )
     summary: Content = {}
-    context = "\n".join(line.text for line in fields.prose)
+    prose = [line.text for line in fields.prose]
+    prose.extend(item.text for item in _merged_items(document, "Summary"))
+    context = "\n".join(prose)
     if context:
         summary["context"] = context
     intent = fields.scalars.get("intent")
@@ -258,7 +301,9 @@ def _summary_content(document: ParsedDocument, diagnostics: list[Diagnostic]) ->
             )
     if coverage:
         summary["coverage_areas"] = coverage
-    summary["scope_items"] = _scope_items(document, diagnostics)
+    scope_items = _scope_items(document, diagnostics)
+    if scope_items:
+        summary["scope_items"] = scope_items
     intent_verb = document.frontmatter.get("intent_verb")
     if intent_verb is not None:
         summary["intent_verb"] = intent_verb
@@ -266,12 +311,10 @@ def _summary_content(document: ParsedDocument, diagnostics: list[Diagnostic]) ->
 
 
 def _scope_items(document: ParsedDocument, diagnostics: list[Diagnostic]) -> list[Content]:
-    section = _required_section(document, "Scope")
-    _reject_section_lines(section, "content must be part of a '- [ID] text' item", diagnostics)
     items: list[Content] = []
-    for item in section.items:
+    for item in _merged_items(document, "Scope"):
         fields = _item_fields(item, _SCOPE_ITEM_FIELDS, "Scope", diagnostics)
-        scope_item: Content = {"text": item.text}
+        scope_item: Content = {"text": _with_prose(item.text, fields)}
         category = _coerced_scalar(
             fields,
             "category",
@@ -291,21 +334,26 @@ def _scope_items(document: ParsedDocument, diagnostics: list[Diagnostic]) -> lis
     return items
 
 
-def _skills_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> Content:
-    section = _required_section(document, "Skills MCP")
+def _skills_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> Content | None:
+    sections = document.sections_named("Skills MCP")
+    if not sections:
+        return None
     fields = parse_fields(
-        section.lines,
+        _merged_lines(document, "Skills MCP"),
         _SKILLS_FIELDS,
         section="Skills MCP",
         context="Skills MCP",
-        prose_allowed=False,
+        prose_allowed=True,
         diagnostics=diagnostics,
     )
     skills = fields.lists.get("skills")
     if skills is None:
         diagnostics.append(
             Diagnostic(
-                section.line, "Skills MCP", "PLAN020", "Skills MCP must declare a 'Skills:' field"
+                sections[0].line,
+                "Skills MCP",
+                "PLAN020",
+                "Skills MCP must declare a 'Skills:' field",
             )
         )
     return {
@@ -314,9 +362,7 @@ def _skills_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> 
     }
 
 
-def _target_content(
-    entry: ParsedLine, context: str, diagnostics: list[Diagnostic]
-) -> Content:
+def _target_content(entry: ParsedLine, context: str, diagnostics: list[Diagnostic]) -> Content:
     head, _, rest = entry.text.partition(" ")
     rest = rest.strip()
     if head in _TARGET_ACTIONS and rest:
@@ -334,9 +380,7 @@ def _target_content(
     return {"path": path, "action": "modify"}
 
 
-def _evidence_content(
-    entry: ParsedLine, context: str, diagnostics: list[Diagnostic]
-) -> Content:
+def _evidence_content(entry: ParsedLine, context: str, diagnostics: list[Diagnostic]) -> Content:
     match = _EVIDENCE_ENTRY.fullmatch(entry.text)
     if match is None:
         return {"kind": "file", "ref": entry.text}
@@ -361,15 +405,14 @@ def _steps_content(
     numbers: Mapping[str, int],
     diagnostics: list[Diagnostic],
 ) -> list[Content]:
-    section = _required_section(document, "Steps")
-    _reject_section_lines(
-        section, "content must live inside a '### [S-n] Title' step block", diagnostics
-    )
     steps: list[Content] = []
-    for block in section.blocks:
+    seen: set[str] = set()
+    blocks = [block for section in document.sections for block in section.blocks]
+    for block in blocks:
         number = numbers.get(block.identifier)
-        if number is None:
+        if number is None or block.identifier in seen:
             continue
+        seen.add(block.identifier)
         context = f"step {block.identifier!r}"
         fields = parse_fields(
             block.lines,
@@ -418,13 +461,17 @@ def _steps_content(
             step["targets"] = [_target_content(entry, context, diagnostics) for entry in files]
         depends_on = fields.lists.get("depends on")
         if depends_on is not None:
-            step["depends_on"] = _resolve_step_references(
+            step["depends_on"] = resolve_step_references(
                 depends_on, numbers, section="Steps", context=context, diagnostics=diagnostics
             )
         satisfies = fields.lists.get("satisfies")
         if satisfies is not None:
             step["satisfies"] = [entry.text for entry in satisfies]
-        for key, name in (("verify", "verify_command"), ("location", "location"), ("rationale", "rationale")):
+        for key, name in (
+            ("verify", "verify_command"),
+            ("location", "location"),
+            ("rationale", "rationale"),
+        ):
             scalar = fields.scalars.get(key)
             if scalar is not None:
                 step[name] = scalar.text
@@ -467,16 +514,22 @@ def _check_step_contract(
         )
 
 
-def _critical_files_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> Content:
-    section = _required_section(document, "Critical Files")
-    _reject_section_lines(section, "content must be part of a '- [ID] path' item", diagnostics)
+def _critical_files_content(
+    document: ParsedDocument, diagnostics: list[Diagnostic]
+) -> Content | None:
+    sections = document.sections_named("Critical Files")
+    if not sections:
+        return None
     primary: list[Content] = []
     reference: list[Content] = []
-    for item in section.items:
+    for item in _merged_items(document, "Critical Files"):
         fields = _item_fields(item, _CRITICAL_FILE_FIELDS, "Critical Files", diagnostics)
         purpose = fields.scalars.get("purpose")
         if purpose is not None:
-            if fields.scalars.get("action") is not None or fields.scalars.get("changes") is not None:
+            if (
+                fields.scalars.get("action") is not None
+                or fields.scalars.get("changes") is not None
+            ):
                 diagnostics.append(
                     Diagnostic(
                         item.line,
@@ -498,7 +551,7 @@ def _critical_files_content(document: ParsedDocument, diagnostics: list[Diagnost
     if not primary:
         diagnostics.append(
             Diagnostic(
-                section.line,
+                sections[0].line,
                 "Critical Files",
                 "PLAN020",
                 "Critical Files must include at least one primary file (an item without 'Purpose:')",
@@ -511,19 +564,21 @@ def _critical_files_content(document: ParsedDocument, diagnostics: list[Diagnost
 
 
 def _constraints_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> Content | None:
-    section = document.section("Constraints")
-    if section is None:
+    if not document.sections_named("Constraints"):
         return None
     fields = parse_fields(
-        section.lines,
+        _merged_lines(document, "Constraints"),
         _CONSTRAINTS_FIELDS,
         section="Constraints",
         context="Constraints",
-        prose_allowed=False,
+        prose_allowed=True,
         diagnostics=diagnostics,
     )
     constraints: Content = {}
-    for key, name in (("must not break", "must_not_break"), ("must keep working", "must_keep_working")):
+    for key, name in (
+        ("must not break", "must_not_break"),
+        ("must keep working", "must_keep_working"),
+    ):
         entries = fields.lists.get(key)
         if entries is not None:
             constraints[name] = [entry.text for entry in entries]
@@ -540,18 +595,29 @@ def _constraints_content(document: ParsedDocument, diagnostics: list[Diagnostic]
 def _acceptance_criteria_content(
     document: ParsedDocument, diagnostics: list[Diagnostic]
 ) -> Content | None:
-    section = document.section("Acceptance Criteria")
-    if section is None:
+    items = [
+        item
+        for section in document.sections
+        for item in section.items
+        if section.name == "Acceptance Criteria"
+        or re.fullmatch(r"AC-[0-9]{2,}", item.identifier) is not None
+    ]
+    if not items:
         return None
-    _reject_section_lines(section, "content must be part of a '- [AC-nn] text' item", diagnostics)
-    numbers = _step_number_map(document, [])
+    diagnostics.extend(
+        validate_unique_ids(items, section="Acceptance Criteria", case_sensitive=False)
+    )
+    numbers = step_number_map(document, [])
     criteria: list[Content] = []
-    for item in section.items:
+    for item in items:
         fields = _item_fields(item, _CRITERION_FIELDS, "Acceptance Criteria", diagnostics)
-        criterion: Content = {"id": item.identifier, "description": item.text}
+        criterion: Content = {
+            "id": item.identifier,
+            "description": _with_prose(item.text, fields),
+        }
         satisfied_by = fields.lists.get("satisfied by")
         if satisfied_by is not None:
-            criterion["satisfied_by_steps"] = _resolve_step_references(
+            criterion["satisfied_by_steps"] = resolve_step_references(
                 satisfied_by,
                 numbers,
                 section="Acceptance Criteria",
@@ -561,20 +627,46 @@ def _acceptance_criteria_content(
         verify = fields.scalars.get("verify")
         if verify is not None:
             criterion["verification_step"] = verify.text
+            if not is_concrete_command(verify.text):
+                diagnostics.append(
+                    Diagnostic(
+                        verify.line,
+                        "Acceptance Criteria",
+                        "PLAN020",
+                        f"criterion {item.identifier!r} needs a concrete command",
+                    )
+                )
         evidence = fields.scalars.get("evidence")
         if evidence is not None:
             criterion["evidence_path"] = evidence.text
+            if not is_specific_artifact(evidence.text):
+                diagnostics.append(
+                    Diagnostic(
+                        evidence.line,
+                        "Acceptance Criteria",
+                        "PLAN020",
+                        f"criterion {item.identifier!r} needs a concrete file/artifact",
+                    )
+                )
+        if verify is None and evidence is None:
+            diagnostics.append(
+                Diagnostic(
+                    item.line,
+                    "Acceptance Criteria",
+                    "PLAN020",
+                    f"criterion {item.identifier!r} must declare an evaluatable "
+                    "'Verify:' command or specific 'Evidence:' file/artifact",
+                )
+            )
         criteria.append(criterion)
     return {"criteria": criteria}
 
 
 def _risks_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> list[Content]:
-    section = _required_section(document, "Risks")
-    _reject_section_lines(section, "content must be part of a '- [ID] risk' item", diagnostics)
     risks: list[Content] = []
-    for item in section.items:
+    for item in _merged_items(document, "Risks"):
         fields = _item_fields(item, _RISK_FIELDS, "Risks", diagnostics)
-        risk: Content = {"risk": item.text}
+        risk: Content = {"risk": _with_prose(item.text, fields)}
         mitigation = fields.scalars.get("mitigation")
         if mitigation is None:
             diagnostics.append(
@@ -603,13 +695,9 @@ def _risks_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> l
     return risks
 
 
-def _verification_content(
-    document: ParsedDocument, diagnostics: list[Diagnostic]
-) -> list[Content]:
-    section = _required_section(document, "Verification")
-    _reject_section_lines(section, "content must be part of a '- [ID] command' item", diagnostics)
+def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> list[Content]:
     entries: list[Content] = []
-    for item in section.items:
+    for item in _merged_items(document, "Verification"):
         fields = _item_fields(item, _VERIFICATION_FIELDS, "Verification", diagnostics)
         entry: Content = {"method": item.text}
         expect = fields.scalars.get("expect")
@@ -624,6 +712,16 @@ def _verification_content(
             )
         else:
             entry["expected_outcome"] = expect.text
+            if not is_concrete_verification(item.text, expect.text):
+                diagnostics.append(
+                    Diagnostic(
+                        expect.line,
+                        "Verification",
+                        "PLAN020",
+                        f"verification item {item.identifier!r} needs a concrete "
+                        "command or file/artifact inspection and expected result",
+                    )
+                )
         timeout = fields.scalars.get("timeout")
         if timeout is not None:
             try:
@@ -647,13 +745,19 @@ def _verification_content(
 def _parallel_plan_content(
     document: ParsedDocument, diagnostics: list[Diagnostic]
 ) -> list[Content] | None:
-    section = document.section("Parallel Plan")
-    if section is None:
+    sections = document.sections_named("Parallel Plan")
+    if not sections:
         return None
-    _reject_section_lines(section, "content must be part of a '- [ID] description' item", diagnostics)
+    for section in sections:
+        _reject_section_lines(
+            section, "content must be part of a '- [ID] description' item", diagnostics
+        )
+    _cross_section_unique_items(document, "Parallel Plan", diagnostics)
     entries: list[Content] = []
-    for item in section.items:
-        fields = _item_fields(item, _PARALLEL_FIELDS, "Parallel Plan", diagnostics)
+    for item in _merged_items(document, "Parallel Plan"):
+        fields = _item_fields(
+            item, _PARALLEL_FIELDS, "Parallel Plan", diagnostics, prose_allowed=False
+        )
         entries.append(
             {
                 "id": item.identifier,
@@ -671,21 +775,37 @@ def _parallel_plan_content(
 def _work_units_content(
     document: ParsedDocument, diagnostics: list[Diagnostic]
 ) -> list[Content] | None:
-    section = document.section("Work Units")
-    if section is None:
+    sections = document.sections_named("Work Units")
+    if not sections:
         return None
-    _reject_section_lines(section, "content must be part of a '- [unit-id] description' item", diagnostics)
+    for section in sections:
+        _reject_section_lines(
+            section, "content must be part of a '- [unit-id] description' item", diagnostics
+        )
+    _cross_section_unique_items(document, "Work Units", diagnostics)
     entries: list[Content] = []
-    for item in section.items:
-        fields = _item_fields(item, _WORK_UNIT_FIELDS, "Work Units", diagnostics)
-        entries.append(
-            {
+    for section in sections:
+        nested_step_ids = [
+            block.identifier
+            for block in section.blocks
+            if PLAN_STEP_ID_PATTERN.fullmatch(block.identifier) is not None
+        ]
+        owned_step_ids = nested_step_ids if len(section.items) == 1 else []
+        for item in section.items:
+            fields = _item_fields(
+                item, _WORK_UNIT_FIELDS, "Work Units", diagnostics, prose_allowed=False
+            )
+            entry: Content = {
                 "unit_id": item.identifier,
                 "description": item.text,
-                "allowed_directories": [entry.text for entry in fields.lists.get("directories", [])],
+                "allowed_directories": [
+                    entry.text for entry in fields.lists.get("directories", [])
+                ],
                 "dependencies": [entry.text for entry in fields.lists.get("depends on", [])],
             }
-        )
+            if owned_step_ids:
+                entry["step_ids"] = owned_step_ids
+            entries.append(entry)
     return entries
 
 
@@ -699,15 +819,34 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
                 document.frontmatter_lines.get("type", 1), None, "PLAN020", "type must be 'plan'"
             )
         )
-    numbers = _step_number_map(document, diagnostics)
-    content: Content = {
-        "summary": _summary_content(document, diagnostics),
-        "skills_mcp": _skills_content(document, diagnostics),
-        "steps": _steps_content(document, numbers, diagnostics),
-        "critical_files": _critical_files_content(document, diagnostics),
-        "risks_mitigations": _risks_content(document, diagnostics),
-        "verification_strategy": _verification_content(document, diagnostics),
-    }
+    numbers = step_number_map(document, diagnostics)
+    steps = _steps_content(document, numbers, diagnostics)
+    if not steps:
+        diagnostics.append(
+            Diagnostic(
+                1,
+                None,
+                "PLAN022",
+                "plan must contain at least one '### [S-n] Title' step block "
+                "(in any section) unless it is a 'noop: true' plan",
+            )
+        )
+    content: Content = {"steps": steps}
+    summary = _summary_content(document, diagnostics)
+    if summary:
+        content["summary"] = summary
+    skills = _skills_content(document, diagnostics)
+    if skills is not None:
+        content["skills_mcp"] = skills
+    critical = _critical_files_content(document, diagnostics)
+    if critical is not None:
+        content["critical_files"] = critical
+    risks = _risks_content(document, diagnostics)
+    if risks:
+        content["risks_mitigations"] = risks
+    verification = _verification_content(document, diagnostics)
+    if verification:
+        content["verification_strategy"] = verification
     schema_version = document.frontmatter.get("schema_version")
     if schema_version is not None:
         try:
@@ -759,15 +898,10 @@ def _minimal_noop_variant(
     if value != "true":
         message = "frontmatter 'noop' must be 'true' when present"
     elif document.frontmatter != {"type": "plan", "noop": "true"} or document.sections:
-        message = (
-            "a no-op plan must contain exactly 'type: plan' and "
-            "'noop: true' with no sections"
-        )
+        message = "a no-op plan must contain exactly 'type: plan' and 'noop: true' with no sections"
     else:
         return {"noop": True}, []
-    return None, [
-        Diagnostic(document.frontmatter_lines["noop"], None, "PLAN023", message)
-    ]
+    return None, [Diagnostic(document.frontmatter_lines["noop"], None, "PLAN023", message)]
 
 
 def edit_plan_step_markdown(
@@ -785,105 +919,21 @@ def edit_plan_step_markdown(
     references survive insert, move, and replace; removing a step that is
     still referenced fails re-validation with a dangling-reference error.
     """
-    document, parse_diagnostics = parse_markdown_document(text)
-    parse_errors = [d for d in parse_diagnostics if d.severity == "error"]
-    if parse_errors:
-        raise MarkdownArtifactError(parse_errors)
-    steps_section = document.section("Steps")
-    if steps_section is None:
-        raise ValueError("document has no '## Steps' section")
-    lines = text.splitlines()
-    section_end = min(
-        (section.line - 1 for section in document.sections if section.line > steps_section.line),
-        default=len(lines),
+    return _edit_plan_step_markdown(
+        text,
+        action,
+        step_id,
+        replacement,
+        index,
+        spec=PLAN_SPEC,
     )
-    chunks: list[tuple[str, list[str]]] = []
-    blocks = steps_section.blocks
-    for position, block in enumerate(blocks):
-        end = blocks[position + 1].line - 1 if position + 1 < len(blocks) else section_end
-        chunk = lines[block.line - 1 : end]
-        while chunk and not chunk[-1].strip():
-            chunk.pop()
-        chunks.append((block.identifier, chunk))
-    _apply_step_edit(chunks, action, step_id, replacement, index)
-    region: list[str] = [""]
-    for _, chunk in chunks:
-        region.extend(chunk)
-        region.append("")
-    lines[steps_section.line : section_end] = region
-    edited = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
-    _, validation = parse_and_validate(edited, PLAN_SPEC)
-    validation_errors = [d for d in validation if d.severity == "error"]
-    if validation_errors:
-        raise MarkdownArtifactError(validation_errors)
-    return edited
 
 
-def _apply_step_edit(
-    chunks: list[tuple[str, list[str]]],
-    action: str,
-    step_id: str,
-    replacement: str | None,
-    index: int | None,
-) -> None:
-    """Mutate the ordered (step ID, chunk lines) list according to one edit."""
-    positions = {identifier: position for position, (identifier, _) in enumerate(chunks)}
-    if action == "insert":
-        if replacement is None or step_id in positions:
-            raise ValueError("insert requires a new step ID and a replacement block")
-        if _STEP_ID.fullmatch(step_id) is None:
-            raise ValueError(f"step ID {step_id!r} must use the S-<positive-number> form")
-        insert_at = len(chunks) if index is None else _edit_position(index, len(chunks))
-        chunks.insert(insert_at, (step_id, _replacement_chunk(replacement, step_id)))
-        return
-    position = positions.get(step_id)
-    if position is None:
-        raise ValueError(f"unknown step ID {step_id!r}")
-    if action == "replace":
-        if replacement is None:
-            raise ValueError("replace requires a replacement block")
-        chunks[position] = (step_id, _replacement_chunk(replacement, step_id))
-    elif action == "remove":
-        chunks.pop(position)
-    elif action == "move" and index is not None:
-        chunks.insert(_edit_position(index, len(chunks) - 1), chunks.pop(position))
-    else:
-        raise ValueError("action must be replace, insert, remove, or move; move requires index")
-
-
-def _replacement_chunk(replacement: str, step_id: str) -> list[str]:
-    """Validate a replacement step block and return its normalized lines."""
-    document, diagnostics = parse_markdown_document("## Steps\n" + replacement)
-    errors = [d for d in diagnostics if d.severity == "error"]
-    if errors:
-        raise MarkdownArtifactError(errors)
-    section = document.section("Steps")
-    if (
-        section is None
-        or len(document.sections) != 1
-        or len(section.blocks) != 1
-        or section.items
-        or section.lines
-    ):
-        raise ValueError("replacement must be a single '### [S-n] Title' step block")
-    block = section.blocks[0]
-    if block.identifier != step_id:
-        raise ValueError(
-            f"replacement block ID {block.identifier!r} must match step_id {step_id!r}"
-        )
-    chunk = replacement.splitlines()
-    while chunk and not chunk[0].strip():
-        chunk.pop(0)
-    while chunk and not chunk[-1].strip():
-        chunk.pop()
-    return chunk
-
-
-def _edit_position(index: int, length: int) -> int:
-    if not 1 <= index <= length + 1:
-        raise ValueError(f"index must be between 1 and {length + 1}")
-    return index - 1
-
+# Free-shape rule: any body prose, stable-ID list items, and step blocks
+# may appear, and the section may repeat (one occurrence per subplan).
+_FREE_SECTION_RULE = SectionRule(
+    required=False, repeatable=True, allow_body=True, allow_blocks=True, allow_items=True
+)
 
 PLAN_SPEC = MdArtifactSpec(
     artifact_type=PLAN_ARTIFACT_TYPE,
@@ -891,19 +941,20 @@ PLAN_SPEC = MdArtifactSpec(
     optional_frontmatter=frozenset({"schema_version", "noop"}),
     lenient_enums={"intent_verb": LenientEnum(_INTENT_VERBS, "add")},
     sections={
-        "Summary": SectionRule(allow_body=True, max_items=0),
-        "Scope": SectionRule(require_items=True, allow_body=True),
-        "Skills MCP": SectionRule(allow_body=True, max_items=0),
-        "Steps": SectionRule(allow_body=True, allow_blocks=True, require_blocks=True),
-        "Critical Files": SectionRule(require_items=True, allow_body=True),
-        "Constraints": SectionRule(required=False, allow_body=True, max_items=0),
-        "Design": SectionRule(required=False, allow_body=True, max_items=0),
-        "Acceptance Criteria": SectionRule(required=False, require_items=True, allow_body=True),
-        "Risks": SectionRule(require_items=True, allow_body=True),
-        "Verification": SectionRule(require_items=True, allow_body=True),
-        "Parallel Plan": SectionRule(required=False, require_items=True, allow_body=True),
-        "Work Units": SectionRule(required=False, require_items=True, allow_body=True),
+        "Summary": _FREE_SECTION_RULE,
+        "Scope": _FREE_SECTION_RULE,
+        "Skills MCP": _FREE_SECTION_RULE,
+        "Steps": _FREE_SECTION_RULE,
+        "Critical Files": _FREE_SECTION_RULE,
+        "Constraints": _FREE_SECTION_RULE,
+        "Design": _FREE_SECTION_RULE,
+        "Acceptance Criteria": _FREE_SECTION_RULE,
+        "Risks": _FREE_SECTION_RULE,
+        "Verification": _FREE_SECTION_RULE,
+        "Parallel Plan": _FREE_SECTION_RULE,
+        "Work Units": _FREE_SECTION_RULE,
     },
+    unknown_section_rule=_FREE_SECTION_RULE,
     to_content=_to_content,
     normalize_content=normalize_plan_artifact_content,
     validate_document=_document_warnings,

@@ -159,13 +159,13 @@ class TestDefaultPipelineFactoryAppliesProHooksToCore:
         override_ctx = _make_display_context()
         model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
 
-        def fake_system_prompt_materializer(
+        def fake_master_prompt_materializer(
             workspace_root: object,
             name: object,
-            default_current_prompt: object = None,
+            default_product_criteria: object = None,
             worker_namespace: object = None,
         ) -> str:
-            del workspace_root, name, default_current_prompt, worker_namespace
+            del workspace_root, name, default_product_criteria, worker_namespace
             return "system"
 
         def fake_phase_prompt_materializer(
@@ -188,7 +188,7 @@ class TestDefaultPipelineFactoryAppliesProHooksToCore:
         hooks = ProPipelineHooks(
             display_context=override_ctx,
             model_identity=model_identity,
-            system_prompt_materializer=fake_system_prompt_materializer,
+            master_prompt_materializer=fake_master_prompt_materializer,
             phase_prompt_materializer=fake_phase_prompt_materializer,
             artifact_requirements_resolver=fake_artifact_resolver,
         )
@@ -197,7 +197,7 @@ class TestDefaultPipelineFactoryAppliesProHooksToCore:
 
         assert deps.display_context is override_ctx
         assert deps.model_identity is model_identity
-        assert deps.system_prompt_materializer is fake_system_prompt_materializer
+        assert deps.master_prompt_materializer is fake_master_prompt_materializer
         assert deps.phase_prompt_materializer is fake_phase_prompt_materializer
         assert deps.artifact_requirements_resolver is fake_artifact_resolver
 

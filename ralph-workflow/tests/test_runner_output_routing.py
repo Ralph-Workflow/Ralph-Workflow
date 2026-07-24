@@ -91,7 +91,7 @@ def _patch_common_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
         runner_module, "materialize_prompt_for_phase", lambda **_kwargs: "PROMPT.md"
     )
     monkeypatch.setattr(
-        runner_module, "materialize_system_prompt", lambda **_kwargs: "SYSTEM_PROMPT.md"
+        runner_module, "materialize_master_prompt", lambda **_kwargs: "MASTER_PROMPT.md"
     )
     monkeypatch.setattr(
         runner_module, "handle_phase", lambda *_args, **_kwargs: [PipelineEvent.AGENT_SUCCESS]
@@ -109,7 +109,7 @@ def _fast_materializers(
         return str(prompt_path)
 
     def _fast_system_materializer(*_args: object, **_kwargs: object) -> str:
-        sys_path = workspace_scope.root / ".agent" / "tmp" / "system_prompt.md"
+        sys_path = workspace_scope.root / ".agent" / "tmp" / "master_prompt.md"
         sys_path.parent.mkdir(parents=True, exist_ok=True)
         sys_path.write_text("system", encoding="utf-8")
         return str(sys_path)
@@ -179,7 +179,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
             bridge=FakeBridge(),
             registry_factory=registry.from_config,
             phase_prompt_materializer=phase_mat,
-            system_prompt_materializer=sys_mat,
+            master_prompt_materializer=sys_mat,
         )
         return effect_executor_module.execute_agent_effect(
             effect,
@@ -281,7 +281,7 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
             bridge=FakeBridge(),
             registry_factory=registry.from_config,
             phase_prompt_materializer=phase_mat,
-            system_prompt_materializer=sys_mat,
+            master_prompt_materializer=sys_mat,
         )
         return effect_executor_module.execute_agent_effect(
             effect,

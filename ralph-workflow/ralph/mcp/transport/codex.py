@@ -130,7 +130,7 @@ def prepare_codex_home(
     *,
     workspace_path: Path | None,
     existing_home: str | None,
-    system_prompt_file: str | None,
+    master_prompt_file: str | None,
     unsafe_mode: bool = False,
 ) -> str:
     """Prepare an isolated Codex home directory and return its path."""
@@ -138,7 +138,7 @@ def prepare_codex_home(
         endpoint,
         workspace_path=workspace_path,
         existing_home=existing_home,
-        system_prompt_file=system_prompt_file,
+        master_prompt_file=master_prompt_file,
         unsafe_mode=unsafe_mode,
     )
     return codex_home
@@ -162,7 +162,7 @@ def prepare_codex_home_with_upstreams(
     *,
     workspace_path: Path | None,
     existing_home: str | None,
-    system_prompt_file: str | None,
+    master_prompt_file: str | None,
     unsafe_mode: bool = False,
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
     """Prepare an isolated Codex home directory and return its path with upstream servers."""
@@ -219,8 +219,8 @@ def prepare_codex_home_with_upstreams(
             base_config = base_config.replace("[features]\n", "[features]\n" + feature_block, 1)
         if not features_in_base:
             appended_sections.append("[features]\n" + feature_block)
-    if system_prompt_file:
-        prefix_sections.append(f"model_instructions_file = {json.dumps(system_prompt_file)}\n")
+    if master_prompt_file:
+        prefix_sections.append(f"model_instructions_file = {json.dumps(master_prompt_file)}\n")
     config_suffix = "\n".join(section.rstrip() for section in appended_sections if section.strip())
     prefix_text = "\n".join(section.rstrip() for section in prefix_sections if section.strip())
     config_text = "\n\n".join(

@@ -89,10 +89,12 @@ class Summary(RalphBaseModel):
         description="Closed verb; see _INTENT_VERB_SET (9 values).",
     )
     scope_items: list[ScopeItem] = Field(
-        ...,
-        min_length=3,
+        default_factory=list,
         max_length=200,
-        description="At least 3 scope items (max 200); see ScopeItem.",
+        description=(
+            "Scope items bounding the work (max 200); see ScopeItem. "
+            "Optional — a plan may carry scope in free prose instead."
+        ),
     )
     coverage_areas: list[CoverageArea] = Field(
         default_factory=list,

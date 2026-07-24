@@ -15,7 +15,7 @@ Recent retry context:
 The prior plan was rejected by planning analysis. Treat the planning-analysis feedback as a starting point, not as the full list of issues. The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
 
 Canonical request file: `{{PROMPT_PATH}}`
-Current plan context is provided inline below.
+The current plan must be read from `.agent/artifacts/plan.md`; it is not inlined in this prompt.
 Canonical analysis feedback file: `{{ANALYSIS_FEEDBACK_PATH}}`
 {% if ARTIFACT_HISTORY_PATH %}Canonical artifact history directory: `{{ARTIFACT_HISTORY_DIR}}`
 Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`
@@ -38,21 +38,27 @@ Not submitting the revised plan is a FAILURE.
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 {{ render_optional_artifact_skill_pointer('submit-plan-step-edits', '.agent/artifact-formats/plan.md') }}
 
+Analysis rules:
+- Do not localize your revision pass to only the sections explicitly cited by the analyzer; you must perform your own repo-grounded analysis before submitting.
+- Build a closure ledger before submitting the revised plan. At minimum, account for (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent.
+- Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
+- Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before deciding the revision is ready; if your runtime provides a subagent mechanism, fan out read-only scouts to verify each analyzer finding's closure and review from independent angles, otherwise run the same checks sequentially yourself.
+- Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
+
+Scope rules:
+- Classify the defect scope as `local_section`, `cross_section`, or `repo_wide` before deciding what to preserve. The classification is diagnostic only and does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
+- When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example.
+- If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files; do not preserve the prior target cluster as the starting scope.
+
+Submission gates:
+- This continuation exists because the prior planning pass failed. If your runtime provides a subagent gate, you MUST use it as a hard stop against the plan-quality rubric and your replanning self-audit; until a subagent review reports no remaining rubric-grounded findings, you MUST NOT submit the revised plan artifact.
+- Do not write `.agent/artifacts/plan.md` directly — the submit and finalize tools are the only valid paths. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent.
+- Do not submit a plan that still has any known unresolved analyzer finding, even if some sections improved. Rewrite every affected section of the document when that is the simplest way to restore global coherence.
+
 Revise the plan as ONE markdown document (grammar: `.agent/artifact-formats/plan.md`):
 1. Read the current plan at `.agent/artifacts/plan.md` with read-only tools and rewrite every section the feedback invalidates.
 2. For a fix confined to individual steps, stage the complete current plan with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document, `mode="replace_all"`). Then call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against the persisted draft with `action` and `step_id` only. `replacement` is required for `insert` and `replace` and must be one complete matching `### [S-3] Title` block; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument. The editor saves the draft, and IDs are stable and never renumbered.
 3. Inspect the edited draft with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), repair every line/section/rule-anchored diagnostic, then finalize it with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
 4. For a holistic rewrite that does not use the step editor, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments.
+5. A submit or finalize success message is NOT completion by itself. After the revised plan is accepted, call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your final action.
 Your target is a revised plan that returns `completed` on the next planning-analysis pass.
-
-- Do not localize your revision pass to only the sections explicitly cited by the analyzer; you must perform your own repo-grounded analysis before submitting.
-- Build a closure ledger before submitting the revised plan. At minimum, account for (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent.
-- Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
-- Classify the defect scope as `local_section`, `cross_section`, or `repo_wide` before deciding what to preserve. The classification is diagnostic only and does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
-- When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example.
-- Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before deciding the revision is ready; if your runtime provides a subagent mechanism, fan out read-only scouts to verify each analyzer finding's closure and review from independent angles, otherwise run the same checks sequentially yourself.
-- This continuation exists because the prior planning pass failed. If your runtime provides a subagent gate, you MUST use it as a hard stop against the plan-quality rubric and your replanning self-audit; until a subagent review reports no remaining rubric-grounded findings, you MUST NOT submit the revised plan artifact.
-- Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
-- If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files; do not preserve the prior target cluster as the starting scope.
-- Do not write `.agent/artifacts/plan.md` directly — the submit and finalize tools are the only valid paths. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent.
-- Do not submit a plan that still has any known unresolved analyzer finding, even if some sections improved. Rewrite every affected section of the document when that is the simplest way to restore global coherence.

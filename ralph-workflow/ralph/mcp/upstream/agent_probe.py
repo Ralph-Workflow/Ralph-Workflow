@@ -173,7 +173,7 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         endpoint=None,
         workspace_path=workspace_path,
         existing_home=None,
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     # Release the codex home in a finally block: the probe only uses
     # the home to synthesize a config + run the handshake, and has no

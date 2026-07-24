@@ -3,7 +3,7 @@
 This module defines ``SubagentIdentity`` and ``SubagentPidRegistry`` -- the
 canonical owner for what ``real subagent`` means in Ralph's watchdog
 subsystem. The Trustworthy Idle Watchdog product spec
-(``.agent/CURRENT_PROMPT.md``, requirement R1) requires:
+(``.agent/PRODUCT_CRITERIA.md``, requirement R1) requires:
 
     Each monitor MUST count only genuine subagents -- the delegated agent
     work the supervised agent launches. It MUST exclude:

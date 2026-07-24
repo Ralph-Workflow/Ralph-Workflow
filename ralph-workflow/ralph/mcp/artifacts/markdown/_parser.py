@@ -23,7 +23,7 @@ from ralph.mcp.artifacts.markdown._parsed_line import ParsedLine
 from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 _FRONTMATTER_FIELD = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_-]*): (?P<value>\S(?:.*\S)?)$")
-_HEADING = re.compile(r"^## (?P<name>[A-Za-z][A-Za-z0-9 _-]*)$")
+_HEADING = re.compile(r"^## (?P<name>\S(?:.*\S)?)$")
 _BLOCK_HEADING = re.compile(
     r"^### \[(?P<identifier>[A-Za-z][A-Za-z0-9_-]*)\] (?P<title>\S(?:.*\S)?)$"
 )

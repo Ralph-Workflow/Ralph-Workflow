@@ -20,14 +20,13 @@ IMPORTANT: The previous attempt did not complete successfully.
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
 
-ORIGINAL REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
-EXECUTION PLAN:
 {{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
-ANALYSIS FEEDBACK:
-{{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
+{% if ANALYSIS_FEEDBACK|default('') or ANALYSIS_FEEDBACK_PATH|default('') %}
+{{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH|default('')) }}
+{% endif %}
 
 {% if PRIOR_RESULT_STATUS %}
 PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE:
@@ -39,54 +38,21 @@ Next steps: {{ PRIOR_RESULT_NEXT_STEPS }}
 Continuation reference: {{ PRIOR_RESULT_CONTINUATION }}
 {% endif %}
 
-{% if ARTIFACT_HISTORY_PATH %}
-ARTIFACT HISTORY:
-Prior development artifacts from previous iterations are archived under:
-`{{ARTIFACT_HISTORY_DIR}}`
-Canonical history index file:
-`{{ARTIFACT_HISTORY_PATH}}`
-Inspect this history when you want to understand what has been tried before
-and what development-analysis feedback they received.
-{% endif %}
+{% include 'shared/_artifact_history.j2' %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
 
-{% if HAS_DOCS_MCP %}
-
-## DOCUMENTATION LOOKUP
-
-The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. Before implementing or debugging with a library or framework, search documentation using the docs-mcp search tool first, then fall back to `web_search` if needed.
-
-{% else %}
-
-> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during development.
-
-{% endif %}
+{% include 'shared/_docs_lookup.j2' %}
 
 ## PARALLEL EXECUTION (when the plan declares `## Work Units` or `## Parallel Plan`)
 
-When the EXECUTION PLAN above declares `## Work Units` or `## Parallel Plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within each work unit's declared `Directories:`, and producing the matching `## Plan Items Proven` evidence for each unit. Ralph Workflow exposes no coordination command for plan work — dispatching, supervising, and reconciling sub-agents is entirely your job. If your agent runtime does not support sub-agents, execute the same plan sequentially in `[unit-ID]` order.
-
-Sub-agents are not limited to declared work units. Even when the plan declares neither field, use them whenever it genuinely helps:
-- **Information gathering**: fan out read-only sub-agents to locate code, map call sites, or research APIs instead of reading file after file in your own context.
-- **Naturally concurrent steps**: plan steps with no dependency between them and disjoint target files may run as separate sub-agents at the same time.
-- **Independent checks**: investigations or verifications that do not depend on each other can run concurrently while you continue the next step.
-
-When to stay sequential: steps that touch the same files, steps ordered by `Depends on:`, and any work whose outcome decides what the next step should do. Never let two sub-agents edit the same file. Integration, final verification, and artifact submission always happen in your main session.
+{% include 'shared/_parallel_execution.j2' %}
 
 ABSOLUTE RULE: this continuation exists because the previous development pass was not complete. If your runtime provides a sub-agent gate, you MUST use at least one sub-agent as a hard gate before artifact submission. Have it review the remaining work against the EXECUTION PLAN, available continuation context, and the DEVELOPMENT RESULT ARTIFACT proof requirements below. Until that sub-agent review reports no remaining gaps, you MUST NOT submit the artifact or declare completion. If your runtime has no sub-agent mechanism, run the same gate yourself sequentially before submission.
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 
-You MUST submit a `development_result` artifact before declaring completion: a markdown document with frontmatter `type: development_result` and `status: completed|partial`, then `## Summary` (exactly one item), `## Files Changed` (one item per file), and the proof sections below. Each proof item's bracketed ID is the reference; the item text is the evidence.
-
-**## Plan Items Proven** (required when the execution plan has steps): one `- [S-N] <proof>` item per plan step, where `S-N` EXACTLY matches the step's stable ID from the plan document and the proof cites concrete evidence, e.g. `- [S-1] Modified src/validation.py lines 10-25; pytest tests/test_validation.py -q passes.`
-
-**## Plan Items Proven** (when the plan uses `## Work Units` instead): one `- [unit-ID] <proof>` item for the work unit you were assigned, where the bracketed ID EXACTLY matches the plan's `[unit-ID]` bracket ID.
-
-**## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per `How To Fix` entry from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
-
-Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step ID, work-unit bracket ID, or analysis item ID) also fail validation and trigger a re-prompt.
+{% include 'shared/_development_result_proof.j2' %}
 
 {% set development_result_example %}
 ---
@@ -102,6 +68,9 @@ status: completed
 
 ## Plan Items Proven
 - [S-1] Updated src/main.py and ran pytest tests/test_main.py -q; it passes.
+
+## Analysis Items Addressed
+- [DA-001] Restored the missing null-check the analysis flagged; covered by tests/test_main.py.
 {% endset %}
 {{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 

@@ -3,7 +3,7 @@
 The wt-024 P2 + P3 fixes:
 
   - **P2**: The four call sites that read packaged .jinja templates
-    from disk (system_prompt._unattended_mode_text,
+    from disk (master_prompt._unattended_mode_text,
     commit._select_template (commit_message.jinja),
     commit.prompt_commit_message_for_opencode (commit_simplified.jinja),
     reviewer._load_packaged_review_template (review.jinja)) all
@@ -30,7 +30,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.prompts import commit, reviewer, system_prompt
+from ralph.prompts import commit, master_prompt, reviewer
 from ralph.prompts.template_registry import (
     TemplateRegistry,
     _packaged_template_cache,
@@ -106,8 +106,8 @@ def test_packaged_template_cache_is_key_scoped() -> None:
     assert state["calls"] == 2, f"reader must run once per distinct key, got {state['calls']}"
 
 
-def test_system_prompt_unattended_mode_uses_cache() -> None:
-    """system_prompt._unattended_mode_text reads the jinja via the cache.
+def test_master_prompt_unattended_mode_uses_cache() -> None:
+    """master_prompt._unattended_mode_text reads the jinja via the cache.
 
     We patch the cache module-level instance with a counting reader
     so we can assert the reader runs exactly once across many calls
@@ -123,9 +123,9 @@ def test_system_prompt_unattended_mode_uses_cache() -> None:
     _packaged_template_cache._reader = reader
     _packaged_template_cache.clear()
     try:
-        first = system_prompt._unattended_mode_text()
-        second = system_prompt._unattended_mode_text()
-        third = system_prompt._unattended_mode_text()
+        first = master_prompt._unattended_mode_text()
+        second = master_prompt._unattended_mode_text()
+        third = master_prompt._unattended_mode_text()
     finally:
         _packaged_template_cache._reader = original
         _packaged_template_cache.clear()

@@ -41,7 +41,7 @@ class _GeneralConfigStub:
     agent_process_monitor_enabled: bool = True
     agent_subagent_output_capture_enabled: bool = True
     agent_subagent_output_poll_interval_seconds: float = 1.0
-    agent_system_prompt: str | None = None
+    agent_master_prompt: str | None = None
     agent_provider: str | None = None
     verbose: bool = False
     workflow: GeneralWorkflowFlags = field(default_factory=GeneralWorkflowFlags)

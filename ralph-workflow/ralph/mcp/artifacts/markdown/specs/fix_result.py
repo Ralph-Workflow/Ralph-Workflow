@@ -1,4 +1,10 @@
-"""Markdown spec for fix results."""
+"""Markdown spec for fix results.
+
+Consumed structure (stays strict): frontmatter ``type`` and the
+required-section skeleton. All section content is descriptive (no
+pipeline consumer reads individual fields), so bodies tolerate
+multi-line prose and unknown continuation lines under items.
+"""
 
 from __future__ import annotations
 
@@ -49,13 +55,13 @@ FIX_RESULT_SPEC = MdArtifactSpec(
     artifact_type="fix_result",
     required_frontmatter=frozenset({"type"}),
     sections={
-        "Summary": SectionRule(require_items=True, max_items=1),
-        "Files Changed": SectionRule(require_items=True),
-        "Next Steps": SectionRule(required=False, max_items=1),
+        "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
+        "Files Changed": SectionRule(require_items=True, allow_body=True),
+        "Next Steps": SectionRule(required=False, max_items=1, allow_body=True),
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    validate_document=_validate_type,
+    validate_frontmatter=_validate_type,
 )
 
 register_spec(FIX_RESULT_SPEC)

@@ -1,4 +1,14 @@
-"""Markdown mapping and validation rules for ``development_result`` artifacts."""
+"""Markdown mapping and validation rules for ``development_result`` artifacts.
+
+Consumed structure (stays strict): frontmatter ``status`` has the closed
+vocabulary ``completed`` | ``partial`` (routing and continuation prompts
+read it — a wrong status such as ``done`` is a hard error naming the
+valid values), the required-section skeleton, and the ``Plan Items
+Proven`` / ``Analysis Items Addressed`` item IDs (proof gating
+cross-references them) plus the ``Continuation`` session ID. Everything
+else is descriptive: sections tolerate multi-line prose and unknown
+``Key: value`` continuation lines under items.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +19,6 @@ from ralph.mcp.artifacts.development_result import (
     normalize_development_result_content,
 )
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
-from ralph.mcp.artifacts.markdown._lenient_enum import LenientEnum
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import Content, MdArtifactSpec
 
@@ -17,7 +26,7 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
 from ralph.mcp.artifacts.markdown.registry import register_spec
 
-_STATUSES = frozenset({"completed", "partial"})
+_STATUSES = ("completed", "partial")
 
 
 def _items(document: ParsedDocument, name: str) -> tuple[str, ...]:
@@ -42,8 +51,6 @@ def _proof_items(document: ParsedDocument, name: str, key: str) -> list[dict[str
 
 
 def _to_content(document: ParsedDocument) -> Content:
-    if document.frontmatter.get("type") != DEVELOPMENT_RESULT_ARTIFACT_TYPE:
-        raise ValueError("type must be 'development_result'")
     content: Content = {
         "status": document.frontmatter["status"],
         "summary": _one_item(document, "Summary"),
@@ -66,36 +73,43 @@ def _to_content(document: ParsedDocument) -> Content:
     return content
 
 
-def _status_warning(document: ParsedDocument) -> list[Diagnostic]:
-    status = document.frontmatter.get("status")
-    if status in _STATUSES:
-        return []
-    return [
-        Diagnostic(
-            document.frontmatter_lines["status"],
-            None,
-            "DEV001",
-            "unknown status coerced to 'completed'",
-            "warning",
+def _validate_frontmatter(document: ParsedDocument) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    if document.frontmatter["type"] != DEVELOPMENT_RESULT_ARTIFACT_TYPE:
+        diagnostics.append(
+            Diagnostic(
+                document.frontmatter_lines["type"],
+                None,
+                "DEV002",
+                f"frontmatter 'type' must be {DEVELOPMENT_RESULT_ARTIFACT_TYPE!r}",
+            )
         )
-    ]
+    if document.frontmatter["status"] not in _STATUSES:
+        diagnostics.append(
+            Diagnostic(
+                document.frontmatter_lines["status"],
+                None,
+                "SPEC010",
+                "frontmatter 'status' must be one of: completed, partial",
+            )
+        )
+    return diagnostics
 
 
 DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
     artifact_type=DEVELOPMENT_RESULT_ARTIFACT_TYPE,
     required_frontmatter=frozenset({"type", "status"}),
     sections={
-        "Summary": SectionRule(require_items=True, max_items=1),
-        "Files Changed": SectionRule(require_items=True),
-        "Plan Items Proven": SectionRule(required=False),
-        "Analysis Items Addressed": SectionRule(required=False),
-        "Next Steps": SectionRule(required=False, require_items=True, max_items=1),
+        "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
+        "Files Changed": SectionRule(require_items=True, allow_body=True),
+        "Plan Items Proven": SectionRule(required=False, allow_body=True),
+        "Analysis Items Addressed": SectionRule(required=False, allow_body=True),
+        "Next Steps": SectionRule(required=False, require_items=True, max_items=1, allow_body=True),
         "Continuation": SectionRule(required=False, require_items=True, max_items=1),
     },
     to_content=_to_content,
     normalize_content=normalize_development_result_content,
-    lenient_enums={"status": LenientEnum(_STATUSES, "completed")},
-    validate_document=_status_warning,
+    validate_frontmatter=_validate_frontmatter,
 )
 
 register_spec(DEVELOPMENT_RESULT_SPEC)

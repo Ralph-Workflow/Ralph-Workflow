@@ -99,7 +99,7 @@ class TestDevelopmentAnalysisWithoutDevResult:
     """Verify development_analysis prompt renders correctly when development_result is absent.
 
     Prompt materialization for development_analysis must not crash and must still reference
-    CURRENT_PROMPT.md and PLAN.
+    PRODUCT_CRITERIA.md and PLAN.
     """
 
     def test_renders_without_crash_when_dev_result_absent(self, tmp_path: Path) -> None:
@@ -108,7 +108,7 @@ class TestDevelopmentAnalysisWithoutDevResult:
 
     def test_prompt_reference_present_when_dev_result_absent(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis_no_dev_result(tmp_path)
-        assert "CURRENT_PROMPT.md" in rendered
+        assert "PRODUCT_CRITERIA.md" in rendered
 
     def test_plan_reference_present_when_dev_result_absent(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis_no_dev_result(tmp_path)

@@ -474,11 +474,11 @@ def test_pro_collaborator_overrides_reach_inner_loop(
     def fake_system_materializer(
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str:
-        del workspace_root, name, default_current_prompt, worker_namespace
-        return "fake-system-prompt.md"
+        del workspace_root, name, default_product_criteria, worker_namespace
+        return "fake-master-prompt.md"
 
     def fake_phase_materializer(
         context: object = None,
@@ -501,7 +501,7 @@ def test_pro_collaborator_overrides_reach_inner_loop(
     hooks = ProPipelineHooks(
         display_context=override_display_context,
         model_identity=model_identity,
-        system_prompt_materializer=fake_system_materializer,
+        master_prompt_materializer=fake_system_materializer,
         phase_prompt_materializer=fake_phase_materializer,
         artifact_requirements_resolver=fake_artifact_resolver,
     )
@@ -540,7 +540,7 @@ def test_pro_collaborator_overrides_reach_inner_loop(
     assert observed_deps is not None
     assert observed_deps.display_context is override_display_context
     assert observed_deps.model_identity is model_identity
-    assert observed_deps.system_prompt_materializer is fake_system_materializer
+    assert observed_deps.master_prompt_materializer is fake_system_materializer
     assert observed_deps.phase_prompt_materializer is fake_phase_materializer
     assert observed_deps.artifact_requirements_resolver is fake_artifact_resolver
 

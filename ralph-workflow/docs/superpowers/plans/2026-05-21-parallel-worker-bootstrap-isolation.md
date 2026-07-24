@@ -22,7 +22,7 @@ def _parallel_worker_command() -> tuple[str, ...]:
 That means workers still enter the normal pipeline startup path and continue to use shared singleton files like:
 
 - `.agent/checkpoint.json`
-- `.agent/CURRENT_PROMPT.md`
+- `.agent/PRODUCT_CRITERIA.md`
 - `.agent/tmp/<phase>_prompt.md`
 
 The codebase already contains a unit-specific prompt renderer:
@@ -48,10 +48,10 @@ but it is only referenced in tests today, not in the production fan-out bootstra
   - Add explicit `WorkUnit` input support and worker-local prompt dump support.
 - **Modify:** `ralph-workflow/ralph/prompts/debug_dump.py`
   - Add worker-aware prompt dump and multimodal sidecar path helpers.
-- **Modify:** `ralph-workflow/ralph/prompts/system_prompt.py`
-  - Stop worker mode from writing shared `.agent/CURRENT_PROMPT.md` and shared system-prompt files.
+- **Modify:** `ralph-workflow/ralph/prompts/master_prompt.py`
+  - Stop worker mode from writing shared `.agent/PRODUCT_CRITERIA.md` and shared system-prompt files.
 - **Modify:** `ralph-workflow/ralph/prompts/developer/__init__.py`
-  - Stop worker mode from hardcoding shared `.agent/CURRENT_PROMPT.md` and shared `.agent/tmp/prompt_payloads`.
+  - Stop worker mode from hardcoding shared `.agent/PRODUCT_CRITERIA.md` and shared `.agent/tmp/prompt_payloads`.
 - **Modify:** `ralph-workflow/ralph/pipeline/checkpoint.py`
   - Support worker-local checkpoint paths.
 - **Create:** `ralph-workflow/ralph/pipeline/parallel/worker_manifest.py`
@@ -121,9 +121,9 @@ def test_worker_runtime_paths_are_namespaced(tmp_path: Path) -> None:
     )
 
     assert runtime.checkpoint_path == worker_ns / "tmp" / "checkpoint.json"
-    assert runtime.current_prompt_path == worker_ns / "tmp" / "CURRENT_PROMPT.md"
+    assert runtime.product_criteria_path == worker_ns / "tmp" / "PRODUCT_CRITERIA.md"
     assert runtime.prompt_dump_path == worker_ns / "tmp" / "development_prompt.md"
-    assert runtime.system_prompt_path == worker_ns / "tmp" / "development_system_prompt.md"
+    assert runtime.master_prompt_path == worker_ns / "tmp" / "development_master_prompt.md"
     assert runtime.multimodal_sidecar_path == worker_ns / "tmp" / "development_multimodal_handoff.json"
 ```
 
@@ -300,7 +300,7 @@ Expected: PASS.
 **Files:**
 - Modify: `ralph-workflow/ralph/prompts/materialize.py`
 - Modify: `ralph-workflow/ralph/prompts/debug_dump.py`
-- Modify: `ralph-workflow/ralph/prompts/system_prompt.py`
+- Modify: `ralph-workflow/ralph/prompts/master_prompt.py`
 - Modify: `ralph-workflow/ralph/prompts/developer/__init__.py`
 - Modify: `ralph-workflow/ralph/pipeline/checkpoint.py`
 - Modify: `ralph-workflow/ralph/pipeline/parallel/parallel_coordinator.py`
@@ -323,16 +323,16 @@ def worker_multimodal_sidecar_path(worker_namespace: Path, phase: str) -> Path:
 - [ ] **Step 2: Add worker-aware current-prompt and checkpoint path helpers**
 
 ```python
-def worker_current_prompt_path(worker_namespace: Path) -> Path:
-    return worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+def worker_product_criteria_path(worker_namespace: Path) -> Path:
+    return worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
 
 
 def worker_checkpoint_path(worker_namespace: Path) -> Path:
     return worker_namespace / "tmp" / "checkpoint.json"
 
 
-def worker_system_prompt_path(worker_namespace: Path, phase: str) -> Path:
-    return worker_namespace / "tmp" / f"{phase}_system_prompt.md"
+def worker_master_prompt_path(worker_namespace: Path, phase: str) -> Path:
+    return worker_namespace / "tmp" / f"{phase}_master_prompt.md"
 ```
 
 - [ ] **Step 3: Thread explicit `WorkUnit` context into production prompt materialization**
@@ -374,12 +374,12 @@ workspace.write(str(path), prompt)
 save(worker_state, path=worker_checkpoint_path(worker_namespace))
 ```
 
-- [ ] **Step 7: Stop worker mode from hardcoding shared `CURRENT_PROMPT.md`, shared prompt payloads, and shared system-prompt paths**
+- [ ] **Step 7: Stop worker mode from hardcoding shared `PRODUCT_CRITERIA.md`, shared prompt payloads, and shared system-prompt paths**
 
 ```python
-current_prompt_path = worker_current_prompt_path(worker_namespace)
+product_criteria_path = worker_product_criteria_path(worker_namespace)
 payload_root = worker_namespace / "tmp" / "prompt_payloads"
-system_prompt_path = worker_system_prompt_path(worker_namespace, phase)
+master_prompt_path = worker_master_prompt_path(worker_namespace, phase)
 ```
 
 - [ ] **Step 8: Make worker runtime reload the same config source and CLI overrides as the parent run**

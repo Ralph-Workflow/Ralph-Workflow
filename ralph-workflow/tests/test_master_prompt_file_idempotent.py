@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ralph.mcp.artifacts.file_backend import FileBackend
-from ralph.prompts.materialize_support import persist_current_prompt
+from ralph.prompts import master_prompt
 
 
 class _CountingBackend(FileBackend):
@@ -42,52 +42,33 @@ class _CountingBackend(FileBackend):
         return []
 
 
-def test_persist_current_prompt_writes_first_content() -> None:
+def test_master_prompt_file_writer_writes_first_content() -> None:
     backend = _CountingBackend()
-    workspace_root = Path("/virtual-ws")
-    destination = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    destination = Path("/virtual-ws/.agent/tmp/agent_master_prompt.md")
 
-    result = persist_current_prompt(workspace_root, "X", backend=backend)
+    master_prompt._write_master_prompt_file(destination, "X", backend=backend)
 
-    assert result == str(destination)
     assert backend.write_text_calls == [(destination, "X")]
     assert backend._files[destination] == "X"
 
 
-def test_persist_current_prompt_skips_identical_content() -> None:
+def test_master_prompt_file_writer_skips_identical_content() -> None:
     backend = _CountingBackend()
-    workspace_root = Path("/virtual-ws")
-    destination = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    destination = Path("/virtual-ws/.agent/tmp/agent_master_prompt.md")
 
-    persist_current_prompt(workspace_root, "X", backend=backend)
-    result = persist_current_prompt(workspace_root, "X", backend=backend)
+    master_prompt._write_master_prompt_file(destination, "X", backend=backend)
+    master_prompt._write_master_prompt_file(destination, "X", backend=backend)
 
-    assert result == str(destination)
     assert len(backend.write_text_calls) == 1
     assert backend._files[destination] == "X"
 
 
-def test_persist_current_prompt_writes_changed_content() -> None:
+def test_master_prompt_file_writer_writes_changed_content() -> None:
     backend = _CountingBackend()
-    workspace_root = Path("/virtual-ws")
-    destination = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    destination = Path("/virtual-ws/.agent/tmp/agent_master_prompt.md")
 
-    persist_current_prompt(workspace_root, "X", backend=backend)
-    result = persist_current_prompt(workspace_root, "Y", backend=backend)
+    master_prompt._write_master_prompt_file(destination, "X", backend=backend)
+    master_prompt._write_master_prompt_file(destination, "Y", backend=backend)
 
-    assert result == str(destination)
     assert backend.write_text_calls == [(destination, "X"), (destination, "Y")]
     assert backend._files[destination] == "Y"
-
-
-def test_persist_current_prompt_none_preserves_existing_content() -> None:
-    backend = _CountingBackend()
-    workspace_root = Path("/virtual-ws")
-    destination = workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    backend._files[destination] = "existing"
-
-    result = persist_current_prompt(workspace_root, None, backend=backend)
-
-    assert result == str(destination)
-    assert backend.write_text_calls == []
-    assert backend._files[destination] == "existing"

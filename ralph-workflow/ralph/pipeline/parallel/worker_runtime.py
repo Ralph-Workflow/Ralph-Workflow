@@ -61,7 +61,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import load_policy_for_workspace_scope
 from ralph.prompts.debug_dump import worker_multimodal_sidecar_path, worker_prompt_dump_path
-from ralph.prompts.system_prompt import worker_current_prompt_path, worker_system_prompt_path
+from ralph.prompts.master_prompt import worker_master_prompt_path, worker_product_criteria_path
 from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -83,9 +83,9 @@ class WorkerRuntimePaths:
     """Worker-local filesystem paths for prompt and checkpoint runtime state."""
 
     checkpoint_path: Path
-    current_prompt_path: Path
+    product_criteria_path: Path
     prompt_dump_path: Path
-    system_prompt_path: Path
+    master_prompt_path: Path
     multimodal_sidecar_path: Path
 
 
@@ -100,9 +100,9 @@ def build_worker_runtime_paths(
     del workspace_root
     return WorkerRuntimePaths(
         checkpoint_path=worker_checkpoint_path(worker_namespace),
-        current_prompt_path=worker_current_prompt_path(worker_namespace),
+        product_criteria_path=worker_product_criteria_path(worker_namespace),
         prompt_dump_path=worker_prompt_dump_path(worker_namespace, phase),
-        system_prompt_path=worker_system_prompt_path(worker_namespace, phase),
+        master_prompt_path=worker_master_prompt_path(worker_namespace, phase),
         multimodal_sidecar_path=worker_multimodal_sidecar_path(worker_namespace, phase),
     )
 

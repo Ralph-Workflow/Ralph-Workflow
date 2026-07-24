@@ -1,11 +1,13 @@
 """Design section aggregating the seven SE-opinionated sub-models.
 
-The optional ``planning_profile`` field is a preset hint for agents. When
-set, the @model_validator below bias-fills any None sub-section from a
-class-level default dict. User-provided sub-section values always win; the
-preset only fills in missing pieces. Sentinel ids (``PRESET-01``) cannot
-collide with user-provided ``AC-XX`` / ``REF-XX`` entries because the prefix
-is distinct.
+The optional ``planning_profile`` field is a free-form preset hint for
+agents (descriptive only; no pipeline consumer). When it names a known
+preset (``strict`` or ``balanced``), the @model_validator below
+bias-fills any None sub-section from a class-level default dict; any
+other non-empty value is kept verbatim without bias-fill. User-provided
+sub-section values always win; the preset only fills in missing pieces.
+Sentinel ids (``PRESET-01``) cannot collide with user-provided
+``AC-XX`` / ``REF-XX`` entries because the prefix is distinct.
 """
 
 from __future__ import annotations
@@ -76,13 +78,22 @@ class DesignSection(RalphBaseModel):
     Collects cross-cutting design choices: planning profile, constraints,
     non-goals, dependency-injection expectations, drift-detection guards,
     testability requirements, refactor strategy, and acceptance criteria.
-    When ``planning_profile`` is set, the model bias-fills any missing
-    sub-sections from preset defaults; user-provided values always win.
+    When ``planning_profile`` names a known preset, the model bias-fills
+    any missing sub-sections from preset defaults; user-provided values
+    always win and unrecognized profiles are kept verbatim.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    planning_profile: PlanningProfile | None = None
+    planning_profile: PlanningProfile | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Free-form profile hint; 'strict' and 'balanced' are recognized "
+            "presets that bias-fill missing sub-sections."
+        ),
+    )
     constraints: DesignConstraints | None = None
     non_goals: NonGoals | None = None
     dependency_injection: DependencyInjection | None = None
@@ -106,7 +117,7 @@ class DesignSection(RalphBaseModel):
         profile = self.planning_profile
         if profile is None:
             return self
-        for key, default in _PRESET_DEFAULTS[profile].items():
+        for key, default in _PRESET_DEFAULTS.get(profile, {}).items():
             current: object = getattr(self, key)
             if current is None:
                 setattr(self, key, default)

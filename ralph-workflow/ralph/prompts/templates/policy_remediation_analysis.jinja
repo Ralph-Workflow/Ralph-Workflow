@@ -158,11 +158,14 @@ validator-backed example before authoring. Submit one markdown document with
 `ralph_submit_md_artifact`, passing
 `artifact_type="{{ artifact_type }}"` and `content` set to the complete
 document. You may first call `ralph_verify_md_artifact` with the same arguments;
-repair every line-anchored diagnostic before submitting.
+repair every line-anchored diagnostic before submitting. Submitting this
+artifact is your only way to report — a session that ends without a submitted
+artifact is recorded as `failed`.
 
 - `completed` — every fact verifies, every declared gate resolves, every script
   obeys the gate-script policy. Nothing is left to fix.
-- `request_changes` — anything in the left-hand column of the table above.
+- `request_changes` — any observation the table above attributes to the policy
+  author (the first six rows).
   Include a concrete `## What Came Up Short` entry and a matching `## How To Fix` entry
   for EACH problem. Be specific: name the file, the line, the command you ran,
   and what actually happened. Your findings become the next author's task list,

@@ -141,7 +141,7 @@ validate_custom_mcp_servers = _validate_custom_mcp_servers
 
 
 _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
-    "CURRENT_PROMPT.md",
+    "PRODUCT_CRITERIA.md",
     "PLAN.md",
     "ISSUES.md",
     "DEVELOPMENT_RESULT.md",
@@ -178,15 +178,15 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
     The operator-visible prompt is resolved through
     :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so
     the ``PROMPT_PATH`` env var is honoured in Pro mode. The
-    materialised ``.agent/CURRENT_PROMPT.md`` remains engine-owned
+    materialised ``.agent/PRODUCT_CRITERIA.md`` remains engine-owned
     and is the second operand of the comparison.
     """
     prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    if not prompt_path.exists() or not current_prompt_path.exists():
+    product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
+    if not prompt_path.exists() or not product_criteria_path.exists():
         return False
     try:
-        return prompt_path.read_text(encoding="utf-8") != current_prompt_path.read_text(
+        return prompt_path.read_text(encoding="utf-8") != product_criteria_path.read_text(
             encoding="utf-8"
         )
     except OSError:
@@ -786,11 +786,11 @@ def run_pipeline(
 
     if effective_request.inline_prompt is not None:
         workspace_scope = resolve_workspace_scope()
-        current_prompt_path = workspace_scope.root / ".agent" / "CURRENT_PROMPT.md"
-        current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        product_criteria_path = workspace_scope.root / ".agent" / "PRODUCT_CRITERIA.md"
+        product_criteria_path.parent.mkdir(parents=True, exist_ok=True)
         write_text_if_changed(
             DEFAULT_FILE_BACKEND,
-            current_prompt_path,
+            product_criteria_path,
             effective_request.inline_prompt,
             encoding="utf-8",
         )

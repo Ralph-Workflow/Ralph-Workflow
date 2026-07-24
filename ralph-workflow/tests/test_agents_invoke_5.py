@@ -90,7 +90,7 @@ class TestResolveInvocationRuntime:
             *,
             workspace_path: object,
             existing_home: str | None,
-            system_prompt_file: object,
+            master_prompt_file: object,
             **kwargs: object,
         ) -> tuple[str, list[object]]:
             del kwargs
@@ -302,7 +302,7 @@ def test_codex_runtime_propagates_unsafe_mode(monkeypatch: pytest.MonkeyPatch) -
         *,
         workspace_path: object,
         existing_home: str | None,
-        system_prompt_file: object,
+        master_prompt_file: object,
         unsafe_mode: bool = False,
     ) -> tuple[str, list[object]]:
         captured["unsafe_mode"] = unsafe_mode

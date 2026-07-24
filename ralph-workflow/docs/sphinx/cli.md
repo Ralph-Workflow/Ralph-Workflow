@@ -58,7 +58,7 @@ Run one developer iteration with an inline prompt:
 ralph -Q "do a quick change"
 ```
 
-`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph Workflow writes that inline prompt to `.agent/CURRENT_PROMPT.md` for the run.
+`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph Workflow writes that inline prompt to `.agent/PRODUCT_CRITERIA.md` for the run.
 
 ```bash
 ralph -Q "add a /healthz endpoint"

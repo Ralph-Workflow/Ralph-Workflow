@@ -276,8 +276,8 @@ def test_development_analysis_prompt_renders_without_development_result(
     rendered = workspace.read(prompt_path)
     assert rendered, "Prompt must not be empty"
     # render_payload_path emits a file reference, not inlined content — check the path appears
-    assert str(tmp_path / ".agent" / "CURRENT_PROMPT.md") in rendered, (
-        "Prompt must reference the CURRENT_PROMPT path"
+    assert str(tmp_path / ".agent" / "PRODUCT_CRITERIA.md") in rendered, (
+        "Prompt must reference the PRODUCT_CRITERIA path"
     )
     # Plan is referenced via its Markdown handoff (.agent/PLAN.md), not the JSON artifact path
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered, (

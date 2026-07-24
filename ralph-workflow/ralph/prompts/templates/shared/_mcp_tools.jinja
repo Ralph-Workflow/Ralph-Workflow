@@ -10,22 +10,23 @@ WRITE OPERATIONS:
 {% endif %}
 
 READ OPERATIONS:
+- Use {{READ_FILE_TOOL_REFERENCE}} to read a file
 - Use {{LIST_DIRECTORY_TOOL_REFERENCE}} to explore directories
 - Use {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}} to explore directories recursively
-- Use {{SEARCH_FILES_TOOL_REFERENCE}} to search file contents
+- Use {{SEARCH_FILES_TOOL_REFERENCE}} to find files by glob pattern
+{% if GREP_FILES_TOOL_NAME %}- Use {{GREP_FILES_TOOL_REFERENCE}} to search file contents for a pattern{% endif %}
 
 {% if HAS_MCP_EXEC %}
 EXECUTION:
 - Use {{EXEC_TOOL_REFERENCE}} to run shell commands
-- Use {{REPORT_PROGRESS_TOOL_REFERENCE}} to report status
+{% if REPORT_PROGRESS_TOOL_NAME %}- Use {{REPORT_PROGRESS_TOOL_REFERENCE}} to report status{% endif %}
 {% endif %}
 
 {% if not (HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)) %}
 ARTIFACT SUBMISSION:
 - Use {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} to submit an artifact: pass `artifact_type` and `content` (the complete markdown document per its `.agent/artifact-formats/<type>.md` format doc)
 {% if VERIFY_MD_ARTIFACT_TOOL_NAME %}- Use {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} to validate an artifact document without persisting it (read-only; same arguments; returns line/section/rule-anchored diagnostics){% endif %}
-{% if EDIT_MD_PLAN_STEP_TOOL_NAME %}- Use {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} to apply one ID-addressed edit to the persisted plan draft. Stage the complete plan first with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete plan, `mode="replace_all"`), then pass `action` and `step_id` (like `S-3`) to the editor. `replacement` is required for `insert` and `replace`; `index` is required for `move` and optional for positioned `insert`; `content` is not an accepted argument. The editor saves the updated draft; inspect it with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then finalize the edited draft with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`){% endif %}
+{% if EDIT_MD_PLAN_STEP_TOOL_NAME and show_plan_edit_guidance|default(false) %}- Use {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} to apply one ID-addressed edit to the persisted plan draft. Stage the complete plan first with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete plan, `mode="replace_all"`), then pass `action` and `step_id` (like `S-3`) to the editor. `replacement` is required for `insert` and `replace`; `index` is required for `move` and optional for positioned `insert`; `content` is not an accepted argument. The editor saves the updated draft; inspect it with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then finalize the edited draft with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`){% endif %}
 {% if STAGE_MD_ARTIFACT_TOOL_NAME %}- For long documents, stage incrementally: {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} appends (or `mode="replace_all"` replaces) draft content{% if GET_MD_DRAFT_TOOL_NAME %}, {{GET_MD_DRAFT_TOOL_REFERENCE}} returns the draft with diagnostics{% endif %}{% if FINALIZE_MD_ARTIFACT_TOOL_NAME %}, {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} validates and submits the assembled draft (kept intact for repair on failure){% endif %}{% if DISCARD_MD_DRAFT_TOOL_NAME %}, {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} drops the draft to restart{% endif %}{% endif %}
-{{SUBMIT_MD_ARTIFACT_BARE_HINT}}
 {% endif %}
 - Use {{DECLARE_COMPLETE_TOOL_REFERENCE}} when finished

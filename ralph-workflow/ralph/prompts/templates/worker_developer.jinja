@@ -27,6 +27,12 @@ Do not write to `.agent/workers/` paths belonging to other workers.
 
 {{ base_prompt }}
 
+## WORKER SCOPE OVERRIDE
+
+After reading the base context, implement ONLY the assigned work unit `{{ unit_id }}`. Do not execute, coordinate, integrate, or verify the whole plan. Do not work on another unit or duplicate its work.
+
+Your `## Plan Items Proven` section must contain exactly one `- [{{ unit_id }}]` item whose bracketed ID exactly matches the assigned work-unit ID. No other plan-step or work-unit proof IDs are allowed.
+
 {% set development_result_example %}
 ---
 type: development_result

@@ -36,7 +36,7 @@ def test_specs_register_all_simple_artifact_types() -> None:
     assert SMOKE_TEST_RESULT_SPEC.artifact_type == "smoke_test_result"
 
 
-def test_analysis_decision_coerces_status_and_requires_remediation() -> None:
+def test_analysis_decision_rejects_unknown_status_and_requires_remediation() -> None:
     content, diagnostics = parse_and_validate(
         """---
 type: planning_analysis_decision
@@ -48,10 +48,15 @@ status: typo
         get_spec("planning_analysis_decision"),
     )
 
-    assert content["status"] == "completed"
-    assert [(diagnostic.rule_id, diagnostic.severity) for diagnostic in diagnostics] == [
-        ("SPEC009", "warning")
-    ]
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "SPEC010"
+        and diagnostic.severity == "error"
+        and "completed" in diagnostic.message
+        and "request_changes" in diagnostic.message
+        and "failed" in diagnostic.message
+        for diagnostic in diagnostics
+    )
     assert "SPEC010" in _error_ids(
         """---
 type: planning_analysis_decision
@@ -153,7 +158,7 @@ type: fix_result
     )
 
 
-def test_smoke_result_preserves_failed_and_headless_requirements() -> None:
+def test_smoke_result_rejects_unknown_status_and_preserves_failed_requirements() -> None:
     content, diagnostics = parse_and_validate(
         """---
 type: smoke_test_result
@@ -168,10 +173,15 @@ output_file: tmp/smoke.log
         SMOKE_TEST_RESULT_SPEC,
     )
 
-    assert content["status"] == "partial"
-    assert [(diagnostic.rule_id, diagnostic.severity) for diagnostic in diagnostics] == [
-        ("SPEC009", "warning")
-    ]
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "SPEC010"
+        and diagnostic.severity == "error"
+        and "passed" in diagnostic.message
+        and "failed" in diagnostic.message
+        and "partial" in diagnostic.message
+        for diagnostic in diagnostics
+    )
     assert "SPEC010" in _error_ids(
         """---
 type: smoke_test_result

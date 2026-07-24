@@ -47,7 +47,7 @@ class ManagedAgentSessionRuntime:
     the higher-level host loop (e.g. plan/verify helpers, ad-hoc prompt
     runners, or external tooling); the runtime owns the MCP bridge, the
     per-session environment, agent invocation wiring, retry handling, and
-    optional system-prompt materialization.
+    optional master-prompt materialization.
 
     Instances are constructed via :meth:`open` (a classmethod) so the
     bridge and session id lifecycle are managed in one place. The runtime
@@ -69,9 +69,9 @@ class ManagedAgentSessionRuntime:
             ``MCP_ENDPOINT``.
         agent_session: The :class:`AgentSession` carrying the unique
             session id, run id, declared capabilities, and model identity.
-        system_prompt_file: Resolved path to a system-prompt file when
+        master_prompt_file: Resolved path to a master-prompt file when
             the request named one; ``None`` when the agent runs without an
-            explicit system prompt.
+            explicit master prompt.
         deps: The :class:`ManagedAgentSessionDeps` dependency bundle in
             use (production defaults, or the test stub passed to
             :meth:`open`).
@@ -95,7 +95,7 @@ class ManagedAgentSessionRuntime:
         request: ManagedAgentSessionRequest,
         bridge: SessionBridgeLike,
         agent_session: AgentSession,
-        system_prompt_file: str | None,
+        master_prompt_file: str | None,
         deps: ManagedAgentSessionDeps,
     ) -> None:
         self._config = config
@@ -104,7 +104,7 @@ class ManagedAgentSessionRuntime:
         self._request = request
         self._bridge = bridge
         self._agent_session = agent_session
-        self._system_prompt_file = system_prompt_file
+        self._master_prompt_file = master_prompt_file
         self._deps = deps
 
     @classmethod
@@ -121,7 +121,7 @@ class ManagedAgentSessionRuntime:
         """Construct a managed Ralph session ready for :meth:`invoke_prompt_file`.
 
         ``open`` allocates the session id, starts the MCP bridge that the
-        agent will talk to, and (optionally) materializes a system-prompt
+        agent will talk to, and (optionally) materializes a master-prompt
         file. It is the only sanctioned way to build a
         :class:`ManagedAgentSessionRuntime`; the regular ``__init__`` is
         reserved for the runtime's internal use so it can be reasoned about
@@ -145,7 +145,7 @@ class ManagedAgentSessionRuntime:
                 prompt, and any pre-resolved session plan.
             deps: Optional :class:`ManagedAgentSessionDeps` bundle overriding
                 one or more collaborator boundaries (workspace factory, MCP
-                server starter, agent invoker, system-prompt materializer,
+                server starter, agent invoker, master-prompt materializer,
                 bridge shutdown). Pass a stubbed bundle in tests to avoid
                 real subprocesses and filesystem access. When ``None`` the
                 production defaults from
@@ -163,7 +163,7 @@ class ManagedAgentSessionRuntime:
             it as a context manager) so the bridge shuts down on exit.
 
         Raises:
-            Exception: Any failure during bridge start or system-prompt
+            Exception: Any failure during bridge start or master-prompt
                 materialization is re-raised **after** any partially-started
                 bridge has been shut down via ``deps.shutdown_bridge``, so
                 the caller never inherits a half-initialized MCP listener.
@@ -175,8 +175,8 @@ class ManagedAgentSessionRuntime:
             - Captures a fresh ``run_id`` (UUID4) that is exposed through
               ``MCP_RUN_ID_ENV`` and ``AGENT_LABEL_SCOPE_ENV`` to the agent
               subprocess.
-            - May write a system-prompt file under ``workspace_root`` via
-              ``deps.materialize_system_prompt``.
+            - May write a master-prompt file under ``workspace_root`` via
+              ``deps.materialize_master_prompt``.
         """
         runtime_deps = deps or ManagedAgentSessionDeps()
         session_plan = _resolve_session_plan(
@@ -201,12 +201,12 @@ class ManagedAgentSessionRuntime:
             McpServerExtras(phase=request.drain, extra_env=session_plan.server_env),
         )
         try:
-            system_prompt_file = None
-            if request.system_prompt_name is not None:
-                system_prompt_file = runtime_deps.materialize_system_prompt(
+            master_prompt_file = None
+            if request.master_prompt_name is not None:
+                master_prompt_file = runtime_deps.materialize_master_prompt(
                     workspace_root,
-                    request.system_prompt_name,
-                    request.default_current_prompt,
+                    request.master_prompt_name,
+                    request.default_product_criteria,
                 )
             return cls(
                 config=config,
@@ -215,7 +215,7 @@ class ManagedAgentSessionRuntime:
                 request=request,
                 bridge=bridge,
                 agent_session=agent_session,
-                system_prompt_file=system_prompt_file,
+                master_prompt_file=master_prompt_file,
                 deps=runtime_deps,
             )
         except Exception:
@@ -349,7 +349,7 @@ class ManagedAgentSessionRuntime:
                 extra_env=runtime_env,
                 pure=self._agent_config.transport == AgentTransport.OPENCODE,
                 session_id=session_id,
-                system_prompt_file=self._system_prompt_file,
+                master_prompt_file=self._master_prompt_file,
                 waiting_listener=waiting_listener,
                 permission_prompt_listener=permission_prompt_listener,
                 required_artifact=required_artifact,

@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field, field_validator
 from ralph.pydantic_compat import RalphBaseModel
 
 _UNIT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_STEP_ID_RE = re.compile(r"^S-[1-9][0-9]*$")
 _UNIT_ID_MAX_LEN = 64
 MAX_DESCRIPTION_CHARS = 4096
 
@@ -36,6 +37,7 @@ class WorkUnit(RalphBaseModel):
     description: str = Field(..., min_length=1, max_length=MAX_DESCRIPTION_CHARS)
     allowed_directories: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
+    step_ids: list[str] = Field(default_factory=list)
 
     @field_validator("unit_id")
     @classmethod
@@ -59,3 +61,12 @@ class WorkUnit(RalphBaseModel):
     @classmethod
     def _validate_allowed_directories(cls, v: list[str]) -> list[str]:
         return [_validate_relative_subpath(path) for path in v]
+
+    @field_validator("step_ids")
+    @classmethod
+    def _validate_step_ids(cls, value: list[str]) -> list[str]:
+        if any(_STEP_ID_RE.fullmatch(step_id) is None for step_id in value):
+            raise ValueError("step_ids entries must use the S-<positive-number> form")
+        if len(set(value)) != len(value):
+            raise ValueError("step_ids entries must be unique")
+        return value

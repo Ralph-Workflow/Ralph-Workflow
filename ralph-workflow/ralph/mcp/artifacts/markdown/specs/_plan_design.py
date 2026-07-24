@@ -6,8 +6,11 @@ groups mirror the canonical sub-models: a group is emitted only when its
 fields appear, and a group whose canonical model requires an anchor
 field (``Constraints:``, ``Black box:``, ``DI required:``, ``Refactor
 approach:``) hard-fails with a line-anchored diagnostic when dependents
-appear without it. Closed-enum values inside design remain hard-validated
-by the canonical pydantic models.
+appear without it. ``Profile:`` and ``Architecture:`` are descriptive
+free-form strings — nothing in the pipeline consumes them, so the
+documented vocabularies are suggestions, not validation errors. Typed
+values the canonical models require (yes/no booleans, numbers) still
+hard-fail when unparsable.
 """
 
 from __future__ import annotations
@@ -57,11 +60,11 @@ def design_content(
     diagnostics: list[Diagnostic],
 ) -> Content | None:
     """Map the optional Design section (plus acceptance criteria) to content."""
-    section = document.section("Design")
-    if section is None:
+    sections = document.sections_named("Design")
+    if not sections:
         return {"acceptance_criteria": criteria} if criteria is not None else None
     fields = parse_fields(
-        section.lines,
+        [line for section in sections for line in section.lines],
         _DESIGN_FIELDS,
         section="Design",
         context="Design",

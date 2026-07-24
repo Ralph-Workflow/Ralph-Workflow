@@ -82,8 +82,8 @@ def _patch_partial_pipeline_runtime(
     monkeypatch.setattr(materialize_module, "_git_diff", lambda _root: "")
     monkeypatch.setattr(
         materialize_module,
-        "_persist_current_prompt",
-        lambda *_args, **_kwargs: ".agent/CURRENT_PROMPT.md",
+        "_persist_product_criteria",
+        lambda *_args, **_kwargs: ".agent/PRODUCT_CRITERIA.md",
     )
     monkeypatch.setattr(runner_module.ckpt, "save", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda _root: None)

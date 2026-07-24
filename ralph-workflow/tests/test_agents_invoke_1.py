@@ -463,7 +463,7 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
     cmd = build_command(
         config,
         "PROMPT.md",
-        options=BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
+        options=BuildCommandOptions(master_prompt_file="MASTER_PROMPT.md"),
     )
 
     assert cmd == [
@@ -474,7 +474,7 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
         "--permission-mode",
         "auto",
         "--append-system-prompt-file",
-        "SYSTEM_PROMPT.md",
+        "MASTER_PROMPT.md",
         "PROMPT.md",
     ]
 
@@ -698,14 +698,14 @@ def test_build_command_injects_claude_interactive_append_system_prompt_file() ->
     cmd = build_command(
         config,
         "PROMPT.md",
-        options=BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
+        options=BuildCommandOptions(master_prompt_file="MASTER_PROMPT.md"),
     )
 
     assert cmd == [
         "claude",
         "--dangerously-skip-permissions",
         "--append-system-prompt-file",
-        "SYSTEM_PROMPT.md",
+        "MASTER_PROMPT.md",
         "PROMPT.md",
     ]
 

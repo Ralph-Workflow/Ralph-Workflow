@@ -189,7 +189,7 @@ protected things stayed intact.
 
 `PROMPT.md` at the workspace root is the run specification you author.
 The engine materializes its own consumption copy at
-`.agent/CURRENT_PROMPT.md`; you never edit the materialised file.
+`.agent/PRODUCT_CRITERIA.md`; you never edit the materialised file.
 Override the spec location through `PROMPT_PATH`. See
 [Configuration Reference](configuration.md) for prompt-engine tuning.
 

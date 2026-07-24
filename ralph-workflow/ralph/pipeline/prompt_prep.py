@@ -13,12 +13,12 @@ from ralph.pipeline.effect_router import agents_for_phase
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pro_support.prompt import resolve_effective_prompt_path
+from ralph.prompts.master_prompt import _prompt_files_differ
 from ralph.prompts.materialize import (
     collect_media_entries_for_phase,
     materialize_prompt_for_phase,
     tool_name_prefix_for_transport,
 )
-from ralph.prompts.system_prompt import _prompt_files_differ
 from ralph.prompts.types import SessionCapabilities
 from ralph.workspace import FsWorkspace
 
@@ -135,7 +135,7 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
     The operator-visible prompt is resolved through
     :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
     ``PROMPT_PATH`` env var is honoured in Pro mode. The materialised
-    ``.agent/CURRENT_PROMPT.md`` remains engine-owned and is checked as
+    ``.agent/PRODUCT_CRITERIA.md`` remains engine-owned and is checked as
     the second operand of the comparison.
 
     Uses the shared ``_prompt_files_differ`` helper so the comparison
@@ -143,22 +143,22 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
     file content. OSError is still caught and converted to ``False``
     to preserve the pre-existing behaviour.
 
-    When ``current_prompt_path`` does not exist yet (no prior
+    When ``product_criteria_path`` does not exist yet (no prior
     materialisation), this returns ``False`` to preserve the legacy
     resume semantics: "no materialised prompt to differ from" is
     treated as "no change", which lets the caller set
     ``resume_existing_phase=True`` on the first invocation.
     """
     prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
 
-    # Preserve legacy semantics: a missing current_prompt means
+    # Preserve legacy semantics: a missing product_criteria means
     # "no materialisation has happened yet" -> not changed -> the
     # caller treats the planning phase as a resume target.  This is
-    # the opposite of what ``_sync_current_prompt_file`` wants
+    # the opposite of what ``_sync_product_criteria_file`` wants
     # (write source on missing current), so the resume caller must
     # short-circuit BEFORE delegating to ``_prompt_files_differ``.
-    if not current_prompt_path.exists():
+    if not product_criteria_path.exists():
         return False
 
     def _stat(path: Path) -> tuple[int, int] | None:
@@ -179,7 +179,7 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
         # source file content on the size-mismatch fast path.
         changed, _ = _prompt_files_differ(
             prompt_path,
-            current_prompt_path,
+            product_criteria_path,
             stat_fn=_stat,
             read_source=None,
             read_current=_read,

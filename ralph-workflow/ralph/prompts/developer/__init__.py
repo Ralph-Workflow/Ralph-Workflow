@@ -37,7 +37,7 @@ class PlanningPromptInputs:
     analysis_feedback_path: str = ""
     artifact_history_path: str = ""
     artifact_history_dir: str = ""
-    current_prompt_path: str = ""
+    product_criteria_path: str = ""
     payload_root: str = ""
     last_retry_error: str = ""
     skills_inline_content: str = ""
@@ -54,8 +54,8 @@ def prompt_developer_iteration_xml_with_context(
 ) -> str:
     """Render the developer-iteration prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
-    current_prompt_path = inputs.current_prompt_path or workspace.absolute_path(
-        ".agent/CURRENT_PROMPT.md"
+    product_criteria_path = inputs.product_criteria_path or workspace.absolute_path(
+        ".agent/PRODUCT_CRITERIA.md"
     )
     payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
 
@@ -70,9 +70,9 @@ def prompt_developer_iteration_xml_with_context(
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
-        _current_prompt_variables(
+        _product_criteria_variables(
             inputs.prompt_content,
-            current_prompt_path,
+            product_criteria_path,
         )
     )
     payload_values = {
@@ -127,7 +127,7 @@ def prompt_developer_iteration_xml_with_context(
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
                 "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
-                "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+                "PROMPT_PATH": workspace.absolute_path(".agent/PRODUCT_CRITERIA.md"),
                 "PLAN_PATH": inputs.plan_path
                 or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_plan.txt"),
                 "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
@@ -146,8 +146,8 @@ def prompt_planning_xml_with_context(
 ) -> str:
     """Render the planning-phase prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
-    current_prompt_path = inputs.current_prompt_path or workspace.absolute_path(
-        ".agent/CURRENT_PROMPT.md"
+    product_criteria_path = inputs.product_criteria_path or workspace.absolute_path(
+        ".agent/PRODUCT_CRITERIA.md"
     )
     payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
 
@@ -157,9 +157,9 @@ def prompt_planning_xml_with_context(
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
-        _current_prompt_variables(
+        _product_criteria_variables(
             inputs.prompt_content,
-            current_prompt_path,
+            product_criteria_path,
         )
     )
     payload_values = {
@@ -209,7 +209,7 @@ def prompt_planning_xml_with_context(
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
             "LAST_RETRY_ERROR": inputs.last_retry_error,
             "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
-            "PROMPT_PATH": current_prompt_path,
+            "PROMPT_PATH": product_criteria_path,
             "PLAN_PATH": inputs.plan_path or str(Path(payload_root) / "planning_plan.txt"),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
             or str(
@@ -256,8 +256,8 @@ def _prompt_payload_variables(
     )
 
 
-def _current_prompt_variables(
-    prompt_content: str | None, current_prompt_path: str
+def _product_criteria_variables(
+    prompt_content: str | None, product_criteria_path: str
 ) -> dict[str, str]:
     del prompt_content
-    return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}
+    return {"PROMPT": "", "PROMPT_PATH": product_criteria_path}

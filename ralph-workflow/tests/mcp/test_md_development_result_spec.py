@@ -38,7 +38,7 @@ status: partial
     assert get_spec("development_result") is DEVELOPMENT_RESULT_SPEC
 
 
-def test_development_result_unknown_status_is_lenient_but_partial_requirements_remain_strict() -> None:
+def test_development_result_rejects_unknown_status_and_keeps_partial_requirements_strict() -> None:
     content, diagnostics = parse_and_validate(
         """---
 type: development_result
@@ -64,9 +64,13 @@ status: partial
         DEVELOPMENT_RESULT_SPEC,
     )
 
-    assert content["status"] == "completed"
-    assert [(diagnostic.rule_id, diagnostic.severity) for diagnostic in diagnostics] == [
-        ("SPEC009", "warning")
-    ]
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "SPEC010"
+        and diagnostic.severity == "error"
+        and "completed" in diagnostic.message
+        and "partial" in diagnostic.message
+        for diagnostic in diagnostics
+    )
     assert partial_content == {}
     assert any("require next_steps" in diagnostic.message for diagnostic in partial_diagnostics)

@@ -731,7 +731,7 @@ def test_run_pipeline_dry_run_invokes_printer_after_ready() -> None:
 def test_run_pipeline_inline_prompt_short_circuits_before_readiness() -> None:
     """AC-14: ``inline_prompt`` requests MUST short-circuit BEFORE the
     readiness preflight runs (the orchestrator writes the inline prompt
-    to ``CURRENT_PROMPT.md`` and then proceeds through Phase 1+2 normally,
+    to ``PRODUCT_CRITERIA.md`` and then proceeds through Phase 1+2 normally,
     but the readiness preflight has an explicit ``inline_prompt is None``
     guard at run.py:1057). The readiness preflight is NEVER invoked for
     an inline-prompt run.
@@ -760,7 +760,7 @@ def test_run_pipeline_inline_prompt_short_circuits_before_readiness() -> None:
         model_identity=None,
     )
     # The orchestrator writes the inline prompt to
-    # ``<workspace_scope.root>/.agent/CURRENT_PROMPT.md`` BEFORE Phase 1.
+    # ``<workspace_scope.root>/.agent/PRODUCT_CRITERIA.md`` BEFORE Phase 1.
     # The virtual ``/test/...`` root may not exist on the host's disk, so
     # the call can raise FileNotFoundError; that surface still proves the
     # readiness helper never ran.

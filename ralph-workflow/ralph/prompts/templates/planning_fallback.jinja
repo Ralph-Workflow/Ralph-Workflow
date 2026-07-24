@@ -1,5 +1,8 @@
 PLANNING MODE
 
+Native file and shell tools are disabled in
+this brokered fallback; native orchestration tools remain enabled.
+
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -10,6 +13,7 @@ PLANNING MODE
 {% if LAST_RETRY_ERROR %}
 Recent retry context:
 {{ LAST_RETRY_ERROR }}
+Fix the cause of the error above, then submit the artifact this time.
 {% endif %}
 
 Create an execution plan for:
@@ -48,8 +52,7 @@ Acceptance Criteria; omit empty ceremony when a subsection adds no decision.
 ## Plan artifact contract
 
 The complete grammar and limits live in
-`.agent/artifact-formats/plan.md`. Native file and shell tools are disabled in
-this brokered fallback; native orchestration tools remain enabled.
+`.agent/artifact-formats/plan.md`.
 
 Submit one native-markdown document:
 
@@ -76,6 +79,9 @@ Submit one native-markdown document:
 6. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
    {{GET_MD_DRAFT_TOOL_REFERENCE}}, and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}};
    {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} intentionally restarts the draft.
+7. A submit or finalize success message is NOT completion by itself. After
+   the plan is accepted, call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your
+   final action.
 
 Worked example:
 

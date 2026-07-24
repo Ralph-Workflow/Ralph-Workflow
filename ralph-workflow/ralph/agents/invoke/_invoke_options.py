@@ -76,7 +76,7 @@ class InvokeOptions:
     cpu_idle_seconds: float | None | object = _INVOKE_OPTS_UNSET
     log_growth_seconds: float | None | object = _INVOKE_OPTS_UNSET
     pure: bool = False
-    system_prompt_file: str | None = None
+    master_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None

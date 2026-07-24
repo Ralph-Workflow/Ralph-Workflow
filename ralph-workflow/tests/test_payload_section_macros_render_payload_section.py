@@ -39,6 +39,10 @@ class TestRenderPayloadSection:
             {"LATEST_ARTIFACT": "artifact body", "LATEST_ARTIFACT_PATH": ""},
         )
         assert "artifact body" in result
+        assert "LATEST ARTIFACT BEGIN" in result
+        assert "LATEST ARTIFACT END" in result
+        assert result.index("LATEST ARTIFACT BEGIN") < result.index("artifact body")
+        assert result.index("artifact body") < result.index("LATEST ARTIFACT END")
 
     def test_uses_file_reference_when_path_present(self) -> None:
         tpl = (
@@ -53,3 +57,4 @@ class TestRenderPayloadSection:
         )
         assert "`.agent/ARTIFACT.md`" in result
         assert "artifact body" not in result
+        assert "LATEST ARTIFACT BEGIN" not in result

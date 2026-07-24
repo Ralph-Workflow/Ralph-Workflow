@@ -140,7 +140,7 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
 
     assert "IMPLEMENTATION MODE" in prompt
     assert "UNATTENDED MODE" in prompt
-    assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
+    assert workspace.absolute_path(".agent/PRODUCT_CRITERIA.md") in prompt
     assert plan_text in prompt
     assert "ARTIFACT SUBMISSION" not in prompt
     assert "development_result" in prompt
@@ -218,7 +218,7 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     )
 
     assert "PLANNING MODE" in prompt
-    assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
+    assert workspace.absolute_path(".agent/PRODUCT_CRITERIA.md") in prompt
     assert "ralph_submit_md_artifact" in prompt
     assert "ralph_verify_md_artifact" in prompt
     assert "ralph_edit_md_plan_step" in prompt
@@ -448,7 +448,7 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: Path) -> No
     assert "mcp__ralph__ralph_finalize_md_artifact" in prompt
     assert "or bare `ralph_submit_md_artifact`" in prompt
     assert "or bare `ralph_verify_md_artifact`" in prompt
-    assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
+    assert workspace.absolute_path(".agent/PRODUCT_CRITERIA.md") in prompt
     assert "{{" not in prompt
     assert "{%" not in prompt
 
@@ -551,7 +551,7 @@ def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(
     assert "mcp__ralph__report_progress" in prompt
     assert "mcp__ralph__ralph_submit_artifact" not in prompt
     assert "or bare `ralph_submit_artifact`" not in prompt
-    assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
+    assert workspace.absolute_path(".agent/PRODUCT_CRITERIA.md") in prompt
     assert str(tmp_path / ".agent" / "tmp" / "prompt_payloads" / "development_plan.txt") in prompt
     assert "{{" not in prompt
     assert "{%" not in prompt

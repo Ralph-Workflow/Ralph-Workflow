@@ -717,13 +717,13 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     assert expected_server in seen_config[0]
 
 
-def test_invoke_agent_injects_codex_system_prompt_file_via_config(
+def test_invoke_agent_injects_codex_master_prompt_file_via_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
-    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
-    system_prompt_file.write_text("unattended mode", encoding="utf-8")
+    master_prompt_file = tmp_path / "MASTER_PROMPT.md"
+    master_prompt_file.write_text("unattended mode", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
     seen_config: list[str] = []
 
@@ -775,7 +775,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                system_prompt_file=str(system_prompt_file),
+                master_prompt_file=str(master_prompt_file),
             ),
             _clock=FakeClock(),
         )
@@ -783,19 +783,19 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
 
     assert len(seen_config) == 1
     parsed = _toml_object(seen_config[0])
-    assert parsed["model_instructions_file"] == str(system_prompt_file)
+    assert parsed["model_instructions_file"] == str(master_prompt_file)
     features = cast("dict[str, object] | None", parsed.get("features"))
     if features is not None:
         assert "model_instructions_file" not in features
 
 
-def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
+def test_invoke_agent_does_not_inject_opencode_master_prompt_flag(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
-    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
-    system_prompt_file.write_text("unattended mode", encoding="utf-8")
+    master_prompt_file = tmp_path / "MASTER_PROMPT.md"
+    master_prompt_file.write_text("unattended mode", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_cmds: list[list[str]] = []
 
@@ -843,7 +843,7 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
             str(prompt_file),
             options=InvokeOptions(
                 show_progress=False,
-                system_prompt_file=str(system_prompt_file),
+                master_prompt_file=str(master_prompt_file),
             ),
             _clock=FakeClock(),
         )
@@ -927,7 +927,7 @@ def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Pa
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=None,
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
@@ -942,16 +942,16 @@ def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Pa
 
 
 def test_codex_config_toml_keeps_model_instructions_outside_features(tmp_path: Path) -> None:
-    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
-    system_prompt_file.write_text("system", encoding="utf-8")
+    master_prompt_file = tmp_path / "MASTER_PROMPT.md"
+    master_prompt_file.write_text("system", encoding="utf-8")
     home = prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=None,
-        system_prompt_file=str(system_prompt_file),
+        master_prompt_file=str(master_prompt_file),
     )
     parsed = _toml_object((Path(home) / "config.toml").read_text(encoding="utf-8"))
-    assert parsed["model_instructions_file"] == str(system_prompt_file)
+    assert parsed["model_instructions_file"] == str(master_prompt_file)
     features = cast("dict[str, object]", parsed["features"])
     assert "model_instructions_file" not in features
 
@@ -967,7 +967,7 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=str(fake_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)

@@ -1,0 +1,9 @@
+You MUST submit a `development_result` artifact before declaring completion: a markdown document with frontmatter `type: development_result` and `status: completed|partial`, then `## Summary` (exactly one item), `## Files Changed` (one item per file), and the proof sections below. Each proof item's bracketed ID is the reference; the item text is the evidence.
+
+**## Plan Items Proven** (required when the execution plan has steps): one `- [S-N] <proof>` item per plan step, where `S-N` EXACTLY matches the step's stable ID from the plan document and the proof cites concrete evidence, e.g. `- [S-1] Modified src/validation.py lines 10-25; pytest tests/test_validation.py -q passes.`
+
+**## Plan Items Proven** (when the plan uses `## Work Units` instead): one `- [unit-ID] <proof>` item for the work unit you were assigned, where the bracketed ID EXACTLY matches the plan's `[unit-ID]` bracket ID.
+
+**## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per `How To Fix` entry from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
+
+Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step ID, work-unit bracket ID, or analysis item ID) also fail validation and trigger a re-prompt. If you submit `status: partial`, you MUST also include `## Next Steps` (exactly one item: the remaining work) and `## Continuation` (exactly one item: your session id) — a partial result without them fails validation.

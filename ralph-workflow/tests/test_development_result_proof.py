@@ -123,6 +123,26 @@ def _write_noop_plan(workspace: MemoryWorkspace) -> None:
     )
 
 
+def _write_nested_work_unit_plan(workspace: MemoryWorkspace) -> None:
+    sections = []
+    for number, name in enumerate(("api", "web", "docs", "contract", "integration"), start=1):
+        sections.append(
+            f"""## Work Units
+- [{name}] Implement the {name} unit
+  Directories: src/{name}
+
+### [S-{number}] Implement {name}
+Change the {name} component.
+
+Type: action
+"""
+        )
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        "---\ntype: plan\n---\n" + "\n".join(sections),
+    )
+
+
 def _write_dev_result(
     workspace: MemoryWorkspace, *, plan_items: object = None, analysis_items: object = None
 ) -> None:
@@ -270,6 +290,38 @@ def test_steps_plan_rejects_wrong_step_title_even_when_counts_match() -> None:
     assert failure_events
     assert "PROOF INVALID" in failure_events[0].reason
     assert "Unknown plan_item reference" in failure_events[0].reason
+
+
+def test_work_unit_proof_regression_accepts_each_of_five_parallel_worker_ids() -> None:
+    """Regression for plan blocker 6: each worker proves its assigned unit, not all steps."""
+    for unit_id in ("api", "web", "docs", "contract", "integration"):
+        workspace = MemoryWorkspace()
+        _write_nested_work_unit_plan(workspace)
+        _write_dev_result(
+            workspace,
+            plan_items=[{"plan_item": unit_id, "proof": f"Completed {unit_id}."}],
+        )
+
+        events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+        assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_work_unit_plan_preserves_complete_global_step_proof_for_serial_execution() -> None:
+    """Preservation pin: accepted mixed plans may still prove all global step IDs."""
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": f"S-{number}", "proof": f"Completed step {number}."}
+            for number in range(1, 6)
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
 
 
 def test_noop_plan_skips_proof_validation() -> None:

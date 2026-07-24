@@ -101,7 +101,7 @@ def test_codex_unsafe_mode_preserves_existing_mcp_servers(tmp_path: Path) -> Non
         ralph_endpoint,
         workspace_path=tmp_path,
         existing_home=str(codex_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
         unsafe_mode=True,
     )
 
@@ -126,7 +126,7 @@ def test_codex_unsafe_mode_false_removes_existing_mcp_servers(tmp_path: Path) ->
         ralph_endpoint,
         workspace_path=tmp_path,
         existing_home=str(codex_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
         unsafe_mode=False,
     )
 
@@ -149,7 +149,7 @@ def test_single_server_entry_appears_in_codex_transport_config(
         None,
         workspace_path=tmp_path,
         existing_home=str(isolated_codex_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
 
     assert Path(codex_home).exists()
@@ -202,7 +202,7 @@ def test_single_server_entry_surfaces_in_all_transport_paths(
         None,
         workspace_path=tmp_path,
         existing_home=str(isolated_codex_home),
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     assert len(codex_upstreams) == 0
 

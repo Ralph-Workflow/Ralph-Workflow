@@ -78,7 +78,7 @@ def test_mcp_toml_entry_appears_in_codex_config(
         ralph_endpoint,
         workspace_path=tmp_path,
         existing_home=None,
-        system_prompt_file=None,
+        master_prompt_file=None,
     )
     config_path = Path(codex_home) / "config.toml"
     parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))

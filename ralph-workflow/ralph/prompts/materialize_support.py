@@ -49,7 +49,7 @@ def phase_payload_variables(
     )
 
 
-def persist_current_prompt(
+def persist_product_criteria(
     workspace_root: Path,
     prompt_content: str | None,
     *,
@@ -57,30 +57,30 @@ def persist_current_prompt(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:
     """Persist the active prompt content to the workspace prompt file."""
-    current_prompt_path = (
-        worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+    product_criteria_path = (
+        worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
         if worker_namespace is not None
-        else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+        else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     )
-    backend.mkdir(current_prompt_path.parent, parents=True, exist_ok=True)
-    if prompt_content is None and backend.exists(current_prompt_path):
-        return str(current_prompt_path)
+    backend.mkdir(product_criteria_path.parent, parents=True, exist_ok=True)
+    if prompt_content is None and backend.exists(product_criteria_path):
+        return str(product_criteria_path)
     write_text_if_changed(
         backend,
-        current_prompt_path,
+        product_criteria_path,
         prompt_content or "No requirements provided",
         encoding="utf-8",
     )
-    return str(current_prompt_path)
+    return str(product_criteria_path)
 
 
-def current_prompt_variables(
+def product_criteria_variables(
     prompt_content: str | None,
-    current_prompt_path: str,
+    product_criteria_path: str,
 ) -> dict[str, str]:
     """Return the prompt variables for the current prompt path."""
     del prompt_content
-    return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}
+    return {"PROMPT": "", "PROMPT_PATH": product_criteria_path}
 
 
 def merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:

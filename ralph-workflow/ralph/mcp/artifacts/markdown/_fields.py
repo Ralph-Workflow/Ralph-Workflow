@@ -9,9 +9,16 @@ table:
 - ``bullet_list`` — ``Field:`` opening line followed by ``- entry``
   bullets (prose, paths, commands).
 
-Lines that match no known label are prose where the context allows it
-(with a warning when they look like a mistyped label) and a hard,
-line-anchored error where it does not.
+Contexts come in two strictness levels selected by ``prose_allowed``:
+
+- Descriptive contexts (``prose_allowed=True``) tolerate free prose.
+  Unknown labels, duplicate fields, and malformed field lines fall back
+  to prose with at most a warning, so multi-line item prose is always
+  legal there. Recognized well-formed fields still parse normally.
+- Machine-parsed contexts (``prose_allowed=False``) — bodies whose every
+  line feeds a consumer (worker fan-out edit areas, skills/MCP grants) —
+  keep hard, line-anchored errors so a typo cannot silently drop
+  consumed structure.
 """
 
 from __future__ import annotations
@@ -108,27 +115,37 @@ def _consume_field_line(
         return None
     canonical = key.strip().casefold()
     if canonical in result.scalars or canonical in result.lists:
-        diagnostics.append(
-            Diagnostic(line.line, section, "PLAN020", f"{context}: duplicate field {key!r}")
+        _malformed_field(
+            result,
+            line,
+            f"{context}: duplicate field {key!r}",
+            section,
+            prose_allowed,
+            diagnostics,
         )
         return None
     value = cast("str | None", label.group("value")) if label is not None else None
     if kind == "bullet_list":
         if value is not None:
-            diagnostics.append(
-                Diagnostic(
-                    line.line,
-                    section,
-                    "PLAN020",
-                    f"{context}: field {key!r} takes '- ' bullet lines, not an inline value",
-                )
+            _malformed_field(
+                result,
+                line,
+                f"{context}: field {key!r} takes '- ' bullet lines, not an inline value",
+                section,
+                prose_allowed,
+                diagnostics,
             )
             return None
         result.lists[canonical] = []
         return canonical
     if value is None:
-        diagnostics.append(
-            Diagnostic(line.line, section, "PLAN020", f"{context}: field {key!r} requires a value")
+        _malformed_field(
+            result,
+            line,
+            f"{context}: field {key!r} requires a value",
+            section,
+            prose_allowed,
+            diagnostics,
         )
         return None
     if kind == "scalar":
@@ -138,6 +155,24 @@ def _consume_field_line(
             ParsedLine(line.line, part.strip()) for part in value.split(",") if part.strip()
         ]
     return None
+
+
+def _malformed_field(
+    result: ParsedFields,
+    line: ParsedLine,
+    message: str,
+    section: str,
+    prose_allowed: bool,
+    diagnostics: list[Diagnostic],
+) -> None:
+    """Report a malformed known-label line; tolerant contexts keep it as prose."""
+    if prose_allowed:
+        result.prose.append(line)
+        diagnostics.append(
+            Diagnostic(line.line, section, "PLAN020", f"{message}; line treated as prose", "warning")
+        )
+    else:
+        diagnostics.append(Diagnostic(line.line, section, "PLAN020", message))
 
 
 def _consume_unlabeled(

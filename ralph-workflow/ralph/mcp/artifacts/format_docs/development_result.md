@@ -38,8 +38,9 @@ status: completed
 ## Frontmatter
 
 - `type` — required; `development_result`.
-- `status` — required; `completed` or `partial`. An unknown value is
-  coerced to `completed` with a warning.
+- `status` — required and closed: `completed` or `partial`. Any other value,
+  including `done` or `wrong`, is a hard error. The diagnostic names both
+  accepted values; correct the frontmatter and resubmit.
 
 ## Sections
 
@@ -64,4 +65,5 @@ Hard errors: missing Summary or Files Changed; more than one Summary,
 Next Steps, or Continuation item; `partial` without Next Steps and
 Continuation; duplicate item IDs; and (at proof validation) plan-item IDs
 that do not exactly match a plan step ID or work-unit id, missing proofs,
-or duplicates. Warning: unknown `status` coerced to `completed`.
+or duplicates. An unrecognized `status` is also a hard error and reports
+the valid `completed` / `partial` vocabulary.

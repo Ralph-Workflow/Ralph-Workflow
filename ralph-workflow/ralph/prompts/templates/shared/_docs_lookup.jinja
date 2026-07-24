@@ -1,0 +1,13 @@
+{% if HAS_DOCS_MCP %}
+
+## DOCUMENTATION LOOKUP
+
+The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. Before implementing or debugging with a library or framework:
+1. Search documentation using the docs-mcp search tool from your MCP tool list.
+2. Fall back to `web_search` only when docs-mcp returns no useful results for the specific API or behavior you need.
+
+{% else %}
+
+> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during development.
+
+{% endif %}

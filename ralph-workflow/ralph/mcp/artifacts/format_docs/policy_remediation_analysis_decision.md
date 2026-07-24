@@ -57,7 +57,9 @@ status: request_changes
 ## Frontmatter
 
 - `type` — required; `policy_remediation_analysis_decision`.
-- `status` — required; `completed`, `request_changes`, or `failed`.
+- `status` — required and closed: `completed`, `request_changes`, or `failed`.
+  Any other value, including `done` or `wrong`, is a hard error. The
+  diagnostic names all three accepted values; correct it and resubmit.
 
 ## Sections
 
@@ -71,5 +73,5 @@ status: request_changes
 
 Hard errors: missing or multiple Summary items; `request_changes`/`failed`
 without non-empty What Came Up Short and How To Fix; wrong `type`;
-duplicate item IDs; any grammar violation. Warning: an unknown `status`
-is coerced to `completed` — never rely on that; pick the right status.
+duplicate item IDs; any grammar violation; or a `status` outside
+`completed`, `request_changes`, and `failed`.

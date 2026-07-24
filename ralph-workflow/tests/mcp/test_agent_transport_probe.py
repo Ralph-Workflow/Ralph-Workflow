@@ -217,9 +217,9 @@ def test_probe_codex_reuses_existing_native_server_without_duplicate_table(
         *,
         workspace_path: Path | None,
         existing_home: str | None,
-        system_prompt_file: str | None,
+        master_prompt_file: str | None,
     ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
-        del endpoint, workspace_path, existing_home, system_prompt_file
+        del endpoint, workspace_path, existing_home, master_prompt_file
         codex_home = tmp_path / "codex-home"
         codex_home.mkdir()
         (codex_home / "config.toml").write_text(

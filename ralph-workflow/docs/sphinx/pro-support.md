@@ -104,7 +104,7 @@ five PROMPT-mandated collaborators through `ralph.pipeline.factory.PipelineCore`
 
 - `display_context: DisplayContext`
 - `model_identity: MultimodalModelIdentity | None`
-- `system_prompt_materializer: MaterializeSystemPromptFn`
+- `master_prompt_materializer: MaterializeMasterPromptFn`
 - `phase_prompt_materializer: PhasePromptMaterializerFn`
 - `artifact_requirements_resolver: ArtifactRequirementsResolverFn`
 
@@ -142,7 +142,7 @@ thirteen fields:
   `PipelineDeps` by `build_default_pipeline_deps`:
   - `display_context: DisplayContext | None`
   - `model_identity: MultimodalModelIdentity | None`
-  - `system_prompt_materializer: MaterializeSystemPromptFn | None`
+  - `master_prompt_materializer: MaterializeMasterPromptFn | None`
   - `phase_prompt_materializer: PhasePromptMaterializerFn | None`
   - `artifact_requirements_resolver: ArtifactRequirementsResolverFn | None`
   - `recovery_sleep: Callable[[float], None] | None`

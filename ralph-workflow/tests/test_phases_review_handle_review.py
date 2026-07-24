@@ -61,7 +61,7 @@ class TestHandleReview:
         ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/issues.md"
         ctx.workspace.read.return_value = """---
 type: issues
-status: clean
+status: no_issues
 ---
 
 ## Summary
@@ -185,7 +185,7 @@ status: issues_found
         issues_path.write_text(
             """---
 type: issues
-status: clean
+status: no_issues
 ---
 
 ## Summary
@@ -224,7 +224,7 @@ status: clean
         issues_path.write_text(
             """---
 type: issues
-status: clean
+status: no_issues
 ---
 
 ## Summary

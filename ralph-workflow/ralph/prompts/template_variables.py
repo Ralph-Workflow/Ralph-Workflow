@@ -20,8 +20,10 @@ from ralph.mcp.tools.names import (
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
     GIT_STATUS_TOOL,
+    GREP_FILES_TOOL,
     LIST_DIRECTORY_RECURSIVE_TOOL,
     LIST_DIRECTORY_TOOL,
+    READ_FILE_TOOL,
     REPORT_PROGRESS_TOOL,
     SEARCH_FILES_TOOL,
     STAGE_MD_ARTIFACT_TOOL,
@@ -219,6 +221,12 @@ def capability_template_variables(
         ),
         tool_name_var(
             visible_tools,
+            "READ_FILE_TOOL_NAME",
+            READ_FILE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
             "LIST_DIRECTORY_TOOL_NAME",
             LIST_DIRECTORY_TOOL,
             tool_name_prefix=tool_name_prefix,
@@ -233,6 +241,12 @@ def capability_template_variables(
             visible_tools,
             "SEARCH_FILES_TOOL_NAME",
             SEARCH_FILES_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "GREP_FILES_TOOL_NAME",
+            GREP_FILES_TOOL,
             tool_name_prefix=tool_name_prefix,
         ),
         tool_name_var(
@@ -333,6 +347,12 @@ def capability_template_variables(
         ),
         tool_name_reference_var(
             visible_tools,
+            "READ_FILE_TOOL_REFERENCE",
+            READ_FILE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
             "LIST_DIRECTORY_TOOL_REFERENCE",
             LIST_DIRECTORY_TOOL,
             tool_name_prefix=tool_name_prefix,
@@ -351,14 +371,14 @@ def capability_template_variables(
         ),
         tool_name_reference_var(
             visible_tools,
-            "EXEC_TOOL_REFERENCE",
-            EXEC_TOOL,
+            "GREP_FILES_TOOL_REFERENCE",
+            GREP_FILES_TOOL,
             tool_name_prefix=tool_name_prefix,
         ),
-        bare_tool_hint_var(
+        tool_name_reference_var(
             visible_tools,
-            "SUBMIT_MD_ARTIFACT_BARE_HINT",
-            SUBMIT_MD_ARTIFACT_TOOL,
+            "EXEC_TOOL_REFERENCE",
+            EXEC_TOOL,
             tool_name_prefix=tool_name_prefix,
         ),
     ]
@@ -429,22 +449,6 @@ def tool_name_reference_var(
     if tool_name.value not in visible_tools:
         return (variable_name, "")
     return (variable_name, tool_name.prompt_reference(tool_name_prefix=tool_name_prefix))
-
-
-def bare_tool_hint_var(
-    visible_tools: Sequence[str],
-    variable_name: str,
-    tool_name: RalphToolName,
-    *,
-    tool_name_prefix: str = "",
-) -> tuple[str, str]:
-    """Return (variable_name, hint) for the bare-name fallback when visible."""
-    if tool_name.value not in visible_tools or not tool_name_prefix:
-        return (variable_name, "")
-    return (
-        variable_name,
-        f"If your client exposes bare MCP names, use `{tool_name.value}` for the same call.",
-    )
 
 
 def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> str:

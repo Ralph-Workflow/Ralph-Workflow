@@ -1,11 +1,3 @@
-{% include 'shared/_unattended_mode.j2' %}
-
-{% include 'shared/_session_capabilities.j2' %}
-
-{% include 'shared/_mcp_tools.j2' %}
-
-{% include 'shared/_shipped_skills.j2' %}
-
 # Ralph Workflow — Rebase Conflict Resolution
 
 ## Your role and goal
@@ -22,6 +14,7 @@ that one commit was trying to do, on top of `{{ target }}`. Later commits on the
 branch have not been replayed yet and must not be anticipated here.
 
 Commit {{ stop_index }} of at most {{ stop_cap }}, round {{ round_index }} of {{ round_cap }}.
+Each round is one full attempt; when rounds run out the rebase is aborted.
 {% else %}The repository at `{{ repo_root }}` has an IN-PROGRESS merge of the mainline
 branch `{{ target }}` into the current feature branch. The merge stopped on
 conflicts.
@@ -31,6 +24,14 @@ Round {{ round_index }} of {{ round_cap }}.
 Resolving those conflicts is your ONLY job. You are not implementing a
 feature, not reviewing the project, and not fixing unrelated failures. Nothing
 outside the conflicted regions listed below is in scope.
+
+{% include 'shared/_unattended_mode.j2' %}
+
+{% include 'shared/_session_capabilities.j2' %}
+
+{% include 'shared/_mcp_tools.j2' %}
+
+{% include 'shared/_shipped_skills.j2' %}
 
 ## Conflicted files
 
@@ -64,7 +65,7 @@ outside the conflicted regions listed below is in scope.
 ## Completion contract
 
 When every listed file is resolved and marker-free, call the
-`declare_complete` MCP tool (`mcp__ralph__declare_complete`) with a short
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }} MCP tool with a short
 summary of what you resolved.
 
 Exiting cleanly WITHOUT calling `declare_complete` is treated as a FAILED

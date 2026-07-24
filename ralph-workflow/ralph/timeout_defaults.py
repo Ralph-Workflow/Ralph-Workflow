@@ -224,7 +224,7 @@ MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS: float | None = 600.0
 #: before the 600s no-progress ceiling. The previous 120s default produced the
 #: 'dumb-kill' regression documented in wt-012 where the watchdog fired at
 #: cumulative=159s, idle_elapsed=120s while the agent was reading
-#: ``.agent/CURRENT_PROMPT.md`` (a legitimate sub-step well below 120s of work).
+#: ``.agent/PRODUCT_CRITERIA.md`` (a legitimate sub-step well below 120s of work).
 #: The smart-verdict gate in the watchdog (StuckClassifier) further protects against
 #: premature fires by deferring the verdict while any first-party channel is fresh
 #: or while the agent is in a waiting state. Set to ``None`` to disable the override

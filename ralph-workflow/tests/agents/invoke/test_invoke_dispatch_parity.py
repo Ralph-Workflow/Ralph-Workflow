@@ -251,7 +251,7 @@ class TestResolveInvocationRuntimeParity:
             *,
             workspace_path: object = None,
             existing_home: str | None = None,
-            system_prompt_file: str | None = None,
+            master_prompt_file: str | None = None,
             unsafe_mode: bool = False,
         ) -> tuple[str, list[FakeUpstream]]:
             return fake_codex_home, [fake_upstream]

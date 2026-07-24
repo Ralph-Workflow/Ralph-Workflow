@@ -294,8 +294,8 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         ),
         (
             "tests/test_pro_support_prompt.py",
-            "ralph.prompts.system_prompt",
-            ("_sync_current_prompt_file",),
+            "ralph.prompts.master_prompt",
+            ("_sync_product_criteria_file",),
         ),
         (
             "tests/test_process_hardening.py",

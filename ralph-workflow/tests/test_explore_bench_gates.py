@@ -1,6 +1,6 @@
 """Black-box benchmark gate tests for the indexed exploration substrate.
 
-Tests assert the research-gate thresholds from CURRENT_PROMPT.md:
+Tests assert the research-gate thresholds from PRODUCT_CRITERIA.md:
 
 * ``evidence_recall == 1.0`` on every default-on fixture (real
   handlers, evidence ids derived from the indexed store).

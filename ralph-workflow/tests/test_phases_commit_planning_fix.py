@@ -587,7 +587,7 @@ def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
     ctx = _mk_policy_context()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.md"
-    workspace.read.return_value = _PLAN_DOC.replace("## Skills MCP", "## Unsupported")
+    workspace.read.return_value = _PLAN_DOC.replace("### [S-1]", "### [STEP-1]")
 
     effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 

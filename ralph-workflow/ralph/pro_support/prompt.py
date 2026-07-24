@@ -5,11 +5,11 @@ var. When that variable is unset or empty, the engine falls back to
 ``<workspace>/PROMPT.md``. This module is the **single source of
 truth** for the operator-visible source prompt path; every call site in
 the engine that reads ``PROMPT.md`` (rather than the materialised
-``.agent/CURRENT_PROMPT.md``) must go through
+``.agent/PRODUCT_CRITERIA.md``) must go through
 :func:`resolve_effective_prompt_path`.
 
 Callers operating on the engine-owned materialised
-``.agent/CURRENT_PROMPT.md`` MUST NOT use this resolver — that path is
+``.agent/PRODUCT_CRITERIA.md`` MUST NOT use this resolver — that path is
 engine-owned and is never overridden by ``PROMPT_PATH``.
 """
 

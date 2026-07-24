@@ -2,24 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import ConfigDict, Field, field_validator
 
 from ralph.pydantic_compat import RalphBaseModel
-
-ArchitectureStyle = Literal[
-    "monolith",
-    "modular-monolith",
-    "microservice",
-    "library",
-    "cli",
-    "spa",
-    "mobile",
-    "serverless",
-    "embedded",
-    "unknown",
-]
 
 _MAX_ENTRY_LENGTH = 2000
 
@@ -41,9 +26,16 @@ class DesignConstraints(RalphBaseModel):
             "(max 100 entries, max 2000 chars each after dedup; medium tier)."
         ),
     )
-    architecture_style: ArchitectureStyle | None = Field(
+    architecture_style: str | None = Field(
         default=None,
-        description="ArchitectureStyle enum; see ArchitectureStyle literal.",
+        min_length=1,
+        max_length=200,
+        description=(
+            "Free-form architecture description. Suggested vocabulary: monolith, "
+            "modular-monolith, microservice, library, cli, spa, mobile, "
+            "serverless, embedded, unknown — any non-empty string is accepted "
+            "(descriptive only; no pipeline consumer)."
+        ),
     )
 
     @field_validator("text")
@@ -72,4 +64,4 @@ class DesignConstraints(RalphBaseModel):
         return deduped
 
 
-__all__ = ["ArchitectureStyle", "DesignConstraints"]
+__all__ = ["DesignConstraints"]

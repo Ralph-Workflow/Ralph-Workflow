@@ -151,8 +151,8 @@ from ralph.policy.loader import (
 )
 from ralph.process.manager import process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import MissingPlanHandoffError, materialize_prompt_for_phase
-from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import FailureContext
 from ralph.telemetry._sentry import record_phase_execution
 from ralph.workspace import FsWorkspace
@@ -206,8 +206,8 @@ __all__ = [
     "install_signal_handlers",
     "install_width_refresher",
     "make_display_context",
+    "materialize_master_prompt",
     "materialize_prompt_for_phase",
-    "materialize_system_prompt",
     "metadata_summary",
     "phase_output_artifact_paths",
     "prompt_session_drain_for_phase",

@@ -54,7 +54,7 @@ cross it are silently dropped, not applied:
   per-directory extensions are deletable.
 - Ralph runtime artifacts ARE unconditionally deletable. The allowlist is:
   the canonical `.agent/` top-level runtime basenames (e.g. `.agent/PLAN.md`,
-  `.agent/ISSUES.md`, `.agent/CURRENT_PROMPT.md`, `.agent/checkpoint.json`,
+  `.agent/ISSUES.md`, `.agent/PRODUCT_CRITERIA.md`, `.agent/checkpoint.json`,
   `.agent/mcp.toml`, the `*_RESULT.md` / `*_ANALYSIS_DECISION.md` files),
   `.agent/completion_seen_*.json`, bare `checkpoint.json` at the repo root,
   and files inside engine-internal directories ONLY when the extension

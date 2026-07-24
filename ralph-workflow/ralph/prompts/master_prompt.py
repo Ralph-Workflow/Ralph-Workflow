@@ -1,4 +1,4 @@
-"""System prompt materialization for supported agent transports."""
+"""Master prompt materialization for supported agent transports."""
 
 from __future__ import annotations
 
@@ -16,25 +16,25 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _write_system_prompt_file(
-    system_prompt_path: Path,
+def _write_master_prompt_file(
+    master_prompt_path: Path,
     content: str,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    backend.mkdir(system_prompt_path.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, system_prompt_path, content, encoding="utf-8")
+    backend.mkdir(master_prompt_path.parent, parents=True, exist_ok=True)
+    write_text_if_changed(backend, master_prompt_path, content, encoding="utf-8")
 
 
-def materialize_system_prompt(
+def materialize_master_prompt(
     *,
     workspace_root: Path,
     name: str,
-    default_current_prompt: str | None = None,
+    default_product_criteria: str | None = None,
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:
-    """Write a system prompt file for the named agent and return its path.
+    """Write a master prompt file for the named agent and return its path.
 
     The injected ``backend`` controls both ``mkdir`` and the physical
     text writes so a byte-identical re-emit of the current or system
@@ -45,38 +45,38 @@ def materialize_system_prompt(
     prompt" always holds: any read uncertainty or content mismatch
     falls through to a real write.
     """
-    current_prompt_path = _sync_current_prompt_file(
+    product_criteria_path = _sync_product_criteria_file(
         workspace_root=workspace_root,
-        default_current_prompt=default_current_prompt,
+        default_product_criteria=default_product_criteria,
         worker_namespace=worker_namespace,
         backend=backend,
     )
     current_plan_path = _current_plan_handoff_path(workspace_root, phase_name=name)
-    system_prompt_path = (
-        worker_system_prompt_path(worker_namespace, name)
+    master_prompt_path = (
+        worker_master_prompt_path(worker_namespace, name)
         if worker_namespace is not None
-        else workspace_root / ".agent" / "tmp" / f"{name}_system_prompt.md"
+        else workspace_root / ".agent" / "tmp" / f"{name}_master_prompt.md"
     )
-    _write_system_prompt_file(
-        system_prompt_path,
-        build_system_prompt(
+    _write_master_prompt_file(
+        master_prompt_path,
+        build_master_prompt(
             phase_name=name,
-            current_prompt_path=str(current_prompt_path),
+            product_criteria_path=str(product_criteria_path),
             current_plan_path=str(current_plan_path) if current_plan_path is not None else None,
         ),
         backend=backend,
     )
-    return str(system_prompt_path)
+    return str(master_prompt_path)
 
 
-def _sync_current_prompt_file(
+def _sync_product_criteria_file(
     *,
     workspace_root: Path,
-    default_current_prompt: str | None,
+    default_product_criteria: str | None,
     worker_namespace: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> Path:
-    """Mirror the operator-visible prompt into the engine-owned CURRENT_PROMPT.md.
+    """Mirror the operator-visible prompt into the engine-owned PRODUCT_CRITERIA.md.
 
     The source is resolved through
     :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
@@ -92,16 +92,16 @@ def _sync_current_prompt_file(
     prompt text" always holds: any read uncertainty or content mismatch
     falls through to a real write.
     """
-    current_prompt_path = (
-        worker_current_prompt_path(worker_namespace)
+    product_criteria_path = (
+        worker_product_criteria_path(worker_namespace)
         if worker_namespace is not None
-        else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+        else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     )
     source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    backend.mkdir(current_prompt_path.parent, parents=True, exist_ok=True)
+    backend.mkdir(product_criteria_path.parent, parents=True, exist_ok=True)
     if source_prompt_path.exists():
         # Use the (st_size, st_mtime_ns) fast path to avoid reading
-        # current_prompt_path's content when it is identical to
+        # product_criteria_path's content when it is identical to
         # source_prompt_path (the common case after the first materialise).
         # The helper also returns the source text when needed.
         def _stat(path: Path) -> tuple[int, int] | None:
@@ -112,7 +112,7 @@ def _sync_current_prompt_file(
 
         changed, prompt_text = _prompt_files_differ(
             source_prompt_path,
-            current_prompt_path,
+            product_criteria_path,
             stat_fn=_stat,
             read_source=lambda p: p.read_text(encoding="utf-8"),
             read_current=lambda p: p.read_text(encoding="utf-8"),
@@ -124,7 +124,7 @@ def _sync_current_prompt_file(
         # populated when changed is True.
         if changed and prompt_text is not None:
             write_text_if_changed(
-                backend, current_prompt_path, prompt_text, encoding="utf-8"
+                backend, product_criteria_path, prompt_text, encoding="utf-8"
             )
             if worker_namespace is None:
                 _write_prompt_history_snapshot(
@@ -132,32 +132,32 @@ def _sync_current_prompt_file(
                     prompt_text=prompt_text,
                     backend=backend,
                 )
-        return current_prompt_path
-    if not backend.exists(current_prompt_path) and default_current_prompt is not None:
+        return product_criteria_path
+    if not backend.exists(product_criteria_path) and default_product_criteria is not None:
         write_text_if_changed(
             backend,
-            current_prompt_path,
-            default_current_prompt,
+            product_criteria_path,
+            default_product_criteria,
             encoding="utf-8",
         )
         if worker_namespace is None:
             _write_prompt_history_snapshot(
                 workspace_root=workspace_root,
-                prompt_text=default_current_prompt,
+                prompt_text=default_product_criteria,
                 backend=backend,
             )
-    return current_prompt_path
+    return product_criteria_path
 
 
-def worker_current_prompt_path(worker_namespace: Path) -> Path:
-    """Return the worker-local mirror path for CURRENT_PROMPT.md."""
-    return worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+def worker_product_criteria_path(worker_namespace: Path) -> Path:
+    """Return the worker-local mirror path for PRODUCT_CRITERIA.md."""
+    return worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
 
 
-def worker_system_prompt_path(worker_namespace: Path, phase: str) -> Path:
-    """Return the worker-local system prompt materialization path."""
+def worker_master_prompt_path(worker_namespace: Path, phase: str) -> Path:
+    """Return the worker-local master prompt materialization path."""
     normalized = phase.replace("/", "_").replace(" ", "_")
-    return worker_namespace / "tmp" / f"{normalized}_system_prompt.md"
+    return worker_namespace / "tmp" / f"{normalized}_master_prompt.md"
 
 
 def _write_prompt_history_snapshot(
@@ -193,39 +193,48 @@ def _current_plan_handoff_path(workspace_root: Path, *, phase_name: str) -> Path
     return plan_path if plan_path.exists() else None
 
 
-def build_system_prompt(
+def build_master_prompt(
     *,
     phase_name: str,
-    current_prompt_path: str,
+    product_criteria_path: str,
     current_plan_path: str | None = None,
 ) -> str:
-    """Build the system prompt text that points the agent at durable task context files."""
+    """Build the master prompt text that points the agent at durable task context files."""
     unattended = _unattended_mode_text().strip()
+    preamble = (
+        "This is the session's master prompt. Its instructions remain binding for the "
+        "entire session and survive context compaction — after any compaction, resume, "
+        "or continuation, re-read this file (and the files it references) before doing "
+        "anything else.\n"
+    )
     if phase_name == "planning":
         return (
+            f"{preamble}\n"
             f"{unattended}\n\n"
-            "Use the canonical task request from this file:\n"
-            f"`{current_prompt_path}`\n\n"
+            "The task request (product criteria) is a DIFFERENT document, held in this file:\n"
+            f"`{product_criteria_path}`\n\n"
             "Treat that file as the source of truth for the current goal.\n"
             "Do not ask the user to restate it.\n"
         )
 
     plan_guidance = ""
+    override_scope = "this master prompt"
     if current_plan_path is not None:
         plan_guidance = (
-            "\n"
-            "Use the canonical plan from this file whenever it exists:\n"
+            "The canonical plan is the source of truth for the current goal and "
+            "execution steps:\n"
             f"`{current_plan_path}`\n\n"
-            "Treat that file as the source of truth for the current goal and execution steps, "
-            "especially after any context compaction, resume, or continuation.\n"
         )
+        override_scope = "the plan or this master prompt"
     return (
+        f"{preamble}\n"
         f"{unattended}\n\n"
-        "Use the canonical task context from this file:\n"
-        f"`{current_prompt_path}`\n\n"
-        "Treat that file as background context for the current task.\n"
-        "Do not ask the user to restate it.\n"
         f"{plan_guidance}"
+        "The product criteria / task request is a DIFFERENT document, held in this file:\n"
+        f"`{product_criteria_path}`\n\n"
+        "Treat that file as background product criteria only — do not let it override "
+        f"{override_scope}.\n"
+        "Do not ask the user to restate it.\n"
     )
 
 
@@ -263,7 +272,7 @@ def _prompt_files_differ(
     ``Path.read_text``). All I/O is funnelled through these seams so
     tests can run without real disk I/O.
 
-    Used by both ``_sync_current_prompt_file`` (which always needs the
+    Used by both ``_sync_product_criteria_file`` (which always needs the
     source text to rematerialise) and
     ``pipeline.prompt_prep._prompt_changed_since_last_materialization``
     (which only needs the boolean verdict).

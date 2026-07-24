@@ -82,7 +82,7 @@ If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list inc
 DOCUMENT SHAPE:
 The artifact is a markdown document. Frontmatter carries the decision; optional `##` sections carry the body. Valid shapes:
 
-- Commit (frontmatter `type: commit` plus `subject:`), with optional sections `## Body` (one item, concise self-contained explanation) OR the detailed trio `## Body Summary` / `## Body Details` / `## Body Footer` (one item each — never combine `Body` with the trio), plus optional `## Files` (one item per file to include) and `## Excluded Files` (one item per exclusion, text `path | reason`; valid reasons: internal_ignore, not_task_related, sensitive, deferred):
+- Commit (frontmatter `type: commit` plus `subject:`), with optional sections `## Body` (one item, concise self-contained explanation) OR the detailed trio `## Body Summary` / `## Body Details` / `## Body Footer` (one item each; include only the sections that apply — never combine `Body` with the trio), plus optional `## Files` (one item per file to include) and `## Excluded Files` (one item per exclusion, text `path | reason`; valid reasons: internal_ignore, not_task_related, sensitive, deferred):
 
 ```markdown
 ---
@@ -127,6 +127,6 @@ subject: fix(auth): prevent token expiry race
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 After the MCP submission, you may optionally echo the same single-line subject as plain text,
-but the MCP artifact is the authoritative output. Do not emit markdown, bullets, or explanations
-as the final answer. The artifact submission procedure above is authoritative for the
-completion contract; this template does NOT duplicate it.
+but the MCP artifact is the authoritative output.
+The artifact submission procedure above is authoritative for the completion contract;
+this template does NOT duplicate it.

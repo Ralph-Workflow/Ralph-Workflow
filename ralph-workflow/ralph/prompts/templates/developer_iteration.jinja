@@ -20,62 +20,25 @@ IMPORTANT: The previous attempt did not complete successfully.
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
 
-ORIGINAL REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
-EXECUTION PLAN:
 {{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
 {% include 'shared/_analysis_context.j2' %}
 
-{% if ARTIFACT_HISTORY_PATH %}
-ARTIFACT HISTORY:
-Prior development artifacts from previous iterations are archived under:
-`{{ARTIFACT_HISTORY_DIR}}`
-Canonical history index file:
-`{{ARTIFACT_HISTORY_PATH}}`
-Inspect this history when you want to understand what has been tried before
-and what development-analysis feedback they received.
-{% endif %}
+{% include 'shared/_artifact_history.j2' %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
 
-{% if HAS_DOCS_MCP %}
-
-## DOCUMENTATION LOOKUP
-
-The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. Before implementing or debugging with a library or framework:
-1. Search documentation using the docs-mcp search tool from your MCP tool list.
-2. Fall back to `web_search` only when docs-mcp returns no useful results for the specific API or behavior you need.
-
-{% else %}
-
-> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during development.
-
-{% endif %}
+{% include 'shared/_docs_lookup.j2' %}
 
 ## PARALLEL EXECUTION (when the plan declares `## Work Units` or `## Parallel Plan`)
 
-When the EXECUTION PLAN above declares `## Work Units` or `## Parallel Plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within each work unit's declared `Directories:`, and producing the matching `## Plan Items Proven` evidence for each unit. Ralph Workflow exposes no coordination command for plan work — dispatching, supervising, and reconciling sub-agents is entirely your job. If your agent runtime does not support sub-agents, execute the same plan sequentially in `[unit-ID]` order.
-
-Sub-agents are not limited to declared work units. Even when the plan declares neither field, use them whenever it genuinely helps:
-- **Information gathering**: fan out read-only sub-agents to locate code, map call sites, or research APIs instead of reading file after file in your own context.
-- **Naturally concurrent steps**: plan steps with no dependency between them and disjoint target files may run as separate sub-agents at the same time.
-- **Independent checks**: investigations or verifications that do not depend on each other can run concurrently while you continue the next step.
-
-When to stay sequential: steps that touch the same files, steps ordered by `Depends on:`, and any work whose outcome decides what the next step should do. Never let two sub-agents edit the same file. Integration, final verification, and artifact submission always happen in your main session.
+{% include 'shared/_parallel_execution.j2' %}
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 
-You MUST submit a `development_result` artifact before declaring completion: a markdown document with frontmatter `type: development_result` and `status: completed|partial`, then `## Summary` (exactly one item), `## Files Changed` (one item per file), and the proof sections below. Each proof item's bracketed ID is the reference; the item text is the evidence.
-
-**## Plan Items Proven** (required when the execution plan has steps): one `- [S-N] <proof>` item per plan step, where `S-N` EXACTLY matches the step's stable ID from the plan document and the proof cites concrete evidence, e.g. `- [S-1] Modified src/validation.py lines 10-25; pytest tests/test_validation.py -q passes.`
-
-**## Plan Items Proven** (when the plan uses `## Work Units` instead): one `- [unit-ID] <proof>` item for the work unit you were assigned, where the bracketed ID EXACTLY matches the plan's `[unit-ID]` bracket ID.
-
-**## Analysis Items Addressed** (required when ANALYSIS FEEDBACK exists): one `- [<ID>] <proof>` item per `How To Fix` entry from the prior analysis artifact, where the ID EXACTLY matches that entry's stable ID (e.g. `DA-001`) and the proof cites how it was resolved.
-
-Each proof ID must be distinct — duplicates fail validation. Unknown IDs (not matching a plan step ID, work-unit bracket ID, or analysis item ID) also fail validation and trigger a re-prompt.
+{% include 'shared/_development_result_proof.j2' %}
 
 {% set development_result_example %}
 ---

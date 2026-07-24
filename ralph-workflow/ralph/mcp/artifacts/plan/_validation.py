@@ -117,20 +117,28 @@ _SHELL_INVOCATION_PREFIXES: tuple[str, ...] = (
 
 
 class PlanArtifact(RalphBaseModel):
-    """Top-level validated schema for a plan artifact."""
+    """Top-level validated schema for a plan artifact.
+
+    Only the structure the pipeline consumes is required: at least one
+    step (unless the plan is a no-op). Every other section is optional
+    context — a plan may take any shape (single linear step list,
+    several subplans, or per-work-unit mini-plans) as long as its step
+    IDs stay unique and, when work units are used, the work-unit
+    structure stays parseable.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    summary: Summary
-    skills_mcp: SkillsMcp
+    summary: Summary | None = None
+    skills_mcp: SkillsMcp | None = None
     steps: list[PlanStep] = Field(..., min_length=1)
-    critical_files: CriticalFiles
-    risks_mitigations: list[RiskMitigation] = Field(..., min_length=1)
+    critical_files: CriticalFiles | None = None
+    risks_mitigations: list[RiskMitigation] = Field(default_factory=list)
     constraints: PlanConstraints | None = None
     noop: bool | None = Field(default=None, exclude=True)
     schema_version: int = Field(default=0, ge=0)
     design: DesignSection | None = None
-    verification_strategy: list[VerificationStep] = Field(..., min_length=1)
+    verification_strategy: list[VerificationStep] = Field(default_factory=list)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
     work_units: "list[WorkUnit]" = Field(default_factory=list)
 
@@ -222,9 +230,10 @@ class PlanArtifact(RalphBaseModel):
         _check_satisfied_by_steps_links(criteria, step_numbers)
 
         # Cross-section invariant 1: intent_verb -> scope_item.category.
-        _check_intent_verb_category_compatibility(
-            self.summary.intent_verb, self.summary.scope_items
-        )
+        if self.summary is not None:
+            _check_intent_verb_category_compatibility(
+                self.summary.intent_verb, self.summary.scope_items
+            )
 
         # Cross-section invariant 2: parallel_plan and work_units are
         # mutually exclusive.
@@ -248,7 +257,7 @@ class PlanArtifact(RalphBaseModel):
             step_type_by_number: dict[int, str] = {s.number: str(s.step_type) for s in self.steps}
             _check_research_verify_step_references(criteria, step_type_by_number)
 
-        if not self.skills_mcp.skills:
+        if self.skills_mcp is not None and not self.skills_mcp.skills:
             raise PlanArtifactValidationError(
                 "skills_mcp.skills must contain at least one skill name"
             )

@@ -48,8 +48,8 @@ from ralph.pipeline.plumbing.commit_plumbing import (
 )
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
+from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
-from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ __all__ = [
     "commit_plumbing",
     "invoke_agent",
     "invoke_commit_agent_attempt",
-    "materialize_system_prompt",
+    "materialize_master_prompt",
     "submit_artifact_tool_name_for_transport",
 ]
 

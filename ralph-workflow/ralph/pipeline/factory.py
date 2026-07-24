@@ -18,8 +18,8 @@ from ralph.mcp.server.lifecycle import check_mcp_bridge_health
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pro_support.hooks import apply_pro_hooks_to_core
 from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import materialize_prompt_for_phase
-from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -50,18 +50,18 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-class MaterializeSystemPromptFn(Protocol):
-    """Materialize a system prompt file and return its path.
+class MaterializeMasterPromptFn(Protocol):
+    """Materialize a master prompt file and return its path.
 
     Matches the wrapper in ``ralph._session_runtime_deps`` and the public
-    ``ralph.prompts.system_prompt.materialize_system_prompt`` surface.
+    ``ralph.prompts.master_prompt.materialize_master_prompt`` surface.
     """
 
     def __call__(
         self,
         workspace_root: Path,
         name: str,
-        default_current_prompt: str | None = None,
+        default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
     ) -> str: ...
 
@@ -125,16 +125,16 @@ class CheckMcpBridgeHealthFn(Protocol):
     def __call__(self, bridge: SessionBridgeLike) -> None: ...
 
 
-def _materialize_system_prompt(
+def _materialize_master_prompt(
     workspace_root: Path,
     name: str,
-    default_current_prompt: str | None = None,
+    default_product_criteria: str | None = None,
     worker_namespace: Path | None = None,
 ) -> str:
-    return materialize_system_prompt(
+    return materialize_master_prompt(
         workspace_root=workspace_root,
         name=name,
-        default_current_prompt=default_current_prompt,
+        default_product_criteria=default_product_criteria,
         worker_namespace=worker_namespace,
     )
 
@@ -196,7 +196,7 @@ class PipelineCore:
 
     - ``display_context`` — display/rendering context.
     - ``model_identity`` — resolved multimodal model identity.
-    - ``system_prompt_materializer`` — system-prompt materializer.
+    - ``master_prompt_materializer`` — master-prompt materializer.
     - ``phase_prompt_materializer`` — phase-prompt materializer.
     - ``artifact_requirements_resolver`` — phase/drain artifact resolver.
 
@@ -206,7 +206,7 @@ class PipelineCore:
 
     display_context: DisplayContext
     model_identity: MultimodalModelIdentity | None = None
-    system_prompt_materializer: MaterializeSystemPromptFn = _materialize_system_prompt
+    master_prompt_materializer: MaterializeMasterPromptFn = _materialize_master_prompt
     phase_prompt_materializer: PhasePromptMaterializerFn = _materialize_prompt_for_phase
     artifact_requirements_resolver: ArtifactRequirementsResolverFn = (
         _resolve_phase_required_artifact
@@ -278,7 +278,7 @@ class PipelineDeps:
         core: PipelineCore | None = None,
         display_context: DisplayContext | object = _UNSET,
         model_identity: MultimodalModelIdentity | None | object = _UNSET,
-        system_prompt_materializer: MaterializeSystemPromptFn | object = _UNSET,
+        master_prompt_materializer: MaterializeMasterPromptFn | object = _UNSET,
         phase_prompt_materializer: PhasePromptMaterializerFn | object = _UNSET,
         artifact_requirements_resolver: ArtifactRequirementsResolverFn | object = _UNSET,
         registry_factory: Callable[[UnifiedConfig], object] | None = None,
@@ -315,8 +315,8 @@ class PipelineDeps:
             core_overrides["display_context"] = display_context
         if model_identity is not _UNSET:
             core_overrides["model_identity"] = model_identity
-        if system_prompt_materializer is not _UNSET:
-            core_overrides["system_prompt_materializer"] = system_prompt_materializer
+        if master_prompt_materializer is not _UNSET:
+            core_overrides["master_prompt_materializer"] = master_prompt_materializer
         if phase_prompt_materializer is not _UNSET:
             core_overrides["phase_prompt_materializer"] = phase_prompt_materializer
         if artifact_requirements_resolver is not _UNSET:
@@ -332,10 +332,10 @@ class PipelineDeps:
                     if model_identity is _UNSET
                     else cast("MultimodalModelIdentity | None", model_identity)
                 ),
-                system_prompt_materializer=(
-                    _materialize_system_prompt
-                    if system_prompt_materializer is _UNSET
-                    else cast("MaterializeSystemPromptFn", system_prompt_materializer)
+                master_prompt_materializer=(
+                    _materialize_master_prompt
+                    if master_prompt_materializer is _UNSET
+                    else cast("MaterializeMasterPromptFn", master_prompt_materializer)
                 ),
                 phase_prompt_materializer=(
                     _materialize_prompt_for_phase
@@ -365,12 +365,12 @@ class PipelineDeps:
                         "MultimodalModelIdentity | None", core_overrides["model_identity"]
                     ),
                 )
-            if "system_prompt_materializer" in core_overrides:
+            if "master_prompt_materializer" in core_overrides:
                 effective_core = dataclasses.replace(
                     effective_core,
-                    system_prompt_materializer=cast(
-                        "MaterializeSystemPromptFn",
-                        core_overrides["system_prompt_materializer"],
+                    master_prompt_materializer=cast(
+                        "MaterializeMasterPromptFn",
+                        core_overrides["master_prompt_materializer"],
                     ),
                 )
             if "phase_prompt_materializer" in core_overrides:
@@ -426,9 +426,9 @@ class PipelineDeps:
         return self.core.model_identity
 
     @property
-    def system_prompt_materializer(self) -> MaterializeSystemPromptFn:
-        """Backward-compatible accessor for ``core.system_prompt_materializer``."""
-        return self.core.system_prompt_materializer
+    def master_prompt_materializer(self) -> MaterializeMasterPromptFn:
+        """Backward-compatible accessor for ``core.master_prompt_materializer``."""
+        return self.core.master_prompt_materializer
 
     @property
     def phase_prompt_materializer(self) -> PhasePromptMaterializerFn:
@@ -601,7 +601,7 @@ __all__ = [
     "CheckMcpBridgeHealthFn",
     "DefaultPipelineFactory",
     "HeartbeatPolicyFromEnvFn",
-    "MaterializeSystemPromptFn",
+    "MaterializeMasterPromptFn",
     "McpSupervisorFactoryFn",
     "PhasePromptMaterializerFn",
     "PipelineCore",

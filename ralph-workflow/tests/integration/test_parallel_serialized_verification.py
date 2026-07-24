@@ -16,7 +16,7 @@ from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect
-from ralph.pipeline.events import WorkerFailedEvent
+from ralph.pipeline.events import WorkerCompletedEvent, WorkerFailedEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
@@ -441,15 +441,22 @@ class TestSerializedPostFanoutVerification:
         proves that guarantee holds through the call chain.
         """
 
-        unit_a = _make_work_unit("unit-a")
-        unit_b = _make_work_unit("unit-b")
+        units = tuple(
+            WorkUnit(
+                unit_id=f"unit-{number}",
+                description=f"Work unit {number}",
+                allowed_directories=[f"src/unit-{number}"],
+                step_ids=[f"S-{number}"],
+            )
+            for number in range(1, 6)
+        )
         effect = FanOutEffect(
-            work_units=(unit_a, unit_b),
-            max_workers=2,
+            work_units=units,
+            max_workers=5,
             run_post_fanout_verification=True,
         )
-        state = PipelineState(phase="development", work_units=(unit_a, unit_b))
-        policy_bundle = _make_policy_bundle(max_workers=2)
+        state = PipelineState(phase="development", work_units=units)
+        policy_bundle = _make_policy_bundle(max_workers=5)
         workspace_scope = WorkspaceScope(tmp_path)
 
         timestamps: dict[str, float] = {}
@@ -467,8 +474,12 @@ class TestSerializedPostFanoutVerification:
             del kwargs
             timestamps["fan_out_started"] = time.monotonic()
             call_order.append("fan_out")
+            for unit in units:
+                call_order.append(f"worker:{unit.unit_id}")
             timestamps["fan_out_ended"] = time.monotonic()
-            return []
+            return [
+                WorkerCompletedEvent(unit_id=unit.unit_id, exit_code=0) for unit in units
+            ]
 
         async def _fake_run_process_async(
             command: str,
@@ -508,6 +519,10 @@ class TestSerializedPostFanoutVerification:
         assert call_order.index("fan_out") < call_order.index("verify"), (
             f"fan_out must precede verify, got: {call_order}"
         )
+        assert call_order[-1] == "verify"
+        assert [entry for entry in call_order if entry.startswith("worker:")] == [
+            f"worker:{unit.unit_id}" for unit in units
+        ]
         # Verify started at or after fan_out ended (no overlap)
         assert timestamps["verify_started"] >= timestamps["fan_out_ended"], (
             f"verify must not start before fan_out ends: "

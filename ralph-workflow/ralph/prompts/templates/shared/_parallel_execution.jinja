@@ -1,0 +1,16 @@
+Choose the execution shape from the plan's actual structure:
+- **Compact/linear:** For a compact, linear plan with only a few tightly related steps, execute it directly in the main session. Do not create delegation overhead for work that is faster and clearer to do directly.
+- **Independent units:** For multiple subplans, `## Work Units`, `## Parallel Plan`, or equivalent independent units, default to a dedicated sub-agent for each independent unit when your runtime supports it. These headings are common cues, not required plan structure or validator requirements.
+
+Assign disjoint file ownership before dispatch and respect explicit dependency ordering. Do not duplicate work between units.
+
+When the EXECUTION PLAN above declares `## Work Units` or `## Parallel Plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within each work unit's declared `Directories:`, and collecting concrete implementation and verification proof from each unit. Ralph Workflow exposes no coordination command for plan work — dispatching, supervising, and reconciling sub-agents is entirely your job. If your agent runtime does not support sub-agents, execute the same plan sequentially in `[unit-ID]` order.
+
+For 4-5 units, dispatch every independent ready unit in parallel; collect each unit's proof; fan in; integrate the combined result; then run cross-unit verification and final acceptance verification.
+
+Sub-agents are not limited to declared work units. Even when the plan declares neither field, use them whenever it genuinely helps:
+- **Information gathering**: fan out read-only sub-agents to locate code, map call sites, or research APIs instead of reading file after file in your own context.
+- **Naturally concurrent steps**: plan steps with no dependency between them and disjoint target files may run as separate sub-agents at the same time.
+- **Independent checks**: investigations or verifications that do not depend on each other can run concurrently while you continue the next step.
+
+When to stay sequential: steps that touch the same files, steps ordered by `Depends on:`, and any work whose outcome decides what the next step should do. Never let two sub-agents edit the same file. Integration, final verification, and artifact submission always happen in your main session.

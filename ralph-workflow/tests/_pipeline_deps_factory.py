@@ -16,7 +16,7 @@ from ralph.pipeline.factory import (
     ArtifactRequirementsResolverFn,
     CheckMcpBridgeHealthFn,
     HeartbeatPolicyFromEnvFn,
-    MaterializeSystemPromptFn,
+    MaterializeMasterPromptFn,
     McpSupervisorFactoryFn,
     PhasePromptMaterializerFn,
     PipelineDeps,
@@ -154,21 +154,21 @@ _phase_prompt_materializer: PhasePromptMaterializerFn = cast(
 )
 
 
-def _system_prompt_materializer_impl(
+def _master_prompt_materializer_impl(
     workspace_root: Path,
     name: str,
-    default_current_prompt: str | None = None,
+    default_product_criteria: str | None = None,
     worker_namespace: Path | None = None,
 ) -> str:
-    del default_current_prompt
+    del default_product_criteria
     root = worker_namespace if worker_namespace is not None else workspace_root
-    path = Path(root) / ".agent" / "tmp" / f"system_prompt_{name}.md"
+    path = Path(root) / ".agent" / "tmp" / f"master_prompt_{name}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("system prompt", encoding="utf-8")
+    path.write_text("master prompt", encoding="utf-8")
     return str(path)
 
 
-_system_prompt_materializer: MaterializeSystemPromptFn = _system_prompt_materializer_impl
+_master_prompt_materializer: MaterializeMasterPromptFn = _master_prompt_materializer_impl
 
 
 def _mcp_supervisor_factory(
@@ -194,7 +194,7 @@ def make_test_pipeline_deps(
     *,
     bridge: object | None = None,
     bridge_factory: BridgeFactory | None = None,
-    system_prompt_materializer: MaterializeSystemPromptFn | None = None,
+    master_prompt_materializer: MaterializeMasterPromptFn | None = None,
     phase_prompt_materializer: PhasePromptMaterializerFn | None = None,
     artifact_requirements_resolver: ArtifactRequirementsResolverFn | None = None,
     registry_factory: Callable[[UnifiedConfig], object] | None = None,
@@ -215,7 +215,7 @@ def make_test_pipeline_deps(
         display_context=display_context,
         model_identity=model_identity,
         registry_factory=registry_factory,
-        system_prompt_materializer=(system_prompt_materializer or _system_prompt_materializer),
+        master_prompt_materializer=(master_prompt_materializer or _master_prompt_materializer),
         phase_prompt_materializer=(phase_prompt_materializer or _phase_prompt_materializer),
         artifact_requirements_resolver=(
             artifact_requirements_resolver or _artifact_requirements_resolver

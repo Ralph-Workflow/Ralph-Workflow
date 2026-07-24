@@ -61,7 +61,7 @@ def test_invoke_prompt_file_uses_managed_runtime_contract(
     deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
         start_mcp_server=fake_start_mcp_server,
         invoke_agent=fake_invoke_agent,
-        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        materialize_master_prompt=lambda *args: str(tmp_path / "system.md"),
         workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
     )
 
@@ -73,7 +73,7 @@ def test_invoke_prompt_file_uses_managed_runtime_contract(
             session_id_prefix="prompt-helper",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            system_prompt_name="prompt-helper",
+            master_prompt_name="prompt-helper",
         ),
         deps=deps,
     ) as runtime:
@@ -84,7 +84,7 @@ def test_invoke_prompt_file_uses_managed_runtime_contract(
     assert session.drain == "standalone"
     assert set(session.capabilities) == {"workspace.read", "artifact.submit"}
     options = cast("Any", captured["options"])
-    assert options.system_prompt_file == str(tmp_path / "system.md")
+    assert options.master_prompt_file == str(tmp_path / "system.md")
     assert options.workspace_path == tmp_path
     extra_env = options.extra_env
     assert extra_env["RALPH_MCP_ENDPOINT"] == "http://127.0.0.1:9999/mcp"
@@ -116,7 +116,7 @@ def test_runtime_builds_session_plan_when_request_omits_explicit_capabilities(
         build_session_mcp_plan=lambda *args: session_plan,
         start_mcp_server=fake_start_mcp_server,
         invoke_agent=lambda *args, **kwargs: iter(()),
-        materialize_system_prompt=lambda *args: "",
+        materialize_master_prompt=lambda *args: "",
         workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
     )
 
@@ -165,7 +165,7 @@ def test_invoke_prompt_file_does_not_allow_reserved_runtime_env_overrides(
     deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
         start_mcp_server=fake_start_mcp_server,
         invoke_agent=fake_invoke_agent,
-        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        materialize_master_prompt=lambda *args: str(tmp_path / "system.md"),
         workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
     )
 
@@ -177,7 +177,7 @@ def test_invoke_prompt_file_does_not_allow_reserved_runtime_env_overrides(
             session_id_prefix="prompt-helper",
             drain="standalone",
             capabilities=frozenset({"workspace.read"}),
-            system_prompt_name="prompt-helper",
+            master_prompt_name="prompt-helper",
         ),
         deps=deps,
     ) as runtime:
@@ -202,7 +202,7 @@ def test_invoke_prompt_file_does_not_allow_reserved_runtime_env_overrides(
     assert extra_env["SAFE_EXTRA"] == "kept"
 
 
-def test_runtime_open_shuts_down_bridge_when_system_prompt_setup_fails(
+def test_runtime_open_shuts_down_bridge_when_master_prompt_setup_fails(
     tmp_path: Path,
     config_with_helper_agent: UnifiedConfig,
 ) -> None:
@@ -215,7 +215,7 @@ def test_runtime_open_shuts_down_bridge_when_system_prompt_setup_fails(
     deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
         start_mcp_server=fake_start_mcp_server,
         invoke_agent=lambda *args, **kwargs: iter(()),
-        materialize_system_prompt=lambda *args: (_ for _ in ()).throw(RuntimeError("boom")),
+        materialize_master_prompt=lambda *args: (_ for _ in ()).throw(RuntimeError("boom")),
         workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
     )
 
@@ -228,7 +228,7 @@ def test_runtime_open_shuts_down_bridge_when_system_prompt_setup_fails(
                 session_id_prefix="prompt-helper",
                 drain="standalone",
                 capabilities=frozenset({"workspace.read"}),
-                system_prompt_name="prompt-helper",
+                master_prompt_name="prompt-helper",
             ),
             deps=deps,
         )
@@ -282,7 +282,7 @@ def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
     deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
         start_mcp_server=fake_start_mcp_server,
         invoke_agent=fake_invoke_agent,
-        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        materialize_master_prompt=lambda *args: str(tmp_path / "system.md"),
         workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
     )
 
@@ -294,7 +294,7 @@ def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
             session_id_prefix="prompt-helper",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            system_prompt_name="prompt-helper",
+            master_prompt_name="prompt-helper",
         ),
         deps=deps,
     ) as runtime:
@@ -331,7 +331,7 @@ def test_managed_runtime_preserves_supplied_session_id_on_first_attempt(
     deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
         start_mcp_server=fake_start_mcp_server,
         invoke_agent=fake_invoke_agent,
-        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        materialize_master_prompt=lambda *args: str(tmp_path / "system.md"),
         workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
     )
 
@@ -343,7 +343,7 @@ def test_managed_runtime_preserves_supplied_session_id_on_first_attempt(
             session_id_prefix="prompt-helper",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            system_prompt_name="prompt-helper",
+            master_prompt_name="prompt-helper",
         ),
         deps=deps,
     ) as runtime:
@@ -378,7 +378,7 @@ def test_managed_runtime_reports_observed_session_id_on_success(
     deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
         start_mcp_server=fake_start_mcp_server,
         invoke_agent=fake_invoke_agent,
-        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        materialize_master_prompt=lambda *args: str(tmp_path / "system.md"),
         workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
     )
 
@@ -390,7 +390,7 @@ def test_managed_runtime_reports_observed_session_id_on_success(
             session_id_prefix="prompt-helper",
             drain="standalone",
             capabilities=frozenset({"workspace.read", "artifact.submit"}),
-            system_prompt_name="prompt-helper",
+            master_prompt_name="prompt-helper",
         ),
         deps=deps,
     ) as runtime:

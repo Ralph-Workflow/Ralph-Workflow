@@ -9,8 +9,8 @@ status: request_changes
 
 ## What Came Up Short
 
-- [W-1] tests/auth/test_refresh_race.py still contains a 0.1s sleep and asserts on elapsed time; the review asked for a state-based assertion.
+- [RA-001] tests/auth/test_refresh_race.py still contains a 0.1s sleep and asserts on elapsed time; the review asked for a state-based assertion.
 
 ## How To Fix
 
-- [FIX-1] Remove the sleep entirely and assert on observable state: the token remains valid and exactly one rotation occurred; rerun the test 10x to demonstrate determinism.
+- [RA-001] Remove the sleep entirely and assert on observable state: the token remains valid and exactly one rotation occurred; rerun the test 10x to demonstrate determinism.

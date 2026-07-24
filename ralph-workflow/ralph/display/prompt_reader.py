@@ -25,7 +25,7 @@ def find_prompt_path(
     The path is resolved through
     :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
     ``PROMPT_PATH`` env var is honoured in Pro mode. The
-    engine-owned ``.agent/CURRENT_PROMPT.md`` is still checked as a
+    engine-owned ``.agent/PRODUCT_CRITERIA.md`` is still checked as a
     fallback because it is the materialised prompt the agent actually
     reads.
 
@@ -39,8 +39,8 @@ def find_prompt_path(
     path = resolve_effective_prompt_path(workspace_root, env)
     if path.exists():
         return path
-    current_prompt = workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    return current_prompt if current_prompt.exists() else None
+    product_criteria = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
+    return product_criteria if product_criteria.exists() else None
 
 
 def read_prompt_preview(prompt_path: Path) -> tuple[str, ...]:

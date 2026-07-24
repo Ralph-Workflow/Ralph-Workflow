@@ -72,7 +72,7 @@ from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import (
     DefaultPipelineFactory,
-    MaterializeSystemPromptFn,
+    MaterializeMasterPromptFn,
     PipelineCore,
     PipelineDeps,
     _resolve_phase_required_artifact,
@@ -90,7 +90,7 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
-from ralph.prompts.system_prompt import materialize_system_prompt
+from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
@@ -112,7 +112,7 @@ if TYPE_CHECKING:
 # Late-binding reference for the test-patch surface: tests in
 # ``tests/test_cli_commit_command.py`` (and friends) patch names
 # on ``ralph.cli.commands.commit`` at runtime (e.g.
-# ``start_commit_bridge``, ``materialize_system_prompt``,
+# ``start_commit_bridge``, ``materialize_master_prompt``,
 # ``invoke_agent``). Importing the module here at top level (rather
 # than inside the function body) satisfies PLC0415 and gives the
 # plumbing a stable handle to look up the latest attribute values
@@ -180,7 +180,7 @@ def _commit_artifact_requirements_resolver(
 def _apply_commit_deps_overrides(
     deps: PipelineDeps,
     *,
-    materializer: MaterializeSystemPromptFn | None,
+    materializer: MaterializeMasterPromptFn | None,
     registry: object | None,
 ) -> PipelineDeps:
     """Apply commit-specific overrides to a ``PipelineDeps`` bundle.
@@ -194,7 +194,7 @@ def _apply_commit_deps_overrides(
     """
     core = deps.core
     if materializer is not None:
-        core = dataclasses.replace(core, system_prompt_materializer=materializer)
+        core = dataclasses.replace(core, master_prompt_materializer=materializer)
     # Only replace the default artifact resolver. If Pro or a test injected a
     # custom resolver via PipelineCore/ProPipelineHooks, preserve it so the
     # commit path shares the same injectable collaborator contract as the
@@ -225,7 +225,7 @@ def _apply_commit_deps_overrides(
 def _commit_pipeline_deps(
     config: UnifiedConfig,
     display_context: DisplayContext,
-    materializer: MaterializeSystemPromptFn | None,
+    materializer: MaterializeMasterPromptFn | None,
     registry: object | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> PipelineDeps:
@@ -321,7 +321,7 @@ def run_commit_plumbing(
     last_error: Exception | None = None
     output_lines: list[str] = []
 
-    materializer = effective_core.system_prompt_materializer
+    materializer = effective_core.master_prompt_materializer
     with with_bridge_lifetime(
         effective_core,
         effective_bridge_factory,
@@ -444,7 +444,7 @@ def _generate_commit_message_with_agent(
     display_context: DisplayContext,
     prior_session_id: str | None = None,
     output_collector: list[str] | None = None,
-    materializer: MaterializeSystemPromptFn | None = None,
+    materializer: MaterializeMasterPromptFn | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
@@ -574,7 +574,7 @@ def _run_commit_agent_attempt_with_recovery(
     prior_session_id: str | None = None,
     on_retry_failure: typing.Callable[[list[str]], object] | None = None,
     output_collector: list[str] | None = None,
-    materializer: MaterializeSystemPromptFn | None = None,
+    materializer: MaterializeMasterPromptFn | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> tuple[CommitAgentAttempt, str | None, Exception | None]:
     """Run a single commit-agent attempt through the shared execution core.
@@ -763,13 +763,13 @@ def invoke_commit_agent_attempt(
     session_id: str | None = None,
     display_context: DisplayContext,
     session_id_sink: typing.Callable[[str], None] | None = None,
-    materializer: MaterializeSystemPromptFn | None = None,
+    materializer: MaterializeMasterPromptFn | None = None,
 ) -> CommitAgentAttempt:
     """Run one commit-agent invocation attempt and return its result.
 
     .. deprecated::
         Kept as a thin late-binding wrapper for tests that patch
-        ``ralph.cli.commands.commit.{materialize_system_prompt,invoke_agent,
+        ``ralph.cli.commands.commit.{materialize_master_prompt,invoke_agent,
         delete_commit_message_artifacts,read_commit_message_artifact}``.
         New code should call :func:`execute_agent_effect` through
         :func:`_run_commit_agent_attempt_with_recovery`.
@@ -781,8 +781,8 @@ def invoke_commit_agent_attempt(
     # the patches take effect.)
     materialize = _get_patched(
         _commit_module,
-        "materialize_system_prompt",
-        materializer if materializer is not None else materialize_system_prompt,
+        "materialize_master_prompt",
+        materializer if materializer is not None else materialize_master_prompt,
     )
     invoke = _get_patched(_commit_module, "invoke_agent", invoke_agent)
     delete_artifacts = _get_patched(
@@ -793,10 +793,10 @@ def invoke_commit_agent_attempt(
     )
 
     delete_artifacts(attempt_context.repo_root)
-    system_prompt = materialize(
+    master_prompt = materialize(
         workspace_root=attempt_context.repo_root,
         name="commit",
-        default_current_prompt="Commit message generation task.",
+        default_product_criteria="Commit message generation task.",
     )
     if attempt_context.general_config is not None:
         general_cfg = attempt_context.general_config
@@ -810,7 +810,7 @@ def invoke_commit_agent_attempt(
                 extra_env=_stringify_extra_env(attempt_context.extra_env),
                 pure=_is_opencode_agent(agent),
                 session_id=session_id,
-                system_prompt_file=system_prompt,
+                master_prompt_file=master_prompt,
                 required_artifact=_commit_required_artifact(),
             ),
         )
@@ -821,7 +821,7 @@ def invoke_commit_agent_attempt(
             extra_env=_stringify_extra_env(attempt_context.extra_env),
             pure=_is_opencode_agent(agent),
             session_id=session_id,
-            system_prompt_file=system_prompt,
+            master_prompt_file=master_prompt,
             required_artifact=_commit_required_artifact(),
         )
     try:

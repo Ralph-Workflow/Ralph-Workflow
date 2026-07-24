@@ -149,10 +149,6 @@ noop: {value}
         and "must be 'true'" in diagnostic.message
         for diagnostic in diagnostics
     )
-    assert any(
-        diagnostic.rule_id == "SPEC008" and diagnostic.section == "Steps"
-        for diagnostic in diagnostics
-    )
 
 
 def test_plan_document_maps_to_canonical_content_without_json() -> None:
@@ -381,18 +377,173 @@ def test_shell_invocation_guard_still_hard_fails() -> None:
     )
 
 
-def test_truncated_document_degrades_to_line_anchored_diagnostics() -> None:
+def test_partial_free_shape_document_remains_parseable() -> None:
     truncated = _plan_document().split("Satisfies: AC-01")[0]
 
     content, diagnostics = parse_and_validate(truncated, PLAN_SPEC)
 
+    assert content["steps"]
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+
+
+def test_two_independent_subplans_with_repeated_sections_validate() -> None:
+    document = """---
+type: plan
+---
+## Subplan Alpha
+### [S-1] Implement alpha
+Change the alpha component.
+
+Type: file_change
+Files:
+- modify src/alpha.py
+
+## Acceptance Criteria
+- [AC-01] Alpha behavior is observable
+  Satisfied by: S-1
+  Evidence: src/alpha.py
+
+## Subplan Beta
+### [S-2] Implement beta
+Change the beta component.
+
+Type: file_change
+Files:
+- modify src/beta.py
+
+## Acceptance Criteria
+- [AC-02] Beta behavior is observable
+  Satisfied by: S-2
+  Verify: pytest tests/test_beta.py -q
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert [step["number"] for step in _steps(content)] == [1, 2]
+
+
+def test_work_units_can_each_contain_nested_mini_plan_steps() -> None:
+    document = """---
+type: plan
+---
+## Work Units
+- [alpha] Implement alpha independently
+  Directories: src/alpha
+- [beta] Implement beta after alpha
+  Directories: src/beta
+  Depends on: alpha
+
+## Alpha Mini Plan
+### [S-1] Implement alpha
+Change the alpha component.
+
+Type: file_change
+Files:
+- modify src/alpha/main.py
+
+## Beta Mini Plan
+### [S-2] Implement beta
+Change the beta component.
+
+Type: file_change
+Files:
+- modify src/beta/main.py
+Depends on: S-1
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert [step["number"] for step in _steps(content)] == [1, 2]
+    assert content["work_units"] == [
+        {
+            "unit_id": "alpha",
+            "description": "Implement alpha independently",
+            "allowed_directories": ["src/alpha"],
+        },
+        {
+            "unit_id": "beta",
+            "description": "Implement beta after alpha",
+            "allowed_directories": ["src/beta"],
+            "dependencies": ["alpha"],
+        },
+    ]
+
+
+def test_step_ids_are_unique_across_nested_mini_plans() -> None:
+    document = """---
+type: plan
+---
+## Alpha Mini Plan
+### [S-1] Implement alpha
+Alpha work.
+
+## Beta Mini Plan
+### [S-1] Implement beta
+Beta work.
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
     assert content == {}
-    errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
-    assert errors
-    missing_sections = {
-        diagnostic.section for diagnostic in errors if diagnostic.rule_id == "SPEC008"
-    }
-    assert {"Risks", "Verification", "Critical Files"} <= missing_sections
+    assert any(
+        diagnostic.rule_id == "PLAN022" and "S-1" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+def test_unfamiliar_plan_shape_validates_when_consumed_anchors_are_parseable() -> None:
+    document = """---
+type: plan
+---
+## Expedition Ledger
+This intentionally resembles none of the recommended plan outlines.
+
+### [S-7] Cross the first ridge
+Inspect the existing route and record the result.
+
+Location: docs/route.md
+
+## A Completely Different Chapter
+### [S-42] Cross the second ridge
+Update the route after the inspection.
+
+Type: file_change
+Depends on: S-7
+Files:
+- modify docs/route.md
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert [step["number"] for step in _steps(content)] == [7, 42]
+
+
+def test_acceptance_criterion_must_name_evaluatable_evidence_or_command() -> None:
+    document = """---
+type: plan
+---
+## Any Shape
+### [S-1] Implement the change
+Make the behavior observable.
+
+## Acceptance Criteria
+- [AC-01] The code is clean
+  Satisfied by: S-1
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "PLAN020"
+        and diagnostic.section == "Acceptance Criteria"
+        and "Verify" in diagnostic.message
+        and "Evidence" in diagnostic.message
+        for diagnostic in diagnostics
+    )
 
 
 def test_replacing_a_step_with_its_own_block_round_trips_identically() -> None:

@@ -32,7 +32,9 @@ reason: No committable changes; only generated files were touched.
 
 ## Frontmatter
 
-- `type` — required; `commit` or `skip`.
+- `type` — required and closed: `commit` or `skip`. Any other value, including
+  `done` or `wrong`, is a hard error. The diagnostic names both accepted
+  values; correct the frontmatter and resubmit.
 - `subject` — required for `commit`; must be a conventional-commit subject:
   `kind(scope)?!?: lowercase description` with kind one of feat, fix, docs,
   refactor, test, style, perf, build, ci, chore. An optional `!` before the
@@ -59,5 +61,5 @@ Hard errors: missing or non-conventional `subject`; missing `reason` on
 skip; `type` not commit/skip; `## Body` combined with detailed body
 sections; empty `## Files`; malformed `## Excluded Files` entries or an
 unknown exclusion reason; any grammar violation (unknown section, stray
-prose line, duplicate item ID). This artifact has no warning-level
-coercions — fix every diagnostic.
+prose line, duplicate item ID). `done` and `wrong` are not aliases for either
+valid type. Fix every diagnostic.

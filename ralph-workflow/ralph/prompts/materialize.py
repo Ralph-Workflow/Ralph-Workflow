@@ -67,16 +67,16 @@ from ralph.prompts.developer import (
     prompt_planning_xml_with_context,
 )
 from ralph.prompts.materialize_support import (
-    current_prompt_variables as _current_prompt_variables,
-)
-from ralph.prompts.materialize_support import (
     merged_variables as _merged_variables,
 )
 from ralph.prompts.materialize_support import (
-    persist_current_prompt as _persist_current_prompt,
+    persist_product_criteria as _persist_product_criteria,
 )
 from ralph.prompts.materialize_support import (
     phase_payload_variables,
+)
+from ralph.prompts.materialize_support import (
+    product_criteria_variables as _product_criteria_variables,
 )
 from ralph.prompts.payload_refs import (
     sanitize_surrogates as _sanitize_surrogates,
@@ -289,7 +289,7 @@ def _render_prompt_for_phase(
         previous_phase=previous_phase,
         artifacts_policy=artifacts_policy,
     )
-    current_prompt_path = _persist_current_prompt(
+    product_criteria_path = _persist_product_criteria(
         workspace_root,
         prompt_content,
         worker_namespace=worker_namespace,
@@ -339,7 +339,7 @@ def _render_prompt_for_phase(
             workspace_root=workspace_root,
             worker_namespace=worker_namespace,
             prompt_content=prompt_content,
-            current_prompt_path=current_prompt_path,
+            product_criteria_path=product_criteria_path,
             template_name=template_name,
             tmpl_ctx=tmpl_ctx,
             session_caps=session_caps,
@@ -378,7 +378,7 @@ def _render_prompt_for_phase(
             phase_def=phase_def,
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
-            current_prompt_path=current_prompt_path,
+            product_criteria_path=product_criteria_path,
         )
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
@@ -416,10 +416,10 @@ def _render_planning_prompt(
             analysis_feedback_path=analysis_feedback_path,
             artifact_history_path=artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
-            current_prompt_path=str(
-                options.worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+            product_criteria_path=str(
+                options.worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
                 if options.worker_namespace is not None
-                else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+                else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
             ),
             payload_root=str(
                 options.worker_namespace / "tmp" / "prompt_payloads"
@@ -492,10 +492,10 @@ def _render_developer_prompt(
             analysis_feedback_content=analysis_feedback_content,
             plan_path=plan_path,
             analysis_feedback_path=analysis_feedback_path,
-            current_prompt_path=str(
-                options.worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+            product_criteria_path=str(
+                options.worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
                 if options.worker_namespace is not None
-                else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+                else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
             ),
             payload_root=str(
                 options.worker_namespace / "tmp" / "prompt_payloads"
@@ -533,7 +533,7 @@ def _render_template_based_prompt(
     phase_def: PhaseDefinition | None,
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
-    current_prompt_path: str | Path,
+    product_criteria_path: str | Path,
 ) -> str:
     template = tmpl_ctx.registry.get_template(template_name)
     diff_content = _git_diff(workspace_root)
@@ -572,7 +572,7 @@ def _render_template_based_prompt(
     variables.update({k: v for k, v in path_vars.items() if v})
     if phase_def is not None and phase_def.skip_invocation:
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
-    variables.update(_current_prompt_variables(prompt_content, str(current_prompt_path)))
+    variables.update(_product_criteria_variables(prompt_content, str(product_criteria_path)))
     variables["LAST_RETRY_ERROR"] = last_retry_error
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
@@ -588,11 +588,14 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
     del policy
     context = TemplateContext.default()
     template = context.registry.get_template("worker_developer")
+    description = unit.description
+    if unit.step_ids:
+        description = f"{description}\n\nAssigned plan steps: {', '.join(unit.step_ids)}"
     return render_template(
         template,
         {
             "unit_id": unit.unit_id,
-            "description": unit.description,
+            "description": description,
             "allowed_directories": json.dumps(unit.allowed_directories, indent=2),
             "base_prompt": base_prompt,
             "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_MD_ARTIFACT_TOOL}`",

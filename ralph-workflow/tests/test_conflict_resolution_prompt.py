@@ -194,7 +194,7 @@ def test_prompt_carries_none_of_the_in_graph_payload_headings(
         "## Task",
         "EXECUTION PLAN",
         "ORIGINAL REQUEST",
-        "CURRENT_PROMPT.md",
+        "PRODUCT_CRITERIA.md",
     ):
         assert heading not in rendered
 
@@ -270,7 +270,7 @@ def test_the_skills_block_does_not_widen_the_conflict_only_context(
         "## Task",
         "EXECUTION PLAN",
         "ORIGINAL REQUEST",
-        "CURRENT_PROMPT.md",
+        "PRODUCT_CRITERIA.md",
         "ANALYSIS FEEDBACK",
     ):
         assert forbidden not in rendered

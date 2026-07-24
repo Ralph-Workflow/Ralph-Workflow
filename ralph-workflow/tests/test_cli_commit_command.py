@@ -97,7 +97,7 @@ def _claude_commit_agent() -> AgentConfig:
     )
 
 
-def test_commit_invocation_passes_default_current_prompt_to_materialize_system_prompt(
+def test_commit_invocation_passes_default_product_criteria_to_materialize_master_prompt(
     tmp_path: Path,
 ) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
@@ -108,12 +108,12 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
     display_context = make_display_context()
 
     with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt") as mock_materialize,
+        patch("ralph.cli.commands.commit.materialize_master_prompt") as mock_materialize,
         patch("ralph.cli.commands.commit.invoke_agent", return_value=iter([])),
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
         patch("ralph.cli.commands.commit.read_commit_message_artifact", return_value=None),
     ):
-        mock_materialize.return_value = str(tmp_path / ".agent" / "tmp" / "commit_system_prompt.md")
+        mock_materialize.return_value = str(tmp_path / ".agent" / "tmp" / "commit_master_prompt.md")
         invoke_commit_agent_attempt(
             _claude_commit_agent(),
             prompt_file=str(prompt_file),
@@ -127,8 +127,8 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
 
     mock_materialize.assert_called_once()
     _, kwargs = mock_materialize.call_args
-    assert "default_current_prompt" in kwargs
-    assert bool(kwargs["default_current_prompt"])
+    assert "default_product_criteria" in kwargs
+    assert bool(kwargs["default_product_criteria"])
 
 
 def test_submit_artifact_tool_name_claude_interactive() -> None:
@@ -226,7 +226,7 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
         return iter([])
 
     with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
         patch("ralph.cli.commands.commit.read_commit_message_artifact", return_value=None),
@@ -267,7 +267,7 @@ def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> N
         return iter([])
 
     with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
         patch("ralph.cli.commands.commit.read_commit_message_artifact", return_value=None),
@@ -362,7 +362,7 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
         return iter([])
 
     with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
     ):
         result = commit_module._generate_commit_message_with_agent(
@@ -427,7 +427,7 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         return iter([])
 
     with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
     ):
         result = commit_module._generate_commit_message_with_agent(
@@ -495,7 +495,7 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
         return iter([])
 
     with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.materialize_master_prompt", return_value=None),
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
     ):
         result = commit_module._generate_commit_message_with_agent(

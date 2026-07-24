@@ -26,18 +26,15 @@ def test_plan_markdown_maps_to_the_canonical_execution_model() -> None:
     assert is_noop_plan(content) is False
 
 
-def test_plan_markdown_rejects_missing_required_sections_with_line_diagnostics() -> None:
-    truncated = _plan_document().split("## Critical Files", maxsplit=1)[0]
+def test_plan_markdown_accepts_steps_without_the_recommended_optional_sections() -> None:
+    truncated = _plan_document().split("## Critical Files", maxsplit=1)[0].replace(
+        "Satisfies: AC-01\n", ""
+    )
 
     content, diagnostics = parse_and_validate(truncated, get_spec("plan"))
 
-    assert content == {}
-    errors = [item for item in diagnostics if item.severity == "error"]
-    assert errors
-    assert {"Critical Files", "Risks", "Verification"} <= {
-        item.section for item in errors if item.rule_id == "SPEC008"
-    }
-    assert all(item.line > 0 for item in errors)
+    assert content["steps"]
+    assert diagnostics == []
 
 
 def test_plan_markdown_rejects_dangling_stable_id_references() -> None:

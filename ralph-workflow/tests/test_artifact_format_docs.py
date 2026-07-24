@@ -26,6 +26,14 @@ from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
+_CLOSED_STATUS_VOCABULARIES = {
+    "development_result": ("completed", "partial"),
+    "planning_analysis_decision": ("completed", "request_changes", "failed"),
+    "development_analysis_decision": ("completed", "request_changes", "failed"),
+    "review_analysis_decision": ("completed", "request_changes", "failed"),
+    "policy_remediation_analysis_decision": ("completed", "request_changes", "failed"),
+    "smoke_test_result": ("passed", "failed", "partial"),
+}
 
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
@@ -203,3 +211,56 @@ def test_docs_do_not_advertise_retired_json_submission_tools() -> None:
         assert not any(tool in doc for tool in retired), (
             f"{artifact_type} advertises a retired artifact tool"
         )
+
+
+def test_plan_doc_teaches_recommended_outline_without_requiring_a_skeleton() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    for phrase in (
+        "strongly recommended",
+        "optional",
+        "repeatable",
+        "any order",
+        "separate subplans",
+        "nested mini-plans",
+        "globally unique",
+        "resolvable",
+        "evaluatable",
+        "Tiny task: compact checklist",
+        "Medium task: conventional linear plan",
+        "Large task: five-work-unit fan-out",
+        "explicit fan-in integration and verification",
+    ):
+        assert phrase in doc
+    assert doc.count("```markdown") >= 3
+    assert "Required sections:" not in doc
+    assert "closed shapes" not in doc
+
+
+@pytest.mark.parametrize(
+    ("artifact_type", "accepted_values"),
+    _CLOSED_STATUS_VOCABULARIES.items(),
+)
+def test_consumed_status_docs_teach_closed_vocabulary(
+    artifact_type: str,
+    accepted_values: tuple[str, ...],
+) -> None:
+    doc = load_bundled_format_doc(artifact_type)
+    assert doc is not None
+    assert "hard error" in doc.lower()
+    assert "`done`" in doc
+    assert "`wrong`" in doc
+    assert "coerc" not in doc.lower()
+    for value in accepted_values:
+        assert f"`{value}`" in doc
+
+
+def test_commit_message_doc_teaches_closed_type_vocabulary() -> None:
+    doc = load_bundled_format_doc("commit_message")
+    assert doc is not None
+    assert "hard error" in doc.lower()
+    assert "`done`" in doc
+    assert "`wrong`" in doc
+    assert "`commit`" in doc
+    assert "`skip`" in doc
+    assert "coerc" not in doc.lower()

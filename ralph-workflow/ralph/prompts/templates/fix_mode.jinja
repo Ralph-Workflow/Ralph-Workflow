@@ -8,6 +8,8 @@ Apply the required fixes based on the review issues and current plan.
 
 {% include 'shared/_mcp_tools.j2' %}
 
+{% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
+
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt ended without producing the required artifact before declaring completion.
 
@@ -17,6 +19,12 @@ IMPORTANT: The previous attempt ended without producing the required artifact be
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
+
+{% include 'shared/_analysis_context.j2' %}
+
+## SHAPE-AWARE EXECUTION
+
+{% include 'shared/_parallel_execution.j2' %}
 
 ## Fix result artifact contract
 
@@ -28,9 +36,10 @@ Submit one native-markdown document:
 1. Use `type: fix_result` frontmatter, then `## Summary` (exactly one item:
    what you fixed and the evidence), `## Files Changed` (one item per file),
    and optionally `## Next Steps` (one item).
-2. Submit with ralph_submit_md_artifact (`artifact_type="fix_result"`,
+2. Submit with {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} (`artifact_type="fix_result"`,
    `content` = the full markdown document — never JSON).
 3. If the submit tool is unavailable, write the same complete document to
    `.agent/tmp/fix_result.md` instead.
-
-{% include 'shared/_analysis_context.j2' %}
+4. **CALL {{ DECLARE_COMPLETE_TOOL_REFERENCE }} AS YOUR FINAL ACTION.** Submit
+   success text is NOT completion; without it the round is treated as failed
+   and retried.

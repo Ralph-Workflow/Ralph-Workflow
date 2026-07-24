@@ -35,19 +35,19 @@ status: request_changes
 
 ## What Came Up Short
 
-- [W-1] Critical Files omits the real target file.
+- [PA-001] Critical Files omits the real target file.
 
 ## How To Fix
 
-- [FIX-1] Add the target file to `## Critical Files` and resubmit the plan.
+- [PA-001] Add the target file to `## Critical Files` and resubmit the plan.
 ```
 
 ## Frontmatter
 
 - `type` — required; `planning_analysis_decision`.
-- `status` — required; `completed`, `request_changes`, or `failed`. An
-  unknown value is coerced to `completed` with a warning — never rely on
-  that; pick the right status.
+- `status` — required and closed: `completed`, `request_changes`, or `failed`.
+  Any other value, including `done` or `wrong`, is a hard error. The
+  diagnostic names all three accepted values; correct it and resubmit.
 
 ## Sections
 
@@ -55,13 +55,13 @@ status: request_changes
 - `## What Came Up Short` — one item per gap; required (non-empty) when
   status is `request_changes` or `failed`, omitted when `completed`.
 - `## How To Fix` — one concrete remediation per item; same
-  required/omitted rule. Each item's stable ID (e.g. `FIX-1`) is what the
-  next development result cites in `## Analysis Items Addressed`, so keep
-  IDs unique and stable.
+  required/omitted rule. Give each gap the SAME stable ID in both sections
+  (e.g. `PA-001` in `## What Came Up Short` and `## How To Fix`); downstream
+  phases cite that ID to prove closure, so keep IDs unique and stable.
 
 ## Hard errors vs warnings
 
 Hard errors: missing or multiple Summary items; `request_changes`/`failed`
 without non-empty What Came Up Short and How To Fix; wrong `type`;
-duplicate item IDs; any grammar violation. Warning: unknown `status`
-coerced to `completed`.
+duplicate item IDs; any grammar violation; or a `status` outside
+`completed`, `request_changes`, and `failed`.

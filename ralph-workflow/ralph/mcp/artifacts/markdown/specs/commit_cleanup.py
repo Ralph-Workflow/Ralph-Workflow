@@ -71,7 +71,7 @@ COMMIT_CLEANUP_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=normalize_commit_cleanup_content,
-    validate_document=_validate_document,
+    validate_frontmatter=_validate_document,
 )
 
 register_spec(COMMIT_CLEANUP_SPEC)

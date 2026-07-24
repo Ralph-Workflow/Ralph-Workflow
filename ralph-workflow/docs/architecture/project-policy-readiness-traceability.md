@@ -2,7 +2,7 @@
 
 * Status: Verified
 * Date: 2026-07-12
-* Source spec: `.agent/CURRENT_PROMPT.md` (## Acceptance criteria, 26 items)
+* Source spec: `.agent/PRODUCT_CRITERIA.md` (## Acceptance criteria, 26 items)
 * Source implementation: `ralph-workflow/ralph/project_policy/` and
   `ralph-workflow/ralph/cli/commands/run.py`
 * Source tests: `ralph-workflow/tests/project_policy/` (363 passing tests on 2026-07-12)
@@ -92,7 +92,7 @@ named AC row in the matrix below.
 
 Columns:
 
-* **Spec AC #** — the numbered item from `.agent/CURRENT_PROMPT.md` ## Acceptance criteria.
+* **Spec AC #** — the numbered item from `.agent/PRODUCT_CRITERIA.md` ## Acceptance criteria.
 * **Requirement summary** — short restatement for cross-reference.
 * **Implementing symbol(s)** — function or constant that delivers the requirement.
 * **Covering test node id(s)** — node ids in `tests/project_policy/` that bind the requirement and were PASSING on the recorded gate run.

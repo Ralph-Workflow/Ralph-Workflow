@@ -349,9 +349,9 @@ def _invoke_agent_with_recovery(
     elif run_id is None:
         effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
     try:
-        system_prompt_file = _materialize_system_prompt(ctx, pipeline_deps)
+        master_prompt_file = _materialize_master_prompt(ctx, pipeline_deps)
         bridge_ctx = _AgentBridgeCtx(
-            bridge=bridge, session=cast("object", None), system_prompt_file=system_prompt_file
+            bridge=bridge, session=cast("object", None), master_prompt_file=master_prompt_file
         )
         raw_output: deque[str] = (
             raw_output_sink
@@ -517,11 +517,11 @@ def _start_bridge(
     )
 
 
-def _materialize_system_prompt(
+def _materialize_master_prompt(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
 ) -> str:
-    _materialize = pipeline_deps.system_prompt_materializer
+    _materialize = pipeline_deps.master_prompt_materializer
     try:
         return _materialize(
             workspace_root=ctx.workspace_scope.root,
@@ -637,7 +637,7 @@ def _build_attempt_invoke_options(
             workspace_path=ctx.workspace_scope.root,
             extra_env=env,
             session_id=resume_session_id,
-            system_prompt_file=bridge_ctx.system_prompt_file,
+            master_prompt_file=bridge_ctx.master_prompt_file,
             waiting_listener=ctx.waiting_listener,
             pre_output_listener=_emit_pre_output_progress,
             permission_prompt_listener=_make_permission_prompt_listener(ctx),

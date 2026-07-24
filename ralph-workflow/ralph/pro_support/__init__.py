@@ -13,7 +13,7 @@ engine's half of that contract:
   ``RALPH_WORKSPACE`` over the current working directory.
 - ``prompt`` — resolves the operator-visible source prompt path,
   preferring ``PROMPT_PATH`` over ``<workspace>/PROMPT.md``. Callers
-  operating on the materialised ``CURRENT_PROMPT.md`` MUST NOT use this
+  operating on the materialised ``PRODUCT_CRITERIA.md`` MUST NOT use this
   resolver.
 - ``marker`` — read-only reader for the Pro-owned
   ``<workspace>/.ralph/run.json`` marker file and an optional

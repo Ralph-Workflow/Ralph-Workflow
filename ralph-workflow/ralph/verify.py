@@ -379,6 +379,34 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # wt-043: render-integrity audit for the packaged prompt
+        # templates. Renders every top-level .jinja template through the
+        # real registry/partials/render_template path across the main
+        # toggle scenarios (LAST_RETRY_ERROR, ANALYSIS_FEEDBACK,
+        # HAS_GIT_WRITE, HIDE_ARTIFACT_SUBMISSION_GUIDANCE) and fails on
+        # unrendered Jinja markers, include-resolution errors, duplicated
+        # headings, duplicated >=120-char paragraphs, 3+ blank-line runs,
+        # and doubled label lines. In-memory rendering only (<2s) -- no
+        # subprocess, no sleep, no repo mutation. Appended LAST so the
+        # index-based timeout assertions in tests/test_verify.py are not
+        # shifted; NOT budget-tracked (does not count against the
+        # immutable 60-second combined test budget).
+        "template render-integrity audit (audit_template_render_integrity)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_template_render_integrity"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        # wt-043 Task #14: validate every fenced artifact example in packaged
+        # prompt templates and format docs against its registered Markdown
+        # spec. The audit performs bounded local reads and parsing only, so it
+        # is not a test-budget-tracked step.
+        "fenced artifact example audit (audit_fenced_artifact_examples)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 #: Index 2 is ``make test``: the primary test step, charged against

@@ -57,6 +57,21 @@ def test_render_worker_prompt_lists_allowed_directories_as_json(tmp_path: Path) 
     assert json.dumps(unit.allowed_directories, indent=2) in rendered
 
 
+def test_worker_prompt_regression_includes_assigned_nested_plan_steps(tmp_path: Path) -> None:
+    """Regression for plan blocker 6: a worker sees its exact nested step assignment."""
+    policy = load_policy(tmp_path / ".agent")
+    unit = WorkUnit(
+        unit_id="worker-api",
+        description="Implement the API unit",
+        allowed_directories=["src/api"],
+        step_ids=["S-7", "S-8"],
+    )
+
+    rendered = render_worker_prompt(unit=unit, base_prompt=BASE_PROMPT, policy=policy.pipeline)
+
+    assert "Assigned plan steps: S-7, S-8" in rendered
+
+
 def test_render_worker_prompt_does_not_leak_other_unit_data(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     first_unit = WorkUnit(
@@ -227,22 +242,22 @@ def test_materialize_prompt_for_worker_runtime_does_not_wrap_non_development_pro
     assert wrap_calls == []
 
 
-def test_persist_current_prompt_uses_worker_namespace_when_provided(
+def test_persist_product_criteria_uses_worker_namespace_when_provided(
     tmp_path: Path,
 ) -> None:
     worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
 
-    current_prompt_path = materialize_module._persist_current_prompt(
+    product_criteria_path = materialize_module._persist_product_criteria(
         tmp_path,
         "Plan only the assigned worker task",
         worker_namespace=worker_namespace,
     )
 
-    assert current_prompt_path == str(worker_namespace / "tmp" / "CURRENT_PROMPT.md")
-    assert (worker_namespace / "tmp" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+    assert product_criteria_path == str(worker_namespace / "tmp" / "PRODUCT_CRITERIA.md")
+    assert (worker_namespace / "tmp" / "PRODUCT_CRITERIA.md").read_text(encoding="utf-8") == (
         "Plan only the assigned worker task"
     )
-    assert not (tmp_path / ".agent" / "CURRENT_PROMPT.md").exists()
+    assert not (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").exists()
 
 
 def test_materialize_prompt_for_worker_runtime_writes_namespaced_prompt_and_sidecar(

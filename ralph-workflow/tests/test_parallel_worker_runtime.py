@@ -102,9 +102,9 @@ def test_worker_runtime_paths_are_namespaced(tmp_path: Path) -> None:
     )
 
     assert runtime.checkpoint_path == worker_ns / "tmp" / "checkpoint.json"
-    assert runtime.current_prompt_path == worker_ns / "tmp" / "CURRENT_PROMPT.md"
+    assert runtime.product_criteria_path == worker_ns / "tmp" / "PRODUCT_CRITERIA.md"
     assert runtime.prompt_dump_path == worker_ns / "tmp" / "development_prompt.md"
-    assert runtime.system_prompt_path == worker_ns / "tmp" / "development_system_prompt.md"
+    assert runtime.master_prompt_path == worker_ns / "tmp" / "development_master_prompt.md"
     assert runtime.multimodal_sidecar_path == (
         worker_ns / "tmp" / "development_multimodal_handoff.json"
     )
@@ -114,20 +114,20 @@ def test_worker_prompt_helpers_are_namespaced(tmp_path: Path) -> None:
     worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
 
     debug_dump_module = importlib.import_module("ralph.prompts.debug_dump")
-    system_prompt_module = importlib.import_module("ralph.prompts.system_prompt")
+    master_prompt_module = importlib.import_module("ralph.prompts.master_prompt")
 
     worker_prompt_dump_path = getattr(debug_dump_module, "worker_prompt_dump_path", None)
     worker_multimodal_sidecar_path = getattr(
         debug_dump_module, "worker_multimodal_sidecar_path", None
     )
-    worker_current_prompt_path = getattr(system_prompt_module, "worker_current_prompt_path", None)
-    worker_system_prompt_path = getattr(system_prompt_module, "worker_system_prompt_path", None)
+    worker_product_criteria_path = getattr(master_prompt_module, "worker_product_criteria_path", None)
+    worker_master_prompt_path = getattr(master_prompt_module, "worker_master_prompt_path", None)
 
     if (
         worker_prompt_dump_path is None
         or worker_multimodal_sidecar_path is None
-        or worker_current_prompt_path is None
-        or worker_system_prompt_path is None
+        or worker_product_criteria_path is None
+        or worker_master_prompt_path is None
     ):
         pytest.fail(
             "Expected worker-specific prompt/system path helpers to be exposed for parallel "
@@ -141,9 +141,9 @@ def test_worker_prompt_helpers_are_namespaced(tmp_path: Path) -> None:
     assert worker_multimodal_sidecar_path(worker_ns, "development") == (
         worker_ns / "tmp" / "development_multimodal_handoff.json"
     )
-    assert worker_current_prompt_path(worker_ns) == worker_ns / "tmp" / "CURRENT_PROMPT.md"
-    assert worker_system_prompt_path(worker_ns, "development") == (
-        worker_ns / "tmp" / "development_system_prompt.md"
+    assert worker_product_criteria_path(worker_ns) == worker_ns / "tmp" / "PRODUCT_CRITERIA.md"
+    assert worker_master_prompt_path(worker_ns, "development") == (
+        worker_ns / "tmp" / "development_master_prompt.md"
     )
 
 

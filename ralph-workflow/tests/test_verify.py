@@ -72,8 +72,8 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
     Every test that needs ``run_verify`` to walk the entire
     ``_VERIFY_STEPS`` list without any step failing consumes this
     dict.  Centralizing it keeps the per-test bodies small (the
-    verify module has 23 entries and this dict is the single
-    source of truth for the command/args/returncode tuples).
+    verify-step list and this dict share one source of truth for
+    the command/args/returncode tuples).
     """
     return {
         ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
@@ -190,6 +190,16 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             args=("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption"),
             returncode=0, stdout="idempotent write adoption audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_template_render_integrity"),
+            returncode=0, stdout="template render-integrity audit ok\n",
+        ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples"),
+            returncode=0, stdout="fenced artifact example audit ok\n",
+        ),
     }
 
 
@@ -232,6 +242,8 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_idempotent_write_adoption")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_template_render_integrity")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_fenced_artifact_examples")),
     ]
     assert all(
         args != ("test-auto-integrate-e2e",)
@@ -261,6 +273,8 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[21][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[22][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[23][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[24][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[25][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -361,7 +375,7 @@ def test_run_verify_single_step_within_budget(
     """run_verify() with one test step that appears to finish in 1s → passes."""
     runner = StubRunner(_all_steps_success_responses())
 
-    # Twenty-four steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass,
+    # Twenty-six steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass,
     # 4=typecheck_bypass, 5=test_policy audit, 6=mcp_timeout audit,
     # 7=di_seam audit, 8=activity_aware_watchdog audit,
     # 9=watchdog_drift audit, 10=parallelization_dormant audit,
@@ -372,15 +386,18 @@ def test_run_verify_single_step_within_budget(
     # 18=public_docstrings audit, 19=terminal_escape_containment audit,
     # 20=repo_structure audit, 21=fsevents_watch_consolidation audit,
     # 22=log_sink_buffering audit, 23=idempotent_write_adoption audit,
-    # 24=auto-integrate end-to-end).
+    # 24=template_render_integrity audit,
+    # 25=fenced_artifact_examples audit).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
-    # all other steps take 0s. Total: 25 steps x 2 monotonic calls = 50 entries.
+    # all other steps take 0s. Total: 26 steps x 2 monotonic calls = 52 entries.
     times = [
         0.0,
         0.0,
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -577,11 +594,11 @@ def test_run_verify_non_test_steps_not_counted(
     runner = StubRunner(_all_steps_success_responses())
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Twenty-five steps (ruff, mypy, make test, audits, social-proof gate,
+    # Twenty-six steps (ruff, mypy, make test, audits, social-proof gate,
     # resource_lifecycle, skill_auto_commit, public_docstrings,
     # terminal_escape_containment, repo_structure, fsevents_watch_consolidation,
-    # log_sink_buffering, idempotent_write_adoption, auto-integrate end-to-end)
-    # x 2 monotonic calls per step = 50 entries.
+    # log_sink_buffering, idempotent_write_adoption, template render-integrity,
+    # fenced artifact examples) x 2 monotonic calls per step = 52 entries.
     times = [
         0.0,
         100.0,
@@ -633,6 +650,8 @@ def test_run_verify_non_test_steps_not_counted(
         2400.0,
         2500.0,
         2500.0,
+        2500.0,
+        2600.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

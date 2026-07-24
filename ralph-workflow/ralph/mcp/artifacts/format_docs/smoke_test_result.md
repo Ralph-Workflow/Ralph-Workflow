@@ -35,8 +35,9 @@ output_file: tmp/interactive-claude-smoke/todo-list.js
 ## Frontmatter
 
 - `type` — required; `smoke_test_result`.
-- `status` — required; `passed`, `failed`, or `partial`. An unknown value
-  is coerced to `partial` with a warning.
+- `status` — required and closed: `passed`, `failed`, or `partial`. Any other
+  value, including `done` or `wrong`, is a hard error. The diagnostic names
+  all three accepted values; correct it and resubmit.
 - `output_file` — required; path to the smoke output file (keep it under
   `tmp/`).
 
@@ -55,5 +56,5 @@ Record only what was actually observed — never guessed behavior.
 
 Hard errors: missing `output_file`; missing or multiple Summary items;
 empty or missing Headless Guide Checks; `failed` without Observed Breaks;
-wrong `type`; duplicate item IDs; any grammar violation. Warning: unknown
-`status` coerced to `partial`.
+wrong `type`; duplicate item IDs; any grammar violation; or a `status`
+outside `passed`, `failed`, and `partial`.

@@ -3775,10 +3775,10 @@ ralph.prompts.reviewer
    :members:
    :show-inheritance:
 
-ralph.prompts.system_prompt
+ralph.prompts.master_prompt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.prompts.system_prompt
+.. automodule:: ralph.prompts.master_prompt
    :members:
    :show-inheritance:
 
@@ -3867,6 +3867,13 @@ ralph.testing.audit_di_seam
    :members:
    :show-inheritance:
 
+ralph.testing.audit_fenced_artifact_examples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_fenced_artifact_examples
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_idempotent_write_adoption
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3885,6 +3892,13 @@ ralph.testing.audit_resource_lifecycle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_resource_lifecycle
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_template_render_integrity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_template_render_integrity
    :members:
    :show-inheritance:
 

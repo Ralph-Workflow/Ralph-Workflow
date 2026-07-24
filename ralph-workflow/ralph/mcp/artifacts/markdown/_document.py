@@ -18,8 +18,12 @@ class ParsedDocument:
     sections: tuple[ParsedSection, ...]
 
     def section(self, name: str) -> ParsedSection | None:
-        """Return a named section, if present."""
+        """Return the first section with ``name``, if present."""
         return next((section for section in self.sections if section.name == name), None)
+
+    def sections_named(self, name: str) -> tuple[ParsedSection, ...]:
+        """Return every section with ``name`` in document order (repeatable sections)."""
+        return tuple(section for section in self.sections if section.name == name)
 
 
 __all__ = ["ParsedDocument"]

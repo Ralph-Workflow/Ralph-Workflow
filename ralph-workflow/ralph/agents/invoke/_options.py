@@ -31,7 +31,7 @@ class InvokeRuntimeOptions:
     extra_env: dict[str, str] | None = None
     pure: bool = False
     session_id: str | None = None
-    system_prompt_file: str | None = None
+    master_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
@@ -61,7 +61,7 @@ def build_invoke_options_from_config(
         unsafe_mode=general_config.workflow.unsafe_mode,
         pure=rt.pure,
         session_id=rt.session_id,
-        system_prompt_file=rt.system_prompt_file,
+        master_prompt_file=rt.master_prompt_file,
         waiting_listener=rt.waiting_listener,
         pre_output_listener=rt.pre_output_listener,
         permission_prompt_listener=rt.permission_prompt_listener,

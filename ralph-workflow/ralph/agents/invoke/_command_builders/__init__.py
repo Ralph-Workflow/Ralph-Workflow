@@ -487,8 +487,8 @@ class ClaudeInteractiveCommandBuilder:
             cmd.extend(_format_session_flag(config.session_flag, options.session_id))
         if options.settings_json is not None:
             cmd.extend(["--settings", options.settings_json])
-        if options.system_prompt_file:
-            cmd.extend(["--append-system-prompt-file", options.system_prompt_file])
+        if options.master_prompt_file:
+            cmd.extend(["--append-system-prompt-file", options.master_prompt_file])
         effective_model = options.model_flag or config.model_flag
         if effective_model:
             cmd.extend(effective_model.split())
@@ -645,8 +645,8 @@ class DefaultCommandBuilder:
 
         _extend_claude_transport_flags(cmd, transport, options)
 
-        if transport == AgentTransport.CLAUDE and options.system_prompt_file:
-            cmd.extend(["--append-system-prompt-file", options.system_prompt_file])
+        if transport == AgentTransport.CLAUDE and options.master_prompt_file:
+            cmd.extend(["--append-system-prompt-file", options.master_prompt_file])
 
         effective_model = options.model_flag or config.model_flag
         if effective_model:

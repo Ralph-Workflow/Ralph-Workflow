@@ -12,7 +12,7 @@ from ralph.pro_support.prompt import (
     DEFAULT_SOURCE_PROMPT_NAME,
     resolve_effective_prompt_path,
 )
-from ralph.prompts.system_prompt import _sync_current_prompt_file
+from ralph.prompts.master_prompt import _sync_product_criteria_file
 
 if TYPE_CHECKING:
     import pytest
@@ -57,12 +57,12 @@ def test_resolver_handles_dotdot(tmp_path: Path) -> None:
 def test_engine_does_not_modify_prompt_md_under_pro_mode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The operator-visible PROMPT.md MUST be untouched by ``_sync_current_prompt_file``.
+    """The operator-visible PROMPT.md MUST be untouched by ``_sync_product_criteria_file``.
 
     Sets up a workspace with a known PROMPT.md, freezes its stat and
     contents, runs the engine's prompt-sync helper, and asserts the
     PROMPT.md bytes are byte-for-byte unchanged while the engine-owned
-    ``.agent/CURRENT_PROMPT.md`` IS updated to reflect the prompt.
+    ``.agent/PRODUCT_CRITERIA.md`` IS updated to reflect the prompt.
     """
     workspace_root = tmp_path
     prompt_text = "# Operator prompt\nDo not touch this.\n"
@@ -77,13 +77,13 @@ def test_engine_does_not_modify_prompt_md_under_pro_mode(
     before_text = prompt_path.read_text(encoding="utf-8")
 
     try:
-        result_path = _sync_current_prompt_file(
+        result_path = _sync_product_criteria_file(
             workspace_root=workspace_root,
-            default_current_prompt=None,
+            default_product_criteria=None,
         )
-        assert result_path == workspace_root / ".agent" / "CURRENT_PROMPT.md"
+        assert result_path == workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
         assert result_path.read_text(encoding="utf-8") == prompt_text, (
-            "engine must mirror PROMPT.md into CURRENT_PROMPT.md"
+            "engine must mirror PROMPT.md into PRODUCT_CRITERIA.md"
         )
 
         after_mtime_ns = prompt_path.stat().st_mtime_ns
@@ -115,11 +115,11 @@ def test_resolver_uses_os_environ_when_env_arg_omitted(tmp_path: Path) -> None:
 def test_engine_sync_uses_resolver_under_pro_mode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With ``PROMPT_PATH`` set, ``_sync_current_prompt_file`` reads the resolved path.
+    """With ``PROMPT_PATH`` set, ``_sync_product_criteria_file`` reads the resolved path.
 
     The test creates a prompt at a non-default location, sets
     ``PROMPT_PATH`` to that location, runs the engine's sync helper, and
-    asserts the engine-owned ``.agent/CURRENT_PROMPT.md`` ends up
+    asserts the engine-owned ``.agent/PRODUCT_CRITERIA.md`` ends up
     matching the contents of the resolved prompt.
     """
     workspace_root = tmp_path
@@ -129,11 +129,11 @@ def test_engine_sync_uses_resolver_under_pro_mode(
 
     monkeypatch.setenv("PROMPT_PATH", str(target))
 
-    result_path = _sync_current_prompt_file(
+    result_path = _sync_product_criteria_file(
         workspace_root=workspace_root,
-        default_current_prompt=None,
+        default_product_criteria=None,
     )
-    assert result_path == workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    assert result_path == workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     assert result_path.read_text(encoding="utf-8") == "# Custom prompt\n", (
         "engine must read the PROMPT_PATH-resolved file, not <workspace>/PROMPT.md"
     )

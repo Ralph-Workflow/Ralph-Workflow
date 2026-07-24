@@ -128,6 +128,7 @@ Outcome: The plan is persisted without a completion sentinel.
 ## Acceptance Criteria
 - [AC-01] A valid plan receives a run-scoped receipt
   Satisfied by: S-1
+  Verify: pytest tests/test_canonical_artifact_submit.py -q
 
 ## Risks
 - [R-1] Stale JSON assumptions survive

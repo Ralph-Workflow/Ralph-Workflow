@@ -366,7 +366,7 @@ def invoke_agent(
         config,
         base_opts.extra_env,
         base_opts.workspace_path,
-        system_prompt_file=base_opts.system_prompt_file,
+        master_prompt_file=base_opts.master_prompt_file,
         unsafe_mode=base_opts.unsafe_mode,
     )
     # The try/finally boundary starts IMMEDIATELY after
@@ -405,7 +405,7 @@ def invoke_agent(
                 mcp_endpoint=mcp_endpoint,
                 allowed_mcp_tool_names=allowed_mcp_tool_names,
                 unsafe_mode=opts.unsafe_mode,
-                system_prompt_file=opts.system_prompt_file,
+                master_prompt_file=opts.master_prompt_file,
                 workspace_path=opts.workspace_path,
                 initial_session_id=opts.initial_session_id,
                 settings_json=opts.settings_json,
@@ -585,7 +585,7 @@ def resolve_invocation_runtime(
     workspace_path: Path | None,
     *,
     _base_env: Mapping[str, str] | None = None,
-    system_prompt_file: str | None = None,
+    master_prompt_file: str | None = None,
     unsafe_mode: bool = False,
 ) -> ResolvedInvocationRuntime:
     """Build the runtime configuration needed to launch an agent.
@@ -601,7 +601,7 @@ def resolve_invocation_runtime(
         extra_env,
         workspace_path,
         base_env=_base_env,
-        system_prompt_file=system_prompt_file,
+        master_prompt_file=master_prompt_file,
         unsafe_mode=unsafe_mode,
     )
 

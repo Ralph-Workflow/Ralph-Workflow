@@ -1,4 +1,4 @@
-"""Prompt helper system prompt builder."""
+"""Prompt helper master prompt builder."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def build_prompt_helper_prompt(
     current_draft: dict[str, object] | None = None,
     user_idea: str | None = None,
 ) -> str:
-    """Build the system prompt for the non-interactive prompt-helper agent.
+    """Build the master prompt for the non-interactive prompt-helper agent.
 
     The returned prompt instructs the agent to turn the supplied idea (and/or an
     existing PROMPT.md or current draft) into a structured product specification

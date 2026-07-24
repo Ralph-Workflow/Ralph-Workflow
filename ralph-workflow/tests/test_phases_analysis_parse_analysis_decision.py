@@ -93,7 +93,7 @@ class TestParseAnalysisDecision:
         result = parse_analysis_decision_status(ctx, "development_analysis")
         assert result == "failed"
 
-    def test_invalid_synonym_uses_lenient_completed_fallback(self) -> None:
+    def test_invalid_synonym_fails_closed(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = _analysis_decision_markdown(
@@ -102,9 +102,9 @@ class TestParseAnalysisDecision:
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision_status(ctx, "development_analysis")
-        assert result == "completed"
+        assert result is None
 
-    def test_unknown_status_uses_lenient_completed_fallback(self) -> None:
+    def test_unknown_status_fails_closed(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = _analysis_decision_markdown(
@@ -113,7 +113,7 @@ class TestParseAnalysisDecision:
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision_status(ctx, "development_analysis")
-        assert result == "completed"
+        assert result is None
 
     def test_malformed_markdown_returns_none(self) -> None:
         workspace = MagicMock()

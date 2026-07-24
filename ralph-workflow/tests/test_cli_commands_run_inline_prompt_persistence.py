@@ -81,21 +81,21 @@ class TestInlinePromptPersistence:
 
     @pytest.mark.timeout_seconds(3)
     @pytest.mark.subprocess_e2e
-    def test_inline_prompt_is_written_to_current_prompt_md(
+    def test_inline_prompt_is_written_to_product_criteria_md(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """run_pipeline with inline_prompt writes to .agent/CURRENT_PROMPT.md."""
+        """run_pipeline with inline_prompt writes to .agent/PRODUCT_CRITERIA.md."""
         scope = _configure_workspace(monkeypatch, tmp_path)
         monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
         monkeypatch.setattr(run_module.state, "run_func", lambda *_args, **_kwargs: 0)
 
         run_module.run_pipeline(inline_prompt="do a quick change")
 
-        current_prompt = scope.root / ".agent" / "CURRENT_PROMPT.md"
-        assert current_prompt.exists(), "CURRENT_PROMPT.md must be created for inline prompts"
-        assert current_prompt.read_text(encoding="utf-8") == "do a quick change"
+        product_criteria = scope.root / ".agent" / "PRODUCT_CRITERIA.md"
+        assert product_criteria.exists(), "PRODUCT_CRITERIA.md must be created for inline prompts"
+        assert product_criteria.read_text(encoding="utf-8") == "do a quick change"
 
     @pytest.mark.timeout_seconds(3)
     @pytest.mark.subprocess_e2e

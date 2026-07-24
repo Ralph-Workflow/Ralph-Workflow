@@ -379,14 +379,15 @@ def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[s
 
 
 def _plan_proof_errors(ctx: PhaseContext, dev_result: DevelopmentResult) -> list[str]:
+    submitted = [proof.plan_item for proof in dev_result.plan_items_proven]
+    work_unit_ids = _get_canonical_work_unit_ids(ctx)
+    if work_unit_ids and any(reference in work_unit_ids for reference in submitted):
+        return _work_unit_proof_errors(work_unit_ids, submitted)
     step_refs = _get_canonical_step_refs(ctx)
     if step_refs:
-        return _step_proof_errors(step_refs, [p.plan_item for p in dev_result.plan_items_proven])
-    work_unit_ids = _get_canonical_work_unit_ids(ctx)
+        return _step_proof_errors(step_refs, submitted)
     if work_unit_ids:
-        return _work_unit_proof_errors(
-            work_unit_ids, [p.plan_item for p in dev_result.plan_items_proven]
-        )
+        return _work_unit_proof_errors(work_unit_ids, submitted)
     return []
 
 

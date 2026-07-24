@@ -62,7 +62,7 @@ class TestHandleDevelopmentAnalysis:
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].decision == "completed"
 
-    def test_unknown_status_uses_lenient_completed_fallback(self) -> None:
+    def test_unknown_status_fails_closed(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
@@ -71,10 +71,10 @@ class TestHandleDevelopmentAnalysis:
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
-        assert isinstance(result[0], AnalysisDecisionEvent)
-        assert result[0].decision == "completed"
+        assert isinstance(result[0], PhaseFailureEvent)
+        assert result[0].retry_in_session is True
 
-    def test_revise_status_uses_lenient_completed_fallback(self) -> None:
+    def test_revise_status_fails_closed(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
@@ -83,8 +83,8 @@ class TestHandleDevelopmentAnalysis:
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
-        assert isinstance(result[0], AnalysisDecisionEvent)
-        assert result[0].decision == "completed"
+        assert isinstance(result[0], PhaseFailureEvent)
+        assert result[0].retry_in_session is True
 
     def test_failure_decision_returns_analysis_decision_event(self) -> None:
         effect = self._mock_invoke_effect()
@@ -98,7 +98,7 @@ class TestHandleDevelopmentAnalysis:
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].decision == "failed"
 
-    def test_escalate_status_uses_lenient_completed_fallback(self) -> None:
+    def test_escalate_status_fails_closed(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
@@ -107,8 +107,8 @@ class TestHandleDevelopmentAnalysis:
 
         result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
-        assert isinstance(result[0], AnalysisDecisionEvent)
-        assert result[0].decision == "completed"
+        assert isinstance(result[0], PhaseFailureEvent)
+        assert result[0].retry_in_session is True
 
     def test_missing_artifact_returns_phase_failure_recoverable(self) -> None:
         effect = self._mock_invoke_effect()

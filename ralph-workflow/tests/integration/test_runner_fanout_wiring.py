@@ -36,11 +36,12 @@ def _legacy_display() -> runner_module.ParallelDisplay:
     return runner_module.ParallelDisplay(make_display_context())
 
 
-def _make_work_unit(unit_id: str) -> WorkUnit:
+def _make_work_unit(unit_id: str, *, step_ids: tuple[str, ...] = ()) -> WorkUnit:
     return WorkUnit(
         unit_id=unit_id,
         description=f"Work unit {unit_id}",
         allowed_directories=[f"src/{unit_id}"],
+        step_ids=list(step_ids),
     )
 
 
@@ -219,7 +220,7 @@ def test_execute_fan_out_sync_persists_worker_manifests_with_distinct_phase_and_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    unit = _make_work_unit("unit-a")
+    unit = _make_work_unit("unit-a", step_ids=("S-7", "S-8"))
     effect = FanOutEffect(work_units=(unit,), max_workers=1, phase="parallel-dev")
     state = PipelineState(
         phase="parallel-dev",
@@ -270,6 +271,8 @@ def test_execute_fan_out_sync_persists_worker_manifests_with_distinct_phase_and_
     manifest = ParallelWorkerManifest.load(manifest_path)
     assert manifest.phase == "parallel-dev"
     assert manifest.drain == "development"
+    assert manifest.step_ids == ["S-7", "S-8"]
+    assert manifest.to_work_unit().step_ids == ["S-7", "S-8"]
     assert manifest.worker_namespace == str(tmp_path / ".agent" / "workers" / unit.unit_id)
 
 

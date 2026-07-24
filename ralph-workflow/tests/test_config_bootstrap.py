@@ -165,7 +165,7 @@ _EXPECTED_IGNORED_LOCAL_PATHS = (
     ".agent/tmp/last_retry_error_development.txt",
     ".agent/raw/unit-a.log",
     ".agent/workers/unit-a/artifacts/development_result.json",
-    ".agent/CURRENT_PROMPT.md",
+    ".agent/PRODUCT_CRITERIA.md",
     "PROMPT.md",
     "wt-123/worktree-file.txt",
 )

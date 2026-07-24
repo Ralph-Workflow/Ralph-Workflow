@@ -41,7 +41,7 @@ class RuntimeResolver(Protocol):
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
         """Build the runtime configuration for agent invocation.
@@ -51,7 +51,7 @@ class RuntimeResolver(Protocol):
             extra_env: Additional environment variables.
             workspace_path: Workspace directory path.
             base_env: Base environment variables.
-            system_prompt_file: Path to system prompt file.
+            master_prompt_file: Path to master prompt file.
             unsafe_mode: Whether to allow unsafe mode.
 
         Returns:
@@ -75,7 +75,7 @@ class OpencodeRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
@@ -124,7 +124,7 @@ class NanocoderRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
@@ -187,7 +187,7 @@ class CodexRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
@@ -201,14 +201,14 @@ class CodexRuntimeResolver:
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
 
-        if not endpoint and system_prompt_file is None:
+        if not endpoint and master_prompt_file is None:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
 
         codex_home, upstreams = prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
             existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
-            system_prompt_file=system_prompt_file,
+            master_prompt_file=master_prompt_file,
             unsafe_mode=unsafe_mode,
         )
         runtime_env["CODEX_HOME"] = codex_home
@@ -261,7 +261,7 @@ class ClaudeRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
@@ -302,7 +302,7 @@ class AgyRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
@@ -348,7 +348,7 @@ class DefaultRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
         _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
@@ -382,7 +382,7 @@ class PiRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
         _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
@@ -427,7 +427,7 @@ class CursorRuntimeResolver:
         workspace_path: Path | None,
         *,
         base_env: Mapping[str, str] | None = None,
-        system_prompt_file: str | None = None,
+        master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
         from ralph.agents.invoke import (  # noqa: PLC0415

@@ -201,3 +201,18 @@ def test_commit_cleanup_template_classifies_markdown_artifacts_as_generated() ->
     assert ".agent/artifacts/commit_cleanup.md" in text
     assert ".agent/artifacts/commit_cleanup.json" not in text
     assert "Generated text/Markdown artifacts" in text
+
+
+def test_mcp_tools_roster_describes_search_tools_correctly() -> None:
+    """search_files is a glob matcher and grep_files is the content searcher —
+    the roster bullets must not drift back to describing search_files as a
+    content search (a real prior defect in this partial)."""
+    text = _template("shared/_mcp_tools")
+
+    assert "Use {{READ_FILE_TOOL_REFERENCE}} to read a file" in text
+    assert "Use {{SEARCH_FILES_TOOL_REFERENCE}} to find files by glob pattern" in text
+    assert "Use {{GREP_FILES_TOOL_REFERENCE}} to search file contents for a pattern" in text
+    assert "{{SEARCH_FILES_TOOL_REFERENCE}} to search file contents" not in text
+    # report_progress is absent in planning drains; the bullet must be gated
+    # so the prompt never renders "- Use  to report status".
+    assert "{% if REPORT_PROGRESS_TOOL_NAME %}" in text

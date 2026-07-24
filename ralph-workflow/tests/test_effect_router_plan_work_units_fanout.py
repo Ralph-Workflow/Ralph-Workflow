@@ -129,6 +129,25 @@ def _two_disjoint_units() -> list[dict[str, object]]:
     ]
 
 
+def _five_nested_work_units_plan() -> str:
+    sections = []
+    for number, name in enumerate(("api", "web", "docs", "contract", "integration"), start=1):
+        sections.append(
+            f"""## Work Units
+- [{name}] Implement the {name} unit
+  Directories: src/{name}
+
+### [S-{number}] Implement {name}
+Change the {name} component.
+
+Type: file_change
+Files:
+- modify src/{name}/main.py
+"""
+        )
+    return "---\ntype: plan\n---\n" + "\n".join(sections)
+
+
 def test_development_phase_fans_out_from_plan_artifact_work_units(tmp_path: Path) -> None:
     _write_plan_artifact(tmp_path, _plan_document(_two_disjoint_units()))
     state = PipelineState(phase="development")
@@ -146,6 +165,29 @@ def test_development_phase_fans_out_from_plan_artifact_work_units(tmp_path: Path
     parallelization = legacy_bundle.pipeline.phases["development"].parallelization
     assert parallelization is not None
     assert effect.max_workers == parallelization.max_parallel_workers
+
+
+def test_fanout_regression_routes_five_units_with_nested_step_assignments(
+    tmp_path: Path,
+) -> None:
+    """Regression for plan blocker 6: routing retains every unit's mini-plan."""
+    _write_plan_artifact(tmp_path, _five_nested_work_units_plan())
+
+    effect = determine_effect_from_policy(
+        PipelineState(phase="development"),
+        _legacy_fan_out_policy_bundle(),
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+    )
+
+    assert isinstance(effect, FanOutEffect)
+    assert [(unit.unit_id, unit.step_ids) for unit in effect.work_units] == [
+        ("api", ["S-1"]),
+        ("web", ["S-2"]),
+        ("docs", ["S-3"]),
+        ("contract", ["S-4"]),
+        ("integration", ["S-5"]),
+    ]
 
 
 def test_single_plan_work_unit_falls_back_to_serial_agent(tmp_path: Path) -> None:

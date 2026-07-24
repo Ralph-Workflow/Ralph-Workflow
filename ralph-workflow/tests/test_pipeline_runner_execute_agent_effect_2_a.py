@@ -545,7 +545,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=runner_module.AgentRegistry.from_config,
         )
 
@@ -589,7 +589,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=_registry_factory(MagicMock()).from_config,
         )
 
@@ -610,7 +610,7 @@ class TestExecuteAgentEffectA:
         assert (tmp_path / ".agent" / "artifacts" / ".plan.draft.md").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
-    def test_execute_agent_effect_worker_mode_uses_namespaced_system_prompt_and_session(
+    def test_execute_agent_effect_worker_mode_uses_namespaced_master_prompt_and_session(
         self,
         tmp_path: Path,
     ) -> None:
@@ -621,10 +621,10 @@ class TestExecuteAgentEffectA:
             drain="development",
         )
         worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
-        prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
+        prompt_file = worker_ns / "tmp" / "development_master_prompt.md"
         captured: dict[str, object] = {}
 
-        def _fake_materialize_system_prompt(**kwargs: object) -> str:
+        def _fake_materialize_master_prompt(**kwargs: object) -> str:
             captured["materialize_kwargs"] = kwargs
             return str(prompt_file)
 
@@ -640,7 +640,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge_factory=recording_factory,
-            system_prompt_materializer=_fake_materialize_system_prompt,
+            master_prompt_materializer=_fake_materialize_master_prompt,
             registry_factory=_registry_factory(agent_config).from_config,
         )
 
@@ -693,7 +693,7 @@ class TestExecuteAgentEffectA:
         shared_artifact = tmp_path / ".agent" / "artifacts" / "development_result.md"
         shared_artifact.parent.mkdir(parents=True, exist_ok=True)
         shared_artifact.write_text("{}", encoding="utf-8")
-        prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
+        prompt_file = worker_ns / "tmp" / "development_master_prompt.md"
 
         agent_config = AgentConfig(
             cmd="claude",
@@ -705,7 +705,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=_registry_factory(agent_config).from_config,
         )
 
@@ -753,7 +753,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            master_prompt_materializer=lambda **_kwargs: str(prompt_file),
             registry_factory=_registry_factory(MagicMock()).from_config,
         )
 
@@ -860,7 +860,7 @@ class TestExecuteAgentEffectA:
         _write_minimal_plan_artifacts(tmp_path, context="Resumed plan")
         _write_minimal_plan_draft(tmp_path, context="Resumed draft")
         (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
-        (tmp_path / ".agent" / "CURRENT_PROMPT.md").write_text(
+        (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").write_text(
             "Resume the interrupted planning pass",
             encoding="utf-8",
         )
@@ -893,7 +893,7 @@ class TestExecuteAgentEffectA:
         rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING MODE" in rendered
         assert "PLANNING EDIT MODE" not in rendered
-        assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+        assert (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").read_text(encoding="utf-8") == (
             "Replace the plan with a different task"
         )
         assert not (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
@@ -911,7 +911,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=runner_module.AgentRegistry.from_config,
         )
 
@@ -940,7 +940,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -966,7 +966,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -1001,7 +1001,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -1049,7 +1049,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 
@@ -1086,7 +1086,7 @@ class TestExecuteAgentEffectA:
         pipeline_deps = make_test_pipeline_deps(
             make_display_context(),
             bridge=_FakeBridge(),
-            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            master_prompt_materializer=lambda **_kwargs: "PROMPT.md",
             registry_factory=registry.from_config,
         )
 

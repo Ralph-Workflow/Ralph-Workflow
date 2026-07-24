@@ -478,8 +478,8 @@ def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     )
 
     rendered = workspace.read(prompt_path)
-    current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
-    assert str(current_prompt_path) in rendered
+    product_criteria_path = tmp_path / ".agent" / "PRODUCT_CRITERIA.md"
+    assert str(product_criteria_path) in rendered
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert "Read the complete execution plan from file at" in rendered
     assert "Add regression tests" not in rendered
@@ -645,7 +645,7 @@ def test_materialize_development_falls_back_to_plan_artifact_markdown(
     assert "Read the complete execution plan from file at" in rendered
     assert "This file is the authoritative source for execution plan in this prompt." in rendered
     assert "Fresh structured plan" not in rendered
-    assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+    assert (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").read_text(encoding="utf-8") == (
         "Implement unattended planning recovery"
     )
 
@@ -671,9 +671,9 @@ def test_materialize_planning_prompt_uses_file_reference_for_large_prompt(tmp_pa
 
     rendered = workspace.read(prompt_path)
     payload_path = tmp_path / ".agent" / "tmp" / "prompt_payloads" / "planning_prompt.txt"
-    assert str(tmp_path / ".agent" / "CURRENT_PROMPT.md") in rendered
+    assert str(tmp_path / ".agent" / "PRODUCT_CRITERIA.md") in rendered
     assert large_prompt not in rendered
-    assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == large_prompt
+    assert (tmp_path / ".agent" / "PRODUCT_CRITERIA.md").read_text(encoding="utf-8") == large_prompt
     assert not payload_path.exists()
 
 

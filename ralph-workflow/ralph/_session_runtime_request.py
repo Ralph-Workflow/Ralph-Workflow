@@ -50,13 +50,13 @@ class ManagedAgentSessionRequest:
             Reserved names (``MCP_ENDPOINT``, ``MCP_RUN_ID``,
             ``AGENT_LABEL_SCOPE``) are managed by the runtime and cannot be
             overridden here.
-        system_prompt_name: Optional name of a system-prompt template to
+        master_prompt_name: Optional name of a master-prompt template to
             materialize for the session. When ``None`` the agent is invoked
-            without an explicit system prompt. The materializer writes the
+            without an explicit master prompt. The materializer writes the
             resolved file under the workspace and returns its path.
-        default_current_prompt: Optional fallback path used when the chosen
-            system-prompt template references a ``current`` placeholder that
-            has no other source. Has no effect when ``system_prompt_name`` is
+        default_product_criteria: Optional fallback path used when the chosen
+            master-prompt template references a ``current`` placeholder that
+            has no other source. Has no effect when ``master_prompt_name`` is
             ``None``.
 
     Invariants:
@@ -73,8 +73,8 @@ class ManagedAgentSessionRequest:
         ...     session_id_prefix="plan",
         ...     drain="planning",
         ...     capabilities=frozenset({"read_repo", "list_artifacts"}),
-        ...     system_prompt_name="planning/default",
-        ...     default_current_prompt="your-prompt-file.md",
+        ...     master_prompt_name="planning/default",
+        ...     default_product_criteria="your-prompt-file.md",
         ... )
     """
 
@@ -83,8 +83,8 @@ class ManagedAgentSessionRequest:
     capabilities: frozenset[str] | None = None
     session_mcp_plan: SessionMcpPlan | None = None
     server_env: dict[str, str] | None = None
-    system_prompt_name: str | None = None
-    default_current_prompt: str | None = None
+    master_prompt_name: str | None = None
+    default_product_criteria: str | None = None
 
 
 __all__ = ["ManagedAgentSessionRequest"]

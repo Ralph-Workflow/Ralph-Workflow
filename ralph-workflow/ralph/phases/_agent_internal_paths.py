@@ -48,7 +48,7 @@ from pathlib import Path
 # Case-sensitive -- matches the canonical renderer usage.
 AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
     {
-        "CURRENT_PROMPT.md",
+        "PRODUCT_CRITERIA.md",
         "PLAN.md",
         "ISSUES.md",
         "DEVELOPMENT_RESULT.md",

@@ -4,7 +4,7 @@ Reproduces the two real dumb-kill incidents from the user's logs and
 asserts the new gate prevents them:
 
 1. First incident: ``cumulative=159s, ceiling=120s, idle_elapsed=120s``
-   while the agent was reading ``.agent/CURRENT_PROMPT.md`` with a
+   while the agent was reading ``.agent/PRODUCT_CRITERIA.md`` with a
    live subagent (OS_DESCENDANT_ONLY_STALE_PROGRESS). The OLD
    watchdog fired at the 120s ceiling. The NEW gate classifies as
    LOADING (subagent_liveness fresh, alive_by set) and returns
@@ -129,7 +129,7 @@ def _make_watchdog(
     )
 
 
-def test_dumb_kill_one_agent_reading_current_prompt() -> None:
+def test_dumb_kill_one_agent_reading_product_criteria() -> None:
     """R3 contract (Trustworthy Idle Watchdog): the cumulative ceiling
     fires UNCONDITIONALLY past the effective ceiling even when the
     classifier would return LOADING.

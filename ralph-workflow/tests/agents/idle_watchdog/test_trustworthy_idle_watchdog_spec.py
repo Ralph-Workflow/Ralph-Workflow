@@ -1,7 +1,7 @@
 """Consolidated acceptance-criteria test for the Trustworthy Idle Watchdog spec.
 
 This module is the consolidated acceptance-criteria summary for the
-wt-021 product spec (see ``.agent/CURRENT_PROMPT.md``). Every R1-R8
+wt-021 product spec (see ``.agent/PRODUCT_CRITERIA.md``). Every R1-R8
 criterion is exercised in ONE ordinary test method (``test_r1`` through
 ``test_r8``). The methods are NOT parametrized -- they mirror the
 plain-method precedent in ``tests/agents/test_builtin_spec_consolidation.py``

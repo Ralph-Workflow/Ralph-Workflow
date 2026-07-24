@@ -30,7 +30,7 @@ via ``ProPipelineHooks``. The dataclass bundles 13 fields:
 
     - ``display_context``: overrides the display context.
     - ``model_identity``: overrides the multimodal model identity.
-    - ``system_prompt_materializer``: overrides the system-prompt
+    - ``master_prompt_materializer``: overrides the master-prompt
       materializer.
     - ``phase_prompt_materializer``: overrides the phase-prompt
       materializer.
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.factory import (
         ArtifactRequirementsResolverFn,
-        MaterializeSystemPromptFn,
+        MaterializeMasterPromptFn,
         PhasePromptMaterializerFn,
         PipelineCore,
     )
@@ -93,7 +93,7 @@ class ProPipelineHooks:
 
     The five collaborator overrides on the modular surface
     (``display_context``, ``model_identity``,
-    ``system_prompt_materializer``, ``phase_prompt_materializer``,
+    ``master_prompt_materializer``, ``phase_prompt_materializer``,
     ``artifact_requirements_resolver``) are the only fields a Pro
     plumbing consumer must know about when targeting
     :class:`ralph.pipeline.factory.PipelineCore`; they are applied
@@ -112,7 +112,7 @@ class ProPipelineHooks:
     snapshot_registry: SnapshotRegistry | None = None
     display_context: DisplayContext | None = None
     model_identity: MultimodalModelIdentity | None = None
-    system_prompt_materializer: MaterializeSystemPromptFn | None = None
+    master_prompt_materializer: MaterializeMasterPromptFn | None = None
     phase_prompt_materializer: PhasePromptMaterializerFn | None = None
     artifact_requirements_resolver: ArtifactRequirementsResolverFn | None = None
     recovery_sleep: Callable[[float], None] | None = None
@@ -146,7 +146,7 @@ def apply_pro_hooks_to_core(
 
     Only the five PROMPT-mandated collaborators are propagated:
     ``display_context``, ``model_identity``,
-    ``system_prompt_materializer``, ``phase_prompt_materializer``,
+    ``master_prompt_materializer``, ``phase_prompt_materializer``,
     and ``artifact_requirements_resolver``. Extended fields such as
     ``policy_bundle_override``, ``registry_factory``, ``state_factory``,
     ``recovery_controller_factory``, ``marker_watcher_factory``,
@@ -157,9 +157,9 @@ def apply_pro_hooks_to_core(
         core = dataclasses.replace(core, display_context=pro_hooks.display_context)
     if pro_hooks.model_identity is not None:
         core = dataclasses.replace(core, model_identity=pro_hooks.model_identity)
-    if pro_hooks.system_prompt_materializer is not None:
+    if pro_hooks.master_prompt_materializer is not None:
         core = dataclasses.replace(
-            core, system_prompt_materializer=pro_hooks.system_prompt_materializer
+            core, master_prompt_materializer=pro_hooks.master_prompt_materializer
         )
     if pro_hooks.phase_prompt_materializer is not None:
         core = dataclasses.replace(

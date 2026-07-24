@@ -254,7 +254,7 @@ verify: verify-drift docs
 #   1. No hardcoded source-prompt construction outside the resolver —
 #      scans ralph/ for PROMPT.md literals except in ralph/pro_support/prompt.py,
 #      the engine-owned ralph/prompts/ package (which writes the
-#      materialised CURRENT_PROMPT.md), and documentation.
+#      materialised PRODUCT_CRITERIA.md), and documentation.
 #   2. No marker references outside the marker reader — scans ralph/ for
 #      .ralph/run.json except in ralph/pro_support/marker.py.
 #   3. (Verified by audit_mcp_timeout, not grepped here.)
@@ -296,7 +296,7 @@ verify-drift:
 	    | grep -v "display/prompt_reader.py" \
 	    | grep -v "pipeline/prompt_prep.py" \
 	    | grep -v "pipeline/orchestrator.py" \
-	    | grep -v "prompts/system_prompt.py" \
+	    | grep -v "prompts/master_prompt.py" \
 	    | grep -v "prompts/materialize.py" \
 	    | grep -v "prompts/developer/" \
 	    | grep -v "parallel/worker_runtime.py" \

@@ -1,6 +1,6 @@
 """End-to-end black-box tests that lock the prompt's full unavailability contract.
 
-The prompt in ``.agent/CURRENT_PROMPT.md`` (wt-014-unavailable-detection)
+The prompt in ``.agent/PRODUCT_CRITERIA.md`` (wt-014-unavailable-detection)
 describes a runtime hole in the agent-fallback chain: an opencode run that
 produced zero output for ~10 minutes (log entries at 2026-06-15T08:13:18 -
 2026-06-15T08:28:18) despite healthy internet, and the watchdog took the
