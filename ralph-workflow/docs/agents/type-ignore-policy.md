@@ -4,6 +4,13 @@ This document defines the policy that `ralph.testing.audit_typecheck_bypass`
 enforces. The two accepted reason markers are anchors in this file so that
 contributors and reviewers can click straight to the rationale.
 
+This document covers suppressions only. Type assertions (`typing.cast`) are
+governed by the "Type assertions and casts" section of
+`docs/ralph-workflow-policy/typechecking-policy.md`, which is the canonical
+type-checking policy. A `cast` is not an acceptable substitute for a
+suppression, and a suppression is not an acceptable substitute for a `cast`;
+both are last resorts after fixing the type.
+
 ## When a `# type: ignore` is acceptable
 
 `# type: ignore[CODE]` is acceptable **only** when both conditions hold:

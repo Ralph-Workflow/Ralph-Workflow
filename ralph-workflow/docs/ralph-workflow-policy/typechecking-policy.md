@@ -34,6 +34,55 @@ suppressions, ignores, casts, generated code, and untyped dependencies.
   type boundary, NOT silenced globally. A blanket `ignore_missing_imports`
   is forbidden.
 
+### Type assertions and casts
+
+A type assertion (`typing.cast`, `as T`, an unchecked downcast) is a proof
+obligation, not a conversion: it tells the checker "I have proved this, you
+cannot". It is legitimate ONLY when no runtime check could discharge the same
+obligation. Where a runtime check would work, the assertion is a defect.
+
+An assertion is permitted only in one of three positions:
+
+* SOUND BY CONSTRUCTION — permitted freely, no annotation required. The
+  assertion widens to the language's universal type, or it refines only the
+  type PARAMETERS that an immediately preceding runtime guard already proved
+  and the checker structurally cannot narrow. The asserted value type MUST be
+  the universal type; asserting a value type narrower than the guard proved is
+  NOT this position.
+* CONFINED TO A TYPED BOUNDARY — permitted for unavoidable dynamic-typing
+  leaks out of the standard library or a framework: dynamic namespaces, regex
+  match groups, database rows, deserialization entry points. The assertion
+  MUST live inside a named helper with a documented contract, ONE per leak
+  kind, and MUST NOT be repeated at call sites.
+* STRUCTURAL SEAM — permitted with a documented rationale where the proof
+  lives in another module and cannot be checked locally, such as protocol
+  conformance or a lazy/plugin module boundary. These carry the same rationale
+  requirement as a suppression and count against the same ratcheted baseline
+  (`suppression_rationale_policy`). Where the language offers a runtime-
+  checkable protocol or interface, it MUST be used instead, demoting the seam
+  to the first position.
+
+Every other assertion is forbidden. In particular, asserting the SHAPE OF
+EXTERNAL DATA is forbidden without exception: narrowing a value read from
+deserialized input, a configuration file, a subprocess, a network response, or
+any untyped mapping directly to a scalar or domain type is a prohibited
+assertion, however obvious the shape appears. Such a value is untyped
+precisely because its shape is unknown, and the assertion is an unverified
+claim about data the project does not control. It MUST be replaced by one of:
+
+* a checked accessor that validates the value and raises on mismatch;
+* a checked accessor that returns an explicit absent value, where the
+  surrounding boundary is deliberately lenient (for example a parser of
+  third-party output that MUST skip a malformed record and continue).
+  Introducing validation MUST NOT convert a documented lenient boundary into a
+  raising one;
+* a checker-recognised narrowing predicate (`TypeIs`/`TypeGuard`, a
+  user-defined type guard) or a validating parser that returns a typed model.
+
+Assertions MUST NOT be used to silence a diagnostic the author does not
+understand, and MUST NOT appear in tests: a test that needs one is evidence
+that the production API is under-typed, and the API MUST be fixed instead.
+
 ## Project facts to resolve
 
 The `RALPH-FACT:` lines below record verified project facts. Agents rely
@@ -76,6 +125,13 @@ An agent MUST NOT:
   global silencers without a per-dependency rationale.
 * Use `# type: ignore` without a specific error code.
 * Weaken the strictness level to obtain a passing result.
+* Assert a type where a runtime check would discharge the same obligation.
+* Assert the type of a value read from external, deserialized, or otherwise
+  untyped data instead of validating it through a checked accessor or a
+  narrowing predicate.
+* Repeat a boundary assertion at call sites instead of confining it to one
+  named helper per leak kind.
+* Use a type assertion in a test.
 
 ## Verification
 
@@ -117,6 +173,8 @@ This policy MUST be reviewed in the same workflow as any of:
 * The type checker, version, or strictness level changes.
 * A new dependency is added that ships without types.
 * The suppression policy changes.
+* The type-assertion rules, or the set of named boundary helpers that hold
+  the sanctioned assertions, change.
 
 ## Research basis
 
@@ -139,6 +197,16 @@ This policy MUST be reviewed in the same workflow as any of:
   title: "Using mypy with an existing codebase"
   http: https://mypy.readthedocs.io/en/stable/existing_code.html
   review date: 2026-07-11
+
+* publisher: Alexis King
+  title: "Parse, don't validate"
+  http: https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/
+  review date: 2026-07-24
+
+* publisher: mypy (Python typing project)
+  title: "Type narrowing — casts and type guards"
+  http: https://mypy.readthedocs.io/en/stable/type_narrowing.html
+  review date: 2026-07-24
 
 ## Living document contract
 
