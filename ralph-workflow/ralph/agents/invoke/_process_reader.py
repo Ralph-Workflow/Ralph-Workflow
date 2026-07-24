@@ -224,6 +224,7 @@ class _ProcessLineReader:
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe = ctx.liveness_probe or DefaultLivenessProbe()
+        self._process_teardown = ctx.process_teardown
         self._waiting_listener = ctx.waiting_listener
         self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor
@@ -600,7 +601,10 @@ class _ProcessLineReader:
         self._handle.terminate(grace_period_s=0.5)
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
-            teardown_subtree(pid)
+            if self._process_teardown is None:
+                teardown_subtree(pid)
+            else:
+                self._process_teardown.teardown_subtree(pid)
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         # Always merge the watchdog's per-channel evidence summary into
@@ -907,6 +911,7 @@ def _run_subprocess_and_read_lines(
             policy=ctx.policy,
             execution_strategy=ctx.execution_strategy,
             liveness_probe=ctx.liveness_probe,
+            process_teardown=ctx.process_teardown,
             waiting_listener=ctx.waiting_listener,
             pre_output_listener=ctx.pre_output_listener,
             monitor=ctx.monitor,
@@ -961,7 +966,10 @@ def _run_subprocess_and_read_lines(
                 handle.terminate(grace_period_s=0.5)
                 exit_pid = cast("int | None", getattr(handle, "pid", None))
                 if exit_pid is not None:
-                    teardown_subtree(exit_pid)
+                    if ctx.process_teardown is None:
+                        teardown_subtree(exit_pid)
+                    else:
+                        ctx.process_teardown.teardown_subtree(exit_pid)
                 raise _IdleStreamTimeoutError(
                     ctx.policy.process_exit_wait_seconds,
                     WatchdogFireReason.PROCESS_EXIT_HANG,

@@ -485,6 +485,7 @@ def invoke_agent(
             policy=policy,
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,
+            process_teardown=opts.process_teardown,
             waiting_listener=opts.waiting_listener,
             pre_output_listener=opts.pre_output_listener,
             monitor=monitor,

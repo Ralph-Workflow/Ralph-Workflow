@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import SubagentPidSource
+    from ralph.process.teardown import ProcessTeardown
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,7 @@ class InvokeOptions:
     activity_evidence_ttl_seconds: float | None = None
     workspace_change_weights: dict[str, float] | None = None
     process_monitor_enabled: bool | None = None
+    process_teardown: ProcessTeardown | None = None
     subagent_output_capture_enabled: bool | None = None
     subagent_output_poll_interval_seconds: float | None = None
     os_descendant_only_ceiling_seconds: float | None | object = _INVOKE_OPTS_UNSET

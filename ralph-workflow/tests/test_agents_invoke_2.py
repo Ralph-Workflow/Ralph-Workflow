@@ -44,6 +44,16 @@ if TYPE_CHECKING:
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
+class _RecordingProcessTeardown:
+    """Record requested process-subtree teardowns without touching the OS."""
+
+    def __init__(self) -> None:
+        self.calls: tuple[int, ...] = ()
+
+    def teardown_subtree(self, host_pid: int) -> None:
+        self.calls = (*self.calls, host_pid)
+
+
 @pytest.fixture(autouse=True)
 def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
@@ -116,6 +126,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             return self.returncode
 
     fake_process = FakeProcess()
+    process_teardown = _RecordingProcessTeardown()
 
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
@@ -130,10 +141,15 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             invoke_agent(
                 config,
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=5,
+                    process_teardown=process_teardown,
+                ),
                 _clock=FakeClock(),
             )
         )
+    assert process_teardown.calls == (fake_process.pid,)
 
 
 def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
@@ -187,6 +203,7 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             return self.returncode
 
     fake_process = FakeProcess()
+    process_teardown = _RecordingProcessTeardown()
     descendant_states = iter([True, False])
     descendant_checks = {"count": 0}
 
@@ -214,10 +231,15 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             invoke_agent(
                 config,
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=5,
+                    process_teardown=process_teardown,
+                ),
                 _clock=FakeClock(),
             )
         )
+    assert process_teardown.calls == (fake_process.pid,)
 
 
 def test_invoke_agent_runs_subprocess_in_workspace_path(
