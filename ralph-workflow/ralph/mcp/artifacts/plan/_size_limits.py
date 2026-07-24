@@ -3,7 +3,7 @@
 This module is the single source of truth for the generous-but-bounded
 size limits that apply to a plan artifact. ``PlanSizeLimits.DEFAULT``
 defines every cap used by the plan schema, the runtime size guard, the
-generated JSON schema, the format doc, and the planning prompt templates.
+format doc, and the planning prompt templates.
 No model hard-codes a cap.
 
 The runtime size guard ``check_plan_size`` is a PURE helper that NEVER

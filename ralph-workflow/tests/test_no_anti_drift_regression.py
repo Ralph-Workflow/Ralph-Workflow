@@ -698,6 +698,7 @@ class TestInterruptPathReliable:
             "ralph/pipeline/_runner_interrupt.py."
         )
 
+    @pytest.mark.timeout_seconds(15)
     def test_no_inline_dispatcher_plus_block_pattern_outside_helper(self) -> None:
         """The inline ``dispatcher_from_process_manager()`` +
         ``begin_interrupt(block=True)`` pattern may ONLY appear in the

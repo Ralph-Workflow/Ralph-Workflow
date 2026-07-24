@@ -334,7 +334,7 @@ The following table lists the canonical import path for each public symbol:
 | `SubmitResult`, `submit_artifact_canonical`, `promote_fallback_artifact` | `from ralph.mcp.artifacts.canonical_submit import ...` |
 | `FileBackend`, `PathFileBackend` | `from ralph.mcp.artifacts.file_backend import ...` |
 | `RalphAuditSinkAdapter` | `from ralph.mcp.artifacts.audit_adapter import ...` |
-| `PlanArtifact`, `validate_plan_artifact`, etc. | `from ralph.mcp.artifacts.plan import ...` |
+| `PlanStep`, `normalize_plan_artifact_content`, etc. | `from ralph.mcp.artifacts.plan import ...` |
 | `is_policy_approved` | `from ralph.mcp.artifacts.policy_outcomes import ...` |
 | `commit_message_artifact_path`, etc. | `from ralph.mcp.artifacts.commit_message import ...` |
 | `normalize_development_result_content` | `from ralph.mcp.artifacts.development_result import ...` |
