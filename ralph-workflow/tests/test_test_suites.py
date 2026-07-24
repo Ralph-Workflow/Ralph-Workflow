@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -286,7 +287,8 @@ def test_pytest_tmpdir_regression_shards_use_isolated_repo_basetemps(
     assert exit_code == 0
     assert len(set(basetemps)) == 2
     assert {path.name for path in basetemps} == {"shard-0", "shard-1"}
-    assert all(path.is_relative_to(tmp_path / "tmp" / "pytest-shards") for path in basetemps)
+    expected_parent = Path(tempfile.gettempdir()) / "ralph-pytest-shards"
+    assert all(path.is_relative_to(expected_parent) for path in basetemps)
     assert not any(path.parent.exists() for path in basetemps)
 
 

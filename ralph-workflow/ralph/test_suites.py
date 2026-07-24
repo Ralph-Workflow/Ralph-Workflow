@@ -469,7 +469,7 @@ def run_test_suites(
     )
     validate_exact_file_assignment(selected_files, shards)
     profile = "auto-integrate-e2e" if auto_integrate_e2e_only else "verification"
-    basetemp_parent = cwd / "tmp" / "pytest-shards"
+    basetemp_parent = Path(tempfile.gettempdir()) / "ralph-pytest-shards"
     basetemp_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
         prefix=f"{profile}-",
