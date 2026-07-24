@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import shutil
-from contextlib import suppress
-from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -14,38 +11,26 @@ from rich.text import Text
 
 from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
-from ralph.config.enums import AgentTransport, Verbosity
+from ralph.config.enums import AgentTransport
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.parallel_display import (
     ParallelDisplay,
     emit_activity_line,
-    get_display_context,
-    resolve_active_display,
     subscriber_for_display,
 )
 from ralph.mcp.server._activity_sink import invoke_subagent_sink
-from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline.artifact_handoff_context import ArtifactHandoffContext
-from ralph.pipeline.events import PipelineEvent
 
 if TYPE_CHECKING:
     from collections import deque
     from collections.abc import Callable, Iterable, Iterator
-    from pathlib import Path
 
     from ralph.agents.idle_watchdog import SubagentPidRegistry
     from ralph.config.agent_config import AgentConfig
-    from ralph.display.artifact_reader import PlanSummary
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
-    from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.pipeline.events import Event
 
 if TYPE_CHECKING:
-
-    class _ReadPlanArtifactFn(Protocol):
-        def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
 
     class _ParallelDisplayModule(Protocol):
         ParallelDisplay: type[ParallelDisplay]
@@ -61,181 +46,12 @@ def _parallel_display_cls() -> type[ParallelDisplay]:
     return module.ParallelDisplay
 
 
-def _emit_via_display(
-    display_context: DisplayContext,
-    method_name: str,
-    *args: object,
-    **kwargs: object,
-) -> bool:
-    """Resolve an active display and call the named method, returning success.
-
-    Returns True when a ParallelDisplay with the requested method was found
-    and invoked. Returns False when no active display is available, allowing
-    callers to fall back to the legacy free-function path if one exists.
-
-    When ``display_context`` itself is a ``ParallelDisplay`` (test fakes,
-    legacy paths) the method is called directly on the supplied object. When
-    it is a ``DisplayContext`` (the canonical path), the active display is
-    resolved via ``resolve_active_display``.
-    """
-    display: object | None = display_context
-    if not isinstance(display_context, ParallelDisplay):
-        try:
-            display = resolve_active_display(None, display_context)
-        except Exception:
-            return False
-    if display is None:
-        return False
-    method = getattr(display, method_name, None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    if method is None or not callable(method):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        return False
-    try:
-        method(*args, **kwargs)
-    except Exception:
-        return False
-    return True
-
-
-def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
-    module = import_module("ralph.display.artifact_reader")
-    return cast("_ReadPlanArtifactFn", module.read_plan_artifact)
-
-
 def _terminal_width() -> int:
     return shutil.get_terminal_size().columns or 80
 
 
 def _available_width(prefix_len: int) -> int:
     return max(40, _terminal_width() - prefix_len - 2)
-
-
-@dataclass(frozen=True)
-class _ArtifactRenderCtx:
-    workspace_root: Path
-    display_context: DisplayContext
-    display: ParallelDisplay | None
-    verbosity: Verbosity
-    ra: RequiredArtifact
-
-
-def render_phase_artifact_handoff(
-    phase: str,
-    event: Event,
-    workspace_root: Path,
-    display: ParallelDisplay | None,
-    ctx: ArtifactHandoffContext | None = None,
-) -> None:
-    """Render the artifact handoff panel after a phase completes."""
-    _ctx = ctx or ArtifactHandoffContext()
-    display_ctx = get_display_context(display, _ctx.display_context)
-    effective_drain = _ctx.drain or phase
-    required_artifact = (
-        resolve_phase_required_artifact(
-            _ctx.policy_bundle.pipeline,
-            _ctx.policy_bundle.artifacts,
-            phase=phase,
-            drain=effective_drain,
-        )
-        if _ctx.policy_bundle is not None
-        else None
-    )
-
-    if required_artifact is None:
-        if event != PipelineEvent.AGENT_SUCCESS:
-            return
-        if _ctx.policy_bundle is not None:
-            phase_def = _ctx.policy_bundle.pipeline.phases.get(phase)
-            role = phase_def.role if phase_def is not None else None
-            if role == "analysis":
-                _emit_via_display(
-                    display_ctx, "emit_analysis_decision", workspace_root, effective_drain
-                )
-            else:
-                logger.debug(
-                    "policy: no renderer for phase '{}' (role={});"
-                    " skipping artifact handoff render",
-                    phase,
-                    role,
-                )
-        return
-
-    artifact_type = required_artifact.artifact_type
-    if artifact_type.endswith("_analysis_decision"):
-        _emit_via_display(display_ctx, "emit_analysis_decision", workspace_root, effective_drain)
-        return
-
-    if event == PipelineEvent.AGENT_SUCCESS:
-        _render_success_artifact(
-            artifact_type,
-            _ArtifactRenderCtx(
-                workspace_root=workspace_root,
-                display_context=display_ctx,
-                display=display,
-                verbosity=_ctx.verbosity,
-                ra=required_artifact,
-            ),
-        )
-
-
-def _render_success_artifact(artifact_type: str, ctx: _ArtifactRenderCtx) -> None:
-    def _emit_close(produced: str) -> None:
-        if ctx.verbosity != Verbosity.QUIET and hasattr(ctx.display, "record_artifact_outcome"):
-            with suppress(Exception):
-                cast("ParallelDisplay", ctx.display).record_artifact_outcome(produced)
-
-    if artifact_type == "plan":
-        _emit_via_display(ctx.display_context, "emit_plan_artifact", ctx.workspace_root)
-        with suppress(Exception):
-            plan = _read_plan_artifact_func()(ctx.workspace_root)
-            produced = (
-                f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
-                if plan is not None
-                else "(no plan artifact on disk)"
-            )
-            _emit_close(produced)
-        return
-
-    if artifact_type == "development_result":
-        _emit_via_display(ctx.display_context, "emit_development_artifact", ctx.workspace_root)
-        produced = (
-            "result produced"
-            if (ctx.workspace_root / ctx.ra.artifact_path).exists()
-            else "no result artifact"
-        )
-        _emit_close(produced)
-        return
-
-    if artifact_type == "issues":
-        _emit_via_display(ctx.display_context, "emit_review_artifact", ctx.workspace_root)
-        with suppress(Exception):
-            issue_count = _count_issues(ctx.workspace_root / ctx.ra.artifact_path)
-            _emit_close(f"{issue_count} issue(s)")
-        return
-
-    if artifact_type == "fix_result":
-        _emit_via_display(ctx.display_context, "emit_fix_artifact", ctx.workspace_root)
-        _emit_close("applied")
-
-
-def _count_issues(issues_path: Path) -> int:
-    if not issues_path.exists():
-        return 0
-    try:
-        issues_text = issues_path.read_text(encoding="utf-8")
-        issues_data = cast("object", json.loads(issues_text))
-        content_obj = (
-            cast("dict[str, object]", issues_data).get("content")
-            if isinstance(issues_data, dict)
-            else issues_data
-        )
-        issues_list = (
-            cast("dict[str, object]", content_obj).get("issues")
-            if isinstance(content_obj, dict)
-            else content_obj
-        )
-        return len(issues_list) if isinstance(issues_list, list) else 0
-    except Exception:
-        return 0
 
 
 def stream_parsed_agent_activity(

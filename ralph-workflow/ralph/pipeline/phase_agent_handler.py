@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
@@ -269,23 +268,19 @@ def _render_success_artifact(
             issue_count = 0
             issues_path = workspace_root / ra.artifact_path
             if issues_path.exists():
-                try:
-                    issues_text = issues_path.read_text(encoding="utf-8")
-                    issues_data = cast("object", json.loads(issues_text))
-                    content_obj = (
-                        cast("dict[str, object]", issues_data).get("content")
-                        if isinstance(issues_data, dict)
-                        else issues_data
+                with suppress(Exception):
+                    from ralph.mcp.artifacts.markdown import parse_and_validate
+                    from ralph.mcp.artifacts.markdown.registry import get_spec
+
+                    import_module("ralph.mcp.artifacts.markdown.specs")
+                    content, diagnostics = parse_and_validate(
+                        issues_path.read_text(encoding="utf-8"),
+                        get_spec("issues"),
                     )
-                    issues_list = (
-                        cast("dict[str, object]", content_obj).get("issues")
-                        if isinstance(content_obj, dict)
-                        else content_obj
-                    )
-                    if isinstance(issues_list, list):
-                        issue_count = len(issues_list)
-                except Exception:
-                    pass
+                    if not any(item.severity == "error" for item in diagnostics):
+                        issues_list = content.get("issues")
+                        if isinstance(issues_list, list):
+                            issue_count = len(issues_list)
             _emit_close(f"{issue_count} issue(s)")
         return
 
@@ -300,4 +295,5 @@ def _commit_effect(workspace_root: Path) -> CommitEffect:
 
 phase_event_after_agent_run = _phase_event_after_agent_run
 render_phase_artifact_handoff = _render_phase_artifact_handoff
+render_success_artifact = _render_success_artifact
 commit_effect = _commit_effect

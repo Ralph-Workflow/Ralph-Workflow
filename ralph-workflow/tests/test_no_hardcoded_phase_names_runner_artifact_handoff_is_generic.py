@@ -54,16 +54,16 @@ def _string_literals_in_source(source: str) -> set[str]:
 
 
 class TestRunnerArtifactHandoffIsGeneric:
-    """render_phase_artifact_handoff must not hardcode canonical phase name literals."""
+    """_render_phase_artifact_handoff must not hardcode canonical phase name literals."""
 
     @pytest.fixture(scope="class")
     def artifact_handoff_literals(self) -> set[str]:
-        source = (RALPH_ROOT / "pipeline" / "activity_stream.py").read_text(encoding="utf-8")
+        source = (RALPH_ROOT / "pipeline" / "phase_agent_handler.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         function = next(
             node
             for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "render_phase_artifact_handoff"
+            if isinstance(node, ast.FunctionDef) and node.name == "_render_phase_artifact_handoff"
         )
         return {
             node.value

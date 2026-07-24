@@ -2046,7 +2046,7 @@ class ParallelDisplay:
     ) -> None:
         """Display the start of a pipeline phase (no iteration context).
 
-        Port of :func:`ralph.display.phase_banner.show_phase_start`.
+        Port of the retired ralph.display.phase_banner.show_phase_start helper.
         """
         if self._is_quiet:
             return
@@ -2071,7 +2071,7 @@ class ParallelDisplay:
     ) -> None:
         """Display the start of a pipeline phase from a lifecycle entry model.
 
-        Port of :func:`ralph.display.phase_banner.show_phase_start_from_entry`.
+        Port of the retired ralph.display.phase_banner.show_phase_start_from_entry helper.
         Canonical model-based path (single default-mode layout): emits a
         titled Rule with phase label, outer development iteration,
         inner analysis iteration, and an optional agent line.
@@ -2133,7 +2133,7 @@ class ParallelDisplay:
     ) -> None:
         """Display a visual transition between pipeline phases.
 
-        Port of :func:`ralph.display.phase_banner.show_phase_transition`.
+        Port of the retired ralph.display.phase_banner.show_phase_transition helper.
         Major transitions get a prominent Rule banner; minor transitions get
         a simple titled Rule. The leading section rule is always emitted in
         the single default mode (no per-mode gating remains).
@@ -2173,7 +2173,7 @@ class ParallelDisplay:
     ) -> None:
         """Display the close of a pipeline phase from a lifecycle exit model.
 
-        Port of :func:`ralph.display.phase_banner.show_phase_close_banner`.
+        Port of the retired ralph.display.phase_banner.show_phase_close_banner helper.
         The rich, model-based phase-close banner (full stats line, review
         outcome, debug breadcrumb, and trailing titled Rule).
 
@@ -2353,7 +2353,7 @@ class ParallelDisplay:
     def emit_plan_artifact(self, workspace_root: Path) -> None:
         """Render the agent-facing plan handoff or canonical Markdown summary.
 
-        Port of :func:`ralph.display.artifact_renderer.render_plan_artifact`.
+        Port of the retired artifact_renderer.render_plan_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2386,7 +2386,7 @@ class ParallelDisplay:
     def emit_development_artifact(self, workspace_root: Path) -> None:
         """Render development results using the authoritative Markdown handoff.
 
-        Port of :func:`ralph.display.artifact_renderer.render_development_artifact`.
+        Port of the retired artifact_renderer.render_development_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2402,7 +2402,7 @@ class ParallelDisplay:
     def emit_review_artifact(self, workspace_root: Path) -> None:
         """Render review findings using the authoritative Markdown handoff.
 
-        Port of :func:`ralph.display.artifact_renderer.render_review_artifact`.
+        Port of the retired artifact_renderer.render_review_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2418,7 +2418,7 @@ class ParallelDisplay:
     def emit_fix_artifact(self, workspace_root: Path) -> None:
         """Render fix result artifacts as a titled block.
 
-        Port of :func:`ralph.display.artifact_renderer.render_fix_artifact`.
+        Port of the retired artifact_renderer.render_fix_artifact helper.
         """
         if self._is_quiet:
             return
@@ -2434,7 +2434,7 @@ class ParallelDisplay:
     def emit_analysis_decision(self, workspace_root: Path, drain: str) -> None:
         """Render an analysis decision artifact as a titled block.
 
-        Port of :func:`ralph.display.artifact_renderer.render_analysis_decision`.
+        Port of the retired artifact_renderer.render_analysis_decision helper.
         """
         if self._is_quiet:
             return
@@ -2460,7 +2460,7 @@ class ParallelDisplay:
     def emit_commit_message(self, workspace_root: Path) -> None:
         """Render the commit message artifact as a titled block.
 
-        Port of :func:`ralph.display.artifact_renderer.render_commit_message`.
+        Port of the retired artifact_renderer.render_commit_message helper.
         """
         if self._is_quiet:
             return
@@ -2477,7 +2477,7 @@ class ParallelDisplay:
     def emit_missing_plan_hint(self) -> None:
         """Emit a plain INFO line when the plan artifact is absent at phase completion.
 
-        Port of :func:`ralph.display.artifact_renderer.render_missing_plan_hint`.
+        Port of the retired artifact_renderer.render_missing_plan_hint helper.
         """
         if self._is_quiet:
             return
@@ -2570,7 +2570,7 @@ class ParallelDisplay:
     def emit_first_run_panel(self, content: list[RenderableType]) -> None:
         """Print the first-run welcome Panel to ``self._ctx.console``.
 
-        Port of :func:`ralph.display.first_run_panel.render_first_run_panel`.
+        Port of the retired ralph.display.first_run_panel.render_first_run_panel helper.
         """
         if self._is_quiet:
             return
@@ -2590,7 +2590,7 @@ class ParallelDisplay:
     ) -> None:
         """Print the Ralph Workflow welcome banner.
 
-        Port of :func:`ralph.banner.show_banner`.
+        Port of the retired ralph.banner.show_banner helper.
         """
         if self._is_quiet:
             return
@@ -2613,7 +2613,7 @@ class ParallelDisplay:
     def emit_agents_table(self, agents: Mapping[str, object]) -> None:
         """Render the agent table for --list-agents.
 
-        Port of :func:`ralph.cli.options.display_agents_table`.
+        Port of the retired ralph.cli.options.display_agents_table helper.
         """
         if self._is_quiet:
             return
@@ -2639,7 +2639,7 @@ class ParallelDisplay:
     def emit_providers_table(self, providers: list[str]) -> None:
         """Render the providers table for --list-providers.
 
-        Port of :func:`ralph.cli.options.display_providers_table`.
+        Port of the retired ralph.cli.options.display_providers_table helper.
         """
         if self._is_quiet:
             return
@@ -2658,7 +2658,7 @@ class ParallelDisplay:
     def emit_config_table(self, config: UnifiedConfig) -> None:
         """Render the effective config panel for --check-config.
 
-        Port of :func:`ralph.display.tables.show_config`.
+        Port of the retired ralph.display.tables.show_config helper.
         """
         if self._is_quiet:
             return
@@ -2825,7 +2825,7 @@ class ParallelDisplay:
     def emit_metrics_table(self, metrics: dict[str, int]) -> None:
         """Render the metrics table for pipeline summary stats.
 
-        Port of :func:`ralph.display.tables.show_metrics`.
+        Port of the retired ralph.display.tables.show_metrics helper.
         """
         if self._is_quiet:
             return
@@ -2847,7 +2847,7 @@ class ParallelDisplay:
     def emit_checkpoint_summary_table(self, options: object) -> None:
         """Render the checkpoint summary table.
 
-        Port of :func:`ralph.display.tables.show_checkpoint_summary`.
+        Port of the retired ralph.display.tables.show_checkpoint_summary helper.
         ``options`` is a ``CheckpointSummaryOptions``-like object with
         ``phase`` (str) and ``budget_progress`` (Mapping[str, tuple[int, int]]).
         """
