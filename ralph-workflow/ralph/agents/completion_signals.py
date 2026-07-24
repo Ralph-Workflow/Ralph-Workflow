@@ -232,18 +232,6 @@ def _check_completion_sentinel(
     )
 
 
-def _artifact_is_schema_valid(artifact_path: Path) -> bool:
-    """Return True when the artifact file exists, parses as JSON, and is a non-empty dict."""
-    if not artifact_path.exists():
-        return False
-    try:
-        content = artifact_path.read_text(encoding="utf-8")
-        parsed = cast("object", json.loads(content))
-        return isinstance(parsed, dict) and len(parsed) > 0
-    except (OSError, json.JSONDecodeError, ValueError):
-        return False
-
-
 def is_artifact_submitted(
     workspace: Path,
     run_id: str,
@@ -291,8 +279,8 @@ def evaluate_completion(
 
     explicit_complete is set from scanning raw_output for the declare_complete
     MCP tool marker, independently of artifact presence. required_artifact_present
-    is True only when the artifact file exists on disk, parses as valid JSON,
-    and contains a non-empty dict for phases that have a registered required artifact.
+    is True only when a run-scoped canonical submission receipt exists for
+    phases that have a registered required artifact.
     Phases without a registered required artifact always return
     required_artifact_present=False so OpenCode agents cannot implicitly succeed
     — they must call declare_complete explicitly.
@@ -337,13 +325,10 @@ def evaluate_completion(
         )
     # A run-scoped submission receipt is the SOLE authoritative proof that
     # the artifact was persisted for this run. The legacy on-disk
-    # ``_artifact_is_schema_valid(artifact_path)`` fallback was removed
-    # because a stale canonical artifact from a previous run can satisfy
-    # the schema-validity check and falsely mark the current run as
-    # complete (see tests/test_agy_completion_adversarial.py for the
-    # negative-path test that pins this contract). When ``run_id`` is
-    # not threaded, completion cannot be determined from the artifact
-    # alone; callers that need a fallback must thread ``run_id``.
+    # A raw artifact-file fallback is unsafe because a stale canonical artifact
+    # from a previous run could falsely mark the current run complete (see
+    # tests/test_agy_completion_adversarial.py). Without ``run_id``, completion
+    # cannot be determined from the artifact alone.
     present = (
         is_artifact_submitted(workspace, run_id, ra.artifact_type, receipt_secret=receipt_secret)
         if (run_id is not None)

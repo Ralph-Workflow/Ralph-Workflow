@@ -14,7 +14,7 @@ completion gate without the canonical submit path:
 These tests pin the hardened contracts:
 
 - ``evaluate_completion`` no longer accepts the legacy
-  ``_artifact_is_schema_valid(artifact_path)`` fallback; only a
+  raw artifact-file fallback; only a
   current-run receipt-backed submission satisfies
   ``required_artifact_present`` (analysis how_to_fix item 3).
 - ``_check_completion_sentinel`` with a ``sentinel_secret`` rejects
@@ -148,7 +148,7 @@ def test_evaluate_completion_rejects_stale_canonical_artifact(
     from a previous run does NOT satisfy ``required_artifact_present``
     for a new run that has no current-run receipt.
 
-    The legacy ``_artifact_is_schema_valid(artifact_path)`` fallback
+    The legacy raw artifact-file fallback
     was removed in commit feab44edb's follow-up; only a current-run
     receipt-backed submission satisfies the completion gate.
     """

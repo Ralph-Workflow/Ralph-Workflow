@@ -2,7 +2,7 @@
 
 Module family (reading order):
   ``_section_models`` -> ``_section_registry`` -> ``_validation`` ->
-  ``_step_edit`` -> ``_noop``.
+  ``_noop``.
 """
 
 # ruff: noqa: I001 RUF022  (compact import + __all__ layout keeps this file under 60 lines)
@@ -51,16 +51,6 @@ from ralph.mcp.artifacts.plan._step_contract import (
     requires_targets,
     requires_verify_handle,
 )
-from ralph.mcp.artifacts.plan._step_edit import (
-    insert_plan_step,
-    insert_plan_step_with_echo,
-    move_plan_step,
-    move_plan_step_with_echo,
-    remove_plan_step,
-    remove_plan_step_with_echo,
-    replace_plan_step,
-    replace_plan_step_with_echo,
-)
 from ralph.mcp.artifacts.plan._validation import (
     PlanArtifact,
     normalize_plan_artifact_content,
@@ -103,16 +93,8 @@ __all__ = [
     "Summary",
     "VerificationStep",
     "check_plan_size",
-    "insert_plan_step",
-    "insert_plan_step_with_echo",
     "is_noop_plan",
-    "move_plan_step",
-    "move_plan_step_with_echo",
     "normalize_plan_artifact_content",
-    "remove_plan_step",
-    "remove_plan_step_with_echo",
-    "replace_plan_step",
-    "replace_plan_step_with_echo",
     "requires_targets",
     "requires_verify_handle",
     "validate_plan_section",

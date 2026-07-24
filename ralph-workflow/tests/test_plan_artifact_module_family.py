@@ -1,7 +1,7 @@
 """Regression tests for the plan-artifact module family.
 
 The original ``ralph.mcp.artifacts.plan.__init__`` was 1105 lines of
-helpers. The refactor splits that surface into seven focused submodules
+helpers. The refactor splits that surface into focused submodules
 and turns ``__init__`` into a thin re-export surface. These tests
 guard the boundary:
 
@@ -27,7 +27,6 @@ SUBMODULES: tuple[str, ...] = (
     "_section_models",
     "_section_registry",
     "_validation",
-    "_step_edit",
     "_step_contract",
     "_noop",
     "_plan_step",
@@ -57,9 +56,24 @@ def test_submodule_imports_in_isolation(submodule_name: str) -> None:
 
 def test_all_public_symbols_still_importable() -> None:
     names = set(plan_pkg.__all__)
-    assert len(names) >= 45, f"expected >=45 public symbols, got {len(names)}"
     missing = [n for n in names if not hasattr(plan_pkg, n)]
     assert not missing, f"public symbols missing from package: {missing}"
+
+
+def test_legacy_json_step_mutation_surface_is_retired() -> None:
+    retired_names = {
+        "insert_plan_step",
+        "insert_plan_step_with_echo",
+        "move_plan_step",
+        "move_plan_step_with_echo",
+        "remove_plan_step",
+        "remove_plan_step_with_echo",
+        "replace_plan_step",
+        "replace_plan_step_with_echo",
+    }
+
+    assert retired_names.isdisjoint(plan_pkg.__all__)
+    assert all(not hasattr(plan_pkg, name) for name in retired_names)
 
 
 @pytest.mark.parametrize(
