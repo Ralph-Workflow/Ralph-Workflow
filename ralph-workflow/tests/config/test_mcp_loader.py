@@ -453,3 +453,75 @@ def test_load_mcp_config_media_rejects_invalid_max_inline_bytes(
     with pytest.raises(SystemExit) as exc_info:
         load_mcp_config(config_path=cfg)
     assert exc_info.value.code == 1
+
+
+# ---------------------------------------------------------------------------
+# What/why/fix envelope shape (S-6)
+# ---------------------------------------------------------------------------
+
+
+def test_load_mcp_config_malformed_toml_emits_what_why_fix_envelope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """MCP parse errors must follow the what/why/fix envelope and name the file + fix command.
+
+    Before the fix the parse-error message was a single one-liner
+    (``MCP config parse error at <path>: <tomllib msg>``) with no WHY
+    line and no remediation hint. After the fix the message must name
+    the file, explain why Ralph stops instead of guessing, and tell the
+    operator to re-run ``ralph --check-config`` after fixing.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    bad = tmp_path / "mcp.toml"
+    bad.write_bytes(b"[invalid = }")
+    with pytest.raises(McpConfigError) as exc_info:
+        load_mcp_config(config_path=bad)
+    message = str(exc_info.value)
+    assert str(bad) in message, (
+        f"Parse-error envelope MUST name the offending file; got: {message!r}"
+    )
+    assert "WHY:" in message, f"Parse-error envelope MUST include a WHY line; got: {message!r}"
+    assert "FIX:" in message, f"Parse-error envelope MUST include a FIX line; got: {message!r}"
+    assert "ralph --check-config" in message, (
+        f"Parse-error envelope MUST point at `ralph --check-config` as the remediation; got: {message!r}"
+    )
+
+
+def test_load_mcp_config_validation_failure_does_not_dump_raw_pydantic_blob(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """MCP validation errors must use the formatted field-level messages, not ``str(exc)``.
+
+    Before the fix the message contained the raw ``str(ValidationError)``
+    output (``"N validation errors for McpConfig\nfield\n  ..."``), which
+    is exactly the dump the project standardised away from. After the
+    fix the message must reuse ``format_validation_error_messages`` so
+    the operator sees a single ``location: message`` line per field, and
+    it must NOT contain the raw pydantic framing string.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    bad = tmp_path / "mcp.toml"
+    bad.write_text(
+        textwrap.dedent("""\
+            [media]
+            enabled = true
+            max_inline_bytes = 0
+        """),
+        encoding="utf-8",
+    )
+    with pytest.raises(McpConfigError) as exc_info:
+        load_mcp_config(config_path=bad)
+    message = str(exc_info.value)
+    assert "validation errors for McpConfig" not in message, (
+        f"Validation-error envelope MUST NOT dump raw pydantic framing; got: {message!r}"
+    )
+    assert "WHY:" in message, f"Validation-error envelope MUST include a WHY line; got: {message!r}"
+    assert "FIX:" in message, f"Validation-error envelope MUST include a FIX line; got: {message!r}"
+    assert "DETAILS:" in message, (
+        f"Validation-error envelope MUST label the field-level DETAILS section; got: {message!r}"
+    )
+    # The field-level formatter renders ``loc: msg`` lines; assert one
+    # such line exists for the failing field.
+    assert "media.max_inline_bytes" in message, (
+        f"Validation-error envelope MUST include the failing field path; got: {message!r}"
+    )

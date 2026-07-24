@@ -8,6 +8,7 @@ OS). All tests use ``tmp_path`` for I/O.
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.config import bootstrap as bs_module
@@ -18,9 +19,6 @@ from ralph.config.bootstrap import (
 
 if TYPE_CHECKING:
     import pytest
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def test_auto_seed_creates_gitignore_when_missing(tmp_path: Path) -> None:
@@ -158,3 +156,104 @@ def test_auto_seed_covers_common_project_structures(tmp_path: Path) -> None:
     assert "node_modules/" in gitignore_text, f"Node category missing; got:\n{gitignore_text}"
     assert ".idea/" in gitignore_text, f"editor category missing; got:\n{gitignore_text}"
     assert ".DS_Store" in gitignore_text, f"OS category missing; got:\n{gitignore_text}"
+
+
+def test_auto_seed_gitignore_warns_on_unreadable_existing_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-8: a read OSError on existing .gitignore must surface as a visible warning.
+
+    Before the fix the read was a bare ``except OSError: existing = set()``,
+    which silently treated an unreadable .gitignore as if it were empty
+    -- a permission failure would cause every default pattern to be
+    appended on the next run, producing duplicates. After the fix the
+    helper emits a ``logger.warning`` so the operator can investigate
+    the read failure without breaking the run.
+    """
+    from loguru import logger
+
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("# user line\n", encoding="utf-8")
+
+    original_read_text = type(gitignore).read_text
+
+    def _failing_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self == gitignore:
+            raise PermissionError(13, "Permission denied", str(self))
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _failing_read_text)
+
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        appended = auto_seed_default_gitignore(tmp_path)
+    finally:
+        logger.remove(sink_id)
+
+    # The run still proceeds (best-effort) and the seeder returned the
+    # full default pattern list (because it could not read the existing
+    # lines).
+    assert appended, (
+        "best-effort seeder MUST still append defaults when the existing"
+        " file cannot be read; got an empty appended list"
+    )
+    warning = "\n".join(records)
+    assert str(gitignore) in warning, (
+        f"OSError warning MUST name the unreadable .gitignore; got: {warning!r}"
+    )
+    assert "Could not read existing .gitignore" in warning, (
+        f"OSError warning MUST label the failure; got: {warning!r}"
+    )
+    assert (
+        "non-fatal" in warning or "best-effort" in warning or "Proceeding" in warning
+    ), (
+        f"OSError warning MUST mark the failure as non-fatal / best-effort; got: {warning!r}"
+    )
+
+
+def test_auto_seed_git_exclude_warns_on_unreadable_existing_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """S-8: a read OSError on existing .git/info/exclude must surface as a warning."""
+    # Build a real git repo so ``_resolve_git_exclude_path`` returns
+    # the canonical ``.git/info/exclude`` path.
+    from git import Repo
+    from loguru import logger
+
+    from ralph.config.bootstrap import auto_seed_default_git_exclude
+
+    Repo.init(tmp_path)
+    exclude_path = tmp_path / ".git" / "info" / "exclude"
+    assert exclude_path.exists(), (
+        "Repo.init must materialise .git/info/exclude in this GitPython build"
+    )
+    exclude_path.write_text("# user line\n", encoding="utf-8")
+
+    original_read_text = type(exclude_path).read_text
+
+    def _failing_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self == exclude_path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _failing_read_text)
+
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING", format="{message}")
+    try:
+        appended = auto_seed_default_git_exclude(tmp_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert appended, (
+        "best-effort seeder MUST still append defaults when the existing"
+        " exclude file cannot be read; got an empty appended list"
+    )
+    warning = "\n".join(records)
+    assert str(exclude_path) in warning, (
+        f"OSError warning MUST name the unreadable exclude file; got: {warning!r}"
+    )
+    assert "Could not read existing git exclude" in warning, (
+        f"OSError warning MUST label the failure; got: {warning!r}"
+    )

@@ -290,9 +290,9 @@ terminal behavior all come from `pipeline.toml`. Older assumptions
 about implicit phase names, loop counters, and pseudo-phase recovery
 aliases are no longer valid. To migrate an existing
 `.agent/pipeline.toml`, run the config-regenerate flag and diff
-against your existing file. Full migration details are in
-[Configuration Reference](configuration.md) under "Policy migration
-reference".
+against your existing file. The full reference for every config
+table, its fields, and the override precedence is in
+[Configuration Reference](configuration.md).
 
 ## Proof: what a run leaves you
 

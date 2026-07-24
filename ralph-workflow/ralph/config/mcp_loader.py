@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.config.loader import deep_merge as _deep_merge
 from ralph.config.mcp_models import McpConfig
+from ralph.pydantic_validation_errors import format_validation_error_messages
 
 if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
@@ -74,7 +75,13 @@ def _load_mcp_toml(path: Path) -> dict[str, object]:
         try:
             data: dict[str, object] = tomllib.load(fh)
         except _TOML_DECODE_ERROR as exc:
-            message = f"MCP config parse error at {path}: {exc}"
+            message = (
+                f"Could not parse MCP config at {path}: {exc}.\n"
+                "WHY: settings in a malformed TOML file are not safe to use, "
+                "so Ralph refuses to guess what you meant and exits instead.\n"
+                f"FIX: correct the TOML syntax in {path}, then re-run "
+                "`ralph --check-config`."
+            )
             logger.error(message)
             raise McpConfigError(message) from exc
     return data
@@ -146,7 +153,17 @@ def load_mcp_config(
     try:
         config = McpConfig.model_validate(merged)
     except ValidationError as exc:
-        message = f"MCP config validation failed:\n{exc}"
+        detail_lines = format_validation_error_messages(exc)
+        detail_block = "\n".join(detail_lines) if detail_lines else "(no field detail available)"
+        message = (
+            "MCP config validation failed; the values below do not match the MCP config schema.\n"
+            "WHY: a malformed MCP config means Ralph cannot start the servers / web-search "
+            "backends you asked for, so it stops before launching anything.\n"
+            f"FIX: fix the field-level errors in {local_path} (or "
+            f"{global_mcp_config_path()} / {bundled_default_mcp_config_path()}, depending on "
+            "where the bad value came from), then re-run `ralph --check-config`.\n"
+            f"DETAILS:\n{detail_block}"
+        )
         logger.error(message)
         raise McpConfigError(message) from exc
 

@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
+from loguru import logger
 
 from ralph.config.loader import load_toml
 from ralph.git.operations import _atomic_append_text, append_to_gitignore
@@ -556,7 +557,21 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
     if file_existed:
         try:
             existing = set(exclude_path.read_text(encoding="utf-8").splitlines())
-        except OSError:
+        except OSError as exc:
+            # Non-fatal: best-effort seeding must not block the run, but
+            # silently assuming "the file is empty" would cause every
+            # default pattern to be appended (potential duplicates on
+            # retry once the read problem is fixed). Warn so the
+            # operator can investigate the read failure without
+            # breaking the run.
+            logger.warning(
+                "Could not read existing git exclude at {}: {}. "
+                "Proceeding as if the file were empty; this may append "
+                "duplicate patterns on a later run. Check file permissions "
+                "and ownership to remove the warning.",
+                exclude_path,
+                exc,
+            )
             existing = set()
     missing = [p for p in _DEFAULT_GIT_EXCLUDE_PATTERNS if p not in existing]
     if missing:
@@ -594,7 +609,21 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
     if gitignore_path.exists():
         try:
             existing = set(gitignore_path.read_text(encoding="utf-8").splitlines())
-        except OSError:
+        except OSError as exc:
+            # Non-fatal: best-effort seeding must not block the run, but
+            # silently assuming "the file is empty" would cause every
+            # default pattern to be appended (potential duplicates on
+            # retry once the read problem is fixed). Warn so the
+            # operator can investigate the read failure without
+            # breaking the run.
+            logger.warning(
+                "Could not read existing .gitignore at {}: {}. "
+                "Proceeding as if the file were empty; this may append "
+                "duplicate patterns on a later run. Check file permissions "
+                "and ownership to remove the warning.",
+                gitignore_path,
+                exc,
+            )
             existing = set()
     missing = [p for p in _DEFAULT_GITIGNORE_PATTERNS if p not in existing]
     if missing:

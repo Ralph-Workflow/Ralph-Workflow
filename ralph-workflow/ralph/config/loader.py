@@ -130,9 +130,7 @@ def warn_unknown_fields(data: dict[str, object], path: Path) -> None:
         logger.warning(line)
 
 
-def _format_unknown_field_message(
-    *, full_path: str, path: Path, suggestion: str | None
-) -> str:
+def _format_unknown_field_message(*, full_path: str, path: Path, suggestion: str | None) -> str:
     """Build a what/why/fix line for a single unknown field.
 
     Args:
@@ -180,7 +178,9 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
         if key in seen:
             return
         seen.add(key)
-        lines.append(_format_unknown_field_message(full_path=full_path, path=path, suggestion=suggestion))
+        lines.append(
+            _format_unknown_field_message(full_path=full_path, path=path, suggestion=suggestion)
+        )
 
     # 1. Top-level closed keys
     _collect_unknown_leaves(
@@ -425,7 +425,16 @@ def load_config(
         logger.debug("Configuration validated successfully")
         return config
     except ValidationError as exc:
-        logger.error(format_config_validation_error(exc, local_path))
+        offending_path = _attribute_validation_error_to_layer(
+            exc,
+            local_path,
+            local_data,
+            _global_config_path(),
+            global_data,
+            propagated_entries,
+            cli_overrides,
+        )
+        logger.error(format_config_validation_error(exc, offending_path))
         raise SystemExit(1) from exc
 
 
@@ -446,3 +455,97 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
     except ValidationError as exc:
         logger.error(format_config_validation_error(exc, config_path))
         raise SystemExit(1) from exc
+
+
+def _attribute_validation_error_to_layer(
+    exc: ValidationError,
+    local_path: Path,
+    local_data: dict[str, object],
+    global_path: Path,
+    global_data: dict[str, object],
+    propagated_entries: list[tuple[Path, dict[str, object]]],
+    cli_overrides: dict[str, object] | None,
+) -> Path:
+    """Return the config file that actually owns a failing field.
+
+    Walks every ValidationError ``loc`` tuple and asks: which layer
+    actually set that field? Layer precedence (highest first):
+    CLI overrides > project-local > propagated > user-global > defaults.
+    The first layer that sets the failing field is the one to blame,
+    so the operator does not get sent to edit the wrong file.
+
+    When the bad value is set in multiple layers (the merge result
+    carries the highest-precedence layer's value but the bad value
+    ALSO appears in a lower layer), the message names the highest
+    layer that contributed the bad value -- if the layer attribution
+    is ambiguous across errors, we fall back to the most-frequently
+    named layer, and as a last resort the project-local path.
+    """
+    details = cast("list[dict[str, object]]", exc.errors())
+    if not details:
+        return local_path
+
+    # Highest-precedence layer first; each entry is (layer_name, path).
+    layer_paths: list[tuple[str, Path | None]] = [
+        ("cli", None),  # CLI overrides are not a file
+    ]
+    layer_paths.append(("local", local_path))
+    for prop_path, _ in propagated_entries:
+        layer_paths.append(("propagated", prop_path))
+    layer_paths.append(("global", global_path))
+
+    votes: dict[str, int] = {}
+    for detail in details:
+        loc = cast("tuple[object, ...]", detail.get("loc") or ())
+        layer = _layer_for_loc(
+            loc,
+            local_data,
+            global_data,
+            propagated_entries,
+            cli_overrides,
+        )
+        votes[layer] = votes.get(layer, 0) + 1
+
+    # Pick the highest-precedence layer that was voted for at all.
+    for name, path in layer_paths:
+        if votes.get(name, 0) > 0 and path is not None:
+            return path
+
+    return local_path
+
+
+def _layer_for_loc(
+    loc: tuple[object, ...],
+    local_data: dict[str, object],
+    global_data: dict[str, object],
+    propagated_entries: list[tuple[Path, dict[str, object]]],
+    cli_overrides: dict[str, object] | None,
+) -> str:
+    """Return the layer name that owns ``loc`` (highest precedence first)."""
+    if cli_overrides:
+        dotted = ".".join(str(part) for part in loc if part)
+        top = loc[0] if loc else ""
+        if dotted in cli_overrides or top in cli_overrides:
+            return "cli"
+    if _loc_in_data(loc, local_data):
+        return "local"
+    for _prop_path, prop_data in propagated_entries:
+        if _loc_in_data(loc, prop_data):
+            return "propagated"
+    if _loc_in_data(loc, global_data):
+        return "global"
+    return "local"  # ambiguous: blame the highest-precedence file
+
+
+def _loc_in_data(loc: tuple[object, ...], data: dict[str, object]) -> bool:
+    """Return True when the dotted ``loc`` is present anywhere in ``data``."""
+    if not loc:
+        return False
+    current: object = data
+    for part in loc:
+        if not isinstance(current, dict):
+            return False
+        if part not in current:
+            return False
+        current = current[part]
+    return True

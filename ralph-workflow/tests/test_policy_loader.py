@@ -69,7 +69,10 @@ def test_load_policy_invalid_toml_raises(tmp_path: Path) -> None:
     (tmp_path / "agents.toml").write_text("not a valid toml: <<<")
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
         load_policy(tmp_path)
-    assert "Failed to parse TOML" in excinfo.value.message
+    assert "Could not parse TOML" in excinfo.value.message
+    assert "WHY:" in excinfo.value.message
+    assert "FIX:" in excinfo.value.message
+    assert "ralph --check-config" in excinfo.value.message
     assert excinfo.value.source == "agents.toml"
 
 
@@ -79,6 +82,38 @@ def test_load_policy_reports_agent_validation_failure(tmp_path: Path) -> None:
         load_policy(tmp_path)
     assert "agents.toml validation failed" in excinfo.value.message
     assert excinfo.value.source == "agents"
+
+
+def test_load_policy_read_error_distinct_from_parse_error(tmp_path: Path) -> None:
+    """An OSError opening the file must surface as a read error, not a parse error.
+
+    Before the fix the loader caught ``Exception`` and labelled every
+    non-parse failure as ``"Failed to parse TOML at <path>: <err>"``,
+    which misdirected operators at a read problem (permissions,
+    missing directory, vanished mount) toward TOML syntax. After the
+    fix OSError and TOMLDecodeError take separate paths and the
+    message clearly distinguishes them.
+    """
+    target = tmp_path / "agents.toml"
+    target.write_text("placeholder = 1\n")
+    # Remove read permission so ``open()`` raises PermissionError
+    # (a subclass of OSError) on POSIX.
+    target.chmod(0o000)
+    try:
+        with pytest.raises(LoaderPolicyValidationError) as excinfo:
+            load_policy(tmp_path)
+        message = excinfo.value.message
+        assert "Could not read TOML" in message, (
+            f"Read-failure envelope MUST distinguish itself from parse failures; got: {message!r}"
+        )
+        assert "Failed to parse TOML" not in message, (
+            f"Read-failure envelope MUST NOT be labelled as a parse failure; got: {message!r}"
+        )
+        assert "WHY:" in message and "FIX:" in message
+        assert excinfo.value.source == "agents.toml"
+    finally:
+        # Restore permissions so tmp_path cleanup can remove the file.
+        target.chmod(0o644)
 
 
 def test_load_policy_reports_unknown_transition_target(tmp_path: Path) -> None:
@@ -749,5 +784,3 @@ def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> N
     for idx, (fmt, value) in enumerate(expected_messages):
         assert mock_logger.error.call_args_list[idx][0][0] == fmt
         assert mock_logger.error.call_args_list[idx][0][1] == value
-
-

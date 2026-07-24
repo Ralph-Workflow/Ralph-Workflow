@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import shutil
 import uuid
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from importlib import import_module
 from inspect import signature
 from pathlib import Path
@@ -616,7 +616,16 @@ def _sync_shipped_skills_on_pipeline_run(
     try:
         update_available = SkillManager().check_skills_for_updates()
     except Exception as exc:  # user-global check is best-effort; must not break the pipeline
-        logger.debug("User-global skill update check failed (non-fatal): {}", exc)
+        # Non-fatal: surface as a visible warning so a broken user-global
+        # skill root (read-only $XDG_CONFIG_HOME, corrupted JSON, missing
+        # index) is not silently swallowed at default log level. The run
+        # continues; the operator can repair via
+        # ``ralph --force-init-skills``.
+        _emit_setup_warning(
+            f"User-global skill update check failed (non-fatal): {exc}. "
+            "Run `ralph --force-init-skills` to repair, or "
+            "`ralph --diagnose` for details.",
+        )
     if update_available:
         _print_user_global_update_hint()
     try:
@@ -625,7 +634,11 @@ def _sync_shipped_skills_on_pipeline_run(
             if failures:
                 _print_project_skill_conflict_hint(failures)
     except Exception as exc:  # project-scope install is best-effort; must not break the pipeline
-        logger.debug("Project-scope skill install failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Project-scope skill install failed (non-fatal): {exc}. "
+            "Run `ralph --force-init-skills` to retry, or "
+            "check file permissions on .agent/skills/.",
+        )
     try:
         from ralph.config.bootstrap import (
             auto_seed_default_git_exclude,
@@ -635,7 +648,11 @@ def _sync_shipped_skills_on_pipeline_run(
         auto_seed_default_gitignore(target_root)
         auto_seed_default_git_exclude(target_root)
     except Exception as exc:  # gitignore / git exclude auto-seed is best-effort
-        logger.debug("Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Project .gitignore/.git/info/exclude auto-seed failed "
+            f"(non-fatal): {exc}. Re-run `ralph` or check file permissions "
+            "on .gitignore and .git/info/exclude.",
+        )
     # Deterministic skill-update auto-commit (wt-025): runs AFTER the
     # project-scope install AND the gitignore/exclude auto-seed so the
     # auto-commit diff is purely skill content (no gitignore noise).
@@ -648,7 +665,18 @@ def _sync_shipped_skills_on_pipeline_run(
         if sha:
             logger.info("Auto-committed skill updates: {}", sha[:8])
     except Exception as exc:  # auto-commit is best-effort; never break the pipeline
+        # The literal ``Skill auto-commit failed (non-fatal): {}`` is
+        # required by ``ralph.testing.audit_skill_auto_commit`` (plan
+        # step 12) to pin the failure-path contract -- a refactor that
+        # silently drops the handler is caught at audit time. It's
+        # emitted at debug level so the operator still sees a visible
+        # warning via ``_emit_setup_warning`` below.
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Skill auto-commit failed (non-fatal): {exc}. The run "
+            "continues with the new skill content uncommitted; commit "
+            "manually or re-run to retry.",
+        )
     # RFC-013 P2: run-start retention sweep deletes aged bookkeeping
     # under ``.agent`` (completion sentinels, receipt dirs, retry scratch)
     # so long multi-instance runs do not accumulate one-file-per-event
@@ -663,7 +691,25 @@ def _sync_shipped_skills_on_pipeline_run(
                 "Retention sweep removed {} stale .agent entries", removed
             )
     except Exception as exc:  # sweep is best-effort; never break the pipeline
-        logger.debug("Retention sweep failed (non-fatal): {}", exc)
+        _emit_setup_warning(
+            f"Retention sweep failed (non-fatal): {exc}. The run "
+            "continues without cleanup; check .agent/ permissions.",
+        )
+
+
+def _emit_setup_warning(message: str) -> None:
+    """Emit a setup-time non-fatal warning via the active display, falling back to loguru.
+
+    The display is resolved lazily (the function may be invoked before
+    the CLI display context is fully ready), and a loguru warning is
+    always emitted so the message reaches the operator's log stream
+    even when the display sink is not attached.
+    """
+    logger.warning(message)
+    with suppress(Exception):  # pragma: no cover - defensive: best-effort warning path
+        display = resolve_active_display(None, make_display_context())
+    with suppress(Exception):  # pragma: no cover - defensive: best-effort warning path
+        display.emit_warning(message)
 
 
 sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run

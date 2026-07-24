@@ -1,4 +1,30 @@
-# User-global Ralph Workflow configuration.
+# =============================================================================
+# EDIT THIS — REQUIRED FOR YOUR FIRST RUN
+# =============================================================================
+# This file is your USER-GLOBAL Ralph Workflow config. Most operators leave
+# every default below, but two sections are REQUIRED to review before your
+# first run:
+#
+#   1. [agents.*]  -- pick the active agent block that matches the coding
+#                     agent CLI you already have installed. The bundled
+#                     ``[agents.claude]`` block below is uncommented so a
+#                     fresh install works out of the box when ``claude`` is
+#                     on PATH. Uncomment ONE OTHER block instead to switch
+#                     agents (or install another CLI; see --diagnose).
+#
+#   2. [agent_chains] -- each chain is an ORDERED FALLBACK LIST. The active
+#                       ``development`` chain decides which agent edits your
+#                       files. The bundled defaults reference only the
+#                       ``claude`` agent so a one-agent first run works;
+#                       extend the lists once you install another CLI.
+#
+# Every other section below is OPTIONAL with a working default -- only edit
+# it if you know you need it. The OPTIONAL banner below the [agent_drains]
+# block marks the boundary so you can scroll past everything else safely.
+#
+# For project-local overrides (.agent/ralph-workflow.toml), the same two
+# sections are required when that file is used. The companion file
+# ``ralph-workflow-local.toml`` is the project-local template.
 #
 # Ralph Workflow manages a standard eight-file first-run config set:
 #   1. ~/.config/ralph-workflow.toml          (user-global main config, this file)
@@ -18,7 +44,7 @@
 #
 # Location: ~/.config/ralph-workflow.toml  (or $XDG_CONFIG_HOME/ralph-workflow.toml)
 #
-# Project-local overrides live in .agent/ralph-workflow.toml — values there
+# Project-local overrides live in .agent/ralph-workflow.toml -- values there
 # take precedence over this file.
 #
 # Every non-secret field is listed below with its default value, commented out.
@@ -28,25 +54,22 @@
 # For MCP servers and web search, edit ~/.config/ralph-workflow-mcp.toml
 # (or .agent/mcp.toml for project-local overrides).
 
-# ============================================================
-# REQUIRED — confirm at least one agent before your first run.
-# ============================================================
-# Ralph Workflow enables agents it finds on PATH during `ralph --init`. Keep the active
-# Claude block below, or uncomment one of the optional blocks for another agent.
-# ---------------------------------------------------------------------------
-# [agents.*] — Agent definitions
-# ---------------------------------------------------------------------------
-# Optional model shorthand (agent -> what to type -> example):
-# claude -> claude/<model> -> claude/opus
-# claude-headless -> claude-headless/<model> -> claude-headless/sonnet
-# codex -> codex/<model>[effort=<level>] -> codex/gpt-5.4[effort=high]
-# opencode -> opencode/<provider>/<model> -> opencode/openai/gpt-5.4
-# nanocoder -> nanocoder/<provider>/<model> -> nanocoder/ollama/llama3.1
-# agy -> agy/<display name> -> agy/"Claude Sonnet 4.6 (Thinking)"
-# pi -> pi/<provider/model[:thinking]> -> pi/anthropic/claude-sonnet-4:high
-# cursor -> cursor/<model id> -> cursor/claude-opus-4-8[effort=high]
-# This is optional: use the bundled defaults unless you want to choose a model.
-# Full syntax and the literal CLI flags are in docs/sphinx/agent-compatibility.md.
+# -----------------------------------------------------------------------------
+# ACTIVE AGENT (REQUIRED) -- uncomment to switch the active coding agent.
+# -----------------------------------------------------------------------------
+# Model-string shorthand (agent -> what to type -> example):
+#   claude         -> claude/<model>                  -> claude/opus
+#   claude-headless-> claude-headless/<model>         -> claude-headless/sonnet
+#   codex          -> codex/<model>[effort=<level>]   -> codex/gpt-5.4[effort=high]
+#   opencode       -> opencode/<provider>/<model>     -> opencode/openai/gpt-5.4
+#   nanocoder      -> nanocoder/<provider>/<model>    -> nanocoder/ollama/llama3.1
+#   agy            -> agy/<display name>              -> agy/"Claude Sonnet 4.6 (Thinking)"
+#   pi             -> pi/<provider/model[:thinking]>  -> pi/anthropic/claude-sonnet-4:high
+#   cursor         -> cursor/<model id>               -> cursor/claude-opus-4-8[effort=high]
+#
+# Use these inside [agent_chains] below to point each role at the agent
+# whose model format matches. Full syntax and the literal CLI flags are in
+# docs/sphinx/agent-compatibility.md.
 
 # @AGENT-BLOCK-START: claude
 # [agents.claude]
@@ -170,14 +193,80 @@ subagent_capability = true
 # session_flag = "--resume {}"
 # can_commit = false
 
-# ============================================================
-# OPTIONAL — everything below this line has a working default.
+# -----------------------------------------------------------------------------
+# ACTIVE CHAINS (REQUIRED) -- each chain is an ORDERED FALLBACK LIST.
+# -----------------------------------------------------------------------------
+# Each chain is an ORDERED FALLBACK LIST: Ralph Workflow tries the first agent, and
+# if it fails (or exhausts its retries) it moves to the next one. The
+# first entry is what you actually run; the rest are the safety net.
+#
+# What KIND of model belongs where (plain language):
+#   - planning / analysis  -> your most capable, reviewer-grade model.
+#                            These phases review work and catch mistakes.
+#   - development          -> a strong coder model.
+#                            This phase edits files and runs the loop.
+#   - commit               -> a small/cheap/fast model is fine.
+#                            This phase writes a commit message; speed > depth.
+#
+# The bundled defaults below use ONLY the default-active `claude` agent
+# so a fresh first-run with just Claude installed works out of the box --
+# no other agent binary is required. Once you install another agent and
+# verify it on PATH, uncomment one of the examples below to extend the
+# fallback chain. Each entry is `agent/model`; agent supports multi-segment
+# forms like `opencode/<provider>/<model>` (see
+# docs/sphinx/agent-compatibility.md for the full syntax per agent).
+
+[agent_chains]
+planning = ["claude/opus"]
+development = [
+  "claude/sonnet",
+]
+analysis = ["claude/opus"]
+commit = ["claude/haiku"]
+
+# After you install opencode and confirm `opencode` is on PATH:
+#   development = ["claude/sonnet", "opencode/openai/gpt-5.4"]
+# After you install codex:
+#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
+# CCS alternative example: planning = ["ccs/work"]
+# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
+
+# -----------------------------------------------------------------------------
+# DRAIN-TO-CHAIN BINDINGS (REQUIRED) -- which chain handles which pipeline role.
+# -----------------------------------------------------------------------------
+# A drain is a ROUTING LABEL that binds a pipeline phase to a chain.
+# (The chain itself is the ordered fallback list above; the drain is the
+# "which chain handles the planning phase?" answer.)
+#
+# Edit this only if you are changing which chain handles a role.
+#
+# IMPORTANT: the bundled pipeline uses the drain set below.
+
+[agent_drains]
+planning = "planning"
+planning_analysis = "analysis"
+development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
+analysis = "analysis"
+commit = "commit"
+
+# Edit this only if you want a specific agent for prompt refinement.
+# [prompt_helper]
+# Omit agent = to use the first configured agent in [agents.*]; if no agents are
+# configured, Ralph Workflow falls back to the built-in "opencode" agent.
+# Uncomment and set agent = to force a specific agent instead:
+# agent = "claude"
+
+# =============================================================================
+# OPTIONAL -- everything below this line has a working default.
 # Skip this section unless you know you need it.
-# ============================================================
+# =============================================================================
+
 # Edit this only if you need to change Ralph Workflow's normal workflow settings.
-# ---------------------------------------------------------------------------
-# [general] — Core workflow settings
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# [general] -- Core workflow settings
+# -----------------------------------------------------------------------------
 [general]
 # verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
 # telemetry_enabled = true              # anonymous metadata-only telemetry is on by default. Set false to opt out. Ralph Workflow uses this data only to improve reliability/product quality, understand active usage and feature adoption, and inform users about useful capabilities. It is never sold, rented, or shared for advertising.
@@ -218,18 +307,20 @@ subagent_capability = true
 # agent_subagent_output_poll_interval_seconds = 1.0 # poll interval for subagent output streams (>0)
 
 # Edit this only if you need to change workflow automation behavior.
-# [general.workflow] — Workflow automation flags
+# -----------------------------------------------------------------------------
+# [general.workflow] -- Workflow automation flags
+# -----------------------------------------------------------------------------
 [general.workflow]
 # checkpoint_enabled = true     # enable checkpoint/resume functionality
 # unsafe_mode = false          # merge Ralph Workflow MCP into agent MCP config instead of overwriting it
 
 # Edit this only if you use Claude Code Switch (CCS).
-# ---------------------------------------------------------------------------
-# [ccs] — Claude Code Switch (CCS) headless-Claude defaults.
+# -----------------------------------------------------------------------------
+# [ccs] -- Claude Code Switch (CCS) headless-Claude defaults.
+# -----------------------------------------------------------------------------
 # CCS is the explicitly-headless Claude path. Configure [ccs_aliases] to run
 # Claude non-interactively (--print --output-format=stream-json). For unattended
 # interactive Claude use the built-in "claude" or "claude/MODEL" agents instead.
-# ---------------------------------------------------------------------------
 [ccs]
 # output_flag = "--output-format=stream-json"
 # yolo_flag = "--permission-mode auto"
@@ -241,9 +332,9 @@ subagent_capability = true
 # can_commit = true
 
 # Edit this only if you need a named CCS model alias.
-# ---------------------------------------------------------------------------
-# [ccs_aliases] — CCS alias mappings (string or table form)
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# [ccs_aliases.*] -- CCS alias mappings (string or table form)
+# -----------------------------------------------------------------------------
 # Simple string form (uses built-in defaults for the named alias):
 # ccs_aliases = { claude = "claude", opencode = "opencode" }
 #
@@ -257,68 +348,3 @@ subagent_capability = true
 # cmd = "opencode"
 # model_flag = "--model opencode-o3"
 # can_commit = false
-
-# ---------------------------------------------------------------------------
-# [agent_chains.*] — Named reusable chain definitions (list of agent names)
-#
-# Each chain is an ORDERED FALLBACK LIST: Ralph Workflow tries the first agent, and
-# if it fails (or exhausts its retries) it moves to the next one. The
-# first entry is what you actually run; the rest are the safety net.
-#
-# What KIND of model belongs where (plain language):
-#   - planning / analysis  → your most capable, reviewer-grade model.
-#                            These phases review work and catch mistakes.
-#   - development          → a strong coder model.
-#                            This phase edits files and runs the loop.
-#   - commit               → a small/cheap/fast model is fine.
-#                            This phase writes a commit message; speed > depth.
-#
-# The bundled defaults below use ONLY the default-active `claude` agent
-# so a fresh first-run with just Claude installed works out of the box —
-# no other agent binary is required. Once you install another agent and
-# verify it on PATH, uncomment one of the examples below to extend the
-# fallback chain. Each entry is `agent/model`; agent supports multi-segment
-# forms like `opencode/<provider>/<model>` (see
-# docs/sphinx/agent-compatibility.md for the full syntax per agent).
-# ---------------------------------------------------------------------------
-
-[agent_chains]
-planning = ["claude/opus"]
-development = [
-  "claude/sonnet",
-]
-analysis = ["claude/opus"]
-commit = ["claude/haiku"]
-
-# After you install opencode and confirm `opencode` is on PATH:
-#   development = ["claude/sonnet", "opencode/openai/gpt-5.4"]
-# After you install codex:
-#   development = ["claude/sonnet", "codex", "opencode/openai/gpt-5.4"]
-# CCS alternative example: planning = ["ccs/work"]
-# See docs/sphinx/configuration.md#ccs-aliases for CCS details.
-
-# Edit this only if you are changing which chain handles a role.
-# ---------------------------------------------------------------------------
-# [agent_drains.*] — Drain-to-chain bindings for pipeline drains
-# A drain is a ROUTING LABEL that binds a pipeline phase to a chain.
-# (The chain itself is the ordered fallback list above; the drain is the
-# "which chain handles the planning phase?" answer.)
-#
-# IMPORTANT: the bundled pipeline uses the drain set below.
-# ---------------------------------------------------------------------------
-
-[agent_drains]
-planning = "planning"
-planning_analysis = "analysis"
-development = "development"
-development_analysis = "analysis"
-development_commit = "commit"
-analysis = "analysis"
-commit = "commit"
-
-# Edit this only if you want a specific agent for prompt refinement.
-# [prompt_helper]
-# Omit agent = to use the first configured agent in [agents.*]; if no agents are
-# configured, Ralph Workflow falls back to the built-in "opencode" agent.
-# Uncomment and set agent = to force a specific agent instead:
-# agent = "claude"

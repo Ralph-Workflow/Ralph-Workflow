@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from rich.text import Text
 
 from ralph import __version__
@@ -57,8 +58,17 @@ def _build_agent_availability_content(
                 content.append(Text("Detected agents:", style="theme.banner.title"))
                 content.extend(avail_lines)
                 return content
-        except Exception:
-            pass
+        except Exception as exc:
+            # Non-fatal: the agent-availability check is best-effort so a
+            # broken agent registry or transient PATH scan failure does
+            # not block the welcome panel. Warn so the operator can
+            # investigate the failure without breaking the run.
+            logger.warning(
+                "Agent availability check failed (non-fatal): {}. "
+                "Falling back to the generic PATH hint; check the agent "
+                "registry and PATH to remove the warning.",
+                exc,
+            )
     content.append(
         Text("Ensure your AI agents are on PATH (e.g., `claude`, `opencode`, `nanocoder`, `agy`)")
     )

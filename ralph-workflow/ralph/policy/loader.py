@@ -61,7 +61,7 @@ def _load_toml(path: Path) -> dict[str, object]:
         Parsed TOML content or empty dict if file doesn't exist.
 
     Raises:
-        PolicyValidationError: If TOML parsing fails.
+        PolicyValidationError: If TOML parsing fails OR the file cannot be read.
     """
     if not path.exists():
         return {}
@@ -71,9 +71,27 @@ def _load_toml(path: Path) -> dict[str, object]:
             data: dict[str, object] = tomllib.load(fh)
         _warn_unknown_policy_top_level_fields(data, path)
         return data
-    except Exception as exc:
+    except _TOML_DECODE_ERROR as exc:
         raise PolicyValidationError(
-            f"Failed to parse TOML at {path}: {exc}",
+            (
+                f"Could not parse TOML at {path}: {exc}.\n"
+                "WHY: settings in a malformed TOML file are not safe to use, "
+                "so Ralph refuses to guess what you meant.\n"
+                f"FIX: correct the TOML syntax in {path}, then re-run "
+                "`ralph --check-config`."
+            ),
+            source=str(path.name),
+        ) from exc
+    except OSError as exc:
+        raise PolicyValidationError(
+            (
+                f"Could not read TOML at {path}: {exc}.\n"
+                "WHY: a file that Ralph cannot open is the same as a file "
+                "Ralph cannot trust, so the loader refuses to silently fall back.\n"
+                f"FIX: check that {path} exists, that the file is readable "
+                "(file mode and ownership), and that the directory is accessible; "
+                "then re-run `ralph --check-config`."
+            ),
             source=str(path.name),
         ) from exc
 
@@ -84,6 +102,11 @@ def _warn_unknown_policy_top_level_fields(data: dict[str, object], path: Path) -
     elif path.name == "artifacts.toml":
         warn_unknown_top_level_fields(data, path, _ARTIFACTS_TOP_LEVEL_FIELDS)
 
+
+# tomllib.TOMLDecodeError is type-Any on 3.14 because the runtime module
+# has no mypy-compatible stubs; bind it once so the ``except`` clause and
+# any callers see a stable, narrowed type.
+_TOML_DECODE_ERROR = cast("type[Exception]", tomllib.TOMLDecodeError)
 
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
