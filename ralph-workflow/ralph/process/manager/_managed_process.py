@@ -470,6 +470,10 @@ class ManagedProcess:
     def kill(self) -> None:
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
 
+    def cleanup_orphans(self) -> None:
+        """Kill descendants that outlived this process."""
+        self._manager.cleanup_orphans(self)
+
     def has_live_descendants(self) -> bool:
         """Return True when this process currently has live descendants."""
         psutil_mod = self._manager._psutil

@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 
         def terminate(self, grace_period_s: float | None = None) -> None: ...
 
+        def cleanup_orphans(self) -> None: ...
+
     class ShardSpawner(Protocol):
         """Spawn seam for one plain-pytest shard."""
 
@@ -278,6 +280,7 @@ def _reap_process(
     *,
     timeout_seconds: float,
 ) -> tuple[str, str]:
+    process.cleanup_orphans()
     try:
         stdout, stderr = process.communicate(timeout=max(0.0, timeout_seconds))
     except subprocess.TimeoutExpired:

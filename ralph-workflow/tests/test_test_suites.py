@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -48,13 +49,16 @@ class FakeShardProcess:
         *,
         stdout: bytes = b"",
         stderr: bytes = b"",
+        communicate_times_out: bool = False,
     ) -> None:
         self._returncodes = list(returncodes)
         self._last_returncode: int | None = None
         self._stdout = stdout
         self._stderr = stderr
+        self._communicate_times_out = communicate_times_out
         self.terminated = False
         self.reaped = False
+        self.orphans_cleaned = False
 
     def poll(self) -> int | None:
         if self._returncodes:
@@ -67,6 +71,8 @@ class FakeShardProcess:
         timeout: float | None = None,
     ) -> tuple[bytes, bytes]:
         del input, timeout
+        if self._communicate_times_out:
+            raise subprocess.TimeoutExpired(("pytest",), 1.0)
         self.reaped = True
         return self._stdout, self._stderr
 
@@ -74,6 +80,9 @@ class FakeShardProcess:
         del grace_period_s
         self.terminated = True
         self._last_returncode = -15
+
+    def cleanup_orphans(self) -> None:
+        self.orphans_cleaned = True
 
 
 class StubSpawner:
@@ -395,6 +404,56 @@ def test_run_test_suites_uses_one_parent_deadline_and_reaps_all_on_timeout(
 
     assert exit_code == 124
     assert all(process.terminated and process.reaped for process in processes)
+
+
+def test_completed_shard_cleans_descendants_before_draining_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_alpha.py",),
+    )
+    process = FakeShardProcess([0])
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        spawner=StubSpawner([process]),
+        file_discoverer=lambda _cwd: ("tests/test_alpha.py",),
+        file_weigher=lambda _cwd, _path: 1,
+        wait=lambda _seconds: None,
+    )
+
+    assert exit_code == 0
+    assert process.reaped
+    assert process.orphans_cleaned
+
+
+def test_pipe_drain_timeout_still_cleans_shard_descendants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "1")
+    monkeypatch.setattr(
+        test_suites_module,
+        "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+        ("tests/test_alpha.py",),
+    )
+    process = FakeShardProcess([0], communicate_times_out=True)
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path,
+        spawner=StubSpawner([process]),
+        file_discoverer=lambda _cwd: ("tests/test_alpha.py",),
+        file_weigher=lambda _cwd, _path: 1,
+        wait=lambda _seconds: None,
+    )
+
+    assert exit_code == 0
+    assert not process.reaped
+    assert process.orphans_cleaned
 
 
 def test_run_test_suites_charges_static_discovery_to_parent_deadline(
