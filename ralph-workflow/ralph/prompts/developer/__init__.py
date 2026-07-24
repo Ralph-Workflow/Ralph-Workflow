@@ -62,6 +62,10 @@ def prompt_developer_iteration_xml_with_context(
     base_vars: dict[str, str] = {
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
         "LAST_RETRY_ERROR": inputs.last_retry_error,
+        "PRIOR_RESULT_STATUS": inputs.prior_result_status,
+        "PRIOR_RESULT_SUMMARY": inputs.prior_result_summary,
+        "PRIOR_RESULT_NEXT_STEPS": inputs.prior_result_next_steps,
+        "PRIOR_RESULT_CONTINUATION": inputs.prior_result_continuation,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
@@ -115,6 +119,10 @@ def prompt_developer_iteration_xml_with_context(
                 "PLAN": inputs.plan_content or "(no plan available)",
                 "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
                 "LAST_RETRY_ERROR": inputs.last_retry_error,
+                "PRIOR_RESULT_STATUS": inputs.prior_result_status,
+                "PRIOR_RESULT_SUMMARY": inputs.prior_result_summary,
+                "PRIOR_RESULT_NEXT_STEPS": inputs.prior_result_next_steps,
+                "PRIOR_RESULT_CONTINUATION": inputs.prior_result_continuation,
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,

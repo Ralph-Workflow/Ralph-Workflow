@@ -12,12 +12,15 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.config.enums import AgentTransport
 from ralph.executor.process import ProcessRunOptions, run_process
+from ralph.mcp.artifacts.development_result import DEVELOPMENT_RESULT_ARTIFACT_TYPE
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.history import (
     clear_artifact_history,
     history_index_path,
 )
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PLAN_ARTIFACT_TYPE,
@@ -84,6 +87,9 @@ from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
 
 PLAN_MD_DRAFT_PATH = ".agent/artifacts/.plan.draft.md"
+PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH = (
+    ".agent/tmp/prompt_payloads/development_result_continuation.md"
+)
 
 __all__ = [
     "MissingPlanHandoffError",
@@ -322,6 +328,12 @@ def _render_prompt_for_phase(
         )
     # Commit-cleanup prompt: commit_cleanup role
     if phase_role == "commit_cleanup":
+        _snapshot_partial_execution_result(
+            workspace,
+            previous_phase=previous_phase,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+        )
         return render_commit_cleanup_prompt(
             phase=phase,
             workspace_root=workspace_root,
@@ -450,7 +462,13 @@ def _render_developer_prompt(
         previous_phase=previous_phase,
         pipeline_policy=pipeline_policy,
     )
-    if dev_is_loopback:
+    prior_partial_result = _resolve_partial_development_result(
+        workspace,
+        drain=drain,
+        artifacts_policy=artifacts_policy,
+    )
+    is_continuation = dev_is_loopback or prior_partial_result is not None
+    if is_continuation:
         loopback_template_name = _loopback_template_name_for_phase(phase_def)
         if loopback_template_name:
             template_name = loopback_template_name
@@ -458,7 +476,7 @@ def _render_developer_prompt(
         workspace_root=workspace_root,
         phase_def=phase_def,
         drain_artifact_type=drain_artifact_type,
-        is_loopback=dev_is_loopback,
+        is_loopback=is_continuation,
     )
     analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
         workspace, phase, pipeline_policy, artifacts_policy
@@ -486,6 +504,10 @@ def _render_developer_prompt(
             ),
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
+            prior_result_status=prior_partial_result[0] if prior_partial_result else "",
+            prior_result_summary=prior_partial_result[1] if prior_partial_result else "",
+            prior_result_next_steps=prior_partial_result[2] if prior_partial_result else "",
+            prior_result_continuation=prior_partial_result[3] if prior_partial_result else "",
             skills_inline_content=skills_inline_content,
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
@@ -969,6 +991,91 @@ def _resolve_loopback_analysis_feedback(
                 )
                 return content or "", path
     return "", ""
+
+
+def _resolve_partial_development_result(
+    workspace: Workspace,
+    *,
+    drain: str,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> tuple[str, str, str, str] | None:
+    """Return continuation fields from this drain's valid partial result."""
+    if artifacts_policy is None:
+        return None
+    required_artifact = resolve_required_artifact(artifacts_policy, drain=drain)
+    if (
+        required_artifact is None
+        or required_artifact.artifact_type != DEVELOPMENT_RESULT_ARTIFACT_TYPE
+    ):
+        return None
+    markdown, _path = _resolve_agent_handoff(
+        workspace,
+        artifact_type=required_artifact.artifact_type,
+        artifact_path=required_artifact.json_path,
+    )
+    if not markdown:
+        markdown = _read_optional(workspace, PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)
+    if not markdown:
+        return None
+    content = _validated_development_result_content(markdown)
+    if content is None or content.get("status") != "partial":
+        return None
+    continuation = content.get("continuation")
+    summary = content.get("summary")
+    next_steps = content.get("next_steps")
+    prior_session_id = (
+        continuation.get("prior_session_id") if isinstance(continuation, dict) else None
+    )
+    values = (summary, next_steps, prior_session_id)
+    if not all(isinstance(value, str) for value in values):
+        return None
+    return "partial", cast("str", summary), cast("str", next_steps), cast("str", prior_session_id)
+
+
+def _snapshot_partial_execution_result(
+    workspace: Workspace,
+    *,
+    previous_phase: str | None,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> None:
+    """Persist partial execution context before commit phases clear its artifact."""
+    if previous_phase is None or artifacts_policy is None:
+        return
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+    if previous_phase_def is None or previous_phase_def.role != "execution":
+        return
+    required_artifact = resolve_required_artifact(
+        artifacts_policy,
+        drain=previous_phase_def.drain,
+    )
+    if (
+        required_artifact is None
+        or required_artifact.artifact_type != DEVELOPMENT_RESULT_ARTIFACT_TYPE
+    ):
+        return
+    markdown, _path = _resolve_agent_handoff(
+        workspace,
+        artifact_type=required_artifact.artifact_type,
+        artifact_path=required_artifact.json_path,
+    )
+    if not markdown:
+        return
+    content = _validated_development_result_content(markdown)
+    if content is None:
+        return
+    if content.get("status") == "partial":
+        workspace.write(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH, markdown)
+    elif workspace.exists(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH):
+        workspace.remove(PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)
+
+
+def _validated_development_result_content(markdown: str) -> dict[str, object] | None:
+    """Return validated development-result content without accepting error diagnostics."""
+    content, diagnostics = parse_and_validate(markdown, DEVELOPMENT_RESULT_SPEC)
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return None
+    return content
 
 
 def _latest_artifact_content(

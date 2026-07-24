@@ -25,6 +25,16 @@ Feedback payload file: `{{ANALYSIS_FEEDBACK_PATH}}`
 
 {{ANALYSIS_FEEDBACK}}
 
+{% if PRIOR_RESULT_STATUS %}
+PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE:
+This invocation is a genuinely new agent session. Do not resume the prior
+session; its continuation reference is handoff metadata for this new session.
+
+Summary: {{PRIOR_RESULT_SUMMARY}}
+Next steps: {{PRIOR_RESULT_NEXT_STEPS}}
+Continuation reference: {{PRIOR_RESULT_CONTINUATION}}
+{% endif %}
+
 {% if HAS_DOCS_MCP %}
 Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for library/API implementation research.
 {% else %}
