@@ -12,6 +12,7 @@ from loguru import logger
 
 from ralph.display.artifact_reader import (
     PlanSummary,
+    plan_artifact_path,
     read_latest_analysis_decision,
     read_plan_artifact,
 )
@@ -212,6 +213,9 @@ class PipelineSubscriber:
         workspace_root: Path,
         run_id: str,
         _prompt_reader: Callable[[Path], tuple[str, ...]] = read_prompt_preview,
+        _prompt_path_finder: Callable[[Path], Path | None] = find_prompt_path,
+        _plan_reader: Callable[[Path], PlanSummary | None] = read_plan_artifact,
+        _plan_marker_reader: Callable[[Path], int | None] | None = None,
         on_snapshot: Callable[[PipelineSnapshot], None] | None = None,
         pipeline_policy: PipelinePolicy | None = None,
     ) -> None:
@@ -222,14 +226,16 @@ class PipelineSubscriber:
         self._lock = threading.Lock()
         self._on_snapshot = on_snapshot
         self._pipeline_policy: PipelinePolicy | None = pipeline_policy
+        self._plan_reader = _plan_reader
+        self._plan_marker_reader = _plan_marker_reader
 
-        prompt_path = find_prompt_path(workspace_root)
+        prompt_path = _prompt_path_finder(workspace_root)
         self._prompt_path: str | None = str(prompt_path) if prompt_path is not None else None
         self._prompt_preview: tuple[str, ...] = (
             _prompt_reader(prompt_path) if prompt_path is not None else ()
         )
 
-        plan = read_plan_artifact(workspace_root) or PlanSummary()
+        plan = self._plan_reader(workspace_root) or PlanSummary()
         self._plan_summary: str | None = plan.summary
         self._plan_scope_items: tuple[str, ...] = plan.scope_items
         self._plan_total_steps: int = plan.total_steps
@@ -575,7 +581,7 @@ class PipelineSubscriber:
         if marker == self._last_plan_refresh_marker:
             return
         self._invalidate_snapshot_cache_locked()
-        plan = read_plan_artifact(self._workspace_root) or PlanSummary()
+        plan = self._plan_reader(self._workspace_root) or PlanSummary()
         self._plan_summary = plan.summary
         self._plan_scope_items = plan.scope_items
         self._plan_total_steps = plan.total_steps
@@ -585,7 +591,9 @@ class PipelineSubscriber:
         self._snapshot_cache = None
 
     def _plan_refresh_marker(self) -> int | None:
-        plan_path = self._workspace_root / ".agent" / "artifacts" / "plan.json"
+        if self._plan_marker_reader is not None:
+            return self._plan_marker_reader(self._workspace_root)
+        plan_path = plan_artifact_path(self._workspace_root)
         try:
             return plan_path.stat().st_mtime_ns
         except OSError:

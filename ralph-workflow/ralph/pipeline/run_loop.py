@@ -16,6 +16,7 @@ from loguru import logger
 import ralph.pipeline.runner as _runner_module
 from ralph.config.enums import Verbosity
 from ralph.display._run_start_orientation import RunStartOrientation
+from ralph.display.artifact_reader import plan_artifact_path
 from ralph.display.parallel_display import (
     ParallelDisplay,
     build_default_display_legacy_bridge,
@@ -316,7 +317,7 @@ def _emit_run_start(
         _parallel_max_workers: int | None = (
             _dev_para.max_parallel_workers if _dev_para is not None else None
         )
-        _plan_present = (ctx.workspace_scope.root / ".agent" / "artifacts" / "plan.json").exists()
+        _plan_present = plan_artifact_path(ctx.workspace_scope.root).exists()
         _dev_agent_raw: object = getattr(ctx.config, "developer_agent", None)
         _dev_model_raw: object = getattr(ctx.config, "developer_model", None)
         verbosity_str = (

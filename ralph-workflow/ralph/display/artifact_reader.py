@@ -1,9 +1,9 @@
 """Helpers for reading plan and analysis-decision artifacts.
 
-These readers are intentionally tolerant: missing files, malformed JSON, or
-unexpected schemas all return ``None`` rather than raising. This keeps the
-display resilient when artifacts are partially written or absent (for
-example during the first iteration before any analysis has run).
+These readers are intentionally tolerant: missing files, malformed artifacts,
+or unexpected schemas all return ``None`` rather than raising. This keeps the
+display resilient when artifacts are partially written or absent (for example
+during the first iteration before any analysis has run).
 """
 
 from __future__ import annotations
@@ -13,12 +13,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.display.plan_summary import PlanSummary
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.specs import PLAN_SPEC
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 ARTIFACTS_DIR_REL = ".agent/artifacts"
-PLAN_ARTIFACT_REL = "plan.json"
+PLAN_ARTIFACT_REL = "plan.md"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +46,13 @@ def _load_json(path: Path) -> dict[str, object] | None:
     if not isinstance(parsed, dict):
         return None
     return cast("dict[str, object]", parsed)
+
+
+def _load_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError, PermissionError):
+        return None
 
 
 def _content_dict(artifact: dict[str, object]) -> dict[str, object]:
@@ -74,19 +84,29 @@ def _coerce_str_tuple(value: object, *, max_items: int = 64) -> tuple[str, ...]:
     return tuple(items)
 
 
-def read_plan_artifact(workspace_root: Path) -> PlanSummary | None:
-    """Read ``.agent/artifacts/plan.json`` and project a PlanSummary.
+def plan_artifact_path(workspace_root: Path) -> Path:
+    """Return the canonical Markdown plan artifact path."""
+    return workspace_root / ARTIFACTS_DIR_REL / PLAN_ARTIFACT_REL
+
+
+def read_plan_artifact(
+    workspace_root: Path,
+    *,
+    _text_loader: Callable[[Path], str | None] = _load_text,
+) -> PlanSummary | None:
+    """Read ``.agent/artifacts/plan.md`` and project a PlanSummary.
 
     Returns ``None`` if the file is missing or malformed beyond recovery.
-    Always returns a populated PlanSummary when the file parses, even if some
-    fields are missing — empty defaults (``""``, ``()``, ``0``) are filled in.
+    Warnings from lenient vocabulary normalization do not hide an otherwise
+    valid plan from the display.
     """
-    artifact_path = workspace_root / ARTIFACTS_DIR_REL / PLAN_ARTIFACT_REL
-    artifact = _load_json(artifact_path)
-    if artifact is None:
+    markdown = _text_loader(plan_artifact_path(workspace_root))
+    if markdown is None:
         return None
 
-    content = _content_dict(artifact)
+    content, diagnostics = parse_and_validate(markdown, PLAN_SPEC)
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return None
 
     summary_obj = content.get("summary")
     summary_text: str | None = None
@@ -151,6 +171,7 @@ __all__ = [
     "PLAN_ARTIFACT_REL",
     "AnalysisDecisionSummary",
     "PlanSummary",
+    "plan_artifact_path",
     "read_latest_analysis_decision",
     "read_plan_artifact",
 ]
