@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
-
-from pytest import MonkeyPatch
 
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
@@ -41,6 +40,11 @@ from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from pytest import MonkeyPatch
+
 
 class _RootedMemoryWorkspace(MemoryWorkspace):
     """Memory workspace exposing the path contract used by prompt preparation."""
@@ -48,6 +52,67 @@ class _RootedMemoryWorkspace(MemoryWorkspace):
     def __init__(self, root: Path) -> None:
         super().__init__(root=str(root))
         self.root = root
+
+
+def _patch_partial_pipeline_runtime(
+    monkeypatch: MonkeyPatch,
+    *,
+    workspace: _RootedMemoryWorkspace,
+    workspace_root: Path,
+    execute_effect: Callable[..., PipelineEvent],
+    phase_event_after_agent_run: Callable[..., object],
+    auto_integrate: Callable[..., RebaseState],
+    routed_effects: list[str],
+) -> None:
+    """Connect the runner to in-memory collaborators and bound the test loop."""
+    monkeypatch.setattr(
+        runner_module,
+        "resolve_workspace_scope",
+        lambda: WorkspaceScope(workspace_root),
+    )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
+    monkeypatch.setattr(runner_module, "FsWorkspace", lambda *_args, **_kwargs: workspace)
+    monkeypatch.setattr(prompt_prep, "FsWorkspace", lambda *_args, **_kwargs: workspace)
+    monkeypatch.setattr(
+        prompt_prep,
+        "_prompt_changed_since_last_materialization",
+        lambda _root: True,
+    )
+    monkeypatch.setattr(materialize_module, "_git_diff", lambda _root: "")
+    monkeypatch.setattr(
+        materialize_module,
+        "_persist_current_prompt",
+        lambda *_args, **_kwargs: ".agent/CURRENT_PROMPT.md",
+    )
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda _root: None)
+    monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
+    monkeypatch.setattr(
+        runner_module,
+        "phase_event_after_agent_run",
+        phase_event_after_agent_run,
+    )
+    monkeypatch.setattr(runner_module, "auto_integrate_after_commit", auto_integrate)
+    monkeypatch.setattr(
+        runner_module,
+        "auto_integrate_on_phase_transition",
+        lambda *_args, **_kwargs: None,
+    )
+    determine_effect = runner_module.call_determine_effect_from_policy
+
+    def bounded_determine_effect(*args: object, **kwargs: object) -> object:
+        effect = determine_effect(*args, **kwargs)
+        routed_effects.append(type(effect).__name__)
+        if len(routed_effects) >= 30:
+            return ExitSuccessEffect()
+        return effect
+
+    monkeypatch.setattr(
+        runner_module,
+        "call_determine_effect_from_policy",
+        bounded_determine_effect,
+    )
 
 
 def _policy() -> tuple[PipelinePolicy, ArtifactsPolicy]:
@@ -312,53 +377,14 @@ status: completed
         sequence.append("auto-integrate")
         return RebaseState(last_action="rebased", last_target="main", fast_forwarded=True)
 
-    monkeypatch.setattr(
-        runner_module,
-        "resolve_workspace_scope",
-        lambda: WorkspaceScope(workspace_root),
-    )
-    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
-    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
-    monkeypatch.setattr(runner_module, "FsWorkspace", lambda *_args, **_kwargs: workspace)
-    monkeypatch.setattr(prompt_prep, "FsWorkspace", lambda *_args, **_kwargs: workspace)
-    monkeypatch.setattr(
-        prompt_prep,
-        "_prompt_changed_since_last_materialization",
-        lambda _root: True,
-    )
-    monkeypatch.setattr(materialize_module, "_git_diff", lambda _root: "")
-    monkeypatch.setattr(
-        materialize_module,
-        "_persist_current_prompt",
-        lambda *_args, **_kwargs: ".agent/CURRENT_PROMPT.md",
-    )
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(runner_module, "clear_cycle_baseline", lambda _root: None)
-    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
-    monkeypatch.setattr(
-        runner_module,
-        "phase_event_after_agent_run",
-        fake_phase_event_after_agent_run,
-    )
-    monkeypatch.setattr(runner_module, "auto_integrate_after_commit", fake_auto_integrate)
-    monkeypatch.setattr(
-        runner_module,
-        "auto_integrate_on_phase_transition",
-        lambda *_args, **_kwargs: None,
-    )
-    determine_effect = runner_module.call_determine_effect_from_policy
-
-    def bounded_determine_effect(*args: object, **kwargs: object) -> object:
-        effect = determine_effect(*args, **kwargs)
-        routed_effects.append(type(effect).__name__)
-        if len(routed_effects) >= 30:
-            return ExitSuccessEffect()
-        return effect
-
-    monkeypatch.setattr(
-        runner_module,
-        "call_determine_effect_from_policy",
-        bounded_determine_effect,
+    _patch_partial_pipeline_runtime(
+        monkeypatch,
+        workspace=workspace,
+        workspace_root=workspace_root,
+        execute_effect=fake_execute_effect,
+        phase_event_after_agent_run=fake_phase_event_after_agent_run,
+        auto_integrate=fake_auto_integrate,
+        routed_effects=routed_effects,
     )
 
     display_context = make_display_context(force_width=120)
