@@ -18,7 +18,7 @@ from ralph.mcp.artifacts.development_result import (
     DEVELOPMENT_RESULT_ARTIFACT_TYPE,
     normalize_development_result_content,
 )
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import Content, MdArtifactSpec
 
@@ -73,32 +73,13 @@ def _to_content(document: ParsedDocument) -> Content:
     return content
 
 
-def _validate_frontmatter(document: ParsedDocument) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
-    if document.frontmatter["type"] != DEVELOPMENT_RESULT_ARTIFACT_TYPE:
-        diagnostics.append(
-            Diagnostic(
-                document.frontmatter_lines["type"],
-                None,
-                "DEV002",
-                f"frontmatter 'type' must be {DEVELOPMENT_RESULT_ARTIFACT_TYPE!r}",
-            )
-        )
-    if document.frontmatter["status"] not in _STATUSES:
-        diagnostics.append(
-            Diagnostic(
-                document.frontmatter_lines["status"],
-                None,
-                "SPEC010",
-                "frontmatter 'status' must be one of: completed, partial",
-            )
-        )
-    return diagnostics
-
-
 DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
     artifact_type=DEVELOPMENT_RESULT_ARTIFACT_TYPE,
     required_frontmatter=frozenset({"type", "status"}),
+    closed_frontmatter={
+        "type": FrontmatterVocabulary((DEVELOPMENT_RESULT_ARTIFACT_TYPE,), "DEV002"),
+        "status": FrontmatterVocabulary(_STATUSES),
+    },
     sections={
         "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
         "Files Changed": SectionRule(require_items=True, allow_body=True),
@@ -109,7 +90,8 @@ DEVELOPMENT_RESULT_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=normalize_development_result_content,
-    validate_document=_validate_frontmatter,
+    allow_unknown_frontmatter=True,
+    allow_unknown_sections=True,
 )
 
 register_spec(DEVELOPMENT_RESULT_SPEC)

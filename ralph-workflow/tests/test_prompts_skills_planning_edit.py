@@ -1,4 +1,4 @@
-"""Tests that planning_edit templates use Skill-tool discovery and docs-mcp guidance."""
+"""Tests for capability-neutral planning-edit skill and docs-MCP guidance."""
 
 import tempfile
 from pathlib import Path
@@ -13,8 +13,9 @@ from ralph.workspace.memory import MemoryWorkspace
 
 SHIPPED_SKILLS_DISCOVERY_HINTS = (
     "## SHIPPED SKILLS",
-    "discovers them automatically",
-    "Do not Read",
+    "for runtimes that support",
+    "If this runtime exposes a skill mechanism",
+    "Read a selected `SKILL.md`",
 )
 
 DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY = (

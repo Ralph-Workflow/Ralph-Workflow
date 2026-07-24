@@ -9,7 +9,8 @@ The product spec cites the ``OpenCodeResumableExitError`` pattern:
 
     Agents sometimes exit cleanly (rc=0) but with no completion evidence:
     ``Agent 'opencode' failed with code 0: agent session exited without
-    required completion evidence (no artifact, no declare_complete)
+    required completion evidence (completion sentinel missing, or required
+    artifact receipt missing)
     [flagged_for_review=true]``.
 
 The fix is a deterministic typed-cause branch in

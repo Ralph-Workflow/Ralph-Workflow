@@ -66,18 +66,12 @@ class RalphToolName(StrEnum):
         return f"mcp__{server_name}__{self}"
 
     def prompt_aliases(self, *, tool_name_prefix: str = "") -> tuple[str, ...]:
-        """Return the full set of prompt-facing alias names for this tool."""
-        primary = self.with_prefix(tool_name_prefix=tool_name_prefix)
-        if primary == self.value:
-            return (self.value,)
-        return (primary, self.value)
+        """Return only the provider-visible prompt name for this tool."""
+        return (self.with_prefix(tool_name_prefix=tool_name_prefix),)
 
     def prompt_reference(self, *, tool_name_prefix: str = "") -> str:
-        """Return a human-readable reference string for prompts."""
-        aliases = self.prompt_aliases(tool_name_prefix=tool_name_prefix)
-        if len(aliases) == 1:
-            return f"`{aliases[0]}`"
-        return f"`{aliases[0]}` or bare `{aliases[1]}`"
+        """Return an exact provider-visible reference for prompts."""
+        return f"`{self.prompt_aliases(tool_name_prefix=tool_name_prefix)[0]}`"
 
 
 READ_FILE_TOOL = RalphToolName.READ_FILE

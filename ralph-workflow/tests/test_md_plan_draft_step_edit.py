@@ -54,6 +54,7 @@ def test_edit_plan_step_updates_the_persisted_draft_for_a_fresh_session() -> Non
                 "Type: verify\n"
                 "Depends on: S-1\n"
                 "Verify: pytest tests/test_md_plan_draft_step_edit.py -q\n"
+                "Expect: the draft step-edit tests pass with exit code 0\n"
             ),
         },
         deps=deps,

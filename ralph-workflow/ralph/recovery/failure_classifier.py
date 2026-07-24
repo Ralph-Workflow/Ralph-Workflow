@@ -696,9 +696,7 @@ class FailureClassifier:
             typed_cause = self._find_typed_watchdog_cause(exc_obj)
             if isinstance(typed_cause, IdleWatchdogKilledError):
                 child_alive = typed_cause.child_alive
-                cause_session_id: str | None = getattr(
-                    typed_cause, "resumable_session_id", None
-                )
+                cause_session_id: str | None = getattr(typed_cause, "resumable_session_id", None)
                 if isinstance(cause_session_id, str) and cause_session_id:
                     resumable_session_id = cause_session_id
         # Also read the wrapped ``AgentInactivityTimeoutError.resumable_session_id``
@@ -771,9 +769,7 @@ class FailureClassifier:
                     # collapse the typed Rule 1 path back to the
                     # text-based Rule 2 path the gate refinement was
                     # designed to avoid.
-                    and not (
-                        watchdog_reason == "no_progress_quiet" and child_alive is True
-                    )
+                    and not (watchdog_reason == "no_progress_quiet" and child_alive is True)
                     and (
                         _is_unavailable_agent_message(raw_message)
                         or contains_casefolded_marker(
@@ -893,7 +889,7 @@ class FailureClassifier:
             return FailureCategory.AGENT, True, False
         # OpenCodeResumableExitError is a subclass of AgentInvocationError
         # raised when an agent session exits without completion evidence
-        # (no artifact, no declare_complete). It MUST be classified as
+        # (no durable sentinel, or no required artifact receipt). It MUST be classified as
         # AGENT so the recovery controller's resume path is engaged and
         # the next attempt continues the prior session instead of
         # starting fresh. The mapping is checked BEFORE

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from contextlib import suppress
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from git import GitCommandError, Repo
@@ -105,6 +105,46 @@ def test_add_to_git_exclude_deduplicates_patterns(tmp_git_repo: Path) -> None:
 
     lines = [line for line in exclude_path.read_text().splitlines() if line]
     assert lines.count("*.pyc") == 1
+
+
+@pytest.mark.timeout_seconds(5)
+def test_add_to_git_exclude_untracks_a_tracked_secret_without_deleting_it(
+    tmp_git_repo: Path,
+) -> None:
+    secret = tmp_git_repo / ".env"
+    secret.write_text("TOKEN=secret\n", encoding="utf-8")
+    with Repo(tmp_git_repo) as repo:
+        repo.index.add([".env"])
+        repo.index.commit("track secret fixture")
+
+    add_to_git_exclude(tmp_git_repo, [".env"])
+
+    with Repo(tmp_git_repo) as repo:
+        tracked = cast("str", repo.git.ls_files("--cached")).splitlines()
+        assert ".env" not in tracked
+    assert secret.read_text(encoding="utf-8") == "TOKEN=secret\n"
+    assert (
+        ".env"
+        in (tmp_git_repo / ".git" / "info" / "exclude").read_text(encoding="utf-8").splitlines()
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_add_to_git_exclude_never_untracks_non_secret_project_files(
+    tmp_git_repo: Path,
+) -> None:
+    settings = tmp_git_repo / "settings.ini"
+    settings.write_text("[project]\n", encoding="utf-8")
+    with Repo(tmp_git_repo) as repo:
+        repo.index.add(["settings.ini"])
+        repo.index.commit("track project settings")
+
+    add_to_git_exclude(tmp_git_repo, ["settings.ini", "*"])
+
+    with Repo(tmp_git_repo) as repo:
+        tracked = cast("str", repo.git.ls_files("--cached")).splitlines()
+    assert "settings.ini" in tracked
+    assert "README.md" in tracked
 
 
 def test_atomic_append_text_writes_via_path_replace(

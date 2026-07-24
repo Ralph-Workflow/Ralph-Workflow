@@ -14,7 +14,9 @@ from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     CompletionEnforcingStrategy,
     GenericExecutionStrategy,
+    strategy_for_transport,
 )
+from ralph.config.enums import AgentTransport
 from tests.fake_handle import _FakeHandle
 
 
@@ -23,16 +25,62 @@ class _HostWithCompletionEnforcement(CompletionEnforcingStrategy, GenericExecuti
 
 
 class TestCompletionEnforcingStrategy:
-    """Mixin routes classify_exit through _check_signals_terminal."""
+    """Mixin requires durable declaration plus any required artifact receipt."""
 
-    def test_classify_exit_terminal_when_terminal_ack_seen(self) -> None:
+    def test_classify_exit_resumable_when_required_receipt_lacks_sentinel(self) -> None:
+        strategy = _HostWithCompletionEnforcement()
+        handle = _FakeHandle(returncode=0)
+        signals = CompletionSignals(
+            explicit_complete=False,
+            required_artifact_present=True,
+            artifact_types=("development_result",),
+            artifact_required=True,
+        )
+
+        state = strategy.classify_exit(handle, signals)
+
+        assert state == AgentExecutionState.RESUMABLE_CONTINUE
+
+    def test_classify_exit_resumable_when_required_receipt_is_missing(self) -> None:
         strategy = _HostWithCompletionEnforcement()
         handle = _FakeHandle(returncode=0)
         signals = CompletionSignals(
             explicit_complete=False,
             required_artifact_present=False,
             artifact_types=(),
-            terminal_ack_seen=True,
+            completion_sentinel_present=True,
+            artifact_required=True,
+        )
+
+        state = strategy.classify_exit(handle, signals)
+
+        assert state == AgentExecutionState.RESUMABLE_CONTINUE
+
+    def test_classify_exit_terminal_when_required_receipt_and_sentinel_exist(
+        self,
+    ) -> None:
+        strategy = _HostWithCompletionEnforcement()
+        handle = _FakeHandle(returncode=0)
+        signals = CompletionSignals(
+            explicit_complete=False,
+            required_artifact_present=True,
+            artifact_types=("development_result",),
+            completion_sentinel_present=True,
+            artifact_required=True,
+        )
+
+        state = strategy.classify_exit(handle, signals)
+
+        assert state == AgentExecutionState.TERMINAL_COMPLETE
+
+    def test_classify_exit_terminal_for_sentinel_without_artifact_contract(self) -> None:
+        strategy = _HostWithCompletionEnforcement()
+        handle = _FakeHandle(returncode=0)
+        signals = CompletionSignals(
+            explicit_complete=False,
+            required_artifact_present=False,
+            artifact_types=(),
+            completion_sentinel_present=True,
         )
 
         state = strategy.classify_exit(handle, signals)
@@ -86,3 +134,35 @@ class TestCompletionEnforcingStrategy:
     def test_non_enforcing_base_strategy_returns_false(self) -> None:
         assert BaseExecutionStrategy().supports_completion_enforcement() is False
         assert GenericExecutionStrategy().supports_completion_enforcement() is False
+
+
+@pytest.mark.parametrize(
+    "transport",
+    (
+        AgentTransport.CLAUDE,
+        AgentTransport.CLAUDE_INTERACTIVE,
+        AgentTransport.PI,
+    ),
+)
+def test_required_artifact_completion_is_consistent_across_transports(
+    transport: AgentTransport,
+) -> None:
+    strategy = strategy_for_transport(transport)
+    handle = _FakeHandle(returncode=0)
+    receipt_only = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=True,
+        artifact_types=("development_result",),
+        artifact_required=True,
+    )
+    completed = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=True,
+        artifact_types=("development_result",),
+        completion_sentinel_present=True,
+        artifact_required=True,
+    )
+
+    assert strategy.supports_completion_enforcement() is True
+    assert strategy.classify_exit(handle, receipt_only) == AgentExecutionState.RESUMABLE_CONTINUE
+    assert strategy.classify_exit(handle, completed) == AgentExecutionState.TERMINAL_COMPLETE

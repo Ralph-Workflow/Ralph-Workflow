@@ -65,6 +65,24 @@ def test_pending_gate_without_assumed_date_is_flagged() -> None:
     assert not any("no-trigger" in rid for rid in ids), ids
 
 
+def test_pending_gate_with_impossible_calendar_date_is_flagged() -> None:
+    ids = _pendings(
+        ["pytest (assumed 2026-99-99); review trigger: once test deps are installed"],
+        "security-policy.md",
+    )
+
+    assert any("invalid-date" in rid for rid in ids), ids
+
+
+def test_pending_gate_rejects_repo_local_script_outside_fixed_allowlist() -> None:
+    ids = _pendings(
+        ["./scripts/check.sh (assumed 2026-07-12); review trigger: once installed"],
+        "security-policy.md",
+    )
+
+    assert any("unapproved" in rid for rid in ids), ids
+
+
 def test_pending_gate_without_review_trigger_is_flagged() -> None:
     ids = _pendings(["pytest (assumed 2026-07-12)"], "security-policy.md")
     assert any("no-trigger" in rid for rid in ids)
@@ -105,19 +123,30 @@ def test_valid_pending_fact_produces_no_finding() -> None:
         "RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); "
         "review trigger: once a scanner is chosen"
     )
-    assert validators._check_pending_facts(content, _SEC_PATH, "security-policy.md") == []
+    assert _scanners._check_pending_facts(content, _SEC_PATH, "security-policy.md") == []
 
 
 def test_pending_fact_without_review_trigger_is_flagged() -> None:
     content = "RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12)"
-    findings = validators._check_pending_facts(content, _SEC_PATH, "security-policy.md")
+    findings = _scanners._check_pending_facts(content, _SEC_PATH, "security-policy.md")
     assert any("fact-no-trigger" in f.requirement_id for f in findings)
 
 
 def test_pending_fact_without_assumed_date_is_flagged() -> None:
-    content = "RALPH-FACT: secret_scan_command: RALPH-PENDING; review trigger: later"
-    findings = validators._check_pending_facts(content, _SEC_PATH, "security-policy.md")
+    content = "RALPH-FACT: secret_scan_command: RALPH-PENDING review trigger: later"
+    findings = _scanners._check_pending_facts(content, _SEC_PATH, "security-policy.md")
     assert any("fact-undated" in f.requirement_id for f in findings)
+
+
+def test_pending_fact_near_miss_sentinel_is_flagged() -> None:
+    content = (
+        "RALPH-FACT: secret_scan_command: RALPH-PENDINGLY "
+        "(assumed 2026-07-12); review trigger: once a scanner is chosen"
+    )
+
+    findings = _scanners._check_pending_facts(content, _SEC_PATH, "security-policy.md")
+
+    assert any("fact-invalid-sentinel" in f.requirement_id for f in findings)
 
 
 # --- integration through the full per-file and readiness validators -------
@@ -126,8 +155,7 @@ def test_pending_fact_without_assumed_date_is_flagged() -> None:
 def test_full_testing_policy_with_pending_gate_validates_clean() -> None:
     body = _complete_policy_body(filename="testing-policy.md").replace(
         "RALPH-COMMAND: make test",
-        "RALPH-PENDING: pytest (assumed 2026-07-12); "
-        "review trigger: once test deps are installed",
+        "RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed",
     )
     ws = MemoryWorkspace()
     ws.write(_TEST_PATH, body)
@@ -158,8 +186,7 @@ def test_malformed_pending_gate_blocks_through_full_validator() -> None:
     ws = MemoryWorkspace()
     ws.write(path, body)
     ids = [
-        f.requirement_id
-        for f in validators._check_policy_file(ws, path, "architecture-policy.md")
+        f.requirement_id for f in validators._check_policy_file(ws, path, "architecture-policy.md")
     ]
     assert any("no-trigger" in rid for rid in ids), ids
 
@@ -177,8 +204,7 @@ def test_malformed_pending_fact_blocks_through_full_validator() -> None:
     ws = MemoryWorkspace()
     ws.write(_SEC_PATH, body)
     ids = [
-        f.requirement_id
-        for f in validators._check_policy_file(ws, _SEC_PATH, "security-policy.md")
+        f.requirement_id for f in validators._check_policy_file(ws, _SEC_PATH, "security-policy.md")
     ]
     assert any("fact-no-trigger" in rid for rid in ids), ids
 
@@ -196,8 +222,7 @@ def test_fully_pending_project_reaches_ready_without_remediation() -> None:
 
     test_body = _complete_policy_body(filename="testing-policy.md").replace(
         "RALPH-COMMAND: make test",
-        "RALPH-PENDING: pytest (assumed 2026-07-12); "
-        "review trigger: once test deps are installed",
+        "RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed",
     )
     ws.write(_TEST_PATH, test_body)
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
 
@@ -39,29 +39,6 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
     }
 
 
-def _validate_frontmatter(document: ParsedDocument) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
-    if document.frontmatter["type"] != "smoke_test_result":
-        diagnostics.append(
-            Diagnostic(
-                document.frontmatter_lines["type"],
-                None,
-                "SMOKE001",
-                "frontmatter 'type' must be 'smoke_test_result'",
-            )
-        )
-    if document.frontmatter["status"] not in _STATUSES:
-        diagnostics.append(
-            Diagnostic(
-                document.frontmatter_lines["status"],
-                None,
-                "SPEC010",
-                "frontmatter 'status' must be one of: passed, failed, partial",
-            )
-        )
-    return diagnostics
-
-
 def _normalize(content: dict[str, object]) -> dict[str, object]:
     return normalize_smoke_test_result_content(content)
 
@@ -69,6 +46,10 @@ def _normalize(content: dict[str, object]) -> dict[str, object]:
 SMOKE_TEST_RESULT_SPEC = MdArtifactSpec(
     artifact_type="smoke_test_result",
     required_frontmatter=frozenset({"type", "status", "output_file"}),
+    closed_frontmatter={
+        "type": FrontmatterVocabulary(("smoke_test_result",), "SMOKE001"),
+        "status": FrontmatterVocabulary(_STATUSES),
+    },
     sections={
         "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
         "Observed Working": SectionRule(required=False, allow_body=True),
@@ -77,7 +58,8 @@ SMOKE_TEST_RESULT_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    validate_document=_validate_frontmatter,
+    allow_unknown_frontmatter=True,
+    allow_unknown_sections=True,
 )
 
 register_spec(SMOKE_TEST_RESULT_SPEC)

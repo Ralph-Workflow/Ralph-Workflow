@@ -16,6 +16,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.session_plan import build_session_mcp_plan
@@ -197,7 +198,7 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     def fake_stage_all(repo_root: Path) -> None:
         staged_all_calls.append(repo_root)
 
-    monkeypatch.setattr(commit_module, "stage_all", fake_stage_all, raising=False)
+    monkeypatch.setattr(commit_module, "stage_commit_changes_safely", fake_stage_all)
     monkeypatch.setattr(
         commit_module,
         "working_tree_diff",
@@ -271,6 +272,60 @@ def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path
 
     assert "pending.py" in diff
     assert "mid_cycle.py" not in diff
+
+
+@pytest.mark.timeout_seconds(5)
+def test_working_tree_diff_includes_untracked_only_work(tmp_git_repo: Path) -> None:
+    untracked = tmp_git_repo / "new_module.py"
+    untracked.write_text("new = True\n", encoding="utf-8")
+
+    diff = commit_module.working_tree_diff(tmp_git_repo)
+
+    assert "## Untracked files (not yet tracked by git):" in diff
+    assert "new_module.py" in diff
+
+
+@pytest.mark.timeout_seconds(5)
+def test_working_tree_diff_includes_tracked_and_untracked_work(tmp_git_repo: Path) -> None:
+    readme = tmp_git_repo / "README.md"
+    readme.write_text("updated\n", encoding="utf-8")
+    untracked = tmp_git_repo / "new_module.py"
+    untracked.write_text("new = True\n", encoding="utf-8")
+
+    diff = commit_module.working_tree_diff(tmp_git_repo)
+
+    assert "README.md" in diff
+    assert "## Untracked files (not yet tracked by git):" in diff
+    assert "new_module.py" in diff
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(5)
+def test_working_tree_diff_preserves_staged_and_untracked_work_before_first_commit(
+    tmp_path: Path,
+) -> None:
+    run_git(
+        ["init", "-q"],
+        cwd=tmp_path,
+        label="test:init-unborn-repository",
+        options=GitRunOptions(check=True, timeout=5),
+    )
+    staged = tmp_path / "staged.py"
+    staged.write_text("staged = True\n", encoding="utf-8")
+    run_git(
+        ["add", "--", "staged.py"],
+        cwd=tmp_path,
+        label="test:stage-unborn-repository-file",
+        options=GitRunOptions(check=True, timeout=5),
+    )
+    untracked = tmp_path / "untracked.py"
+    untracked.write_text("untracked = True\n", encoding="utf-8")
+
+    diff = commit_module.working_tree_diff(tmp_path)
+
+    assert "staged.py" in diff
+    assert "untracked.py" in diff
+    assert "## Untracked files (not yet tracked by git):" in diff
 
 
 def test_commit_bridge_session_plan_grants_write_ephemeral(tmp_path: Path) -> None:
@@ -690,8 +745,8 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
     )
 
     assert captured_prompt
-    assert "ralph_submit_md_artifact" in captured_prompt[0]
-    assert "ralph_ralph_submit_md_artifact" not in captured_prompt[0]
+    assert "ralph_ralph_submit_md_artifact" in captured_prompt[0]
+    assert "mcp__ralph__ralph_submit_md_artifact" not in captured_prompt[0]
 
 
 def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
@@ -949,7 +1004,7 @@ def test_generate_commit_msg_applies_sanitized_subject_when_committing(
     monkeypatch.setattr(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
-    monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
+    monkeypatch.setattr(commit_module, "stage_commit_changes_safely", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
 
     committed_messages: list[str] = []
@@ -999,7 +1054,7 @@ def test_generate_commit_applies_message_from_persisted_artifact(
     monkeypatch.setattr(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
-    monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
+    monkeypatch.setattr(commit_module, "stage_commit_changes_safely", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:

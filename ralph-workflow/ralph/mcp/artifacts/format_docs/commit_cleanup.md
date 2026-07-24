@@ -34,8 +34,16 @@ analysis_complete: true
   Each item is `action | value`:
   - `delete_file | <path>` — remove a file from the repo.
   - `add_to_gitignore | <pattern>` — project-wide ignore pattern.
-  - `add_to_git_exclude | <pattern>` — machine-local exclude pattern.
+  - `add_to_git_exclude | <pattern>` — machine-local exclude pattern. When
+    the pattern selects a tracked recognized secret (`.env`, `.env.local`,
+    `.env.*.local`, `secrets.yml`, or `credentials.json`), Ralph removes that
+    secret from the index while retaining the working-tree file. Arbitrary
+    project patterns never trigger automatic untracking.
 - `## Reason` — optional, at most one item explaining the decision.
+
+Unknown descriptive frontmatter fields and sections are accepted and ignored
+by the typed cleanup consumer. Known fields, action names, and action value
+guards remain strict.
 
 ## Hard errors vs warnings
 

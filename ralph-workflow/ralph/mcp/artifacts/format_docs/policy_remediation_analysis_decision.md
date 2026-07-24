@@ -45,13 +45,13 @@ status: request_changes
 
 ## What Came Up Short
 
-- [W-1] verification-policy.md declares 'make verify-all' but no such target exists.
-- [W-2] scripts/check.sh invokes 'shellcheck --strict', which is not a real flag.
+- [PR-1] verification-policy.md declares 'make verify-all' but no such target exists.
+- [PR-2] scripts/check.sh invokes 'shellcheck --strict', which is not a real flag.
 
 ## How To Fix
 
-- [FIX-1] Point the declared gate at the real entry point 'make verify'.
-- [FIX-2] Remove the invented --strict flag; use -S style for a severity floor.
+- [PR-1] Point the declared gate at the real entry point 'make verify'.
+- [PR-2] Remove the invented --strict flag; use -S style for a severity floor.
 ```
 
 ## Frontmatter
@@ -67,11 +67,15 @@ status: request_changes
 - `## What Came Up Short` — one item per problem; required (non-empty)
   when status is `request_changes` or `failed`, omitted when `completed`.
 - `## How To Fix` — one concrete remediation per item; same
-  required/omitted rule. Keep item IDs unique and stable.
+  required/omitted rule. The two sections must form a one-to-one mapping with
+  the same stable ID for each problem and fix; missing, extra, or mismatched
+  IDs are rejected. Keep item IDs unique and stable.
 
 ## Hard errors vs warnings
 
 Hard errors: missing or multiple Summary items; `request_changes`/`failed`
-without non-empty What Came Up Short and How To Fix; wrong `type`;
-duplicate item IDs; any grammar violation; or a `status` outside
-`completed`, `request_changes`, and `failed`.
+without non-empty What Came Up Short and How To Fix; wrong `type`; duplicate
+item IDs; any grammar violation; or a `status` outside `completed`,
+`request_changes`, and `failed`. A `completed` decision that includes either
+remediation section is a hard error. Remediation sections with missing, extra,
+or mismatched IDs are also hard errors.

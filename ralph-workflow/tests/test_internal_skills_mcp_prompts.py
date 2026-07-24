@@ -58,6 +58,21 @@ def test_plan_skill_native_markdown_example_matches_validator() -> None:
     assert len(normalized["steps"]) >= 2
 
 
+def test_plan_skill_teaches_relaxed_shapes_and_subplan_dispatch() -> None:
+    text = _read("submit-plan-artifact.md")
+
+    assert "Everything else is a recommended authoring pattern, not required grammar." in text
+    assert "radically different headings" in text
+    assert "Work Units` for small bounded tasks or verification gates" in text
+    assert "Subplan: <Name>` sections when each" in text
+    assert "four or five independent execution Subplans" in text
+    assert "`Verify:` command must have a specific" in text
+    assert "exact, case-sensitive `## Work Units` or `## Parallel Plan`" in text
+    assert "Project-specific `Type:` values and target actions are preserved verbatim" in text
+    assert "Acceptance-criterion items are criteria, never phantom work units" in text
+    assert "exact required section names" not in text
+
+
 def test_plan_edit_skill_teaches_stable_id_targeted_repair() -> None:
     text = _read("submit-plan-step-edits.md")
 
@@ -66,6 +81,14 @@ def test_plan_edit_skill_teaches_stable_id_targeted_repair() -> None:
     assert "### [S-" in text
     assert "never renumber" in text.lower()
     assert "JSON" not in text
+
+
+def test_development_result_skill_teaches_closed_status_vocabulary() -> None:
+    text = _read("submit-development-result-artifact.md")
+
+    assert "closed-vocabulary" in text
+    assert "`completed` or `partial`" in text
+    assert "unknown status is coerced" not in text
 
 
 def test_prompt_templates_use_markdown_tools_without_retired_json_vocabulary() -> None:

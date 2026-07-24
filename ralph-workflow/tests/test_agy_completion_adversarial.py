@@ -270,9 +270,9 @@ def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
     the DB row is authoritative. A valid DB HMAC is accepted; the legacy
     file alone (no DB row) is also accepted via the dual-read fallback.
 
-    This pins the rollout contract that the production code does NOT
-    continue writing legacy files; the read-path honors legacy files
-    written by the pre-upgrade release during the dual-read window.
+    This pins the migration contract: successful DB writes do not also
+    write legacy files, while the read path honors legacy files from an
+    older release or a current durable-fallback write.
     """
     digest = hmac.new(SENTINEL_SECRET.encode(), RUN_ID.encode(), hashlib.sha256).hexdigest()
 
@@ -290,7 +290,7 @@ def test_db_sentinel_accepted_and_legacy_file_ignored_when_db_present(
     # Re-write the legacy file alone:
     sentinel.write_text(json.dumps({"run_id": RUN_ID}), encoding="utf-8")
     # DB still has the row from above — remove it to simulate a
-    # pre-upgrade receipt alone.
+    # legacy sentinel alone.
     db2 = RunStateDB(workspace)
     db2.delete_completion_sentinel(RUN_ID)
     db2.close()

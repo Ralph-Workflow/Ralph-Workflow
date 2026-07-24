@@ -1,10 +1,9 @@
 """Completion-enforcing mixin for execution strategies.
 
-Strategies that require explicit completion evidence (terminal ACK, required
-artifact, or explicit completion marker) before a clean exit is considered
-terminal can inherit this mixin ahead of their base strategy. The mixin
-provides a single ``classify_exit`` implementation that delegates the terminal
-check to ``_check_signals_terminal`` and is the sole source of truth for
+Strategies that require durable completion evidence before a clean exit is
+considered terminal can inherit this mixin ahead of their base strategy. The
+mixin delegates the terminal decision to the transport-independent completion
+signal contract and is the sole source of truth for
 ``supports_completion_enforcement()``.
 """
 
@@ -12,7 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from ._helpers import _check_signals_terminal
+from ralph.agents.completion_signals import completion_signals_terminal
+
 from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
@@ -53,6 +53,6 @@ class CompletionEnforcingStrategy:
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
         del handle, liveness_probe
-        if _check_signals_terminal(completion_signals):
+        if completion_signals_terminal(completion_signals):
             return AgentExecutionState.TERMINAL_COMPLETE
         return AgentExecutionState.RESUMABLE_CONTINUE

@@ -12,6 +12,15 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
 
+## SUBAGENTS AND PARALLEL WORK
+
+If your runtime provides subagents or a parallel-task mechanism, fan out
+independent read-only checks across plan compliance, security, correctness,
+performance, maintainability, and test coverage. Give each subagent a distinct
+scope, then reconcile its concrete evidence yourself. If no such mechanism is
+available, perform the same checks sequentially. Only the main session may decide
+the verdict, submit the `issues` artifact, or declare completion.
+
 Read the changed files and compare the implementation against the plan and requirements. Grade the change on every one of these dimensions — they are the same dimensions the downstream judge scores your review against:
 
 - **Plan compliance** — check every plan item against the implementation; a skipped or half-done item is a finding.
@@ -21,7 +30,10 @@ Read the changed files and compare the implementation against the plan and requi
 - **Maintainability** — structure, clarity, and duplication that will hurt future changes.
 - **Test coverage** — new behavior without tests, and regressions the suite would not catch.
 
-When a dimension has no relevant code in the change, say so explicitly in the summary instead of skipping it silently. Run tests, lint, and type checks yourself when verification matters — do not take the diff's word for it.
+When a dimension has no relevant code in the change, record an explicit
+not-applicable reason under `## Review Evidence` instead of skipping it
+silently. Run tests, lint, and type checks yourself when verification matters
+— do not take the diff's word for it.
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
@@ -34,12 +46,15 @@ Submit review findings using `artifact_type="issues"`.
 The `issues` artifact is a markdown document (grammar: `.agent/artifact-formats/issues.md`):
 `---` frontmatter with `type: issues` and `status: no_issues|issues_found`, then:
 - `## Summary` — exactly one item: a one-sentence summary of the review.
+- `## Review Evidence` — evidence items formatted `dimension or requirement | concrete evidence`. Include one item per applicable review dimension and one item per plan requirement and acceptance criterion.
 - `## Issues` — one item per finding, text formatted `path | severity | summary` (severity: `high`, `medium`, or `low`).
 - `## What Came Up Short` — one item per defect, regression, missing requirement, unsafe change, or verification gap. This is the prose account of the same defects listed in `## Issues` — the two sections cover the same findings.
 - `## How To Fix` — one item per gap: ordered, concrete remediation the fixer can execute directly (exact files, changes, checks to run, expected outcomes).
 
 Rules:
 - When `status` is `no_issues`, omit `## Issues`, `## What Came Up Short`, and `## How To Fix` (or leave them empty).
+- When `status` is `no_issues`, `## Review Evidence` must be non-empty. A clean verdict without recorded evidence is not acceptable.
+- Consider all six dimensions. Use `Dimension | not applicable — <specific reason>` when a dimension has no relevant surface instead of silently omitting it.
 - When `status` is `issues_found`, all three sections must be non-empty.
 - Cite concrete evidence in every gap: file paths, failing tests, missing checks, or behavior mismatches. No vague summaries.
 
@@ -51,9 +66,16 @@ status: no_issues
 
 ## Summary
 - [SUM-1] The implementation is correct and verification passed.
-{% endset %}
-{{ render_artifact_submission('issues', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, issues_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
+## Review Evidence
+- [E-1] Plan compliance | Every plan requirement and acceptance criterion maps to an inspected implementation or verification result.
+- [E-2] Security | Input, secret, permission, and command boundaries in the changed surface were inspected with no defect found.
+- [E-3] Correctness | Error paths and adversarial edge cases were exercised by focused tests.
+- [E-4] Performance | The change adds no unbounded work or blocking operation; the bounded startup path was verified.
+- [E-5] Maintainability | New helpers have one owner, no dead compatibility branch, and accurate documentation.
+- [E-6] Test coverage | Focused regressions cover the new behavior and independent near-miss cases.
+- [E-7] Acceptance criterion AC-1 | The criterion is demonstrated by the named focused test and inspected runtime path.
+{% endset %}
 Example issues artifact when the implementation needs fixes:
 
 ```markdown
@@ -65,8 +87,13 @@ status: issues_found
 ## Summary
 - [SUM-1] The feature works in the happy path, but error handling and regression coverage are incomplete.
 
+## Review Evidence
+- [E-1] Plan compliance | The error-handling requirement is not satisfied in ralph/pipeline/runner.py.
+- [E-2] Test coverage | tests/test_runner.py has no malformed-output regression case.
+
 ## Issues
 - [I-1] ralph/pipeline/runner.py | high | A failure path still treats runtime text as markup.
+- [I-2] tests/test_runner.py | medium | Coverage is missing for the malformed-output error path.
 
 ## What Came Up Short
 - [W-1] ralph/pipeline/runner.py still has one failure output path that renders runtime text unsafely.
@@ -76,3 +103,5 @@ status: issues_found
 - [F-1] Convert the remaining CLI failure output path to a Rich Text-based render so runtime strings are always treated as literal text.
 - [F-2] Add a regression test that feeds bracket-heavy runtime text through the affected path and confirms rendering does not raise MarkupError.
 ```
+
+{{ render_artifact_submission('issues', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, issues_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

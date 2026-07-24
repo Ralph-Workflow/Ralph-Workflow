@@ -1,7 +1,9 @@
 PLANNING MODE
 
-Native file and shell tools are disabled in
-this brokered fallback; native orchestration tools remain enabled.
+Use only tools the active runtime actually exposes.
+Runtime-native file, shell, orchestration, skill, todo, and web tools vary by
+transport. When this prompt names a Ralph Workflow brokered tool below, call that exact
+name through the runtime's tool mechanism.
 
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 
@@ -43,6 +45,22 @@ verification commands with expected outcomes. Do not say "follow the existing
 pattern" without naming its verified reference, or "run tests" without the
 exact command.
 
+Choose the executor-facing shape by delegation size:
+
+- `## Work Units` contains small bounded tasks or verification gates. Keep
+  every executable step, including a final integration gate, inside a declared
+  unit.
+- A substantial execution-subagent mini-plan belongs under a repeatable
+  `## <Name> Subplan` or `## Subplan: <Name>` heading.
+- A large multi-surface plan normally fans out four or five independent
+  execution Subplans, then uses an ordinary `## Integration and Verification`
+  section for main-session integration and verification.
+
+Every acceptance criterion and verification step must be evaluatable: pair a
+concrete `Verify:` command with a specific `Expect:` result, or name a specific
+`Evidence:` / `Location:` artifact. Main-session fan-in steps must retain their
+global `S-n` IDs so the final result can prove them.
+
 For a non-trivial `## Design`, cover Design Constraints, Non-Goals,
 Dependency Injection, Drift Detection, Testability, Refactor Strategy, and
 Acceptance Criteria; omit empty ceremony when a subsection adds no decision.
@@ -57,12 +75,18 @@ The complete grammar and limits live in
 Submit one native-markdown document:
 
 1. Use `type: plan` frontmatter. Write context as prose and structured values
-   as labeled fields. Required sections are `## Summary`, `## Scope`,
-   `## Skills MCP`, `## Steps`, `## Critical Files`, `## Risks`, and
-   `## Verification`.
+   as labeled fields. Those conventional sections are recommended, not
+   required grammar; unfamiliar headings remain valid. The hard anchors are
+   `type: plan`, unique `### [S-n]` steps, and valid consumed references.
+   An exact, case-sensitive `## Work Units` or `## Parallel Plan` heading opts
+   into fail-closed unit-marker parsing; use arbitrary headings for descriptive
+   prose.
 2. Write each step as a complete `### [S-n] Title` block with description
    prose and fields such as `Type:`, `Files:`, `Depends on:`, and `Verify:`.
    IDs are stable and never renumbered.
+   Prefer the built-in `file_change`, `action`, `research`, and `verify` types
+   when they fit. Project-specific `Type:` values are accepted and preserved
+   verbatim; file and critical-file actions are free-form too.
 3. Validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}}
    (`artifact_type="plan"`, `content` = the document), then repair every
    line/section/rule diagnostic.
@@ -79,9 +103,9 @@ Submit one native-markdown document:
 6. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
    {{GET_MD_DRAFT_TOOL_REFERENCE}}, and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}};
    {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} intentionally restarts the draft.
-7. A submit or finalize success message is NOT completion by itself. After
-   the plan is accepted, call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your
-   final action.
+7. A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
+   After that receipt exists, you MUST call
+   {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
 
 Worked example:
 
@@ -129,6 +153,7 @@ Prove the regression is fixed.
 Type: verify
 Depends on: S-2
 Verify: pytest tests/test_foo.py -q
+Expect: test_clamp_out_of_range passes with exit code 0
 
 ## Critical Files
 - [CF-1] src/foo.py
@@ -145,3 +170,6 @@ Verify: pytest tests/test_foo.py -q
   Expect: test_clamp_out_of_range passes
   Timeout: 60
 ```
+
+FINAL ACTIONS: validate, submit or finalize, wait for the valid receipt, then
+call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the mandatory final explicit action.

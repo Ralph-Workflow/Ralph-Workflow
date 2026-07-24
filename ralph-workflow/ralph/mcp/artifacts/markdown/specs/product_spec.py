@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.product_spec import normalize_product_spec_content
 
@@ -35,19 +35,6 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
     }
 
 
-def _validate_type(document: ParsedDocument) -> list[Diagnostic]:
-    if document.frontmatter["type"] == "product_spec":
-        return []
-    return [
-        Diagnostic(
-            document.frontmatter_lines["type"],
-            None,
-            "PRODUCT001",
-            "frontmatter 'type' must be 'product_spec'",
-        )
-    ]
-
-
 def _normalize(content: dict[str, object]) -> dict[str, object]:
     return normalize_product_spec_content(content)
 
@@ -55,6 +42,9 @@ def _normalize(content: dict[str, object]) -> dict[str, object]:
 PRODUCT_SPEC = MdArtifactSpec(
     artifact_type="product_spec",
     required_frontmatter=frozenset({"type"}),
+    closed_frontmatter={
+        "type": FrontmatterVocabulary(("product_spec",), "PRODUCT001"),
+    },
     sections={
         "Title": SectionRule(require_items=True, max_items=1),
         "Scope": SectionRule(require_items=True, max_items=1),
@@ -69,7 +59,8 @@ PRODUCT_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    validate_document=_validate_type,
+    allow_unknown_frontmatter=True,
+    allow_unknown_sections=True,
 )
 
 register_spec(PRODUCT_SPEC)

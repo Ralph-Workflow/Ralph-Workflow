@@ -31,7 +31,7 @@ def _fs_context(root: Path) -> PhaseContext:
 def _decision_markdown(status: str) -> str:
     feedback = (
         "## What Came Up Short\n- [W-1] A defect remains.\n"
-        "## How To Fix\n- [FIX-1] Repair the defect.\n"
+        "## How To Fix\n- [W-1] Repair the defect.\n"
         if status == "failed"
         else ""
     )

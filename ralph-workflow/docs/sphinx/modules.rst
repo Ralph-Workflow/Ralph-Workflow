@@ -3796,10 +3796,10 @@ ralph.prompts.template_engine
    :members:
    :show-inheritance:
 
-ralph.prompts.template_parsing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.prompts.template_rendering_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.prompts.template_parsing
+.. automodule:: ralph.prompts.template_rendering_error
    :members:
    :show-inheritance:
 

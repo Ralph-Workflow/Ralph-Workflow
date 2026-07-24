@@ -22,7 +22,7 @@ def _development_analysis_markdown(status: str) -> str:
         "\n## What Came Up Short\n\n"
         "- [W-1] The implementation needs another development pass.\n"
         "\n## How To Fix\n\n"
-        "- [FIX-1] Address the remaining implementation gap.\n"
+        "- [W-1] Address the remaining implementation gap.\n"
         if status in {"request_changes", "failed"}
         else ""
     )

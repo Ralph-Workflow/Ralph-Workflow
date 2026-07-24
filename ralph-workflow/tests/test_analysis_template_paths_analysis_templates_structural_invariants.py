@@ -6,13 +6,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 import ralph.prompts.materialize as materialize_module
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
     materialize_prompt_for_phase,
 )
-from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.prompts.types import SessionCapabilities
 from ralph.workspace.memory import MemoryWorkspace
 
 _TINY_PROMPT = "Implement the feature."
@@ -92,9 +93,9 @@ class TestAnalysisTemplatesStructuralInvariants:
         ``policy_remediation_analysis.jinja`` is excluded because it is not an
         in-graph analysis phase and has neither payload to pass. It runs
         out-of-graph in the startup policy preflight, reviewing the project's
-        policy documents; it never receives the user's PROMPT, and its drain is
-        explicitly DENIED ``artifact.plan_read`` in ``ralph/mcp/session_plan.py``,
-        so there is no PLAN for it to render by any means. The exclusion is
+        policy documents; it never receives the user's PROMPT or an execution
+        PLAN. Its ``artifact.plan_read`` capability exists only to expose the
+        read-only Markdown verifier used for its decision artifact. The exclusion is
         compensated by ``test_out_of_graph_policy_template_has_no_payloads``
         below, which proves it does not inline what it is not given.
         """

@@ -14,6 +14,8 @@ test budget stays well within budget.
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
@@ -126,8 +128,8 @@ def test_evidence_ref_rejects_bare_string() -> None:
 
 
 @pytest.mark.parametrize("alias", ["test", "tests", "check", "run"])
-def test_plan_step_rejects_obsolete_step_type_aliases(alias: str) -> None:
-    """Plan steps accept canonical Markdown vocabulary, not JSON-era aliases."""
+def test_plan_step_preserves_project_specific_step_types(alias: str) -> None:
+    """Step types are descriptive unless they name a built-in contract."""
     plan = _base_plan_dict()
     steps = plan["steps"]
     assert isinstance(steps, list)
@@ -135,7 +137,77 @@ def test_plan_step_rejects_obsolete_step_type_aliases(alias: str) -> None:
     assert isinstance(step, dict)
     step["step_type"] = alias
 
-    with pytest.raises(PlanArtifactValidationError, match="step_type"):
+    normalized = normalize_plan_artifact_content(plan)
+
+    normalized_steps = cast("list[dict[str, object]]", normalized["steps"])
+    assert normalized_steps[0]["step_type"] == alias
+
+
+def test_canonical_plan_rejects_duplicate_consumed_step_numbers() -> None:
+    """Direct canonical payloads share Markdown's document-wide step namespace."""
+    plan = _base_plan_dict()
+    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps.append(
+        {
+            "number": 1,
+            "title": "Duplicate",
+            "content": "This must not shadow the first consumed step.",
+        }
+    )
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"duplicate plan step number 1",
+    ):
+        normalize_plan_artifact_content(plan)
+
+
+def test_canonical_plan_rejects_dangling_step_dependencies() -> None:
+    """A canonical dependency must resolve just like a Markdown ``S-n`` edge."""
+    plan = _base_plan_dict()
+    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps[0]["depends_on"] = [99]
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"plan step 1 depends on unknown step 99",
+    ):
+        normalize_plan_artifact_content(plan)
+
+
+def test_canonical_step_command_requires_an_expected_outcome() -> None:
+    """The runtime model cannot bypass Markdown's command-plus-outcome pair."""
+    plan = _base_plan_dict()
+    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps[0]["verify_command"] = "pytest tests/test_x.py -q"
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"verify_command must declare expected_outcome",
+    ):
+        normalize_plan_artifact_content(plan)
+
+
+def test_canonical_acceptance_command_requires_an_expected_outcome() -> None:
+    """Acceptance commands retain the same evaluator contract after mapping."""
+    plan = _base_plan_dict()
+    plan["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {
+                    "id": "AC-01",
+                    "description": "The focused behavior is proven.",
+                    "verification_step": "pytest tests/test_x.py -q",
+                    "satisfied_by_steps": [1],
+                }
+            ]
+        }
+    }
+
+    with pytest.raises(
+        PlanArtifactValidationError,
+        match=r"verification_step must declare expected_outcome",
+    ):
         normalize_plan_artifact_content(plan)
 
 
@@ -190,27 +262,61 @@ def test_noop_field_on_plan_artifact() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 9. test_intent_verb_scope_category_fix_incompatible_with_feature
+# 9. test_intent_verb_scope_categories_are_descriptive
 # ---------------------------------------------------------------------------
 
 
-def test_intent_verb_scope_category_fix_incompatible_with_feature() -> None:
-    """verb='fix' rejects scope_items with category='feature'; verb='add' rejects 'bugfix'."""
+def test_intent_verb_scope_categories_are_descriptive() -> None:
+    """Intent/category combinations do not control any runtime behavior."""
     plan = _base_plan_dict()
-    bad_summary = _cast_summary(
+    summary = _cast_summary(
         plan, intent_verb="fix", scope_categories=["feature", "bugfix", "unknown"]
     )
-    plan["summary"] = bad_summary
-    with pytest.raises(PlanArtifactValidationError, match="incompatible with intent_verb='fix'"):
-        normalize_plan_artifact_content(plan)
+    plan["summary"] = summary
+    normalized = normalize_plan_artifact_content(plan)
+    normalized_summary = cast("dict[str, object]", normalized["summary"])
+    assert normalized_summary["intent_verb"] == "fix"
+    assert normalized_summary["scope_items"] == summary["scope_items"]
 
-    # verb='add' rejects 'bugfix'
-    bad_summary = _cast_summary(
+    summary = _cast_summary(
         plan, intent_verb="add", scope_categories=["bugfix", "feature", "infra"]
     )
-    plan["summary"] = bad_summary
-    with pytest.raises(PlanArtifactValidationError, match="incompatible with intent_verb='add'"):
-        normalize_plan_artifact_content(plan)
+    plan["summary"] = summary
+    normalized = normalize_plan_artifact_content(plan)
+    normalized_summary = cast("dict[str, object]", normalized["summary"])
+    assert normalized_summary["intent_verb"] == "add"
+    assert normalized_summary["scope_items"] == summary["scope_items"]
+
+
+def test_all_unconsumed_plan_vocabularies_accept_project_specific_values() -> None:
+    """Descriptive metadata stays useful without becoming an execution gate."""
+    plan = _base_plan_dict()
+    plan["summary"] = {
+        "intent_verb": "ship_it",
+        "coverage_areas": ["operator-experience"],
+        "scope_items": [
+            {"text": "Refresh the operator flow", "category": "product-polish"}
+        ],
+    }
+    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps[0]["priority"] = "release-blocker"
+    risks = cast("list[dict[str, object]]", plan["risks_mitigations"])
+    risks[0]["severity"] = "watch-carefully"
+
+    normalized = normalize_plan_artifact_content(plan)
+
+    summary = cast("dict[str, object]", normalized["summary"])
+    assert summary["intent_verb"] == "ship_it"
+    assert summary["coverage_areas"] == ["operator-experience"]
+    assert cast("list[dict[str, object]]", summary["scope_items"])[0][
+        "category"
+    ] == "product-polish"
+    assert cast("list[dict[str, object]]", normalized["steps"])[0][
+        "priority"
+    ] == "release-blocker"
+    assert cast("list[dict[str, object]]", normalized["risks_mitigations"])[0][
+        "severity"
+    ] == "watch-carefully"
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +382,87 @@ def test_parallel_plan_and_work_units_mutually_exclusive() -> None:
         normalize_plan_artifact_content(plan)
 
 
+@pytest.mark.parametrize(
+    ("work_units", "message"),
+    [
+        (
+            [
+                {"unit_id": "alpha", "description": "First"},
+                {"unit_id": "alpha", "description": "Second"},
+            ],
+            "duplicate work unit ID 'alpha'",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "dependencies": ["missing"],
+                }
+            ],
+            "references unknown dependency 'missing'",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "dependencies": ["beta"],
+                },
+                {
+                    "unit_id": "beta",
+                    "description": "Second",
+                    "dependencies": ["alpha"],
+                },
+            ],
+            "work unit dependency cycle",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "step_ids": ["S-99"],
+                }
+            ],
+            "owns unknown step ID 'S-99'",
+        ),
+        (
+            [
+                {
+                    "unit_id": "alpha",
+                    "description": "First",
+                    "step_ids": ["S-1"],
+                },
+                {
+                    "unit_id": "beta",
+                    "description": "Second",
+                    "step_ids": ["S-1"],
+                },
+            ],
+            "is owned by work units 'alpha' and 'beta'",
+        ),
+    ],
+    ids=[
+        "duplicate-id",
+        "unknown-dependency",
+        "dependency-cycle",
+        "unknown-step",
+        "duplicate-step-owner",
+    ],
+)
+def test_canonical_work_unit_graph_and_ownership_are_strict(
+    work_units: list[dict[str, object]],
+    message: str,
+) -> None:
+    """Direct payloads retain every consumed fan-out graph invariant."""
+    plan = _base_plan_dict()
+    plan["work_units"] = work_units
+
+    with pytest.raises(PlanArtifactValidationError, match=message):
+        normalize_plan_artifact_content(plan)
+
+
 # ---------------------------------------------------------------------------
 # 12. test_verification_method_rejects_shell_invocation
 # ---------------------------------------------------------------------------
@@ -307,12 +494,12 @@ def test_verification_method_allows_legitimate_bash_invocation() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 14. test_research_step_cannot_satisfy_ac
+# 14. test_research_step_can_be_referenced_by_ac
 # ---------------------------------------------------------------------------
 
 
-def test_research_step_cannot_satisfy_ac() -> None:
-    """A satisfied_by_steps entry pointing at a research step is rejected."""
+def test_research_step_can_be_referenced_by_ac() -> None:
+    """A valid step reference remains valid regardless of descriptive step type."""
     plan = _base_plan_dict()
     plan["steps"].append(
         {
@@ -329,11 +516,11 @@ def test_research_step_cannot_satisfy_ac() -> None:
             ]
         }
     }
-    with pytest.raises(
-        PlanArtifactValidationError,
-        match="satisfied_by_steps cannot reference a research or verify step",
-    ):
-        normalize_plan_artifact_content(plan)
+    normalized = normalize_plan_artifact_content(plan)
+    design = cast("dict[str, object]", normalized["design"])
+    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    assert criteria[0]["satisfied_by_steps"] == [2]
 
 
 # ---------------------------------------------------------------------------
@@ -373,3 +560,6 @@ def test_format_doc_includes_new_sections() -> None:
         "must not start with `bash -c`, `sh -c`, or `eval`",
     ):
         assert needle in doc, f"format doc missing {needle!r}"
+    normalized = " ".join(doc.split())
+    assert "wherever that step appears in the document" in normalized
+    assert "Resubmit the whole document" not in doc

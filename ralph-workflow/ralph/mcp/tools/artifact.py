@@ -45,11 +45,22 @@ class ArtifactHandlerDeps:
 
 DEFAULT_ARTIFACT_HANDLER_DEPS = ArtifactHandlerDeps()
 
-_KNOWN_ARTIFACT_TYPES = frozenset({
-    "plan", "planning_analysis_decision", "development_analysis_decision",
-    "review_analysis_decision", "development_result", "product_spec", "issues",
-    "fix_result", "smoke_test_result", "commit_cleanup", "commit_message",
-})
+KNOWN_ARTIFACT_TYPES: frozenset[str] = frozenset(
+    {
+        "plan",
+        "planning_analysis_decision",
+        "development_analysis_decision",
+        "review_analysis_decision",
+        "policy_remediation_analysis_decision",
+        "development_result",
+        "product_spec",
+        "issues",
+        "fix_result",
+        "smoke_test_result",
+        "commit_cleanup",
+        "commit_message",
+    }
+)
 
 
 def _artifact_dir(workspace: WorkspaceLike) -> Path:
@@ -86,7 +97,9 @@ def _resolve_history_enabled(artifact_type: str, workspace_root: Path, drain: st
     try:
         policy = load_policy(workspace_root / ".agent")
         return any(
-            phase.drain == drain and phase.artifact_history is not None and phase.artifact_history.enabled
+            phase.drain == drain
+            and phase.artifact_history is not None
+            and phase.artifact_history.enabled
             for phase in policy.pipeline.phases.values()
         )
     except Exception:
@@ -95,6 +108,7 @@ def _resolve_history_enabled(artifact_type: str, workspace_root: Path, drain: st
 
 __all__ = [
     "DEFAULT_ARTIFACT_HANDLER_DEPS",
+    "KNOWN_ARTIFACT_TYPES",
     "ArtifactHandlerDeps",
     "_resolve_artifact_dir",
     "_resolve_history_enabled",

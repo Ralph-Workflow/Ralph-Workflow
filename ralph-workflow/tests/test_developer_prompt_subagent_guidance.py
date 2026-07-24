@@ -107,14 +107,12 @@ def test_fallback_and_fix_prompts_reuse_shape_guidance_before_artifact_contract(
 
 def test_worker_scope_override_follows_base_context_and_forbids_whole_plan_work() -> None:
     source = _WORKER_TEMPLATE.read_text(encoding="utf-8")
-    override_heading = "## WORKER SCOPE OVERRIDE"
-    assert source.index("{{ base_prompt }}") < source.index(override_heading)
-    assert source.index(override_heading) < source.index("render_artifact_submission(")
-    assert "implement ONLY the assigned work unit `{{ unit_id }}`" in source
-    assert "Do not execute, coordinate, integrate, or verify the whole plan" in source
-    assert "Do not work on another unit or duplicate its work" in source
-    assert "exactly one `- [{{ unit_id }}]` item" in source
-    assert "No other plan-step or work-unit proof IDs are allowed" in source
+    scope_heading = "## WORKER SCOPE"
+    assert source.index(scope_heading) < source.index("render_artifact_submission(")
+    assert "Implement and verify only `{{ unit_id }}`" in source
+    assert "coordinate other units, integrate the whole plan" in source
+    assert "exactly one proof item" in source
+    assert "`- [{{ unit_id }}]`" in source
 
 
 def test_developer_prompt_keeps_development_result_block_intact() -> None:

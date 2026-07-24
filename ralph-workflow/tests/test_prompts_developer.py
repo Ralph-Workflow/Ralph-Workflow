@@ -10,7 +10,7 @@ from ralph.prompts.developer import (
     prompt_planning_xml_with_context,
 )
 from ralph.prompts.template_context import TemplateContext
-from ralph.prompts.template_engine import TemplateRenderingError
+from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -230,7 +230,7 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     assert PLANNING_SUBAGENT_REVIEW_FANOUT_TEXT in prompt
     assert PLANNING_RUBRIC_RISK_AUDIT_TEXT in prompt
     assert "## SHIPPED SKILLS" in prompt
-    assert "discovers them automatically" in prompt
+    assert "skill discovery" in prompt
 
 
 def test_planning_prompt_describes_native_markdown_plan_contract(tmp_path: Path) -> None:
@@ -446,8 +446,8 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: Path) -> No
     assert "mcp__ralph__ralph_verify_md_artifact" in prompt
     assert "mcp__ralph__ralph_get_md_draft" in prompt
     assert "mcp__ralph__ralph_finalize_md_artifact" in prompt
-    assert "or bare `ralph_submit_md_artifact`" in prompt
-    assert "or bare `ralph_verify_md_artifact`" in prompt
+    assert "or bare `ralph_submit_md_artifact`" not in prompt
+    assert "or bare `ralph_verify_md_artifact`" not in prompt
     assert workspace.absolute_path(".agent/PRODUCT_CRITERIA.md") in prompt
     assert "{{" not in prompt
     assert "{%" not in prompt
@@ -494,7 +494,98 @@ def test_developer_prompt_fallback_states_result_artifact_contract(tmp_path: Pat
     assert DEVELOPER_NARROW_INTERFACES_TEXT in prompt
     assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
     assert "## SHIPPED SKILLS" in prompt
-    assert "discovers them automatically" in prompt
+    assert "skill discovery" in prompt
+    assert "Never invoke Git through the exec tool" in prompt
+    assert "If you submit `status: partial`" in prompt
+    assert "`## Next Steps`" in prompt
+    assert "`## Continuation`" in prompt
+    normalized_prompt = " ".join(prompt.split())
+    assert "the receipt is not phase completion" in normalized_prompt
+    assert "MANDATORY FINAL ACTION" in prompt
+    assert "Do not call completion for an unvalidated fallback." not in prompt
+    assert "one `- [unit-ID] <proof>` item for every work unit in the plan" in normalized_prompt
+
+
+def test_developer_continuation_fallback_preserves_the_completion_gate(
+    tmp_path: Path,
+) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("boom"),
+    ):
+        prompt = prompt_developer_iteration_xml_with_context(
+            context=context,
+            inputs=DeveloperPromptInputs(
+                prompt_content="Finish the remaining implementation",
+                plan_content="### [S-1] Finish it",
+                prior_result_status="partial",
+                prior_result_summary="The implementation is incomplete.",
+                prior_result_next_steps="Finish S-1.",
+                prior_result_continuation="prior-session",
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+            template_name="developer_iteration_continuation.jinja",
+        )
+
+    assert DEVELOPER_CONTINUATION_GATE_TEXT in prompt
+    assert DEVELOPER_CONTINUATION_NO_SUBMIT_TEXT in prompt
+    assert "PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE" in prompt
+
+
+def test_worker_developer_fallback_preserves_scope_and_namespaced_paths(
+    tmp_path: Path,
+) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    product_criteria_path = worker_namespace / "tmp" / "PRODUCT_CRITERIA.md"
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("boom"),
+    ):
+        prompt = prompt_developer_iteration_xml_with_context(
+            context=context,
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement the API unit",
+                plan_content="### [S-7] Implement API",
+                product_criteria_path=str(product_criteria_path),
+                payload_root=str(worker_namespace / "tmp" / "prompt_payloads"),
+                worker_namespace=str(worker_namespace),
+                work_unit_id="unit-api",
+                work_unit_description="Implement only the API unit.",
+                work_unit_directories='[\n  "src/api"\n]',
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+            template_name="worker_developer.jinja",
+        )
+
+    assert "## WORKER SCOPE" in prompt
+    assert "**Unit ID**: unit-api" in prompt
+    assert "Implement only the API unit." in prompt
+    assert product_criteria_path.as_posix() in prompt
+    assert (worker_namespace / "tmp" / "development_result.md").as_posix() in prompt
+    assert (worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md").as_posix() in prompt
+    assert "`.agent/tmp/development_result.md`" not in prompt
+    assert "Do not coordinate or integrate the whole plan." in prompt
+    assert "Never invoke Git through the exec tool" in prompt
+    assert "If you submit `status: partial`" in prompt
+    assert "`## Next Steps`" in prompt
+    assert "`## Continuation`" in prompt
+    assert "Do not invent files or verification results." in prompt
+    normalized_prompt = " ".join(prompt.split())
+    assert "the receipt is not phase completion" in normalized_prompt
+    assert "MANDATORY FINAL ACTION" in prompt
+    assert "Do not call completion for an unvalidated fallback." not in prompt
+    assert "Complete ALL EXECUTION PLAN tasks" not in prompt
+    assert "responsible for dispatching your own sub-agents" not in prompt
 
 
 def test_developer_prompt_surfaces_plan_skills_via_execution_plan(tmp_path: Path) -> None:
@@ -514,10 +605,10 @@ def test_developer_prompt_surfaces_plan_skills_via_execution_plan(tmp_path: Path
     )
 
     assert "## PLAN-RECOMMENDED SKILLS" not in prompt
-    assert "Skills and MCPs section" in prompt
+    assert "When the execution plan names skills" in prompt
     assert plan_content.strip() in prompt
     assert "## SHIPPED SKILLS" in prompt
-    assert "discovers them automatically" in prompt
+    assert "skill discovery" in prompt
 
 
 def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(
@@ -544,17 +635,79 @@ def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(
             session_caps=session_caps,
         )
 
-    assert "Native file and shell tools are disabled" in prompt
-    assert "sub-agents" in prompt
-    assert "skills" in prompt
+    assert "Runtime-native file, shell, orchestration, skill, todo, and web tools" in prompt
+    assert "use them only when the active runtime exposes them" in prompt
+    assert "native orchestration tools" not in prompt
+    assert "through the runtime's tool mechanism" in prompt
+    assert "tool calls, not commands to type into a native shell" in prompt
     assert "mcp__ralph__exec" in prompt
     assert "mcp__ralph__report_progress" in prompt
     assert "mcp__ralph__ralph_submit_artifact" not in prompt
     assert "or bare `ralph_submit_artifact`" not in prompt
     assert workspace.absolute_path(".agent/PRODUCT_CRITERIA.md") in prompt
-    assert str(tmp_path / ".agent" / "tmp" / "prompt_payloads" / "development_plan.txt") in prompt
+    assert "1. Add tests\n2. Fix capability checks" in prompt
     assert "{{" not in prompt
     assert "{%" not in prompt
+
+
+def test_developer_prompt_fallback_does_not_claim_unwritten_inline_plan_payload(
+    tmp_path: Path,
+) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    plan_content = "1. Add tests\n2. Fix capability checks"
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("boom"),
+    ):
+        prompt = prompt_developer_iteration_xml_with_context(
+            context=context,
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement MCP hardening",
+                plan_content=plan_content,
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+        )
+
+    unwritten_plan_path = tmp_path / ".agent" / "tmp" / "prompt_payloads" / "development_plan.txt"
+    assert plan_content in prompt
+    assert str(unwritten_plan_path) not in prompt
+
+
+def test_developer_prompt_fallback_preserves_path_only_payloads(tmp_path: Path) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    product_criteria_path = tmp_path / ".agent" / "PRODUCT_CRITERIA.md"
+    plan_path = tmp_path / ".agent" / "artifacts" / "plan.md"
+    analysis_path = tmp_path / ".agent" / "artifacts" / "development_analysis_decision.md"
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("boom"),
+    ):
+        prompt = prompt_developer_iteration_xml_with_context(
+            context=context,
+            inputs=DeveloperPromptInputs(
+                prompt_content=None,
+                plan_content=None,
+                product_criteria_path=str(product_criteria_path),
+                plan_path=str(plan_path),
+                analysis_feedback_path=str(analysis_path),
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+        )
+
+    assert str(product_criteria_path) in prompt
+    assert str(plan_path) in prompt
+    assert str(analysis_path) in prompt
+    assert "ANALYSIS FEEDBACK:" in prompt
+    assert "No requirements provided" not in prompt
+    assert "(no plan available)" not in prompt
 
 
 def test_default_artifacts_policy_uses_plan_artifact_type() -> None:

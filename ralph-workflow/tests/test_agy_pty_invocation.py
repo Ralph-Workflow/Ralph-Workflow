@@ -58,6 +58,10 @@ def test_agy_invoke_uses_pty_not_subprocess(
     )
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.default_catalog",
+        lambda: SimpleNamespace(get=lambda _command: None),
+    )
 
     list(
         invoke_agent(

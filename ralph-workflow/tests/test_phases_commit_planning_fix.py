@@ -111,6 +111,7 @@ Outcome: Phase handlers consume a validated plan document.
 - [AC-01] The phase accepts the markdown plan
   Satisfied by: S-1
   Verify: pytest tests/test_phases_commit_planning_fix.py -q
+  Expect: the focused planning-fix tests pass with exit code 0
 
 ## Risks
 - [R-1] Artifact path drift

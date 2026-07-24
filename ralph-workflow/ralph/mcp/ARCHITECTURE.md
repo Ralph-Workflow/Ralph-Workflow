@@ -33,8 +33,8 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 | `unsafe_exec.py` | `handle_unsafe_exec_command`, `handle_raw_exec_command` — unrestricted shell command execution in the real workspace; intentionally kept without `format='summary'` so the legacy behavior stays unchanged (audited as `keep`) |
 | `exec_sandbox.py` | `ExecSandboxManager` — lock-free bounded round-robin sandbox pool: per-workspace `_next_slot_index` counter selects slot `(counter % max_slots) + 1` without filesystem locks; `_active_slots` set prevents capacity recovery from deleting live slots; cleanup runs only when `base_dir > max_total_bytes` (capacity-gated, never under budget) |
 | `md_artifact.py` | `handle_submit_md_artifact`, `handle_verify_md_artifact`, `handle_stage_md_artifact`, `handle_get_md_draft`, `handle_discard_md_draft`, `handle_finalize_md_artifact`, `handle_edit_md_plan_step` — the markdown artifact tool surface (canonical contract: `docs/agents/artifact-submission-contract.md`) |
-| `artifact.py` | `ArtifactHandlerDeps`, `execute_ops_with_rollback` — shared persistence seam for the markdown handlers and canonical submission (JSON artifact authoring was removed) |
-| `coordination.py` | `handle_report_progress`, `handle_declare_complete`, `handle_coordinate`, `handle_read_env` |
+| `artifact.py` | `ArtifactHandlerDeps` and workspace/session resolution helpers shared by the markdown handlers (JSON artifact authoring was removed) |
+| `coordination.py` | `handle_report_progress`, `handle_declare_complete`, `handle_coordinate`, `handle_read_env`; `handle_declare_complete` is the sole explicit completion-sentinel operation |
 | `websearch.py` | `handle_web_search` with `format='summary'` compact envelopes and UTF-8-accurate `snippet_budget_bytes` |
 | `webvisit.py` | `handle_visit_url` and `handle_download_url` with `format='metadata'` / `format='summary'` replayable resource handles |
 | `_envelope_bytes.py` | `finalize_envelope_bytes_out` shared helper for self-referential `bytes_out` envelopes used by git_read, websearch, webvisit, and read_image/read_media |
@@ -48,7 +48,9 @@ Persistent artifact storage and per-type validators. Used by **both** Ralph's se
 | File | Purpose |
 |------|---------|
 | `markdown/` | Closed markdown artifact grammar: `MdArtifactSpec`, `parse_and_validate`, `Diagnostic`, per-type specs under `markdown/specs/`, spec registry |
-| `canonical_submit.py` | `submit_artifact_canonical` — the single canonical writer for `.agent/artifacts/<type>.md`, handoff copies, receipts, and sentinels |
+| `canonical_submit.py` | `submit_artifact_canonical` — the transactional writer for `.agent/artifacts/<type>.md`, handoff copies, and receipts; receipt failure restores prior canonical state, and completion remains a separate `declare_complete` operation |
+| `completion_receipts.py` | DB-first run-scoped artifact receipts with a durable legacy-file fallback |
+| `state_db.py` | `RunStateDB` — the SQLite persistence boundary for receipts and completion sentinels |
 | `file_backend.py` | `FileBackend`, `PathFileBackend`, `DEFAULT_FILE_BACKEND` |
 | `plan/` | Normalized plan models and cross-reference validation used by the markdown spec |
 | `commit_message.py` | Commit message artifact helpers |

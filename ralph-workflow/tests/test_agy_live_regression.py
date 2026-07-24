@@ -329,6 +329,10 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         f"Expected the dash-prefixed '- smoke_test_result artifact submitted' "
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
+    assert "- completion sentinel observed" in output, (
+        f"Expected the durable completion-sentinel success marker. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+    )
     assert "No breaks observed" in output or "Breaks: none" in output, (
         f"Expected no breaks marker in parity report. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -338,7 +342,7 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         "- no tool activity was observed",
         "- smoke_test_result artifact was not submitted",
         "- expected todo-list.js was not created",
-        "- declare_complete marker was not observed",
+        "- completion sentinel was not observed",
         "- no parser events were observed",
         "- fewer than 3 meaningful output lines were observed",
     )
@@ -501,8 +505,9 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     a canonical receipt keyed on ``(run_id, artifact_type)``. Under RFC-013 P3 that receipt lives
     in the per-workspace ``.agent/state.db`` (one row per
     ``(run_id, artifact_type)``); the legacy
-    ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is
-    read-only fallback during the dual-read rollout window.
+    ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is a
+    migration read fallback and a durable write fallback when DB
+    persistence is unavailable.
 
     Asserting via the public ``artifact_receipt_present`` read API
     verifies the behavioral promotion contract without coupling to
@@ -524,8 +529,8 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     expected_run_id = live_smoke_session.expected_run_id
     # RFC-013 P3: assert the canonical receipt is durably present via
     # the public artifact_receipt_present read API. The legacy
-    # .agent/receipts/<run_id>/<type>.json path is read-only fallback;
-    # production writes go to the per-workspace .agent/state.db only.
+    # .agent/receipts/<run_id>/<type>.json path is a migration read fallback
+    # and a durable write fallback when DB persistence is unavailable.
     assert (
         artifact_receipt_present(
             live_smoke_session.workspace,
@@ -578,7 +583,7 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
     # .agent/state.db. Asserting via the public artifact_receipt_present
     # read API verifies the end-to-end promotion contract without
     # coupling to which physical store the receipt landed in (the legacy
-    # .agent/receipts/<run_id>/<type>.json path is read-only fallback).
+    # .agent/receipts/<run_id>/<type>.json path is the durable fallback).
     assert (
         artifact_receipt_present(
             live_smoke_session.workspace,
@@ -608,6 +613,10 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
         "Expected the dash-prefixed '- smoke_test_result artifact submitted' "
         f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
+    )
+    assert "- completion sentinel observed" in output, (
+        "Expected the independent durable completion evidence in the report. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
     )
 
 

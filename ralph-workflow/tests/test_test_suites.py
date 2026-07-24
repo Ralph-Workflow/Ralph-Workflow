@@ -40,6 +40,8 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = (
     "tests/test_auto_integrate_race.py",
     "tests/test_auto_integrate_worktree_sync.py",
     "tests/test_auto_integrate_catalog_e2e.py",
+    "tests/test_cli_commit_command.py",
+    "tests/test_pi_mcp_extension_sse_behavior.py",
 )
 
 

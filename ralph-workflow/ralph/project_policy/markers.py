@@ -49,9 +49,7 @@ AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 
 # Canonical policy directory (relative to the workspace root).
 CANONICAL_DIR: Final[str] = "docs/ralph-workflow-policy/"
-APPLICABILITY_OVERRIDES_PATH: Final[str] = (
-    "docs/ralph-workflow-policy/applicability.toml"
-)
+APPLICABILITY_OVERRIDES_PATH: Final[str] = "docs/ralph-workflow-policy/applicability.toml"
 
 # Required agent instruction files in the project.
 AGENTS_MD: Final[str] = "AGENTS.md"
@@ -313,34 +311,76 @@ REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
         "Ralph markers",
     ),
     "accessibility-policy.md": (
-        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
-        "AI execution instructions", "Verification", "Exceptions",
-        "Maintenance triggers", "Research basis", "Ralph markers",
+        "Purpose and scope",
+        "Applicability",
+        "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
     ),
     "api-compatibility-policy.md": (
-        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
-        "AI execution instructions", "Verification", "Exceptions",
-        "Maintenance triggers", "Research basis", "Ralph markers",
+        "Purpose and scope",
+        "Applicability",
+        "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
     ),
     "data-storage-policy.md": (
-        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
-        "AI execution instructions", "Verification", "Exceptions",
-        "Maintenance triggers", "Research basis", "Ralph markers",
+        "Purpose and scope",
+        "Applicability",
+        "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
     ),
     "reliability-observability-policy.md": (
-        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
-        "AI execution instructions", "Verification", "Exceptions",
-        "Maintenance triggers", "Research basis", "Ralph markers",
+        "Purpose and scope",
+        "Applicability",
+        "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
     ),
     "privacy-policy.md": (
-        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
-        "AI execution instructions", "Verification", "Exceptions",
-        "Maintenance triggers", "Research basis", "Ralph markers",
+        "Purpose and scope",
+        "Applicability",
+        "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
     ),
     "release-deployment-policy.md": (
-        "Purpose and scope", "Applicability", "Default requirements", "Project facts to resolve",
-        "AI execution instructions", "Verification", "Exceptions",
-        "Maintenance triggers", "Research basis", "Ralph markers",
+        "Purpose and scope",
+        "Applicability",
+        "Default requirements",
+        "Project facts to resolve",
+        "AI execution instructions",
+        "Verification",
+        "Exceptions",
+        "Maintenance triggers",
+        "Research basis",
+        "Ralph markers",
     ),
 }
 
@@ -502,28 +542,6 @@ APPROVED_GATE_TOOLS: Final[frozenset[str]] = frozenset(
     }
 )
 
-# Shell utilities the validator ACCEPTS as command first-tokens (test
-# fixtures and smoke checks rely on them, and bash/sh wrap legitimate CI
-# scripts) but which are NEVER advertised to remediation agents: they are
-# not verification gates, and advertising them would hand a weak agent the
-# hollow-gate loophole (``RALPH-COMMAND: echo ok`` reaching READY with zero
-# real verification). The remediation prompt renders APPROVED_GATE_TOOLS
-# only.
-FIXTURE_GATE_UTILITIES: Final[frozenset[str]] = frozenset(
-    {
-        "echo",
-        "cat",
-        "ls",
-        "find",
-        "bash",
-        "sh",
-        "true",
-        # Bash strict-POSIX fallbacks (rare but legitimate in CI scripts).
-        "/bin/sh",
-        "/bin/bash",
-    }
-)
-
 # Per-citation required fields. The validator parses the Research basis
 # section into per-source citation blocks and checks each block contains tokens
 # for every required field. "http" matches any URL scheme (the URL check is
@@ -559,9 +577,7 @@ UI_FRAMEWORK_SIGNALS: Final[frozenset[str]] = frozenset(
 # CSS-family languages: a project whose secondary languages include any of
 # these triggers a design-system policy. CSS/SCSS/Sass/Less are detected by
 # the language detector via file extensions.
-CSS_LANGUAGE_SIGNALS: Final[frozenset[str]] = frozenset(
-    {"CSS", "SCSS", "Sass", "Less"}
-)
+CSS_LANGUAGE_SIGNALS: Final[frozenset[str]] = frozenset({"CSS", "SCSS", "Sass", "Less"})
 
 # Stricter signal set for UX: only when the project uses a SPA-style app
 # framework does a UX policy become required. Design-system can be required
@@ -719,7 +735,6 @@ __all__ = [
     "CORE_POLICY_FILES",
     "CSS_LANGUAGE_SIGNALS",
     "FACT_MARKER",
-    "FIXTURE_GATE_UTILITIES",
     "ID_AGENTS_MD_MISSING",
     "ID_CITATION_MISSING",
     "ID_CLAUDE_MD_MISSING",

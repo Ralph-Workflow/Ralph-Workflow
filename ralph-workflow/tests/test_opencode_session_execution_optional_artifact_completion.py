@@ -48,7 +48,7 @@ class TestOptionalArtifactCompletion:
     def test_optional_artifact_absent_with_declare_complete_does_not_raise(
         self, tmp_path: Path
     ) -> None:
-        """Optional artifact absent + declare_complete must not raise OpenCodeResumableExitError."""
+        """Optional artifact absent plus durable declaration is terminal."""
         ra = RequiredArtifact(
             phase="development",
             artifact_type="development_result",
@@ -60,45 +60,10 @@ class TestOptionalArtifactCompletion:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
         probe = FakeLivenessProbe(active=False)
-        output = ['{"type": "result", "message": "Task declared complete: done"}']
-
-        _check_process_result(
-            cast("ManagedProcess", handle),
-            "opencode",
-            output,
-            _CompletionCheckOptions(
-                execution_strategy=strategy,
-                workspace_path=tmp_path,
-                liveness_probe=probe,
-                required_artifact=ra,
-                policy=TimeoutPolicy(
-                    idle_timeout_seconds=None,
-                    parent_exit_grace_seconds=0.0,
-                    descendant_wait_timeout_seconds=0.0,
-                ),
-            ),
-        )
-
-    def test_optional_artifact_absent_without_evidence_is_terminal(self, tmp_path: Path) -> None:
-        """Optional artifact absent with no evidence must be terminal (not resumable).
-
-        This test exercises the general optional-artifact execution contract using
-        a custom RequiredArtifact(artifact_required=False); it does not represent
-        the default development phase policy where development_result is required.
-        A clean exit (0) with an optional artifact contract is terminal success even
-        when the agent produces no artifact and makes no declare_complete call.
-        """
-        ra = RequiredArtifact(
-            phase="development",
-            artifact_type="development_result",
-            artifact_path=".agent/artifacts/development_result.md",
-            markdown_path=None,
-            normalizer=None,
-            artifact_required=False,
-        )
-        strategy = OpenCodeExecutionStrategy()
-        handle = _FakeHandle(returncode=0, has_descendants=False)
-        probe = FakeLivenessProbe(active=False)
+        run_id = "optional-complete"
+        sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+        sentinel.parent.mkdir(parents=True)
+        sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
 
         _check_process_result(
             cast("ManagedProcess", handle),
@@ -109,6 +74,7 @@ class TestOptionalArtifactCompletion:
                 workspace_path=tmp_path,
                 liveness_probe=probe,
                 required_artifact=ra,
+                completion_run_id=run_id,
                 policy=TimeoutPolicy(
                     idle_timeout_seconds=None,
                     parent_exit_grace_seconds=0.0,
@@ -116,6 +82,40 @@ class TestOptionalArtifactCompletion:
                 ),
             ),
         )
+
+    def test_optional_artifact_absent_without_sentinel_is_resumable(
+        self, tmp_path: Path
+    ) -> None:
+        """Optional artifact policy does not make a clean exit completion."""
+        ra = RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            artifact_path=".agent/artifacts/development_result.md",
+            markdown_path=None,
+            normalizer=None,
+            artifact_required=False,
+        )
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        probe = FakeLivenessProbe(active=False)
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    liveness_probe=probe,
+                    required_artifact=ra,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                        descendant_wait_timeout_seconds=0.0,
+                    ),
+                ),
+            )
 
     def test_optional_artifact_malformed_present_does_not_raise(self, tmp_path: Path) -> None:
         """Optional artifact present but malformed must not raise OpenCodeResumableExitError.
@@ -140,6 +140,10 @@ class TestOptionalArtifactCompletion:
         handle = _FakeHandle(returncode=0, has_descendants=False)
         probe = FakeLivenessProbe(active=False)
 
+        run_id = "optional-malformed"
+        sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+        sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+
         _check_process_result(
             cast("ManagedProcess", handle),
             "opencode",
@@ -149,6 +153,7 @@ class TestOptionalArtifactCompletion:
                 workspace_path=tmp_path,
                 liveness_probe=probe,
                 required_artifact=ra,
+                completion_run_id=run_id,
                 policy=TimeoutPolicy(
                     idle_timeout_seconds=None,
                     parent_exit_grace_seconds=0.0,

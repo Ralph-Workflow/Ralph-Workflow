@@ -1,4 +1,4 @@
-"""Tests that planning templates use Skill-tool discovery and docs-mcp guidance."""
+"""Tests for capability-neutral planning skill and docs-MCP guidance."""
 
 import tempfile
 from pathlib import Path
@@ -13,8 +13,9 @@ from ralph.workspace.memory import MemoryWorkspace
 
 SHIPPED_SKILLS_DISCOVERY_HINTS = (
     "## SHIPPED SKILLS",
-    "discovers them automatically",
-    "Do not Read",
+    "for runtimes that support",
+    "If this runtime exposes a skill mechanism",
+    "Read a selected `SKILL.md`",
     "`Skills:` line",
 )
 
@@ -52,6 +53,14 @@ DESIGN_SECTION_HINTS_FALLBACK = (
     "Testability",
     "Refactor Strategy",
     "Acceptance Criteria",
+)
+
+_PLANNING_FALLBACK_TEMPLATE = (
+    Path(__file__).resolve().parents[1]
+    / "ralph"
+    / "prompts"
+    / "templates"
+    / "planning_fallback.jinja"
 )
 
 
@@ -98,7 +107,7 @@ def _assert_design_section_hints_fallback(prompt: str) -> None:
 
 
 class TestPlanningTemplatesShippedSkills:
-    """planning.jinja and planning_fallback.jinja must describe Skill-tool discovery."""
+    """Planning templates must describe conditional skill discovery."""
 
     def test_planning_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(False, tmp_path=tmp_path)
@@ -126,6 +135,11 @@ class TestPlanningTemplatesShippedSkills:
             False, template="planning_fallback.jinja", tmp_path=tmp_path
         )
         _assert_shipped_skills_discovery(prompt)
+        normalized_prompt = " ".join(prompt.split())
+        assert "Use only tools the active runtime actually exposes" in prompt
+        assert "call that exact name through the runtime's tool mechanism" in normalized_prompt
+        assert "Ralph guarantees" not in prompt
+        assert "native orchestration tools remain enabled" not in prompt
 
     def test_planning_fallback_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(
@@ -143,3 +157,18 @@ class TestPlanningTemplatesShippedSkills:
             False, template="planning_fallback.jinja", tmp_path=tmp_path
         )
         _assert_design_section_hints_fallback(prompt)
+
+    def test_planning_fallback_teaches_executor_shapes_and_proof(self) -> None:
+        source = _PLANNING_FALLBACK_TEMPLATE.read_text(encoding="utf-8")
+        normalized = " ".join(source.split())
+
+        for phrase in (
+            "small bounded tasks or verification gates",
+            "substantial execution-subagent mini-plan",
+            "four or five independent execution Subplans",
+            "main-session integration and verification",
+            "Every acceptance criterion and verification step must be evaluatable",
+            "Project-specific `Type:` values are accepted and preserved verbatim",
+        ):
+            assert phrase in normalized
+        assert "normalize to `action`" not in source

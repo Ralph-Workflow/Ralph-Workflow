@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING
 from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._document import ParsedDocument
-from ralph.mcp.artifacts.markdown._lenient_enum import LenientEnum
 from ralph.mcp.artifacts.markdown._parser import parse_markdown_document, stray_line_diagnostic
 from ralph.mcp.artifacts.markdown._references import validate_unique_ids
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 
 if TYPE_CHECKING:
+    from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
     from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 type Content = dict[str, object]
@@ -34,16 +34,24 @@ class MdArtifactSpec:
     to_content: DocumentMapper
     normalize_content: ContentNormalizer
     optional_frontmatter: frozenset[str] = frozenset()
-    lenient_enums: Mapping[str, LenientEnum] = field(default_factory=dict)
+    required_frontmatter_hints: Mapping[str, str] = field(default_factory=dict)
     validate_document: DocumentValidator | None = None
     minimal_variant: MinimalVariantParser | None = None
     max_characters: int | None = None
     unknown_section_rule: SectionRule | None = None
+    closed_frontmatter: Mapping[str, FrontmatterVocabulary] = field(default_factory=dict)
+    allow_unknown_frontmatter: bool = False
+    allow_unknown_sections: bool = False
+    allow_nested_headings: bool = False
 
 
 def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[Diagnostic]]:
     """Parse and validate markdown through one shared, pure artifact gate."""
-    document, diagnostics = parse_markdown_document(text)
+    document, diagnostics = parse_markdown_document(
+        text,
+        allow_nested_headings=spec.allow_nested_headings,
+    )
+    _teach_duplicate_closed_frontmatter_vocabulary(diagnostics, spec)
     minimal_content: Content | None = None
     if spec.minimal_variant is not None:
         minimal_content, variant_diagnostics = spec.minimal_variant(document)
@@ -56,8 +64,11 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
             require_sections=minimal_content is None,
         )
     )
-    document = _coerce_lenient_frontmatter(document, spec, diagnostics)
-    if not _has_errors(diagnostics) and spec.validate_document is not None and minimal_content is None:
+    if (
+        not _has_errors(diagnostics)
+        and spec.validate_document is not None
+        and minimal_content is None
+    ):
         diagnostics.extend(spec.validate_document(document))
     if not _has_errors(diagnostics):
         try:
@@ -84,15 +95,23 @@ def _validate_structure(
     if spec.max_characters is not None and len(text) > spec.max_characters:
         diagnostics.append(Diagnostic(1, None, "SPEC001", "document exceeds its character limit"))
     allowed_frontmatter = (
-        spec.required_frontmatter | spec.optional_frontmatter | frozenset(spec.lenient_enums)
+        spec.required_frontmatter
+        | spec.optional_frontmatter
+        | frozenset(spec.closed_frontmatter)
     )
     diagnostics.extend(
-        Diagnostic(1, None, "SPEC002", f"missing required frontmatter {key!r}")
+        Diagnostic(
+            1,
+            None,
+            "SPEC002",
+            _missing_frontmatter_message(spec, key),
+        )
         for key in spec.required_frontmatter
         if key not in document.frontmatter
     )
+    diagnostics.extend(_validate_closed_frontmatter(document, spec))
     for key, line in document.frontmatter_lines.items():
-        if key not in allowed_frontmatter:
+        if key not in allowed_frontmatter and not spec.allow_unknown_frontmatter:
             diagnostics.append(
                 Diagnostic(line, None, "SPEC003", f"unknown frontmatter field {key!r}")
             )
@@ -100,6 +119,8 @@ def _validate_structure(
     for section in document.sections:
         rule = spec.sections.get(section.name)
         if rule is None:
+            if spec.allow_unknown_sections:
+                continue
             if spec.unknown_section_rule is None:
                 diagnostics.append(
                     Diagnostic(section.line, section.name, "SPEC004", "unknown section")
@@ -128,6 +149,57 @@ def _validate_structure(
     for name, rule in spec.sections.items():
         if require_sections and rule.required and name not in seen_sections:
             diagnostics.append(Diagnostic(1, name, "SPEC008", f"missing required section {name!r}"))
+    return diagnostics
+
+
+def _missing_frontmatter_message(spec: MdArtifactSpec, key: str) -> str:
+    vocabulary = spec.closed_frontmatter.get(key)
+    if vocabulary is not None:
+        accepted = ", ".join(vocabulary.values)
+        return f"missing required frontmatter {key!r}; accepted values are: {accepted}"
+    return spec.required_frontmatter_hints.get(key, f"missing required frontmatter {key!r}")
+
+
+def _teach_duplicate_closed_frontmatter_vocabulary(
+    diagnostics: list[Diagnostic],
+    spec: MdArtifactSpec,
+) -> None:
+    """Make duplicate consumed-field errors name the accepted vocabulary."""
+    for index, diagnostic in enumerate(diagnostics):
+        if diagnostic.rule_id != "MD006":
+            continue
+        for field_name, vocabulary in spec.closed_frontmatter.items():
+            if diagnostic.message != f"duplicate frontmatter field {field_name!r}":
+                continue
+            accepted = ", ".join(vocabulary.values)
+            diagnostics[index] = Diagnostic(
+                diagnostic.line,
+                diagnostic.section,
+                diagnostic.rule_id,
+                f"{diagnostic.message}; keep exactly one {field_name!r} field "
+                f"whose value is one of: {accepted}",
+                diagnostic.severity,
+            )
+            break
+
+
+def _validate_closed_frontmatter(
+    document: ParsedDocument, spec: MdArtifactSpec
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    for field_name, vocabulary in spec.closed_frontmatter.items():
+        value = document.frontmatter.get(field_name)
+        if value is None or value in vocabulary.values:
+            continue
+        accepted = ", ".join(vocabulary.values)
+        diagnostics.append(
+            Diagnostic(
+                document.frontmatter_lines[field_name],
+                None,
+                vocabulary.rule_id,
+                f"frontmatter {field_name!r} must be one of: {accepted}",
+            )
+        )
     return diagnostics
 
 
@@ -179,26 +251,6 @@ def _validate_section_shapes(section: ParsedSection, rule: SectionRule) -> list[
     return diagnostics
 
 
-def _coerce_lenient_frontmatter(
-    document: ParsedDocument, spec: MdArtifactSpec, diagnostics: list[Diagnostic]
-) -> ParsedDocument:
-    frontmatter = dict(document.frontmatter)
-    for field_name, rule in spec.lenient_enums.items():
-        value = frontmatter.get(field_name)
-        if value is not None and value not in rule.allowed:
-            frontmatter[field_name] = rule.default
-            diagnostics.append(
-                Diagnostic(
-                    document.frontmatter_lines[field_name],
-                    None,
-                    "SPEC009",
-                    f"{field_name!r} value {value!r} coerced to {rule.default!r}",
-                    "warning",
-                )
-            )
-    return ParsedDocument(frontmatter, document.frontmatter_lines, document.sections)
-
-
 def _normalizer_diagnostic(document: ParsedDocument, message: str) -> Diagnostic:
     field_name = message.split(" ", 1)[0].split(".", 1)[0]
     line = document.frontmatter_lines.get(field_name, 1)
@@ -217,4 +269,4 @@ def _has_errors(diagnostics: list[Diagnostic]) -> bool:
     return any(diagnostic.severity == "error" for diagnostic in diagnostics)
 
 
-__all__ = ["LenientEnum", "MdArtifactSpec", "SectionRule", "parse_and_validate"]
+__all__ = ["MdArtifactSpec", "SectionRule", "parse_and_validate"]

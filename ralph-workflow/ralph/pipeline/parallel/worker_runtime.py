@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,7 @@ from ralph.config.loader import load_config
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition,
     recover_incomplete_integration,
@@ -52,7 +54,7 @@ from ralph.pipeline.checkpoint import worker_checkpoint_path
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
@@ -431,6 +433,9 @@ def run_parallel_worker_from_manifest(
         parallel_worker=True,
     )
     if event == PipelineEvent.AGENT_SUCCESS:
+        worker_artifact_path = (
+            Path(manifest.worker_artifact_dir) / "development_result.md"
+        )
         event = phase_event_after_agent_run(
             effect=worker_effect,
             config=config,
@@ -439,7 +444,14 @@ def run_parallel_worker_from_manifest(
             workspace_scope=workspace_scope,
             display_context=display_context,
             state=state,
+            handle_phase_fn=partial(
+                handle_execution_phase,
+                output_artifact_path=str(worker_artifact_path),
+                assigned_work_unit_id=manifest.unit_id,
+            ),
         )
+    if isinstance(event, ExecutionResultEvent) and event.status == "completed":
+        event = PipelineEvent.AGENT_SUCCESS
     if event == PipelineEvent.AGENT_SUCCESS:
         # Boundary seam: publish whatever this worker just landed to the
         # rest of the fleet, and pick up anything they landed meanwhile.

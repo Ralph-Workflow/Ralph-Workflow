@@ -6,8 +6,9 @@ completion gate reads it. The gate never recomputes a storage path, so a receipt
 keyed on ``(run_id, artifact_type)`` cannot disagree with where the artifact
 actually landed.
 
-Storage is backed by ``.agent/state.db`` (RFC-013 P3) — writes go to the
-DB only; legacy file paths are read-fallback during the dual-read window.
+Storage is backed by ``.agent/state.db`` (RFC-013 P3). Legacy file paths are
+read fallbacks during migration and durable write fallbacks when DB persistence
+fails.
 """
 
 from __future__ import annotations
@@ -129,27 +130,24 @@ def test_dual_target_delete_removes_legacy_file(tmp_path: Path) -> None:
 
 
 # ----------------------------------------------------------------------------
-# RFC-013 P3 risk-mitigation: ``sqlite3.Error`` from ``RunStateDB`` must
-# never break the receipt contract. The write helper fallbacks to a
-# silent no-op (the legacy read-only fallback window still has the
-# pre-upgrade receipt on disk). The read helper falls back to the
-# legacy file path so a forged / corrupt DB does not block the
-# completion gate.
+# RFC-013 P3 risk mitigation: a DB persistence error must use the durable
+# legacy-file fallback, while a DB read error must use the same path.
 # ----------------------------------------------------------------------------
 
 
-def test_write_receipt_silent_when_db_unavailable(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """``write_artifact_receipt`` swallows ``sqlite3.Error`` from the
-    DB open path; no exception propagates to the caller."""
+def test_write_receipt_uses_fallback_when_db_unavailable(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A DB-open error persists the receipt through the durable fallback."""
 
     def _raise_sqlite_error(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("database is locked")
 
     monkeypatch.setattr(receipts_module, "_open_db", _raise_sqlite_error)
 
-    # Must not raise; the receipt write is best-effort during the
-    # dual-read window.
     write_artifact_receipt(tmp_path, "run-1", "commit_message")
+    assert (tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json").exists()
 
 
 def test_read_receipt_falls_back_to_legacy_when_db_unavailable(
@@ -223,12 +221,44 @@ def test_write_receipt_falls_back_to_legacy_when_db_write_fails(
     assert payload["artifact_type"] == "commit_message"
 
 
-def test_write_receipt_dual_persistence_db_and_legacy(
+def test_write_receipt_falls_back_to_legacy_when_db_upsert_raises_oserror(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A filesystem failure during DB upsert uses the same durable fallback."""
+
+    class _FakeFailingDB:
+        def upsert_receipt(self, *args: object, **kwargs: object) -> None:
+            raise OSError("disk I/O error")
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        receipts_module,
+        "_open_db",
+        lambda _workspace_root: _FakeFailingDB(),
+    )
+
+    write_artifact_receipt(tmp_path, "run-oserror", "commit_message")
+
+    legacy_path = tmp_path / ".agent" / "receipts" / "run-oserror" / "commit_message.json"
+    assert legacy_path.exists()
+
+    def _raise_on_read(*_args: object, **_kwargs: object) -> object:
+        raise OSError("database unavailable")
+
+    monkeypatch.setattr(receipts_module, "_open_db", _raise_on_read)
+    assert artifact_receipt_present(
+        tmp_path,
+        "run-oserror",
+        "commit_message",
+    )
+
+
+def test_write_receipt_uses_db_without_redundant_legacy_write(
     tmp_path: Path,
 ) -> None:
-    """When the DB write succeeds AND the legacy-write fallback path is
-    invoked, both stores must agree: receipt is present after either
-    delete-one-side test."""
+    """A successful DB write does not also create the failure fallback."""
     write_artifact_receipt(tmp_path, "run-1", "commit_message")
     # Success path: legacy file is NOT created (production writes go to DB only).
     legacy_path = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
@@ -270,9 +300,10 @@ def test_write_receipt_legacy_file_with_hmac_round_trips(
 # ``ReceiptPersistenceError`` when BOTH the RunStateDB write AND the
 # legacy-file fallback fail. A silent success in this path would let an
 # artifact submit continue against a missing receipt, producing a silent
-# downstream failure when the completion gate reads it. ``execute_ops_-
-# with_rollback`` propagates the exception so the entire submit (artifact,
-# handoff, implicit completion sentinel) is unwound atomically.
+# downstream failure when the completion gate reads it.
+# ``submit_artifact_canonical`` propagates the exception and restores the
+# artifact, handoff, history, and any receipt created by the failed attempt.
+# Completion sentinels are separate and are never written by submission.
 # ----------------------------------------------------------------------------
 
 

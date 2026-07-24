@@ -39,7 +39,10 @@ Submit one native-markdown document:
 2. Submit with {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} (`artifact_type="fix_result"`,
    `content` = the full markdown document — never JSON).
 3. If the submit tool is unavailable, write the same complete document to
-   `.agent/tmp/fix_result.md` instead.
-4. **CALL {{ DECLARE_COMPLETE_TOOL_REFERENCE }} AS YOUR FINAL ACTION.** Submit
-   success text is NOT completion; without it the round is treated as failed
-   and retried.
+   `.agent/tmp/fix_result.md` so the runtime can validate and promote it into
+   the required durable fallback receipt, then continue immediately.
+4. A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
+5. After a valid direct-submit receipt, or immediately after writing the
+   complete fallback, you MUST call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as
+   the final explicit action. The fallback completion gate then promotes the
+   document and requires both the sentinel and receipt.

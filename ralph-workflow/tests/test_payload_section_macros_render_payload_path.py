@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from ralph.prompts.template_engine import TemplateRenderingError, render_template
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_rendering_error import TemplateRenderingError
 
 _PARTIAL_NAME = "shared/_payload_section"
 _IMPORT_MACROS = (

@@ -1,22 +1,19 @@
 """Project-level cross-cutting constraints for the plan artifact.
 
 The ``PlanConstraints`` model captures do-not-break rules the executor
-must respect independently of any single design decision. Unlike the
-``design.constraints`` sub-section (which is bias-filled from the
-``planning_profile`` preset and lives under the optional ``design``
-field), the top-level ``PlanConstraints`` is a separate section that
-appears in the agent-facing markdown as a `## Project Constraints`
-heading and is exposed in the step-wise submit section tool.
+must respect independently of any single design decision. It is populated from
+the optional top-level ``## Constraints`` section; a descriptive
+``planning_profile`` never injects or rewrites these values.
 
 The four fields are mutually non-overlapping:
 
 - ``must_not_break`` and ``must_keep_working`` are list-of-strings
-  invariants (each 1-200 chars, deduped case-insensitively)
-- ``performance_budget`` and ``security_posture`` are single-line
-  free-form fields (each 1-200 chars)
+  invariants (each 1-1000 chars, deduped case-insensitively)
+- ``performance_budget`` and ``security_posture`` are free-form fields
+  (each 1-2000 chars)
 
 The ``_clean_entries`` validator strips whitespace, drops empties,
-dedupes by lower-case, and enforces a 50-entry cap per list.
+dedupes by lower-case, and enforces a 500-entry cap per list.
 """
 
 from __future__ import annotations
@@ -57,7 +54,7 @@ class PlanConstraints(RalphBaseModel):
     def _clean_entries(cls, value: object) -> object:
         """Strip whitespace, drop empties, dedupe case-insensitively.
 
-        Cap the list at ``_MAX_CONSTRAINT_LIST_ENTRIES=50`` entries so
+        Cap the list at ``_MAX_CONSTRAINT_LIST_ENTRIES=500`` entries so
         a runaway plan cannot bloat the constraints list. The
         before-mode validator accepts the raw list so empty strings can
         be silently dropped; the underlying ``ConstraintEntry`` type

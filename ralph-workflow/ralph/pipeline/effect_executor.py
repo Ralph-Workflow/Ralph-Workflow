@@ -7,6 +7,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, replace
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -37,6 +38,7 @@ from ralph.display.parallel_display import (
     subscriber_for_display,
 )
 from ralph.git.operations import stage_files
+from ralph.mcp.artifacts.canonical_submit import _clear_worker_artifacts
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
@@ -80,7 +82,7 @@ if TYPE_CHECKING:
         _ShowPhaseStartFn,
     )
     from ralph.pipeline.effects import InvokeAgentEffect
-    from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.factory import MaterializeMasterPromptFn, PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
@@ -344,12 +346,22 @@ def _invoke_agent_with_recovery(
 ) -> PipelineEvent:
     own_bridge = bridge is None
     effective_run_id = run_id or str(uuid.uuid4())
+    resolved_required_artifact = _resolve_required_artifact(
+        ctx,
+        pipeline_deps,
+        required_artifact,
+    )
     if bridge is None:
         bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
     elif run_id is None:
         effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
     try:
-        master_prompt_file = _materialize_master_prompt(ctx, pipeline_deps)
+        master_prompt_file = _materialize_master_prompt(
+            ctx,
+            pipeline_deps,
+            required_artifact=resolved_required_artifact,
+            required_artifact_resolved=True,
+        )
         bridge_ctx = _AgentBridgeCtx(
             bridge=bridge, session=cast("object", None), master_prompt_file=master_prompt_file
         )
@@ -381,7 +393,8 @@ def _invoke_agent_with_recovery(
                 pipeline_deps,
                 session_id,
                 effective_run_id,
-                required_artifact,
+                resolved_required_artifact,
+                required_artifact_resolved=True,
                 extra_env=extra_env,
             )
             try:
@@ -499,6 +512,16 @@ def _start_bridge(
             drain=ctx.effect.drain,
             policy_bundle=ctx.policy_bundle,
         )
+    else:
+        worker_namespace = ctx.worker_namespace
+        if worker_namespace is None and ctx.worker_artifact_dir is not None:
+            worker_namespace = ctx.worker_artifact_dir.parent
+        if worker_namespace is not None:
+            _clear_worker_artifacts(
+                ctx.workspace_scope.root,
+                run_id,
+                worker_namespace=worker_namespace,
+            )
     return cast(
         "RestartAwareMcpBridge",
         pipeline_deps.bridge_factory(
@@ -520,19 +543,91 @@ def _start_bridge(
 def _materialize_master_prompt(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
+    *,
+    required_artifact: RequiredArtifact | None = None,
+    required_artifact_resolved: bool = False,
 ) -> str:
-    _materialize = pipeline_deps.master_prompt_materializer
-    try:
-        return _materialize(
-            workspace_root=ctx.workspace_scope.root,
-            name=str(ctx.effect.phase),
+    materialize = pipeline_deps.master_prompt_materializer
+    planning_style = _planning_style_for_master_prompt(
+        ctx,
+        pipeline_deps,
+        required_artifact=required_artifact,
+        required_artifact_resolved=required_artifact_resolved,
+    )
+    workspace_root = ctx.workspace_scope.root
+    phase_name = str(ctx.effect.phase)
+    accepts_worker_namespace = _accepts_keyword(materialize, "worker_namespace")
+    if planning_style is not None and _accepts_keyword(materialize, "planning_style"):
+        if accepts_worker_namespace:
+            return materialize(
+                workspace_root=workspace_root,
+                name=phase_name,
+                worker_namespace=ctx.worker_namespace,
+                planning_style=planning_style,
+            )
+        return materialize(
+            workspace_root=workspace_root,
+            name=phase_name,
+            planning_style=planning_style,
+        )
+    if accepts_worker_namespace:
+        return materialize(
+            workspace_root=workspace_root,
+            name=phase_name,
             worker_namespace=ctx.worker_namespace,
         )
-    except TypeError:
-        return _materialize(
-            workspace_root=ctx.workspace_scope.root,
-            name=str(ctx.effect.phase),
+    return materialize(workspace_root=workspace_root, name=phase_name)
+
+
+def _accepts_keyword(
+    materialize: MaterializeMasterPromptFn,
+    keyword: str,
+) -> bool:
+    """Return whether an injected materializer accepts one keyword argument."""
+    try:
+        parameters = signature(materialize).parameters
+    except (TypeError, ValueError):
+        return True
+    return keyword in parameters or any(
+        str(parameter).startswith("**") for parameter in parameters.values()
+    )
+
+
+def _planning_style_for_master_prompt(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+    *,
+    required_artifact: RequiredArtifact | None,
+    required_artifact_resolved: bool = False,
+) -> bool | None:
+    artifact = required_artifact
+    if artifact is None and not required_artifact_resolved:
+        policy_bundle = ctx.policy_bundle
+        if policy_bundle is None:
+            return None
+        artifact = pipeline_deps.artifact_requirements_resolver(
+            policy_bundle.pipeline,
+            policy_bundle.artifacts,
+            phase=ctx.effect.phase,
+            drain=ctx.effect.drain or ctx.effect.phase,
         )
+    return artifact is not None and artifact.artifact_type == "plan"
+
+
+def _resolve_required_artifact(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+    required_artifact: RequiredArtifact | None,
+) -> RequiredArtifact | None:
+    """Resolve one invocation's artifact contract exactly once."""
+    if required_artifact is not None or ctx.policy_bundle is None:
+        return required_artifact
+    return pipeline_deps.artifact_requirements_resolver(
+        ctx.policy_bundle.pipeline,
+        ctx.policy_bundle.artifacts,
+        phase=ctx.effect.phase,
+        drain=ctx.effect.drain or ctx.effect.phase,
+    )
 
 
 def _initial_resume_session_id(ctx: _AgentInvocationCtx) -> str | None:
@@ -601,16 +696,25 @@ def _build_attempt_invoke_options(
     resume_session_id: str | None,
     run_id: str,
     required_artifact_override: RequiredArtifact | None = None,
+    required_artifact_resolved: bool = False,
     extra_env: dict[str, str] | None = None,
 ) -> InvokeOptions:
     required_artifact = required_artifact_override
-    if required_artifact is None and ctx.policy_bundle is not None:
+    if (
+        required_artifact is None
+        and not required_artifact_resolved
+        and ctx.policy_bundle is not None
+    ):
         required_artifact = pipeline_deps.artifact_requirements_resolver(
             ctx.policy_bundle.pipeline,
             ctx.policy_bundle.artifacts,
             phase=ctx.effect.phase,
             drain=ctx.effect.drain or ctx.effect.phase,
         )
+    required_artifact = required_artifact_for_invocation(
+        required_artifact,
+        ctx.worker_artifact_dir,
+    )
 
     def _emit_pre_output_progress() -> None:
         if ctx.display is not None:
@@ -650,6 +754,25 @@ def _build_attempt_invoke_options(
     )
 
 
+def required_artifact_for_invocation(
+    required_artifact: RequiredArtifact | None,
+    worker_artifact_dir: Path | None,
+) -> RequiredArtifact | None:
+    """Route a worker's artifact and fallback completion check to its namespace."""
+    if required_artifact is None or worker_artifact_dir is None:
+        return required_artifact
+    markdown_path = (
+        str(worker_artifact_dir.parent / "handoffs" / Path(required_artifact.markdown_path).name)
+        if required_artifact.markdown_path is not None
+        else None
+    )
+    return replace(
+        required_artifact,
+        artifact_path=str(worker_artifact_dir / f"{required_artifact.artifact_type}.md"),
+        markdown_path=markdown_path,
+    )
+
+
 def _consume_attempt_output(
     ctx: _AgentInvocationCtx,
     bridge_ctx: _AgentBridgeCtx,
@@ -686,8 +809,8 @@ def _consume_attempt_output(
         _raw_transport if isinstance(_raw_transport, AgentTransport) else AgentTransport.GENERIC
     )
     _agent_registry = AgentRegistry()
-    _subagent_pid_registry, _subagent_pid_source = (
-        _agent_registry.build_subagent_pid_registry(_agent_config_transport)
+    _subagent_pid_registry, _subagent_pid_source = _agent_registry.build_subagent_pid_registry(
+        _agent_config_transport
     )
     _subagent_source_label = _agent_config_transport.value
     # Thread the shared registry + per-transport source through
@@ -810,9 +933,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     # Stale-session prompt metadata: only forward when the failure was
     # actually a stale-session failure. See module docstring note on
     # AC-03. ``untruncated`` already encodes the canonical predicate.
-    prompt_stale_session_id = (
-        recovery_input.stale_session_id if untruncated else None
-    )
+    prompt_stale_session_id = recovery_input.stale_session_id if untruncated else None
     prompt_transport = recovery_input.transport if untruncated else None
     prompt_model = recovery_input.model if untruncated else None
     prompt_file = _retry_prompt_file_for_context(
@@ -944,14 +1065,10 @@ def _build_recovery_input_for_attempt(
         workspace_root=ctx.workspace_scope.root,
         raw_output=list(raw_output),
         rendered_output=list(rendered_output),
-        extracted_session_id=(
-            extract_transport_session_id(tuple(raw_output)) or session_id
-        ),
+        extracted_session_id=(extract_transport_session_id(tuple(raw_output)) or session_id),
         inactivity_error_type=AgentInactivityTimeoutError,
         stale_session_id=(
-            state.last_agent_session_id
-            or state.resume_session_id
-            or session_id
+            state.last_agent_session_id or state.resume_session_id or session_id
             if is_stale_session_failure
             else None
         ),

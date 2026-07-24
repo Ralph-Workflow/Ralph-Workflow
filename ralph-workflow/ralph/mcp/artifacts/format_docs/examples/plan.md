@@ -55,6 +55,7 @@ Run the focused regression test.
 Type: verify
 Depends on: S-2
 Verify: pytest tests/auth/test_refresh_race.py -q
+Expect: the race regression test passes deterministically with exit code 0
 
 ### [S-4] Prove auth behavior did not regress
 Run the full auth test directory and check for failures or warnings.
@@ -62,6 +63,7 @@ Run the full auth test directory and check for failures or warnings.
 Type: verify
 Depends on: S-3
 Verify: pytest tests/auth -q
+Expect: the auth suite passes with zero failures and no new warnings
 
 ## Critical Files
 - [CF-1] src/auth/refresh.py
@@ -93,9 +95,11 @@ Non-goals:
 - [AC-01] Same-key concurrent refreshes never invalidate an in-use token
   Satisfied by: S-1, S-2
   Verify: pytest tests/auth/test_refresh_race.py -q
+  Expect: the race regression test passes deterministically with exit code 0
 - [AC-02] refresh_token() keeps its public signature and return type
   Satisfied by: S-2
   Verify: pytest tests/auth -q
+  Expect: the auth suite passes with zero failures and no new warnings
 
 ## Risks
 - [R-1] Per-key synchronization state could grow without bound

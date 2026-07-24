@@ -120,8 +120,8 @@ a stable `rule_id`, a `message`, and a `severity`:
   duplicate IDs) and per-type document rules produce errors. Any error rejects the
   submission: nothing is persisted, and the agent is expected to fix the document and
   retry the same tool.
-- **`warning`** — the document is accepted as submitted. For example, `SPEC009` reports
-  a lenient-enum frontmatter value that was coerced to its default.
+- **`warning`** — the document is accepted as submitted, and its original
+  descriptive values are preserved.
 
 The repair loop for a failed submission is: read the diagnostics (each names the line,
 section, and rule), fix the markdown, and re-run `ralph_verify_md_artifact` or

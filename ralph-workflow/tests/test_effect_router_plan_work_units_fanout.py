@@ -108,8 +108,8 @@ Files:
   Mitigation: Assign disjoint directories.
 
 ## Verification
-- [V-1] pytest
-  Expect: passes
+- [V-1] pytest -q
+  Expect: pytest exits with code 0
 
 ## Work Units
 {unit_items}

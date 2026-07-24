@@ -8,6 +8,8 @@ Ralph's live MCP endpoint, and declares completion.
 
 from __future__ import annotations
 
+import shlex
+import sys
 from functools import lru_cache
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -29,8 +31,7 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 def _write_mcp_agent(root: Path) -> Path:
     script = root / "mcp-resolution-agent.py"
     script.write_text(
-        """#!/usr/bin/env python3
-import json
+        """import json
 import os
 import urllib.request
 from pathlib import Path
@@ -89,7 +90,7 @@ def _config(command: Path) -> UnifiedConfig:
             },
             "agents": {
                 "claude": {
-                    "cmd": str(command),
+                    "cmd": f"{shlex.quote(sys.executable)} {shlex.quote(str(command))}",
                     "transport": AgentTransport.AGY.value,
                 }
             },

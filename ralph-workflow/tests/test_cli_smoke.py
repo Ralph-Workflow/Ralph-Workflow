@@ -231,6 +231,11 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
             "- [HG-1] session capture\n",
             encoding="utf-8",
         )
+        sentinel = tmp_path / ".agent" / "completion_seen_interactive-claude-smoke.json"
+        sentinel.write_text(
+            '{"run_id": "interactive-claude-smoke"}',
+            encoding="utf-8",
+        )
         raw_lines = [
             '{"type":"assistant","message":{"type":"message","content":'
             '[{"type":"text","text":"I am creating the todo list now."}]}\n',
@@ -302,6 +307,7 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert "claude/haiku" in output
     assert "Headless semantic guide" in output
     assert "smoke_test_result artifact submitted" in output
+    assert "completion sentinel observed" in output
     assert "Observed output" in output
     assert "I am creating the todo list now." in output
     # Agent name surfaces in the parity-table title; tool activity surfaces in

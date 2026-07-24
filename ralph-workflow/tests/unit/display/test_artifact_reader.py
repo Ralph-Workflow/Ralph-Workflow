@@ -56,6 +56,7 @@ Run the focused display tests.
 Type: verify
 Depends on: S-1
 Verify: pytest tests/unit/display -q
+Expect: the display unit tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] ralph/display/artifact_reader.py

@@ -32,6 +32,7 @@ def materialize_master_prompt(
     name: str,
     default_product_criteria: str | None = None,
     worker_namespace: Path | None = None,
+    planning_style: bool = False,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str:
     """Write a master prompt file for the named agent and return its path.
@@ -51,16 +52,20 @@ def materialize_master_prompt(
         worker_namespace=worker_namespace,
         backend=backend,
     )
-    current_plan_path = _current_plan_handoff_path(workspace_root, phase_name=name)
     master_prompt_path = (
         worker_master_prompt_path(worker_namespace, name)
         if worker_namespace is not None
         else workspace_root / ".agent" / "tmp" / f"{name}_master_prompt.md"
     )
+    current_plan_path = _current_plan_handoff_path(
+        workspace_root,
+        planning_style=planning_style,
+    )
     _write_master_prompt_file(
         master_prompt_path,
         build_master_prompt(
-            phase_name=name,
+            planning_style=planning_style,
+            master_prompt_path=str(master_prompt_path),
             product_criteria_path=str(product_criteria_path),
             current_plan_path=str(current_plan_path) if current_plan_path is not None else None,
         ),
@@ -123,9 +128,7 @@ def _sync_product_criteria_file(
         # provided -- but we always pass read_source above, so it is
         # populated when changed is True.
         if changed and prompt_text is not None:
-            write_text_if_changed(
-                backend, product_criteria_path, prompt_text, encoding="utf-8"
-            )
+            write_text_if_changed(backend, product_criteria_path, prompt_text, encoding="utf-8")
             if worker_namespace is None:
                 _write_prompt_history_snapshot(
                     workspace_root=workspace_root,
@@ -186,8 +189,12 @@ def _history_timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _current_plan_handoff_path(workspace_root: Path, *, phase_name: str) -> Path | None:
-    if phase_name == "planning":
+def _current_plan_handoff_path(
+    workspace_root: Path,
+    *,
+    planning_style: bool,
+) -> Path | None:
+    if planning_style:
         return None
     plan_path = workspace_root / ".agent" / "PLAN.md"
     return plan_path if plan_path.exists() else None
@@ -195,7 +202,8 @@ def _current_plan_handoff_path(workspace_root: Path, *, phase_name: str) -> Path
 
 def build_master_prompt(
     *,
-    phase_name: str,
+    planning_style: bool,
+    master_prompt_path: str,
     product_criteria_path: str,
     current_plan_path: str | None = None,
 ) -> str:
@@ -203,11 +211,13 @@ def build_master_prompt(
     unattended = _unattended_mode_text().strip()
     preamble = (
         "This is the session's master prompt. Its instructions remain binding for the "
-        "entire session and survive context compaction — after any compaction, resume, "
-        "or continuation, re-read this file (and the files it references) before doing "
-        "anything else.\n"
+        "entire session.\n\n"
+        "The durable copy of this master prompt is at:\n"
+        f"`{master_prompt_path}`\n\n"
+        "Read it now; after any context compaction, resume, or continuation, re-read "
+        f"`{master_prompt_path}` and the files it references before doing anything else.\n"
     )
-    if phase_name == "planning":
+    if planning_style:
         return (
             f"{preamble}\n"
             f"{unattended}\n\n"

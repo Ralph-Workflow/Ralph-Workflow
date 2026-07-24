@@ -77,10 +77,10 @@ def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
         )
 
 
-def test_declare_complete_marker_with_sentinel_satisfies_completion_contract(
+def test_declare_complete_sentinel_satisfies_artifact_free_completion_contract(
     tmp_path: Path,
 ) -> None:
-    """AGY raw output containing declare_complete marker plus sentinel does not raise.
+    """AGY durable declaration is terminal when the phase has no artifact contract.
 
     The plain-text marker alone is no longer authoritative: it can be spoofed
     by ordinary agent output. The completion sentinel written by the real
@@ -101,28 +101,20 @@ def test_declare_complete_marker_with_sentinel_satisfies_completion_contract(
             execution_strategy=strategy,
             workspace_path=tmp_path,
             captured_session_id="abc",
-            required_artifact=RequiredArtifact(
-                phase="development",
-                artifact_type="development_result",
-                artifact_path=".agent/artifacts/development_result.md",
-                markdown_path=None,
-                normalizer=None,
-            ),
         ),
     )
 
 
-def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
-    """AGY with artifact on disk does not raise even without declare_complete.
+def test_required_artifact_receipt_needs_completion_sentinel(tmp_path: Path) -> None:
+    """AGY required-artifact completion needs receipt and sentinel.
 
     The legacy schema-validity fallback for on-disk canonical artifacts
     was removed (analysis how_to_fix item 3): a stale canonical artifact
     from a previous run can no longer satisfy the current run's
     completion gate. The hardened contract requires either a current-run
     receipt at ``.agent/receipts/<run_id>/<type>.json`` (promoted from
-    the agent's direct write) OR a completion sentinel via the real
-    declare_complete MCP tool. This test now writes the current-run
-    receipt and asserts the same no-raise outcome.
+    the agent's direct write) AND a completion sentinel via the real
+    declare_complete MCP tool.
     """
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True)
@@ -149,26 +141,44 @@ def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
 
+    options = _CompletionCheckOptions(
+        execution_strategy=strategy,
+        workspace_path=tmp_path,
+        completion_run_id=run_id,
+        required_artifact=RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            artifact_path=".agent/artifacts/development_result.md",
+            markdown_path=None,
+            normalizer=None,
+        ),
+        policy=TimeoutPolicy(
+            idle_timeout_seconds=None,
+            parent_exit_grace_seconds=0.0,
+        ),
+    )
+
+    with pytest.raises(AgentInvocationError):
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "agy",
+            [],
+            options,
+        )
+
+    sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
     _check_process_result(
         cast("ManagedProcess", handle),
         "agy",
         [],
-        _CompletionCheckOptions(
-            execution_strategy=strategy,
-            workspace_path=tmp_path,
-            completion_run_id=run_id,
-            required_artifact=RequiredArtifact(
-                phase="development",
-                artifact_type="development_result",
-                artifact_path=".agent/artifacts/development_result.md",
-                markdown_path=None,
-                normalizer=None,
-            ),
-        ),
+        options,
     )
 
 
-def test_sentinel_check_fn_true_prevents_invocation_error(tmp_path: Path) -> None:
+def test_sentinel_check_fn_true_without_artifact_contract_prevents_invocation_error(
+    tmp_path: Path,
+) -> None:
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
 
@@ -179,13 +189,6 @@ def test_sentinel_check_fn_true_prevents_invocation_error(tmp_path: Path) -> Non
         _CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
-            required_artifact=RequiredArtifact(
-                phase="development",
-                artifact_type="development_result",
-                artifact_path=".agent/artifacts/development_result.md",
-                markdown_path=None,
-                normalizer=None,
-            ),
             captured_session_id="captured-run-id",
             completion_run_id="run-sentinel-id",
             _sentinel_check_fn=lambda workspace, run_id: (
@@ -193,6 +196,34 @@ def test_sentinel_check_fn_true_prevents_invocation_error(tmp_path: Path) -> Non
             ),
         ),
     )
+
+
+def test_sentinel_check_fn_true_does_not_replace_required_receipt(
+    tmp_path: Path,
+) -> None:
+    strategy = strategy_for_transport(AgentTransport.AGY)
+    handle = _FakeHandle(returncode=0)
+
+    with pytest.raises(AgentInvocationError):
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "agy",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    artifact_path=".agent/artifacts/development_result.md",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
+                captured_session_id="captured-run-id",
+                completion_run_id="run-sentinel-id",
+                _sentinel_check_fn=lambda _workspace, _run_id: True,
+            ),
+        )
 
 
 def test_sentinel_check_fn_false_still_raises_invocation_error(tmp_path: Path) -> None:
@@ -237,13 +268,6 @@ def test_sentinel_check_fn_receives_completion_run_id(tmp_path: Path) -> None:
         _CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
-            required_artifact=RequiredArtifact(
-                phase="development",
-                artifact_type="development_result",
-                artifact_path=".agent/artifacts/development_result.md",
-                markdown_path=None,
-                normalizer=None,
-            ),
             captured_session_id="captured-run-id",
             completion_run_id="run-sentinel-id",
             _sentinel_check_fn=capture,
@@ -267,13 +291,6 @@ def test_sentinel_completion_without_pty_echo(tmp_path: Path) -> None:
         _CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
-            required_artifact=RequiredArtifact(
-                phase="development",
-                artifact_type="development_result",
-                artifact_path=".agent/artifacts/development_result.md",
-                markdown_path=None,
-                normalizer=None,
-            ),
             captured_session_id="parsed-session-001",
             completion_run_id="observable-run-001",
         ),

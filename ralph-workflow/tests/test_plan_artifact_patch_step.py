@@ -65,6 +65,7 @@ Run every plan markdown migration test.
 Type: verify
 Depends on: S-1
 Verify: pytest tests/test_plan_artifact*.py -q
+Expect: the plan artifact tests pass with exit code 0
 """
 
     result = handle_edit_md_plan_step(

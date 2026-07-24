@@ -1,8 +1,7 @@
 """Critical-files section of a plan artifact.
 
-Lists the primary files the plan will change plus any reference files
-that provide context but are not themselves modified. Primary files are
-required; reference files are optional.
+Lists primary files plus any reference files that provide context. Both
+collections are optional descriptive planning aids.
 """
 
 from __future__ import annotations
@@ -19,5 +18,5 @@ class CriticalFiles(RalphBaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    primary_files: list[CriticalPrimaryFile] = Field(..., min_length=1, max_length=200)
+    primary_files: list[CriticalPrimaryFile] = Field(default_factory=list, max_length=200)
     reference_files: list[ReferenceFile] = Field(default_factory=list, max_length=200)

@@ -10,7 +10,7 @@ from ralph.config.enums import AgentTransport
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import ExecutionResultEvent, PipelineEvent
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -20,6 +20,8 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pytest import MonkeyPatch
 
     from ralph.display.context import DisplayContext
@@ -255,10 +257,36 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         _fake_execute_agent_effect,
         raising=False,
     )
+
+    def _fake_handle_execution_phase(
+        effect: object,
+        context: object,
+        *,
+        output_artifact_path: str | None = None,
+        assigned_work_unit_id: str | None = None,
+    ) -> list[ExecutionResultEvent]:
+        del effect, context
+        captured["output_artifact_path"] = output_artifact_path
+        captured["assigned_work_unit_id"] = assigned_work_unit_id
+        return [ExecutionResultEvent(phase="development", status="completed")]
+
+    def _fake_phase_event_after_agent_run(**kwargs: object) -> ExecutionResultEvent:
+        handle_phase_fn = cast(
+            "Callable[[object, object], list[ExecutionResultEvent]]",
+            kwargs.get("handle_phase_fn"),
+        )
+        return handle_phase_fn(object(), object())[0]
+
+    monkeypatch.setattr(
+        module,
+        "handle_execution_phase",
+        _fake_handle_execution_phase,
+        raising=False,
+    )
     monkeypatch.setattr(
         module,
         "phase_event_after_agent_run",
-        lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
+        _fake_phase_event_after_agent_run,
         raising=False,
     )
     monkeypatch.setattr(module, "invoke_agent", object(), raising=False)
@@ -287,6 +315,10 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
     effect = captured["effect"]
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.prompt_file == str(worker_ns / "tmp" / "development_prompt.md")
+    assert captured["output_artifact_path"] == str(
+        worker_ns / "artifacts" / "development_result.md"
+    )
+    assert captured["assigned_work_unit_id"] == "unit-a"
 
 
 def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_agent_effect(

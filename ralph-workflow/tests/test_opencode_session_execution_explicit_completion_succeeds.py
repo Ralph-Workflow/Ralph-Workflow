@@ -35,6 +35,8 @@ class TestExplicitCompletionSucceeds:
             explicit_complete=True,
             required_artifact_present=True,
             artifact_types=("development_result",),
+            completion_sentinel_present=True,
+            artifact_required=True,
         )
 
         state = strategy.classify_exit(handle, signals)

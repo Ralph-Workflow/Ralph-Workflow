@@ -29,7 +29,6 @@ from pathlib import Path
 
 import pytest
 
-from ralph.config.enums import AgentTransport
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _AGENT_SESSION_CEILINGS,
     _SMOKE_IDLE_TIMEOUT_SECONDS,
@@ -45,11 +44,12 @@ def test_agy_prompt_uses_canonical_markdown_submit_tool() -> None:
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
-        transport=AgentTransport.AGY,
     )
     assert "Call `ralph_submit_md_artifact`" in prompt_text
     assert 'artifact_type="smoke_test_result"' in prompt_text
     assert "```markdown" in prompt_text
+    assert "mandatory final action" in prompt_text
+    assert "receipt is not phase completion" in prompt_text
 
 
 def test_agy_prompt_forbids_direct_artifact_writes() -> None:
@@ -57,7 +57,6 @@ def test_agy_prompt_forbids_direct_artifact_writes() -> None:
     prompt_text = _build_smoke_prompt(
         "tmp/interactive-agy-smoke/todo-list.js",
         submit_artifact_tool_name="ralph_submit_md_artifact",
-        transport=AgentTransport.AGY,
     )
     assert "Do not touch files outside tmp/" in prompt_text
     assert "do not write an artifact file directly" in prompt_text

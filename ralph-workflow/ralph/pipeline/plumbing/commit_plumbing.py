@@ -66,7 +66,6 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_artifact,
 )
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
-from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -91,6 +90,7 @@ from ralph.prompts.commit import (
     prompt_commit_message_for_opencode,
 )
 from ralph.prompts.master_prompt import materialize_master_prompt
+from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
@@ -109,15 +109,11 @@ if TYPE_CHECKING:
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.pro_support.hooks import ProPipelineHooks
 
-# Late-binding reference for the test-patch surface: tests in
-# ``tests/test_cli_commit_command.py`` (and friends) patch names
-# on ``ralph.cli.commands.commit`` at runtime (e.g.
-# ``start_commit_bridge``, ``materialize_master_prompt``,
-# ``invoke_agent``). Importing the module here at top level (rather
-# than inside the function body) satisfies PLC0415 and gives the
-# plumbing a stable handle to look up the latest attribute values
-# at call time.
-_commit_module: types.ModuleType = importlib.import_module("ralph.cli.commands.commit")
+
+def _commit_cli_module() -> types.ModuleType:
+    """Resolve the CLI patch surface lazily without creating an import cycle."""
+    return importlib.import_module("ralph.cli.commands.commit")
+
 
 __all__ = [
     "CommitAgentResult",
@@ -405,10 +401,11 @@ def _commit_prompt_for_agent(
     repo_root: Path,
 ) -> str:
     payload_output_dir = repo_root / ".agent" / "tmp" / "prompt_payloads"
+    submit_artifact_tool_names = _submit_artifact_tool_names_for_transport(agent.transport)
     if _is_opencode_agent(agent):
         return prompt_commit_message_for_opencode(
             diff,
-            submit_artifact_tool_name=SUBMIT_MD_ARTIFACT_TOOL,
+            submit_artifact_tool_name=submit_artifact_tool_names[0],
             payload_config=CommitPromptPayloadConfig(
                 output_dir=payload_output_dir,
                 name_prefix="commit_plumbing",
@@ -417,7 +414,7 @@ def _commit_prompt_for_agent(
     return prompt_commit_message(
         diff,
         template_registry=template_registry,
-        submit_artifact_tool_names=_submit_artifact_tool_names_for_transport(agent.transport),
+        submit_artifact_tool_names=submit_artifact_tool_names,
         payload_config=CommitPromptPayloadConfig(
             output_dir=payload_output_dir,
             name_prefix="commit_plumbing",
@@ -428,11 +425,7 @@ def _commit_prompt_for_agent(
 def _submit_artifact_tool_names_for_transport(
     transport: AgentTransport | None,
 ) -> tuple[str, ...]:
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        return SUBMIT_MD_ARTIFACT_TOOL.prompt_aliases(
-            tool_name_prefix=claude_tool_name_prefix(),
-        )
-    return (SUBMIT_MD_ARTIFACT_TOOL,)
+    return (submit_artifact_tool_name_for_transport(transport),)
 
 
 def _generate_commit_message_with_agent(
@@ -586,6 +579,7 @@ def _run_commit_agent_attempt_with_recovery(
     """
     last_session_id: str | None = prior_session_id
     last_error: Exception | None = None
+    commit_module = _commit_cli_module()
 
     def _capture_session_id(sid: str) -> None:
         nonlocal last_session_id
@@ -599,7 +593,7 @@ def _run_commit_agent_attempt_with_recovery(
     rendered_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
 
     delete_artifacts = _get_patched(
-        _commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
+        commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
     )
     delete_artifacts(attempt_context.repo_root)
     # The commit run_id is fixed ("commit-plumbing") and reused across
@@ -647,7 +641,7 @@ def _run_commit_agent_attempt_with_recovery(
             raw_output_sink=raw_output,
             rendered_output_sink=rendered_output,
             set_session_id_cb=_capture_session_id,
-            invoke_agent=_get_patched(_commit_module, "invoke_agent", invoke_agent),
+            invoke_agent=_get_patched(commit_module, "invoke_agent", invoke_agent),
             on_retry_failure=on_retry_failure,
             agent_invocation_error_sink=_capture_error,
         )
@@ -665,7 +659,7 @@ def _run_commit_agent_attempt_with_recovery(
             output_collector.extend(raw_lines)
         if event.value == "agent_success":
             read_artifact = _get_patched(
-                _commit_module, "read_commit_message_artifact", read_commit_message_artifact
+                commit_module, "read_commit_message_artifact", read_commit_message_artifact
             )
             artifact_message = read_artifact(attempt_context.repo_root)
             if artifact_message:
@@ -776,20 +770,19 @@ def invoke_commit_agent_attempt(
     """
     # Late-binding: tests patch ``ralph.cli.commands.commit.{X}``; look the
     # names up at call time so the patches take effect even though this
-    # function lives in the plumbing module. (The import is module-level
-    # to satisfy PLC0415; the function-level ``getattr`` is what makes
-    # the patches take effect.)
+    # function lives in the plumbing module.
+    commit_module = _commit_cli_module()
     materialize = _get_patched(
-        _commit_module,
+        commit_module,
         "materialize_master_prompt",
         materializer if materializer is not None else materialize_master_prompt,
     )
-    invoke = _get_patched(_commit_module, "invoke_agent", invoke_agent)
+    invoke = _get_patched(commit_module, "invoke_agent", invoke_agent)
     delete_artifacts = _get_patched(
-        _commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
+        commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
     )
     read_artifact = _get_patched(
-        _commit_module, "read_commit_message_artifact", read_commit_message_artifact
+        commit_module, "read_commit_message_artifact", read_commit_message_artifact
     )
 
     delete_artifacts(attempt_context.repo_root)
@@ -943,12 +936,7 @@ def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str], agent: 
     and submit-tool name are supplied here.
     """
     required = _commit_required_artifact()
-    example_content = (
-        "---\n"
-        "type: commit\n"
-        "subject: fix(auth): prevent token expiry race\n"
-        "---"
-    )
+    example_content = "---\ntype: commit\nsubject: fix(auth): prevent token expiry race\n---"
     example_arguments: dict[str, str] = {
         "artifact_type": required.artifact_type,
         "content": example_content,
@@ -1302,11 +1290,17 @@ class _CommitWritePromptFileProto(typing.Protocol):
 
 
 def _resolve_commit_start_commit_bridge() -> _CommitStartBridgeProto:
-    return typing.cast("_CommitStartBridgeProto", _commit_module.start_commit_bridge)
+    return typing.cast(
+        "_CommitStartBridgeProto",
+        _commit_cli_module().start_commit_bridge,
+    )
 
 
 def _resolve_commit_write_prompt_file() -> _CommitWritePromptFileProto:
-    return typing.cast("_CommitWritePromptFileProto", _commit_module.write_commit_prompt_file)
+    return typing.cast(
+        "_CommitWritePromptFileProto",
+        _commit_cli_module().write_commit_prompt_file,
+    )
 
 
 def _stringify_extra_env(extra_env: object) -> dict[str, str] | None:

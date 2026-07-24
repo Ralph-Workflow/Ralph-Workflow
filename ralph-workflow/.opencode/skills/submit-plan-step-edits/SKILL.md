@@ -8,8 +8,9 @@ version: 2.1.0
 
 ## Overview
 
-`ralph_edit_md_plan_step` applies one edit to `## Steps` in the persisted plan
-draft, validates the full plan, and saves the edited markdown.
+`ralph_edit_md_plan_step` applies one edit to any document-wide plan step,
+including a step under custom, repeated, or nested headings. It validates the
+full persisted draft and saves the edited markdown.
 
 Step IDs are stable identifiers and are never renumbered. Moving a step changes
 only its position. Insert with a new unused ID. Replace with one complete

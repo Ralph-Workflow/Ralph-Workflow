@@ -34,8 +34,12 @@ type: fix_result
 - `## Files Changed` — required; one item per modified file, at least one.
 - `## Next Steps` — optional; at most one item for remaining follow-up.
 
+Unknown descriptive frontmatter fields and sections are accepted and ignored
+by the typed fix-result consumer. Known fields and sections above retain their
+required item counts; descriptive prose and item continuations are accepted.
+
 ## Hard errors vs warnings
 
 Hard errors: missing Summary or Files Changed; more than one Summary or
-Next Steps item; duplicate item IDs; any grammar violation (unknown
-sections, stray prose lines). This type has no warning-level coercions.
+Next Steps item; duplicate item IDs in a known section; wrong `type`; or
+malformed core grammar. This type has no warning-level coercions.

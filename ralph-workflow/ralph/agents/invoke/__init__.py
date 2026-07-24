@@ -500,9 +500,9 @@ def invoke_agent(
 
         transport = _agent_transport(config)
         support = default_catalog().get(config.cmd)
-        requires_pty = False
+        requires_pty = transport == AgentTransport.AGY
         if support is not None and isinstance(support.spec, AgentSpec):
-            requires_pty = support.spec.requires_pty
+            requires_pty = requires_pty or support.spec.requires_pty
 
         if requires_pty:
             if transport in {

@@ -28,9 +28,10 @@ from pathlib import Path
 
 import pytest
 
-from ralph.mcp.tools.artifact import _KNOWN_ARTIFACT_TYPES
+from ralph.mcp.tools.artifact import KNOWN_ARTIFACT_TYPES
 from ralph.testing.audit_artifact_submission_canonical_path import (
     _CANONICAL_TYPES,
+    _FILE_ALLOWLIST,
     audit,
     audit_file,
     main,
@@ -90,6 +91,17 @@ def test_direct_canonical_artifact_write_text_is_flagged(tmp_path: Path) -> None
         tmp_path,
         "mod.py",
         "from pathlib import Path\nPath('.agent/artifacts/plan.json').write_text('{}')\n",
+    )
+    findings = audit_file(f, "mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "canonical_artifact_write"
+
+
+def test_direct_canonical_markdown_write_text_is_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "mod.py",
+        "from pathlib import Path\nPath('.agent/artifacts/plan.md').write_text('# Plan')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
@@ -192,7 +204,7 @@ def test_allowed_function_names_are_ignored(tmp_path: Path) -> None:
     assert not findings
 
 
-def test_canonical_block_marker_allows_writes(tmp_path: Path) -> None:
+def test_obsolete_marker_comments_do_not_exempt_bypasses(tmp_path: Path) -> None:
     src = """\
 # === BEGIN CANONICAL SUBMIT OPS ===
 from pathlib import Path
@@ -202,7 +214,10 @@ write_artifact_receipt(workspace_root, run_id, artifact_type)
 """
     f = _write(tmp_path, "mod.py", src)
     findings = audit_file(f, "mod.py")
-    assert not findings
+    assert {finding.category for finding in findings} == {
+        "receipt_helper",
+        "receipt_write",
+    }
 
 
 def test_audit_skips_tests_directory(tmp_path: Path) -> None:
@@ -215,14 +230,19 @@ def test_audit_skips_tests_directory(tmp_path: Path) -> None:
     assert not findings
 
 
-def test_audit_skips_allowlisted_files(tmp_path: Path) -> None:
+def test_audit_does_not_exempt_obsolete_type_specific_module(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "ralph/mcp/artifacts/commit_message.py",
         "from pathlib import Path\nPath('.agent/receipts/x.json').write_text('{}')\n",
     )
     findings = audit(codebase_root=tmp_path)
-    assert not findings
+    assert len(findings) == 1
+    assert findings[0].category == "receipt_write"
+
+
+def test_file_allowlist_contains_only_canonical_submit() -> None:
+    assert frozenset({"ralph/mcp/artifacts/canonical_submit.py"}) == _FILE_ALLOWLIST
 
 
 def test_audit_discovers_bypasses_across_package(tmp_path: Path) -> None:
@@ -360,8 +380,8 @@ def _run_patched_audit_import(
 def test_audit_invariants_import_clean_via_subprocess() -> None:
     """Importing audit module with correct constants should succeed."""
     result = _run_patched_audit_import(
-        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
-        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
     )
     assert result.returncode == 0, (
         f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
@@ -372,8 +392,8 @@ def test_audit_invariants_import_clean_via_subprocess() -> None:
 def test_audit_invariants_import_clean_under_minus_o() -> None:
     """Importing audit module under -O with correct constants should succeed."""
     result = _run_patched_audit_import(
-        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
-        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         minus_o=True,
     )
     assert result.returncode == 0, (
@@ -388,7 +408,7 @@ def test_audit_invariants_import_clean_under_minus_o() -> None:
 def test_audit_invariants_fire_when_canonical_types_is_empty() -> None:
     """_CANONICAL_TYPES = frozenset() should raise RuntimeError at import time."""
     result = _run_patched_audit_import(
-        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = frozenset()",
     )
     assert result.returncode != 0
@@ -400,7 +420,7 @@ def test_audit_invariants_fire_when_required_canonical_type_missing() -> None:
     """Missing 'commit_message' from _CANONICAL_TYPES should raise RuntimeError at import time."""
     # Replace the _CANONICAL_TYPES assignment with one missing 'commit_message'
     result = _run_patched_audit_import(
-        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = frozenset({'plan', 'development_result'})",
     )
     assert result.returncode != 0
@@ -415,8 +435,6 @@ def test_audit_invariants_fire_when_file_allowlist_is_empty() -> None:
             "_FILE_ALLOWLIST: frozenset[str] = frozenset(\n"
             "    {\n"
             '        "ralph/mcp/artifacts/canonical_submit.py",\n'
-            '        "ralph/mcp/artifacts/commit_message.py",\n'
-            '        "ralph/mcp/artifacts/smoke_test_result.py",\n'
             "    }\n"
             ")\n"
             "\n"
@@ -439,21 +457,10 @@ def test_audit_invariants_fire_when_allowlist_file_missing() -> None:
     assert "_FILE_ALLOWLIST entry does not exist" in result.stderr
 
 
-def test_audit_invariants_fire_when_marker_block_start_is_empty() -> None:
-    """Empty _CANONICAL_BLOCK_START should raise RuntimeError at import time."""
-    result = _run_patched_audit_import(
-        '_CANONICAL_BLOCK_START = "# === BEGIN CANONICAL SUBMIT OPS ==="',
-        '_CANONICAL_BLOCK_START = ""',
-    )
-    assert result.returncode != 0
-    assert "RuntimeError" in result.stderr
-    assert "_CANONICAL_BLOCK_START must not be empty" in result.stderr
-
-
 def test_audit_invariants_survive_minus_o() -> None:
     """Invariant violations must still raise RuntimeError under python -O."""
     result = _run_patched_audit_import(
-        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES",
         "_CANONICAL_TYPES: frozenset[str] = frozenset()",
         minus_o=True,
     )
@@ -463,7 +470,7 @@ def test_audit_invariants_survive_minus_o() -> None:
 
 
 def test_canonical_types_equals_known_artifact_types() -> None:
-    assert _CANONICAL_TYPES == _KNOWN_ARTIFACT_TYPES
+    assert _CANONICAL_TYPES == KNOWN_ARTIFACT_TYPES
 
 
 # =============================================================================
@@ -559,3 +566,16 @@ def test_variable_segment_path_composition_is_flagged(tmp_path: Path) -> None:
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
     assert findings[0].category == "fallback_tmp_write"
+
+
+def test_variable_canonical_markdown_path_is_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "mod.py",
+        "from pathlib import Path\n"
+        "artifact_type = 'plan'\n"
+        "(Path('.agent/artifacts') / f'{artifact_type}.md').write_text('# Plan')\n",
+    )
+    findings = audit_file(f, "mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "canonical_artifact_write"

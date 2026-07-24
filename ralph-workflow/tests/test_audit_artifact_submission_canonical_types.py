@@ -5,7 +5,7 @@ validation error and burns a retry. The macro contract pins
 artifact_type to a known-good value, so a per-template call site that
 passes a typo or non-canonical value is a drift source.
 
-The set of canonical artifact types is the same ``_KNOWN_ARTIFACT_TYPES``
+The set of canonical artifact types is the same ``KNOWN_ARTIFACT_TYPES``
 frozenset the MCP handler uses. This test imports that set as the
 single source of truth so the audit stays in lock-step with the
 handler; re-defining the list here would be a drift hole.
@@ -13,18 +13,18 @@ handler; re-defining the list here would be a drift hole.
 
 from __future__ import annotations
 
-import importlib
 import re
 from pathlib import Path
+from typing import cast
+
+from ralph.mcp.tools import artifact as artifact_tools
+from ralph.mcp.tools.artifact import KNOWN_ARTIFACT_TYPES
 
 TEMPLATES_DIR = Path("ralph/prompts/templates")
 
 # Import the canonical set from the handler so the audit cannot drift
-# away from the actual validation surface. Importing via importlib so
-# test discovery does not depend on the ralph package being importable
-# in unusual environments.
-_handler = importlib.import_module("ralph.mcp.tools.artifact")
-_KNOWN_TYPES: frozenset[str] = _handler._KNOWN_ARTIFACT_TYPES
+# away from the actual validation surface.
+_KNOWN_TYPES = KNOWN_ARTIFACT_TYPES
 
 # Each single-shot template that includes the shared macro. The same set
 # test_audit_artifact_submission_standardization.py uses. (The fallback
@@ -51,7 +51,7 @@ _CALL_RE = re.compile(
 def test_every_call_site_uses_canonical_artifact_type() -> None:
     for template_name in SINGLE_SHOT_TEMPLATES:
         content = (TEMPLATES_DIR / template_name).read_text(encoding="utf-8")
-        calls = _CALL_RE.findall(content)
+        calls = cast("list[str]", _CALL_RE.findall(content))
         assert calls, (
             f"{template_name} must call render_artifact_submission with an "
             f"artifact_type so the macro can render the right path / "
@@ -75,7 +75,17 @@ def test_canonical_set_is_non_empty() -> None:
     guard makes that impossible.
     """
     assert len(_KNOWN_TYPES) >= 3, (
-        f"_KNOWN_ARTIFACT_TYPES is unexpectedly small: {sorted(_KNOWN_TYPES)!r}"
+        f"KNOWN_ARTIFACT_TYPES is unexpectedly small: {sorted(_KNOWN_TYPES)!r}"
     )
-    for required in ("commit_message", "plan", "development_result"):
-        assert required in _KNOWN_TYPES, f"_KNOWN_ARTIFACT_TYPES must contain {required!r}"
+    for required in (
+        "commit_message",
+        "plan",
+        "development_result",
+        "policy_remediation_analysis_decision",
+    ):
+        assert required in _KNOWN_TYPES, f"KNOWN_ARTIFACT_TYPES must contain {required!r}"
+
+
+def test_canonical_artifact_types_are_exported_as_a_public_api() -> None:
+    assert "KNOWN_ARTIFACT_TYPES" in artifact_tools.__all__
+    assert not hasattr(artifact_tools, "_KNOWN_ARTIFACT_TYPES")

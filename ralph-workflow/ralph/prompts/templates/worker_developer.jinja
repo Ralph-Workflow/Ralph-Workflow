@@ -1,37 +1,75 @@
+You are a worker agent. Implement only the assigned work unit and return its proof.
+
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
-You are a worker agent assigned to implement the following task.
+{% include 'shared/_session_capabilities.j2' %}
 
-You share the repository checkout with other parallel workers. The directories declared for your work unit (its `Directories:` field, listed below) are the ONLY paths outside .agent/workers/{{ unit_id }}/ you may modify. Do not infer your success from repo-wide git status — submit your worker artifact before exiting.
+{% include 'shared/_mcp_tools.j2' %}
 
-## Your Task
+{% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
+
+{% include 'shared/_development_skills.j2' %}
+
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt did not complete successfully.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
+
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
+
+{{ render_payload_section('EXECUTION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
+
+{% include 'shared/_analysis_context.j2' %}
+
+{% if PRIOR_RESULT_STATUS %}
+PRIOR WORKER RESULT — PARTIAL — NOT COMPLETE:
+This is a new invocation for the same assigned unit. Treat the continuation
+reference as handoff metadata; do not try to resume a transport session.
+
+Summary: {{ PRIOR_RESULT_SUMMARY }}
+Next steps: {{ PRIOR_RESULT_NEXT_STEPS }}
+Continuation reference: {{ PRIOR_RESULT_CONTINUATION }}
+{% endif %}
+
+## WORKER SCOPE
 
 **Unit ID**: {{ unit_id }}
 
-## Description
+### Assignment
 
 {{ description }}
 
-## Allowed Directories
+### Allowed directories
 
-You may only modify files within these directories:
+You share the checkout with parallel workers. These are the only paths outside
+`.agent/workers/{{ unit_id }}/` that you may modify:
+
 {{ allowed_directories }}
 
-## Worker State Namespace
+Your prompt payloads, logs, and artifacts belong under
+`.agent/workers/{{ unit_id }}/`. Do not inspect repo-wide status to infer
+success, coordinate other units, integrate the whole plan, or modify another
+worker's namespace.
 
-Your prompt payloads, logs, and artifacts are written under `.agent/workers/{{ unit_id }}/`.
-Do not write to `.agent/workers/` paths belonging to other workers.
+Your submitted result is persisted at
+`{{ WORKER_NAMESPACE }}/artifacts/development_result.md`, with its downstream
+handoff at `{{ WORKER_NAMESPACE }}/handoffs/DEVELOPMENT_RESULT.md`.
 
-## Base Context
+Implement and verify only `{{ unit_id }}`. If the assignment is blocked, report
+the concrete blocker in the result instead of expanding scope.
 
-{{ base_prompt }}
-
-## WORKER SCOPE OVERRIDE
-
-After reading the base context, implement ONLY the assigned work unit `{{ unit_id }}`. Do not execute, coordinate, integrate, or verify the whole plan. Do not work on another unit or duplicate its work.
-
-Your `## Plan Items Proven` section must contain exactly one `- [{{ unit_id }}]` item whose bracketed ID exactly matches the assigned work-unit ID. No other plan-step or work-unit proof IDs are allowed.
+{% if IS_CONTINUATION %}
+ABSOLUTE RULE: this worker continuation exists because the prior pass did not
+finish the assigned unit. If the runtime provides sub-agents, you MUST use at least one sub-agent as a hard gate before artifact submission. Have it review
+only `{{ unit_id }}` against the assignment, continuation/analysis context, and
+the unit-result proof contract below. Until that review reports no remaining
+gap in the assigned unit, you MUST NOT submit the artifact or declare completion.
+If no sub-agent mechanism exists, perform the same gate yourself sequentially.
+{% endif %}
 
 {% set development_result_example %}
 ---
@@ -40,7 +78,7 @@ status: completed
 ---
 
 ## Summary
-- [SUM-1] Implemented the requested fix and verified it.
+- [SUM-1] Implemented and verified the assigned work unit.
 
 ## Files Changed
 - [FC-1] src/main.py
@@ -48,6 +86,26 @@ status: completed
 ## Plan Items Proven
 - [{{ unit_id }}] Implemented this work unit; updated src/main.py and ran pytest tests/test_main.py -q; it passes.
 {% endset %}
-In `## Plan Items Proven`, the bracketed ID must EXACTLY match your assigned work-unit bracket ID (`[{{ unit_id }}]`), and the item text must cite concrete evidence of what you implemented.
 
-{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+## UNIT RESULT
+
+Submit exactly one proof item under `## Plan Items Proven`: `- [{{ unit_id }}]`.
+Do not submit another plan-step or work-unit ID. For `status: completed`, cite
+the files changed and focused verification result. For `status: partial`, use
+the assigned-unit proof item to state verified progress or the concrete
+blocker. Do not invent files or verification results.
+
+If you submit `status: partial`, you MUST also include `## Next Steps`
+(exactly one item naming the remaining work) and `## Continuation` (exactly one
+item containing your session ID).
+
+{{ render_artifact_submission('development_result', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_result_example) }}
+
+### Worker-local fallback
+
+If {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} does not exist, write the same
+complete markdown document with {{ WRITE_FILE_TOOL_REFERENCE }} to
+`{{ WORKER_FALLBACK_PATH }}`, then call
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final action. The completion gate
+then validates and promotes that worker-local fallback and completes only when
+both the sentinel and durable receipt exist.

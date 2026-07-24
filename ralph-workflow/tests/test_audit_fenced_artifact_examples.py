@@ -131,17 +131,25 @@ type: plan
 ---
 type: plan
 ---
-## Work Units
-- [api] Implement the API slice
-  Directories: src/api/
-- [cli] Implement the CLI slice
-  Directories: src/cli/
-- [docs] Update operator documentation
-  Directories: docs/
-- [tests] Add cross-slice tests
-  Directories: tests/
-- [verify] Integrate the slices and run fan-in verification
-  Depends on: api, cli, docs, tests
+## API Subplan
+### [S-1] Implement the API slice
+### [S-11] Prove the API slice
+Depends on: S-1
+## CLI Subplan
+### [S-2] Implement the CLI slice
+### [S-22] Prove the CLI slice
+Depends on: S-2
+## Docs Subplan
+### [S-3] Update operator documentation
+### [S-33] Prove the documentation
+Depends on: S-3
+## Tests Subplan
+### [S-4] Add cross-slice tests
+### [S-44] Prove the cross-slice tests
+Depends on: S-4
+## Integration and Verification
+### [S-5] Integrate and verify
+Depends on: S-11, S-22, S-33, S-44
 ```
 """
 
@@ -175,6 +183,35 @@ type: plan
     assert violations == [
         "plan.md:1 plan examples must include example-size=large"
     ]
+
+
+def test_large_plan_example_rejects_work_unit_sized_subplans() -> None:
+    check_coverage = getattr(audit_module, "check_plan_example_coverage", None)
+    assert callable(check_coverage)
+    source = """```markdown artifact=plan example-size=large
+---
+type: plan
+---
+## API Subplan
+### [S-1] Implement API
+## Web Subplan
+### [S-2] Implement web
+## Docs Subplan
+### [S-3] Implement docs
+## Tests Subplan
+### [S-4] Implement tests
+## Integration and Verification
+### [S-5] Integrate
+Depends on: S-1, S-2, S-3, S-4
+```
+"""
+
+    violations = check_coverage("plan.md", source)
+
+    assert any(
+        "implementation step and its own proof gate" in violation
+        for violation in violations
+    )
 
 
 def test_non_artifact_and_generic_schematic_fences_are_ignored() -> None:

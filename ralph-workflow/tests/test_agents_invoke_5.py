@@ -338,7 +338,10 @@ def test_claude_command_propagates_unsafe_mode(
         captured["workspace_path"] = workspace_path
         return json.dumps({"mcpServers": {"ralph": {"url": endpoint}}})
 
-    monkeypatch.setattr("ralph.agents.invoke._commands.claude_mcp_config", fake_claude_mcp_config)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._command_builders.claude_mcp_config",
+        fake_claude_mcp_config,
+    )
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")

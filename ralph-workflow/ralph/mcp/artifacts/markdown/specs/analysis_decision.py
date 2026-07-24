@@ -12,11 +12,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_analysis_decision_content
 
@@ -52,40 +50,70 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
     }
 
 
-def _validate_frontmatter(expected_type: str) -> Callable[[ParsedDocument], list[Diagnostic]]:
-    def validate(document: ParsedDocument) -> list[Diagnostic]:
-        diagnostics: list[Diagnostic] = []
-        if document.frontmatter["type"] != expected_type:
-            diagnostics.append(
-                Diagnostic(
-                    document.frontmatter_lines["type"],
-                    None,
-                    "ANALYSIS001",
-                    f"frontmatter 'type' must be {expected_type!r}",
-                )
-            )
-        if document.frontmatter["status"] not in _STATUSES:
-            diagnostics.append(
-                Diagnostic(
-                    document.frontmatter_lines["status"],
-                    None,
-                    "SPEC010",
-                    "frontmatter 'status' must be one of: completed, request_changes, failed",
-                )
-            )
-        return diagnostics
-
-    return validate
-
-
 def _normalize(content: dict[str, object]) -> dict[str, object]:
     return normalize_analysis_decision_content(content)
+
+
+def _validate_decision_contract(document: ParsedDocument) -> list[Diagnostic]:
+    status = document.frontmatter["status"]
+    what_section = document.section("What Came Up Short")
+    fix_section = document.section("How To Fix")
+
+    if status == "completed":
+        return [
+            Diagnostic(
+                section.line,
+                section.name,
+                "ANALYSIS002",
+                "status 'completed' must omit both remediation sections; "
+                "known gaps require a non-completed status",
+            )
+            for section in (what_section, fix_section)
+            if section is not None
+        ]
+
+    if status not in {"request_changes", "failed"}:
+        return []
+
+    what_items = () if what_section is None else what_section.items
+    fix_items = () if fix_section is None else fix_section.items
+    what_ids = {item.identifier for item in what_items}
+    fix_ids = {item.identifier for item in fix_items}
+    diagnostics = [
+        Diagnostic(
+            item.line,
+            "What Came Up Short",
+            "ANALYSIS003",
+            f"What Came Up Short item {item.identifier!r} has no matching "
+            "How To Fix item; both remediation sections must use exactly "
+            "the same IDs",
+        )
+        for item in what_items
+        if item.identifier not in fix_ids
+    ]
+    diagnostics.extend(
+        Diagnostic(
+            item.line,
+            "How To Fix",
+            "ANALYSIS003",
+            f"How To Fix item {item.identifier!r} has no matching What Came "
+            "Up Short item; both remediation sections must use exactly the "
+            "same IDs",
+        )
+        for item in fix_items
+        if item.identifier not in what_ids
+    )
+    return diagnostics
 
 
 def _spec(artifact_type: str) -> MdArtifactSpec:
     return MdArtifactSpec(
         artifact_type=artifact_type,
         required_frontmatter=frozenset({"type", "status"}),
+        closed_frontmatter={
+            "type": FrontmatterVocabulary((artifact_type,), "ANALYSIS001"),
+            "status": FrontmatterVocabulary(_STATUSES),
+        },
         sections={
             "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
             "What Came Up Short": SectionRule(required=False, allow_body=True),
@@ -93,7 +121,9 @@ def _spec(artifact_type: str) -> MdArtifactSpec:
         },
         to_content=_to_content,
         normalize_content=_normalize,
-        validate_document=_validate_frontmatter(artifact_type),
+        validate_document=_validate_decision_contract,
+        allow_unknown_frontmatter=True,
+        allow_unknown_sections=True,
     )
 
 

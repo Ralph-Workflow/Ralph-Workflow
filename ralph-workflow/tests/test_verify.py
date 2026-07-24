@@ -66,6 +66,14 @@ def _result(
     )
 
 
+def test_verify_module_docs_describe_integrated_required_real_git_e2e() -> None:
+    """The module contract must match the test profile implemented below."""
+    module_doc = verify_module.__doc__ or ""
+
+    assert "required_auto_integrate_e2e" in module_doc
+    assert "make test-auto-integrate-e2e" not in module_doc
+
+
 def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessResult]:
     """Canonical ``StubRunner`` responses for the full success path.
 

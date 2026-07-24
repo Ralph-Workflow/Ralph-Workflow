@@ -55,11 +55,15 @@ reason: No committable changes; only generated files were touched.
 
 Most non-trivial commits should include a body explaining the why.
 
+Unknown descriptive frontmatter fields and sections are accepted and ignored
+by the typed commit-message consumer. Known fields and sections above remain
+strict.
+
 ## Hard errors vs warnings
 
 Hard errors: missing or non-conventional `subject`; missing `reason` on
 skip; `type` not commit/skip; `## Body` combined with detailed body
 sections; empty `## Files`; malformed `## Excluded Files` entries or an
-unknown exclusion reason; any grammar violation (unknown section, stray
-prose line, duplicate item ID). `done` and `wrong` are not aliases for either
-valid type. Fix every diagnostic.
+unknown exclusion reason; malformed core grammar; stray prose inside a known
+list-only section; or duplicate item IDs in a known section. `done` and
+`wrong` are not aliases for either valid type. Fix every diagnostic.

@@ -69,7 +69,10 @@ Files:
 
 
 @pytest.mark.parametrize("section", ["Subplan Alpha", "Work Units"])
-@pytest.mark.parametrize("bad_id", ["STEP-2", "S-0", "S-01", "s-2"])
+@pytest.mark.parametrize(
+    "bad_id",
+    ["STEP-2", "STEP-X", "S-0", "S-01", "S-X", "S-1a", "s-2"],
+)
 def test_plan_grammar_regression_malformed_step_like_ids_fail_document_wide(
     section: str, bad_id: str
 ) -> None:
@@ -122,6 +125,7 @@ def test_plan_grammar_regression_ac_items_are_discovered_outside_named_section()
 ## Product Outcomes
 - [AC-01] The focused suite proves the behavior
   Verify: pytest tests/mcp/test_md_plan_relaxation.py -q
+  Expect: the focused plan-relaxation tests pass with exit code 0
 """
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
@@ -135,21 +139,140 @@ def test_plan_grammar_regression_ac_items_are_discovered_outside_named_section()
             "id": "AC-01",
             "description": "The focused suite proves the behavior",
             "verification_step": "pytest tests/mcp/test_md_plan_relaxation.py -q",
+            "expected_outcome": "the focused plan-relaxation tests pass with exit code 0",
         }
     ]
+
+
+def test_plan_grammar_discovers_criterion_after_nested_step() -> None:
+    """A criterion after a step remains a section item, not step prose."""
+    document = """---
+type: plan
+---
+## API Subplan
+
+### [S-1] Implement the API
+Add the endpoint behavior.
+
+Type: action
+
+- [AC-01] The API contract is proven
+  Verify: pytest tests/api/test_contract.py -q
+  Expect: the focused API contract tests pass with exit code 0
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    steps = cast("list[dict[str, object]]", content["steps"])
+    assert steps == [
+        {
+            "number": 1,
+            "title": "Implement the API",
+            "content": "Add the endpoint behavior.",
+        }
+    ]
+    design = cast("dict[str, object]", content["design"])
+    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    edited = edit_plan_step_markdown(
+        document,
+        "replace",
+        "S-1",
+        """### [S-1] Implement the API safely
+Add the validated endpoint behavior.
+
+Type: action""",
+        None,
+    )
+    assert "- [AC-01] The API contract is proven" in edited
+    assert criteria == [
+        {
+            "id": "AC-01",
+            "description": "The API contract is proven",
+            "verification_step": "pytest tests/api/test_contract.py -q",
+            "expected_outcome": "the focused API contract tests pass with exit code 0",
+        }
+    ]
+
+
+@pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
+def test_exact_fan_out_section_rejects_malformed_unit_marker(section: str) -> None:
+    """An exact consumed heading must not silently degrade to descriptive prose."""
+    document = _single_step_document() + f"""
+
+## {section}
+- api: Implement the API
+  Directories: src/api
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "PLAN024"
+        and diagnostic.section == section
+        and "stable-ID item" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+def test_custom_fan_out_lookalike_remains_descriptive() -> None:
+    """Only exact consumed section names opt into fail-closed fan-out grammar."""
+    document = _single_step_document() + """
+
+## work units
+- api: This lowercase heading is ordinary descriptive prose.
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert "work_units" not in content
+
+
+def test_acceptance_criterion_inside_work_units_is_not_a_phantom_unit() -> None:
+    """Criterion IDs retain criterion semantics inside a nested mini-plan."""
+    document = """---
+type: plan
+---
+## Work Units
+- [api] Implement the API
+  Directories: src/api
+- [AC-01] The API report proves completion
+  Evidence: reports/api-proof.json
+
+### [S-1] Implement the API
+Add the endpoint behavior.
+
+Type: action
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    work_units = cast("list[dict[str, object]]", content["work_units"])
+    assert [unit["unit_id"] for unit in work_units] == ["api"]
+    assert work_units[0]["step_ids"] == ["S-1"]
+    design = cast("dict[str, object]", content["design"])
+    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", acceptance["criteria"])
+    assert criteria[0]["id"] == "AC-01"
 
 
 @pytest.mark.parametrize(
     ("criterion_field", "verification_expect"),
     [
-        ("Verify: code is clean", "exit code 0"),
+        ("Verify: code is clean\n  Expect: exit code 0", "exit code 0"),
+        ("Verify: no problems\n  Expect: exit code 0", "exit code 0"),
         ("Evidence: clean", "exit code 0"),
         (
-            "Verify: pytest tests/mcp/test_md_plan_relaxation.py -q",
+            "Verify: pytest tests/mcp/test_md_plan_relaxation.py -q\n"
+            "  Expect: the focused tests pass with exit code 0",
             "looks good",
         ),
     ],
-    ids=["vague-command", "vague-evidence", "vague-outcome"],
+    ids=["subjective-command", "outcome-as-command", "vague-evidence", "vague-outcome"],
 )
 def test_plan_grammar_regression_evaluatable_claims_must_be_concrete(
     criterion_field: str, verification_expect: str
@@ -184,6 +307,7 @@ def test_plan_grammar_regression_concrete_commands_and_artifacts_remain_valid() 
 ## Product Outcomes
 - [AC-01] The command proves the behavior
   Verify: pytest tests/mcp/test_md_plan_relaxation.py -q
+  Expect: the focused plan-relaxation tests pass with exit code 0
 - [AC-02] The generated report proves the behavior
   Evidence: reports/plan-relaxation.json
 
@@ -198,6 +322,522 @@ def test_plan_grammar_regression_concrete_commands_and_artifacts_remain_valid() 
 
     assert diagnostics == []
     assert len(cast("list[object]", content["verification_strategy"])) == 2
+
+
+def test_semantic_verification_item_under_arbitrary_heading_rejects_vague_proof() -> None:
+    """A V-n proof item stays evaluatable without a conventional heading."""
+    document = """---
+type: plan
+---
+## Expedition Ledger
+
+### [S-1] Change it
+Implement bounded behavior.
+
+## Proof Matrix
+- [V-1] check it manually
+  Expect: everything works
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.rule_id == "PLAN020"
+        and diagnostic.section == "Verification"
+        and "concrete command or file/artifact inspection" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+def test_semantic_verification_items_preserve_radically_different_valid_shape() -> None:
+    """Concrete V-n proof items map under arbitrary Unicode headings."""
+    document = """---
+type: plan
+---
+## Équipe — changement
+
+### [S-1] Bound the behavior
+Implement bounded behavior.
+
+## 証拠・Proof Matrix
+- [V-7] pytest tests/mcp/test_md_plan_relaxation.py -q
+  Expect: the focused plan-relaxation tests pass with exit code 0
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert content["verification_strategy"] == [
+        {
+            "method": "pytest tests/mcp/test_md_plan_relaxation.py -q",
+            "expected_outcome": (
+                "the focused plan-relaxation tests pass with exit code 0"
+            ),
+        }
+    ]
+
+
+def test_unrelated_v_prefixed_item_remains_descriptive() -> None:
+    """A non-semantic V-prefixed ID must not become a verification contract."""
+    document = _single_step_document() + """
+
+## Release Notes
+- [VERSION-1] Verification terminology changed in this release.
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert "verification_strategy" not in content
+
+
+def test_plan_grammar_regression_command_proof_requires_specific_expected_output() -> None:
+    """A runnable command alone does not say what observable result proves success."""
+    document = _single_step_document(
+        extra=(
+            "Verify: git diff --check\n"
+            "Expect: no problems\n"
+        )
+    ) + """
+
+## Acceptance Criteria
+- [AC-01] The diff check proves the patch is well formed
+  Verify: git diff --check
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert sum(
+        diagnostic.rule_id == "PLAN020"
+        and "Expect:" in diagnostic.message
+        for diagnostic in diagnostics
+    ) >= 2
+
+
+def test_plan_grammar_regression_arbitrary_executable_with_specific_output_is_valid() -> None:
+    """Evaluatability must not depend on a short hard-coded executable allowlist."""
+    document = _single_step_document(
+        extra=(
+            "Verify: dotnet test tests/Plan.Tests/Plan.Tests.csproj\n"
+            "Expect: Plan.Tests reports 12 passed tests and exit code 0\n"
+        )
+    ) + """
+
+## Acceptance Criteria
+- [AC-01] The .NET regression suite proves the behavior
+  Verify: dotnet test tests/Plan.Tests/Plan.Tests.csproj
+  Expect: Plan.Tests reports 12 passed tests and exit code 0
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    steps = cast("list[dict[str, object]]", content["steps"])
+    assert steps[0]["expected_outcome"] == (
+        "Plan.Tests reports 12 passed tests and exit code 0"
+    )
+
+
+def test_legacy_exact_command_reuses_global_verification_expectation() -> None:
+    """Preserve old plans that centralize one exact command/outcome pair."""
+    document = _single_step_document(
+        extra="Verify: pytest tests/mcp/test_md_plan_relaxation.py -q\n"
+    ) + """
+
+## Acceptance Criteria
+- [AC-01] The focused suite proves the behavior
+  Verify: pytest tests/mcp/test_md_plan_relaxation.py -q
+
+## Verification
+- [V-1] pytest tests/mcp/test_md_plan_relaxation.py -q
+  Expect: the focused plan-relaxation tests pass with exit code 0
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    steps = cast("list[dict[str, object]]", content["steps"])
+    assert steps[0]["expected_outcome"] == (
+        "the focused plan-relaxation tests pass with exit code 0"
+    )
+
+
+def test_kimi_regression_multiline_scope_and_descriptive_design_values_validate() -> None:
+    """Pin the Kimi plan shape that motivated full descriptive-field relaxation."""
+    document = """---
+type: plan
+---
+## Scope
+The change spans the parser and the generated reference material.
+The executor may choose the smallest safe internal decomposition.
+
+## Design
+Profile: thorough
+Architecture: event-driven modular monolith
+Black box: when practical
+Clock injection: only where timing is observable
+
+## Delivery
+### [S-1] Implement the requested behavior
+Apply the scoped change and retain compatibility.
+
+Type: action
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    assert cast("list[dict[str, object]]", content["steps"])[0]["number"] == 1
+
+
+def test_strict_profile_remains_descriptive_and_does_not_inject_contracts() -> None:
+    """A descriptive profile cannot fabricate project-specific execution requirements."""
+    document = _single_step_document() + """
+
+## Design
+Profile: strict
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert content["design"] == {"planning_profile": "strict"}
+
+
+def test_minimax_regression_preserves_nested_descriptive_plan_vocabulary() -> None:
+    """Pin the MiniMax shape: nested proof anchors plus project vocabulary."""
+    document = """---
+type: plan
+---
+## Work Units
+- [api-gate] Implement and prove the API slice
+  Directories: src/api, tests/api
+
+### [S-10] Implement the API slice
+Apply the repository-specific integration behavior.
+
+Type: integration_gate
+Files:
+- inspect src/api/routes.py
+- coordinate tests/api/test_routes.py
+
+- [AC-10] The generated API report proves the contract
+  Satisfied by: S-10
+  Evidence: reports/minimax-api-proof.json
+
+## Critical Files
+- [CF-10] src/api/routes.py
+  Action: inspect-only
+
+## Design
+Profile: strict
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    steps = cast("list[dict[str, object]]", content["steps"])
+    assert steps[0]["step_type"] == "integration_gate"
+    assert steps[0]["targets"] == [
+        {"path": "src/api/routes.py", "action": "inspect"},
+        {"path": "tests/api/test_routes.py", "action": "coordinate"},
+    ]
+    work_units = cast("list[dict[str, object]]", content["work_units"])
+    assert [unit["unit_id"] for unit in work_units] == ["api-gate"]
+    assert work_units[0]["step_ids"] == ["S-10"]
+    critical_files = cast("dict[str, object]", content["critical_files"])
+    primary_files = cast("list[dict[str, object]]", critical_files["primary_files"])
+    assert primary_files[0]["action"] == "inspect-only"
+    assert content["design"] == {
+        "planning_profile": "strict",
+        "acceptance_criteria": {
+            "criteria": [
+                    {
+                        "id": "AC-10",
+                        "description": "The generated API report proves the contract",
+                        "evidence_path": "reports/minimax-api-proof.json",
+                        "satisfied_by_steps": [10],
+                    }
+            ]
+        },
+    }
+
+
+def test_unconsumed_design_vocabularies_are_advisory() -> None:
+    """Recognized descriptive labels accept project-specific vocabulary."""
+    document = """---
+type: plan
+---
+## Design
+Constraints: Preserve the product contract.
+Architecture: event-streamed plugin host
+Black box: yes
+Forbidden in tests: project-harness
+Test layers: executable-spec
+DI required: yes
+DI preferred: capability-object
+DI forbidden: ambient-registry
+Guard commands:
+- custom-lint --strict
+Drift sources: custom-lint
+On drift: reconcile-in-place
+Refactor approach: surgical-replacement
+Dead code: archive-after-release
+
+## Execution
+### [S-1] Apply the design
+Implement the bounded plan.
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    assert cast("list[dict[str, object]]", content["steps"])[0]["number"] == 1
+
+
+def test_unconsumed_descriptive_sections_and_fields_never_become_requirements() -> None:
+    """Optional descriptive structure may be incomplete without blocking execution."""
+    document = """---
+type: plan
+intent_verb: fix
+---
+## Skills MCP
+Use whichever repository skills are relevant after inspecting the task.
+
+## Scope
+- [SC-1] Refresh the user guide
+  Category: docs
+
+## Critical Files
+- [CF-1] docs/reference.md
+  Purpose: background material only
+
+## Risks
+- [R-1] The prose could become stale
+
+## Execution
+### [S-1] Apply the bounded change
+Type: action
+
+## Acceptance Criteria
+- [AC-01] The referenced artifact remains inspectable
+  Satisfied by: S-1
+  Evidence: docs/reference.md
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    steps = cast("list[dict[str, object]]", content["steps"])
+    assert steps == [{"number": 1, "title": "Apply the bounded change"}]
+
+
+def test_custom_descriptive_sections_do_not_create_unconsumed_id_rules() -> None:
+    """Arbitrary narrative item IDs are not part of the execution namespace."""
+    document = """---
+type: plan
+coordination_style: project-specific
+---
+## Decision Journal
+- [NOTE-1] First perspective on the implementation.
+- [NOTE-1] A second perspective may reuse a purely descriptive marker.
+
+Local vocabulary: project-specific and intentionally unstructured
+
+### [S-1] Apply the resolved decision
+Implement the bounded result recorded by the plan.
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert cast("list[dict[str, object]]", content["steps"])[0]["number"] == 1
+
+
+def test_work_unit_descriptive_labels_do_not_block_consumed_fields() -> None:
+    """Extra unit metadata is prose; declared directories remain machine parsed."""
+    document = """---
+type: plan
+---
+## Work Units
+- [api] Implement the API slice
+  Owner: API execution subagent
+  Directories: src/api
+
+### [S-1] Implement the API slice
+Type: file_change
+Files:
+- modify src/api/routes.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert not [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
+    assert [diagnostic.rule_id for diagnostic in diagnostics] == ["PLAN009"]
+    units = cast("list[dict[str, object]]", content["work_units"])
+    assert units[0]["allowed_directories"] == ["src/api"]
+    assert units[0]["step_ids"] == ["S-1"]
+
+
+def test_multiple_work_units_in_one_section_own_following_nested_steps() -> None:
+    """Each WU item owns the nested steps that follow it until the next WU item."""
+    document = """---
+type: plan
+---
+## Work Units
+- [api] Implement the API slice
+  Directories: src/api
+
+### [S-1] Implement the API
+Type: action
+
+- [web] Implement the web slice
+  Directories: src/web
+
+### [S-2] Implement the web client
+Type: action
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    units = cast("list[dict[str, object]]", content["work_units"])
+    assert units == [
+        {
+            "unit_id": "api",
+            "description": "Implement the API slice",
+            "allowed_directories": ["src/api"],
+            "step_ids": ["S-1"],
+        },
+        {
+            "unit_id": "web",
+            "description": "Implement the web slice",
+            "allowed_directories": ["src/web"],
+            "step_ids": ["S-2"],
+        },
+    ]
+
+
+def test_explicit_work_unit_owns_steps_under_nested_descriptive_headings() -> None:
+    """A work-unit item owns descendant steps across heading-depth changes."""
+    document = """---
+type: plan
+---
+## Work Units
+- [api] Implement the API slice
+  Directories: src/api
+
+### Authentication
+#### [S-1] Implement authentication
+Type: file_change
+Files:
+- modify src/api/auth.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    units = cast("list[dict[str, object]]", content["work_units"])
+    assert units[0]["step_ids"] == ["S-1"]
+
+
+def test_subplan_owns_steps_under_nested_descriptive_headings() -> None:
+    """A named execution subplan includes steps in all descendant headings."""
+    document = """---
+type: plan
+---
+## API Subplan
+### Authentication
+#### [S-1] Implement authentication
+Type: file_change
+Files:
+- modify src/api/auth.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    units = cast("list[dict[str, object]]", content["work_units"])
+    assert units == [
+        {
+            "unit_id": "subplan-s-1",
+            "description": "API",
+            "allowed_directories": ["src/api"],
+            "step_ids": ["S-1"],
+        }
+    ]
+
+
+def test_subplan_prefix_suffix_mapping_remaps_cross_subplan_dependencies() -> None:
+    """Prefix/suffix headings normalize alike and later-step edges map to unit IDs."""
+    document = """---
+type: plan
+---
+## Subplan: API / Core
+### [S-10] Implement the API
+Add the API behavior.
+
+Type: file_change
+Files:
+- modify src/api/routes.py
+
+### [S-11] Prove the API
+Run the API contract test.
+
+Type: verify
+Depends on: S-10
+Verify: pytest tests/api/test_routes.py -q
+Expect: the API route tests pass with exit code 0
+
+## WEB SUB-PLAN
+### [S-20] Implement the web client
+Add the web behavior.
+
+Type: file_change
+Files:
+- modify src/web/client.ts
+
+### [S-21] Reconcile the API contract
+Use the proven API behavior from the other execution subplan.
+
+Depends on: S-11
+
+## Integration and Verification Subplan
+### [S-30] Fan in the execution subplans
+Integrate both outputs in the main session.
+
+Depends on: S-11, S-21
+
+### [S-31] Prove the integrated result
+Run the integrated check.
+
+Type: verify
+Depends on: S-30
+Verify: pytest tests/integration/test_web_api.py -q
+Expect: the integrated web API test passes with exit code 0
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    units = cast("list[dict[str, object]]", content["work_units"])
+    assert units == [
+        {
+            "unit_id": "subplan-s-10",
+            "description": "API / Core",
+            "allowed_directories": ["src/api"],
+            "step_ids": ["S-10", "S-11"],
+        },
+        {
+            "unit_id": "subplan-s-20",
+            "description": "WEB",
+            "allowed_directories": ["src/web"],
+            "dependencies": ["subplan-s-10"],
+            "step_ids": ["S-20", "S-21"],
+        },
+    ]
 
 
 def test_plan_editor_regression_replace_resolves_across_repeated_free_sections() -> None:
@@ -254,6 +894,41 @@ Type: action"""
 
     assert edited.index("### [S-2]") < edited.index("### [S-4]") < edited.index("### [S-3]")
     assert edited.count("## Alpha Subplan") == 2
+
+
+def test_plan_editor_supports_steps_under_genuinely_nested_headings() -> None:
+    """A plan step remains addressable when its heading depth reflects nesting."""
+    document = """---
+type: plan
+---
+# Delivery
+## API
+### Authentication
+#### [S-1] Rotate credentials
+Implement credential rotation.
+
+Type: action
+"""
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    assert [step["number"] for step in cast("list[dict[str, object]]", content["steps"])] == [
+        1
+    ]
+
+    edited = edit_plan_step_markdown(
+        document,
+        "replace",
+        "S-1",
+        """### [S-1] Rotate credentials safely
+Implement and verify credential rotation.
+
+Type: action""",
+        None,
+    )
+
+    assert "#### [S-1] Rotate credentials safely" in edited
+    assert "\n### [S-1] Rotate credentials safely\n" not in edited
 
 
 def test_plan_grammar_regression_repeated_work_units_retain_nested_step_ownership() -> None:

@@ -143,6 +143,7 @@ Run the focused retry-contract test after updating the fixture.
 Type: verify
 Depends on: S-1
 Verify: pytest tests/test_artifact_retry_contract.py -q
+Expect: the artifact retry-contract tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] src/a.py
@@ -160,6 +161,7 @@ Keep retry hints tied to canonical Markdown artifacts.
 - [AC-01] Retry succeeds after a valid artifact is submitted
   Satisfied by: S-1
   Verify: pytest tests/test_artifact_retry_contract.py -q
+  Expect: the artifact retry-contract tests pass with exit code 0
 
 ## Risks
 - [R-1] Fixtures drift from the canonical format

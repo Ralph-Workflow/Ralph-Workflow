@@ -22,8 +22,9 @@ class InvokeAgentEffect:
         prompt_file: Path to the prompt file for the agent.
         chain_name: Name of the agent chain being used.
         requires_completion_evidence: Whether a clean exit must be corroborated
-            by agent-side completion evidence (a submitted artifact or a
-            ``declare_complete`` sentinel). Every pipeline phase requires it.
+            by durable agent-side evidence. The ``declare_complete`` sentinel
+            is always required; a required-artifact phase additionally needs
+            its canonical submission receipt.
             The out-of-graph ``policy_remediation`` phase sets it False: it has
             no artifact contract, is not granted the ``artifact.submit``
             capability that exposes ``declare_complete``, and is judged by a

@@ -70,6 +70,22 @@ class TestPiCommandBuilder:
 
         assert cmd == ["pi", "--mode", "json", "--approve", "hello world"]
 
+    def test_prepends_master_prompt(self, tmp_path: Path) -> None:
+        prompt_file = _make_prompt(tmp_path)
+        master = tmp_path / "MASTER_PROMPT.md"
+        master.write_text("durable rules", encoding="utf-8")
+
+        cmd = PiCommandBuilder().build(
+            _pi_config(),
+            prompt_file,
+            options=BuildCommandOptions(
+                workspace_path=tmp_path,
+                master_prompt_file=str(master),
+            ),
+        )
+
+        assert cmd[-1] == "durable rules\n\nhello world"
+
     def test_mode_json_is_two_argv_tokens_not_one(self, tmp_path: Path) -> None:
         """The argv must NOT contain the literal ``'--mode json'`` as a single element."""
         prompt_file = _make_prompt(tmp_path)

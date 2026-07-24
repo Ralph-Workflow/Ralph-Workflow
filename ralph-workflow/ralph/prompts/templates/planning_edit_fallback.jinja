@@ -60,5 +60,7 @@ Revise the plan as ONE markdown document (grammar: `.agent/artifact-formats/plan
 2. For a fix confined to individual steps, stage the complete current plan with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document, `mode="replace_all"`). Then call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against the persisted draft with `action` and `step_id` only. `replacement` is required for `insert` and `replace` and must be one complete matching `### [S-3] Title` block; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument. The editor saves the draft, and IDs are stable and never renumbered.
 3. Inspect the edited draft with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), repair every line/section/rule-anchored diagnostic, then finalize it with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
 4. For a holistic rewrite that does not use the step editor, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments.
-5. A submit or finalize success message is NOT completion by itself. After the revised plan is accepted, call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your final action.
+5. A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
+   After that receipt exists, you MUST call
+   {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action.
 Your target is a revised plan that returns `completed` on the next planning-analysis pass.

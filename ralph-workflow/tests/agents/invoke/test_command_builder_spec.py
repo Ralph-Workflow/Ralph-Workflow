@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
@@ -13,14 +13,77 @@ from ralph.agents.invoke._command_builders import (
     CodexCommandBuilder,
     CommandBuilderSpec,
     CursorCommandBuilder,
+    DefaultCommandBuilder,
     NanocoderCommandBuilder,
     OpencodeCommandBuilder,
 )
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+@pytest.mark.parametrize(
+    ("builder_type", "transport", "command"),
+    (
+        (OpencodeCommandBuilder, AgentTransport.OPENCODE, "opencode"),
+        (NanocoderCommandBuilder, AgentTransport.NANOCODER, "nanocoder"),
+        (AgyCommandBuilder, AgentTransport.AGY, "agy"),
+        (CursorCommandBuilder, AgentTransport.CURSOR, "agent"),
+    ),
+)
+def test_positional_transports_prepend_master_prompt(
+    tmp_path: Path,
+    builder_type: type[OpencodeCommandBuilder],
+    transport: AgentTransport,
+    command: str,
+) -> None:
+    prompt = tmp_path / "PROMPT.md"
+    prompt.write_text("phase prompt", encoding="utf-8")
+    master = tmp_path / "MASTER_PROMPT.md"
+    master.write_text("durable rules", encoding="utf-8")
+
+    cmd = builder_type().build(
+        AgentConfig(cmd=command, transport=transport),
+        str(prompt),
+        options=BuildCommandOptions(
+            workspace_path=tmp_path,
+            master_prompt_file=master.name,
+        ),
+    )
+
+    assert cmd[-1] == "durable rules\n\nphase prompt"
+
+
+def test_generic_transport_preserves_path_argv_with_combined_master_and_phase_prompt(
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "PROMPT.md"
+    prompt.write_text("phase prompt", encoding="utf-8")
+    master = tmp_path / "MASTER_PROMPT.md"
+    master.write_text("durable rules\n", encoding="utf-8")
+
+    builder = DefaultCommandBuilder()
+    options = BuildCommandOptions(
+        workspace_path=tmp_path,
+        master_prompt_file=master.name,
+    )
+    cmd = builder.build(
+        AgentConfig(cmd="custom-agent", transport=AgentTransport.GENERIC),
+        str(prompt),
+        options=options,
+    )
+
+    combined_prompt = Path(cmd[-1])
+    assert cmd[0] == "custom-agent"
+    assert combined_prompt.is_file()
+    assert combined_prompt.read_text(encoding="utf-8") == "durable rules\n\nphase prompt"
+    assert prompt.read_text(encoding="utf-8") == "phase prompt"
+
+    rebuilt = builder.build(
+        AgentConfig(cmd="custom-agent", transport=AgentTransport.GENERIC),
+        str(prompt),
+        options=options,
+    )
+    assert rebuilt == cmd
 
 
 def test_spec_frozen_and_hashable() -> None:
@@ -285,9 +348,7 @@ class TestCursorCommandBuilder:
         # Prompt is a positional argument at the end.
         assert cmd[-1] == "hello world"
 
-    def test_init_cmd_honors_config_cmd_override_with_flags(
-        self, tmp_path: Path
-    ) -> None:
+    def test_init_cmd_honors_config_cmd_override_with_flags(self, tmp_path: Path) -> None:
         """An operator-supplied ``[agents.cursor].cmd`` with extra wrapper flags
         (e.g. ``/opt/wrapper/agent --telemetry-flag``) MUST be honored verbatim.
         Mirrors the AGY override contract (see

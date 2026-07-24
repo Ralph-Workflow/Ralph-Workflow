@@ -152,6 +152,9 @@ def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> s
             AgentTransport.CLAUDE_INTERACTIVE,
             AgentTransport.AGY,
             AgentTransport.NANOCODER,
+            AgentTransport.PI,
+            AgentTransport.CURSOR,
+            AgentTransport.GENERIC,
         }
         and logged_cmd
     ):

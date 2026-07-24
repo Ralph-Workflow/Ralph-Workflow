@@ -41,12 +41,45 @@ def test_planning_prompt_contains_new_heading_and_lacks_old() -> None:
 
 def test_planning_prompt_new_section_warns_about_fan_out() -> None:
     source = _read_planning_template()
-    assert "Ralph-managed fan-out is dormant" in source
+    assert "Ralph Workflow-managed fan-out is dormant" in source
     assert "sub-agents" in source
     assert "ralph coordinate" not in source, (
         "planning prompt must not reference the nonexistent ralph coordinate "
         "command, even as a prohibition"
     )
+
+
+def test_planning_prompt_distinguishes_agent_subagents_from_ralph_workers() -> None:
+    source = _read_planning_template()
+    normalized = " ".join(source.split())
+
+    assert "agent_subagents" in source
+    assert "ralph_fan_out" in source
+    assert (
+        "Agent-managed sub-agents return implementation and proof to the main execution session"
+        in normalized
+    )
+    assert (
+        "Only the opt-in Ralph Workflow-managed worker runtime creates "
+        "`.agent/workers/<work-unit-ID>/`"
+    ) in normalized
+    assert "Ralph-managed coordination is not a path" not in source
+    assert "the only active path for parallel plan execution" not in source
+
+
+def test_planning_prompts_distinguish_work_units_from_execution_subplans() -> None:
+    source = _read_planning_template()
+    analysis_source = _PLANNING_ANALYSIS_TEMPLATE.read_text(encoding="utf-8")
+
+    for text in (source, analysis_source):
+        normalized = " ".join(text.split())
+        assert "Work Units" in normalized
+        assert "small bounded tasks or verification gates" in normalized
+        assert "execution-subagent mini-plan" in normalized
+        assert "four or five independent execution Subplans" in normalized
+        assert "main-session" in normalized
+    assert "`Verify: <concrete command>` with `Expect: <specific output>`" in source
+    assert "every `Verify:` command is paired with a specific" in analysis_source
 
 
 def test_planning_prompts_use_author_facing_markdown_labels() -> None:
@@ -74,3 +107,26 @@ def test_planning_prompts_use_author_facing_markdown_labels() -> None:
         assert internal_name not in combined
     assert ".agent" in source
     assert ".git" in source
+
+
+def test_planning_prompt_preserves_project_specific_step_vocabularies() -> None:
+    source = _read_planning_template()
+    normalized = " ".join(source.split())
+
+    assert "Project-specific `Type:` values are accepted and preserved verbatim" in normalized
+    assert (
+        "Actions in `Files:` and `## Critical Files` are also free-form and preserved"
+        in normalized
+    )
+    assert "normalize to `action`" not in source
+    assert "Use only canonical step types" not in source
+
+
+def test_planning_prompt_teaches_fail_closed_fan_out_headings() -> None:
+    normalized = " ".join(_read_planning_template().split())
+
+    assert (
+        "Exact `## Work Units` and `## Parallel Plan` headings opt into "
+        "fail-closed unit-marker parsing"
+    ) in normalized
+    assert "Acceptance-criterion items remain criteria, not work units" in normalized

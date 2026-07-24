@@ -166,6 +166,7 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         "\n"
         "Type: verify\n"
         "Verify: pytest -q\n"
+        "Expect: the repository test suite passes with exit code 0\n"
         "\n"
         "## Critical Files\n"
         "- [CF-1] ralph/pipeline/runner.py\n"

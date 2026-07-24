@@ -1,1 +1,5 @@
-CRITICAL: Do NOT run ANY git command except read-only lookup commands (e.g. `git status`, `git diff`, `git log`, `git show`). Ralph Workflow is the only actor that may commit, push, or run git staging commands (git add).
+CRITICAL: Never invoke Git through the exec tool or any runtime-native shell.
+Inspect repository state only through the brokered `git_status`, `git_diff`,
+`git_log`, and `git_show` tools that are present in this session. If a brokered
+Git read tool is absent, do not substitute shell Git. Ralph Workflow alone may
+stage, commit, or push changes.

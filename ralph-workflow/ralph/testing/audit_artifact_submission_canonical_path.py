@@ -6,11 +6,10 @@ allowlisted canonical sites that writes one of these files is a bypass and
 fails ``make verify``.
 
 Scans ``ralph/`` (skipping the audit module itself, the canonical submit
-module, the marked executor block in ``tools/artifact.py``, the type-specific
-artifact layout modules, and ``tests/``). Uses AST analysis to find:
+module, and ``tests/``). Uses AST analysis to find:
 
 - Direct writes to ``.agent/receipts/``, ``.agent/completion_seen_*.json``,
-  ``.agent/artifacts/<canonical-type>.json``, or
+  ``.agent/artifacts/<canonical-type>.md`` (and its obsolete ``.json`` form), or
   ``.agent/tmp/<canonical-type>.json`` (via ``write_text``, ``write_bytes``,
   ``open(...)``, or equivalent file-copy helpers).
 - Calls to ``write_artifact_receipt`` / ``delete_artifact_receipt`` outside
@@ -29,7 +28,7 @@ import re
 import sys
 from pathlib import Path
 
-from ralph.mcp.tools.artifact import _KNOWN_ARTIFACT_TYPES
+from ralph.mcp.tools.artifact import KNOWN_ARTIFACT_TYPES
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -45,26 +44,16 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES
+_CANONICAL_TYPES: frozenset[str] = KNOWN_ARTIFACT_TYPES
 
 
-# File paths (relative to codebase root) that are allowed to perform the
-# audited writes/calls because they are part of the canonical chain or
-# type-specific layout modules.
+# File paths (relative to codebase root) that own the audited writes/calls.
 _FILE_ALLOWLIST: frozenset[str] = frozenset(
     {
         "ralph/mcp/artifacts/canonical_submit.py",
-        "ralph/mcp/artifacts/commit_message.py",
-        "ralph/mcp/artifacts/smoke_test_result.py",
     }
 )
 
-# Markers bounding the canonical submit call block in tools/artifact.py. The
-# executor block itself is historical; after the refactor it contains a call to
-# the canonical entry point, but the marker is preserved so future maintainers
-# have a clear seam and the audit stays narrow.
-_CANONICAL_BLOCK_START = "# === BEGIN CANONICAL SUBMIT OPS ==="
-_CANONICAL_BLOCK_END = "# === END CANONICAL SUBMIT OPS ==="
 _ARG_INDEX_2 = 2
 
 # Forbidden path patterns. Stored as (regex, category, detail) tuples.
@@ -80,9 +69,9 @@ _FORBIDDEN_PATH_PATTERNS: tuple[tuple[str, str, str], ...] = (
         "direct write to .agent/completion_seen_*.json outside canonical submit",
     ),
     (
-        r"\.agent/artifacts/(?:" + "|".join(_CANONICAL_TYPES) + r")\.json",
+        r"\.agent/artifacts/(?:" + "|".join(_CANONICAL_TYPES) + r")\.(?:md|json)",
         "canonical_artifact_write",
-        "direct write to .agent/artifacts/<canonical-type>.json outside canonical submit",
+        "direct write to .agent/artifacts/<canonical-type>.(md|json) outside canonical submit",
     ),
     (
         r"\.agent/tmp/(?:" + "|".join(_CANONICAL_TYPES) + r")\.json",
@@ -171,10 +160,6 @@ def _assert_invariants() -> None:
     for _path in _FILE_ALLOWLIST:
         if not (_AUDIT_MODULE_ROOT / _path).is_file():
             raise RuntimeError(f"_FILE_ALLOWLIST entry does not exist: {_path}")
-    if not _CANONICAL_BLOCK_START:
-        raise RuntimeError("_CANONICAL_BLOCK_START must not be empty")
-    if not _CANONICAL_BLOCK_END:
-        raise RuntimeError("_CANONICAL_BLOCK_END must not be empty")
     if not _SKIP_DIRS:
         raise RuntimeError("_SKIP_DIRS must not be empty")
 
@@ -231,14 +216,13 @@ def _path_segments(node: ast.AST) -> list[str | None]:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return [node.value]
     if isinstance(node, ast.JoinedStr):
-        parts = [
-            value.value
-            for value in node.values
-            if isinstance(value, ast.Constant) and isinstance(value.value, str)
-        ]
-        if parts:
-            return ["".join(parts)]
-        return [None]
+        parts: list[str | None] = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            elif isinstance(value, ast.FormattedValue):
+                parts.append(None)
+        return parts or [None]
     if isinstance(node, ast.Call):
         func_name = _dotted_name(node.func)
         if func_name == "Path" and node.args:
@@ -280,16 +264,18 @@ def _path_matches_forbidden(path_expr: ast.expr) -> tuple[str, str] | None:
 
         # Candidate 3: variable-composed paths under ``.agent/artifacts/`` or
         # ``.agent/tmp/`` whose filename we cannot resolve statically. Because
-        # the type may be a canonical artifact type, treat the write as a
-        # bypass; literal fully-known paths are handled by candidate 2.
+        # the type may be a canonical artifact type, treat canonical-directory
+        # writes as bypasses; literal fully-known paths are handled by candidate
+        # 2. Markdown writes under ``.agent/tmp/`` remain the supported agent
+        # fallback and are intentionally not forbidden.
         if _path_has_variable_segment(segments):
             lower = joined.lower()
-            if lower.startswith(".agent/artifacts/") and joined.endswith(".json"):
+            if ".agent/artifacts/" in lower:
                 return (
                     "canonical_artifact_write",
-                    "direct write to .agent/artifacts/<variable>.json outside canonical submit",
+                    "direct write to .agent/artifacts/<variable> outside canonical submit",
                 )
-            if lower.startswith(".agent/tmp/") and joined.endswith(".json"):
+            if ".agent/tmp/" in lower and joined.endswith(".json"):
                 return (
                     "fallback_tmp_write",
                     "direct write to .agent/tmp/<variable>.json outside canonical submit",
@@ -341,24 +327,6 @@ def _is_forbidden_function_call(node: ast.Call) -> tuple[str, str] | None:
         if name is not None and (name == target or name.endswith("." + target)):
             return category, detail
     return None
-
-
-def _line_in_canonical_block(source_lines: list[str], lineno: int) -> bool:
-    """Return True when lineno lies inside a canonical submit ops marker block.
-
-    A line is allowlisted only when it falls between a matched begin/end marker
-    pair. Lines before the first begin marker or after the last end marker are
-    never allowlisted, even if markers appear elsewhere in the file.
-    """
-    block_start: int | None = None
-    for idx, line in enumerate(source_lines, start=1):
-        if _CANONICAL_BLOCK_START in line:
-            block_start = idx
-        if _CANONICAL_BLOCK_END in line:
-            if block_start is not None and block_start <= lineno <= idx:
-                return True
-            block_start = None
-    return False
 
 
 def _finding_from_path_match(
@@ -540,12 +508,9 @@ def _find_forbidden_call_finding(
 def _process_call_node(
     node: ast.Call,
     rel_path: str,
-    source_lines: list[str],
 ) -> BypassFinding | None:
     """Inspect a single AST call node and return any bypass finding."""
     lineno: int = node.lineno if isinstance(node.lineno, int) else 0
-    if _line_in_canonical_block(source_lines, lineno):
-        return None
 
     finding: BypassFinding | None = None
     if _is_write_text_call(node):
@@ -578,12 +543,10 @@ def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:
     except SyntaxError:
         return findings
 
-    source_lines = source.splitlines()
-
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        finding = _process_call_node(node, rel_path, source_lines)
+        finding = _process_call_node(node, rel_path)
         if finding is not None:
             findings.append(finding)
 
@@ -615,10 +578,6 @@ def audit(codebase_root: Path | None = None) -> list[BypassFinding]:
             continue
         if rel_path in _FILE_ALLOWLIST:
             continue
-        if rel_path == "ralph/mcp/tools/artifact.py":
-            # Allowlisted block is handled per-line inside audit_file.
-            pass
-
         findings.extend(audit_file(py_file, rel_path))
 
     return findings

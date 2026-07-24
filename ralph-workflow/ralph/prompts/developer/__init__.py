@@ -16,7 +16,8 @@ __all__ = [
     "prompt_developer_iteration_xml_with_context",
     "prompt_planning_xml_with_context",
 ]
-from ralph.prompts.template_engine import TemplateRenderingError, render_template
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 if TYPE_CHECKING:
@@ -58,6 +59,15 @@ def prompt_developer_iteration_xml_with_context(
         ".agent/PRODUCT_CRITERIA.md"
     )
     payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
+    is_worker = bool(inputs.work_unit_id)
+    is_continuation = inputs.is_continuation or (
+        template_name == "developer_iteration_continuation.jinja"
+    )
+    worker_fallback_path = (
+        str(Path(inputs.worker_namespace) / "tmp" / "development_result.md")
+        if inputs.worker_namespace
+        else ""
+    )
 
     base_vars: dict[str, str] = {
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
@@ -68,6 +78,13 @@ def prompt_developer_iteration_xml_with_context(
         "PRIOR_RESULT_CONTINUATION": inputs.prior_result_continuation,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
+        "unit_id": inputs.work_unit_id,
+        "description": inputs.work_unit_description,
+        "allowed_directories": inputs.work_unit_directories,
+        "IS_WORKER": "true" if is_worker else "",
+        "IS_CONTINUATION": "true" if is_continuation else "",
+        "WORKER_NAMESPACE": inputs.worker_namespace,
+        "WORKER_FALLBACK_PATH": worker_fallback_path,
     }
     base_vars.update(
         _product_criteria_variables(
@@ -113,26 +130,7 @@ def prompt_developer_iteration_xml_with_context(
         return _render_static_fallback(
             context,
             "developer_iteration_fallback.jinja",
-            {
-                **capability_vars,
-                "PROMPT": inputs.prompt_content or "No requirements provided",
-                "PLAN": inputs.plan_content or "(no plan available)",
-                "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
-                "LAST_RETRY_ERROR": inputs.last_retry_error,
-                "PRIOR_RESULT_STATUS": inputs.prior_result_status,
-                "PRIOR_RESULT_SUMMARY": inputs.prior_result_summary,
-                "PRIOR_RESULT_NEXT_STEPS": inputs.prior_result_next_steps,
-                "PRIOR_RESULT_CONTINUATION": inputs.prior_result_continuation,
-                "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
-                "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
-                "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
-                "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
-                "PROMPT_PATH": workspace.absolute_path(".agent/PRODUCT_CRITERIA.md"),
-                "PLAN_PATH": inputs.plan_path
-                or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_plan.txt"),
-                "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
-                or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_analysis_feedback.txt"),
-            },
+            variables,
         )
 
 

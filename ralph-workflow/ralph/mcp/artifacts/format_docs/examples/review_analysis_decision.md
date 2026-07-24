@@ -5,12 +5,12 @@ status: request_changes
 
 ## Summary
 
-- [SUM-1] Two of the three review issues were fixed with evidence, but the timing-based test assertion (issue I-2) was only partially addressed: the sleep was shortened, not removed, so the flake risk remains.
+- [SUM-1] The submitted review missed a deterministic-test defect in the changed refresh-race coverage.
 
 ## What Came Up Short
 
-- [RA-001] tests/auth/test_refresh_race.py still contains a 0.1s sleep and asserts on elapsed time; the review asked for a state-based assertion.
+- [RA-001] The review did not report that tests/auth/test_refresh_race.py contains a 0.1s sleep and asserts on elapsed time.
 
 ## How To Fix
 
-- [RA-001] Remove the sleep entirely and assert on observable state: the token remains valid and exactly one rotation occurred; rerun the test 10x to demonstrate determinism.
+- [RA-001] Re-review the test, add the missed determinism finding with evidence and concrete state-based remediation, then resubmit the review.

@@ -43,7 +43,7 @@ REVIEW_FANOUT_HINTS = (
 )
 
 RUBRIC_DIMENSIONS = (
-    "Prompt Compliance",
+    "Product Criteria Compliance",
     "Executor Readiness",
     "Gap Analysis and Consistency",
     "Repository Accuracy",

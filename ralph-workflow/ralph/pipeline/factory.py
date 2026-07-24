@@ -63,6 +63,7 @@ class MaterializeMasterPromptFn(Protocol):
         name: str,
         default_product_criteria: str | None = None,
         worker_namespace: Path | None = None,
+        planning_style: bool = False,
     ) -> str: ...
 
 
@@ -96,9 +97,7 @@ class ConnectivityMonitorLike(Protocol):
     @property
     def current_state(self) -> ConnectivityState: ...
 
-    def add_listener(
-        self, cb: Callable[[ConnectivityEvent], None]
-    ) -> Callable[[], None]: ...
+    def add_listener(self, cb: Callable[[ConnectivityEvent], None]) -> Callable[[], None]: ...
 
 
 class McpSupervisorFactoryFn(Protocol):
@@ -130,12 +129,14 @@ def _materialize_master_prompt(
     name: str,
     default_product_criteria: str | None = None,
     worker_namespace: Path | None = None,
+    planning_style: bool = False,
 ) -> str:
     return materialize_master_prompt(
         workspace_root=workspace_root,
         name=name,
         default_product_criteria=default_product_criteria,
         worker_namespace=worker_namespace,
+        planning_style=planning_style,
     )
 
 
@@ -304,8 +305,7 @@ class PipelineDeps:
             Callable[[UnifiedConfig, WorkspaceScope], RebaseState | None] | None
         ) = None,
         auto_integrate_resolver: (
-            Callable[[UnifiedConfig, WorkspaceScope, RebaseState], RebaseState | None]
-            | None
+            Callable[[UnifiedConfig, WorkspaceScope, RebaseState], RebaseState | None] | None
         ) = None,
         commit_effect_executor: Callable[[object, Path], object] | None = None,
         has_uncommitted_changes: Callable[[Path], bool] | None = None,

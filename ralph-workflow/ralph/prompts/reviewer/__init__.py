@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_MD_ARTIFACT_TOOL
 from ralph.prompts.template_context import TemplateContext
-from ralph.prompts.template_engine import TemplateRenderingError, render_template
+from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_registry import (
     TemplateNotFoundError,
     TemplateRegistry,
     _packaged_template_cache,
     packaged_template_root,
 )
+from ralph.prompts.template_rendering_error import TemplateRenderingError
 
 _SUBMIT_MD_ARTIFACT_TOOL_REFERENCE = f"`{SUBMIT_MD_ARTIFACT_TOOL}`"
-_DECLARE_COMPLETE_TOOL_REFERENCE = DECLARE_COMPLETE_TOOL
+_DECLARE_COMPLETE_TOOL_NAME = str(DECLARE_COMPLETE_TOOL)
+_DECLARE_COMPLETE_TOOL_REFERENCE = f"`{DECLARE_COMPLETE_TOOL}`"
 
 __all__ = [
     "CHANGES_PLACEHOLDER",
@@ -71,6 +73,7 @@ def render_review_prompt(
                 "LAST_RETRY_ERROR": "",
                 "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": _SUBMIT_MD_ARTIFACT_TOOL_REFERENCE,
                 "SUBMIT_MD_ARTIFACT_TOOL_INSTRUCTIONS": f"the tool named {SUBMIT_MD_ARTIFACT_TOOL}",
+                "DECLARE_COMPLETE_TOOL_NAME": _DECLARE_COMPLETE_TOOL_NAME,
                 "DECLARE_COMPLETE_TOOL_REFERENCE": _DECLARE_COMPLETE_TOOL_REFERENCE,
                 "WRITE_FILE_TOOL_REFERENCE": "",
             },

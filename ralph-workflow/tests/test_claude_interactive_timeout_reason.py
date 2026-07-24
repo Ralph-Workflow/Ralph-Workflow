@@ -210,7 +210,7 @@ def test_pty_line_reader_exits_when_completion_evidence_appears(tmp_path: Path) 
         os.close(master_fd)
 
 
-def test_pty_line_reader_waits_for_explicit_completion_after_required_artifact(
+def test_pty_line_reader_exits_on_durable_receipt_and_sentinel_without_echo(
     tmp_path: Path,
 ) -> None:
     master_fd = os.open("/dev/null", os.O_WRONLY)
@@ -224,6 +224,7 @@ def test_pty_line_reader_waits_for_explicit_completion_after_required_artifact(
                 required_artifact_present=True,
                 artifact_types=("smoke_test_result",),
                 completion_sentinel_present=True,
+                artifact_required=True,
             )
 
         ctx = SimpleNamespace(
@@ -243,8 +244,8 @@ def test_pty_line_reader_waits_for_explicit_completion_after_required_artifact(
 
         reader._completion_evidence_thread()
 
-        assert reader._completion_exit_sent is False
-        assert handle.terminate_calls == []
+        assert reader._completion_exit_sent is True
+        assert handle.terminate_calls == [0.5]
         os.close(reader._input_writer_fd)
     finally:
         os.close(master_fd)

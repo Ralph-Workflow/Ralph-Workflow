@@ -14,10 +14,8 @@ database at ``<workspace>/.agent/state.db`` via ``RunStateDB`` (one row
 per ``(run_id, artifact_type)``). This eliminates one-file-per-event
 state churn under ``.agent/receipts/<run_id>/`` (a measurable share of
 macOS fseventsd activity under long multi-instance runs). The legacy
-file path is preserved as a read-fallback during the dual-read rollout
-window so an in-flight run that was upgraded mid-run still passes its
-completion gate. Production writes go to the DB only; the file path is
-read-only fallback.
+file path remains both a read fallback during migration and a durable
+write fallback when the database cannot persist the receipt.
 """
 
 from __future__ import annotations
@@ -31,7 +29,7 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-from ralph.mcp.artifacts.state_db import MISSING, RunStateDB, _Missing
+from ralph.mcp.artifacts.state_db import DB_RELPATH, MISSING, RunStateDB, _Missing
 
 #: Directory (workspace-relative) holding every receipt for a single run.
 RECEIPT_DIR_RELPATH_FMT = ".agent/receipts/{run_id}"
@@ -109,7 +107,7 @@ def write_artifact_receipt(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     receipt_secret: str | None = None,
-) -> None:
+) -> Path:
     """Record that ``artifact_type`` was durably persisted during ``run_id``.
 
     Must be called only after the artifact itself is committed to storage so the
@@ -121,20 +119,24 @@ def write_artifact_receipt(
     because the secret is never exposed to the agent.
 
     Storage (RFC-013 P3): the canonical store is the per-workspace
-    ``.agent/state.db``. Production writes go to the DB ONLY when the
-    DB write succeeds; the legacy ``.agent/receipts/<run_id>/<artifact_type>.json``
-    file path is then read-only fallback during the dual-read rollout
-    window so receipts left behind by the pre-upgrade release are still
-    honored.
+    ``.agent/state.db``. When the DB write succeeds, no legacy file is
+    created. The legacy ``.agent/receipts/<run_id>/<artifact_type>.json``
+    path remains a migration read fallback and the durable write fallback
+    when the database is unavailable.
 
-    Durable-fallback: when ``RunStateDB`` raises ``sqlite3.Error``
-    (locked / corrupt / unsupported WAL) on either open or upsert,
-    this function falls back to writing the legacy file path so the
-    completion gate always has durable evidence. Atomic-rollback for
+    Durable-fallback: when ``RunStateDB`` raises ``OSError``,
+    ``RuntimeError``, or ``sqlite3.Error`` on either open or upsert, this
+    function falls back to writing the legacy file path so the completion
+    gate always has durable evidence. Atomic rollback for
     tests and callers using explicit ``backend`` kwargs still works
     because ``backend`` continues to control where the legacy bytes
     land (see ``FailingBackend`` pattern). The HMAC is included in
     both stores when ``receipt_secret`` is provided.
+
+    Returns:
+        The durable store that accepted the receipt: the workspace
+        ``.agent/state.db`` path for a successful database write, or the
+        legacy receipt file path when the durable fallback was required.
     """
     hmac_hex: str | None
     if receipt_secret is not None:
@@ -152,15 +154,16 @@ def write_artifact_receipt(
         try:
             db.upsert_receipt(run_id, artifact_type, hmac_hex)
             db_written = True
-        except sqlite3.Error:
+        except (OSError, RuntimeError, sqlite3.Error):
             pass  # Will fall through to legacy-file durable fallback below.
         finally:
             with contextlib.suppress(OSError, RuntimeError, sqlite3.Error):
                 db.close()
 
     if db_written:
-        return
+        return workspace_root / DB_RELPATH
 
+    legacy_path = _receipt_path(workspace_root, run_id, artifact_type)
     legacy_written = _write_legacy_receipt_fallback(
         workspace_root,
         run_id,
@@ -173,6 +176,7 @@ def write_artifact_receipt(
             f"Both DB and legacy paths failed to persist receipt for "
             f"run_id={run_id!r} artifact_type={artifact_type!r}"
         )
+    return legacy_path
 
 
 def _write_legacy_receipt_fallback(
@@ -186,7 +190,7 @@ def _write_legacy_receipt_fallback(
     """Write the legacy ``.agent/receipts/<run_id>/<artifact_type>.json`` fallback.
 
     Used by ``write_artifact_receipt`` only when the RunStateDB write
-    fails (sqlite3.Error on open or upsert). The HMAC is included in
+    fails on open or upsert. The HMAC is included in
     the payload when one was provided so a subsequent read with the
     same secret verifies and a mismatching secret rejects.
 

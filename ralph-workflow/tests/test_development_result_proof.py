@@ -108,7 +108,7 @@ status: request_changes
 - [SUM-1] Issues found.
 
 ## What Came Up Short
-- [W-1] Missing test.
+- [FIX-1] Missing test.
 
 ## How To Fix
 - [FIX-1] Add test for edge case.
@@ -143,8 +143,104 @@ Type: action
     )
 
 
+def _write_work_units_with_main_fan_in(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+## Work Units
+- [api] Implement the API unit
+  Directories: src/api
+
+### [S-1] Implement API
+Change the API component.
+
+Type: action
+
+## Work Units
+- [web] Implement the web unit
+  Directories: src/web
+
+### [S-2] Implement web
+Change the web component.
+
+Type: action
+
+## Integration and Verification
+
+### [S-3] Integrate and verify
+Integrate both unit results in the main session.
+
+Type: action
+Depends on: S-1, S-2
+""",
+    )
+
+
+def _write_work_unit_with_nested_criterion(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+## Work Units
+- [api] Implement and prove the API unit
+  Directories: src/api
+
+### [S-1] Implement API
+Change the API component.
+
+Type: action
+
+- [AC-01] The API report proves completion
+  Satisfied by: S-1
+  Evidence: reports/api-proof.json
+""",
+    )
+
+
+def _write_subplan_plan(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+
+## API Subplan
+
+### [S-1] Add the API
+Implement the API.
+
+Type: file_change
+Files:
+- modify src/api/main.py
+
+### [S-2] Test the API
+Cover the API behavior.
+
+Type: file_change
+Files:
+- modify src/api/test_main.py
+
+## UI Subplan
+
+### [S-3] Add the UI
+Implement the UI.
+
+Type: file_change
+Files:
+- modify src/ui/main.py
+""",
+    )
+
+
 def _write_dev_result(
-    workspace: MemoryWorkspace, *, plan_items: object = None, analysis_items: object = None
+    workspace: MemoryWorkspace,
+    *,
+    plan_items: object = None,
+    analysis_items: object = None,
+    artifact_path: str = ".agent/artifacts/development_result.md",
 ) -> None:
     plan_entries = "\n".join(
         f"- [{item['plan_item']}] {item['proof']}" for item in (plan_items or [])
@@ -153,7 +249,7 @@ def _write_dev_result(
         f"- [{item['how_to_fix_item']}] {item['proof']}" for item in (analysis_items or [])
     )
     workspace.write(
-        ".agent/artifacts/development_result.md",
+        artifact_path,
         f"""---
 type: development_result
 status: completed
@@ -292,19 +388,165 @@ def test_steps_plan_rejects_wrong_step_title_even_when_counts_match() -> None:
     assert "Unknown plan_item reference" in failure_events[0].reason
 
 
-def test_work_unit_proof_regression_accepts_each_of_five_parallel_worker_ids() -> None:
-    """Regression for plan blocker 6: each worker proves its assigned unit, not all steps."""
+def test_main_work_unit_result_rejects_one_of_five_unit_proofs() -> None:
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[{"plan_item": "api", "proof": "Completed api."}],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "contract" in failure_event.reason
+    assert "integration" in failure_event.reason
+    assert "web" in failure_event.reason
+
+
+def test_main_work_unit_result_accepts_all_five_unit_proofs() -> None:
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": unit_id, "proof": f"Completed {unit_id}."}
+            for unit_id in ("api", "web", "docs", "contract", "integration")
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_nested_criterion_does_not_create_a_global_step_proof_obligation() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_unit_with_nested_criterion(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[{"plan_item": "api", "proof": "Implemented and proved the API."}],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_main_work_unit_result_requires_unowned_fan_in_step_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_units_with_main_fan_in(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed API work."},
+            {"plan_item": "web", "proof": "Completed web work."},
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-3" in failure_event.reason
+
+
+def test_main_work_unit_result_accepts_units_plus_unowned_fan_in_steps() -> None:
+    workspace = MemoryWorkspace()
+    _write_work_units_with_main_fan_in(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed API work."},
+            {"plan_item": "web", "proof": "Completed web work."},
+            {"plan_item": "S-3", "proof": "Integrated both units and ran the final checks."},
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_accepts_exactly_its_assigned_unit_proof() -> None:
+    """Each worker proves one assigned unit while the main result proves all units."""
     for unit_id in ("api", "web", "docs", "contract", "integration"):
         workspace = MemoryWorkspace()
         _write_nested_work_unit_plan(workspace)
+        worker_artifact_path = (
+            f".agent/workers/{unit_id}/artifacts/development_result.md"
+        )
         _write_dev_result(
             workspace,
             plan_items=[{"plan_item": unit_id, "proof": f"Completed {unit_id}."}],
+            artifact_path=worker_artifact_path,
         )
 
-        events = handle_execution_phase(_invoke(), _make_context(workspace))
+        events = handle_execution_phase(
+            _invoke(),
+            _make_context(workspace),
+            output_artifact_path=worker_artifact_path,
+            assigned_work_unit_id=unit_id,
+        )
 
         assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_assignment_is_authoritative_for_linear_plan_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    worker_artifact_path = (
+        ".agent/workers/runtime-unit/artifacts/development_result.md"
+    )
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "runtime-unit",
+                "proof": "Completed the runtime-assigned unit.",
+            }
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="runtime-unit",
+    )
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_isolated_worker_rejects_an_extra_unit_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_nested_work_unit_plan(workspace)
+    worker_artifact_path = ".agent/workers/api/artifacts/development_result.md"
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "api", "proof": "Completed api."},
+            {"plan_item": "web", "proof": "Also changed web."},
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="api",
+    )
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "exactly one proof" in failure_event.reason
+    assert "web" in failure_event.reason
+    assert workspace.exists(
+        ".agent/workers/api/tmp/last_retry_error_development.txt"
+    )
+    assert not workspace.exists(".agent/tmp/last_retry_error_development.txt")
 
 
 def test_work_unit_plan_preserves_complete_global_step_proof_for_serial_execution() -> None:
@@ -320,6 +562,78 @@ def test_work_unit_plan_preserves_complete_global_step_proof_for_serial_executio
     )
 
     events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    assert events == [ExecutionResultEvent(phase="development", status="completed")]
+
+
+def test_subplan_main_result_requires_every_step_not_only_synthetic_unit_ids() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {"plan_item": "S-1", "proof": "Completed API subplan."},
+            {"plan_item": "S-3", "proof": "Completed UI subplan."},
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-2" in failure_event.reason
+
+
+def test_subplan_main_result_rejects_complete_synthetic_worker_unit_proof() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "subplan-s-1",
+                "proof": "Completed the API subplan.",
+            },
+            {
+                "plan_item": "subplan-s-3",
+                "proof": "Completed the UI subplan.",
+            },
+        ],
+    )
+
+    events = handle_execution_phase(_invoke(), _make_context(workspace))
+
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+    assert "PROOF INCOMPLETE" in failure_event.reason
+    assert "S-1" in failure_event.reason
+    assert "S-2" in failure_event.reason
+    assert "S-3" in failure_event.reason
+    assert "subplan-s-1" in failure_event.reason
+
+
+def test_subplan_isolated_worker_uses_synthetic_unit_id_not_every_owned_step() -> None:
+    workspace = MemoryWorkspace()
+    _write_subplan_plan(workspace)
+    worker_artifact_path = (
+        ".agent/workers/subplan-s-1/artifacts/development_result.md"
+    )
+    _write_dev_result(
+        workspace,
+        plan_items=[
+            {
+                "plan_item": "subplan-s-1",
+                "proof": "Completed the API subplan.",
+            }
+        ],
+        artifact_path=worker_artifact_path,
+    )
+
+    events = handle_execution_phase(
+        _invoke(),
+        _make_context(workspace),
+        output_artifact_path=worker_artifact_path,
+        assigned_work_unit_id="subplan-s-1",
+    )
 
     assert events == [ExecutionResultEvent(phase="development", status="completed")]
 

@@ -1,11 +1,11 @@
-"""Closed markdown specification for commit-message artifacts."""
+"""Markdown specification for commit-message artifacts."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.commit_message import normalize_commit_message_content
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import MdArtifactSpec
 from ralph.mcp.artifacts.markdown.registry import register_spec
@@ -57,22 +57,12 @@ def _excluded_files_section(section: ParsedSection | None) -> dict[str, object]:
     return {"excluded_files": entries}
 
 
-def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
-    if document.frontmatter["type"] in {"commit", "skip"}:
-        return []
-    return [
-        Diagnostic(
-            document.frontmatter_lines["type"],
-            None,
-            "COMMIT001",
-            "frontmatter 'type' must be 'commit' or 'skip'",
-        )
-    ]
-
-
 COMMIT_MESSAGE_SPEC = MdArtifactSpec(
     artifact_type="commit_message",
     required_frontmatter=frozenset({"type"}),
+    closed_frontmatter={
+        "type": FrontmatterVocabulary(("commit", "skip"), "COMMIT001"),
+    },
     optional_frontmatter=frozenset({"subject", "reason"}),
     sections={
         "Body": SectionRule(required=False, max_items=1),
@@ -84,7 +74,8 @@ COMMIT_MESSAGE_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=normalize_commit_message_content,
-    validate_document=_validate_document,
+    allow_unknown_frontmatter=True,
+    allow_unknown_sections=True,
 )
 
 register_spec(COMMIT_MESSAGE_SPEC)

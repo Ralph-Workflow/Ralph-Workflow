@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from importlib import import_module
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
@@ -34,6 +34,9 @@ from ralph.mcp.tools.coordination import (
     WorkspaceLike,
     require_capability,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
 
@@ -189,6 +192,10 @@ def _submit_canonical(
         ),
         receipt_secret=session.broker_secret,
     )
+    worker_namespace = cast("Path | None", getattr(session, "worker_namespace", None))
+    worker_artifact_dir = cast("Path | None", getattr(session, "worker_artifact_dir", None))
+    if worker_namespace is None and worker_artifact_dir is not None:
+        worker_namespace = worker_artifact_dir.parent
     submit_artifact_canonical(
         workspace_root=workspace_root,
         artifact_type=artifact_type,
@@ -197,6 +204,7 @@ def _submit_canonical(
         deps=effective_deps,
         run_id=_session_run_id(session),
         artifact_dir=_resolve_artifact_dir(session, workspace),
+        handoff_dir=worker_namespace / "handoffs" if worker_namespace is not None else None,
     )
 
 

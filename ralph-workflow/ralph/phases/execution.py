@@ -17,6 +17,7 @@ pre-validation for plan and development_result drains.
 from __future__ import annotations
 
 from contextlib import suppress
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -62,7 +63,13 @@ if TYPE_CHECKING:
     )
 
 
-def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
+def handle_execution_phase(
+    effect: Effect,
+    ctx: PhaseContext,
+    *,
+    output_artifact_path: str | None = None,
+    assigned_work_unit_id: str | None = None,
+) -> list[Event]:
     """Generic handler for any phase with role='execution'.
 
     Args:
@@ -97,17 +104,32 @@ def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     ra = resolve_phase_required_artifact(
         ctx.pipeline_policy, ctx.artifacts_policy, phase=phase, drain=drain
     )
+    if ra is not None and output_artifact_path is not None:
+        ra = replace(ra, artifact_path=output_artifact_path)
+    worker_retry_hint_path = _worker_retry_hint_path(
+        phase,
+        output_artifact_path,
+    )
 
     events: list[Event] | None = None
     if ra is not None and ra.artifact_type == "plan":
         events = _validate_plan_output(effect, ctx, ra, phase_def)
     elif ra is not None and ra.artifact_type == "development_result":
-        plan_result = _validate_plan_input(effect, ctx)
+        plan_result = _validate_plan_input(
+            effect,
+            ctx,
+            retry_hint_path_override=worker_retry_hint_path,
+        )
         if plan_result is not None:
             events = plan_result if plan_result else [PipelineEvent.AGENT_SUCCESS]
 
     if events is None and ra is not None:
-        failure, validated_content = _validate_output_artifact(effect, ctx, ra)
+        failure, validated_content = _validate_output_artifact(
+            effect,
+            ctx,
+            ra,
+            retry_hint_path_override=worker_retry_hint_path,
+        )
         if failure is not None:
             events = failure
         elif ra.artifact_type == "development_result" and validated_content is not None:
@@ -118,6 +140,8 @@ def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
                     phase,
                     phase_def.artifact_proof_policy,
                     development_result,
+                    assigned_work_unit_id=assigned_work_unit_id,
+                    retry_hint_path_override=worker_retry_hint_path,
                 )
                 if proof_failure is not None:
                     events = proof_failure
@@ -195,7 +219,12 @@ def _validate_plan_output(
     return [PipelineEvent.AGENT_SUCCESS]
 
 
-def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[Event] | None:
+def _validate_plan_input(
+    effect: InvokeAgentEffect,
+    ctx: PhaseContext,
+    *,
+    retry_hint_path_override: str | None = None,
+) -> list[Event] | None:
     """Validate the plan INPUT for development-type phases.
 
     Returns a list of failure events on error, an empty list to signal noop
@@ -207,7 +236,7 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
         detail = f"Missing planning artifact at {PLAN_ARTIFACT_PATH}"
         hint = build_missing_input_hint(phase, upstream, PLAN_ARTIFACT_PATH)
         with suppress(Exception):
-            ctx.workspace.write(retry_hint_path(phase), hint)
+            ctx.workspace.write(retry_hint_path_override or retry_hint_path(phase), hint)
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
@@ -226,7 +255,12 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
         PolicyValidationError,
     ) as exc:
         logger.warning("Invalid development phase evidence: {}", exc)
-        _write_retry_hint(ctx, phase, str(exc))
+        _write_retry_hint(
+            ctx,
+            phase,
+            str(exc),
+            hint_path_override=retry_hint_path_override,
+        )
         return [
             artifact_validation_failure_event(
                 phase=phase,
@@ -237,7 +271,11 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
 
 
 def _validate_output_artifact(
-    effect: InvokeAgentEffect, ctx: PhaseContext, ra: RequiredArtifact
+    effect: InvokeAgentEffect,
+    ctx: PhaseContext,
+    ra: RequiredArtifact,
+    *,
+    retry_hint_path_override: str | None = None,
 ) -> tuple[list[Event] | None, dict[str, object] | None]:
     """Validate an output artifact and retain its normalized content.
 
@@ -261,7 +299,12 @@ def _validate_output_artifact(
         logger.warning(
             "Execution phase '{}' missing required artifact at {}", phase, ra.artifact_path
         )
-        _write_retry_hint(ctx, phase, detail)
+        _write_retry_hint(
+            ctx,
+            phase,
+            detail,
+            hint_path_override=retry_hint_path_override,
+        )
         return [artifact_validation_failure_event(phase=phase, reason=detail)], None
 
     try:
@@ -289,7 +332,12 @@ def _validate_output_artifact(
             phase,
             invalid_detail,
         )
-        _write_retry_hint(ctx, phase, invalid_detail)
+        _write_retry_hint(
+            ctx,
+            phase,
+            invalid_detail,
+            hint_path_override=retry_hint_path_override,
+        )
     return [
         artifact_validation_failure_event(
             phase=phase,
@@ -298,8 +346,14 @@ def _validate_output_artifact(
     ], None
 
 
-def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
-    hint_path = retry_hint_path(phase)
+def _write_retry_hint(
+    ctx: PhaseContext,
+    phase: str,
+    detail: str,
+    *,
+    hint_path_override: str | None = None,
+) -> None:
+    hint_path = hint_path_override or retry_hint_path(phase)
     try:
         registry = build_required_artifacts(ctx.artifacts_policy)
     except AttributeError:
@@ -313,8 +367,14 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
         ctx.workspace.write(hint_path, hint)
 
 
-def _write_proof_failure_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
-    hint_path = retry_hint_path(phase)
+def _write_proof_failure_hint(
+    ctx: PhaseContext,
+    phase: str,
+    detail: str,
+    *,
+    hint_path_override: str | None = None,
+) -> None:
+    hint_path = hint_path_override or retry_hint_path(phase)
     hint = build_proof_failure_hint(phase, detail)
     with suppress(Exception):
         ctx.workspace.write(hint_path, hint)
@@ -345,18 +405,40 @@ def _work_unit_proof_errors(required_refs: frozenset[str], submitted_list: list[
     submitted_set = frozenset(submitted_list)
     if len(submitted_set) < len(submitted_list):
         errors.append("PROOF INVALID: Duplicate plan_item entries found in plan_items_proven.")
-    if not submitted_set:
+    missing = required_refs - submitted_set
+    if missing:
         errors.append(
-            "PROOF INCOMPLETE: plan_items_proven is empty. The agent must prove at least "
-            "one work unit. Each plan_item must exactly match a work_unit unit_id from the plan."
+            "PROOF INCOMPLETE: The following work-unit or main-session plan reference(s) "
+            f"have no proof entry: {sorted(missing)}. The main integration result must "
+            "prove every work_unit unit_id and every global step not owned by a work unit."
         )
     extra = submitted_set - required_refs
     if extra:
         errors.append(
-            "PROOF INVALID: Unknown plan_item reference(s) not matching any work_unit unit_id: "
-            f"{sorted(extra)}. Valid unit_ids: {sorted(required_refs)}."
+            "PROOF INVALID: Unknown plan_item reference(s) not matching a required work-unit "
+            f"or main-session step reference: {sorted(extra)}. "
+            f"Valid references: {sorted(required_refs)}."
         )
     return errors
+
+
+def _assigned_work_unit_proof_errors(
+    required_refs: frozenset[str],
+    submitted_list: list[str],
+    assigned_work_unit_id: str,
+) -> list[str]:
+    if required_refs and assigned_work_unit_id not in required_refs:
+        return [
+            "PROOF INVALID: Assigned worker unit "
+            f"{assigned_work_unit_id!r} is not a canonical work_unit unit_id. "
+            f"Valid unit_ids: {sorted(required_refs)}."
+        ]
+    if submitted_list == [assigned_work_unit_id]:
+        return []
+    return [
+        "PROOF INVALID: An isolated worker must submit exactly one proof for its "
+        f"assigned unit {assigned_work_unit_id!r}; received {submitted_list!r}."
+    ]
 
 
 def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
@@ -378,17 +460,43 @@ def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[s
     return errors
 
 
-def _plan_proof_errors(ctx: PhaseContext, dev_result: DevelopmentResult) -> list[str]:
+def _plan_proof_errors(
+    ctx: PhaseContext,
+    dev_result: DevelopmentResult,
+    *,
+    assigned_work_unit_id: str | None = None,
+) -> list[str]:
     submitted = [proof.plan_item for proof in dev_result.plan_items_proven]
-    work_unit_ids = _get_canonical_work_unit_ids(ctx)
-    if work_unit_ids and any(reference in work_unit_ids for reference in submitted):
-        return _work_unit_proof_errors(work_unit_ids, submitted)
+    work_unit_ids, owned_step_refs = _get_canonical_work_unit_refs(ctx)
+    if assigned_work_unit_id is not None:
+        return _assigned_work_unit_proof_errors(
+            work_unit_ids,
+            submitted,
+            assigned_work_unit_id,
+        )
     step_refs = _get_canonical_step_refs(ctx)
+    submitted_set = frozenset(submitted)
+    if _plan_declares_explicit_work_units(ctx) and not (
+        submitted_set and submitted_set <= step_refs
+    ):
+        required_refs = work_unit_ids | (step_refs - owned_step_refs)
+        return _work_unit_proof_errors(required_refs, submitted)
     if step_refs:
         return _step_proof_errors(step_refs, submitted)
     if work_unit_ids:
         return _work_unit_proof_errors(work_unit_ids, submitted)
     return []
+
+
+def _plan_declares_explicit_work_units(ctx: PhaseContext) -> bool:
+    """Return whether the source plan contains an explicit Work Units section."""
+    try:
+        if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
+            return False
+        markdown = ctx.workspace.read(PLAN_ARTIFACT_PATH)
+    except Exception:
+        return False
+    return any(line.strip().casefold() == "## work units" for line in markdown.splitlines())
 
 
 def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
@@ -416,20 +524,30 @@ def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
     return frozenset(refs)
 
 
-def _get_canonical_work_unit_ids(ctx: PhaseContext) -> frozenset[str]:
+def _get_canonical_work_unit_refs(
+    ctx: PhaseContext,
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Return canonical unit IDs and the global step IDs those units own."""
     try:
         if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
-            return frozenset()
+            return frozenset(), frozenset()
         artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
         content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
         if is_noop_plan(content):
-            return frozenset()
+            return frozenset(), frozenset()
         parsed = parse_work_units_from_artifact(content)
         if parsed is None or not parsed.work_units:
-            return frozenset()
-        return frozenset(unit.unit_id for unit in parsed.work_units)
+            return frozenset(), frozenset()
+        return (
+            frozenset(unit.unit_id for unit in parsed.work_units),
+            frozenset(
+                step_id
+                for unit in parsed.work_units
+                for step_id in unit.step_ids
+            ),
+        )
     except Exception:
-        return frozenset()
+        return frozenset(), frozenset()
 
 
 def _get_canonical_analysis_how_to_fix_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:
@@ -462,10 +580,19 @@ def _validate_development_result_proof(
     phase: str,
     proof_policy: ArtifactProofPolicy,
     dev_result: DevelopmentResult,
+    *,
+    assigned_work_unit_id: str | None = None,
+    retry_hint_path_override: str | None = None,
 ) -> list[Event] | None:
     errors: list[str] = []
     if proof_policy.require_plan_proof:
-        errors.extend(_plan_proof_errors(ctx, dev_result))
+        errors.extend(
+            _plan_proof_errors(
+                ctx,
+                dev_result,
+                assigned_work_unit_id=assigned_work_unit_id,
+            )
+        )
     if proof_policy.require_analysis_proof:
         required_refs = _get_canonical_analysis_how_to_fix_refs(ctx, phase)
         if required_refs:
@@ -480,8 +607,25 @@ def _validate_development_result_proof(
         return None
 
     detail = "\n".join(errors)
-    _write_proof_failure_hint(ctx, phase, detail)
+    _write_proof_failure_hint(
+        ctx,
+        phase,
+        detail,
+        hint_path_override=retry_hint_path_override,
+    )
     return [artifact_validation_failure_event(phase=phase, reason=detail)]
+
+
+def _worker_retry_hint_path(
+    phase: str,
+    output_artifact_path: str | None,
+) -> str | None:
+    if output_artifact_path is None:
+        return None
+    artifact_path = Path(output_artifact_path)
+    if artifact_path.parent.name != "artifacts":
+        return None
+    return str(artifact_path.parent.parent / "tmp" / f"last_retry_error_{phase}.txt")
 
 
 def _transitions_on_success(phase_def: PhaseDefinition | None) -> str | None:

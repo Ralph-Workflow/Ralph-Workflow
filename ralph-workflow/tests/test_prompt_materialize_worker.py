@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import ralph.prompts.materialize as materialize_module
@@ -16,85 +15,239 @@ from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
 from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
     phase_payload_variables,
-    render_worker_prompt,
 )
 from ralph.prompts.payload_refs import MAX_INLINE_PROMPT_BYTES
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-BASE_PROMPT = "Base context: only work on your assigned unit."
 # Content large enough to trigger file-based payload routing (>100KB).
 _LARGE_CONTENT = "x" * (MAX_INLINE_PROMPT_BYTES + 1)
 
 
-def test_render_worker_prompt_includes_unit_specific_description_and_base_prompt(
+def test_materialized_worker_prompt_has_one_unit_scoped_contract(
     tmp_path: Path,
 ) -> None:
-    policy = load_policy(tmp_path / ".agent")
-    unit = WorkUnit(
-        unit_id="worker-1",
-        description="Implement isolated worker prompt materialization",
-        allowed_directories=["ralph/prompts", "tests"],
+    workspace = MemoryWorkspace(root=tmp_path)
+    workspace.write("PROMPT.md", "Implement the requested behavior.")
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+
+## Summary
+Implement the behavior.
+
+## Steps
+- [ ] [S-1] Implement it.
+""",
     )
-
-    rendered = render_worker_prompt(unit=unit, base_prompt=BASE_PROMPT, policy=policy.pipeline)
-
-    assert "worker-1" in rendered
-    assert "Implement isolated worker prompt materialization" in rendered
-    assert BASE_PROMPT in rendered
-
-
-def test_render_worker_prompt_lists_allowed_directories_as_json(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     unit = WorkUnit(
-        unit_id="worker-2",
-        description="Touch prompt files only",
-        allowed_directories=["ralph/prompts/templates", "ralph/prompts"],
-    )
-
-    rendered = render_worker_prompt(unit=unit, base_prompt=BASE_PROMPT, policy=policy.pipeline)
-
-    assert json.dumps(unit.allowed_directories, indent=2) in rendered
-
-
-def test_worker_prompt_regression_includes_assigned_nested_plan_steps(tmp_path: Path) -> None:
-    """Regression for plan blocker 6: a worker sees its exact nested step assignment."""
-    policy = load_policy(tmp_path / ".agent")
-    unit = WorkUnit(
-        unit_id="worker-api",
-        description="Implement the API unit",
+        unit_id="api",
+        description="Implement the API",
         allowed_directories=["src/api"],
-        step_ids=["S-7", "S-8"],
+        step_ids=["S-1"],
     )
 
-    rendered = render_worker_prompt(unit=unit, base_prompt=BASE_PROMPT, policy=policy.pipeline)
+    path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        artifacts_policy=policy.artifacts,
+        work_unit=unit,
+    )
+    rendered = workspace.read(path)
 
-    assert "Assigned plan steps: S-7, S-8" in rendered
+    assert rendered.count("## WORKER SCOPE") == 1
+    assert sum(line.strip() == "## Plan Items Proven" for line in rendered.splitlines()) == 1
+    assert "responsible for dispatching your own sub-agents" not in rendered
+    assert "integrate the combined result" not in rendered
+    assert "- [S-1]" not in rendered
+    assert "- [api]" in rendered
+    worker_namespace = tmp_path / ".agent" / "workers" / "api"
+    assert str(worker_namespace / "artifacts" / "development_result.md") in rendered
+    assert str(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") in rendered
+    assert "`.agent/tmp/development_result.md`" not in rendered
+    assert "If you submit `status: partial`" in rendered
+    assert "`## Next Steps`" in rendered
+    assert "`## Continuation`" in rendered
+    assert "Do not invent files or verification results." in rendered
+    normalized = " ".join(rendered.split())
+    assert "the receipt is not phase completion" in normalized
+    assert "MANDATORY FINAL ACTION" in rendered
+    receipt_index = normalized.index("promote that worker-local fallback")
+    completion_index = normalized.index("Only after that receipt exists")
+    assert receipt_index < completion_index
+    assert "call `declare_complete` as the final action" in normalized[completion_index:]
+    assert "Do not call completion for an unvalidated fallback." not in rendered
 
 
-def test_render_worker_prompt_does_not_leak_other_unit_data(tmp_path: Path) -> None:
+def test_worker_analysis_loopback_keeps_worker_scope_and_continuation_gate(
+    tmp_path: Path,
+) -> None:
+    workspace = MemoryWorkspace(root=tmp_path)
+    workspace.write("PROMPT.md", "Implement the requested behavior.")
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        """---
+type: plan
+---
+
+## Backend Subplan
+
+### [S-1] Implement it
+Implement the backend behavior.
+
+Type: action
+""",
+    )
+    analysis_feedback = """---
+type: development_analysis_decision
+status: request_changes
+---
+
+## Summary
+- [SUM-1] The worker result needs another pass.
+
+## What Came Up Short
+- [W-1] Missing focused verification.
+
+## How To Fix
+- [W-1] Run the focused worker test.
+"""
+    workspace.write(
+        ".agent/artifacts/development_analysis_decision.md",
+        analysis_feedback,
+    )
+    workspace.write(".agent/DEVELOPMENT_ANALYSIS_DECISION.md", analysis_feedback)
     policy = load_policy(tmp_path / ".agent")
-    first_unit = WorkUnit(
-        unit_id="worker-alpha",
-        description="Implement only alpha behavior",
-        allowed_directories=["ralph/prompts"],
-    )
-    second_unit = WorkUnit(
-        unit_id="worker-beta",
-        description="Implement only beta behavior",
-        allowed_directories=["ralph/pipeline"],
+    unit = WorkUnit(
+        unit_id="api",
+        description="Implement the API",
+        allowed_directories=["src/api"],
+        step_ids=["S-1"],
     )
 
-    rendered = render_worker_prompt(
-        unit=first_unit,
-        base_prompt=BASE_PROMPT,
-        policy=policy.pipeline,
+    path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        artifacts_policy=policy.artifacts,
+        worker_namespace=tmp_path / ".agent" / "workers" / unit.unit_id,
+        work_unit=unit,
+        previous_phase="development_analysis",
+    )
+    rendered = workspace.read(path)
+
+    assert "## WORKER SCOPE" in rendered
+    assert "**Unit ID**: api" in rendered
+    assert str(tmp_path / ".agent" / "DEVELOPMENT_ANALYSIS_DECISION.md") in rendered
+    assert "you MUST use at least one sub-agent as a hard gate" in rendered
+    assert "you MUST NOT submit the artifact or declare completion" in rendered
+
+
+def test_worker_partial_result_takes_precedence_over_shared_continuation_context(
+    tmp_path: Path,
+) -> None:
+    workspace = MemoryWorkspace(root=tmp_path)
+    workspace.write("PROMPT.md", "Implement the requested behavior.")
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        "---\ntype: plan\n---\n## API Subplan\n"
+        "### [S-1] Implement API\nImplement it.\n\nType: action\n",
+    )
+    worker_namespace = tmp_path / ".agent" / "workers" / "api"
+    worker_partial = """---
+type: development_result
+status: partial
+---
+## Summary
+- [SUM-1] Worker-local implementation is incomplete.
+## Files Changed
+- [FC-1] src/api/main.py
+## Next Steps
+- [NEXT-1] Finish the worker-local API test.
+## Continuation
+- [CONT-1] worker-session-7
+"""
+    shared_partial = worker_partial.replace(
+        "Worker-local implementation is incomplete.",
+        "WRONG SHARED CONTEXT",
+    )
+    workspace.write(
+        str(worker_namespace / "artifacts" / "development_result.md"),
+        worker_partial,
+    )
+    workspace.write(".agent/artifacts/development_result.md", shared_partial)
+    policy = load_policy(tmp_path / ".agent")
+    unit = WorkUnit(
+        unit_id="api",
+        description="Implement the API",
+        allowed_directories=["src/api"],
+        step_ids=["S-1"],
     )
 
-    assert first_unit.description in rendered
-    assert second_unit.description not in rendered
-    assert second_unit.unit_id not in rendered
-    assert json.dumps(second_unit.allowed_directories, indent=2) not in rendered
+    path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        artifacts_policy=policy.artifacts,
+        worker_namespace=worker_namespace,
+        work_unit=unit,
+    )
+    rendered = workspace.read(path)
+
+    assert "PRIOR WORKER RESULT — PARTIAL — NOT COMPLETE" in rendered
+    assert "Worker-local implementation is incomplete." in rendered
+    assert "Finish the worker-local API test." in rendered
+    assert "worker-session-7" in rendered
+    assert "WRONG SHARED CONTEXT" not in rendered
+    assert "you MUST use at least one sub-agent as a hard gate" in rendered
+
+
+def test_worker_materialization_preserves_shared_development_history(
+    tmp_path: Path,
+) -> None:
+    workspace = MemoryWorkspace(root=tmp_path)
+    workspace.write("PROMPT.md", "Implement the requested behavior.")
+    workspace.write(
+        ".agent/artifacts/plan.md",
+        "---\ntype: plan\n---\n### [S-1] Implement API\nImplement it.\n\nType: action\n",
+    )
+    shared_history = (
+        tmp_path / ".agent" / "artifacts" / "history" / "development_result" / "index.md"
+    )
+    shared_history.parent.mkdir(parents=True)
+    shared_history.write_text("# Coordinator history\n", encoding="utf-8")
+    policy = load_policy(tmp_path / ".agent")
+    unit = WorkUnit(
+        unit_id="api",
+        description="Implement the API",
+        allowed_directories=["src/api"],
+        step_ids=["S-1"],
+    )
+
+    path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        artifacts_policy=policy.artifacts,
+        worker_namespace=tmp_path / ".agent" / "workers" / unit.unit_id,
+        work_unit=unit,
+    )
+    rendered = workspace.read(path)
+
+    assert shared_history.read_text(encoding="utf-8") == "# Coordinator history\n"
+    assert str(shared_history) not in rendered
 
 
 def test_worker_namespace_routes_payloads(tmp_path: Path) -> None:
@@ -166,7 +319,6 @@ def test_two_concurrent_namespaces_dont_collide(tmp_path: Path) -> None:
 
 
 def test_materialize_prompt_for_worker_runtime_uses_unit_specific_prompt_payload(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
@@ -178,17 +330,6 @@ def test_materialize_prompt_for_worker_runtime_uses_unit_specific_prompt_payload
         description="Implement only unit A",
         allowed_directories=["src/a"],
     )
-    worker_prompt = 'WORKER-SCOPED PROMPT\nImplement only unit A\n[\n  "src/a"\n]'
-
-    monkeypatch.setattr(
-        "ralph.prompts.materialize._render_prompt_for_phase",
-        lambda *_args, **_kwargs: "Base development prompt",
-    )
-    monkeypatch.setattr(
-        "ralph.prompts.materialize.render_worker_prompt",
-        lambda **_kwargs: worker_prompt,
-    )
-
     prompt_path = materialize_prompt_for_phase(
         phase="development",
         workspace=workspace,
@@ -201,11 +342,13 @@ def test_materialize_prompt_for_worker_runtime_uses_unit_specific_prompt_payload
 
     rendered = workspace.read(prompt_path)
 
-    assert rendered == worker_prompt
+    assert "## WORKER SCOPE" in rendered
+    assert "Implement only unit A" in rendered
+    assert '[\n  "src/a"\n]' in rendered
+    assert "responsible for dispatching your own sub-agents" not in rendered
 
 
 def test_materialize_prompt_for_worker_runtime_does_not_wrap_non_development_prompt(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
@@ -217,29 +360,21 @@ def test_materialize_prompt_for_worker_runtime_does_not_wrap_non_development_pro
         description="Implement only unit A",
         allowed_directories=["src/a"],
     )
-    wrap_calls: list[object] = []
-
-    monkeypatch.setattr(
-        "ralph.prompts.materialize._render_prompt_for_phase",
-        lambda *_args, **_kwargs: "Base planning prompt",
-    )
-    monkeypatch.setattr(
-        "ralph.prompts.materialize.render_worker_prompt",
-        lambda **kwargs: wrap_calls.append(kwargs) or "WRAPPED",
-    )
-
     prompt_path = materialize_prompt_for_phase(
         phase="planning",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
         workspace_root=tmp_path,
+        artifacts_policy=policy.artifacts,
         worker_namespace=tmp_path / ".agent" / "workers" / unit.unit_id,
         work_unit=unit,
     )
 
-    assert workspace.read(prompt_path) == "Base planning prompt"
-    assert wrap_calls == []
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING MODE" in rendered
+    assert "## WORKER SCOPE" not in rendered
+    assert unit.description not in rendered
 
 
 def test_persist_product_criteria_uses_worker_namespace_when_provided(

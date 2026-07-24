@@ -139,14 +139,13 @@ class TestCursorToolNameMatchesClaudeStyle:
     """
 
     def test_tool_name_prefix_for_cursor_is_claude_style(self) -> None:
-        assert (
-            tool_name_prefix_for_transport(AgentTransport.CURSOR) == "mcp__ralph__"
-        )
+        assert tool_name_prefix_for_transport(AgentTransport.CURSOR) == "mcp__ralph__"
 
     def test_submit_artifact_tool_name_for_cursor_is_claude_namespaced(self) -> None:
-        assert submit_artifact_tool_name_for_transport(
-            AgentTransport.CURSOR
-        ) == claude_tool_name(SUBMIT_MD_ARTIFACT_TOOL)
+        assert submit_artifact_tool_name_for_transport(AgentTransport.CURSOR) == claude_tool_name(
+            SUBMIT_MD_ARTIFACT_TOOL
+        )
+
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_none() -> None:
     assert submit_artifact_tool_name_for_transport(None) == SUBMIT_MD_ARTIFACT_TOOL
@@ -220,7 +219,9 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
     workspace.write(
         ".agent/artifacts/development_analysis_decision.md",
         "---\ntype: development_analysis_decision\nstatus: request_changes\n---\n"
-        "## Summary\n- [S1] Need more tests: coverage is missing, add tests.\n",
+        "## Summary\n- [S1] Need more tests: coverage is missing, add tests.\n"
+        "## What Came Up Short\n- [DA-1] The changed path lacks coverage.\n"
+        "## How To Fix\n- [DA-1] Add and run focused regression coverage.\n",
     )
     # Create history files on disk
     artifact_dir = tmp_path / ".agent" / "artifacts"
@@ -649,7 +650,9 @@ def test_development_analysis_to_development_commit_clears_history_per_policy(
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
     analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.md"
-    analysis_archived.write_text("---\ntype: development_analysis_decision\n---\n", encoding="utf-8")
+    analysis_archived.write_text(
+        "---\ntype: development_analysis_decision\n---\n", encoding="utf-8"
+    )
     analysis_index = history_index_path(artifact_dir, "development_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
@@ -913,7 +916,9 @@ def test_development_analysis_bypass_clears_history_per_policy(
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
     analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.md"
-    analysis_archived.write_text("---\ntype: development_analysis_decision\n---\n", encoding="utf-8")
+    analysis_archived.write_text(
+        "---\ntype: development_analysis_decision\n---\n", encoding="utf-8"
+    )
     analysis_index = history_index_path(artifact_dir, "development_analysis_decision")
     analysis_index.write_text("# History", encoding="utf-8")
 
@@ -988,3 +993,8 @@ def test_commit_cleanup_phase_renders_prompt_successfully(tmp_path: Path) -> Non
         )
     )
     assert "ralph_submit_md_artifact" in rendered and "DIFF" in rendered
+    assert rendered.startswith(
+        "COMMIT CLEANUP MODE\n"
+        "You are a commit cleanup agent. Your only job is to keep unsafe or "
+        "machine-local files out of the pending commit."
+    )

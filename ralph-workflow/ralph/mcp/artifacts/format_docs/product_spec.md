@@ -54,9 +54,13 @@ beat 30 loosely related ones. Prefix related items with a feature-area tag
 (e.g. `[Dashboard] ...`) in large specs. Do not include implementation
 details or code structure.
 
+Unknown descriptive frontmatter fields and sections are accepted and ignored
+by the typed product-spec consumer. Known fields and sections above remain
+strict.
+
 ## Hard errors vs warnings
 
 Hard errors: a missing required section; more than one Title or Scope
 item; empty Goals, Users, or Success Criteria; wrong `type`; duplicate
-item IDs; unknown sections or stray prose lines. This type has no
-warning-level coercions.
+item IDs or stray prose in a known list-only section; or malformed core
+grammar. This type has no warning-level coercions.

@@ -60,6 +60,7 @@ def test_edit_tool_returns_the_updated_persisted_draft() -> None:
                 "Type: verify\n"
                 "Depends on: S-1\n"
                 "Verify: pytest tests/test_plan_artifact*.py -q\n"
+                "Expect: the plan artifact tests pass with exit code 0\n"
             ),
         },
         deps=_staged_deps(),

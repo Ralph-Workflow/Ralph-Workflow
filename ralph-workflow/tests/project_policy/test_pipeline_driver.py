@@ -39,14 +39,19 @@ def _submit_decision(
     """Write the decision artifact the way the MCP submit path would."""
     workspace.mkdirs(".agent/artifacts")
     shortcomings = what_came_up_short or []
+    if status in {"request_changes", "failed"} and not shortcomings:
+        shortcomings = ["The policy review found a concrete gap."]
     extra_sections = ""
     if shortcomings:
         short_items = "\n".join(
             f"- [W-{index}] {item}" for index, item in enumerate(shortcomings, start=1)
         )
+        fix_items = "\n".join(
+            f"- [W-{index}] Resolve this policy gap."
+            for index, _item in enumerate(shortcomings, start=1)
+        )
         extra_sections = (
-            f"\n## What Came Up Short\n\n{short_items}\n"
-            "\n## How To Fix\n\n- [FIX-1] Do the thing.\n"
+            f"\n## What Came Up Short\n\n{short_items}\n\n## How To Fix\n\n{fix_items}\n"
         )
     workspace.write(
         analysis.ANALYSIS_ARTIFACT_REL_PATH,
@@ -83,10 +88,7 @@ class _Recorder:
         self.phases.append(phase)
         if phase == PHASE_REMEDIATION:
             self._remediation_calls += 1
-            if (
-                self.fix_on_call is not None
-                and self._remediation_calls >= self.fix_on_call
-            ):
+            if self.fix_on_call is not None and self._remediation_calls >= self.fix_on_call:
                 seed_complete_corpus(self.workspace)
             return True
         decision = self.decisions.pop(0) if self.decisions else "request_changes"
@@ -96,18 +98,14 @@ class _Recorder:
     @property
     def trace(self) -> str:
         """The phase sequence as 'R A R A ...' for readable assertions."""
-        return " ".join(
-            "R" if phase == PHASE_REMEDIATION else "A" for phase in self.phases
-        )
+        return " ".join("R" if phase == PHASE_REMEDIATION else "A" for phase in self.phases)
 
 
 def test_happy_path_is_one_remediation_then_one_analysis() -> None:
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["completed"])
 
-    result = pipeline_driver.run_policy_pipeline(
-        ws, stack(), [_finding()], invoke_agent=agent
-    )
+    result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert agent.trace == "R A"
     assert result.status is ReadinessStatus.READY
@@ -120,9 +118,7 @@ def test_exhausted_analysis_ends_on_a_final_remediation() -> None:
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["request_changes"] * 4)
 
-    result = pipeline_driver.run_policy_pipeline(
-        ws, stack(), [_finding()], invoke_agent=agent
-    )
+    result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert agent.trace == "R A R A R A R"
     assert agent.phases.count(PHASE_ANALYSIS) == DEFAULT_ANALYSIS_CAP
@@ -138,9 +134,7 @@ def test_analysis_is_never_consulted_while_the_validator_still_fails() -> None:
     ws = MemoryWorkspace()
     agent = _Recorder(ws, decisions=["completed"], fix_on_call=None)
 
-    result = pipeline_driver.run_policy_pipeline(
-        ws, stack(), [_finding()], invoke_agent=agent
-    )
+    result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert PHASE_ANALYSIS not in agent.phases, agent.trace
     assert result.status is ReadinessStatus.BLOCKED
@@ -154,9 +148,7 @@ def test_a_forged_completed_cannot_produce_ready_while_findings_remain() -> None
     _submit_decision(ws, "completed")
     agent = _Recorder(ws, decisions=["completed"], fix_on_call=None)
 
-    result = pipeline_driver.run_policy_pipeline(
-        ws, stack(), [_finding()], invoke_agent=agent
-    )
+    result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert result.status is ReadinessStatus.BLOCKED
 
@@ -172,16 +164,17 @@ def test_request_changes_loops_back_and_carries_feedback_forward() -> None:
             seed_complete_corpus(ws)
             prompts.append(ws.read(prompt_path))
             return True
+        status = "completed" if len(prompts) >= 2 else "request_changes"
         _submit_decision(
             ws,
-            "completed" if len(prompts) >= 2 else "request_changes",
-            what_came_up_short=["make verify does not resolve"],
+            status,
+            what_came_up_short=(
+                None if status == "completed" else ["make verify does not resolve"]
+            ),
         )
         return True
 
-    result = pipeline_driver.run_policy_pipeline(
-        ws, stack(), [_finding()], invoke_agent=agent
-    )
+    result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert result.status is ReadinessStatus.READY
     assert len(prompts) == 2
@@ -275,6 +268,8 @@ def test_an_analysis_entry_with_a_spent_budget_still_terminates() -> None:
 
     assert agent.phases == [], "a spent budget must invoke no analysis agent at all"
     assert result.status is ReadinessStatus.BLOCKED
+
+
 def test_on_remediation_attempt_callback_receives_live_attempt_numbers() -> None:
     """AC-01 / AC-03: the persistent status bar must see the LIVE attempt value.
 
@@ -302,9 +297,7 @@ def test_on_remediation_attempt_callback_receives_live_attempt_numbers() -> None
 
     assert result.status is ReadinessStatus.READY
     remediation_count = agent.phases.count(PHASE_REMEDIATION)
-    assert remediation_count >= 2, (
-        "the test fixture must drive at least two remediation attempts"
-    )
+    assert remediation_count >= 2, "the test fixture must drive at least two remediation attempts"
     # One callback per remediation, in 1-indexed order.
     assert len(seen_attempts) == remediation_count
     assert seen_attempts == list(range(1, remediation_count + 1))
@@ -319,8 +312,6 @@ def test_on_remediation_attempt_callback_defaults_to_noop() -> None:
     agent = _Recorder(ws, decisions=["completed"])
 
     # No on_remediation_attempt kwarg.
-    result = pipeline_driver.run_policy_pipeline(
-        ws, stack(), [_finding()], invoke_agent=agent
-    )
+    result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert result.status is ReadinessStatus.READY

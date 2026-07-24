@@ -209,11 +209,11 @@ def test_sweep_run_state_db_rows_does_not_raise_when_close_raises(
 #
 # Both regressions surfaced by the planning-decision round:
 #
-# 1. ``artifact._run_write_sentinel`` must fall back to the legacy
-#    ``.agent/completion_seen_<run_id>.json`` file when
-#    ``RunStateDB.upsert_completion_sentinel`` raises ``sqlite3.Error`` /
-#    ``OSError``; otherwise a transient DB failure turns an otherwise
-#    successful single-shot artifact submit into a hard failure.
+# 1. Canonical submission must fall back to the legacy
+#    ``.agent/receipts/<run_id>/<artifact_type>.json`` file when
+#    ``RunStateDB.upsert_receipt`` raises ``sqlite3.Error`` / ``OSError``;
+#    otherwise a transient DB failure turns an otherwise successful artifact
+#    submission into a hard failure.
 #
 # 2. ``_clear_session_completion_sentinel`` must tombstone the
 #    DB-backed sentinel row when ``RunStateDB.delete_completion_sentinel``
@@ -222,34 +222,6 @@ def test_sweep_run_state_db_rows_does_not_raise_when_close_raises(
 #    ``run_id`` inherits the previous run's "completed" verdict because
 #    the DB read is authoritative ahead of the legacy-file fallback.
 # ---------------------------------------------------------------------------
-
-
-class _RaisingUpsertDB:
-    """Stand-in ``RunStateDB`` whose ``upsert_completion_sentinel`` raises.
-
-    Used to simulate a transient DB write failure on the
-    ``artifact._run_write_sentinel`` write path. All other write paths
-    (receipts, sweep) succeed; ``close()`` is a no-op.
-    """
-
-    def __init__(self, workspace: Path) -> None:
-        self._workspace = workspace
-        self.closed = False
-
-    def upsert_receipt(self, run_id: str, artifact_type: str, hmac_hex: str | None) -> None:
-        return None
-
-    def upsert_completion_sentinel(self, run_id: str, hmac_hex: str | None) -> None:
-        raise sqlite3.OperationalError("synthetic locked db")
-
-    def clear_run_receipts(self, run_id: str) -> None:
-        return None
-
-    def delete_completion_sentinel(self, run_id: str) -> None:
-        return None
-
-    def close(self) -> None:
-        self.closed = True
 
 
 class _DeleteRaisingDB:
@@ -284,18 +256,25 @@ class _DeleteRaisingDB:
             self._real_db = None
 
 
-def test_canonical_submit_survives_completion_db_upsert_failure(
+def test_canonical_submit_survives_receipt_db_upsert_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A transient completion-state DB failure must not lose the artifact."""
+    """A transient receipt DB failure must preserve artifact and receipt evidence."""
 
-    def _factory(workspace: Path) -> _RaisingUpsertDB:
-        return _RaisingUpsertDB(workspace)
+    def _raise_receipt_upsert(
+        self: RunStateDB,
+        run_id: str,
+        artifact_type: str,
+        hmac_hex: str | None,
+    ) -> None:
+        del self, run_id, artifact_type, hmac_hex
+        raise sqlite3.OperationalError("synthetic locked db")
 
-    _patch_db_close(
-        monkeypatch,
-        "ralph.mcp.artifacts.canonical_submit",
-        db_factory=_factory,
+    monkeypatch.setattr(
+        RunStateDB,
+        "upsert_receipt",
+        _raise_receipt_upsert,
+        raising=True,
     )
 
     workspace_root = tmp_path
@@ -330,7 +309,9 @@ status: completed
 
     assert result.artifact_path == artifact_dir / "development_result.md"
     assert result.artifact_path.read_text(encoding="utf-8") == markdown
-    assert result.receipt_path is not None
+    legacy_receipt = workspace_root / ".agent" / "receipts" / run_id / "development_result.json"
+    assert result.receipt_path == legacy_receipt
+    assert legacy_receipt.exists()
     assert artifact_receipt_present(workspace_root, run_id, "development_result")
 
 

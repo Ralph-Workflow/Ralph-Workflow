@@ -15,6 +15,10 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
+from ralph.git.commit_cleanup import (
+    add_to_git_exclude,
+    is_recognized_secret_path,
+)
 from ralph.git.operations import (
     create_commit,
     has_uncommitted_changes,
@@ -42,6 +46,13 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+_SECRET_EXCLUDE_PATTERNS = [
+    ".env",
+    ".env.local",
+    ".env.*.local",
+    "secrets.yml",
+    "credentials.json",
+]
 
 
 def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
@@ -152,11 +163,16 @@ def _stage_commit_scope(
     payload: dict[str, object],
     stage_all_fn: _StageAllFn,
 ) -> None:
+    if stage_all_fn is stage_all:
+        add_to_git_exclude(repo_root, _SECRET_EXCLUDE_PATTERNS)
     include_paths = _commit_include_paths(repo_root, payload)
     if include_paths is None:
         stage_all_fn(str(repo_root))
         return
-    _stage_files(str(repo_root), include_paths)
+    _stage_files(
+        str(repo_root),
+        [path for path in include_paths if not is_recognized_secret_path(path)],
+    )
 
 
 def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[str] | None:

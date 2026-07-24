@@ -27,3 +27,36 @@ def test_review_prompt_replaces_empty_plan_or_changes_with_placeholders() -> Non
 
     assert "(no plan available)" in prompt
     assert "(no diff available)" in prompt
+
+
+def test_review_prompt_fans_out_independent_checks_when_supported() -> None:
+    prompt = render_review_prompt("Implementation plan", "Diff summary")
+
+    assert prompt.startswith(
+        "REVIEW MODE\n"
+        "Your only job is to analyze the implementation, not to edit code or commit changes."
+    )
+    assert "subagent" in prompt.lower()
+    assert "parallel" in prompt.lower()
+    assert "main session" in prompt.lower()
+    assert "sequentially" in prompt.lower()
+    assert prompt.index("Grade the change") < prompt.rindex("## Submit")
+    assert '`declare_complete(summary="issues")`' in prompt
+
+
+def test_clean_review_prompt_requires_structured_evidence_for_every_dimension() -> None:
+    prompt = render_review_prompt("Implementation plan", "Diff summary")
+
+    assert "`## Review Evidence`" in prompt
+    assert "one item per applicable review dimension" in prompt
+    assert "one item per plan requirement and acceptance criterion" in prompt
+    assert "When `status` is `no_issues`, `## Review Evidence` must be non-empty" in prompt
+    for dimension in (
+        "Plan compliance",
+        "Security",
+        "Correctness",
+        "Performance",
+        "Maintainability",
+        "Test coverage",
+    ):
+        assert f"{dimension} |" in prompt

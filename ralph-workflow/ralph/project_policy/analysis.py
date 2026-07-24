@@ -39,6 +39,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.mcp.tools.names import (
+    DECLARE_COMPLETE_TOOL,
+    SUBMIT_MD_ARTIFACT_TOOL,
+    VERIFY_MD_ARTIFACT_TOOL,
+    RalphToolName,
+    claude_tool_name,
+    opencode_tool_name,
+)
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     load_phase_artifact,
@@ -105,6 +113,15 @@ def _string_list(value: object) -> list[str]:
     return [text for item in items if (text := str(item).strip())]
 
 
+def _transport_tool_names(tool_name: RalphToolName) -> str:
+    """Format every provider alias with the transports that expose it."""
+    return (
+        f"`{claude_tool_name(tool_name)}` for Claude, Claude Interactive, Codex, or Cursor; "
+        f"`{opencode_tool_name(tool_name)}` for OpenCode; "
+        f"`{tool_name}` for AGY, Pi, Nanocoder, or generic transports"
+    )
+
+
 def _render_prompt(workspace: Workspace) -> str:
     """Build the analysis prompt text.
 
@@ -118,12 +135,14 @@ def _render_prompt(workspace: Workspace) -> str:
         "gate_script_policy_path": f"{markers.CANONICAL_DIR}gate-script-policy.md",
         "artifact_type": ANALYSIS_ARTIFACT_TYPE,
         "policy_files": ", ".join(markers.CORE_POLICY_FILES),
+        "approved_tools": ", ".join(sorted(markers.APPROVED_GATE_TOOLS)),
+        "declare_complete_tool_names": _transport_tool_names(DECLARE_COMPLETE_TOOL),
+        "submit_tool_names": _transport_tool_names(SUBMIT_MD_ARTIFACT_TOOL),
+        "verify_tool_names": _transport_tool_names(VERIFY_MD_ARTIFACT_TOOL),
     }
     del workspace
     partials = load_partial_templates((packaged_template_root(),))
-    template = (packaged_template_root() / PROMPT_TEMPLATE_NAME).read_text(
-        encoding="utf-8"
-    )
+    template = (packaged_template_root() / PROMPT_TEMPLATE_NAME).read_text(encoding="utf-8")
     return render_template(template, variables, partials)
 
 
@@ -164,9 +183,7 @@ def read_analysis_decision(workspace: Workspace) -> AnalysisDecision:
         )
     try:
         artifact = load_phase_artifact(workspace, ANALYSIS_ARTIFACT_REL_PATH)
-        content = unwrap_phase_artifact_content(
-            artifact, expected_type=ANALYSIS_ARTIFACT_TYPE
-        )
+        content = unwrap_phase_artifact_content(artifact, expected_type=ANALYSIS_ARTIFACT_TYPE)
     except PhaseArtifactError as exc:
         return AnalysisDecision(
             status=DECISION_FAILED,

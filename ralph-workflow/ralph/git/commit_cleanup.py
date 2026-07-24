@@ -7,16 +7,27 @@ handling file deletion, gitignore updates, and git exclude patterns.
 from __future__ import annotations
 
 from contextlib import suppress
-from pathlib import Path, PurePath
-from typing import TYPE_CHECKING
+from fnmatch import fnmatchcase
+from pathlib import Path, PurePath, PurePosixPath
+from typing import TYPE_CHECKING, cast
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
-from ralph.git.operations import _atomic_append_text
+from ralph.git.operations import _atomic_append_text, stage_all
+from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+
+_TRACKED_SECRET_BASENAME_PATTERNS: tuple[str, ...] = (
+    ".env",
+    ".env.local",
+    ".env.*.local",
+    "secrets.yml",
+    "credentials.json",
+)
 
 
 def ensure_git_initialized(repo_root: Path | str) -> None:
@@ -47,7 +58,7 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
     path = PurePath(relative_path)
     if path.is_absolute() or any(part == ".." for part in path.parts):
         raise ValueError(f"Refusing to delete path outside repository root: {relative_path!r}")
-    unresolved = (repo_root_path / path)
+    unresolved = repo_root_path / path
     if unresolved.is_symlink():
         raise ValueError(
             f"Refusing to delete symlink path during commit cleanup: {relative_path!r}"
@@ -79,7 +90,13 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
 
 
 def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
-    """Append patterns to .git/info/exclude for machine-local excludes.
+    """Append machine-local excludes and safely untrack recognized secrets.
+
+    A tracked file is removed from the index only when both its basename and
+    the requested exclude pattern identify a recognized secret filename. This
+    deliberately prevents broad or project-file patterns such as ``*`` or
+    ``settings.ini`` from silently untracking source files. The working-tree
+    secret is retained.
 
     Args:
         repo_root: Path to the repository root.
@@ -99,8 +116,46 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
             payload = "\n".join(new_patterns) + "\n"
             _atomic_append_text(exclude_path, payload)
             logger.debug("Added {} patterns to .git/info/exclude", len(new_patterns))
+
+        tracked_output = cast("str", repo.git.ls_files("--cached", "-z"))
+        tracked: list[str] = [path for path in tracked_output.split("\0") if path]
+        tracked_secrets: list[str] = [
+            path
+            for path in tracked
+            if _is_recognized_secret_name(PurePosixPath(path).name)
+            and any(_sensitive_pattern_matches_path(pattern, path) for pattern in patterns)
+        ]
+        if tracked_secrets:
+            repo.git.rm("-f", "--cached", "--", *tracked_secrets)
+            logger.debug(
+                "Untracked {} recognized secret file(s) while retaining working-tree copies",
+                len(tracked_secrets),
+            )
     finally:
         repo.close()
+
+
+def _is_recognized_secret_name(name: str) -> bool:
+    """Return whether ``name`` is in the deliberately narrow secret family."""
+    return any(
+        fnmatchcase(name, secret_pattern) for secret_pattern in _TRACKED_SECRET_BASENAME_PATTERNS
+    )
+
+
+def is_recognized_secret_path(path: str) -> bool:
+    """Return whether a repository-relative path names a recognized secret."""
+    return _is_recognized_secret_name(PurePosixPath(path.replace("\\", "/")).name)
+
+
+def _sensitive_pattern_matches_path(pattern: str, tracked_path: str) -> bool:
+    """Return whether a safe secret exclude pattern selects ``tracked_path``."""
+    normalized = pattern.strip().replace("\\", "/")
+    pattern_name = PurePosixPath(normalized).name
+    if not _is_recognized_secret_name(pattern_name):
+        return False
+    if "/" in normalized:
+        return fnmatchcase(tracked_path, normalized.lstrip("/"))
+    return fnmatchcase(PurePosixPath(tracked_path).name, normalized)
 
 
 def untrack_engine_internal_files(
@@ -181,15 +236,8 @@ def untrack_engine_internal_files(
 
     untracked: list[str] = []
     try:
-        # Lazy import to avoid circular dependency; mirrors the pattern in
-        # ``ralph.phases._agent_internal_paths``. The FIVE canonical skill
-        # roots are tracked by design (see commit ``e4b47d2fb``), so we
-        # early-skip them BEFORE the symlink-WARNING block: a tracked
-        # ``.agents/skills/<name>`` symlink is intentional, not a leak.
-        from ralph.skills._agent_paths import (  # noqa: PLC0415
-            _SKILL_ROOT_PREFIXES,
-        )
-
+        # The FIVE canonical skill roots are tracked by design, so skip them
+        # before the symlink warning block.
         for entry_key in list(repo.index.entries.keys()):
             entry_path = entry_key[0] if isinstance(entry_key, tuple) else entry_key
             entry_path_str = str(entry_path)
@@ -197,9 +245,7 @@ def untrack_engine_internal_files(
                 working_tree_path = repo_root_path / entry_path_str
             except TypeError:
                 continue
-            if any(
-                entry_path_str.startswith(prefix) for prefix in _SKILL_ROOT_PREFIXES
-            ):
+            if any(entry_path_str.startswith(prefix) for prefix in _SKILL_ROOT_PREFIXES):
                 logger.debug(
                     "Skipping tracked skill-root path (canonical project-scope skills): {}",
                     entry_path_str,
@@ -231,3 +277,15 @@ def untrack_engine_internal_files(
 
     return untracked
 
+
+def stage_commit_changes_safely(repo_root: Path | str) -> None:
+    """Stage all non-secret work after applying canonical secret cleanup.
+
+    Recognized tracked secrets are removed from the index while their
+    working-tree copies remain. The same narrow patterns are persisted in the
+    repository-local exclude file before ``git add -A``, so recognized
+    untracked secrets never enter the index and all other untracked work keeps
+    the normal stage-all behavior.
+    """
+    add_to_git_exclude(repo_root, list(_TRACKED_SECRET_BASENAME_PATTERNS))
+    stage_all(repo_root)

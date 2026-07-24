@@ -6,16 +6,14 @@ step into an executor-ready unit with an explicit completion contract. The
 ``file_change`` step declares at least one ``targets`` entry and every
 ``verify`` step declares either ``verify_command`` or ``location``.
 
-The step type is a ``StepType`` StrEnum (see ``_step_contract``) so the
-closed set of kinds is self-documenting and the per-step contract helpers
-(``requires_targets`` / ``requires_verify_handle``) can be consulted
-instead of pattern-matching literal strings.
+The built-in step types are documented by ``StepType`` (see
+``_step_contract``), while project-specific descriptive values remain valid.
+The per-step contract helpers apply requirements only to recognized values.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Literal
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -56,18 +54,24 @@ class PlanStep(RalphBaseModel):
         description="Short step title (non-empty, max 500 chars).",
     )
     content: str = Field(
-        ...,
-        min_length=1,
+        default="",
         max_length=20000,
-        description="Step body / detailed content (non-empty, max 20000 chars).",
+        description="Optional step body / detailed content (max 20000 chars).",
     )
-    step_type: StepType = Field(
-        default=StepType.ACTION,
-        description="StepType; see StepType literal. file_change needs targets.",
+    step_type: str = Field(
+        default=StepType.ACTION.value,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Free-form step type. Built-in file_change needs targets; built-in "
+            "verify needs a command or location."
+        ),
     )
-    priority: Literal["critical", "high", "medium", "low"] | None = Field(
+    priority: str | None = Field(
         default=None,
-        description="Optional priority; one of critical, high, medium, low.",
+        min_length=1,
+        max_length=200,
+        description="Optional free-form scheduling/importance hint.",
     )
     targets: list[StepTarget] = Field(
         default_factory=list,
@@ -102,9 +106,14 @@ class PlanStep(RalphBaseModel):
         default=None,
         max_length=2000,
         description=(
-            "Optional verify command (max 2000 chars); required for verify steps when "
-            "location is absent."
+            "Optional verify command (max 2000 chars). Commands require an "
+            "expected_outcome; verify steps may instead name a location."
         ),
+    )
+    expected_outcome: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Observable result expected from verify_command (max 8000 chars).",
     )
 
     @field_validator("satisfies")
@@ -167,6 +176,17 @@ class PlanStep(RalphBaseModel):
             raise ValueError(msg)
         return stripped
 
+    @field_validator("expected_outcome")
+    @classmethod
+    def _validate_expected_outcome(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            msg = "expected_outcome must not be empty when provided"
+            raise ValueError(msg)
+        return stripped
+
     @model_validator(mode="after")
     def _validate_step_type_contract(self) -> PlanStep:
         if requires_targets(self.step_type) and len(self.targets) == 0:
@@ -178,6 +198,9 @@ class PlanStep(RalphBaseModel):
             and self.location is None
         ):
             msg = "verify step must declare verify_command or location"
+            raise ValueError(msg)
+        if self.verify_command is not None and self.expected_outcome is None:
+            msg = "verify_command must declare expected_outcome"
             raise ValueError(msg)
         return self
 

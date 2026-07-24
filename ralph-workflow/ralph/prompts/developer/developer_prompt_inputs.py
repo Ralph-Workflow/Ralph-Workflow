@@ -26,3 +26,8 @@ class DeveloperPromptInputs:
     prior_result_continuation: str = ""
     skills_inline_content: str = ""
     has_docs_mcp: bool = False
+    work_unit_id: str = ""
+    work_unit_description: str = ""
+    work_unit_directories: str = ""
+    worker_namespace: str = ""
+    is_continuation: bool = False

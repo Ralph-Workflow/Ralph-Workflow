@@ -124,16 +124,16 @@ class TestCheckProcessResultCompletionSeam:
                 ),
             )
 
-    def test_artifact_present_without_explicit_completion_does_not_raise(
+    def test_required_receipt_needs_completion_sentinel(
         self, tmp_path: Path
     ) -> None:
-        """Current-run receipt produces TERMINAL_COMPLETE without declare_complete.
+        """A current-run receipt is necessary but not sufficient for completion.
 
         The legacy on-disk ``.agent/artifacts/<type>.json``-only fallback
         was removed (analysis how_to_fix item 3): a stale canonical
         artifact from a previous run can no longer satisfy the current
-        run's completion gate. The hardened contract requires a
-        current-run receipt at ``.agent/receipts/<run_id>/<type>.json``.
+        run's completion gate. The hardened contract requires both the
+        current-run receipt and the explicit completion sentinel.
         """
         run_id = "seam-opencode-on-disk-run-id"
         artifact_dir = tmp_path / ".agent" / "artifacts"
@@ -157,27 +157,42 @@ class TestCheckProcessResultCompletionSeam:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
+        options = _CompletionCheckOptions(
+            execution_strategy=strategy,
+            workspace_path=tmp_path,
+            completion_run_id=run_id,
+            required_artifact=RequiredArtifact(
+                phase="development",
+                artifact_type="development_result",
+                artifact_path=".agent/artifacts/development_result.md",
+                markdown_path=None,
+                normalizer=None,
+            ),
+            policy=TimeoutPolicy(
+                idle_timeout_seconds=None,
+                parent_exit_grace_seconds=0.0,
+            ),
+        )
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                options,
+            )
+
+        sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+        sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
         _check_process_result(
             cast("ManagedProcess", handle),
             "opencode",
-            [],  # no declare_complete marker
-            _CompletionCheckOptions(
-                execution_strategy=strategy,
-                workspace_path=tmp_path,
-                completion_run_id=run_id,
-                required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
-                    markdown_path=None,
-                    normalizer=None,
-                ),
-            ),
+            [],
+            options,
         )
-        # No exception raised means required_artifact_present=True → TERMINAL_COMPLETE
 
     def test_neither_signal_nor_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
-        """No explicit completion and no artifact -> OpenCodeResumableExitError."""
+        """Missing sentinel and required receipt produces a resumable exit."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
@@ -288,46 +303,40 @@ class TestCheckProcessResultCompletionSeam:
                 ),
             )
 
-    def test_optional_artifact_absent_does_not_raise(self, tmp_path: Path) -> None:
-        """OpenCode rc=0 without artifact is terminal when artifact_required=False.
-
-        When a phase has an optional artifact contract (artifact_required=False), a clean
-        exit is terminal even without the artifact or a declare_complete signal. The
-        completion check must not raise OpenCodeResumableExitError in this case.
-        """
+    def test_optional_artifact_absent_without_sentinel_raises(
+        self, tmp_path: Path
+    ) -> None:
+        """Optional artifact policy relaxes the receipt, not declaration."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
-        _check_process_result(
-            cast("ManagedProcess", handle),
-            "opencode",
-            [],  # no declare_complete marker
-            _CompletionCheckOptions(
-                execution_strategy=strategy,
-                workspace_path=tmp_path,
-                required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
-                    markdown_path=None,
-                    normalizer=None,
-                    artifact_required=False,
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        artifact_path=".agent/artifacts/development_result.md",
+                        markdown_path=None,
+                        normalizer=None,
+                        artifact_required=False,
+                    ),
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
                 ),
-                policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
-            ),
-        )
-        # No exception raised: artifact_optional=True -> TERMINAL_COMPLETE
+            )
 
-    def test_optional_artifact_malformed_does_not_raise_at_completion_check(
+    def test_optional_artifact_malformed_without_sentinel_raises_at_completion_check(
         self, tmp_path: Path
     ) -> None:
-        """OpenCode rc=0 with a malformed optional artifact is still terminal at completion layer.
-
-        When artifact_required=False, artifact_optional=True is set regardless of whether
-        the artifact file exists or is valid. The completion check returns TERMINAL_COMPLETE.
-        Malformed-artifact validation is the execution phase's responsibility, not the
-        completion check's.
-        """
+        """A malformed optional file cannot replace the mandatory sentinel."""
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "development_result.json").write_text("not-valid-json")
@@ -335,21 +344,25 @@ class TestCheckProcessResultCompletionSeam:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
 
-        _check_process_result(
-            cast("ManagedProcess", handle),
-            "opencode",
-            [],  # no declare_complete marker
-            _CompletionCheckOptions(
-                execution_strategy=strategy,
-                workspace_path=tmp_path,
-                required_artifact=RequiredArtifact(
-                    phase="development",
-                    artifact_type="development_result",
-                    artifact_path=".agent/artifacts/development_result.md",
-                    markdown_path=None,
-                    normalizer=None,
-                    artifact_required=False,
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        artifact_path=".agent/artifacts/development_result.md",
+                        markdown_path=None,
+                        normalizer=None,
+                        artifact_required=False,
+                    ),
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
                 ),
-                policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
-            ),
-        )
+            )

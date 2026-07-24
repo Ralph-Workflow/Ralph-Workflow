@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from git import Repo
 from loguru import logger as loguru_logger
 from rich.console import Console
 
@@ -206,7 +207,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
         "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
         "## Summary\n- [S1] Need revisions\n"
         "## What Came Up Short\n- [W1] issue\n"
-        "## How To Fix\n- [F1] fix it\n",
+        "## How To Fix\n- [W1] fix it\n",
     )
     workspace.write(
         ".agent/tmp/planning_prompt.md",
@@ -284,6 +285,86 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
 
 
 class TestExecuteCommitEffect:
+    def test_pipeline_staging_excludes_tracked_and_untracked_secrets(
+        self,
+        tmp_git_repo: Path,
+    ) -> None:
+        repo = Repo(tmp_git_repo)
+        try:
+            tracked_secret = tmp_git_repo / ".env"
+            tracked_secret.write_text("initial-secret\n", encoding="utf-8")
+            repo.index.add([".env"])
+            repo.index.commit("test: add tracked secret")
+            tracked_secret.write_text("changed-secret\n", encoding="utf-8")
+            (tmp_git_repo / "credentials.json").write_text(
+                '{"token":"secret"}\n',
+                encoding="utf-8",
+            )
+            (tmp_git_repo / "safe.txt").write_text("safe\n", encoding="utf-8")
+
+            message_file = (
+                tmp_git_repo / ".agent" / "artifacts" / "commit_message.md"
+            )
+            message_file.parent.mkdir(parents=True, exist_ok=True)
+            message_file.write_text(
+                _commit_document("fix: safely stage pipeline changes"),
+                encoding="utf-8",
+            )
+            staged_at_commit: list[str] = []
+
+            def capture_commit(_root: Path | str, _message: str) -> str:
+                staged_at_commit.extend(
+                    path
+                    for path in repo.git.diff("--cached", "--name-only").splitlines()
+                    if path
+                )
+                return "sha"
+
+            result = commit_executor_module.execute_commit_effect(
+                CommitEffect(message_file=str(message_file)),
+                tmp_git_repo,
+                create_commit_fn=capture_commit,
+            )
+
+            assert result == PipelineEvent.COMMIT_SUCCESS
+            assert "safe.txt" in staged_at_commit
+            assert "credentials.json" not in staged_at_commit
+            assert ".env" not in repo.git.ls_files().splitlines()
+            assert tracked_secret.exists()
+            assert (tmp_git_repo / "credentials.json").exists()
+        finally:
+            repo.close()
+
+    def test_scoped_pipeline_staging_filters_recognized_secret_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        stage_files = MagicMock()
+        prepare = MagicMock()
+        monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
+        monkeypatch.setattr(commit_executor_module, "add_to_git_exclude", prepare)
+        monkeypatch.setattr(
+            commit_executor_module,
+            "_changed_commit_paths",
+            lambda _root: ["src/app.py", ".env.local", "config/credentials.json"],
+        )
+
+        commit_executor_module._stage_commit_scope(
+            tmp_path,
+            {
+                "files": [
+                    "src/app.py",
+                    ".env.local",
+                    "config/credentials.json",
+                ]
+            },
+            commit_executor_module.stage_all,
+        )
+
+        prepare.assert_called_once()
+        stage_files.assert_called_once_with(str(tmp_path), ["src/app.py"])
+
     def test_returns_success_when_commit_succeeds(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:

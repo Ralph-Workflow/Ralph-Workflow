@@ -21,6 +21,11 @@ class AnalysisDecision(RalphBaseModel):
 
     @model_validator(mode="after")
     def _check_status_and_remediation(self) -> Self:
+        if self.status == "completed" and (self.what_came_up_short or self.how_to_fix):
+            raise ValueError(
+                "what_came_up_short and how_to_fix must be omitted when status "
+                'is "completed"; known gaps require a non-completed status'
+            )
         if self.status in ("request_changes", "failed"):
             if not self.what_came_up_short:
                 raise ValueError(f'what_came_up_short is required when status is "{self.status}"')

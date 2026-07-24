@@ -4,72 +4,26 @@ Carries the explicit ``intent`` and ``intent_verb`` analysis fields in
 addition to the existing ``context`` and ``scope_items`` fields. ``intent`` is
 a free-form 1-line user-facing outcome (defaults to empty string so it is
 dropped by ``model_dump(exclude_defaults=True)``, mirroring ``context``).
-``intent_verb`` is a closed enum stored as ``str`` defaulting to ``""`` (also
-dropped from ``model_dump(exclude_defaults=True)``). A before-validator
-lowercases the value before the closed-set check fires (so ``Add`` and
-``ADD`` both pass), rejects unknown values, and explicitly rejects ``""`` to
-distinguish a deliberate empty value from an omitted field.
+``intent_verb`` and ``coverage_areas`` are descriptive planner hints with no
+runtime consumer. They accept project-specific vocabulary, while validators
+still normalize whitespace and reject malformed non-string values.
 """
 
 from __future__ import annotations
-
-from typing import Literal, cast
 
 from pydantic import ConfigDict, Field, field_validator
 
 from ralph.mcp.artifacts.plan._scope_item import ScopeItem
 from ralph.pydantic_compat import RalphBaseModel
 
-_INTENT_VERB_SET: frozenset[str] = frozenset(
-    {
-        "add",
-        "fix",
-        "refactor",
-        "migrate",
-        "document",
-        "investigate",
-        "improve",
-        "configure",
-        "remove",
-    }
-)
-
-CoverageArea = Literal[
-    "bugfix",
-    "feature",
-    "refactor",
-    "test",
-    "docs",
-    "infra",
-    "security",
-    "performance",
-    "migration",
-    "release",
-]
-
-_COVERAGE_AREAS: frozenset[str] = frozenset(
-    {
-        "bugfix",
-        "feature",
-        "refactor",
-        "test",
-        "docs",
-        "infra",
-        "security",
-        "performance",
-        "migration",
-        "release",
-    }
-)
+type CoverageArea = str
 
 
 class Summary(RalphBaseModel):
     """Summary section of a plan artifact.
 
-    Captures the user-facing context, the explicit intent and intent verb,
-    the scope items that bound the work, and the coverage areas the plan
-    touches. ``intent_verb`` is a closed vocabulary used by the executor to
-    choose the right kind of verification and artifact semantics.
+    Captures the user-facing context, descriptive intent hints, scope items,
+    and coverage areas. None of these vocabulary choices controls execution.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -86,7 +40,8 @@ class Summary(RalphBaseModel):
     )
     intent_verb: str = Field(
         default="",
-        description="Closed verb; see _INTENT_VERB_SET (9 values).",
+        max_length=200,
+        description="Free-form normalized planning-intent hint.",
     )
     scope_items: list[ScopeItem] = Field(
         default_factory=list,
@@ -99,7 +54,7 @@ class Summary(RalphBaseModel):
     coverage_areas: list[CoverageArea] = Field(
         default_factory=list,
         max_length=50,
-        description="Optional CoverageArea enum list (max 50); see CoverageArea literal.",
+        description="Optional free-form coverage hints (max 50).",
     )
 
     @field_validator("intent")
@@ -119,11 +74,7 @@ class Summary(RalphBaseModel):
         if not stripped:
             msg = "intent_verb must not be empty"
             raise ValueError(msg)
-        lowered = stripped.lower()
-        if lowered not in _INTENT_VERB_SET:
-            msg = f"intent_verb {value!r} is not one of: {sorted(_INTENT_VERB_SET)!r}"
-            raise ValueError(msg)
-        return lowered
+        return stripped.lower()
 
     @field_validator("coverage_areas", mode="before")
     @classmethod
@@ -138,11 +89,10 @@ class Summary(RalphBaseModel):
             if not isinstance(entry, str):
                 msg = f"coverage_areas elements must be strings, got {type(entry).__name__}"
                 raise ValueError(msg)
-            if entry not in _COVERAGE_AREAS:
-                msg = f"coverage_areas element {entry!r} is not one of: {sorted(_COVERAGE_AREAS)!r}"
-                raise ValueError(msg)
-            cleaned.append(cast("CoverageArea", entry))
+            stripped = entry.strip()
+            if stripped:
+                cleaned.append(stripped)
         return cleaned
 
 
-__all__ = ["_COVERAGE_AREAS", "_INTENT_VERB_SET", "CoverageArea", "Summary"]
+__all__ = ["CoverageArea", "Summary"]

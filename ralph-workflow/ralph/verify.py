@@ -40,15 +40,14 @@ check (``if``/``raise`` rather than ``assert`` so the checks survive
 * Raising ``_TOTAL_TEST_BUDGET_SECONDS`` or any of the per-step
   timeouts (an epsilon check pins the 60-second value to 60.0).
 
-Tests marked ``@pytest.mark.subprocess_e2e`` are excluded from the
-main ``make test`` suite, but a verify step that RUNS them is still a
-test step and is still charged against the combined budget. The
-``make test-auto-integrate-e2e`` step is the one such step: it is in
-``_KNOWN_TEST_STEP_LABELS`` and ``_BUDGET_TRACKED_STEPS``, so its
-real-git wall-clock time is summed with ``make test`` against the same
-60 seconds. "It runs under a different marker" is not an exemption --
-the budget is the combined total of every test suite ``make verify``
-runs sequentially. The single allowed skip is
+The broad ``@pytest.mark.subprocess_e2e`` profile is excluded from the
+main ``make test`` suite. Required real-git auto-integration files are
+also marked ``required_auto_integrate_e2e``, however, and the combined
+verification marker expression includes them inside ``make test``.
+Their wall-clock time is therefore charged through that budget-tracked
+step; there is no separate auto-integration step in ``_VERIFY_STEPS``.
+"It also carries a subprocess marker" is not a budget exemption. The
+single allowed skip is
 ``tests/test_verify_invariants.py`` (Python 3.14 + loguru import-order
 incompatibility; the invariants remain enforced in the main
 ``make verify`` path).
@@ -138,10 +137,11 @@ _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 #
 # _BUDGET_TRACKED_STEPS: the indices within _VERIFY_STEPS whose
 # elapsed wall-clock time counts against _TOTAL_TEST_BUDGET_SECONDS.
-# Index 2 (make test) and the LAST index (make test-auto-integrate-e2e)
-# both count: every step that runs a test suite is tracked. Adding more
-# test-related steps here does NOT increase the combined budget — the
-# cumulative tracker sums time across ALL tracked indices.
+# The current tracked entry is make test, whose combined marker profile
+# includes required_auto_integrate_e2e real-git tests. Any future step
+# that runs tests must also be tracked. Adding test-related steps does
+# NOT increase the combined budget: the cumulative tracker sums time
+# across ALL tracked indices.
 _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     (
         "ruff check ralph/ tests/",

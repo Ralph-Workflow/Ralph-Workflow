@@ -17,7 +17,9 @@ Three planner-side uses, in order of value:
 3. **Pre-finalize review fan-out** — before finalizing, dispatch one reviewer per rubric dimension (see ## PLAN QUALITY RUBRIC), each instructed to refute the draft: find the missing requirement, the invalid path, the vague verification, the contradiction. Fix every confirmed finding in the same planning pass.
 
 Hard rules:
-- Subagents are read-only against the workspace, exactly like you. They may use their native read/search tools for discovery.
+- Instruct subagents to remain read-only against the workspace, exactly like
+  you. This is a normative scope rule; do not assume every runtime enforces it
+  as a filesystem sandbox. They may use native read/search tools for discovery.
 - Only you, in the main session, call the plan MCP tools. Never delegate staging, finalization, or artifact submission to a subagent.
 - Scale to the task: a one-file fix needs no fan-out; a repo-wide or multi-subsystem task usually justifies all three uses.
 

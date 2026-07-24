@@ -592,21 +592,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_AgentRunCtx",),
         ),
         (
-            "tests/test_audit_artifact_submission_canonical_path.py",
-            "ralph.mcp.tools.artifact",
-            ("_KNOWN_ARTIFACT_TYPES",),
-        ),
-        (
-            "tests/test_audit_artifact_submission_canonical_types_sync.py",
-            "ralph.mcp.tools.artifact",
-            ("_KNOWN_ARTIFACT_TYPES",),
-        ),
-        (
-            "tests/test_canonical_artifact_submit.py",
-            "ralph.agents.execution_state._helpers",
-            ("_check_signals_terminal",),
-        ),
-        (
             "tests/test_claude_interactive_pty.py",
             "ralph.agents.registry",
             ("_seed_catalog_with_builtins",),
@@ -991,7 +976,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/parsers/__init__.py", 188),
         ("ralph/agents/parsers/__init__.py", 234),
         ("ralph/agents/registry.py", 450),
-        ("ralph/git/commit_cleanup.py", 189),
+        ("ralph/git/commit_cleanup.py", 238),
         ("ralph/mcp/tools/artifact.py", 381),
         ("ralph/mcp/tools/artifact.py", 691),
         ("ralph/mcp/tools/workspace/_media_io.py", 103),

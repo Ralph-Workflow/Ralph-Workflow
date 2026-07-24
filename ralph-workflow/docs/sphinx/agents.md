@@ -202,9 +202,10 @@ launches Pi with `--no-builtin-tools --extension <generated file>` when
 the Ralph Workflow MCP endpoint is available. The extension registers
 Ralph Workflow MCP tools through Pi's custom-tool API and proxies calls
 to the active HTTP MCP endpoint. Pi is session-capable in JSON mode: a
-clean `rc=0` exit without required artifact or completion evidence is
-retried against the captured Pi session rather than treated as terminal
-success. For the exact flag values see the [Pi section in Agent
+clean `rc=0` exit without the durable `declare_complete` sentinel, or
+without the receipt for a required artifact, is retried against the
+captured Pi session rather than treated as terminal success. For the exact
+flag values see the [Pi section in Agent
 Compatibility](agent-compatibility.md#pi-pidev).
 
 ### Cursor
@@ -254,12 +255,13 @@ Expected green parity table excerpt:
 ## Completion and observability
 
 Completion is evaluated from **durable evidence**, not from a conversational
-vibe. Ralph Workflow expects each agent invocation to produce either a phase
-artifact that satisfies the phase's declared contract, or an explicit
-`declare_complete` MCP call. If a session exits **incomplete** (without
-either signal), Ralph Workflow treats the work as incomplete rather than
-calling it done — the session can be resumed, retried, or routed through the
-next recovery path per policy.
+vibe. Every completion-enforced invocation requires the durable run-scoped
+sentinel written by `declare_complete`. Required-artifact phases also require
+the canonical run-scoped submission receipt; neither record is sufficient
+alone. Optional-artifact and artifact-free phases relax only the receipt
+requirement. If a session exits with incomplete evidence, Ralph Workflow
+treats the work as incomplete rather than calling it done — the session can
+be resumed, retried, or routed through the next recovery path per policy.
 
 Interactive transports (Claude Code in PTY, AGY in PTY) give Ralph Workflow
 better streaming **observability** into what the agent is doing during a

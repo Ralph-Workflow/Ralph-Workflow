@@ -10,8 +10,8 @@ Controlled by environment variables:
 * ``MOCK_AGY_BEHAVIOR`` - ``normal`` (default), ``quota_exhausted``, or
   ``invalid_model``.
 * ``MOCK_AGY_ARTIFACT_DIR`` - directory where ``.agent/tmp/``,
-  ``.agent/artifacts/``, and ``tmp/`` are written. Defaults to the current
-  working directory.
+  ``.agent/artifacts/``, the completion sentinel, and ``tmp/`` are written.
+  Defaults to the current working directory.
 
 The simulator honors the flag set measured from the real binary:
 ``--print``/``-p``, ``--dangerously-skip-permissions``, ``--model``,
@@ -47,6 +47,7 @@ OUTPUT_FILE_RELPATH = "tmp/interactive-agy-smoke/todo-list.js"
 # artifact plus a durable submission receipt.
 ARTIFACT_RELPATH = ".agent/tmp/smoke_test_result.md"
 PROMPT_RECEIVED_RELPATH = ".agent/artifacts/.mock_agy_prompt.txt"
+RUN_ID_ENV = "RALPH_MCP_RUN_ID"
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
@@ -116,6 +117,16 @@ def _write_smoke_test_result_artifact(artifact_dir: Path) -> Path:
     return artifact_path
 
 
+def _write_completion_sentinel(artifact_dir: Path) -> None:
+    """Simulate the mock agent's successful ``declare_complete`` MCP call."""
+    run_id = os.environ.get(RUN_ID_ENV)
+    if not run_id:
+        return
+    sentinel = artifact_dir / ".agent" / f"completion_seen_{run_id}.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+
+
 def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
     print("I will create the todo list implementation.")
     print("Using module.exports for CommonJS compatibility.")
@@ -133,12 +144,9 @@ def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
     print(f"Session ID: {session_id}")
-    # The smoke prompt for AGY (see ``smoke_plumbing._build_smoke_prompt``)
-    # intentionally does NOT instruct the model to print a transcript
-    # completion marker; the authoritative completion signal is the canonical
-    # receipt promoted from the agent's fallback Markdown artifact. The mock
-    # faithfully omits the transcript marker so test coverage matches the
-    # current prompt contract.
+    # The mock omits a spoofable transcript marker. ``main`` writes the same
+    # durable sentinel that the real ``declare_complete`` tool would produce
+    # in this no-HMAC test harness.
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -165,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_todo_list(artifact_dir)
     _write_prompt_received(artifact_dir, args.prompt)
     _write_smoke_test_result_artifact(artifact_dir)
+    _write_completion_sentinel(artifact_dir)
     _emit_normal_stdout(args.model, args.prompt)
     return 0
 

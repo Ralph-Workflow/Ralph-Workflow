@@ -20,8 +20,9 @@ Warnings are permitted because the artifact grammar explicitly uses warnings
 for tolerated descriptive vocabulary; any error diagnostic fails the audit.
 The plan format reference must additionally retain complete examples tagged
 ``example-size=tiny``, ``example-size=medium``, and ``example-size=large``. The
-large example must model a four- or five-way work-unit/subplan fan-out followed
-by one fan-in verification unit.
+large example must model a four- or five-way execution-Subplan fan-out followed
+by one main-session fan-in verification section. Each Subplan contains both an
+implementation step and its own proof gate.
 
 Usage:
     python -m ralph.testing.audit_fenced_artifact_examples
@@ -85,6 +86,7 @@ _SUBMISSION_CALL_RE: re.Pattern[str] = re.compile(
 )
 _TEMPLATE_GLOBS: tuple[str, ...] = ("*.jinja", "*.j2", "*.txt")
 _MAX_FENCE_INDENT = 3
+_MIN_EXECUTION_SUBPLAN_STEPS = 2
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,7 @@ class _PlanUnit:
     unit_id: str
     description: str
     dependencies: tuple[str, ...]
+    step_count: int = 1
 
 
 def _registered_artifact_types() -> frozenset[str]:
@@ -410,6 +413,9 @@ def _section_body(markdown: str, title: str) -> str | None:
 
 
 def _plan_units(markdown: str) -> tuple[_PlanUnit, ...]:
+    subplans = _plan_subplans(markdown)
+    if subplans:
+        return subplans
     section = _section_body(markdown, "Work Units")
     if section is None:
         section = _section_body(markdown, "Parallel Plan")
@@ -451,24 +457,96 @@ def _plan_units(markdown: str) -> tuple[_PlanUnit, ...]:
     return tuple(units)
 
 
+def _plan_subplans(markdown: str) -> tuple[_PlanUnit, ...]:
+    """Return prefix/suffix execution Subplans keyed by terminal stable step ID."""
+    headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
+    units: list[_PlanUnit] = []
+    for index, heading in enumerate(headings):
+        title = cast("str", heading.group("title"))
+        if not (
+            re.fullmatch(
+                r"(?:Sub(?:[\s-]?plan)(?:\s*[:\-\u2013\u2014]\s*|\s+).+|"
+                r".+(?:\s*[:\-\u2013\u2014]\s*|\s+)Sub(?:[\s-]?plan))",
+                title,
+                re.IGNORECASE,
+            )
+        ):
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(markdown)
+        body = markdown[heading.end() : end]
+        unit = _plan_section_unit(title, body)
+        if unit is None:
+            return ()
+        units.append(unit)
+    return tuple(units)
+
+
+def _plan_main_fan_in(markdown: str) -> _PlanUnit | None:
+    headings = list(re.finditer(r"^## (?P<title>.+?)\s*$", markdown, re.MULTILINE))
+    for index, heading in enumerate(headings):
+        title = cast("str", heading.group("title"))
+        lowered = title.casefold()
+        if "integration" not in lowered or "verif" not in lowered:
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(markdown)
+        return _plan_section_unit(title, markdown[heading.end() : end])
+    return None
+
+
+def _plan_section_unit(title: str, body: str) -> _PlanUnit | None:
+    steps = list(
+        re.finditer(r"^### \[(?P<step_id>S-\d+)\]", body, re.MULTILINE)
+    )
+    if not steps:
+        return None
+    own_step_ids = {
+        cast("str", step.group("step_id"))
+        for step in steps
+    }
+    dependencies: list[str] = []
+    for index, step in enumerate(steps):
+        end = steps[index + 1].start() if index + 1 < len(steps) else len(body)
+        step_body = body[step.start() : end]
+        for match in re.finditer(
+            r"^Depends on:\s*(?P<ids>.+)$",
+            step_body,
+            re.MULTILINE,
+        ):
+            dependency_text = cast("str", match.group("ids"))
+            dependencies.extend(
+                part.strip()
+                for part in dependency_text.split(",")
+                if part.strip() not in own_step_ids
+            )
+    return _PlanUnit(
+        cast("str", steps[-1].group("step_id")),
+        title,
+        tuple(dependencies),
+        len(steps),
+    )
+
+
 def _large_plan_shape_violation(example: _ArtifactExample) -> str | None:
-    units = _plan_units(example.markdown)
-    fan_out_count = len(units) - 1
-    if fan_out_count not in {4, 5}:
+    fan_out = _plan_subplans(example.markdown)
+    if len(fan_out) not in {4, 5}:
         return (
             "example-size=large must contain four or five independent "
-            "fan-out units plus one fan-in verification unit"
+            "execution subplans plus one main-session fan-in verification section"
         )
-    fan_out = units[:-1]
+    if any(unit.step_count < _MIN_EXECUTION_SUBPLAN_STEPS for unit in fan_out):
+        return (
+            "each example-size=large execution subplan must contain an "
+            "implementation step and its own proof gate"
+        )
     if any(unit.dependencies for unit in fan_out):
         return "example-size=large fan-out units must be mutually independent"
-    fan_in = units[-1]
-    if "verif" not in fan_in.description.lower():
-        return "example-size=large final fan-in unit must describe verification"
+    fan_in = _plan_main_fan_in(example.markdown)
+    if fan_in is None:
+        return "example-size=large must contain main-session integration and verification"
     if set(fan_in.dependencies) != {unit.unit_id for unit in fan_out}:
         return (
-            "example-size=large final verification unit must depend on every "
-            "fan-out unit"
+            "example-size=large main-session fan-in must depend on every "
+            "execution subplan"
         )
     return None
 

@@ -12,7 +12,6 @@ All chain-iteration, retry-classification, and session-resume logic lives in
 
 from __future__ import annotations
 
-import typing
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke import AgentInvocationError, invoke_agent
@@ -25,11 +24,11 @@ from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
+from ralph.git.commit_cleanup import stage_commit_changes_safely
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
     has_staged_changes,
-    stage_all,
 )
 from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
@@ -48,6 +47,7 @@ from ralph.pipeline.plumbing.commit_plumbing import (
 )
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
+from ralph.prompts._commit_diff import commit_generation_diff
 from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.scope import resolve_workspace_scope
@@ -75,30 +75,11 @@ __all__ = [
 ]
 
 
-class _RepoHeadProtocol(typing.Protocol):
-    def is_valid(self) -> bool: ...
-
-
-class _RepoGitProtocol(typing.Protocol):
-    def diff(self, *_args: object, **_kwargs: object) -> str: ...
-
-
-class _RepoProtocol(typing.Protocol):
-    head: _RepoHeadProtocol
-    git: _RepoGitProtocol
-
-
-class _RepoFactoryProtocol(typing.Protocol):
-    def __call__(self, *_args: object, **_kwargs: object) -> _RepoProtocol: ...
-
-
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
 _DEFAULT_COMMIT_AGENT = "claude"
 _VERBOSE_THRESHOLD = 2
 _MODELED_FLAG_PARTS = 2
-
-Repo: _RepoFactoryProtocol | None = None
 
 
 def commit_plumbing(
@@ -223,7 +204,7 @@ def _handle_agent_commit_generation(
 
     if apply:
         try:
-            stage_all(repo_root)
+            stage_commit_changes_safely(repo_root)
             sha = create_commit(
                 repo_root,
                 persisted_message,
@@ -334,37 +315,8 @@ def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
 
 
 def working_tree_diff(repo_root: Path) -> str:
-    """Compute the working-tree diff used by the commit generator."""
-    from ralph.executor.process import ProcessRunOptions, run_process
-    from ralph.prompts.payload_refs import sanitize_surrogates
-
-    if Repo is not None:
-        repo = Repo(repo_root)
-        try:
-            if repo.head.is_valid():
-                return sanitize_surrogates(repo.git.diff("HEAD"))
-            return sanitize_surrogates(repo.git.diff("--cached"))
-        finally:
-            close = cast("typing.Callable[[], None] | None", getattr(repo, "close", None))
-            if close is not None:
-                close()
-
-    head_check = run_process(
-        "git",
-        ["rev-parse", "--verify", "HEAD"],
-        options=ProcessRunOptions(cwd=repo_root),
-    )
-    if head_check.returncode == 0:
-        result = run_process("git", ["diff", "HEAD"], options=ProcessRunOptions(cwd=repo_root))
-    else:
-        result = run_process(
-            "git",
-            ["diff", "--cached"],
-            options=ProcessRunOptions(cwd=repo_root),
-        )
-    if result.returncode != 0:
-        return ""
-    return sanitize_surrogates(result.stdout)
+    """Compute all pending tracked and untracked work for commit generation."""
+    return commit_generation_diff(repo_root)
 
 
 render_commit_agent_activity_line = _render_commit_agent_activity_line

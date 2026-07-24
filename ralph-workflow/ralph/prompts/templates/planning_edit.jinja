@@ -8,6 +8,7 @@ You are in PLANNING EDIT MODE. Revise the existing execution plan in response to
 {% include 'shared/_session_capabilities.j2' %}
 
 {% set show_plan_edit_guidance = true %}
+{% set HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true %}
 {% include 'shared/_mcp_tools.j2' %}
 
 {% set shipped_skills_mode = 'planning' %}
@@ -128,3 +129,7 @@ When a section does need changes, rewrite it completely enough that the submitte
 Submission recap:
 - Targeted edits: {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} → {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} → {{GET_MD_DRAFT_TOOL_REFERENCE}} → {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
 - Holistic rewrite: {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} then {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document).
+
+After a valid submission or finalization receipt, call
+{{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final explicit action when
+available. Do not emit prose after that call.

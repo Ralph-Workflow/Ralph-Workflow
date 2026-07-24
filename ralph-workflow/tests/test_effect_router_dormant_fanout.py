@@ -102,7 +102,7 @@ Files:
 
 ## Verification
 - [V-1] pytest
-  Expect: passes
+  Expect: focused tests pass
 
 ## Work Units
 {unit_items}
@@ -246,3 +246,63 @@ def test_ralph_fan_out_mode_still_emits_fan_out_when_explicit() -> None:
     )
     assert isinstance(effect, FanOutEffect)
     assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
+
+
+def test_multi_unit_nested_steps_reach_ralph_fan_out_assignments(tmp_path: Path) -> None:
+    """One Work Units section must route non-empty, unit-specific step assignments."""
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "plan.md").write_text(
+        """---
+type: plan
+---
+## Work Units
+- [unit-a] Implement A
+  Directories: src/a
+
+### [S-1] Implement A
+Type: action
+
+- [unit-b] Implement B
+  Directories: src/b
+
+### [S-2] Implement B
+Type: action
+""",
+        encoding="utf-8",
+    )
+    dev_phase = PhaseDefinition(
+        drain="development",
+        role="execution",
+        transitions=PhaseTransition(on_success="complete"),
+        parallelization=PhaseParallelization(
+            mode="same_workspace",
+            dispatch_mode="ralph_fan_out",
+            max_parallel_workers=2,
+        ),
+    )
+    bundle = PolicyBundle(
+        agents=AgentsPolicy(
+            agent_chains={"developer": AgentChainConfig(agents=["claude"])},
+            agent_drains={"development": AgentDrainConfig(chain="developer")},
+        ),
+        pipeline=PipelinePolicy(
+            phases={"development": dev_phase},
+            entry_phase="development",
+            terminal_phase="complete",
+        ),
+        artifacts=ArtifactsPolicy(artifacts={}),
+    )
+
+    effect = determine_effect_from_policy(
+        PipelineState(phase="development"),
+        bundle,
+        WorkspaceScope(tmp_path),
+        config=_config_with_development_agent(),
+    )
+
+    assert isinstance(effect, FanOutEffect)
+    assert {unit.unit_id: unit.step_ids for unit in effect.work_units} == {
+        "unit-a": ["S-1"],
+        "unit-b": ["S-2"],
+    }

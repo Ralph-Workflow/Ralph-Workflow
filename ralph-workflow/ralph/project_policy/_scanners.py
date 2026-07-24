@@ -9,6 +9,7 @@ values, and never decides readiness on its own.
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from ralph.project_policy import markers
 from ralph.project_policy.models import PolicyFinding
@@ -37,7 +38,7 @@ _FACT_KEY_VALUE_RE = re.compile(r"^RALPH-FACT:\s*([^:]+):\s*(\S.*?)\s*$")
 # A RALPH-PENDING value must carry an ``(assumed <ISO-date>)`` stamp and a
 # ``review trigger: <condition>`` clause, so every deferral is visibly
 # provisional and names the condition that resurfaces it during normal dev.
-_ASSUMED_DATE_RE = re.compile(r"\(assumed \d{4}-\d{2}-\d{2}\)")
+_ASSUMED_DATE_RE = re.compile(r"\(assumed (?P<date>\d{4}-\d{2}-\d{2})\)")
 _REVIEW_TRIGGER_RE = re.compile(r"review trigger:\s*\S")
 
 # The gates whose presence is satisfied ONLY by a runnable RALPH-COMMAND or a
@@ -46,9 +47,7 @@ _REVIEW_TRIGGER_RE = re.compile(r"review trigger:\s*\S")
 # marked "never applies"; they CAN be deferred with RALPH-PENDING (e.g. a new
 # project whose test runner is not installed yet), which a dev-cycle agent
 # resolves when the trigger fires.
-_MANDATORY_GATE_FILES: frozenset[str] = frozenset(
-    {"testing-policy.md", "verification-policy.md"}
-)
+_MANDATORY_GATE_FILES: frozenset[str] = frozenset({"testing-policy.md", "verification-policy.md"})
 
 # Per-kind remediation guidance for a malformed gate-form RALPH-PENDING line.
 _PENDING_KIND_OUTCOME: dict[str, str] = {
@@ -61,14 +60,18 @@ _PENDING_KIND_OUTCOME: dict[str, str] = {
         "add an `(assumed <YYYY-MM-DD>)` stamp with a real date so the "
         "deferral is visibly provisional"
     ),
+    "invalid-date": (
+        "replace the `(assumed <YYYY-MM-DD>)` stamp with a real calendar "
+        "date so the deferral is truthfully dated"
+    ),
+    "invalid-sentinel": (
+        "start the deferred fact value with the exact `RALPH-PENDING` token followed by whitespace"
+    ),
     "no-trigger": (
         "add a `review trigger: <condition>` clause naming what resolves the "
         "deferral during normal development"
     ),
-    "placeholder": (
-        "replace the placeholder token in the RALPH-PENDING line with real "
-        "values"
-    ),
+    "placeholder": ("replace the placeholder token in the RALPH-PENDING line with real values"),
 }
 
 
@@ -97,7 +100,7 @@ def _command_values(content: str) -> list[str]:
     for line in content.splitlines():
         match = _COMMAND_VALUE_RE.match(line)
         if match is not None:
-            value = line[len(markers.COMMAND_MARKER):].strip()
+            value = line[len(markers.COMMAND_MARKER) :].strip()
             values.append(value)
     return values
 
@@ -110,7 +113,7 @@ def _command_raw_lines(content: str) -> list[str]:
     the user sees the offending line at a stable index.
     """
     return [
-        line[len(markers.COMMAND_MARKER):].strip()
+        line[len(markers.COMMAND_MARKER) :].strip()
         for line in content.splitlines()
         if _COMMAND_LINE_RE.match(line)
     ]
@@ -125,7 +128,7 @@ def _inapplicable_lines(content: str) -> list[str]:
     precise finding with the offending line number.
     """
     return [
-        line[len(markers.INAPPLICABLE_MARKER):].strip()
+        line[len(markers.INAPPLICABLE_MARKER) :].strip()
         for line in content.splitlines()
         if _INAPPLICABLE_VALUE_RE.match(line)
     ]
@@ -138,7 +141,7 @@ def _inapplicable_raw_lines(content: str) -> list[str]:
     for empty-value inapplicable lines.
     """
     return [
-        line[len(markers.INAPPLICABLE_MARKER):].strip()
+        line[len(markers.INAPPLICABLE_MARKER) :].strip()
         for line in content.splitlines()
         if _INAPPLICABLE_LINE_RE.match(line)
     ]
@@ -157,7 +160,7 @@ def _pending_values(content: str) -> list[str]:
     by :func:`_check_individual_pendings` so the user sees a precise finding.
     """
     return [
-        line[len(markers.PENDING_MARKER):].strip()
+        line[len(markers.PENDING_MARKER) :].strip()
         for line in content.splitlines()
         if _PENDING_VALUE_RE.match(line)
     ]
@@ -166,7 +169,7 @@ def _pending_values(content: str) -> list[str]:
 def _pending_raw_lines(content: str) -> list[str]:
     """Return every gate-form ``RALPH-PENDING:`` line (including empty ones)."""
     return [
-        line[len(markers.PENDING_MARKER):].strip()
+        line[len(markers.PENDING_MARKER) :].strip()
         for line in content.splitlines()
         if _PENDING_LINE_RE.match(line)
     ]
@@ -186,8 +189,14 @@ def _pending_shape_kinds(value: str, *, require_tool: bool) -> list[str]:
     kinds: list[str] = []
     if require_tool and not _command_is_approved(value):
         kinds.append("unapproved")
-    if _ASSUMED_DATE_RE.search(value) is None:
+    assumed_date = _ASSUMED_DATE_RE.search(value)
+    if assumed_date is None:
         kinds.append("undated")
+    else:
+        try:
+            date.fromisoformat(assumed_date.group("date"))
+        except ValueError:
+            kinds.append("invalid-date")
     if _REVIEW_TRIGGER_RE.search(value) is None:
         kinds.append("no-trigger")
     return kinds
@@ -204,8 +213,8 @@ def _check_individual_pendings(
     cases produce a stable ``RWP-PENDING:<file>:<kind>-<n>`` finding:
 
     * an empty ``RALPH-PENDING:`` line (``empty``);
-    * a malformed shape (``unapproved`` / ``undated`` / ``no-trigger`` /
-      ``placeholder``).
+    * a malformed shape (``unapproved`` / ``undated`` / ``invalid-date`` /
+      ``no-trigger`` / ``placeholder``).
     """
     findings: list[PolicyFinding] = []
     for index, value in enumerate(pending_values, start=1):
@@ -227,9 +236,7 @@ def _check_individual_pendings(
             PolicyFinding(
                 requirement_id=f"{markers.ID_PENDING}:{filename}:{kind}-{index}",
                 path=path,
-                missing_evidence=(
-                    f"RALPH-PENDING line {index} is malformed ({kind})"
-                ),
+                missing_evidence=(f"RALPH-PENDING line {index} is malformed ({kind})"),
                 required_outcome=_PENDING_KIND_OUTCOME[kind],
             )
             for kind in _pending_shape_kinds(value, require_tool=True)
@@ -237,16 +244,15 @@ def _check_individual_pendings(
     return findings
 
 
-def _check_pending_facts(
-    content: str, path: str, filename: str
-) -> list[PolicyFinding]:
+def _check_pending_facts(content: str, path: str, filename: str) -> list[PolicyFinding]:
     """Validate every fact-form RALPH-PENDING value's shape.
 
-    A ``RALPH-FACT`` whose value leads with the RALPH-PENDING sentinel is a
-    deferred fact. The placeholder kind is intentionally NOT re-reported here
-    (the per-fact-line placeholder scan in :func:`_check_placeholders` already
-    owns it); this helper adds the ``undated`` / ``no-trigger`` shape findings
-    specific to the deferral form.
+    A ``RALPH-FACT`` whose value leads with the exact RALPH-PENDING token is a
+    deferred fact. Near-miss prefixes fail explicitly instead of being treated
+    as valid sentinels. The placeholder kind is intentionally NOT re-reported
+    here (the per-fact-line placeholder scan in :func:`_check_placeholders`
+    already owns it); this helper adds date/trigger shape findings specific to
+    the deferral form.
     """
     findings: list[PolicyFinding] = []
     index = 0
@@ -258,18 +264,30 @@ def _check_pending_facts(
         if not value.startswith(markers.PENDING_SENTINEL):
             continue
         index += 1
+        sentinel_suffix = value[len(markers.PENDING_SENTINEL) :]
+        if sentinel_suffix and not sentinel_suffix[0].isspace():
+            findings.append(
+                PolicyFinding(
+                    requirement_id=(
+                        f"{markers.ID_PENDING}:{filename}:fact-invalid-sentinel-{index}"
+                    ),
+                    path=path,
+                    missing_evidence=(
+                        f"deferred RALPH-FACT {index} uses a near-miss RALPH-PENDING sentinel"
+                    ),
+                    required_outcome=_PENDING_KIND_OUTCOME["invalid-sentinel"],
+                )
+            )
+            continue
         for kind in _pending_shape_kinds(value, require_tool=False):
             if kind == "placeholder":
                 continue
             findings.append(
                 PolicyFinding(
-                    requirement_id=(
-                        f"{markers.ID_PENDING}:{filename}:fact-{kind}-{index}"
-                    ),
+                    requirement_id=(f"{markers.ID_PENDING}:{filename}:fact-{kind}-{index}"),
                     path=path,
                     missing_evidence=(
-                        f"deferred RALPH-FACT (RALPH-PENDING) {index} is "
-                        f"malformed ({kind})"
+                        f"deferred RALPH-FACT (RALPH-PENDING) {index} is malformed ({kind})"
                     ),
                     required_outcome=_PENDING_KIND_OUTCOME[kind],
                 )
@@ -299,7 +317,7 @@ def _fact_lines(content: str) -> list[str]:
     for line in content.splitlines():
         if not _FACT_VALUE_RE.match(line):
             continue
-        out.append(line[len(markers.FACT_MARKER):].strip())
+        out.append(line[len(markers.FACT_MARKER) :].strip())
     return out
 
 
@@ -418,4 +436,4 @@ def _command_is_approved(value: str) -> bool:
     first = _command_first_token(value)
     if not first:
         return False
-    return first in markers.APPROVED_GATE_TOOLS or first.startswith(("./", "bin/"))
+    return first in markers.APPROVED_GATE_TOOLS

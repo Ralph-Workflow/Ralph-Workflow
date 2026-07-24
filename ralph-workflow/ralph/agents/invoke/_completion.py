@@ -415,9 +415,7 @@ def _check_process_result(
     if returncode != 0:
         stderr_pipe = cast("IO[str] | None", getattr(handle, "stderr", None))
         stderr = (
-            _bounded_read(stderr_pipe)
-            if stderr_pipe is not None
-            else "(unable to read stderr)"
+            _bounded_read(stderr_pipe) if stderr_pipe is not None else "(unable to read stderr)"
         )
         exc = AgentInvocationError(
             agent_name,
@@ -556,7 +554,7 @@ def _check_process_result(
                 0,
                 (
                     "agent exited without required completion evidence "
-                    "(no artifact, no declare_complete)"
+                    "(completion sentinel missing, or required artifact receipt missing)"
                 ),
             )
 

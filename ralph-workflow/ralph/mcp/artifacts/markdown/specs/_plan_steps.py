@@ -14,13 +14,13 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._parsed_line import ParsedLine
 
 PLAN_STEP_ID_PATTERN = re.compile(r"^S-(?P<number>[1-9][0-9]*)$")
-_MALFORMED_STEP_LIKE_ID_PATTERN = re.compile(r"^(?:S|STEP)-[0-9]+$", re.IGNORECASE)
+_MALFORMED_STEP_LIKE_ID_PATTERN = re.compile(r"^(?:S|STEP)-[A-Za-z0-9_-]*$", re.IGNORECASE)
 
 
 def step_number_map(
     document: ParsedDocument, diagnostics: list[Diagnostic]
 ) -> dict[str, int]:
-    """Collect globally unique steps and diagnose numeric step-ID near misses."""
+    """Collect globally unique steps and diagnose step-ID near misses."""
     numbers: dict[str, int] = {}
     for section in document.sections:
         for block in section.blocks:

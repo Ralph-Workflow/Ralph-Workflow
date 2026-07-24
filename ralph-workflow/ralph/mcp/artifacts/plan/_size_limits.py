@@ -24,6 +24,7 @@ constraints in the per-section modules):
 | ``PlanStep.rationale`` | (none) | medium | 8000 |
 | ``PlanStep.location`` | (none) | short | 500 |
 | ``PlanStep.verify_command`` | (none) | medium | 2000 |
+| ``PlanStep.expected_outcome`` | (none) | medium | 8000 |
 | ``PlanStep.targets`` (list) | (none) | short | 100 |
 | ``PlanStep.depends_on`` (list) | (none) | short | 50 |
 | ``PlanStep.satisfies`` (list) | (none) | short | 50 |
@@ -52,6 +53,7 @@ constraints in the per-section modules):
 | ``VerificationStep.cwd`` | 200 | short | 500 |
 | ``AcceptanceCriterion.description`` | (none) | medium | 8000 |
 | ``AcceptanceCriterion.verification_step`` | (none) | medium | 2000 |
+| ``AcceptanceCriterion.expected_outcome`` | (none) | medium | 8000 |
 | ``AcceptanceCriterion.evidence_path`` | (none) | short | 1000 |
 | ``AcceptanceCriterion.satisfied_by_steps`` (list) | (none) | short | 50 |
 | ``EvidenceRef.ref`` | 200 | short | 1000 |

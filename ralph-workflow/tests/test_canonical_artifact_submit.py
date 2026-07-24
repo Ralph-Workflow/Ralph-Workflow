@@ -9,17 +9,17 @@ from typing import TYPE_CHECKING
 import pytest
 
 import ralph.mcp.artifacts as artifacts_package
+from ralph.agents import completion_signals as completion_signals_module
 from ralph.agents.completion_signals import (
     CompletionSignals,
     _check_completion_sentinel,
+    completion_signals_terminal,
+    evaluate_completion,
     is_artifact_submitted,
 )
-from ralph.agents.execution_state._helpers import _check_signals_terminal
 from ralph.mcp.artifacts import SubmitResult, submit_artifact_canonical
 from ralph.mcp.artifacts import canonical_submit as canonical_submit_module
-from ralph.mcp.artifacts import completion_receipts as completion_receipts_module
 from ralph.mcp.artifacts.completion_receipts import (
-    ReceiptPersistenceError,
     artifact_receipt_present,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -29,6 +29,7 @@ from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
+from ralph.phases.required_artifacts import RequiredArtifact
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
@@ -129,6 +130,7 @@ Outcome: The plan is persisted without a completion sentinel.
 - [AC-01] A valid plan receives a run-scoped receipt
   Satisfied by: S-1
   Verify: pytest tests/test_canonical_artifact_submit.py -q
+  Expect: the focused test file reports all tests passed
 
 ## Risks
 - [R-1] Stale JSON assumptions survive
@@ -175,6 +177,8 @@ class _Session:
     session_id: str = "test-session"
     drain: str = "development"
     broker_secret: str | None = None
+    worker_artifact_dir: Path | None = None
+    worker_namespace: Path | None = None
 
     def check_capability(self, capability: str) -> bool:
         return capability == "artifact.submit"
@@ -248,21 +252,20 @@ def test_submit_artifact_canonical_returns_result_and_writes_markdown(
         assert hasattr(result, field.name)
 
 
-def test_submit_artifact_canonical_writes_receipt_and_sentinel(
+def test_submit_artifact_canonical_writes_receipt_without_declaring_completion(
     tmp_path: Path,
     backend: MemoryBackend,
 ) -> None:
     result = _submit(tmp_path, "commit_message", COMMIT_MESSAGE, backend=backend)
 
-    assert result.receipt_path is not None
+    assert result.receipt_path == tmp_path / ".agent" / "state.db"
     assert artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
-    assert result.sentinel_path is not None
     db = RunStateDB(tmp_path)
     try:
-        assert db.get_completion_sentinel_hmac("run-1") is not MISSING
+        assert db.get_completion_sentinel_hmac("run-1") is MISSING
     finally:
         db.close()
-    assert _check_completion_sentinel(tmp_path, "run-1")
+    assert not _check_completion_sentinel(tmp_path, "run-1")
     assert result.handoff_path is None
 
 
@@ -283,6 +286,203 @@ def test_submit_artifact_canonical_writes_byte_identical_handoff(
     assert backend.read_text(result.artifact_path) == DEVELOPMENT_RESULT
 
 
+def test_worker_submission_keeps_artifact_and_handoff_inside_worker_namespace(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    workspace: MockWorkspace,
+) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    session = _Session(
+        run_id="run-worker",
+        worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
+    )
+
+    result = handle_submit_md_artifact(
+        session,
+        workspace,
+        {
+            "artifact_type": "development_result",
+            "content": DEVELOPMENT_RESULT,
+        },
+        deps=_deps(backend),
+    )
+
+    assert result.is_error is False
+    assert (
+        backend.read_text(worker_namespace / "artifacts" / "development_result.md")
+        == DEVELOPMENT_RESULT
+    )
+    assert (
+        backend.read_text(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md")
+        == DEVELOPMENT_RESULT
+    )
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.md")
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+    assert artifact_receipt_present(
+        tmp_path,
+        "run-worker",
+        "development_result",
+        backend=backend,
+    )
+
+
+def test_two_worker_handoffs_do_not_overwrite_each_other(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    workspace: MockWorkspace,
+) -> None:
+    first_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    second_namespace = tmp_path / ".agent" / "workers" / "unit-web"
+    first_result = DEVELOPMENT_RESULT.replace(
+        "Completed the Markdown migration.",
+        "Completed unit-api.",
+    )
+    second_result = DEVELOPMENT_RESULT.replace(
+        "Completed the Markdown migration.",
+        "Completed unit-web.",
+    )
+
+    for run_id, namespace, content in (
+        ("run-api", first_namespace, first_result),
+        ("run-web", second_namespace, second_result),
+    ):
+        submitted = handle_submit_md_artifact(
+            _Session(
+                run_id=run_id,
+                worker_artifact_dir=namespace / "artifacts",
+                worker_namespace=namespace,
+            ),
+            workspace,
+            {"artifact_type": "development_result", "content": content},
+            deps=_deps(backend),
+        )
+        assert submitted.is_error is False
+
+    assert backend.read_text(first_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") == first_result
+    assert (
+        backend.read_text(second_namespace / "handoffs" / "DEVELOPMENT_RESULT.md") == second_result
+    )
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+
+
+def test_repeated_worker_submission_does_not_archive_shared_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    backend: MemoryBackend,
+    workspace: MockWorkspace,
+) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    shared_handoff = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+    backend.write_text(shared_handoff, "coordinator-owned handoff")
+    session = _Session(
+        run_id="run-worker",
+        worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
+    )
+    updated_result = DEVELOPMENT_RESULT.replace(
+        "Completed the Markdown migration.",
+        "Completed unit-api after a second pass.",
+    )
+    deps = ArtifactHandlerDeps(
+        backend=backend,
+        now_iso=lambda: "2026-07-24T00:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        "ralph.mcp.tools.md_artifact._resolve_history_enabled",
+        lambda *_args: True,
+    )
+
+    for content in (DEVELOPMENT_RESULT, updated_result):
+        submitted = handle_submit_md_artifact(
+            session,
+            workspace,
+            {"artifact_type": "development_result", "content": content},
+            deps=deps,
+        )
+        assert submitted.is_error is False
+
+    assert (
+        backend.read_text(worker_namespace / "artifacts" / "development_result.md")
+        == updated_result
+    )
+    assert backend.read_text(shared_handoff) == "coordinator-owned handoff"
+    worker_history_dir = worker_namespace / "artifacts" / "history" / "development_result"
+    assert not backend.exists(worker_history_dir / "20260724T000000_development_result.md")
+    assert not backend.exists(worker_history_dir / "20260724T000000_1_development_result.md")
+
+
+def test_worker_fallback_promotion_uses_worker_artifact_and_handoff_paths(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-api"
+    fallback = worker_namespace / "tmp" / "development_result.md"
+    artifact_path = worker_namespace / "artifacts" / "development_result.md"
+    backend.write_text(fallback, DEVELOPMENT_RESULT)
+
+    assert is_artifact_submitted(
+        tmp_path,
+        "run-worker-fallback",
+        "development_result",
+        deps=deps,
+        artifact_path=str(artifact_path),
+    )
+
+    assert backend.read_text(artifact_path) == DEVELOPMENT_RESULT
+    assert (
+        backend.read_text(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md")
+        == DEVELOPMENT_RESULT
+    )
+    assert not backend.exists(fallback)
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.md")
+    assert not backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+
+
+def test_completion_evaluation_passes_required_artifact_path_to_submission_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_path = ".agent/workers/unit-api/artifacts/development_result.md"
+    observed: dict[str, object] = {}
+
+    def _submitted(
+        workspace_root: Path,
+        run_id: str,
+        artifact_type: str,
+        *,
+        deps: ArtifactHandlerDeps | None = None,
+        receipt_secret: str | None = None,
+        artifact_path: str | None = None,
+    ) -> bool:
+        del deps, receipt_secret
+        observed.update(
+            workspace_root=workspace_root,
+            run_id=run_id,
+            artifact_type=artifact_type,
+            artifact_path=artifact_path,
+        )
+        return True
+
+    monkeypatch.setattr(completion_signals_module, "is_artifact_submitted", _submitted)
+
+    signals = evaluate_completion(
+        tmp_path,
+        required_artifact=RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            artifact_path=artifact_path,
+            markdown_path=None,
+            normalizer=None,
+        ),
+        run_id="run-worker",
+    )
+
+    assert signals.required_artifact_present is True
+    assert observed["artifact_path"] == artifact_path
+
+
 def test_submit_artifact_canonical_plan_has_receipt_without_sentinel(
     tmp_path: Path,
     backend: MemoryBackend,
@@ -291,7 +491,6 @@ def test_submit_artifact_canonical_plan_has_receipt_without_sentinel(
 
     assert result.artifact_path == tmp_path / ".agent" / "artifacts" / "plan.md"
     assert artifact_receipt_present(tmp_path, "run-1", "plan", backend=backend)
-    assert result.sentinel_path is None
     assert result.handoff_path is not None
     assert backend.read_text(result.handoff_path) == PLAN
 
@@ -341,6 +540,47 @@ def test_new_run_clears_markdown_fallbacks_without_cleaning_unrelated_json(
 
     assert not backend.exists(markdown_fallback)
     assert backend.read_text(unrelated_state) == "opaque internal state"
+
+
+def test_new_worker_run_clears_only_its_namespaced_output_documents(
+    tmp_path: Path,
+    backend: MemoryBackend,
+) -> None:
+    worker_tmp = tmp_path / ".agent" / "workers" / "unit-api" / "tmp"
+    worker_fallback = worker_tmp / "development_result.md"
+    sibling_fallback = (
+        tmp_path / ".agent" / "workers" / "unit-web" / "tmp" / "development_result.md"
+    )
+    shared_fallback = tmp_path / ".agent" / "tmp" / "development_result.md"
+    worker_artifact = (
+        tmp_path / ".agent" / "workers" / "unit-api" / "artifacts" / "development_result.md"
+    )
+    worker_handoff = (
+        tmp_path / ".agent" / "workers" / "unit-api" / "handoffs" / "DEVELOPMENT_RESULT.md"
+    )
+    sibling_artifact = (
+        tmp_path / ".agent" / "workers" / "unit-web" / "artifacts" / "development_result.md"
+    )
+    backend.write_text(worker_fallback, DEVELOPMENT_RESULT)
+    backend.write_text(sibling_fallback, DEVELOPMENT_RESULT)
+    backend.write_text(shared_fallback, DEVELOPMENT_RESULT)
+    backend.write_text(worker_artifact, DEVELOPMENT_RESULT)
+    backend.write_text(worker_handoff, DEVELOPMENT_RESULT)
+    backend.write_text(sibling_artifact, DEVELOPMENT_RESULT)
+
+    canonical_submit_module._clear_worker_artifacts(
+        tmp_path,
+        "run-worker",
+        worker_namespace=worker_tmp.parent,
+        backend=backend,
+    )
+
+    assert not backend.exists(worker_fallback)
+    assert not backend.exists(worker_artifact)
+    assert not backend.exists(worker_handoff)
+    assert backend.exists(sibling_fallback)
+    assert backend.exists(sibling_artifact)
+    assert backend.exists(shared_fallback)
 
 
 def test_default_backend_is_used_when_deps_is_none(tmp_path: Path) -> None:
@@ -398,53 +638,6 @@ def test_invalid_markdown_submission_preserves_last_valid_canonical_state(
         db.close()
 
 
-def test_receipt_failure_propagates_from_current_persistence_module(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def _raise_persistence(*_args: object, **_kwargs: object) -> None:
-        raise ReceiptPersistenceError("durable receipt unavailable")
-
-    monkeypatch.setattr(
-        canonical_submit_module,
-        "write_artifact_receipt",
-        _raise_persistence,
-    )
-
-    with pytest.raises(ReceiptPersistenceError, match="durable receipt unavailable"):
-        _submit(tmp_path, "commit_message", COMMIT_MESSAGE, backend=backend)
-
-    assert not artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
-    db = RunStateDB(tmp_path)
-    try:
-        assert db.get_completion_sentinel_hmac("run-1") is MISSING
-    finally:
-        db.close()
-
-
-def test_receipt_db_failure_uses_legacy_durable_fallback(
-    tmp_path: Path,
-    backend: MemoryBackend,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def _raise_sqlite(*_args: object, **_kwargs: object) -> None:
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(
-        completion_receipts_module.RunStateDB,
-        "upsert_receipt",
-        _raise_sqlite,
-        raising=True,
-    )
-
-    _submit(tmp_path, "commit_message", COMMIT_MESSAGE, backend=backend)
-
-    legacy = tmp_path / ".agent" / "receipts" / "run-1" / "commit_message.json"
-    assert backend.exists(legacy)
-    assert artifact_receipt_present(tmp_path, "run-1", "commit_message", backend=backend)
-
-
 def test_completion_sentinel_returns_false_when_db_and_file_writes_fail(
     tmp_path: Path,
     workspace: MockWorkspace,
@@ -499,14 +692,46 @@ def test_explicit_completion_marker_alone_is_not_terminal() -> None:
         required_artifact_present=False,
         artifact_types=(),
     )
-    assert not _check_signals_terminal(signals)
+    assert not completion_signals_terminal(signals)
 
 
-def test_explicit_completion_with_sentinel_is_terminal() -> None:
+def test_completion_sentinel_is_terminal_without_artifact_contract() -> None:
     signals = CompletionSignals(
-        explicit_complete=True,
+        explicit_complete=False,
         required_artifact_present=False,
         artifact_types=(),
         completion_sentinel_present=True,
     )
-    assert _check_signals_terminal(signals)
+    assert completion_signals_terminal(signals)
+
+
+def test_required_artifact_receipt_without_completion_sentinel_is_not_terminal() -> None:
+    signals = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=True,
+        artifact_types=("development_result",),
+        artifact_required=True,
+    )
+    assert not completion_signals_terminal(signals)
+
+
+def test_completion_sentinel_without_required_artifact_receipt_is_not_terminal() -> None:
+    signals = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=False,
+        artifact_types=(),
+        completion_sentinel_present=True,
+        artifact_required=True,
+    )
+    assert not completion_signals_terminal(signals)
+
+
+def test_required_artifact_receipt_and_completion_sentinel_are_terminal() -> None:
+    signals = CompletionSignals(
+        explicit_complete=False,
+        required_artifact_present=True,
+        artifact_types=("development_result",),
+        completion_sentinel_present=True,
+        artifact_required=True,
+    )
+    assert completion_signals_terminal(signals)

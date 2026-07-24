@@ -27,6 +27,7 @@ def test_materialize_master_prompt_creates_prompt_history_snapshot(
     materialize_master_prompt(
         workspace_root=tmp_path,
         name="planning",
+        planning_style=True,
     )
 
     history_path = tmp_path / ".agent" / "prompt_history" / "PROMPT_20260508T120000Z.md"
@@ -51,6 +52,7 @@ def test_materialize_master_prompt_refreshes_product_criteria_from_prompt_md(
     master_prompt_path = materialize_master_prompt(
         workspace_root=tmp_path,
         name="planning",
+        planning_style=True,
     )
 
     assert product_criteria_path.read_text(encoding="utf-8") == "new prompt"
@@ -80,9 +82,10 @@ def test_materialize_master_prompt_includes_current_plan_handoff_when_present(
     master_prompt = Path(master_prompt_path).read_text(encoding="utf-8")
     assert str(plan_path) in master_prompt
     assert master_prompt.startswith("This is the session's master prompt")
+    assert f"The durable copy of this master prompt is at:\n`{master_prompt_path}`" in master_prompt
     assert (
-        "survive context compaction — after any compaction, resume, "
-        "or continuation, re-read this file" in master_prompt
+        f"after any context compaction, resume, or continuation, re-read "
+        f"`{master_prompt_path}`" in master_prompt
     )
     assert "product criteria / task request is a DIFFERENT document" in master_prompt
     assert (
@@ -109,6 +112,7 @@ def test_materialize_master_prompt_ignores_plan_handoff_during_planning(
     master_prompt_path = materialize_master_prompt(
         workspace_root=tmp_path,
         name="planning",
+        planning_style=True,
     )
 
     master_prompt = Path(master_prompt_path).read_text(encoding="utf-8")
@@ -117,10 +121,31 @@ def test_materialize_master_prompt_ignores_plan_handoff_during_planning(
     assert "source of truth for the current goal" in master_prompt
     assert master_prompt.startswith("This is the session's master prompt")
     assert "task request (product criteria) is a DIFFERENT document" in master_prompt
+    assert f"The durable copy of this master prompt is at:\n`{master_prompt_path}`" in master_prompt
     assert (
-        "survive context compaction — after any compaction, resume, "
-        "or continuation, re-read this file" in master_prompt
+        f"after any context compaction, resume, or continuation, re-read "
+        f"`{master_prompt_path}`" in master_prompt
     )
+
+
+def test_materialize_master_prompt_uses_semantic_planning_style_for_custom_phase_name(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "PROMPT.md").write_text("Design the work", encoding="utf-8")
+    stale_plan = tmp_path / ".agent" / "PLAN.md"
+    stale_plan.write_text("# Stale Plan\n\nDo not reuse.\n", encoding="utf-8")
+
+    master_prompt_path = materialize_master_prompt(
+        workspace_root=tmp_path,
+        name="blueprint",
+        planning_style=True,
+    )
+
+    master_prompt = Path(master_prompt_path).read_text(encoding="utf-8")
+    assert str(stale_plan) not in master_prompt
+    assert "task request (product criteria) is a DIFFERENT document" in master_prompt
+    assert f"`{master_prompt_path}`" in master_prompt
 
 
 def test_materialize_master_prompt_uses_worker_namespace_without_shared_singletons(

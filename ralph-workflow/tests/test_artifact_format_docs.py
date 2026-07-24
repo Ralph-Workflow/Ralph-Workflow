@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib import import_module
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -23,10 +24,17 @@ from ralph.mcp.artifacts.format_docs import (
 )
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec, registered_specs
+from ralph.mcp.artifacts.markdown.specs import ANALYSIS_DECISION_SPECS
+from ralph.pipeline.work_units import (
+    parse_work_units_from_artifact,
+    validate_for_same_workspace,
+)
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 
 _POLICY_REMEDIATION_ANALYSIS_DECISION = "policy_remediation_analysis_decision"
+_ANALYSIS_DECISION_TYPES = tuple(spec.artifact_type for spec in ANALYSIS_DECISION_SPECS)
 _CLOSED_STATUS_VOCABULARIES = {
+    "issues": ("issues_found", "no_issues"),
     "development_result": ("completed", "partial"),
     "planning_analysis_decision": ("completed", "request_changes", "failed"),
     "development_analysis_decision": ("completed", "request_changes", "failed"),
@@ -66,6 +74,38 @@ def test_policy_remediation_analysis_decision_ships_a_validated_format_contract(
         get_spec(_POLICY_REMEDIATION_ANALYSIS_DECISION),
     )
     assert [item for item in diagnostics if item.severity == "error"] == []
+
+
+@pytest.mark.parametrize("artifact_type", _ANALYSIS_DECISION_TYPES)
+def test_analysis_format_docs_teach_relational_decision_invariants(
+    artifact_type: str,
+) -> None:
+    doc = load_bundled_format_doc(artifact_type)
+
+    assert doc is not None
+    normalized = " ".join(doc.split())
+    assert "A `completed` decision that includes either remediation section" in normalized
+    assert "missing, extra, or mismatched IDs" in normalized
+    assert "same stable ID" in normalized
+
+
+def test_development_analysis_example_uses_self_run_current_evidence() -> None:
+    doc = load_bundled_format_doc("development_analysis_decision")
+
+    assert doc is not None
+    assert "was not executed" not in doc
+    assert ("Running `pytest tests/mcp/test_md_closed_vocabulary_diagnostics.py -q` reports") in doc
+    assert "Run the exact pytest target for the parser and record the output." not in doc
+
+
+def test_policy_remediation_inline_example_matches_problem_and_fix_ids() -> None:
+    doc = load_bundled_format_doc(_POLICY_REMEDIATION_ANALYSIS_DECISION)
+
+    assert doc is not None
+    assert doc.count("- [PR-1]") == 2
+    assert doc.count("- [PR-2]") == 2
+    assert "- [W-1]" not in doc
+    assert "- [FIX-1]" not in doc
 
 
 @pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
@@ -228,13 +268,71 @@ def test_plan_doc_teaches_recommended_outline_without_requiring_a_skeleton() -> 
         "evaluatable",
         "Tiny task: compact checklist",
         "Medium task: conventional linear plan",
-        "Large task: five-work-unit fan-out",
+        "Large task: four-subplan fan-out with main-session fan-in",
         "explicit fan-in integration and verification",
     ):
         assert phrase in doc
     assert doc.count("```markdown") >= 3
     assert "Required sections:" not in doc
     assert "closed shapes" not in doc
+
+
+def test_large_plan_example_has_four_independent_subplans_then_fan_in() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    large = doc.split("```markdown artifact=plan example-size=large\n", 1)[1].split("```", 1)[0]
+
+    content, diagnostics = parse_and_validate(large, get_spec("plan"))
+
+    assert diagnostics == []
+    steps = cast("list[dict[str, object]]", content["steps"])
+    assert [step["number"] for step in steps] == [
+        10,
+        11,
+        20,
+        21,
+        30,
+        31,
+        40,
+        41,
+        50,
+        51,
+    ]
+    units = cast("list[dict[str, object]]", content["work_units"])
+    assert [unit["unit_id"] for unit in units] == [
+        "subplan-s-10",
+        "subplan-s-20",
+        "subplan-s-30",
+        "subplan-s-40",
+    ]
+    assert [unit["step_ids"] for unit in units] == [
+        ["S-10", "S-11"],
+        ["S-20", "S-21"],
+        ["S-30", "S-31"],
+        ["S-40", "S-41"],
+    ]
+    assert not {unit["unit_id"] for unit in units} & {f"S-{step['number']}" for step in steps}
+    work_units_plan = parse_work_units_from_artifact(content)
+    assert work_units_plan is not None
+    validate_for_same_workspace(work_units_plan)
+    assert large.count(" Subplan\n") == 4
+    assert "## Integration and Verification\n" in large
+
+
+def test_plan_doc_teaches_fail_closed_consumed_sections_and_free_form_vocabularies() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    normalized = " ".join(doc.split())
+
+    for phrase in (
+        "exact, case-sensitive `## Work Units` or `## Parallel Plan` heading",
+        "fails closed",
+        "Acceptance-criterion items are criteria, never phantom work units",
+        "Project-specific `Type:` values and target actions are preserved verbatim",
+        "built-in `file_change` and `verify` contracts",
+        "arbitrary headings remain descriptive",
+    ):
+        assert phrase in normalized
 
 
 @pytest.mark.parametrize(
@@ -264,3 +362,15 @@ def test_commit_message_doc_teaches_closed_type_vocabulary() -> None:
     assert "`commit`" in doc
     assert "`skip`" in doc
     assert "coerc" not in doc.lower()
+
+
+def test_format_docs_teach_tolerant_descriptive_extensions() -> None:
+    index = load_bundled_format_index()
+    assert "Unknown descriptive frontmatter fields and sections are accepted" in index
+    assert "unrecognized vocabulary choices such as a status" not in index
+
+    for artifact_type in ("commit_message", "product_spec", "fix_result"):
+        doc = load_bundled_format_doc(artifact_type)
+        assert doc is not None
+        assert "Unknown descriptive frontmatter fields and sections are accepted" in doc
+        assert "unknown sections" not in doc.lower()

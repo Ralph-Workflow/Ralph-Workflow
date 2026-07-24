@@ -56,6 +56,7 @@ Run the markdown artifact suites.
 Type: verify
 Depends on: S-1
 Verify: pytest tests/mcp/test_md_plan_spec.py -q
+Expect: the focused markdown-plan tests pass with exit code 0
 
 ## Critical Files
 - [CF-1] ralph/mcp/artifacts/markdown/specs/plan.py
@@ -80,6 +81,7 @@ Non-goals:
 - [AC-01] The plan grammar contains no JSON anywhere
   Satisfied by: S-1
   Verify: pytest tests/mcp/test_md_plan_spec.py -q
+  Expect: the focused markdown-plan tests pass with exit code 0
 
 ## Risks
 - [R-1] Validation drift between markdown and the canonical model
@@ -186,6 +188,9 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
     ]
     assert steps[1]["depends_on"] == [1]
     assert steps[1]["verify_command"] == "pytest tests/mcp/test_md_plan_spec.py -q"
+    assert steps[1]["expected_outcome"] == (
+        "the focused markdown-plan tests pass with exit code 0"
+    )
 
     critical = cast("dict[str, object]", content["critical_files"])
     assert critical["primary_files"] == [
@@ -215,6 +220,9 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
     assert criteria[0]["id"] == "AC-01"
     assert criteria[0]["satisfied_by_steps"] == [1]
     assert criteria[0]["verification_step"] == "pytest tests/mcp/test_md_plan_spec.py -q"
+    assert criteria[0]["expected_outcome"] == (
+        "the focused markdown-plan tests pass with exit code 0"
+    )
 
     risks = cast("list[dict[str, object]]", content["risks_mitigations"])
     assert risks[0]["severity"] == "medium"
@@ -228,7 +236,7 @@ def test_plan_document_maps_to_canonical_content_without_json() -> None:
     }
 
 
-def test_plan_spec_warns_and_coerces_non_security_vocabulary() -> None:
+def test_plan_spec_preserves_descriptive_execution_vocabularies() -> None:
     document = (
         _plan_document()
         .replace("intent_verb: add", "intent_verb: invented")
@@ -243,25 +251,30 @@ def test_plan_spec_warns_and_coerces_non_security_vocabulary() -> None:
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
 
     assert all(diagnostic.severity == "warning" for diagnostic in diagnostics)
-    assert {diagnostic.rule_id for diagnostic in diagnostics} == {
-        "SPEC009",
-        "PLAN002",
-        "PLAN003",
-        "PLAN005",
-        "PLAN006",
-        "PLAN007",
-        "PLAN008",
-    }
+    assert {diagnostic.rule_id for diagnostic in diagnostics} == {"PLAN006"}
     summary = cast("dict[str, object]", content["summary"])
-    assert summary["intent_verb"] == "add"
-    assert summary["coverage_areas"] == ["feature"]
+    assert summary["intent_verb"] == "invented"
+    assert summary["coverage_areas"] == ["feature", "invented"]
     scope_items = cast("list[dict[str, object]]", summary["scope_items"])
-    assert scope_items[0]["category"] == "other"
+    assert scope_items[0]["category"] == "invented"
     steps = _steps(content)
-    assert "step_type" not in steps[0] or steps[0]["step_type"] == "action"
+    assert steps[0]["step_type"] == "invented"
     first_target = cast("list[dict[str, object]]", steps[0]["targets"])[0]
-    assert first_target["action"] == "modify"
+    assert first_target["action"] == "invented"
     assert first_target["path"] == "ralph/mcp/artifacts/markdown/specs/plan.py"
+    risks = cast("list[dict[str, object]]", content["risks_mitigations"])
+    assert risks[0]["severity"] == "invented"
+
+
+def test_critical_file_action_is_free_form_descriptive_content() -> None:
+    document = _plan_document().replace("Action: modify", "Action: inspect-only")
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert diagnostics == []
+    critical = cast("dict[str, object]", content["critical_files"])
+    primary = cast("list[dict[str, object]]", critical["primary_files"])
+    assert primary[0]["action"] == "inspect-only"
 
 
 def test_unknown_field_label_in_step_is_prose_with_warning() -> None:
@@ -316,7 +329,9 @@ def test_step_type_contracts_hard_fail_with_step_anchored_diagnostics() -> None:
         "",
     )
     no_verify = _plan_document().replace(
-        "Verify: pytest tests/mcp/test_md_plan_spec.py -q\n\n## Critical Files",
+        "Verify: pytest tests/mcp/test_md_plan_spec.py -q\n"
+        "Expect: the focused markdown-plan tests pass with exit code 0\n\n"
+        "## Critical Files",
         "\n## Critical Files",
     )
 
@@ -333,7 +348,7 @@ def test_step_type_contracts_hard_fail_with_step_anchored_diagnostics() -> None:
     )
 
 
-def test_required_item_fields_are_enforced_at_the_item_line() -> None:
+def test_only_consumed_verification_expectation_is_enforced_at_the_item_line() -> None:
     document = _plan_document().replace(
         "  Mitigation: Reuse the canonical plan normalizer on the mapped content.\n", ""
     ).replace("  Expect: focused tests pass\n", "")
@@ -343,8 +358,7 @@ def test_required_item_fields_are_enforced_at_the_item_line() -> None:
     assert content == {}
     errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
     assert {diagnostic.rule_id for diagnostic in errors} == {"PLAN020"}
-    assert {diagnostic.section for diagnostic in errors} == {"Risks", "Verification"}
-    assert any("Mitigation" in diagnostic.message for diagnostic in errors)
+    assert {diagnostic.section for diagnostic in errors} == {"Verification"}
     assert any("Expect" in diagnostic.message for diagnostic in errors)
 
 
@@ -355,7 +369,11 @@ def test_malformed_and_duplicate_step_ids_are_rejected() -> None:
     _, duplicate_diagnostics = parse_and_validate(duplicate, PLAN_SPEC)
     _, malformed_diagnostics = parse_and_validate(malformed, PLAN_SPEC)
 
-    assert any(diagnostic.rule_id == "REF002" for diagnostic in duplicate_diagnostics)
+    assert any(
+        diagnostic.rule_id == "PLAN022"
+        and "duplicate step ID 'S-1'" in diagnostic.message
+        for diagnostic in duplicate_diagnostics
+    )
     assert any(
         diagnostic.rule_id == "PLAN022" and "STEP-2" in diagnostic.message
         for diagnostic in malformed_diagnostics
@@ -415,6 +433,7 @@ Files:
 - [AC-02] Beta behavior is observable
   Satisfied by: S-2
   Verify: pytest tests/test_beta.py -q
+  Expect: the beta tests pass with exit code 0
 """
 
     content, diagnostics = parse_and_validate(document, PLAN_SPEC)
@@ -432,7 +451,6 @@ type: plan
   Directories: src/alpha
 - [beta] Implement beta after alpha
   Directories: src/beta
-  Depends on: alpha
 
 ## Alpha Mini Plan
 ### [S-1] Implement alpha
@@ -461,14 +479,95 @@ Depends on: S-1
             "unit_id": "alpha",
             "description": "Implement alpha independently",
             "allowed_directories": ["src/alpha"],
+            "step_ids": ["S-1"],
         },
         {
             "unit_id": "beta",
             "description": "Implement beta after alpha",
             "allowed_directories": ["src/beta"],
             "dependencies": ["alpha"],
+            "step_ids": ["S-2"],
         },
     ]
+
+
+@pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
+def test_parallel_unit_dependencies_must_resolve(section: str) -> None:
+    document = f"""---
+type: plan
+---
+## Steps
+### [S-1] Implement the change
+Apply the bounded change.
+
+## {section}
+- [alpha] Implement alpha
+  Directories: src/alpha
+  Depends on: missing
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.section == section
+        and "unknown" in diagnostic.message.casefold()
+        and "missing" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+@pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
+def test_consumed_parallel_fields_remain_strict_when_malformed(section: str) -> None:
+    document = f"""---
+type: plan
+---
+## Steps
+### [S-1] Implement the change
+Apply the bounded change.
+
+## {section}
+- [alpha] Implement alpha
+  Directories:
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.section == section
+        and diagnostic.rule_id == "PLAN020"
+        and "requires a value" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+@pytest.mark.parametrize("section", ["Work Units", "Parallel Plan"])
+def test_parallel_unit_dependencies_must_form_a_dag(section: str) -> None:
+    document = f"""---
+type: plan
+---
+## Steps
+### [S-1] Implement the change
+Apply the bounded change.
+
+## {section}
+- [alpha] Implement alpha
+  Directories: src/alpha
+  Depends on: beta
+- [beta] Implement beta
+  Directories: src/beta
+  Depends on: alpha
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+
+    assert content == {}
+    assert any(
+        diagnostic.section == section
+        and "cycle" in diagnostic.message.casefold()
+        for diagnostic in diagnostics
+    )
 
 
 def test_step_ids_are_unique_across_nested_mini_plans() -> None:
@@ -555,6 +654,7 @@ def test_replacing_a_step_with_its_own_block_round_trips_identically() -> None:
         "Type: verify\n"
         "Depends on: S-1\n"
         "Verify: pytest tests/mcp/test_md_plan_spec.py -q\n"
+        "Expect: the focused markdown-plan tests pass with exit code 0\n"
     )
 
     edited = edit_plan_step_markdown(document, "replace", "S-2", block)

@@ -21,27 +21,26 @@ Artifact submission touches several run-scoped files:
   alongside the auxiliary ``state.db-wal`` / ``state.db-shm`` files that
   the kernel manages for the WAL)
 - ``.agent/receipts/<run_id>/<artifact_type>.json`` — the legacy
-  completion-receipt file path; **read-fallback only** during the dual-read
-  rollout window so an in-flight run that was upgraded mid-run still
-  passes its completion gate. Production writes do not create this file.
+  completion-receipt file path; **read-fallback** during the dual-read
+  rollout window and **durable-fallback** when the canonical database write
+  fails. A normal successful database-backed submission does not create it.
 - ``.agent/completion_seen_<run_id>.json`` — the legacy completion-sentinel
   file path; **read-fallback / durable-fallback only** (used when the DB
-  write fails and during the dual-read rollout window). Production writes
-  do not create this file.
+  write fails and during the dual-read rollout window). A normal successful
+  database-backed completion write does not create it.
 - ``.agent/tmp/<artifact_type>.json`` — the **obsolete** prompt-side JSON
-  fallback file from the pre-markdown era; new runs clear any leftovers
-  (``_clear_fallback_artifacts``) and nothing promotes them anymore
+  fallback file from the pre-markdown era; nothing recognizes or promotes
+  it, and Markdown fallback cleanup does not treat unrelated JSON state as
+  an artifact fallback
 - ``.agent/tmp/<artifact_type>.md`` — an agent-written markdown fallback;
   ``promote_fallback_artifact`` validates it through the same registered
   markdown spec as the MCP tools before routing it through canonical submit
 
 The classification matters: ``.agent/receipts/<run_id>/<artifact_type>.json``
 and ``.agent/completion_seen_<run_id>.json`` are **legacy paths**, not the
-normal canonical store. They appear in the audit allowlist (under
-``ralph/testing/audit_artifact_submission_canonical_path.py``) only as
-read-fallback / durable-fallback surfaces, never as production write targets.
-Anything that writes one of these files outside a documented fallback path
-is a contract bypass.
+normal canonical store. The receipt and coordination persistence helpers may
+write them only when the database path fails; normal-case direct writers are
+contract bypasses.
 
 When different code paths write these files directly, the following failures
 become possible:
@@ -68,9 +67,14 @@ The only allowed writers are:
    ``ralph_discard_md_draft``) writes only the per-type draft file
    ``.<artifact_type>.draft.md`` via ``ralph.mcp.artifacts.md_draft_io``,
    never the canonical artifact, receipt, or sentinel surfaces.
-2. Type-specific layout modules (``commit_message.py``,
-   ``smoke_test_result.py``) that are explicitly allowlisted because they
-   implement the file-format details used by the canonical backend.
+2. ``ralph.mcp.artifacts.completion_receipts.write_artifact_receipt`` —
+   the receipt writer used by canonical submit. It writes
+   ``.agent/state.db`` first and uses the legacy receipt file only as a
+   durable fallback.
+3. ``ralph.mcp.tools.coordination.handle_declare_complete`` — the sole
+   phase-completion operation. It writes the sentinel through
+   ``_write_completion_sentinel``, using ``.agent/state.db`` first and the
+   legacy sentinel file only as a durable fallback.
 
 ``promote_fallback_artifact`` supports the markdown fallback path used when an
 agent writes ``.agent/tmp/<artifact_type>.md`` instead of calling the MCP tool.
@@ -81,7 +85,6 @@ after successful submission. Invalid or absent fallback documents return
 
 No other module may:
 
-- call ``store.submit_artifact``,
 - call ``write_artifact_receipt`` or ``delete_artifact_receipt`` directly,
 - write to ``.agent/receipts/`` as a **production** write (the audit
   recognises the read-fallback / durable-fallback surfaces only; a
@@ -90,17 +93,17 @@ No other module may:
 - write to ``.agent/completion_seen_*.json`` as a **production** write
   (same caveat as above),
 - write to ``.agent/state.db`` directly — the SQLite surface is owned by
-  ``RunStateDB`` and the canonical-submit chain; bypass writers bypass
-  validation, logging, and history snapshotting,
+  ``RunStateDB`` and the receipt/completion persistence helpers; bypass
+  writers bypass validation and durability handling,
 - write to the canonical artifact files under ``.agent/artifacts/`` or
   their ``.agent/<TYPE>.md`` handoff copies outside the canonical chain
-  (the audit's static path patterns additionally flag any write to the
-  legacy ``.agent/artifacts/<canonical-type>.json`` and
+  (the audit's static path patterns flag canonical ``.md`` names and the
+  obsolete ``.agent/artifacts/<canonical-type>.json`` and
   ``.agent/tmp/<canonical-type>.json`` names).
 
-The set of canonical artifact types is defined in
-``ralph/testing/audit_artifact_submission_canonical_path.py`` and kept in sync
-with ``ralph.mcp.tools.artifact._KNOWN_ARTIFACT_TYPES``.
+The set of canonical artifact types is defined by the public read-only
+``ralph.mcp.tools.artifact.KNOWN_ARTIFACT_TYPES`` constant. The audit imports
+that source directly.
 
 ## Canonical entry point
 
@@ -134,59 +137,74 @@ The function:
    when the type has a handoff path.
 5. Stamps the run-scoped receipt by upserting one row into
    ``.agent/state.db`` via ``RunStateDB.upsert_receipt`` (RFC-013 P3).
-   When the DB write raises ``sqlite3.Error`` or ``OSError`` on open or
-   upsert, a durable-fallback write lands at the legacy
+   When the DB write raises ``OSError``, ``RuntimeError``, or
+   ``sqlite3.Error`` on open or upsert, a durable-fallback write lands at the legacy
    ``.agent/receipts/<run_id>/<artifact_type>.json`` path so the gate
    still has evidence.
-6. For single-shot artifact types, writes the completion sentinel by
-   upserting one row into ``.agent/state.db`` via
-   ``RunStateDB.upsert_completion_sentinel`` so a model that stops without
-   calling ``declare_complete`` is not force-retried. The same durable-
-   fallback rule applies to ``.agent/completion_seen_<run_id>.json``.
-   For the current completion gate, a run-scoped artifact receipt is
-   already sufficient completion evidence for required-artifact flows;
-   ``declare_complete`` remains useful as an explicit signal but is not
-   the sole path to terminal completion.
+6. If both receipt stores fail, restores the previous artifact and handoff,
+   removes history entries created by the failed attempt, and propagates
+   ``ReceiptPersistenceError``. A failed submission therefore leaves neither
+   new canonical content nor a false receipt.
 
-The receipt is written strictly after the artifact and handoff files, so if
-the function raises before stamping it, the completion gate sees no
-submission evidence for the run.
+Canonical submit never writes a completion sentinel. After a successful
+submission, the agent must call ``declare_complete``. That handler upserts
+``RunStateDB.upsert_completion_sentinel`` and falls back durably to
+``.agent/completion_seen_<run_id>.json`` for the same persistence exceptions.
+If neither store succeeds, the tool returns an error and does not claim
+completion.
+
+For a required-artifact phase, terminal completion is the conjunction of:
+
+- a valid run-scoped receipt for the required artifact, and
+- a valid run-scoped sentinel written by ``declare_complete``.
+
+A receipt alone says only “artifact persisted”; a sentinel alone says only
+“agent declared completion”. Optional-artifact and artifact-free phases relax
+the receipt requirement, not the sentinel requirement. Plain transcript text
+is never authoritative.
 
 ## Run-id binding rule
 
 The bridge ``run_id`` is the receipt key. There is no separate label or
 secondary source of truth for the receipt namespace. Every caller — the MCP
 handler and the completion-signal layer — threads the same ``run_id`` into
-``submit_artifact_canonical``. After RFC-013 P3, the
-receipt is **always written to ``.agent/state.db``** (one row keyed on
-``(run_id, artifact_type)``) via ``RunStateDB.upsert_receipt``; the completion
-sentinel (for single-shot types) is **always written to ``.agent/state.db``**
-(one row keyed on ``run_id``) via ``RunStateDB.upsert_completion_sentinel``.
+``submit_artifact_canonical``. After RFC-013 P3, the canonical receipt write
+first targets ``.agent/state.db`` (one row keyed on ``(run_id,
+artifact_type)``) via ``RunStateDB.upsert_receipt``. The later, explicit
+``declare_complete`` call targets the same database with a separate row keyed
+on ``run_id`` via ``RunStateDB.upsert_completion_sentinel``.
 The legacy file paths ``.agent/receipts/<run_id>/<artifact_type>.json`` and
 ``.agent/completion_seen_<run_id>.json`` are **legacy read-fallback and
-durable-fallback paths only** — production writes never create them under
-RFC-013 P3. They exist so an in-flight run that was upgraded mid-run still
-passes its completion gate, and so a DB write failure (``sqlite3.Error`` /
-``OSError`` on open or upsert) can still produce durable evidence through
-the legacy file path. See ``commit_plumbing.py:611-620`` for the prior fix
-that locked the ``run_id`` binding into the commit plumbing path, and
-``ralph/mcp/artifacts/state_db.py`` for the canonical SQLite surface.
+durable-fallback paths only**. They exist so an in-flight run that was
+upgraded mid-run still passes its completion gate, and so a DB write failure
+(``OSError``, ``RuntimeError``, or ``sqlite3.Error`` on open or upsert) can
+still produce durable evidence through the legacy file path. See
+``ralph/pipeline/plumbing/commit_plumbing.py`` for commit-path run-id
+threading and ``ralph/mcp/artifacts/state_db.py`` for the canonical SQLite
+surface.
 
 ## Markdown fallback promotion
 
-When an agent cannot call the submit tool, it may write the complete document
-to ``.agent/tmp/<type>.md``. The completion gate then uses the same validation
-and submission path as an MCP submission:
+When an agent cannot call the submit tool, it writes the complete document to
+``.agent/tmp/<type>.md`` and still calls ``declare_complete`` as its final
+action. The completion gate then uses the same validation and submission path
+as an MCP submission:
 
 - ``promote_fallback_artifact`` reads ``.agent/tmp/<type>.md``, validates it
   with the registered ``MdArtifactSpec``, and calls
   ``submit_artifact_canonical`` only when there are no error diagnostics.
 - Successful promotion removes the temporary markdown file. Missing, unreadable,
   unknown-type, and invalid documents remain unsubmitted and stamp no receipt.
-- ``_clear_fallback_artifacts`` removes stale temporary markdown documents and
-  obsolete ``.agent/tmp/*.json`` files when a new run starts.
-- ``is_artifact_submitted`` attempts markdown fallback promotion before checking
-  for the run-scoped receipt.
+- ``_clear_fallback_artifacts`` removes stale registered
+  ``.agent/tmp/<type>.md`` documents when a new run starts and leaves JSON
+  state untouched.
+- ``is_artifact_submitted`` first checks for the run-scoped receipt. If no
+  receipt exists, it attempts markdown fallback promotion and reports
+  submission only when that canonical promotion succeeds.
+- A valid required-artifact fallback therefore produces the missing receipt
+  and joins the already-durable completion sentinel. An invalid fallback
+  produces no receipt, so its sentinel alone cannot terminate the phase and
+  the session remains retryable instead of hanging.
 
 The MCP tools, staged-draft finalization, and markdown fallback promotion all
 converge on ``submit_artifact_canonical``.
@@ -200,10 +218,10 @@ allowlisted sites.
 
 It detects:
 
-- ``Path(...).write_text(...)`` or ``backend.write_text(...)`` targeting a
-  protected path.
+- ``Path(...).write_text(...)``, ``write_bytes(...)``, or
+  ``backend.write_text(...)`` targeting a protected path.
 - ``open(...)`` targeting a protected path.
-- Calls to ``store.submit_artifact``.
+- File-copy and rename operations targeting a protected path.
 - Calls to ``write_artifact_receipt`` / ``delete_artifact_receipt``.
 
 It skips:
@@ -211,11 +229,6 @@ It skips:
 - ``tests/``
 - ``ralph/testing/audit_artifact_submission_canonical_path.py``
 - ``ralph/mcp/artifacts/canonical_submit.py``
-- ``ralph/mcp/artifacts/commit_message.py``
-- ``ralph/mcp/artifacts/smoke_test_result.py``
-- Code between ``# === BEGIN CANONICAL SUBMIT OPS ===`` and
-  ``# === END CANONICAL SUBMIT OPS ===`` markers in
-  ``ralph/mcp/tools/artifact.py``
 
 The audit is enforced as a mandatory ``make verify`` step. A bypass fails
 verification with output like:
@@ -226,7 +239,7 @@ ralph/evil.py:42: [ARTIFACT-BYPASS] receipt_write: direct write to .agent/receip
 
 ## Adding a new canonical artifact type
 
-1. Add the type to ``_KNOWN_ARTIFACT_TYPES`` in
+1. Add the type to ``KNOWN_ARTIFACT_TYPES`` in
    ``ralph/mcp/tools/artifact.py``. The audit's ``_CANONICAL_TYPES`` is
    derived from this set via import, so no separate audit update is needed.
 2. Declare an ``MdArtifactSpec`` for the type under
@@ -234,37 +247,21 @@ ralph/evil.py:42: [ARTIFACT-BYPASS] receipt_write: direct write to .agent/receip
    package registers every spec on import via
    ``ralph.mcp.artifacts.markdown.registry``).
 3. Add a format doc under ``ralph/mcp/artifacts/format_docs/``.
-4. If the type needs custom layout logic, add it in a type-specific module
-   under ``ralph/mcp/artifacts/`` and add the module path to
-   ``_FILE_ALLOWLIST`` in the audit.
-
-## Allowlist markers
-
-If a legitimate write must live outside the canonical module, bound it with
-inline markers and document why in a comment:
-
-```python
-# === BEGIN CANONICAL SUBMIT OPS ===
-# This block is part of the canonical artifact-submission chain and is
-# allowlisted by audit_artifact_submission_canonical_path.
-write_artifact_receipt(workspace_root, run_id, artifact_type)
-# === END CANONICAL SUBMIT OPS ===
-```
-
-Do not use the markers to hide unrelated writes. The audit is a guardrail,
-not a general-purpose escape hatch.
+4. Keep persistence in ``submit_artifact_canonical``. A new type-specific
+   parser or validator is not a reason to add a writer exemption.
 
 ## Audit invariants
 
-Five module-level constants are guarded by ``if``/``raise RuntimeError`` checks
-at import time: ``_CANONICAL_TYPES``, ``_FILE_ALLOWLIST``,
-``_CANONICAL_BLOCK_START``, ``_CANONICAL_BLOCK_END``, ``_SKIP_DIRS``.
+Three module-level constants are guarded by ``if``/``raise RuntimeError``
+checks at import time: ``_CANONICAL_TYPES``, ``_FILE_ALLOWLIST``, and
+``_SKIP_DIRS``.
 ``RuntimeError`` is used instead of ``assert`` because Python's ``-O`` flag
 strips all ``assert`` statements, which would silently disable the invariants
 in optimized builds. The path-existence check on ``_FILE_ALLOWLIST`` entries
 ensures every allowlisted module actually exists on disk; a renamed or deleted
-layout module causes an immediate import failure rather than a silent audit
-gap.
+canonical writer causes an immediate import failure rather than a silent audit
+gap. The allowlist contains only ``canonical_submit.py``; comments or
+type-specific modules do not create exemptions.
 
 Every invariant is tested in ``test_audit_artifact_submission_canonical_path.py``
 under normal ``python`` execution and under ``python -O`` to confirm immunity
@@ -272,13 +269,14 @@ to optimization stripping.
 
 ## Detection coverage
 
-Four new AST detection categories have been added to the audit:
+The audit also covers these filesystem operations:
 
 - ``shutil.copy``, ``shutil.copy2``, ``shutil.copyfile``, ``shutil.copytree``,
   ``shutil.move`` — file-copy operations that could duplicate a protected file
   outside the canonical chain.
 - ``os.rename``, ``os.renames``, ``os.replace`` — filesystem renames that could
-  move a receipt or artifact file out from under the canonical bookkeeping.
+  place a receipt or artifact at a protected destination outside canonical
+  bookkeeping.
 - ``pathlib.Path.replace``, ``pathlib.Path.rename`` — the pathlib equivalents
   of the ``os``-module rename operations.
 
@@ -289,23 +287,24 @@ where ``dst`` resolves to ``.agent/receipts/x.json`` would be flagged.
 
 ## Canonical types sync
 
-The audit module imports ``_CANONICAL_TYPES`` directly from
-``ralph.mcp.tools.artifact._KNOWN_ARTIFACT_TYPES`` instead of maintaining a
-separate hardcoded set. The set matches the eleven artifact types that have
-registered markdown specs (``plan``, the three ``*_analysis_decision`` types,
+The audit module derives ``_CANONICAL_TYPES`` directly from
+``ralph.mcp.tools.artifact.KNOWN_ARTIFACT_TYPES`` instead of maintaining a
+separate hardcoded set. That source stays aligned with the registered markdown
+spec types, including ``plan``, every ``*_analysis_decision`` type,
 ``development_result``, ``product_spec``, ``issues``, ``fix_result``,
-``smoke_test_result``, ``commit_cleanup``, ``commit_message``).
+``smoke_test_result``, ``commit_cleanup``, and ``commit_message``.
 
 This single-source-of-truth arrangement means any future canonical type added
-to ``_KNOWN_ARTIFACT_TYPES`` propagates automatically to the audit — no
+to ``KNOWN_ARTIFACT_TYPES`` propagates automatically to the audit — no
 manual sync is needed. ``test_audit_artifact_submission_canonical_types_sync.py``
 pins the equality so drift is caught at test time.
 
 ## Smoke plumbing
 
 ``artifact_submitted`` in ``SmokeRunResult`` is computed by calling
-``is_artifact_submitted`` instead of a raw file-presence check. With the
-fallback promotion path removed, this reduces to canonical receipt
-presence: a run counts as submitted only when the markdown submission
-stamped a receipt, so a stray or malformed artifact file never reports
+``is_artifact_submitted`` instead of a raw file-presence check. That helper
+accepts an existing canonical receipt; if no receipt exists, it validates and
+promotes ``.agent/tmp/smoke_test_result.md`` through canonical submission. A
+run counts as submitted only when the receipt already exists or promotion
+succeeds and stamps one, so a stray or malformed artifact file never reports
 ``artifact_submitted=True``.

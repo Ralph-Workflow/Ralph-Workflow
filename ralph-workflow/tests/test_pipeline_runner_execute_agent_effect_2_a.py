@@ -580,7 +580,7 @@ class TestExecuteAgentEffectA:
             "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
             "## Summary\n- [S1] Need revisions\n"
             "## What Came Up Short\n- [W1] issue\n"
-            "## How To Fix\n- [F1] fix it\n",
+            "## How To Fix\n- [W1] fix it\n",
             encoding="utf-8",
         )
         prompt_file = tmp_path / "PROMPT.md"
@@ -671,6 +671,80 @@ class TestExecuteAgentEffectA:
         assert call["worker_artifact_dir"] == worker_ns / "artifacts"
         assert call["worker_namespace"] == worker_ns
         assert worker_ns in call["allowed_roots"]
+
+    def test_master_prompt_materialization_detects_custom_planning_phase_semantically(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        captured: dict[str, object] = {}
+        ctx = MagicMock()
+        ctx.workspace_scope.root = tmp_path
+        ctx.effect.phase = "blueprint"
+        ctx.effect.drain = "plan_output"
+        ctx.worker_namespace = None
+        ctx.policy_bundle = None
+
+        def _fake_materialize_master_prompt(**kwargs: object) -> str:
+            captured.update(kwargs)
+            return "master.md"
+
+        required_artifact = MagicMock()
+        required_artifact.artifact_type = "plan"
+        pipeline_deps = MagicMock()
+        pipeline_deps.master_prompt_materializer = _fake_materialize_master_prompt
+        result = effect_executor_module._materialize_master_prompt(
+            ctx,
+            pipeline_deps,
+            required_artifact=required_artifact,
+        )
+
+        assert result == "master.md"
+        assert captured["name"] == "blueprint"
+        assert captured["planning_style"] is True
+
+    def test_master_prompt_materializer_internal_type_error_is_not_retried(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ctx = MagicMock()
+        ctx.workspace_scope.root = tmp_path
+        ctx.effect.phase = "blueprint"
+        ctx.effect.drain = "plan_output"
+        ctx.worker_namespace = None
+        ctx.policy_bundle = None
+        calls = 0
+
+        def _broken_materializer(
+            workspace_root: Path,
+            name: str,
+            default_product_criteria: str | None = None,
+            worker_namespace: Path | None = None,
+            planning_style: bool = False,
+        ) -> str:
+            nonlocal calls
+            del (
+                workspace_root,
+                name,
+                default_product_criteria,
+                worker_namespace,
+                planning_style,
+            )
+            calls += 1
+            raise TypeError("materializer implementation failed")
+
+        required_artifact = MagicMock()
+        required_artifact.artifact_type = "plan"
+        pipeline_deps = MagicMock()
+        pipeline_deps.master_prompt_materializer = _broken_materializer
+
+        with pytest.raises(TypeError, match="materializer implementation failed"):
+            effect_executor_module._materialize_master_prompt(
+                ctx,
+                pipeline_deps,
+                required_artifact=required_artifact,
+            )
+
+        assert calls == 1
 
     def test_execute_agent_effect_worker_mode_does_not_clear_shared_phase_artifacts(
         self,

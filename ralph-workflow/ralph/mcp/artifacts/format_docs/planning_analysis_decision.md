@@ -1,8 +1,8 @@
 # planning_analysis_decision artifact format
 
-You are reporting the outcome of a planning analysis review: whether the
-plan is executor-ready, needs changes, or must be redone. Author markdown
-and submit with `ralph_submit_md_artifact`
+You are reporting whether the plan faithfully translates the product criteria
+into an executor-ready handoff, needs changes, or must be redone. Author
+markdown and submit with `ralph_submit_md_artifact`
 (`artifact_type: planning_analysis_decision`).
 
 See the complete sample artifact — valid format and a model of the craft:
@@ -58,10 +58,14 @@ status: request_changes
   required/omitted rule. Give each gap the SAME stable ID in both sections
   (e.g. `PA-001` in `## What Came Up Short` and `## How To Fix`); downstream
   phases cite that ID to prove closure, so keep IDs unique and stable.
+  The two sections must form a one-to-one mapping with the same stable ID for
+  each gap and fix; missing, extra, or mismatched IDs are rejected.
 
 ## Hard errors vs warnings
 
 Hard errors: missing or multiple Summary items; `request_changes`/`failed`
-without non-empty What Came Up Short and How To Fix; wrong `type`;
-duplicate item IDs; any grammar violation; or a `status` outside
-`completed`, `request_changes`, and `failed`.
+without non-empty What Came Up Short and How To Fix; wrong `type`; duplicate
+item IDs; any grammar violation; or a `status` outside `completed`,
+`request_changes`, and `failed`. A `completed` decision that includes either
+remediation section is a hard error. Remediation sections with missing, extra,
+or mismatched IDs are also hard errors.

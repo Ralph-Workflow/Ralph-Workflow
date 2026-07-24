@@ -25,9 +25,7 @@ def test_planning_capabilities_expose_only_markdown_artifact_tools() -> None:
 def test_template_variables_name_the_native_markdown_surface() -> None:
     capabilities = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
 
-    variables = capability_template_variables(
-        capabilities.capabilities, capabilities.policy_flags
-    )
+    variables = capability_template_variables(capabilities.capabilities, capabilities.policy_flags)
 
     assert variables["SUBMIT_MD_ARTIFACT_TOOL_NAME"] == "ralph_submit_md_artifact"
     assert variables["VERIFY_MD_ARTIFACT_TOOL_NAME"] == "ralph_verify_md_artifact"
@@ -37,7 +35,7 @@ def test_template_variables_name_the_native_markdown_surface() -> None:
     assert variables["EDIT_MD_PLAN_STEP_TOOL_NAME"] == "ralph_edit_md_plan_step"
 
 
-def test_prefixed_template_variables_keep_bare_markdown_aliases_visible() -> None:
+def test_prefixed_template_variables_use_only_provider_visible_names() -> None:
     capabilities = SessionCapabilities.defaults_for_drain(
         SessionDrain.PLANNING,
         tool_name_prefix="mcp__ralph__",
@@ -50,6 +48,7 @@ def test_prefixed_template_variables_keep_bare_markdown_aliases_visible() -> Non
     )
 
     reference = variables["SUBMIT_MD_ARTIFACT_TOOL_REFERENCE"]
-    assert "mcp__ralph__ralph_submit_md_artifact" in reference
-    assert "ralph_submit_md_artifact" in reference
-    assert RalphToolName.SUBMIT_MD_ARTIFACT.value in variables["MCP_TOOLS_LIST"]
+    assert reference == "`mcp__ralph__ralph_submit_md_artifact`"
+    listed_tools = variables["MCP_TOOLS_LIST"].split(", ")
+    assert "mcp__ralph__ralph_submit_md_artifact" in listed_tools
+    assert RalphToolName.SUBMIT_MD_ARTIFACT.value not in listed_tools

@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_fix_result_content
 
@@ -34,19 +34,6 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
     }
 
 
-def _validate_type(document: ParsedDocument) -> list[Diagnostic]:
-    if document.frontmatter["type"] == "fix_result":
-        return []
-    return [
-        Diagnostic(
-            document.frontmatter_lines["type"],
-            None,
-            "FIX001",
-            "frontmatter 'type' must be 'fix_result'",
-        )
-    ]
-
-
 def _normalize(content: dict[str, object]) -> dict[str, object]:
     return normalize_fix_result_content(content)
 
@@ -54,6 +41,9 @@ def _normalize(content: dict[str, object]) -> dict[str, object]:
 FIX_RESULT_SPEC = MdArtifactSpec(
     artifact_type="fix_result",
     required_frontmatter=frozenset({"type"}),
+    closed_frontmatter={
+        "type": FrontmatterVocabulary(("fix_result",), "FIX001"),
+    },
     sections={
         "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
         "Files Changed": SectionRule(require_items=True, allow_body=True),
@@ -61,7 +51,8 @@ FIX_RESULT_SPEC = MdArtifactSpec(
     },
     to_content=_to_content,
     normalize_content=_normalize,
-    validate_document=_validate_type,
+    allow_unknown_frontmatter=True,
+    allow_unknown_sections=True,
 )
 
 register_spec(FIX_RESULT_SPEC)

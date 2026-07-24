@@ -5,7 +5,8 @@ from typing import cast
 
 import pytest
 
-from ralph.prompts.template_engine import TemplateRenderingError, render_template
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_rendering_error import TemplateRenderingError
 from ralph.prompts.types import (
     Capability,
     CapabilitySet,
@@ -25,6 +26,33 @@ def test_render_template_replaces_variables() -> None:
     )
 
     assert rendered == "Hello, Ada!"
+
+
+def test_render_template_collapses_static_blank_runs_without_mutating_payload() -> None:
+    payload = "first\n\n\n\n\nsecond"
+
+    rendered = render_template(
+        "Before\n\n\n\n\n{{ PAYLOAD }}\n\n\n\n\nAfter",
+        {"PAYLOAD": payload},
+        {},
+    )
+
+    assert rendered == f"Before\n\n{payload}\n\nAfter"
+    assert payload in rendered
+
+
+def test_render_template_preserves_overlapping_payload_values() -> None:
+    rendered = render_template(
+        "{{ LONG }} | {{ SHORT }}",
+        {"LONG": "RALPH PAYLOAD", "SHORT": "RALPH"},
+        {},
+    )
+
+    assert rendered == "RALPH PAYLOAD | RALPH"
+
+
+def test_render_template_normalizes_when_supplied_variable_is_unused() -> None:
+    assert render_template("Hello\n\n\nworld", {"UNUSED": "x"}, {}) == "Hello\n\nworld"
 
 
 def test_render_template_renders_partials_with_variables() -> None:

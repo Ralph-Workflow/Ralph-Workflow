@@ -35,11 +35,11 @@ status: request_changes
 
 ## What Came Up Short
 
-- [DA-001] The verification strategy was not executed for the parser change.
+- [DA-001] Running `pytest tests/mcp/test_md_closed_vocabulary_diagnostics.py -q` reports `test_analysis_duplicate_status_diagnostic_names_every_accepted_value` failing because the duplicate-status diagnostic omits the accepted status vocabulary.
 
 ## How To Fix
 
-- [DA-001] Run the exact pytest target for the parser and record the output.
+- [DA-001] Update the duplicate-status diagnostic to list every accepted status, then rerun `pytest tests/mcp/test_md_closed_vocabulary_diagnostics.py -q` until `test_analysis_duplicate_status_diagnostic_names_every_accepted_value` passes.
 ```
 
 ## Frontmatter
@@ -59,10 +59,14 @@ status: request_changes
   (e.g. `DA-001` in `## What Came Up Short` and `## How To Fix`); that ID is
   what the next development result cites in `## Analysis Items Addressed`,
   so keep IDs unique and stable.
+  The two sections must form a one-to-one mapping with the same stable ID for
+  each gap and fix; missing, extra, or mismatched IDs are rejected.
 
 ## Hard errors vs warnings
 
 Hard errors: missing or multiple Summary items; `request_changes`/`failed`
-without non-empty What Came Up Short and How To Fix; wrong `type`;
-duplicate item IDs; any grammar violation; or a `status` outside
-`completed`, `request_changes`, and `failed`.
+without non-empty What Came Up Short and How To Fix; wrong `type`; duplicate
+item IDs; any grammar violation; or a `status` outside `completed`,
+`request_changes`, and `failed`. A `completed` decision that includes either
+remediation section is a hard error. Remediation sections with missing, extra,
+or mismatched IDs are also hard errors.

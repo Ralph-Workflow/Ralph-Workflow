@@ -1,8 +1,8 @@
-"""Smoke plumbing end-to-end canonical receipt tests.
+"""Smoke plumbing end-to-end canonical artifact-evidence tests.
 
 Tests both the Claude branch (through handle_submit_md_artifact) and the AGY
 branch (through direct file write + promotion) to ensure the canonical receipt
-path is stamped in both cases.
+path is stamped in both cases without implicitly declaring completion.
 """
 
 from __future__ import annotations
@@ -159,6 +159,7 @@ def test_smoke_claude_branch_end_to_end_uses_canonical_submit(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted is True
+    assert result.explicit_completion_seen is False
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
@@ -186,5 +187,6 @@ def test_smoke_agy_fallback_end_to_end_uses_canonical_submit(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted is True
+    assert result.explicit_completion_seen is False
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)

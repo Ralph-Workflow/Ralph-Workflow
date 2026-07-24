@@ -936,21 +936,19 @@ output_file: tmp/interactive-agy-smoke/todo-list.js
     assert result is not None
 
 
+def _make_completion_sentinel(tmp_path: Path, run_id: str) -> None:
+    sentinel = tmp_path / ".agent" / f"completion_seen_{run_id}.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+
+
 def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
     tmp_path: Path,
 ) -> None:
     """AGY with no artifact write still fails the completion check.
 
-    The completion signal for AGY is the canonical receipt promoted from the
-    agent's direct artifact write (see
-    ``smoke_plumbing._explicit_completion_seen`` for the AGY branch and
-    the regression test
-    ``test_agy_smoke_completion_requires_receipt_not_transcript_marker`` in
-    tests/test_smoke_plumbing_uses_canonical_submit.py). When the agent
-    never writes the artifact, no receipt is promoted, and the smoke run
-    must fail with ``"smoke_test_result artifact was not submitted"`` —
-    not with the legacy ``"declare_complete marker was not observed"``
-    message, which was removed because the substring check was spoofable.
+    Required smoke completion needs both a canonical receipt and the durable
+    sentinel. A transcript substring satisfies neither.
     """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -981,23 +979,8 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
 
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
-    # The new contract: AGY completion requires the canonical receipt
-    # (promoted from the artifact write). With no artifact, the
-    # completion check fails; the user-facing failure wording is
-    # transport-agnostic on purpose, so we assert that the failure
-    # surfaces as EITHER the receipt-missing failure (artifact not
-    # submitted) or the completion-marker failure (declare_complete
-    # marker was not observed) since both are user-visible signals of
-    # the same underlying gap. The important invariant is that the
-    # smoke run does NOT silently pass: a transcript substring cannot
-    # satisfy the AGY completion check (see the companion regression
-    # test ``test_agy_smoke_completion_requires_receipt_not_transcript_marker``
-    # in tests/test_smoke_plumbing_uses_canonical_submit.py for the
-    # strict contract).
-    assert (
-        "smoke_test_result artifact was not submitted" in errors
-        or "declare_complete marker was not observed" in errors
-    ), f"Expected a completion-failure error, got: {errors}"
+    assert "smoke_test_result artifact was not submitted" in errors
+    assert "completion sentinel was not observed" in errors
     # The transcript-only marker path must NOT satisfy completion.
     # Drive the harness with a transcript that contains the substring
     # and confirm the failure still fires (i.e. the substring is not
@@ -1006,10 +989,10 @@ def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
     errors_with_marker = smoke_plumbing_module._detect_smoke_errors(
         params, transcript_with_marker, transcript_with_marker, None, None
     )
-    assert "declare_complete marker was not observed" in errors_with_marker, (
+    assert "completion sentinel was not observed" in errors_with_marker, (
         "AGY completion must NOT be satisfied by the transcript substring "
         "'Task declared complete:'. The substring is a spoofable signal and "
-        "the new contract requires the canonical receipt. "
+        "the contract requires the durable sentinel. "
         f"Got errors: {errors_with_marker}"
     )
     assert "smoke_test_result artifact was not submitted" in errors_with_marker, (
@@ -1089,18 +1072,13 @@ output_file: tmp/interactive-agy-smoke/todo-list.js
     assert "expected todo-list.js was not created" in errors
 
 
-def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
+def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_artifact_check(
     tmp_path: Path,
 ) -> None:
-    """AGY with a canonical receipt satisfies completion even with breaks.
+    """AGY with receipt and sentinel may report non-blocking observed breaks.
 
-    The completion signal for AGY is the canonical receipt promoted from
-    the agent's direct artifact write, independent of the
-    ``observed_breaks`` field. When the receipt is present, the completion
-    check passes; breaks are reported in the ``Observed breaks`` section
-    but do not block completion. The legacy test asserted the opposite
-    (breaks block completion) because the old substring check was both
-    spoofable and conflated completion with breaks.
+    The receipt is independent of the model-authored ``observed_breaks``
+    field. Completion still comes from the separate durable sentinel.
     """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1110,6 +1088,7 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
         observed_breaks=["something went wrong"],
         run_id="interactive-claude-smoke",
     )
+    _make_completion_sentinel(tmp_path, "interactive-claude-smoke")
 
     config = AgentConfig(
         cmd="agy",
@@ -1140,18 +1119,15 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
         params, [], [], None, None, artifact_submitted=artifact_submitted
     )
 
-    # The receipt is present, so completion is satisfied; neither the
-    # transcript-marker failure nor the artifact-not-submitted failure
-    # should fire.
-    assert "declare_complete marker was not observed" not in errors
+    assert "completion sentinel was not observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
 
 
-def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_activity(
+def test_detect_smoke_errors_nanocoder_receipt_and_sentinel_satisfy_completion(
     tmp_path: Path,
 ) -> None:
-    """Nanocoder interactive completion is proven by the smoke artifact receipt."""
+    """Nanocoder uses the same receipt-plus-sentinel completion contract."""
     output_file = tmp_path / "tmp" / "interactive-nanocoder-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -1160,6 +1136,7 @@ def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_act
         observed_breaks=[],
         run_id="interactive-nanocoder-smoke",
     )
+    _make_completion_sentinel(tmp_path, "interactive-nanocoder-smoke")
 
     config = AgentConfig(
         cmd="nanocoder",
@@ -1197,7 +1174,7 @@ def test_detect_smoke_errors_nanocoder_receipt_satisfies_completion_and_tool_act
         run_id=run_id,
     )
 
-    assert "declare_complete marker was not observed" not in errors
+    assert "completion sentinel was not observed" not in errors
     assert "no tool activity was observed" not in errors
     assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
@@ -1274,7 +1251,7 @@ def test_detect_smoke_errors_non_agy_transport_keeps_missing_signal_checks(
 
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
-    assert "declare_complete marker was not observed" in errors
+    assert "completion sentinel was not observed" in errors
     assert "session ID was not observed" in errors
 
 

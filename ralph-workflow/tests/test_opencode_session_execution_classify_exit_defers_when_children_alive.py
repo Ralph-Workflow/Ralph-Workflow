@@ -59,7 +59,13 @@ class TestClassifyExitDefersWhenChildrenAlive:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=True)
         probe = FakeLivenessProbe(active=True)
-        signals = CompletionSignals(True, True, ("development_result",))
+        signals = CompletionSignals(
+            True,
+            True,
+            ("development_result",),
+            completion_sentinel_present=True,
+            artifact_required=True,
+        )
 
         state = strategy.classify_exit(handle, signals, liveness_probe=probe)
 

@@ -48,6 +48,9 @@ def test_skill_names_the_native_markdown_edit_and_submission_flow() -> None:
     assert "ralph_finalize_md_artifact" in body
     assert "replacement: |" in body
     assert "### [S-2]" in body
+    assert "any document-wide plan step" in body
+    assert "custom, repeated, or nested headings" in body
+    assert "applies one edit to `## Steps`" not in body
     assert "ralph_submit_plan_section" not in body
     assert "ralph_patch_step" not in body
 
@@ -72,6 +75,7 @@ def test_tool_result_round_trips_through_the_shared_markdown_validator() -> None
                 "Type: verify\n"
                 "Depends on: S-1\n"
                 "Verify: pytest tests/test_plan_edit_skill_round_trip.py -q\n"
+                "Expect: the plan-edit skill tests pass with exit code 0\n"
             ),
         },
         deps=deps,

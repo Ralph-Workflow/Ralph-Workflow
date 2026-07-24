@@ -49,7 +49,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
     a FakeLivenessProbe without spawning real processes.
 
     Exit classification uses evidence precedence:
-      1. terminal_ack_seen or schema-valid required artifact -> TERMINAL_COMPLETE
+      1. durable phase-completion evidence -> TERMINAL_COMPLETE
       2. fresh progress in registry -> WAITING_ON_CHILD
       3. live OS descendants with no fresh progress -> RESUMABLE_CONTINUE (stale)
       4. else -> RESUMABLE_CONTINUE

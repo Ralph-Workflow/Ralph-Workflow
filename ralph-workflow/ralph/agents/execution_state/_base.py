@@ -40,9 +40,9 @@ class BaseExecutionStrategy:
     """Default strategy: single-process lifetime, exit 0 is terminal success.
 
     Concrete strategies inherit from this class and override only the methods
-    that need transport-specific behaviour. The defaults replicate the behaviour
-    that existed before the session-aware model was introduced so that
-    Claude/Codex paths are unaffected.
+    that need transport-specific behaviour. Completion-enforced and
+    session-capable transports override these defaults through their registered
+    strategy or the shared completion mixin.
 
     For legacy callers that pass arbitrary kwargs (e.g. direct class refs in
     _STRATEGY_DISPATCH), the __init__ only accepts label_scope and registry.

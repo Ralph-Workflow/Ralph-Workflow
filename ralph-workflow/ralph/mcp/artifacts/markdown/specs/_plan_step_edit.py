@@ -17,6 +17,7 @@ class _StepSpan:
     identifier: str
     start: int
     content_end: int
+    heading_marks: str
 
 
 def _span_start(span: _StepSpan) -> int:
@@ -49,7 +50,11 @@ def edit_plan_step_markdown(
             span = spans[position]
             edited_lines = [
                 *lines[: span.start],
-                *_replacement_chunk(replacement, step_id),
+                *_replacement_chunk(
+                    replacement,
+                    step_id,
+                    heading_marks=span.heading_marks,
+                ),
                 *lines[span.content_end :],
             ]
         elif action == "remove":
@@ -70,13 +75,14 @@ def edit_plan_step_markdown(
 
 
 def _step_spans(text: str, lines: list[str]) -> list[_StepSpan]:
-    document, diagnostics = parse_markdown_document(text)
+    document, diagnostics = parse_markdown_document(text, allow_nested_headings=True)
     errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
     if errors:
         raise MarkdownArtifactError(errors)
-    heading_lines = sorted(
+    boundary_lines = sorted(
         [section.line - 1 for section in document.sections]
         + [block.line - 1 for section in document.sections for block in section.blocks]
+        + [item.line - 1 for section in document.sections for item in section.items]
     )
     spans: list[_StepSpan] = []
     for section in document.sections:
@@ -85,13 +91,14 @@ def _step_spans(text: str, lines: list[str]) -> list[_StepSpan]:
                 continue
             start = block.line - 1
             boundary = next(
-                (heading_line for heading_line in heading_lines if heading_line > start),
+                (boundary_line for boundary_line in boundary_lines if boundary_line > start),
                 len(lines),
             )
             content_end = boundary
             while content_end > start and not lines[content_end - 1].strip():
                 content_end -= 1
-            spans.append(_StepSpan(block.identifier, start, content_end))
+            heading_marks = lines[start].partition(" ")[0]
+            spans.append(_StepSpan(block.identifier, start, content_end, heading_marks))
     return sorted(spans, key=_span_start)
 
 
@@ -142,9 +149,17 @@ def _join_lines(lines: list[str], *, trailing_newline: bool) -> str:
     return "\n".join(lines) + ("\n" if trailing_newline else "")
 
 
-def _replacement_chunk(replacement: str, step_id: str) -> list[str]:
+def _replacement_chunk(
+    replacement: str,
+    step_id: str,
+    *,
+    heading_marks: str | None = None,
+) -> list[str]:
     """Validate a replacement step block and return its normalized lines."""
-    document, diagnostics = parse_markdown_document("## Steps\n" + replacement)
+    document, diagnostics = parse_markdown_document(
+        "## Steps\n" + replacement,
+        allow_nested_headings=True,
+    )
     errors = [diagnostic for diagnostic in diagnostics if diagnostic.severity == "error"]
     if errors:
         raise MarkdownArtifactError(errors)
@@ -167,6 +182,9 @@ def _replacement_chunk(replacement: str, step_id: str) -> list[str]:
         chunk.pop(0)
     while chunk and not chunk[-1].strip():
         chunk.pop()
+    if heading_marks is not None:
+        _marks, separator, remainder = chunk[0].partition(" ")
+        chunk[0] = f"{heading_marks}{separator}{remainder}"
     return chunk
 
 

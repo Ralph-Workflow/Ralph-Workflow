@@ -1,8 +1,8 @@
 # Artifact Formats Index
 
-Ralph artifacts are single markdown documents with a small, closed grammar.
-Write the document directly as readable frontmatter, sections, and stable-ID
-items.
+Ralph artifacts are single markdown documents with a small core grammar and
+type-specific consumed fields. Write the document directly as readable
+frontmatter, sections, and stable-ID items.
 
 ## How to submit
 
@@ -36,26 +36,32 @@ key: value
   Values are taken literally and must be unquoted — quotes become part of
   the value.
 - Section headings are `## Name` (two hashes, one space).
-- Every content line is one list item: `- [ID] text` (checkbox form
-  `- [ ] [ID] text` is also accepted). Item text stays on one line.
+- Named sections commonly use list items shaped `- [ID] text` (checkbox form
+  `- [ ] [ID] text` is also accepted). The per-type document says which known
+  sections require items and which accept descriptive body prose.
 - The plan format extends this grammar as documented in `plan.md`: `### [S-n]`
   step blocks with description prose, Summary prose, labeled field lines
   (`Intent:`, `Skills:`, `Directories:`, `Depends on:`, `Expect:`,
   `Satisfies:`, …), and indented per-item fields under list items.
-- IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within a section.
-- Blank lines are ignored. Anything else — stray prose, other heading
-  levels, unknown sections or frontmatter fields — is an error.
+- IDs match `[A-Za-z][A-Za-z0-9_-]*` and must be unique within each consumed
+  section that validates list items.
+- Blank lines are ignored. Content outside a section, malformed frontmatter,
+  and unsupported heading shapes remain errors.
+- Unknown descriptive frontmatter fields and sections are accepted. Typed
+  consumers ignore those extensions; known consumed fields and sections
+  remain subject to the exact per-type rules.
 
 ## Errors vs warnings
 
-Hard errors (submission rejected): malformed grammar, missing or unknown
-frontmatter fields and sections, duplicate sections, missing required
-sections or items, malformed or duplicate IDs, references to unknown IDs,
-size caps, and each type's canonical content rules.
+Hard errors (submission rejected): malformed core grammar; missing required
+consumed fields, sections, or items; invalid values in closed consumed
+vocabularies such as `type` and `status`; duplicate known sections or IDs;
+references to unknown IDs; size caps; and each type's canonical content
+rules.
 
-Warnings (accepted, with the documented default applied): unrecognized
-vocabulary choices such as a status or intent label. Diagnostics carry
-`line`, `section`, `rule_id`, `message`, and `severity`.
+Warnings are limited to fields each type explicitly documents as descriptive
+and lenient; accepted descriptive values are preserved rather than rewritten.
+Diagnostics carry `line`, `section`, `rule_id`, `message`, and `severity`.
 
 ## Supported artifact types
 

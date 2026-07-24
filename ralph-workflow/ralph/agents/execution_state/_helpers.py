@@ -5,6 +5,7 @@ import re
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.agents.completion_signals import completion_signals_terminal
 from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
 from ralph.process.child_liveness import classify_child_snapshot
 
@@ -573,42 +574,6 @@ def _route_opencode_line_to_registry(
         registry.record_terminal_ack(child_id, terminal_state=terminal_state)
 
 
-def _check_signals_terminal(completion_signals: CompletionSignals) -> bool:
-    try:
-        if completion_signals.terminal_ack_seen:
-            return True
-    except AttributeError:
-        pass
-    try:
-        if completion_signals.artifact_optional:
-            return True
-    except AttributeError:
-        pass
-    try:
-        if completion_signals.required_artifact_present:
-            return True
-    except AttributeError:
-        pass
-    # ``explicit_complete`` by itself is not authoritative: the plain-text
-    # marker emitted by handle_declare_complete can be spoofed by ordinary
-    # agent output. Require corroboration from either the completion sentinel
-    # (written by the real declare_complete MCP tool) or a present artifact.
-    try:
-        if completion_signals.explicit_complete:
-            try:
-                if completion_signals.completion_sentinel_present:
-                    return True
-            except AttributeError:
-                pass
-            try:
-                return bool(completion_signals.required_artifact_present)
-            except AttributeError:
-                pass
-    except AttributeError:
-        pass
-    return False
-
-
 def _os_descendant_state(
     handle: _LiveDescendantHandle,
     default: AgentExecutionState,
@@ -695,7 +660,7 @@ def _evidence_precedence(
     """Evidence-precedence exit classification.
 
     Priority:
-      1. terminal_ack_seen or required_artifact_present -> TERMINAL_COMPLETE
+      1. durable phase completion evidence -> TERMINAL_COMPLETE
       2. registry: all children acked with no remaining active -> TERMINAL_COMPLETE
       3. registry: deferral_allowed -> WAITING_ON_CHILD
       4. probe: deferral_allowed -> WAITING_ON_CHILD
@@ -703,7 +668,7 @@ def _evidence_precedence(
       6. OS descendants (only when no scoped Ralph evidence exists at all) -> WAITING_ON_CHILD
       7. else -> RESUMABLE_CONTINUE
     """
-    if _check_signals_terminal(completion_signals):
+    if completion_signals_terminal(completion_signals):
         return AgentExecutionState.TERMINAL_COMPLETE
 
     stale = False

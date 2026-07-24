@@ -1,5 +1,7 @@
 """Tests for commit prompt generation."""
 
+from pathlib import Path
+
 import pytest
 
 from ralph.prompts.commit import (
@@ -74,25 +76,28 @@ def test_commit_prompt_includes_prefixed_submit_artifact_aliases() -> None:
     prompt = prompt_commit_message(
         "diff --git a/app.py b/app.py\n+hello",
         submit_artifact_tool_names=(
-            "ralph_submit_md_artifact",
             "mcp__ralph__ralph_submit_md_artifact",
+            "ralph_submit_md_artifact",
         ),
     )
 
     assert "ralph_submit_md_artifact" in prompt
     assert "mcp__ralph__ralph_submit_md_artifact" in prompt
+    assert "mcp__ralph__declare_complete" in prompt
+    assert "mcp__ralph__write_file" in prompt
+    assert '`mcp__ralph__declare_complete(summary="commit_message")`' in prompt
 
 
 def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     prompt = prompt_commit_message_for_opencode(
         "diff --git a/app.py b/app.py\n+hello",
-        submit_artifact_tool_name="ralph_submit_md_artifact",
+        submit_artifact_tool_name="ralph_ralph_submit_md_artifact",
     )
 
     assert "current pending work" in prompt
     assert "current worktree vs the last commit" in prompt
     assert "Do not analyze anything" in prompt
-    assert "`ralph_submit_md_artifact`" in prompt
+    assert "`ralph_ralph_submit_md_artifact`" in prompt
     # The artifact is a markdown document: the decision lives in frontmatter.
     assert "type: commit" in prompt
     assert "subject: fix(auth): prevent token expiry race" in prompt
@@ -100,8 +105,9 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "path | reason" in prompt
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only state-changing tools you may call" in prompt
-    assert "declare_complete" in prompt
-    assert "write_file" in prompt
+    assert "ralph_declare_complete" in prompt
+    assert "ralph_write_file" in prompt
+    assert '`ralph_declare_complete(summary="commit_message")`' in prompt
     assert "Do not call bash" in prompt
     # The unavailable-tool fallback lives in the SHARED artifact submission
     # macro, not in a duplicate procedure section, and promotes a validated
@@ -114,6 +120,7 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "One-liner subjects (no body) are only" in prompt
     assert "Bad" in prompt
     assert "Good" in prompt
+    assert prompt.startswith("Task:")
 
 
 def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None:
@@ -138,7 +145,7 @@ def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
     assert "would you like me to" in prompt.lower()
 
 
-def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path: object) -> None:
+def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path: Path) -> None:
     diff = "x" * (100 * 1024 + 1)
 
     prompt = prompt_commit_message(
@@ -155,7 +162,7 @@ def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path: object) -> N
     assert payload_file.read_text(encoding="utf-8") == diff
 
 
-def test_opencode_commit_prompt_uses_file_reference_for_large_diff(tmp_path: object) -> None:
+def test_opencode_commit_prompt_uses_file_reference_for_large_diff(tmp_path: Path) -> None:
     diff = "x" * (100 * 1024 + 1)
 
     prompt = prompt_commit_message_for_opencode(

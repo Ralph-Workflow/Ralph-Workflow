@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -26,9 +26,7 @@ from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_TYPE,
 )
 from ralph.mcp.tools.names import (
-    DECLARE_COMPLETE_TOOL,
     SUBMIT_MD_ARTIFACT_TOOL,
-    WRITE_FILE_TOOL,
     claude_tool_name,
     claude_tool_name_prefix,
     opencode_tool_name,
@@ -177,14 +175,14 @@ def materialize_prompt_for_phase(
                 work_unit=cast("WorkUnit | None", kwargs.get("work_unit")),
             )
     opts = options or PromptPhaseOptions()
-    prompt = _render_prompt_for_phase(context, opts)
-    if _should_wrap_worker_prompt(context.phase, context.pipeline_policy, opts):
-        assert opts.work_unit is not None
-        prompt = render_worker_prompt(
-            unit=opts.work_unit,
-            base_prompt=prompt,
-            policy=context.pipeline_policy,
+    if opts.work_unit is not None and opts.worker_namespace is None:
+        opts = replace(
+            opts,
+            worker_namespace=(
+                context.workspace_root / ".agent" / "workers" / opts.work_unit.unit_id
+            ),
         )
+    prompt = _render_prompt_for_phase(context, opts)
     path = dump_rendered_prompt(
         context.workspace,
         context.phase,
@@ -207,23 +205,6 @@ def materialize_prompt_for_phase(
     return path
 
 
-def _should_wrap_worker_prompt(
-    phase: str,
-    pipeline_policy: PipelinePolicy,
-    options: PromptPhaseOptions,
-) -> bool:
-    if options.work_unit is None:
-        return False
-    phase_def = pipeline_policy.phases.get(phase)
-    if phase_def is None or phase_def.role != "execution":
-        return False
-    artifacts_policy = options.artifacts_policy
-    if artifacts_policy is None:
-        return phase == "development"
-    drain = phase_def.drain if phase_def.drain is not None else phase
-    return _drain_artifact_type(drain, artifacts_policy) == "development_result"
-
-
 def prompt_file_for_phase(phase: str) -> str:
     """Return the workspace-relative path where a phase's prompt is stored."""
     return prompt_dump_path(phase)
@@ -243,9 +224,18 @@ def _loopback_template_name_for_phase(phase_def: PhaseDefinition | None) -> str 
     return phase_def.loopback_prompt_template or phase_def.continuation_template
 
 
-def read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+def read_and_clear_retry_hint(
+    workspace: Workspace,
+    phase: str,
+    *,
+    worker_namespace: Path | None = None,
+) -> str:
     """Read the retry hint file for a phase and delete it after reading."""
-    path = retry_hint_path(phase)
+    path = (
+        str(worker_namespace / "tmp" / f"last_retry_error_{phase}.txt")
+        if worker_namespace is not None
+        else retry_hint_path(phase)
+    )
     if not workspace.exists(path):
         return ""
     try:
@@ -349,7 +339,10 @@ def _render_prompt_for_phase(
         template_name=template_name,
     )
     # Developer-style prompt: execution role producing a development_result artifact
-    if phase_role == "execution" and drain_artifact_type == "development_result":
+    if phase_role == "execution" and (
+        drain_artifact_type == "development_result"
+        or (options.work_unit is not None and artifacts_policy is None)
+    ):
         return _render_developer_prompt(
             context=context,
             options=options,
@@ -466,22 +459,30 @@ def _render_developer_prompt(
         workspace,
         drain=drain,
         artifacts_policy=artifacts_policy,
+        worker_namespace=options.worker_namespace,
     )
     is_continuation = dev_is_loopback or prior_partial_result is not None
     if is_continuation:
         loopback_template_name = _loopback_template_name_for_phase(phase_def)
         if loopback_template_name:
             template_name = loopback_template_name
+    if options.work_unit is not None:
+        template_name = "worker_developer.jinja"
     dev_artifact_history_path = _resolve_and_clear_dev_artifact_history(
         workspace_root=workspace_root,
         phase_def=phase_def,
         drain_artifact_type=drain_artifact_type,
         is_loopback=is_continuation,
+        worker_namespace=options.worker_namespace,
     )
     analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
         workspace, phase, pipeline_policy, artifacts_policy
     )
-    last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    last_retry_error = read_and_clear_retry_hint(
+        workspace,
+        phase,
+        worker_namespace=options.worker_namespace,
+    )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
     return prompt_developer_iteration_xml_with_context(
@@ -512,6 +513,17 @@ def _render_developer_prompt(
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
             has_docs_mcp=has_docs_mcp,
+            work_unit_id=options.work_unit.unit_id if options.work_unit else "",
+            work_unit_description=(
+                _worker_description(options.work_unit) if options.work_unit else ""
+            ),
+            work_unit_directories=(
+                json.dumps(options.work_unit.allowed_directories, indent=2)
+                if options.work_unit
+                else ""
+            ),
+            worker_namespace=str(options.worker_namespace or ""),
+            is_continuation=is_continuation,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -583,27 +595,11 @@ def _render_template_based_prompt(
     )
 
 
-def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolicy) -> str:
-    """Render the isolated developer prompt for a single parallel work unit."""
-    del policy
-    context = TemplateContext.default()
-    template = context.registry.get_template("worker_developer")
-    description = unit.description
-    if unit.step_ids:
-        description = f"{description}\n\nAssigned plan steps: {', '.join(unit.step_ids)}"
-    return render_template(
-        template,
-        {
-            "unit_id": unit.unit_id,
-            "description": description,
-            "allowed_directories": json.dumps(unit.allowed_directories, indent=2),
-            "base_prompt": base_prompt,
-            "SUBMIT_MD_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_MD_ARTIFACT_TOOL}`",
-            "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
-            "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
-        },
-        context.partials,
-    )
+def _worker_description(unit: WorkUnit) -> str:
+    """Return the complete unit assignment, including any bound plan steps."""
+    if not unit.step_ids:
+        return unit.description
+    return f"{unit.description}\n\nAssigned plan steps: {', '.join(unit.step_ids)}"
 
 
 # Transports that expose every MCP tool as ``mcp__<server>__<tool>``: Claude Code
@@ -881,8 +877,11 @@ def _resolve_and_clear_dev_artifact_history(
     phase_def: PhaseDefinition | None,
     drain_artifact_type: str | None,
     is_loopback: bool,
+    worker_namespace: Path | None = None,
 ) -> str:
     """Resolve the artifact history path and optionally clear it on fresh entry."""
+    if worker_namespace is not None:
+        return ""
     if phase_def is None or phase_def.artifact_history is None or not drain_artifact_type:
         return ""
     if not is_loopback and phase_def.artifact_history.clear_on_fresh_entry:
@@ -1001,6 +1000,7 @@ def _resolve_partial_development_result(
     *,
     drain: str,
     artifacts_policy: ArtifactsPolicy | None,
+    worker_namespace: Path | None = None,
 ) -> tuple[str, str, str, str] | None:
     """Return continuation fields from this drain's valid partial result."""
     if artifacts_policy is None:
@@ -1011,12 +1011,21 @@ def _resolve_partial_development_result(
         or required_artifact.artifact_type != DEVELOPMENT_RESULT_ARTIFACT_TYPE
     ):
         return None
-    markdown, _path = _resolve_agent_handoff(
-        workspace,
-        artifact_type=required_artifact.artifact_type,
-        artifact_path=required_artifact.artifact_path,
-    )
-    if not markdown:
+    if worker_namespace is None:
+        markdown, _path = _resolve_agent_handoff(
+            workspace,
+            artifact_type=required_artifact.artifact_type,
+            artifact_path=required_artifact.artifact_path,
+        )
+    else:
+        markdown = _read_optional(
+            workspace,
+            str(worker_namespace / "handoffs" / "DEVELOPMENT_RESULT.md"),
+        ) or _read_optional(
+            workspace,
+            str(worker_namespace / "artifacts" / "development_result.md"),
+        )
+    if not markdown and worker_namespace is None:
         markdown = _read_optional(workspace, PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH)
     if not markdown:
         return None

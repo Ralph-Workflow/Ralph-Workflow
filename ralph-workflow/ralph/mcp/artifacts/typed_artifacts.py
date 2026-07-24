@@ -57,6 +57,7 @@ class Issues(RalphBaseModel):
     status: Literal["issues_found", "no_issues"]
     summary: str = Field(..., min_length=1)
     issues: list[_IssueEntry] = Field(default_factory=list)
+    review_evidence: list[str] = Field(default_factory=list)
     what_came_up_short: list[str] = Field(default_factory=list)
     how_to_fix: list[str] = Field(default_factory=list)
 

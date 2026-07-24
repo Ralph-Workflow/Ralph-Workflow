@@ -8,7 +8,7 @@ event storm, and the files accumulated without bound.
 
 Scope rule: ONLY machine-only state belongs here. Anything an agent or
 a human reads through workspace file tools (PLAN.md, prompts, artifact
-JSON, exec spills) stays a plain file.
+Markdown, exec spills) stays a plain file.
 
 Concurrency: the MCP server process writes while the engine process
 reads. WAL mode plus a busy timeout covers that on a local filesystem.
@@ -151,9 +151,7 @@ class RunStateDB:
 
     def delete_completion_sentinel(self, run_id: str) -> None:
         with self._conn:
-            self._conn.execute(
-                "DELETE FROM completion_sentinels WHERE run_id = ?", (run_id,)
-            )
+            self._conn.execute("DELETE FROM completion_sentinels WHERE run_id = ?", (run_id,))
 
     def mark_completion_sentinel_cleared(self, run_id: str) -> None:
         """Write a tombstone marker so the reader honours the cleared state.
@@ -165,8 +163,8 @@ class RunStateDB:
         inherit a previous run's "completed" verdict.
 
         ``_db_sentinel_lookup`` recognises ``CLEARED_SENTINEL_HMAC`` and
-        returns ``(False, None)`` so ``_check_completion_sentinel``
-        falls through to the legacy-file path. A successful upsert
+        returns ``(False, None)`` so ``_check_completion_sentinel`` rejects
+        completion without consulting a stale legacy file. A successful upsert
         here replaces any existing row (including a valid HMAC row),
         so even if a future retry of ``delete_completion_sentinel``
         fails the cleared state remains authoritative.

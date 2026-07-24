@@ -105,7 +105,7 @@ json_parser = "opencode"
 - **Caveats**:
     - PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph Workflow entry and is restored on exit.
     - With `autonomy_mode = "dangerously-skip-permissions"`, the argv includes `--dangerously-skip-permissions` (AGY reuses the Claude flag; the earlier docs incorrectly attributed Codex's `--dangerously-bypass-approvals-and-sandbox` to AGY).
-    - Completion contract: `declare_complete` or phase artifact, same as Claude interactive.
+    - Completion contract: the durable `declare_complete` sentinel is always required; required-artifact phases also need the run-scoped artifact receipt, the same contract used by Claude interactive and headless Claude.
     - Multimodal delivery uses the Gemini provider profile.
     - The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
     - AGY is a supported orchestration path, not a replacement for Ralph Workflow.
@@ -129,7 +129,7 @@ json_parser = "generic"
 - **Parser**: `pi` (NDJSON `AgentSessionEvent` per [pi.dev docs](https://pi.dev/docs/latest/json))
 - **Caveats**:
     - `pi/<model>` shorthand preserves the full suffix (e.g. `pi/anthropic/claude-sonnet-4-20250514` becomes `--model anthropic/claude-sonnet-4-20250514`) using `name.removeprefix('pi/')` so multi-segment `provider/id` patterns round-trip intact.
-    - Pi is session-capable in JSON mode: a clean `rc=0` exit without required artifact or completion evidence is retried against the captured Pi session rather than treated as terminal success.
+    - Pi is session-capable in JSON mode: a clean `rc=0` exit without the durable `declare_complete` sentinel, or without the receipt for a required artifact, is retried against the captured Pi session rather than treated as terminal success.
 
 ```toml
 [agents.pi]

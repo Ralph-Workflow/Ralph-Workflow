@@ -369,6 +369,8 @@ def test_planning_loopback_from_analysis_preserves_history(
     feedback_doc = (
         "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
         "## Summary\n- [S1] Revise the plan.\n"
+        "## What Came Up Short\n- [PA-1] Verification is underspecified.\n"
+        "## How To Fix\n- [PA-1] Add exact verification evidence.\n"
     )
     workspace.write(".agent/artifacts/planning_analysis_decision.md", feedback_doc)
     workspace.write(".agent/PLANNING_ANALYSIS_DECISION.md", feedback_doc)

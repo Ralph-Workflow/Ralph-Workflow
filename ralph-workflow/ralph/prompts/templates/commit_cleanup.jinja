@@ -1,22 +1,22 @@
-Task: analyze the current git state and identify files that MUST NOT be committed.
+COMMIT CLEANUP MODE
+You are a commit cleanup agent. Your only job is to keep unsafe or machine-local files out of the pending commit.
+Analyze the current git state and identify files that MUST NOT be committed. Perform only housekeeping; do not change what the commit means.
 Clean up the commit by removing binaries, build artifacts, temporary files, and other noise.
 The diff below shows both the tracked changes not yet committed and the untracked
 files that are present in the workspace but not yet in git. Untracked files are
-listed by name only (no diff body). If they are machine-local artifacts, use
-`add_to_git_exclude` so the user-level exclude stops tracking them locally. If
-they are actual binary or generated artifacts that should never enter the repo,
-use `delete_file`.
+listed by name only (no diff body). For machine-local artifacts, use
+`add_to_git_exclude` so `.git/info/exclude` prevents future additions. For a
+tracked recognized secret (`.env`, `.env.local`, `.env.*.local`, `secrets.yml`,
+or `credentials.json`), that action also removes the matching file from the
+index while retaining its working-tree copy. It never automatically untracks
+arbitrary project files. Use `delete_file` only for actual binary or generated
+artifacts that should never remain in the workspace.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
-
----
-## YOUR ROLE
-
-You are a commit cleanup agent. Your job is to analyze the pending diff and identify files that clearly should NOT be part of this commit. You perform ONLY housekeeping — you do NOT change what the commit means.
 
 Note: the phase PRE-EMPTIVELY UNTRACKS tracked engine-internal files at startup (via ``untrack_engine_internal_files``) -- any path in the runtime-artifact allowlist (see RUNTIME ARTIFACT ALLOWLIST below) that is currently tracked in HEAD is removed from the index BEFORE the artifact loads. This means the diff you see in this prompt will already exclude those files. Focus on non-engine cleanup (build artifacts, env files, accidentally staged noise); if an allowlisted path still appears in the diff anyway, recommend ``delete_file`` for it without hesitation.
 
@@ -82,7 +82,9 @@ For files OUTSIDE the Ralph Workflow runtime-artifact allowlist above, recommend
 
 **Environment and secret files:**
 - ``.env``, ``.env.local``, ``.env.*.local``, ``secrets.yml``, ``credentials.json``
-- Use ``add_to_git_exclude`` for these, NEVER ``delete_file``
+- Use ``add_to_git_exclude`` for these, NEVER ``delete_file``. If one is
+  already tracked, the cleanup helper removes it from the index and preserves
+  the local file.
 
 **Generated text/Markdown artifacts (untracked only):**
 - Untracked ``.txt`` or ``.json`` files with a name token such as ``session``, ``transcript``, ``prompt``, ``analysis``, ``checkpoint``, ``verify``, ``output``, ``report``, ``log``, ``trace``, ``debug``, ``dump``, ``temp``, ``tmp``, ``artifact``, ``capture``, ``generated``, ``completion``, ``note``, ``pipeline``, ``response``, ``review``, ``summary``, ``worker``, ``chat``, ``message``, ``plan``, ``model``, ``llm``, ``brainstorm``, ``interaction``, ``inference`` (e.g. ``verify-output.txt``, ``session-transcript.txt``, ``analysis-output.json``).
@@ -108,10 +110,12 @@ For files OUTSIDE the Ralph Workflow runtime-artifact allowlist above, recommend
 ## ACTION GUIDANCE
 
 - Use ``add_to_gitignore`` for **project-wide patterns** like ``*.pyc``, ``build/``, ``dist/``.
-- Use ``add_to_git_exclude`` for **machine-local files** like ``.env.local``, ``.vscode/``.
+- Use ``add_to_git_exclude`` for **machine-local files** like ``.env.local``, ``.vscode/``. Only the recognized secret family named above is automatically untracked; other tracked project files remain tracked.
 - Use ``delete_file`` only for **actual binary or generated files** present in the diff OR for paths in the RUNTIME ARTIFACT ALLOWLIST above.
 - The cleanup is best-effort: if any unsafe ``delete_file`` action is rejected, the phase will log a WARNING and continue with the rest of the batch. The phase only returns ``PhaseFailureEvent`` when EVERY delete action was rejected AND no safe action was applied -- in that case the event's ``reason`` field will contain a structured retry hint naming the rejected paths so you can resubmit without them or reclassify them as ``add_to_git_exclude``.
 - NEVER remove ``.lock`` files (``package-lock.json``, ``yarn.lock``, ``Cargo.lock``, ``poetry.lock``, ``uv.lock``, ``Pipfile.lock``, ``composer.lock``, ``Gemfile.lock``, ``go.sum``) -- these are intentional committed dependency manifests.
+
+{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 ## OUTPUT FORMAT
 
@@ -145,5 +149,3 @@ analysis_complete: true
 {{ render_artifact_submission('commit_cleanup', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, commit_cleanup_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-commit-cleanup-artifact', '.agent/artifact-formats/commit_cleanup.md') }}
-
-{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}

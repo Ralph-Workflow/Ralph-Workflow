@@ -8,11 +8,13 @@ Read the diff silently. Do not write an analysis.
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
+
 ---
 ## COMMIT MESSAGE FORMAT
 <type>[optional scope][!]: subject
 
-Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. Use `chore` only for repo maintenance, tooling, or admin-only changes; do not default to `chore` for meaningful product or code changes. Keep the subject <= 50 chars and write it in lowercase imperative mood.
+Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. Use `chore` only for repo maintenance, tooling, or admin-only changes; do not default to `chore` for meaningful product or code changes. Keep the subject concise and write it in lowercase imperative mood.
 
 ## WHEN TO USE A BODY
 
@@ -67,9 +69,8 @@ Complex refactors, architecture changes, new features with non-obvious behavior,
   Body: Explains which invalid inputs were causing problems and what happens now.
 
 ## OUTPUT RULES
-After submitting the MCP artifact, you may echo only the commit subject line as plain text.
-Do not output any additional explanation, markdown formatting, bullets, or prose after the subject line.
-Do not wrap the document or the subject in code fences in your final text.
+Do not output additional explanation, markdown, bullets, or prose after the
+completion action.
 Do not ask the user for confirmation or write "Would you like me to..." questions.
 Submit the artifact now, not as a proposal for later approval.
 Call the tool before emitting any final text. If you skip the tool call, the task has failed.
@@ -124,9 +125,5 @@ subject: fix(auth): prevent token expiry race
 
 {{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
 
-{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
-
-After the MCP submission, you may optionally echo the same single-line subject as plain text,
-but the MCP artifact is the authoritative output.
 The artifact submission procedure above is authoritative for the completion contract;
 this template does NOT duplicate it.

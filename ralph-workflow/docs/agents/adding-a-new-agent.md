@@ -297,10 +297,11 @@ Required checks:
 
 - For phases with required artifacts, clear stale per-phase artifacts before
   invocation and require fresh evidence from the current run.
-- For smoke commands, use the canonical `smoke_test_result` receipt for
-  transports that do not emit Claude's `Task declared complete:` marker.
-- Use broker-owned completion sentinels/receipts; do not trust model-authored
-  transcript text as completion evidence when a stronger receipt exists.
+- For smoke commands, require the durable run-scoped `declare_complete`
+  sentinel for every transport and the canonical `smoke_test_result` receipt
+  as the independent artifact-persistence record.
+- Use broker-owned completion sentinels and receipts; do not trust
+  model-authored transcript text as completion evidence.
 - Preserve full parsed output and stderr context on failures so recovery prompts
   and exit logs explain what happened.
 - Route stale/missing session IDs through the recovery classifier rather than
@@ -401,10 +402,10 @@ to separate dispatch, parser/result, post-result progression, and watchdog
 problems.
 
 When a live smoke fails, inspect both the parity table and the raw transcript.
-A green file/artifact result proves task completion, but it does not prove the
-operator saw useful progress. Parser tests must cover the representative raw
-lines that should appear in "Observed output" so a transport does not regress to
-spinner-only visibility.
+A green file/artifact result proves the requested output side effect, but it
+proves neither phase completion nor useful operator-visible progress. Parser
+tests must cover the representative raw lines that should appear in "Observed
+output" so a transport does not regress to spinner-only visibility.
 
 ## Definition of done for agent support
 
@@ -416,9 +417,10 @@ Agent support is not complete until all of these are true:
 - The runtime resolver owns all transport-specific env and MCP setup.
 - The parser emits bounded, meaningful events that drive both runtime evidence
   and operator-visible output.
-- Completion is proven by the right evidence for the transport: required
-  artifact, canonical receipt, completion marker, captured session, or typed
-  resumable error as appropriate.
+- Completion-enforced transports require the durable `declare_complete`
+  sentinel. Required-artifact phases additionally require the canonical
+  receipt; a captured session and typed resumable error preserve recovery when
+  either record is missing.
 - PTY transports handle permission/trust prompts, session ID capture,
   process-subtree teardown, and silent-background-work UX. Prompt injection is
   allowed only when the upstream interactive surface is the documented
@@ -653,13 +655,14 @@ del registry.agents["my-agent"]
 * **Silent TUI output**: Suppressing repaint noise is correct, but suppressing
   all visible snapshots creates a bad operator experience. Emit bounded
   `status` events with meaningful content.
-* **Trusting clean exit as success**: For transports with required artifacts,
-  receipts, or resumable sessions, exit code 0 is only one signal.
+* **Trusting clean exit as success**: For completion-enforced transports,
+  exit code 0 is not completion; require the sentinel and, when applicable,
+  the required-artifact receipt.
 * **Leaving child processes behind**: PTY termination must tear down the process
   subtree, not just close the parent process.
-* **Trusting model-authored self-reporting**: Tool activity and completion must
-  come from parser/runtime evidence or canonical receipts, not the contents of
-  an agent-authored artifact.
+* **Trusting model-authored self-reporting**: Tool activity must come from
+  parser/runtime evidence, and completion must come from the durable sentinel
+  plus any required receipt—not from transcript or artifact claims.
 * **Adding live smoke tests to `make verify`**: Manual smoke commands consume
   tokens/quota and stay outside the always-on verification path.
 * **Not unregistering before re-registering**: Calling `register_agent_support()` with a name that is already registered in the catalog will raise a `ValueError`. Always call `registry.unregister(name)` first.

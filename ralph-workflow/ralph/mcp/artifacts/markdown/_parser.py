@@ -23,9 +23,10 @@ from ralph.mcp.artifacts.markdown._parsed_line import ParsedLine
 from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 _FRONTMATTER_FIELD = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_-]*): (?P<value>\S(?:.*\S)?)$")
-_HEADING = re.compile(r"^## (?P<name>\S(?:.*\S)?)$")
+_HEADING = re.compile(r"^(?P<marks>#{1,6}) (?P<name>\S(?:.*\S)?)$")
 _BLOCK_HEADING = re.compile(
-    r"^### \[(?P<identifier>[A-Za-z][A-Za-z0-9_-]*)\] (?P<title>\S(?:.*\S)?)$"
+    r"^(?P<marks>#{3,6}) \[(?P<identifier>[A-Za-z][A-Za-z0-9_-]*)\] "
+    r"(?P<title>\S(?:.*\S)?)$"
 )
 _ITEM = re.compile(r"^- (?:(?P<checked>\[[ xX]\]) )?\[(?P<identifier>[A-Za-z][A-Za-z0-9_-]*)\] (?P<text>\S(?:.*\S)?)$")
 _LIST_PREFIX = re.compile(r"^- (?:\[[ xX]\] )?")
@@ -34,9 +35,10 @@ _LIST_PREFIX = re.compile(r"^- (?:\[[ xX]\] )?")
 class _SectionBuilder:
     """Mutable accumulator for one section while the parser scans lines."""
 
-    def __init__(self, name: str, line: int) -> None:
+    def __init__(self, name: str, line: int, level: int) -> None:
         self.name = name
         self.line = line
+        self.level = level
         self.lines: list[ParsedLine] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
         self.items: list[ParsedItem] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
         self.blocks: list[ParsedBlock] = []  # bounded-accumulator-ok: bounded by one document's line count within a single parse call
@@ -56,22 +58,38 @@ class _SectionBuilder:
         self.block = None
         self.block_lines = []
 
+    def start_block(self, identifier: str, title: str, line: int) -> None:
+        """Finish the prior block and begin one parsed stable-ID block."""
+        self.finish_block()
+        self.block = ParsedBlock(identifier, title, line, ())
+
     def finish(self) -> ParsedSection:
         self.finish_block()
         return ParsedSection(
-            self.name, self.line, tuple(self.lines), tuple(self.items), tuple(self.blocks)
+            self.name,
+            self.line,
+            self.level,
+            tuple(self.lines),
+            tuple(self.items),
+            tuple(self.blocks),
         )
 
 
-def parse_markdown_document(text: str) -> tuple[ParsedDocument, list[Diagnostic]]:
+def parse_markdown_document(
+    text: str,
+    *,
+    allow_nested_headings: bool = False,
+) -> tuple[ParsedDocument, list[Diagnostic]]:
     """Parse ``text`` without raising, returning every recoverable grammar error."""
     diagnostics: list[Diagnostic] = []
     lines = text.splitlines()
     frontmatter: dict[str, str] = {}
     frontmatter_lines: dict[str, int] = {}
-    start = 0
-    if lines and lines[0] == "---":
-        start = _parse_frontmatter(lines, frontmatter, frontmatter_lines, diagnostics)
+    start = (
+        _parse_frontmatter(lines, frontmatter, frontmatter_lines, diagnostics)
+        if lines and lines[0] == "---"
+        else 0
+    )
 
     sections: list[ParsedSection] = []
     current: _SectionBuilder | None = None
@@ -94,26 +112,46 @@ def parse_markdown_document(text: str) -> tuple[ParsedDocument, list[Diagnostic]
         item_fields.clear()
 
     for line_number, line in enumerate(lines[start:], start=start + 1):
+        block_heading = _BLOCK_HEADING.fullmatch(line)
+        if block_heading is not None and (
+            allow_nested_headings
+            or cast("str", block_heading.group("marks")) == "###"
+        ):
+            finish_item()
+            if current is None:
+                diagnostics.append(
+                    Diagnostic(
+                        line_number,
+                        None,
+                        "MD002",
+                        "step blocks must follow a markdown heading",
+                    )
+                )
+                continue
+            current.start_block(
+                block_heading.group("identifier"),
+                block_heading.group("title"),
+                line_number,
+            )
+            continue
         heading = _HEADING.fullmatch(line)
-        if heading is not None:
+        if heading is not None and (
+            allow_nested_headings or cast("str", heading.group("marks")) == "##"
+        ):
             finish_item()
             if current is not None:
                 sections.append(current.finish())
-            current = _SectionBuilder(heading.group("name"), line_number)
+            current = _SectionBuilder(
+                heading.group("name"),
+                line_number,
+                len(cast("str", heading.group("marks"))),
+            )
             continue
         if not line.strip():
             continue
         if current is None:
             diagnostics.append(
                 Diagnostic(line_number, None, "MD002", "content must be inside a '## Heading' section")
-            )
-            continue
-        block_heading = _BLOCK_HEADING.fullmatch(line)
-        if block_heading is not None:
-            finish_item()
-            current.finish_block()
-            current.block = ParsedBlock(
-                block_heading.group("identifier"), block_heading.group("title"), line_number, ()
             )
             continue
         if line.startswith("#"):
@@ -126,12 +164,10 @@ def parse_markdown_document(text: str) -> tuple[ParsedDocument, list[Diagnostic]
                 )
             )
             continue
-        if current.block is not None:
-            current.block_lines.append(ParsedLine(line_number, line.strip()))
-            continue
         item = _ITEM.fullmatch(line)
         if item is not None:
             finish_item()
+            current.finish_block()
             checkbox = cast("str | None", item.group("checked"))
             identifier = cast("str", item.group("identifier"))
             item_text = cast("str", item.group("text"))
@@ -141,6 +177,9 @@ def parse_markdown_document(text: str) -> tuple[ParsedDocument, list[Diagnostic]
                 line=line_number,
                 checked=None if checkbox is None else checkbox.lower() == "[x]",
             )
+            continue
+        if current.block is not None:
+            current.block_lines.append(ParsedLine(line_number, line.strip()))
             continue
         if line[0].isspace() and last_item is not None:
             item_fields.append(ParsedLine(line_number, line.strip()))

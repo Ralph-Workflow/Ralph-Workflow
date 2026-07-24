@@ -179,7 +179,7 @@ class TestPipelineRunnerLoop:
             "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
             "## Summary\n- [S1] Need revisions\n"
             "## What Came Up Short\n- [W1] issue\n"
-            "## How To Fix\n- [F1] fix it\n",
+            "## How To Fix\n- [W1] fix it\n",
         )
         workspace.write(
             ".agent/tmp/planning_prompt.md",

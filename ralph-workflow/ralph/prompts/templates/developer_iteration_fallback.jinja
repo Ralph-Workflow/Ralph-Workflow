@@ -1,6 +1,10 @@
-IMPLEMENTATION MODE
+IMPLEMENTATION MODE{% if IS_WORKER %} — ISOLATED WORKER{% endif %}
+
+{% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
+
+{% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
 {% if LAST_RETRY_ERROR %}
 PREVIOUS ATTEMPT ERROR:
@@ -10,31 +14,50 @@ PREVIOUS ATTEMPT ERROR:
 
 {% include 'shared/_development_skills.j2' %}
 
-ORIGINAL REQUEST:
-Canonical request file: `{{PROMPT_PATH}}`
+{{ render_payload_section("ORIGINAL REQUEST", PROMPT, PROMPT_PATH) }}
 
-{{PROMPT}}
+{{ render_payload_section("EXECUTION PLAN", PLAN, PLAN_PATH) }}
 
-EXECUTION PLAN:
-Plan payload file: `{{PLAN_PATH}}`
-
-{{PLAN}}
-
-{% if ANALYSIS_FEEDBACK %}
-ANALYSIS FEEDBACK:
-Feedback payload file: `{{ANALYSIS_FEEDBACK_PATH}}`
-
-{{ANALYSIS_FEEDBACK}}
-
+{% if ANALYSIS_FEEDBACK or ANALYSIS_FEEDBACK_PATH %}
+{{ render_payload_section(
+  "ANALYSIS FEEDBACK",
+  ANALYSIS_FEEDBACK,
+  ANALYSIS_FEEDBACK_PATH
+) }}
 {% endif %}
 {% if PRIOR_RESULT_STATUS %}
-PRIOR DEVELOPMENT RESULT — PARTIAL — NOT COMPLETE:
+PRIOR {% if IS_WORKER %}WORKER{% else %}DEVELOPMENT{% endif %} RESULT — PARTIAL — NOT COMPLETE:
 This invocation is a genuinely new agent session. Do not resume the prior
 session; its continuation reference is handoff metadata for this new session.
 
 Summary: {{PRIOR_RESULT_SUMMARY}}
 Next steps: {{PRIOR_RESULT_NEXT_STEPS}}
 Continuation reference: {{PRIOR_RESULT_CONTINUATION}}
+{% endif %}
+
+{% if IS_WORKER %}
+## WORKER SCOPE
+
+**Unit ID**: {{unit_id}}
+
+### Assignment
+
+{{description}}
+
+### Allowed directories
+
+These are the only paths outside `.agent/workers/{{unit_id}}/` that you may
+modify:
+
+{{allowed_directories}}
+
+Keep prompt payloads, logs, artifacts, and fallback output under
+`{{WORKER_NAMESPACE}}/`. Do not modify another worker's namespace. Implement
+and verify only `{{unit_id}}`. Do not coordinate or integrate the whole plan.
+
+Your submitted result is persisted at
+`{{WORKER_NAMESPACE}}/artifacts/development_result.md`, with its downstream
+handoff at `{{WORKER_NAMESPACE}}/handoffs/DEVELOPMENT_RESULT.md`.
 {% endif %}
 
 {% if HAS_DOCS_MCP %}
@@ -53,13 +76,37 @@ Inspect this history when you want to understand what has been tried before
 and what development-analysis feedback they received.
 {% endif %}
 
+{% if not IS_WORKER %}
 ## PARALLEL EXECUTION (when the plan declares independent units)
 
 {% include 'shared/_parallel_execution.j2' %}
+{% endif %}
 
-Native file and shell tools are disabled in this brokered fallback; native orchestration tools (sub-agents/tasks, skills, todo tracking, web fetch/search) remain enabled — use them whenever they help. Use `{{EXEC_TOOL_NAME}}` for shell commands and `{{REPORT_PROGRESS_TOOL_NAME}}` to report status instead of native tools like `bash`.
+Runtime-native file, shell, orchestration, skill, todo, and web tools are not
+guaranteed by this brokered fallback;
+use them only when the active runtime exposes them.
+All file and shell operations must use Ralph Workflow's brokered tools.
+Call `{{EXEC_TOOL_NAME}}` through the runtime's tool mechanism for shell
+commands, and call `{{REPORT_PROGRESS_TOOL_NAME}}` there to report status.
+These identifiers are tool calls, not commands to type into a native shell.
 
+{% if IS_WORKER %}
+YOUR TASK
+
+Complete only the assigned unit `{{unit_id}}`. Follow neighboring project
+patterns, keep changes inside the allowed directories, add or update focused
+tests for behavior changes, and run the narrow formatter/linter/type/test
+checks relevant to this unit. Never weaken a quality gate. If the unit remains
+blocked, submit a truthful `status: partial` result with the concrete blocker
+and one next step.
+{% else %}
 {% include 'shared/_developer_iteration_guidance.j2' %}
+{% endif %}
+
+{% if IS_CONTINUATION %}
+ABSOLUTE RULE: this continuation exists because the prior pass was incomplete.
+If the runtime provides sub-agents, you MUST use at least one sub-agent as a hard gate before artifact submission. Have it review the remaining assigned work against the EXECUTION PLAN, continuation/analysis context, and the proof contract below. Until that review reports no remaining gaps, you MUST NOT submit the artifact or declare completion. If no sub-agent mechanism exists, perform the same gate yourself sequentially.
+{% endif %}
 
 ## Development result artifact contract
 
@@ -70,15 +117,40 @@ Submit one native-markdown document:
 
 1. Use `type: development_result` and `status: completed|partial` frontmatter,
    then `## Summary` (exactly one item), `## Files Changed` (one item per
-   file), and `## Plan Items Proven` — one `- [S-n] <proof>` item per plan
-   step (or one `- [unit-ID] <proof>` item per work unit), the bracketed ID
-   copied EXACTLY from the plan. When analysis feedback exists, add
+   file), and `## Plan Items Proven` —
+{% if IS_WORKER %}
+   exactly one `- [{{unit_id}}] <proof>` item for this assigned unit and no
+   other proof ID.
+{% else %}
+   one `- [S-n] <proof>` item per plan step, or, when the plan explicitly uses
+   `## Work Units`, one `- [unit-ID] <proof>` item for every work unit in the
+   plan.
+{% endif %}
+   Copy every bracketed ID EXACTLY from the plan. When analysis feedback exists, add
    `## Analysis Items Addressed` with one item per prior `## How To Fix`
    entry, reusing that entry's stable ID.
+   If you submit `status: partial`, you MUST also include `## Next Steps`
+   (exactly one item naming the remaining work) and `## Continuation`
+   (exactly one item containing your session ID).
+{% if IS_WORKER %}
+   For `status: completed`, cite the files changed and focused verification
+   result. For `status: partial`, use the assigned-unit proof item to state
+   verified progress or the concrete blocker. Do not invent files or verification results.
+{% endif %}
 2. Submit with {{ SUBMIT_MD_ARTIFACT_TOOL_REFERENCE }} (`artifact_type="development_result"`,
    `content` = the full markdown document — never JSON).
-3. If the submit tool is unavailable, write the same complete document to
-   `.agent/tmp/development_result.md` instead.
-4. **CALL {{ DECLARE_COMPLETE_TOOL_REFERENCE }} AS YOUR FINAL ACTION.** Submit
-   success text is NOT completion; without it the round is treated as failed
-   and retried.
+3. If you called the submit tool, wait for its result and repair every
+   diagnostic before resubmitting. A valid receipt proves the artifact was
+   accepted; the receipt is not phase completion. Do not stop after the receipt.
+4. If the submit tool is unavailable, write the same complete document to
+{% if IS_WORKER %}
+   `{{WORKER_FALLBACK_PATH}}`
+{% else %}
+   `.agent/tmp/development_result.md`
+{% endif %}
+   instead, then continue immediately to step 5.
+5. **MANDATORY FINAL ACTION:** After a valid direct-submit receipt, or
+   immediately after writing the complete fallback document, call
+   {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as your explicit final action. For
+   fallback, the completion gate then validates and promotes the document and
+   completes only when both the sentinel and durable receipt exist.

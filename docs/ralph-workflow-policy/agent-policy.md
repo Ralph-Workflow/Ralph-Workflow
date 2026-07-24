@@ -77,9 +77,10 @@ RALPH-COMMAND: make -C ralph-workflow verify
 
 The expected successful result is exit 0 from the authoritative
 verification gate. Report the actual command output. The verify gate
-exercises ruff, mypy --strict, `make test` (60 s combined budget), the
-17 non-test audits, and the social-proof gate; a green run is the
-minimum evidence of compliance with this policy.
+exercises ruff, mypy --strict, `make test` (60 s combined budget), every
+mandatory audit in `ralph.verify._VERIFY_STEPS`, and the social-proof
+gate; a green run is the minimum evidence of compliance with this
+policy.
 
 The dogfooded commit rule (commit generation) is also gated here:
 
@@ -141,4 +142,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: agent-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v1 -->`
+* Schema version: `<!-- ralph-policy-schema: v2 -->`

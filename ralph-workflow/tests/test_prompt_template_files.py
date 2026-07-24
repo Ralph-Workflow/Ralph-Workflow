@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.markdown._spec import parse_and_validate
@@ -34,11 +35,9 @@ def test_commit_cleanup_top_level_basename_list_matches_code_allowlist() -> None
     from ralph.phases._agent_internal_paths import AGENT_INTERNAL_TOP_LEVEL_BASENAMES
 
     text = _template("commit_cleanup")
-    match = re.search(
-        r"the canonical allowlist\):\n(.+?)\n- \*\*", text, re.DOTALL
-    )
+    match = re.search(r"the canonical allowlist\):\n(.+?)\n- \*\*", text, re.DOTALL)
     assert match is not None, "canonical allowlist bullet not found in commit_cleanup.jinja"
-    listed = set(re.findall(r"``\.agent/([^`]+)``", match.group(1)))
+    listed = set(cast("list[str]", re.findall(r"``\.agent/([^`]+)``", match.group(1))))
     assert listed == set(AGENT_INTERNAL_TOP_LEVEL_BASENAMES)
 
 
@@ -73,7 +72,14 @@ def test_planning_worked_examples_use_native_step_blocks() -> None:
     for name in ("planning.jinja", "planning_fallback.jinja"):
         text = _template(name)
         examples.extend(
-            re.findall(r"```markdown\n(---\ntype: plan\n.*?)(?:\n```)", text, re.DOTALL)
+            cast(
+                "list[str]",
+                re.findall(
+                    r"```markdown\n(---\ntype: plan\n.*?)(?:\n```)",
+                    text,
+                    re.DOTALL,
+                ),
+            )
         )
 
     assert examples
@@ -104,10 +110,13 @@ def test_planning_prompts_use_author_facing_plan_vocabulary() -> None:
 def test_plan_format_doc_embedded_examples_validate() -> None:
     text = load_bundled_format_doc("plan")
     assert text is not None
-    examples = re.findall(
-        r"```markdown[^\n]*\n(---\ntype: plan\n.*?)(?:\n```)",
-        text,
-        re.DOTALL,
+    examples = cast(
+        "list[str]",
+        re.findall(
+            r"```markdown[^\n]*\n(---\ntype: plan\n.*?)(?:\n```)",
+            text,
+            re.DOTALL,
+        ),
     )
 
     assert examples
@@ -160,8 +169,7 @@ def test_planning_analysis_teaches_targeted_edits_through_the_saved_draft() -> N
         assert tool_name in text
     assert "resubmitted via `ralph_submit_md_artifact`" not in text
     assert (
-        'Use ralph_edit_md_plan_step with action "replace" on S-2 '
-        "so it names the exact policy"
+        'Use ralph_edit_md_plan_step with action "replace" on S-2 so it names the exact policy'
     ) not in text
 
 
@@ -180,8 +188,8 @@ def test_analysis_templates_require_markdown_submission_and_actionable_repair() 
 def test_policy_remediation_analysis_names_its_markdown_contract_and_tools() -> None:
     text = _template("policy_remediation_analysis.jinja")
 
-    assert "ralph_submit_md_artifact" in text
-    assert "ralph_verify_md_artifact" in text
+    assert "{{ submit_tool_names }}" in text
+    assert "{{ verify_tool_names }}" in text
     assert ".agent/artifact-formats/policy_remediation_analysis_decision.md" in text
     assert 'artifact_type="{{ artifact_type }}"' in text
 
@@ -220,3 +228,24 @@ def test_mcp_tools_roster_describes_search_tools_correctly() -> None:
     # report_progress is absent in planning drains; the bullet must be gated
     # so the prompt never renders "- Use  to report status".
     assert "{% if REPORT_PROGRESS_TOOL_NAME %}" in text
+
+
+def test_shared_runtime_claims_are_capability_neutral() -> None:
+    mcp_tools = _template("shared/_mcp_tools")
+    shipped_skills = _template("shared/_shipped_skills")
+    no_git = _template("shared/_no_git_commit")
+    planning_subagents = _template("shared/_planning_subagents")
+    normalized_mcp_tools = " ".join(mcp_tools.split())
+
+    assert "remain ENABLED" not in mcp_tools
+    assert "Availability varies by runtime" in mcp_tools
+    assert "exact rendered name below" in normalized_mcp_tools
+    assert "callable identifiers, not shell commands" in normalized_mcp_tools
+    assert "Your agent runtime exposes installed skills" not in shipped_skills
+    assert "If this runtime exposes a skill mechanism" in shipped_skills
+    assert "If it does not" in shipped_skills
+    assert "Skills: none" not in shipped_skills
+    assert "omit the section" in shipped_skills
+    assert "runtime-native shell" in no_git
+    assert "If a brokered Git read tool is absent" in " ".join(no_git.split())
+    assert "If your runtime has no subagent mechanism" in planning_subagents

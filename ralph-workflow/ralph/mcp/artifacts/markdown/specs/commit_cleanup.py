@@ -1,10 +1,10 @@
-"""Closed markdown specification for commit-cleanup artifacts."""
+"""Markdown specification for commit-cleanup artifacts."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown._section_rule import SectionRule
 from ralph.mcp.artifacts.markdown._spec import MdArtifactSpec
 from ralph.mcp.artifacts.markdown.registry import register_spec
@@ -49,29 +49,21 @@ def _reason_content(section: ParsedSection | None) -> dict[str, object]:
     return {"reason": section.items[0].text if section.items else ""}
 
 
-def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
-    if document.frontmatter.get("type") in (None, "commit_cleanup"):
-        return []
-    return [
-        Diagnostic(
-            document.frontmatter_lines["type"],
-            None,
-            "CLEANUP001",
-            "frontmatter 'type' must be 'commit_cleanup'",
-        )
-    ]
-
-
 COMMIT_CLEANUP_SPEC = MdArtifactSpec(
     artifact_type="commit_cleanup",
     required_frontmatter=frozenset({"type", "analysis_complete"}),
+    closed_frontmatter={
+        "type": FrontmatterVocabulary(("commit_cleanup",), "CLEANUP001"),
+        "analysis_complete": FrontmatterVocabulary(("true", "false")),
+    },
     sections={
         "Reason": SectionRule(required=False, max_items=1),
         "Actions": SectionRule(required=True),
     },
     to_content=_to_content,
     normalize_content=normalize_commit_cleanup_content,
-    validate_document=_validate_document,
+    allow_unknown_frontmatter=True,
+    allow_unknown_sections=True,
 )
 
 register_spec(COMMIT_CLEANUP_SPEC)

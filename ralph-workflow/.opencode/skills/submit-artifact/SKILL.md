@@ -37,8 +37,10 @@ Follow these rules exactly; anything else is a diagnostic:
 1. Start with a frontmatter block: a `---` line, one `key: value` field per
    line, then a closing `---` line. Values are single-line and must not
    start or end with whitespace. Every type requires at least `type: <type>`.
-2. After the frontmatter, use `## Section Name` headings (exactly two `#`, one
-   space).
+2. After the frontmatter, use headings and sections documented for the
+   artifact type. Most types use exact `## Section Name` headings. Plans
+   deliberately accept custom, repeated, and nested `#`–`######` headings;
+   only their consumed anchors and keywords remain strict.
 3. Inside a section the grammar knows exactly four content shapes, and each
    type's spec decides which shapes a given section accepts:
    - Stable-ID list items: `- [ID] text` (or `- [ ] [ID] text` with a
@@ -52,10 +54,10 @@ Follow these rules exactly; anything else is a diagnostic:
    - Plain body lines — prose and labeled lines like `Intent:` or
      `Skills:`, allowed only where the type's spec says so (e.g. the plan's
      `## Summary` and `## Skills MCP` sections).
-4. IDs must be unique within their section.
-5. Blank lines are ignored. Content in a shape the section does not accept —
-   prose in a list-only section, text before the first heading, unknown
-   sections, unknown frontmatter fields — is rejected.
+4. IDs must satisfy the uniqueness scope documented by the artifact type.
+5. Blank lines are ignored. Content in a shape the type does not accept is
+   rejected. Unknown sections or frontmatter are rejected only for types whose
+   format docs close those vocabularies; plans allow descriptive additions.
 
 Which sections a type requires, and what each item's text must contain, is
 defined per type in `.agent/artifact-formats/<artifact_type>.md`.
@@ -90,9 +92,9 @@ type: fix_result
 
 Both tools return `{"artifact_type", "valid", "diagnostics"}`. Each
 diagnostic has `line`, `section`, `rule_id`, `message`, and `severity`.
-Fix every `"severity": "error"` at the named line and resubmit. Warning
-diagnostics identify accepted vocabulary choices for which the documented
-default was applied.
+Fix every `"severity": "error"` at the named line and resubmit. Warnings
+describe accepted content that deserves attention; submitted values are not
+silently rewritten.
 
 - `MD001`–`MD007` — grammar violations: bad heading shape, content outside
   a section, a list line missing its `[ID]`, non-list content in a
@@ -102,9 +104,7 @@ default was applied.
   unknown/duplicate section or frontmatter field, empty or over-limit
   sections, canonical content validation failures (SPEC010 carries the
   exact message), list items in a block-only section (SPEC011), and a
-  block-only section with no `### [ID] Title` block (SPEC012). SPEC009 is
-  a warning: an accepted vocabulary value was coerced to its documented
-  default.
+  block-only section with no `### [ID] Title` block (SPEC012).
 - `REF001`–`REF004` — reference violations: malformed ID, duplicate ID in
   a section, a reference to an unknown ID, or a dependency cycle.
 

@@ -97,10 +97,10 @@ def test_planning_prompt_mentions_markdown_plan_tools(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_planning_prompt_forbids_test_step_type(tmp_path: Path) -> None:
-    """The planning.jinja template forbids step_type='test' and includes the
-    PROMPT SCOPE CLASSIFICATION section.
-    """
+def test_planning_prompt_recommends_verify_without_closing_step_types(
+    tmp_path: Path,
+) -> None:
+    """The planning prompt recommends useful built-ins without coercion."""
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the work")
 
@@ -117,8 +117,10 @@ def test_planning_prompt_forbids_test_step_type(tmp_path: Path) -> None:
 
     rendered = workspace.read(prompt_path)
     assert "PROMPT SCOPE CLASSIFICATION" in rendered
-    assert "Common StepType mistakes" in rendered
-    assert "Do NOT use `Type: test`" in rendered
+    assert "## Step type and target guidance" in rendered
+    assert "For test-running steps, prefer `Type: verify`" in rendered
+    assert "Project-specific `Type:` values are accepted and preserved verbatim" in rendered
+    assert "Do NOT use `Type: test`" not in rendered
 
 
 def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None:

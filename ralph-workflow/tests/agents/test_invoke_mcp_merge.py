@@ -268,6 +268,7 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
@@ -371,6 +372,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )

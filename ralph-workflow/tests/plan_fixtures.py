@@ -50,6 +50,7 @@ Run the focused tests.
 Type: verify
 Depends on: S-1
 Verify: pytest -q
+Expect: the repository test suite passes with exit code 0
 
 ## Critical Files
 - [CF-1] src/example.py

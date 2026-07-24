@@ -7,6 +7,7 @@ from typing import cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 
+from ._completion_mixin import CompletionEnforcingStrategy
 from ._helpers import (
     _classify_claude_json_object,
     _classify_claude_prefixed_line,
@@ -15,7 +16,7 @@ from ._helpers import (
 from .generic_execution_strategy import GenericExecutionStrategy
 
 
-class ClaudeExecutionStrategy(GenericExecutionStrategy):
+class ClaudeExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
     """Claude-aware activity classification for watchdog control flow."""
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:

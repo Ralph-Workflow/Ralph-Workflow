@@ -23,6 +23,7 @@ class ParsedSection:
 
     name: str
     line: int
+    level: int
     lines: tuple[ParsedLine, ...]
     items: tuple[ParsedItem, ...]
     blocks: tuple[ParsedBlock, ...]

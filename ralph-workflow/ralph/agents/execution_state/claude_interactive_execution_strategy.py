@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveTranscriptParser
 
-from ._completion_mixin import CompletionEnforcingStrategy
 from .agent_execution_state import AgentExecutionState
 from .claude_execution_strategy import ClaudeExecutionStrategy
 
@@ -17,7 +16,7 @@ if TYPE_CHECKING:
     from ._live_descendant_handle import _LiveDescendantHandle
 
 
-class ClaudeInteractiveExecutionStrategy(CompletionEnforcingStrategy, ClaudeExecutionStrategy):
+class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
     """Interactive Claude session strategy.
 
     Uses a VT-aware transcript parser before falling back to the headless Claude

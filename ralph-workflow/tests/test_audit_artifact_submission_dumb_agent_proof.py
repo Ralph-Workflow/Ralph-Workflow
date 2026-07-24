@@ -51,7 +51,8 @@ def _render_example(artifact_type: str, example_doc: str) -> str:
             "submit_tool": "ralph_submit_md_artifact",
             "verify_tool": "ralph_verify_md_artifact",
             "example_doc": example_doc,
-            "DECLARE_COMPLETE_TOOL_REFERENCE": "declare_complete",
+            "DECLARE_COMPLETE_TOOL_NAME": "mcp__ralph__declare_complete",
+            "DECLARE_COMPLETE_TOOL_REFERENCE": "`mcp__ralph__declare_complete`",
         },
         partials,
     )
@@ -103,9 +104,29 @@ def test_each_single_shot_template_uses_markdown_submission_macro(template_name:
 
 def test_macro_requires_completion_after_submission() -> None:
     content = _read_macro()
+    lowered = " ".join(content.lower().split())
     assert "DECLARE_COMPLETE_TOOL_REFERENCE" in content
-    assert "Submit success text is NOT completion" in content
-    assert "Step 5 is mandatory" in content
+    assert "DECLARE_COMPLETE_TOOL_NAME" in content
+    assert "receipt is not phase completion" in lowered
+    assert "must call" in lowered
+    assert "do not stop after the receipt" in lowered
+    receipt_index = lowered.index("wait for a valid durable receipt")
+    completion_index = lowered.index("mandatory final action")
+    assert receipt_index < completion_index
+    assert "when that tool is available" not in lowered
+    assert "then stop" not in lowered
+
+
+def test_rendered_completion_example_is_one_valid_callable_expression() -> None:
+    rendered = _render_example(
+        "commit_message",
+        "---\ntype: skip\nreason: No committable changes.\n---\n",
+    )
+
+    assert ("call `mcp__ralph__declare_complete` as your explicit final action") in rendered
+    assert '`mcp__ralph__declare_complete(summary="commit_message")`' in rendered
+    assert "bare `declare_complete`" not in rendered
+    assert "``mcp__ralph__declare_complete`" not in rendered
 
 
 def test_macro_lists_explicit_failure_preventions() -> None:
@@ -115,7 +136,7 @@ def test_macro_lists_explicit_failure_preventions() -> None:
         "never json",
         "do not",
         "raw markdown text",
-        "stop after step 3 or step 4",
+        "explicit completion action",
     ):
         assert phrase in content
 

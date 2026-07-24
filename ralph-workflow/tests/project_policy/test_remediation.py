@@ -55,9 +55,7 @@ def test_remediation_prompt_written_to_workspace_seam() -> None:
     """The remediation prompt is materialized via workspace.write (no .agent/artifacts write)."""
     ws = MemoryWorkspace()
 
-    remediation.run_remediation_phase(
-        ws, _stack(), [_stub_finding()], invoke_agent=_agent()
-    )
+    remediation.run_remediation_phase(ws, _stack(), [_stub_finding()], invoke_agent=_agent())
     # Prompt is at the documented rel-path.
     assert ws.exists(preflight.REMEDIATION_PROMPT_REL_PATH)
     # No canonical-artifact write happens.
@@ -100,22 +98,47 @@ def test_prompt_names_the_approved_gate_tool_allowlist() -> None:
 
 
 def test_prompt_never_advertises_fixture_shell_utilities() -> None:
-    """The validator ACCEPTS shell utilities (test fixtures rely on them),
-    but the prompt must never advertise them as approved gate tools: a weak
-    agent picking from the advertised list could otherwise declare
-    ``RALPH-COMMAND: echo ok`` and reach READY with zero real verification."""
+    """The fixed allowlist must not advertise hollow shell utilities."""
     prompt = remediation._render_prompt([_stub_finding()])
     # Extract exactly the rendered tool list after "Approved tools:".
     segment = prompt.split("Approved tools:", 1)[1].split(".", 1)[0]
     advertised = {token.strip() for token in segment.replace("\n", " ").split(",")}
     assert advertised == set(markers.APPROVED_GATE_TOOLS)
-    assert not advertised & set(markers.FIXTURE_GATE_UTILITIES)
+    assert not advertised & {"echo", "cat", "ls", "find", "bash", "sh", "true"}
 
 
-def test_fixture_utilities_disjoint_from_advertised_tools() -> None:
-    """The two allowlists must stay disjoint: an entry in both would be
-    advertised while claiming fixture-only status."""
-    assert not set(markers.APPROVED_GATE_TOOLS) & set(markers.FIXTURE_GATE_UTILITIES)
+def test_prompt_reads_diagnostics_without_obeying_remediation_orders() -> None:
+    prompt = remediation._render_prompt([_stub_finding()])
+    normalized = " ".join(prompt.split())
+
+    assert "Do not ignore diagnostic text" in normalized
+    assert "ignore the exit code, the failure message" not in normalized
+    assert "distinguish" in normalized
+
+
+def test_prompt_distinguishes_pending_debt_from_unresolved_placeholders() -> None:
+    prompt = remediation._render_prompt([_stub_finding()])
+    normalized = " ".join(prompt.split())
+
+    assert (
+        "A truthful `RALPH-PENDING` entry is an explicit accepted deferral, "
+        "not an unresolved placeholder"
+    ) in normalized
+    assert "NO unresolved marker left behind" not in prompt
+
+
+def test_prompt_puts_role_first_and_limits_subagents_to_read_only_discovery() -> None:
+    prompt = remediation._render_prompt([_stub_finding()])
+    normalized = " ".join(prompt.split())
+
+    assert prompt.index("You are a documentation agent") < prompt.index("*** UNATTENDED MODE")
+    assert "read-only subagents" in normalized
+    assert "main session" in normalized
+    assert "sequentially" in normalized
+
+
+def test_fixture_gate_utilities_dead_constant_is_removed() -> None:
+    assert not hasattr(markers, "FIXTURE_GATE_UTILITIES")
 
 
 def test_prompt_steers_standard_community_files_to_migrated_marker() -> None:
@@ -141,9 +164,7 @@ def test_launch_failure_propagates_to_the_driver() -> None:
         raise remediation.RemediationInvocationError("agent binary not found")
 
     with pytest.raises(remediation.RemediationInvocationError):
-        remediation.run_remediation_phase(
-            ws, _stack(), [_stub_finding()], invoke_agent=invoke
-        )
+        remediation.run_remediation_phase(ws, _stack(), [_stub_finding()], invoke_agent=invoke)
 
 
 def test_the_phase_always_revalidates_and_never_trusts_the_agent() -> None:
@@ -181,8 +202,7 @@ def test_the_phase_returns_the_still_open_findings_not_the_ones_it_was_given() -
     def fix_agents_md_only() -> None:
         ws.write(
             markers.AGENTS_MD,
-            f"{markers.AGENTS_BLOCK_BEGIN}\n{markers.CANONICAL_DIR}\n"
-            f"{markers.AGENTS_BLOCK_END}\n",
+            f"{markers.AGENTS_BLOCK_BEGIN}\n{markers.CANONICAL_DIR}\n{markers.AGENTS_BLOCK_END}\n",
         )
 
     remaining = remediation.run_remediation_phase(
@@ -202,9 +222,7 @@ def test_no_write_to_canonical_artifact_paths() -> None:
     artifact.submit, so it must never leave an artifact JSON behind."""
     ws = MemoryWorkspace()
 
-    remediation.run_remediation_phase(
-        ws, _stack(), [_stub_finding()], invoke_agent=_agent()
-    )
+    remediation.run_remediation_phase(ws, _stack(), [_stub_finding()], invoke_agent=_agent())
 
     assert not ws.exists(".agent/artifacts/issues.json")
     assert not ws.exists(".agent/artifacts/commit_message.json")
@@ -248,8 +266,6 @@ def test_prompt_carries_the_original_findings() -> None:
         seen.append(ws.read(prompt_path))
         return False
 
-    remediation.run_remediation_phase(
-        ws, _stack(), [_stub_finding()], invoke_agent=invoke
-    )
+    remediation.run_remediation_phase(ws, _stack(), [_stub_finding()], invoke_agent=invoke)
 
     assert "RWP-AGENTS-MD:missing" in seen[0]

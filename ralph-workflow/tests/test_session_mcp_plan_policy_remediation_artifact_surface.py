@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-@pytest.fixture
+@pytest.fixture()
 def isolated_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     home = tmp_path / "home"
     home.mkdir()
@@ -38,11 +38,17 @@ _AGENTS_POLICY = AgentsPolicy(
         "policy_remediation": AgentChainConfig(
             agents=["claude"], max_retries=2, retry_delay_ms=1000
         ),
+        "policy_remediation_analysis": AgentChainConfig(
+            agents=["claude"], max_retries=2, retry_delay_ms=1000
+        ),
     },
     agent_drains={
         "development": AgentDrainConfig(chain="development", drain_class="development"),
         "policy_remediation": AgentDrainConfig(
             chain="policy_remediation", drain_class="development"
+        ),
+        "policy_remediation_analysis": AgentDrainConfig(
+            chain="policy_remediation_analysis", drain_class="analysis"
         ),
     },
 )
@@ -97,6 +103,23 @@ def test_ordinary_development_drain_still_gets_the_artifact_surface(
     plan = build_session_mcp_plan(
         transport=AgentTransport.CLAUDE,
         drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_AGENTS_POLICY,
+    )
+
+    assert "artifact.submit" in plan.capabilities
+    assert "artifact.plan_read" in plan.capabilities
+
+
+def test_policy_analysis_can_submit_and_verify_its_decision(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    del isolated_home
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="policy_remediation_analysis",
         workspace_path=tmp_path,
         agents_policy=_AGENTS_POLICY,
     )

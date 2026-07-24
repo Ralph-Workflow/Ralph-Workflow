@@ -88,20 +88,21 @@ RALPH-FACT: secret_scan_command: RALPH-PENDING (assumed 2026-07-12); review trig
 ### Three deterministic checks (reusing existing machinery)
 
 1. **Real intended tool** — *gate form only*. The value's first non-`ENV=`
-   token must be on `APPROVED_GATE_TOOLS` (or start with `./` / `bin/`),
-   reusing `_command_first_token` / `_command_is_approved`. This guarantees the
-   eventual gate is a real tool, not vaporware. (The fact form has no tool
-   token and skips this check.)
+   token must be on the fixed `APPROVED_GATE_TOOLS` allowlist, reusing
+   `_command_first_token` / `_command_is_approved`. Repository-local paths are
+   not accepted implicitly; a new executable family must be reviewed and added
+   to the allowlist. (The fact form has no tool token and skips this check.)
 2. **Dated** — the value must contain `(assumed <ISO-date>)` where the date
-   matches `\d{4}-\d{2}-\d{2}` (the same regex the citation review-date check
-   uses). The literal `<date>` remains a `PLACEHOLDER_TOKENS` entry, so an
-   example copied verbatim still blocks until a real date is substituted.
+   matches `\d{4}-\d{2}-\d{2}` and is a real calendar date. The literal
+   `<date>` remains a `PLACEHOLDER_TOKENS` entry, so an example copied verbatim
+   still blocks until a real date is substituted.
 3. **Triggered** — the value must contain a non-empty `review trigger: …`
    clause naming the condition that resolves the deferral.
 
 A `RALPH-PENDING` line that fails any check emits a stable
 `RWP-PENDING:<filename>:<kind>-<n>` finding (kinds: `unapproved`, `undated`,
-`no-trigger`, `placeholder`).
+`invalid-date`, `no-trigger`, `placeholder`; fact-form near misses additionally
+use `fact-invalid-sentinel`).
 
 `RALPH-PENDING` is deliberately **not** added to `PLACEHOLDER_TOKENS`: it is a
 resolved deferral, not an unfilled placeholder. Its own dedicated checks own
@@ -221,10 +222,11 @@ pick:
 * Gate-form `RALPH-PENDING` (approved tool + assumed date + review trigger)
   validates clean on a non-mandatory policy.
 * Each malformed variant emits its stable finding: `unapproved` (bad first
-  token), `undated` (missing/invalid `(assumed …)`), `no-trigger` (missing
-  `review trigger:`), `placeholder` (contains a `PLACEHOLDER_TOKENS` token,
-  including literal `<date>`). The `undated` case uses a clean single-defect
-  isolate so it asserts ONLY `undated` fires.
+  token), `undated` (missing `(assumed …)`), `invalid-date` (impossible
+  calendar date), `no-trigger` (missing `review trigger:`), `placeholder`
+  (contains a `PLACEHOLDER_TOKENS` token, including literal `<date>`), or
+  `fact-invalid-sentinel` (near-miss fact token). The `undated` case uses a
+  clean single-defect isolate so it asserts ONLY `undated` fires.
 * A malformed gate-form AND a malformed fact-form pending each block through
   the FULL per-file validator (`_check_policy_file`), not only the helpers —
   guarding the `_check_commands` / `_validate_existing_policy_file` wiring so a

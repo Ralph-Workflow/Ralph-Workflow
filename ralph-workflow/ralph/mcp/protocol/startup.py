@@ -44,7 +44,7 @@ from ralph.mcp.protocol.env import (
     MCP_SUPERVISION_INTERVAL_MS_ENV,
 )
 from ralph.mcp.tool_contract import visible_owned_tool_names
-from ralph.workspace import Workspace
+from ralph.workspace.protocol import Workspace
 
 __all__ = [
     "HeartbeatPolicy",

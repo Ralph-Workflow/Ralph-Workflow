@@ -1,3 +1,5 @@
+You are the development analysis reviewer. Judge the current implementation against the plan and submit one decision artifact.
+
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% from 'shared/_payload_section.j2' import render_payload_section, render_payload_path %}
@@ -235,9 +237,12 @@ The decision is a markdown document (grammar: `.agent/artifact-formats/developme
 then `## Summary` (exactly one item), and — for any non-completed status — `## What Came Up Short`
 and `## How To Fix`, one `- [DA-###] ...` item per gap with matching IDs across the two sections.
 The developer proves closure by citing each `How To Fix` item's ID, so every item needs a stable ID.
+A completed decision must omit both remediation sections; any known gap requires
+a non-completed status. The two remediation ID sets must match exactly: no
+missing, extra, or mismatched gap/fix IDs.
 
-- Choose `status: completed` when no observable gap exists across all evaluatable requirements and
-  applicable dimensions. This holds even when some requirements remain not evaluatable: once every
+- Choose `status: completed` when no observable gap exists for every applicable, evaluatable
+  requirement and checklist dimension. This holds even when some requirements remain not evaluatable: once every
   gap you can prove is closed, the status is `completed`. The Summary item MUST cite the key
   current-work-product evidence and self-run command results supporting the decision, and disclose
   material not-evaluatable limits.
@@ -250,7 +255,7 @@ Author the document, submit it per the procedure below, and only then call {{DEC
 
 ## `## What Came Up Short` — MANDATORY FOR ANY NON-COMPLETED STATUS
 
-1. **List every gap found** across all dimensions. Do not stop after the first problem.
+1. **List every gap found** across all applicable, evaluatable dimensions. Do not stop after the first problem.
 
 2. **For each gap, include:**
    - A stable item ID (`- [DA-###] ...`) reused verbatim by the matching `How To Fix` entry
@@ -327,6 +332,6 @@ status: request_changes
 ## How To Fix
 - [DA-001] Add tests/test_foo.py::test_clamp_handles_out_of_range_index and rerun pytest tests/test_foo.py -q until it passes.
 {% endset %}
-{{ render_artifact_submission('development_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}
-
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
+
+{{ render_artifact_submission('development_analysis_decision', SUBMIT_MD_ARTIFACT_TOOL_REFERENCE, development_decision_example, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE, verify_tool_reference=VERIFY_MD_ARTIFACT_TOOL_REFERENCE) }}

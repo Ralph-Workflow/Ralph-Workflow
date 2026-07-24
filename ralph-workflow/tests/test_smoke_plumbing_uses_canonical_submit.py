@@ -1,4 +1,4 @@
-"""Smoke plumbing must produce canonical receipts for both Claude and AGY branches.
+"""Smoke plumbing must produce canonical receipts for Claude and AGY branches.
 
 The smoke harness has two submission paths:
 
@@ -6,8 +6,9 @@ The smoke harness has two submission paths:
 - AGY branch: the agent writes ``.agent/tmp/smoke_test_result.md`` directly
   because AGY headless mode does not reliably call Ralph's MCP tools.
 
-Both paths must end with a run-scoped canonical receipt so the completion gate
-has a single source of truth.
+Both paths must end with a run-scoped canonical receipt as artifact-persistence
+evidence. Completion remains a separate durable ``declare_complete`` sentinel;
+neither the receipt nor a transcript marker is sufficient on its own.
 """
 
 from __future__ import annotations
@@ -156,6 +157,7 @@ def test_smoke_plumbing_claude_branch_stamps_canonical_receipt(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted is True
+    assert result.explicit_completion_seen is False
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
@@ -185,6 +187,7 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted is True
+    assert result.explicit_completion_seen is False
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
@@ -391,12 +394,16 @@ def test_agy_tool_activity_must_not_come_from_artifact(
             rendered_sink.append("I am just talking, not invoking a tool.")
             rendered_sink.append("I would have written a file but I did not.")
         # Artifact self-reports tool activity. The harness must NOT trust this.
-        markdown = _smoke_markdown().replace(
-            "[SUM-1] Smoke test passed",
-            "[SUM-1] self-certified",
-        ).replace(
-            "[HG-1] tool activity",
-            "[HG-1] tool activity\n- [HG-2] parser events",
+        markdown = (
+            _smoke_markdown()
+            .replace(
+                "[SUM-1] Smoke test passed",
+                "[SUM-1] self-certified",
+            )
+            .replace(
+                "[HG-1] tool activity",
+                "[HG-1] tool activity\n- [HG-2] parser events",
+            )
         )
         artifact_path.write_text(markdown, encoding="utf-8")
         # CRUCIALLY: do NOT write the workspace output file. The harness
@@ -428,7 +435,7 @@ def test_agy_tool_activity_must_not_come_from_artifact(
     )
 
 
-def test_agy_smoke_completion_requires_receipt_not_transcript_marker(
+def test_agy_smoke_completion_rejects_transcript_marker_without_durable_evidence(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -439,8 +446,8 @@ def test_agy_smoke_completion_requires_receipt_not_transcript_marker(
     to accept any line containing the substring. The substring check is
     spoofable — an agent that prints the marker without writing the artifact
     would have been reported as completed. The prompt no longer tells AGY to
-    print a marker, and the completion detector for AGY now requires the
-    canonical receipt as the authoritative signal.
+    print a marker, and the completion detector now requires the durable,
+    run-scoped completion sentinel for every transport.
 
     This test drives ``_run_smoke_agent`` with a transcript that contains
     ``Task declared complete:`` but writes no artifact. The smoke run must
@@ -478,15 +485,15 @@ def test_agy_smoke_completion_requires_receipt_not_transcript_marker(
     result = _run_smoke_agent(params, run_id=run_id)
 
     # The transcript marker MUST NOT satisfy the AGY completion check.
-    # The marker is in the transcript (raw output line emitted by the fake);
-    # the harness must report the marker NOT seen for completion purposes
-    # because no canonical receipt was promoted.
+    # The marker is in the transcript (raw output line emitted by the fake),
+    # but no durable completion sentinel was persisted.
     assert result.explicit_completion_seen is False, (
-        "AGY explicit completion must require the canonical receipt, not the "
+        "AGY explicit completion must require the durable sentinel, not the "
         "transcript 'Task declared complete:' marker. The marker alone is a "
         "spoofable signal and was removed from the AGY prompt precisely so "
         "the harness stops trusting it."
     )
+    assert "completion sentinel was not observed" in result.errors
     assert "smoke_test_result artifact was not submitted" in result.errors, (
         f"Expected 'smoke_test_result artifact was not submitted' in errors, got: {result.errors}"
     )

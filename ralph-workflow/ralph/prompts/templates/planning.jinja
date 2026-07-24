@@ -8,6 +8,7 @@ You are in PLANNING MODE. Create a detailed, structured execution plan.
 {% include 'shared/_session_capabilities.j2' %}
 
 {% set show_plan_edit_guidance = true %}
+{% set HIDE_ARTIFACT_SUBMISSION_GUIDANCE = true %}
 {% include 'shared/_mcp_tools.j2' %}
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
@@ -32,7 +33,7 @@ You MUST submit your plan via Ralph Workflow's planning MCP tools.
   (for example file reads/search/listing and image analysis)
 
 Submission protocol — the plan is ONE markdown document:
-1. Read the plan grammar in `.agent/artifact-formats/plan.md`. The document has `type: plan` frontmatter and required `## Summary`, `## Scope`, `## Skills MCP`, `## Steps`, `## Critical Files`, `## Risks`, and `## Verification` sections. Use prose plus labeled fields; write every step as a complete `### [S-n] Title` block. `Depends on:` lists stable step IDs.
+1. Read the plan grammar in `.agent/artifact-formats/plan.md`. The universal anchors are `type: plan` frontmatter and at least one unique `### [S-n] Title` step block (unless `noop: true`). Summary, Scope, Skills MCP, Steps, Critical Files, Risks, and Verification are recommended sections, not required grammar. Radically different headings and content remain valid when consumed anchors and references parse. `Depends on:` lists stable step IDs.
 2. Author the complete document, then validate it with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document). Fix every diagnostic — each names the line, section, and rule — in one repair pass.
 3. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments. On success Ralph Workflow writes the canonical artifact to `.agent/artifacts/plan.md`.
 4. For a targeted step change, stage the complete plan first with {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete document, `mode="replace_all"`). Then call {{EDIT_MD_PLAN_STEP_TOOL_REFERENCE}} against that persisted plan draft with `action` and `step_id` only. `replacement` is required for `insert` and `replace`; `index` is required for `move` and optional for a positioned `insert`; `content` is not an accepted argument. The tool saves the edited draft; inspect it with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then finalize the edited draft with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). IDs are stable and never renumbered.
@@ -70,7 +71,7 @@ Self-check before submitting: re-read `Intent:` under `## Summary` one last time
 
 ## Plan-artifact scope (planner-meta-task)
 
-When `planner-meta-task` is the correct bucket AND the user's ask is specifically about the plan artifact (rather than about another planner internal like the analysis pipeline or the executor), route the work to exactly one of the four sub-tasks below. Do NOT mix sub-tasks; do NOT route the work through a misclassification fix or an unrelated sub-task. The sub-tasks are:
+When `planner-meta-task` is the correct bucket AND the user's ask is specifically about the plan artifact (rather than about another planner internal like the analysis pipeline or the executor), choose one primary ownership category below. Include mandatory companion format-doc, prompt, and test alignment when the primary change affects their shared contract; that is not unrelated scope. Do not route the work through a misclassification fix or an unrelated category. The categories are:
 
   - Plan-artifact grammar: add or change a section, labeled field, stable ID, or validation rule under `ralph/mcp/artifacts/markdown/specs/plan.py`. The markdown document grammar is the author-facing source of truth; keep the format doc and planning prompt aligned with it.
   - Planning prompt: rewrite or extend `ralph/prompts/templates/planning.jinja` (or a shared include under `ralph/prompts/templates/shared/`). The prompt is the agent-facing contract; any change must be mirrored in the bundled format doc so the fallback reference stays in sync.
@@ -104,9 +105,30 @@ The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. W
 
 ## Agent-Driven Parallel Execution
 
-Parallel plan execution is delegated to the executing AI agent, which dispatches its own sub-agents (or runs the plan sequentially if it has no sub-agent capability); rule 8 below states why Ralph-managed coordination is not a path.
+The bundled default uses `[phases.<phase>.parallelization] dispatch_mode =
+'agent_subagents'`: parallel plan execution is delegated to the executing AI
+agent, which dispatches its own sub-agents or runs the plan sequentially if it
+has no sub-agent capability. The optional `ralph_fan_out` mode uses
+Ralph-managed isolated workers as described in rule 8.
 
-When you include `## Work Units` or `## Parallel Plan`, follow these rules. They describe how the agent should consume the plan, not how Ralph should run it.
+Choose the executor-facing shape by delegation size:
+- `## Work Units` contains small bounded tasks or verification gates.
+- A substantial execution sub-agent gets a complete mini-plan under repeatable
+  `## <Name> Subplan` or `## Subplan: <Name>` headings, with its own scope,
+  targets, ordered steps, dependencies, and proof.
+- For a large multi-surface task, normally fan out four or five independent
+  execution Subplans. Keep cross-subplan fan-in, conflict resolution, and final
+  verification in an ordinary main-session `## Integration and Verification`
+  section after those Subplans; do not label that fan-in section as a Subplan.
+
+When you include `## Work Units`, `## Parallel Plan`, or execution Subplans,
+follow these rules. They describe how the agent should consume the plan, not
+how Ralph should run it.
+
+Exact `## Work Units` and `## Parallel Plan` headings opt into fail-closed
+unit-marker parsing: use `- [unit-ID] description` for every unit and do not
+leave loose prose or malformed bullets directly under those headings.
+Acceptance-criterion items remain criteria, not work units.
 
 **1. Declare `Directories:` for every `## Work Units` item.**
 List the specific subdirectories the sub-agent may edit. The validator treats `Directories:` as optional, but a unit without it gives the executing agent no scope contract — always declare it.
@@ -127,20 +149,38 @@ Never list these paths under `Directories:`:
 - `.git` (version control)
 - `.` or empty string (entire repo — too broad)
 
-**4. Sub-agent state is namespaced per unit.**
-Each sub-agent writes its prompt documents, logs, and artifacts under `.agent/workers/<work-unit-ID>/` so results are isolated and reviewable.
+**4. Keep agent-managed and Ralph-managed state ownership distinct.**
+Agent-managed sub-agents return implementation and proof to the main execution
+session. That main session owns integration, final verification, and the single
+development result; do not tell native sub-agents to create Ralph Workflow worker
+namespaces or submit worker artifacts. Only the opt-in Ralph Workflow-managed worker
+runtime creates `.agent/workers/<work-unit-ID>/` and keeps each worker's prompt
+documents, logs, and artifacts there.
 
-**5. Phrase per-unit work so a sub-agent can execute it.**
-Each `- [unit-ID] description` and its `Directories:` list must be self-contained: scope, target files, and expected outcomes. The executing agent hands each unit to a sub-agent as a complete spec.
+**5. Make every delegated task independently executable.**
+Each Work Unit is one small task or gate. Each Subplan is a substantial
+execution-subagent mini-plan. In both forms, name scope, target files,
+dependencies, verification commands, and expected outcomes explicitly.
+With exact `## Work Units`, keep every executable step—including a final
+integration gate—inside a declared unit so the result can prove every unit ID.
+With execution Subplans, keep cross-subplan fan-in as global `S-n` steps in the
+main session; the final result must prove those global steps as well as the
+Subplan steps.
 
 **6. Annotate per-step evidence so the executing agent can prove completion.**
 Every applicable `### [S-n]` step should include `Evidence:` bullets and, when relevant, `Verify:` so a sub-agent can run the same checks and report proof by stable step ID.
 
-**7. Omit `## Work Units` and `## Parallel Plan` when no parallelizable work exists.**
+**7. Omit Work Units, Parallel Plan, and execution Subplans when no parallelizable work exists.**
 A plan with no parallel work is valid; the executing agent runs `### [S-n]` steps in dependency order.
 
-**8. Ralph-managed fan-out is dormant in this build.**
-MUST NOT instruct the executor to route parallel plan work through Ralph-managed coordination — the bundled CLI exposes no coordination command for plan work. The executing agent's own sub-agents are the only active path for parallel plan execution in the bundled default. Re-arm by setting `[phases.<phase>.parallelization] dispatch_mode = 'ralph_fan_out'` in pipeline.toml.
+**8. Ralph Workflow-managed fan-out is dormant in the bundled default.**
+Under `dispatch_mode = 'agent_subagents'`, do not invent a prompt-level
+coordination command: the executing agent owns sub-agent dispatch. An operator
+can opt in by setting `[phases.<phase>.parallelization] dispatch_mode =
+'ralph_fan_out'` in `pipeline.toml`; that runtime automatically launches
+isolated Ralph Workflow workers from the plan's eligible units. The planner still
+describes units, dependencies, and proof requirements and does not emit a
+runtime command.
 
 ---
 
@@ -150,7 +190,8 @@ Your plan must be executor-ready for unattended development. The submitted artif
 - Identify the critical files or subsystems to inspect or modify and why they matter
 - Call out major risks, edge cases, and the mitigation for each
 - Define verification that the development agent can run to prove completion
-- Include `## Work Units` when the work can be parallelized safely
+- Use small `## Work Units` or substantial execution Subplans when work can be
+  parallelized safely
 - Make the planning-to-development handoff explicit so the development agent can start immediately
 
 This is an unattended pipeline. Follow every rule below:
@@ -158,7 +199,7 @@ This is an unattended pipeline. Follow every rule below:
 - If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
 - Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern. Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
 - For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome.
-- Every acceptance criterion and verification step in the plan MUST be evaluatable by the analysis phase: a concrete command with its expected output, or a specific file or artifact to inspect.
+- Every acceptance criterion and verification step in the plan MUST be evaluatable by the analysis phase: write `Verify: <concrete command>` with `Expect: <specific output>`, or name a specific `Evidence:` / `Location:` file or artifact to inspect.
 - Never write criteria that cannot be observed from the repository state ("code is clean", "works correctly"); un-evaluatable criteria will be rejected by planning analysis.
 - Infer the core user-facing workflows and prerequisite actions that must exist for the requested outcome to count as working, even when the PROMPT states them only implicitly.
 - Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
@@ -170,13 +211,19 @@ This is an unattended pipeline. Follow every rule below:
 
 Before submitting, run the pre-submission review fan-out from ## PLANNING WITH SUBAGENTS (or its sequential equivalent) against every rubric dimension above, then fix every confirmed finding in the same planning pass.
 
-## Common StepType mistakes
+## Step type and target guidance
 
-- Do NOT use `Type: test`. Use `Type: verify` with `Verify: pytest tests/test_x.py -q` for test-running steps.
-- Do NOT use `Type: check`, `Type: run`, or another ad-hoc label. The closed set is `file_change`, `action`, `research`, `verify`.
-- If a step does not modify a file and does not run a verification command, it is `action` (a non-mutating executor action) or `research` (an exploratory step with no committed change).
-
-Use only canonical step types: `file_change`, `action`, `research`, or `verify`. For test-running steps, write `Type: verify` and include `Verify:` or `Location:`.
+- Prefer `Type: file_change`, `action`, `research`, or `verify` when one
+  describes the step. The built-in `file_change` and `verify` values activate
+  their structural contracts.
+- For test-running steps, prefer `Type: verify`, a concrete `Verify:` command,
+  and a specific `Expect:` result; a specific `Location:` artifact is the
+  non-command alternative.
+- Project-specific `Type:` values are accepted and preserved verbatim. Do not
+  relabel useful domain vocabulary merely to fit the recommended built-ins.
+- Actions in `Files:` and `## Critical Files` are also free-form and preserved;
+  use clear repository verbs such as `modify`, `create`, `inspect`, or
+  `coordinate`.
 
 ## Worked plan example
 
@@ -224,6 +271,7 @@ Prove the regression is fixed.
 Type: verify
 Depends on: S-2
 Verify: pytest tests/test_foo.py -q
+Expect: test_clamp_out_of_range passes with exit code 0
 
 ## Critical Files
 - [CF-1] src/foo.py
@@ -243,4 +291,11 @@ Verify: pytest tests/test_foo.py -q
 
 ## Plan-artifact canonical contract
 
-Full document grammar and per-section shapes (Intent & intent_verb, the step contract, StepType reference, Step ↔ acceptance-criteria linking, the Design section) live in `.agent/artifact-formats/plan.md`. Size caps, string-length tiers, and cross-section invariants are enforced by the validator; when a limit is exceeded the error names the exact field, actual value, and cap — follow that message. The closed-set reference for `step_type` is preserved inline above as `Common StepType mistakes`.
+Full document grammar, step guidance, acceptance-criteria linking, and
+Design section conventions live in `.agent/artifact-formats/plan.md`. The validator reports
+the exact field and limit for size or cross-section failures; repair the named
+field rather than guessing at another schema.
+
+FINAL ACTIONS: validate the complete document, submit or finalize it, wait for
+the valid receipt, then call {{ DECLARE_COMPLETE_TOOL_REFERENCE }} as the final
+explicit action when available. Do not emit prose after that call.

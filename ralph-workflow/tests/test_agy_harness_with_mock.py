@@ -115,9 +115,7 @@ def _run_agy_smoke_plumbing(
 # 60 s cumulative subprocess_e2e budget. With the cache, only 3 of
 # the 7 tests drive a fresh subprocess; the other 4 share the cached
 # result and run in <100 ms each.
-_smoke_result_cache: dict[
-    tuple[str, str], tuple[SmokeRunResult, Path, object]
-] = {}
+_smoke_result_cache: dict[tuple[str, str], tuple[SmokeRunResult, Path, object]] = {}
 
 
 @pytest.fixture(scope="module")
@@ -254,16 +252,16 @@ def test_agy_harness_session_id_present_with_mock(
     assert result.session_id.startswith("interactive-agy-smoke-")
 
 
-def test_agy_smoke_promotes_artifact_to_canonical_receipt(
+def test_agy_smoke_promotes_artifact_and_records_completion_sentinel(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Mock-binary AGY end-to-end proves the canonical receipt promotion contract.
+    """Mock AGY proves receipt promotion plus explicit completion durability.
 
     Drives the full smoke harness with the deterministic mock AGY binary
     using the ``agy/Gemini 3.5 Flash (Medium)`` alias (the same alias used
     by the live regression suite and by the smoke CLI default). Asserts
-    the four contract surfaces the user explicitly asked for:
+    the five contract surfaces the completion contract requires:
 
     1. The canonical Markdown artifact exists at
        ``tmp_path / '.agent' / 'artifacts' / 'smoke_test_result.md'``
@@ -275,14 +273,17 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
        per ``(run_id, artifact_type)``); ``promote_fallback_artifact`` at
        ``ralph/mcp/artifacts/canonical_submit.py`` calls
        ``write_artifact_receipt`` which inserts that row. The legacy
-       ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is
-       read-only fallback during the dual-read rollout window.
+       ``.agent/receipts/<run_id>/<artifact_type>.json`` file path is a
+       migration read fallback and a durable write fallback when DB
+       persistence is unavailable.
     3. The receipt is identified by ``(run_id, artifact_type)`` with
        ``artifact_type == "smoke_test_result"``. Asserting presence via
        the public ``artifact_receipt_present`` API verifies the
        promotion contract without coupling to the storage-layout choice
        between the DB and the legacy file path.
-    4. The mock wrote the file the prompt asked for at
+    4. The mock's ``declare_complete`` simulation produced the independent
+       run-scoped completion sentinel.
+    5. The mock wrote the file the prompt asked for at
        ``tmp_path / 'tmp' / 'interactive-agy-smoke' / 'todo-list.js'``.
 
     The expected ``run_id`` is computed from
@@ -302,6 +303,7 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
         agent_name="agy/Gemini 3.5 Flash (Medium)",
     )
     assert result.artifact_submitted is True
+    assert result.explicit_completion_seen is True
     assert result.file_created is True
 
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.md"
@@ -313,8 +315,9 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     expected_run_id = resolve_smoke_harness_spec("agy/Gemini 3.5 Flash (Medium)").run_id
     # RFC-013 P3: the canonical receipt store is the per-workspace
     # .agent/state.db. The legacy .agent/receipts/<run_id>/<type>.json
-    # path is read-only fallback during the dual-read rollout window,
-    # so production writes don't double-write to both stores. Asserting
+    # path is a migration read fallback and the durable write fallback
+    # when DB persistence fails, so successful DB writes do not double-write.
+    # Asserting
     # via artifact_receipt_present (the public read API) verifies the
     # behavioral promotion contract -- the agent's fallback
     # .agent/tmp/smoke_test_result.md write was promoted to a durable
@@ -327,5 +330,5 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
         f"promote_fallback_artifact -> write_artifact_receipt to durably "
         f"stamp the receipt. Under RFC-013 P3 this lands as a row in "
         f"{tmp_path}/.agent/state.db (with the legacy file path preserved "
-        f"as read-only fallback during the dual-read rollout window)."
+        f"as a durable fallback when DB persistence is unavailable)."
     )

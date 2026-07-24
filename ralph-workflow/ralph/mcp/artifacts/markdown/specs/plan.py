@@ -1,13 +1,11 @@
 """Markdown mapping and validation rules for ``plan`` artifacts.
 
-The plan grammar is JSON-free: prose lives as prose, machine-readable
-values live on labeled ``Field: value`` lines, and every cross-referenced
-entity carries a stable ID (``S-1`` steps, ``AC-01`` criteria) that other
-entities reference by ID only. The mapper translates the document into
-the canonical plan content mapping and hands it to the
-``normalize_plan_artifact_content`` gate, so every pydantic-era guarantee
-(required presence, per-step contracts, cycles, caps, shell-invocation
-guards) still hard-fails.
+The plan grammar is deliberately shape-free. Conventional headings, order,
+and prose are recommendations rather than validation requirements. The
+pipeline-consumed anchors remain strict: ``type: plan``; document-wide,
+parseable, unique ``S-n`` step IDs; resolvable consumed references; parseable
+work-unit markers when fan-out is declared; and concrete, evaluatable
+acceptance/verification checks.
 
 Grammar summary (three field kinds, closed key sets per context — see
 :mod:`ralph.mcp.artifacts.markdown._fields`):
@@ -16,16 +14,14 @@ Grammar summary (three field kinds, closed key sets per context — see
 - ``Field: a, b`` — inline comma-separated list (IDs, names, enum words).
 - ``Field:`` followed by ``- entry`` bullets — list of prose/path entries.
 
-Steps are ``### [S-n] Title`` blocks whose body mixes description prose
-with step fields; list-item sections (Scope, Critical Files, Acceptance
-Criteria, Risks, Verification, Parallel Plan, Work Units) attach fields
-to an item as indented ``  Field: value`` lines.
+Steps are ``### [S-n] Title`` blocks under any ``##`` heading. Work-unit
+sections may repeat so each unit can own a complete nested mini-plan.
 
 Consumed-structure map (what stays strict vs. what is descriptive):
 
 - STRICT — structure a downstream consumer parses out of the plan:
-  section presence (the opinionated skeleton), ``### [S-n]`` step IDs
-  and their uniqueness/shape (development_result "Plan Items Proven"
+  ``### [S-n]`` step IDs and their document-wide uniqueness/shape
+  (development_result "Plan Items Proven"
   proof IDs cross-reference ``steps[].number`` in
   ``ralph/phases/execution.py``), ``Depends on:`` / ``Satisfied by:``
   step references and cycle checks, step-type contracts (``file_change``
@@ -34,14 +30,10 @@ Consumed-structure map (what stays strict vs. what is descriptive):
   parses unit IDs, edit areas, and dependencies in
   ``ralph/pipeline/work_units.py`` / ``fan_out.py``). The
   shell-invocation guard on verification commands also stays hard.
-- TOLERANT — descriptive content nothing downstream machine-parses:
-  Scope, Critical Files, Acceptance Criteria, Risks, Verification,
-  Skills MCP, and Constraints bodies accept free multi-line prose;
-  unknown or malformed field lines there degrade to prose with at most
-  a warning (fields required by the canonical model — ``Mitigation:``,
-  ``Expect:``, ``Skills:`` — remain required). Design accepts free
-  prose and free-form ``Profile:`` / ``Architecture:`` values (the
-  documented vocabularies are suggestions, not validation errors).
+- TOLERANT — all headings, ordering, descriptive prose, labels, and
+  recommended vocabularies. Unknown sections and repeated conventional
+  sections are valid. Descriptive fields are enforced only when their
+  content is consumed by one of the strict anchors above.
 """
 
 from __future__ import annotations
@@ -52,10 +44,13 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.artifacts.markdown._artifact_error import MarkdownArtifactError
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._fields import FieldKind, ParsedFields, parse_fields
-from ralph.mcp.artifacts.markdown._references import validate_unique_ids
+from ralph.mcp.artifacts.markdown._references import (
+    validate_acyclic_dependencies,
+    validate_references,
+    validate_unique_ids,
+)
 from ralph.mcp.artifacts.markdown._spec import (
     Content,
-    LenientEnum,
     MdArtifactSpec,
     SectionRule,
 )
@@ -64,16 +59,19 @@ from ralph.mcp.artifacts.markdown.specs._plan_design import design_content
 from ralph.mcp.artifacts.markdown.specs._plan_evaluatability import (
     is_concrete_command,
     is_concrete_verification,
+    is_forbidden_shell_invocation,
     is_specific_artifact,
+    is_specific_expected_output,
 )
 from ralph.mcp.artifacts.markdown.specs._plan_step_edit import (
     edit_plan_step_markdown as _edit_plan_step_markdown,
 )
 from ralph.mcp.artifacts.markdown.specs._plan_steps import (
-    PLAN_STEP_ID_PATTERN,
     resolve_step_references,
     step_number_map,
 )
+from ralph.mcp.artifacts.markdown.specs._plan_subplans import subplan_units_content
+from ralph.mcp.artifacts.markdown.specs._plan_work_units import attach_owned_step_ids
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_TYPE, normalize_plan_artifact_content
 
 if TYPE_CHECKING:
@@ -82,61 +80,11 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
     from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
     from ralph.mcp.artifacts.markdown._parsed_line import ParsedLine
-    from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
 _EVIDENCE_ENTRY = re.compile(r"^(?P<kind>[a-z_]+): (?P<ref>\S(?:.*\S)?)$")
+_ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^AC-[0-9]{2,}$")
+_VERIFICATION_ITEM_ID_PATTERN = re.compile(r"^V-[0-9]+$")
 
-_INTENT_VERBS = frozenset(
-    {
-        "add",
-        "fix",
-        "refactor",
-        "migrate",
-        "document",
-        "investigate",
-        "improve",
-        "configure",
-        "remove",
-    }
-)
-_SCOPE_CATEGORIES = frozenset(
-    {
-        "bugfix",
-        "feature",
-        "refactor",
-        "test",
-        "docs",
-        "infra",
-        "migration",
-        "security",
-        "performance",
-        "cleanup",
-        "research",
-        "unknown",
-        "file_change",
-        "prompt",
-        "other",
-    }
-)
-_COVERAGE_AREAS = frozenset(
-    {
-        "bugfix",
-        "feature",
-        "refactor",
-        "test",
-        "docs",
-        "infra",
-        "security",
-        "performance",
-        "migration",
-        "release",
-    }
-)
-_STEP_TYPES = frozenset({"file_change", "action", "research", "verify"})
-_EVIDENCE_KINDS = frozenset({"file", "command_output", "test_name"})
-_TARGET_ACTIONS = frozenset({"create", "modify", "delete", "read", "reference"})
-_PRIORITIES = frozenset({"critical", "high", "medium", "low"})
-_SEVERITIES = _PRIORITIES
 
 _SUMMARY_FIELDS: dict[str, FieldKind] = {"intent": "scalar", "coverage": "inline_list"}
 _SCOPE_ITEM_FIELDS: dict[str, FieldKind] = {"category": "scalar", "count": "scalar"}
@@ -148,6 +96,7 @@ _STEP_FIELDS: dict[str, FieldKind] = {
     "depends on": "inline_list",
     "satisfies": "inline_list",
     "verify": "scalar",
+    "expect": "scalar",
     "location": "scalar",
     "rationale": "scalar",
     "evidence": "bullet_list",
@@ -166,6 +115,7 @@ _CONSTRAINTS_FIELDS: dict[str, FieldKind] = {
 _CRITERION_FIELDS: dict[str, FieldKind] = {
     "satisfied by": "inline_list",
     "verify": "scalar",
+    "expect": "scalar",
     "evidence": "scalar",
 }
 _RISK_FIELDS: dict[str, FieldKind] = {"severity": "scalar", "mitigation": "scalar"}
@@ -207,11 +157,56 @@ def _cross_section_unique_items(
         diagnostics.extend(validate_unique_ids(_merged_items(document, name), section=name))
 
 
-def _reject_section_lines(section: ParsedSection, hint: str, diagnostics: list[Diagnostic]) -> None:
-    diagnostics.extend(
-        Diagnostic(line.line, section.name, "PLAN020", f"{section.name}: {hint}")
-        for line in section.lines
-    )
+def _is_acceptance_criterion(item: ParsedItem) -> bool:
+    """Return whether ``item`` belongs to the document-wide criterion namespace."""
+    return _ACCEPTANCE_CRITERION_ID_PATTERN.fullmatch(item.identifier) is not None
+
+
+def _verification_items(document: ParsedDocument) -> list[ParsedItem]:
+    """Return conventional or semantically identified verification items."""
+    return [
+        item
+        for section in document.sections
+        for item in section.items
+        if section.name == "Verification"
+        or _VERIFICATION_ITEM_ID_PATTERN.fullmatch(item.identifier) is not None
+    ]
+
+
+def _fan_out_unit_items(
+    document: ParsedDocument,
+    name: str,
+    diagnostics: list[Diagnostic],
+) -> list[ParsedItem]:
+    """Return valid unit markers while failing closed on an exact fan-out heading."""
+    unit_items: list[ParsedItem] = []
+    for section in document.sections_named(name):
+        diagnostics.extend(
+            [
+                Diagnostic(
+                    line.line,
+                    name,
+                    "PLAN024",
+                    f"{name} content must use a '- [unit-ID] description' stable-ID item",
+                )
+                for line in section.lines
+            ]
+        )
+        section_units = [
+            item for item in section.items if not _is_acceptance_criterion(item)
+        ]
+        if not section_units:
+            diagnostics.append(
+                Diagnostic(
+                    section.line,
+                    name,
+                    "PLAN024",
+                    f"{name} must declare at least one stable-ID unit item",
+                )
+            )
+        unit_items.extend(section_units)
+    diagnostics.extend(validate_unique_ids(unit_items, section=name))
+    return unit_items
 
 
 def _item_fields(
@@ -221,8 +216,10 @@ def _item_fields(
     diagnostics: list[Diagnostic],
     *,
     prose_allowed: bool = True,
+    strict_known_fields: bool = False,
 ) -> ParsedFields:
-    return parse_fields(
+    first_diagnostic = len(diagnostics)
+    fields = parse_fields(
         item.fields,
         table,
         section=section,
@@ -230,6 +227,17 @@ def _item_fields(
         prose_allowed=prose_allowed,
         diagnostics=diagnostics,
     )
+    if strict_known_fields:
+        for index in range(first_diagnostic, len(diagnostics)):
+            diagnostic = diagnostics[index]
+            if diagnostic.rule_id == "PLAN020" and diagnostic.severity == "warning":
+                diagnostics[index] = Diagnostic(
+                    diagnostic.line,
+                    diagnostic.section,
+                    diagnostic.rule_id,
+                    diagnostic.message,
+                )
+    return fields
 
 
 def _with_prose(text: str, fields: ParsedFields) -> str:
@@ -238,33 +246,22 @@ def _with_prose(text: str, fields: ParsedFields) -> str:
     return f"{text}\n{prose}" if prose else text
 
 
-def _coerced_scalar(
-    fields: ParsedFields,
-    key: str,
-    allowed: frozenset[str],
-    fallback: str,
-    *,
-    section: str,
-    rule_id: str,
-    label: str,
-    diagnostics: list[Diagnostic],
-) -> str | None:
-    """Return a vocabulary scalar, warn-coercing unknown values to ``fallback``."""
-    scalar = fields.scalars.get(key)
-    if scalar is None:
-        return None
-    if scalar.text in allowed:
-        return scalar.text
-    diagnostics.append(
-        Diagnostic(
-            scalar.line,
-            section,
-            rule_id,
-            f"unknown {label} {scalar.text!r} coerced to {fallback!r}",
-            "warning",
+def _verification_expectations(document: ParsedDocument) -> dict[str, str]:
+    """Index global verification outcomes for legacy exact-command reuse."""
+    expectations: dict[str, str] = {}
+    for item in _verification_items(document):
+        fields = parse_fields(
+            item.fields,
+            _VERIFICATION_FIELDS,
+            section="Verification",
+            context=f"item {item.identifier!r}",
+            prose_allowed=True,
+            diagnostics=[],
         )
-    )
-    return fallback
+        expect = fields.scalars.get("expect")
+        if expect is not None:
+            expectations[item.text] = expect.text
+    return expectations
 
 
 def _summary_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> Content:
@@ -285,20 +282,7 @@ def _summary_content(document: ParsedDocument, diagnostics: list[Diagnostic]) ->
     intent = fields.scalars.get("intent")
     if intent is not None:
         summary["intent"] = intent.text
-    coverage: list[str] = []
-    for entry in fields.lists.get("coverage", []):
-        if entry.text in _COVERAGE_AREAS:
-            coverage.append(entry.text)
-        else:
-            diagnostics.append(
-                Diagnostic(
-                    entry.line,
-                    "Summary",
-                    "PLAN008",
-                    f"unknown coverage area {entry.text!r} dropped",
-                    "warning",
-                )
-            )
+    coverage = [entry.text for entry in fields.lists.get("coverage", [])]
     if coverage:
         summary["coverage_areas"] = coverage
     scope_items = _scope_items(document, diagnostics)
@@ -315,18 +299,9 @@ def _scope_items(document: ParsedDocument, diagnostics: list[Diagnostic]) -> lis
     for item in _merged_items(document, "Scope"):
         fields = _item_fields(item, _SCOPE_ITEM_FIELDS, "Scope", diagnostics)
         scope_item: Content = {"text": _with_prose(item.text, fields)}
-        category = _coerced_scalar(
-            fields,
-            "category",
-            _SCOPE_CATEGORIES,
-            "other",
-            section="Scope",
-            rule_id="PLAN002",
-            label="scope category",
-            diagnostics=diagnostics,
-        )
+        category = fields.scalars.get("category")
         if category is not None:
-            scope_item["category"] = category
+            scope_item["category"] = category.text
         count = fields.scalars.get("count")
         if count is not None:
             scope_item["count"] = count.text
@@ -347,62 +322,36 @@ def _skills_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> 
         diagnostics=diagnostics,
     )
     skills = fields.lists.get("skills")
-    if skills is None:
-        diagnostics.append(
-            Diagnostic(
-                sections[0].line,
-                "Skills MCP",
-                "PLAN020",
-                "Skills MCP must declare a 'Skills:' field",
-            )
-        )
+    mcps = fields.lists.get("mcps")
+    if skills is None and mcps is None:
+        return None
     return {
         "skills": [entry.text for entry in skills or []],
-        "mcps": [entry.text for entry in fields.lists.get("mcps", [])],
+        "mcps": [entry.text for entry in mcps or []],
     }
 
 
 def _target_content(entry: ParsedLine, context: str, diagnostics: list[Diagnostic]) -> Content:
     head, _, rest = entry.text.partition(" ")
     rest = rest.strip()
-    if head in _TARGET_ACTIONS and rest:
+    if rest:
         return {"path": rest, "action": head}
-    diagnostics.append(
-        Diagnostic(
-            entry.line,
-            "Steps",
-            "PLAN005",
-            f"{context}: unknown target action coerced to 'modify'",
-            "warning",
-        )
-    )
-    path = rest if rest and head.isalpha() and head.islower() else entry.text
-    return {"path": path, "action": "modify"}
+    return {"path": entry.text, "action": "modify"}
 
 
-def _evidence_content(entry: ParsedLine, context: str, diagnostics: list[Diagnostic]) -> Content:
+def _evidence_content(entry: ParsedLine) -> Content:
     match = _EVIDENCE_ENTRY.fullmatch(entry.text)
     if match is None:
         return {"kind": "file", "ref": entry.text}
     kind = cast("str", match.group("kind"))
     ref = cast("str", match.group("ref"))
-    if kind in _EVIDENCE_KINDS:
-        return {"kind": kind, "ref": ref}
-    diagnostics.append(
-        Diagnostic(
-            entry.line,
-            "Steps",
-            "PLAN006",
-            f"{context}: unknown evidence kind coerced to 'file'",
-            "warning",
-        )
-    )
-    return {"kind": "file", "ref": ref}
+    return {"kind": kind, "ref": ref}
 
 
 def _steps_content(
     document: ParsedDocument,
     numbers: Mapping[str, int],
+    verification_expectations: Mapping[str, str],
     diagnostics: list[Diagnostic],
 ) -> list[Content]:
     steps: list[Content] = []
@@ -426,36 +375,13 @@ def _steps_content(
         prose = "\n".join(line.text for line in fields.prose)
         if prose:
             step["content"] = prose
-        else:
-            diagnostics.append(
-                Diagnostic(
-                    block.line, "Steps", "PLAN012", f"{context} must include description prose"
-                )
-            )
-        step_type = _coerced_scalar(
-            fields,
-            "type",
-            _STEP_TYPES,
-            "action",
-            section="Steps",
-            rule_id="PLAN003",
-            label="step type",
-            diagnostics=diagnostics,
-        )
+        step_type_field = fields.scalars.get("type")
+        step_type = step_type_field.text if step_type_field is not None else None
         if step_type is not None:
             step["step_type"] = step_type
-        priority = _coerced_scalar(
-            fields,
-            "priority",
-            _PRIORITIES,
-            "medium",
-            section="Steps",
-            rule_id="PLAN004",
-            label="priority",
-            diagnostics=diagnostics,
-        )
+        priority = fields.scalars.get("priority")
         if priority is not None:
-            step["priority"] = priority
+            step["priority"] = priority.text
         files = fields.lists.get("files")
         if files is not None:
             step["targets"] = [_target_content(entry, context, diagnostics) for entry in files]
@@ -469,6 +395,7 @@ def _steps_content(
             step["satisfies"] = [entry.text for entry in satisfies]
         for key, name in (
             ("verify", "verify_command"),
+            ("expect", "expected_outcome"),
             ("location", "location"),
             ("rationale", "rationale"),
         ):
@@ -478,8 +405,15 @@ def _steps_content(
         evidence = fields.lists.get("evidence")
         if evidence is not None:
             step["expected_evidence"] = [
-                _evidence_content(entry, context, diagnostics) for entry in evidence
+                _evidence_content(entry) for entry in evidence
             ]
+        verify = step.get("verify_command")
+        if (
+            isinstance(verify, str)
+            and "expected_outcome" not in step
+            and verify in verification_expectations
+        ):
+            step["expected_outcome"] = verification_expectations[verify]
         _check_step_contract(step, step_type, block.line, context, diagnostics)
         steps.append(step)
     return steps
@@ -512,6 +446,46 @@ def _check_step_contract(
                 f"{context} is a verify step and must declare 'Verify:' or 'Location:'",
             )
         )
+    verify = step.get("verify_command")
+    expected = step.get("expected_outcome")
+    if isinstance(verify, str):
+        if is_forbidden_shell_invocation(verify):
+            diagnostics.append(
+                Diagnostic(
+                    line,
+                    "Steps",
+                    "PLAN020",
+                    f"{context} verification must not invoke a shell interpreter directly",
+                )
+            )
+        elif not is_concrete_command(verify):
+            diagnostics.append(
+                Diagnostic(
+                    line,
+                    "Steps",
+                    "PLAN020",
+                    f"{context} needs a concrete direct 'Verify:' command",
+                )
+            )
+        if not isinstance(expected, str) or not is_specific_expected_output(expected):
+            diagnostics.append(
+                Diagnostic(
+                    line,
+                    "Steps",
+                    "PLAN020",
+                    f"{context} must pair 'Verify:' with a specific 'Expect:' output",
+                )
+            )
+    location = step.get("location")
+    if isinstance(location, str) and not is_specific_artifact(location):
+        diagnostics.append(
+            Diagnostic(
+                line,
+                "Steps",
+                "PLAN020",
+                f"{context} needs a specific file/artifact in 'Location:'",
+            )
+        )
 
 
 def _critical_files_content(
@@ -525,38 +499,16 @@ def _critical_files_content(
     for item in _merged_items(document, "Critical Files"):
         fields = _item_fields(item, _CRITICAL_FILE_FIELDS, "Critical Files", diagnostics)
         purpose = fields.scalars.get("purpose")
-        if purpose is not None:
-            if (
-                fields.scalars.get("action") is not None
-                or fields.scalars.get("changes") is not None
-            ):
-                diagnostics.append(
-                    Diagnostic(
-                        item.line,
-                        "Critical Files",
-                        "PLAN020",
-                        f"item {item.identifier!r} cannot combine 'Purpose:' with 'Action:' or 'Changes:'",
-                    )
-                )
-                continue
+        action = fields.scalars.get("action")
+        changes = fields.scalars.get("changes")
+        if purpose is not None and action is None and changes is None:
             reference.append({"path": item.text, "purpose": purpose.text})
             continue
         entry: Content = {"path": item.text}
-        action = fields.scalars.get("action")
         entry["action"] = action.text if action is not None else "modify"
-        changes = fields.scalars.get("changes")
         if changes is not None:
             entry["estimated_changes"] = changes.text
         primary.append(entry)
-    if not primary:
-        diagnostics.append(
-            Diagnostic(
-                sections[0].line,
-                "Critical Files",
-                "PLAN020",
-                "Critical Files must include at least one primary file (an item without 'Purpose:')",
-            )
-        )
     critical: Content = {"primary_files": primary}
     if reference:
         critical["reference_files"] = reference
@@ -593,14 +545,16 @@ def _constraints_content(document: ParsedDocument, diagnostics: list[Diagnostic]
 
 
 def _acceptance_criteria_content(
-    document: ParsedDocument, diagnostics: list[Diagnostic]
+    document: ParsedDocument,
+    verification_expectations: Mapping[str, str],
+    diagnostics: list[Diagnostic],
 ) -> Content | None:
     items = [
         item
         for section in document.sections
         for item in section.items
         if section.name == "Acceptance Criteria"
-        or re.fullmatch(r"AC-[0-9]{2,}", item.identifier) is not None
+        or _is_acceptance_criterion(item)
     ]
     if not items:
         return None
@@ -625,8 +579,18 @@ def _acceptance_criteria_content(
                 diagnostics=diagnostics,
             )
         verify = fields.scalars.get("verify")
+        expect = fields.scalars.get("expect")
+        expected_text = (
+            expect.text
+            if expect is not None
+            else verification_expectations.get(verify.text)
+            if verify is not None
+            else None
+        )
         if verify is not None:
             criterion["verification_step"] = verify.text
+            if expected_text is not None:
+                criterion["expected_outcome"] = expected_text
             if not is_concrete_command(verify.text):
                 diagnostics.append(
                     Diagnostic(
@@ -636,6 +600,25 @@ def _acceptance_criteria_content(
                         f"criterion {item.identifier!r} needs a concrete command",
                     )
                 )
+            if expected_text is None or not is_specific_expected_output(expected_text):
+                diagnostics.append(
+                    Diagnostic(
+                        verify.line if expect is None else expect.line,
+                        "Acceptance Criteria",
+                        "PLAN020",
+                        f"criterion {item.identifier!r} must pair 'Verify:' with "
+                        "a specific 'Expect:' output",
+                    )
+                )
+        elif expect is not None:
+            diagnostics.append(
+                Diagnostic(
+                    expect.line,
+                    "Acceptance Criteria",
+                    "PLAN020",
+                    f"criterion {item.identifier!r} has 'Expect:' without 'Verify:'",
+                )
+            )
         evidence = fields.scalars.get("evidence")
         if evidence is not None:
             criterion["evidence_path"] = evidence.text
@@ -668,36 +651,18 @@ def _risks_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> l
         fields = _item_fields(item, _RISK_FIELDS, "Risks", diagnostics)
         risk: Content = {"risk": _with_prose(item.text, fields)}
         mitigation = fields.scalars.get("mitigation")
-        if mitigation is None:
-            diagnostics.append(
-                Diagnostic(
-                    item.line,
-                    "Risks",
-                    "PLAN020",
-                    f"risk {item.identifier!r} must declare a 'Mitigation:' field",
-                )
-            )
-        else:
+        if mitigation is not None:
             risk["mitigation"] = mitigation.text
-        severity = _coerced_scalar(
-            fields,
-            "severity",
-            _SEVERITIES,
-            "medium",
-            section="Risks",
-            rule_id="PLAN007",
-            label="severity",
-            diagnostics=diagnostics,
-        )
+        severity = fields.scalars.get("severity")
         if severity is not None:
-            risk["severity"] = severity
+            risk["severity"] = severity.text
         risks.append(risk)
     return risks
 
 
 def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic]) -> list[Content]:
     entries: list[Content] = []
-    for item in _merged_items(document, "Verification"):
+    for item in _verification_items(document):
         fields = _item_fields(item, _VERIFICATION_FIELDS, "Verification", diagnostics)
         entry: Content = {"method": item.text}
         expect = fields.scalars.get("expect")
@@ -712,7 +677,16 @@ def _verification_content(document: ParsedDocument, diagnostics: list[Diagnostic
             )
         else:
             entry["expected_outcome"] = expect.text
-            if not is_concrete_verification(item.text, expect.text):
+            if is_forbidden_shell_invocation(item.text):
+                diagnostics.append(
+                    Diagnostic(
+                        item.line,
+                        "Verification",
+                        "PLAN020",
+                        "verification method must not invoke a shell interpreter directly",
+                    )
+                )
+            elif not is_concrete_verification(item.text, expect.text):
                 diagnostics.append(
                     Diagnostic(
                         expect.line,
@@ -748,15 +722,15 @@ def _parallel_plan_content(
     sections = document.sections_named("Parallel Plan")
     if not sections:
         return None
-    for section in sections:
-        _reject_section_lines(
-            section, "content must be part of a '- [ID] description' item", diagnostics
-        )
-    _cross_section_unique_items(document, "Parallel Plan", diagnostics)
+    items = _fan_out_unit_items(document, "Parallel Plan", diagnostics)
     entries: list[Content] = []
-    for item in _merged_items(document, "Parallel Plan"):
+    for item in items:
         fields = _item_fields(
-            item, _PARALLEL_FIELDS, "Parallel Plan", diagnostics, prose_allowed=False
+            item,
+            _PARALLEL_FIELDS,
+            "Parallel Plan",
+            diagnostics,
+            strict_known_fields=True,
         )
         entries.append(
             {
@@ -769,44 +743,88 @@ def _parallel_plan_content(
                 "depends_on": [entry.text for entry in fields.lists.get("depends on", [])],
             }
         )
+    _validate_unit_graph(
+        entries,
+        id_key="id",
+        dependencies_key="depends_on",
+        items=items,
+        section="Parallel Plan",
+        diagnostics=diagnostics,
+    )
     return entries
 
 
 def _work_units_content(
-    document: ParsedDocument, diagnostics: list[Diagnostic]
+    document: ParsedDocument,
+    steps: list[Content],
+    diagnostics: list[Diagnostic],
 ) -> list[Content] | None:
     sections = document.sections_named("Work Units")
     if not sections:
         return None
-    for section in sections:
-        _reject_section_lines(
-            section, "content must be part of a '- [unit-id] description' item", diagnostics
-        )
-    _cross_section_unique_items(document, "Work Units", diagnostics)
+    items = _fan_out_unit_items(document, "Work Units", diagnostics)
     entries: list[Content] = []
-    for section in sections:
-        nested_step_ids = [
-            block.identifier
-            for block in section.blocks
-            if PLAN_STEP_ID_PATTERN.fullmatch(block.identifier) is not None
-        ]
-        owned_step_ids = nested_step_ids if len(section.items) == 1 else []
-        for item in section.items:
-            fields = _item_fields(
-                item, _WORK_UNIT_FIELDS, "Work Units", diagnostics, prose_allowed=False
-            )
-            entry: Content = {
-                "unit_id": item.identifier,
-                "description": item.text,
-                "allowed_directories": [
-                    entry.text for entry in fields.lists.get("directories", [])
-                ],
-                "dependencies": [entry.text for entry in fields.lists.get("depends on", [])],
-            }
-            if owned_step_ids:
-                entry["step_ids"] = owned_step_ids
-            entries.append(entry)
+    for item in items:
+        fields = _item_fields(
+            item,
+            _WORK_UNIT_FIELDS,
+            "Work Units",
+            diagnostics,
+            strict_known_fields=True,
+        )
+        entry: Content = {
+            "unit_id": item.identifier,
+            "description": item.text,
+            "allowed_directories": [
+                entry.text for entry in fields.lists.get("directories", [])
+            ],
+            "dependencies": [entry.text for entry in fields.lists.get("depends on", [])],
+        }
+        entries.append(entry)
+    attach_owned_step_ids(document, entries, steps)
+    _validate_unit_graph(
+        entries,
+        id_key="unit_id",
+        dependencies_key="dependencies",
+        items=items,
+        section="Work Units",
+        diagnostics=diagnostics,
+    )
     return entries
+
+
+def _validate_unit_graph(
+    entries: list[Content],
+    *,
+    id_key: str,
+    dependencies_key: str,
+    items: list[ParsedItem],
+    section: str,
+    diagnostics: list[Diagnostic],
+) -> None:
+    identifiers = [cast("str", entry[id_key]) for entry in entries]
+    line_by_id = {
+        item.identifier: item.line
+        for item in items
+    }
+    references: dict[str, list[tuple[str, int, str | None]]] = {}
+    dependencies: dict[str, list[str]] = {}
+    for entry in entries:
+        identifier = cast("str", entry[id_key])
+        raw_dependencies = cast("list[str]", entry[dependencies_key])
+        dependencies[identifier] = raw_dependencies
+        for dependency in raw_dependencies:
+            references.setdefault(dependency, []).append(
+                (identifier, line_by_id.get(identifier, 1), section)
+            )
+    diagnostics.extend(validate_references(references, identifiers))
+    diagnostics.extend(
+        validate_acyclic_dependencies(
+            dependencies,
+            line_by_id=line_by_id,
+            section_by_id=dict.fromkeys(identifiers, section),
+        )
+    )
 
 
 def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
@@ -820,7 +838,13 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
             )
         )
     numbers = step_number_map(document, diagnostics)
-    steps = _steps_content(document, numbers, diagnostics)
+    verification_expectations = _verification_expectations(document)
+    steps = _steps_content(
+        document,
+        numbers,
+        verification_expectations,
+        diagnostics,
+    )
     if not steps:
         diagnostics.append(
             Diagnostic(
@@ -863,14 +887,20 @@ def _analyze(document: ParsedDocument) -> tuple[Content, list[Diagnostic]]:
     constraints = _constraints_content(document, diagnostics)
     if constraints is not None:
         content["constraints"] = constraints
-    criteria = _acceptance_criteria_content(document, diagnostics)
+    criteria = _acceptance_criteria_content(
+        document,
+        verification_expectations,
+        diagnostics,
+    )
     design = design_content(document, criteria, diagnostics)
     if design is not None:
         content["design"] = design
     parallel_plan = _parallel_plan_content(document, diagnostics)
     if parallel_plan is not None:
         content["parallel_plan"] = parallel_plan
-    work_units = _work_units_content(document, diagnostics)
+    work_units = _work_units_content(document, steps, diagnostics)
+    if work_units is None:
+        work_units = subplan_units_content(document, steps)
     if work_units is not None:
         content["work_units"] = work_units
     return content, diagnostics
@@ -929,9 +959,8 @@ def edit_plan_step_markdown(
     )
 
 
-# Free-shape rule: any body prose, stable-ID list items, and step blocks
-# may appear, and the section may repeat (one occurrence per subplan).
-_FREE_SECTION_RULE = SectionRule(
+# Plan-specific mappers validate consumed fan-out fields and dependency graphs.
+_FAN_OUT_SECTION_RULE = SectionRule(
     required=False, repeatable=True, allow_body=True, allow_blocks=True, allow_items=True
 )
 
@@ -939,22 +968,15 @@ PLAN_SPEC = MdArtifactSpec(
     artifact_type=PLAN_ARTIFACT_TYPE,
     required_frontmatter=frozenset({"type"}),
     optional_frontmatter=frozenset({"schema_version", "noop"}),
-    lenient_enums={"intent_verb": LenientEnum(_INTENT_VERBS, "add")},
+    allow_unknown_frontmatter=True,
+    allow_nested_headings=True,
     sections={
-        "Summary": _FREE_SECTION_RULE,
-        "Scope": _FREE_SECTION_RULE,
-        "Skills MCP": _FREE_SECTION_RULE,
-        "Steps": _FREE_SECTION_RULE,
-        "Critical Files": _FREE_SECTION_RULE,
-        "Constraints": _FREE_SECTION_RULE,
-        "Design": _FREE_SECTION_RULE,
-        "Acceptance Criteria": _FREE_SECTION_RULE,
-        "Risks": _FREE_SECTION_RULE,
-        "Verification": _FREE_SECTION_RULE,
-        "Parallel Plan": _FREE_SECTION_RULE,
-        "Work Units": _FREE_SECTION_RULE,
+        "Parallel Plan": _FAN_OUT_SECTION_RULE,
+        "Work Units": _FAN_OUT_SECTION_RULE,
     },
-    unknown_section_rule=_FREE_SECTION_RULE,
+    # Arbitrary chapters stay descriptive; plan mappers validate consumed IDs
+    # and edges document-wide without turning narrative lists into requirements.
+    allow_unknown_sections=True,
     to_content=_to_content,
     normalize_content=normalize_plan_artifact_content,
     validate_document=_document_warnings,

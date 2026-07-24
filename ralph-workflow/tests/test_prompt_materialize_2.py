@@ -44,8 +44,7 @@ class _ArtifactSubmitSession:
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
-    "Read the current plan document at `.agent/artifacts/plan.md` "
-    "with your read-only file tools."
+    "Read the current plan document at `.agent/artifacts/plan.md` with your read-only file tools."
 )
 PLANNING_EDIT_DEFECT_SCOPE_TEXT = (
     "Before revising any section, classify the feedback scope as one of:"
@@ -217,6 +216,8 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     feedback_doc = (
         "---\ntype: planning_analysis_decision\nstatus: request_changes\n---\n"
         "## Summary\n- [S1] Feedback for the planner\n"
+        "## What Came Up Short\n- [PA-1] Verification is underspecified.\n"
+        "## How To Fix\n- [PA-1] Add exact verification evidence.\n"
     )
     workspace.write(".agent/artifacts/planning_analysis_decision.md", feedback_doc)
     workspace.write(".agent/PLANNING_ANALYSIS_DECISION.md", feedback_doc)
@@ -355,7 +356,7 @@ def test_materialize_commit_phase_tolerates_empty_diff(
     assert "DIFF:" in rendered
 
 
-def test_materialize_commit_phase_with_claude_prefix_includes_both_tool_aliases(
+def test_materialize_commit_phase_uses_only_claude_visible_tool_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -383,10 +384,10 @@ def test_materialize_commit_phase_with_claude_prefix_includes_both_tool_aliases(
 
     rendered = workspace.read(prompt_path)
     assert "mcp__ralph__ralph_submit_md_artifact" in rendered
-    assert "`ralph_submit_md_artifact`" in rendered
+    assert "`ralph_submit_md_artifact`" not in rendered
 
 
-def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_tools(
+def test_materialize_development_phase_uses_only_provider_visible_mcp_tool_names(
     tmp_path: Path,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
@@ -411,10 +412,11 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
     )
 
     rendered = workspace.read(prompt_path)
-    assert "`mcp__ralph__write_file` or bare `write_file`" in rendered
-    assert "`mcp__ralph__exec` or bare `exec`" in rendered
-    assert "`mcp__ralph__report_progress` or bare `report_progress`" in rendered
-    assert "`mcp__ralph__declare_complete` or bare `declare_complete`" in rendered
+    assert "`mcp__ralph__write_file`" in rendered
+    assert "`mcp__ralph__exec`" in rendered
+    assert "`mcp__ralph__report_progress`" in rendered
+    assert "`mcp__ralph__declare_complete`" in rendered
+    assert "or bare `" not in rendered
 
 
 def test_materialize_development_entry_clears_all_completed_planning_history(
@@ -495,6 +497,8 @@ def test_materialize_development_prompt_uses_analysis_feedback_handoff(
     feedback_doc = (
         "---\ntype: development_analysis_decision\nstatus: request_changes\n---\n"
         "## Summary\n- [S1] Need another iteration.\n"
+        "## What Came Up Short\n- [DA-1] Focused verification is missing.\n"
+        "## How To Fix\n- [DA-1] Add and run the focused verification.\n"
     )
     workspace.write(".agent/artifacts/development_analysis_decision.md", feedback_doc)
     workspace.write(".agent/DEVELOPMENT_ANALYSIS_DECISION.md", feedback_doc)

@@ -34,13 +34,7 @@ if TYPE_CHECKING:
 
 
 def _plumbing_module() -> types.ModuleType:
-    """Lazily resolve commit_plumbing to avoid circular import.
-
-    The cycle is: commit_plumbing imports ralph.cli.commands.commit,
-    which imports commit_plumbing. Resolving lazily (after the first
-    import_module call) unwinds the cycle cleanly.
-    """
-    importlib.import_module("ralph.cli.commands.commit")
+    """Resolve commit plumbing directly; it must not depend on CLI import order."""
     return importlib.import_module("ralph.pipeline.plumbing.commit_plumbing")
 
 

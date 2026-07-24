@@ -602,12 +602,12 @@ controller's ``snapshot()`` reports a non-error state.
   is appended to the exception message in a
   `[last_tool_call=..., elapsed=...]` suffix so a logged traceback
   is actionable without requiring a debugger. The exception's
-  base diagnostic message text (`"(no artifact, no
-  declare_complete)"`) is the root-cause signature produced by
-  `ralph/agents/completion_signals.py::find_declare_complete_marker`
-  in `ralph/agents/invoke/_completion.py` when an agent subprocess
-  exits cleanly (rc=0) WITHOUT a completion artifact AND WITHOUT
-  the `declare_complete` marker. The historical `flagged_for_review=true`
+  base diagnostic message text (`"completion sentinel missing, or
+  required artifact receipt missing"`) is the root-cause signature
+  produced by `ralph/agents/invoke/_completion.py` when an agent
+  subprocess exits cleanly (rc=0) without the durable
+  `declare_complete` sentinel or without a receipt required by the
+  phase. Transcript markers are diagnostic only. The historical `flagged_for_review=true`
   log line was the ambiguous-warning path that the deterministic
   classification introduced here explicitly removes; no current
   attribute or method of `OpenCodeResumableExitError` carries the
@@ -714,7 +714,7 @@ level 1 rejects unsupported claims per AGENTS.md.
   `ralph.agents.invoke._completion._check_process_result` raises
   `OpenCodeResumableExitError` carrying the captured `session_id`
   when the agent subprocess exits `rc=0` without completion evidence
-  (no artifact, no `declare_complete`). A regression at
+  (no durable sentinel, or no required receipt). A regression at
   `_completion.py:389` (the `raise` statement) would silently break
   the R4 watchdog-driven resume contract — the recovery controller
   would lose its typed exception to lift `resumable_session_id` from

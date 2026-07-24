@@ -22,6 +22,7 @@ from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
 )
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+from ralph.mcp.tools.coordination import handle_declare_complete
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -79,6 +80,12 @@ def test_pipeline_phase_stamps_canonical_receipt(
             },
             deps=ArtifactHandlerDeps(backend=backend),
         )
+        completion = handle_declare_complete(
+            session,
+            workspace,
+            {"summary": "development result submitted"},
+        )
+        assert completion.is_error is False
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(

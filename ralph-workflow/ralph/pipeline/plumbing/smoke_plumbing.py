@@ -17,7 +17,10 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents.completion_signals import is_artifact_submitted
+from ralph.agents.completion_signals import (
+    _check_completion_sentinel,
+    is_artifact_submitted,
+)
 from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -296,10 +299,14 @@ def _build_smoke_prompt(
         )
 
     completion_requirement = (
-        "- The canonical smoke_test_result submission is the authoritative completion "
-        "signal. Do NOT print a transcript completion marker; the harness will not trust one.\n"
-        if transport == AgentTransport.AGY
-        else "- When finished, call declare_complete.\n"
+        "- After the artifact tool returns a valid receipt, call `declare_complete` "
+        "as the mandatory final action. The receipt is not phase completion; do not "
+        "stop until the completion call succeeds.\n"
+    )
+    transport_requirement = (
+        f"- Use the tool names exposed by the `{transport.value}` transport exactly.\n"
+        if transport is not None
+        else ""
     )
 
     return (
@@ -311,6 +318,7 @@ def _build_smoke_prompt(
         "- Do not touch files outside tmp/.\n"
         "- Use the headless semantic guide as a rubric: session capture, tool activity, "
         "completion signal, parser events, and tmp artifact creation.\n"
+        f"{transport_requirement}"
         f"{subagent_requirements}"
         f"- Call `{submit_artifact_tool_name}` with "
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
@@ -607,34 +615,16 @@ def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_
 
 
 def _explicit_completion_seen(
-    lines: list[str],
     workspace_root: Path,
-    transport: AgentTransport | None,
     *,
     run_id: str = _SMOKE_RUN_ID,
 ) -> bool:
-    """Return whether the agent emitted an authoritative completion signal.
-
-    The completion signal must be authoritative — not a transcript substring
-    the model was told to print, which a misbehaving or partial run can emit
-    without truly completing.
-
-    - For non-AGY agents (Claude, etc.): the ``Task declared complete:``
-      transcript marker emitted by ``handle_declare_complete`` is the
-      authoritative signal, optionally corroborated by the completion
-      sentinel at ``.agent/completion_seen_<run_id>.json``.
-    - For AGY and Nanocoder: the canonical receipt at
-      ``.agent/receipts/<run_id>/smoke_test_result.json`` is the
-      authoritative signal. These transports can complete the smoke contract
-      by submitting the smoke artifact without emitting Claude's transcript
-      marker. Transcript substrings are explicitly NOT accepted for AGY:
-      the prompt no longer tells the agent to print a marker, and any
-      substring the model emits incidentally is treated as ordinary model
-      output.
-    """
-    if transport in {AgentTransport.AGY, AgentTransport.NANOCODER}:
-        return _is_smoke_artifact_submitted(workspace_root, run_id)
-    return any("Task declared complete:" in line for line in lines)
+    """Return whether the durable run-scoped completion sentinel is valid."""
+    return _check_completion_sentinel(
+        workspace_root,
+        run_id,
+        sentinel_secret=_parent_broker_secret(),
+    )
 
 
 def _parser_event_error(
@@ -873,10 +863,8 @@ def _detect_smoke_errors(
     }:
         errors.append("session ID was not observed")
 
-    if not _explicit_completion_seen(
-        lines, params.workspace_root, params.config.transport, run_id=run_id
-    ):
-        errors.append("declare_complete marker was not observed")
+    if not _explicit_completion_seen(params.workspace_root, run_id=run_id):
+        errors.append("completion sentinel was not observed")
 
     if parser_error := _parser_event_error(params.config, lines):
         errors.append(parser_error)
@@ -909,22 +897,6 @@ def _detect_smoke_errors(
     return errors
 
 
-def _agy_tool_activity_seen(workspace_root: Path) -> bool:
-    """Deprecated AGY tool-activity fallback. Returns False unconditionally.
-
-    This helper used to read the persisted ``smoke_test_result`` artifact and
-    return True when ``headless_guide_checks`` contained ``"tool activity"``,
-    which let the smoke run self-certify tool activity from the
-    model-authored artifact. That path was removed: tool activity must come
-    from authoritative parser / transport events, never from the artifact
-    contents. The function is preserved as a no-op stub so external
-    imports keep working during the transition; the regression test
-    ``tests/test_agy_execution_contract.py::test_agy_tool_activity_must_not_come_from_artifact``
-    pins the new contract.
-    """
-    return False
-
-
 def _run_smoke_agent(
     params: SmokeRunParams,
     run_id: str = _SMOKE_RUN_ID,
@@ -937,14 +909,10 @@ def _run_smoke_agent(
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
-    # Authoritative completion signal — see ``_explicit_completion_seen`` docstring.
-    # For AGY and Nanocoder the receipt (==``artifact_submitted``) is the
-    # trusted signal; for other transports the ``Task declared complete:``
-    # transcript marker from ``handle_declare_complete`` is the trusted
-    # signal. We compute the bool here so the SmokeRunResult can surface it
-    # without leaking transport-specific knowledge into the report.
+    # Authoritative completion is the durable sentinel for every transport.
     explicit_completion_seen = _explicit_completion_seen(
-        lines, params.workspace_root, params.config.transport, run_id=run_id
+        params.workspace_root,
+        run_id=run_id,
     )
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     # Tool activity MUST come from authoritative parser / transport events

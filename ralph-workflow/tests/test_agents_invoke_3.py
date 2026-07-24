@@ -789,7 +789,7 @@ def test_invoke_agent_injects_codex_master_prompt_file_via_config(
         assert "model_instructions_file" not in features
 
 
-def test_invoke_agent_does_not_inject_opencode_master_prompt_flag(
+def test_invoke_agent_prepends_master_prompt_for_opencode(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
@@ -849,7 +849,9 @@ def test_invoke_agent_does_not_inject_opencode_master_prompt_flag(
         )
     )
 
-    assert seen_cmds == [["opencode", "run", "--format", "json", "hello"]]
+    assert seen_cmds == [
+        ["opencode", "run", "--format", "json", "unattended mode\n\nhello"]
+    ]
 
 
 def test_invoke_agent_preserves_existing_codex_home_state(

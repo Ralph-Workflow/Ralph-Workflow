@@ -5,7 +5,7 @@ Consumed structure (stays strict): frontmatter ``type`` and ``status``
 reads it, so a wrong status is a hard error naming the valid values),
 the required-section skeleton, and the ``path | severity | summary``
 shape of ``Issues`` items. Per-issue severity is descriptive (no
-consumer gates on it), so unknown severities warn-coerce to ``low``.
+consumer gates on it), so unknown severities are preserved.
 Section bodies tolerate multi-line prose and unknown continuation
 lines under items.
 """
@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.markdown import MdArtifactSpec, SectionRule
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
+from ralph.mcp.artifacts.markdown._frontmatter_vocabulary import FrontmatterVocabulary
 from ralph.mcp.artifacts.markdown.registry import register_spec
 from ralph.mcp.artifacts.typed_artifacts import normalize_issues_content
 
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
     from ralph.mcp.artifacts.markdown._parsed_item import ParsedItem
 
-_SEVERITIES = frozenset({"high", "medium", "low"})
 _STATUSES = ("issues_found", "no_issues")
 _ISSUE_PARTS = 3
 
@@ -40,7 +40,7 @@ def _issue_content(item: ParsedItem) -> dict[str, str]:
     path, severity, summary = parts
     return {
         "path": path,
-        "severity": severity if severity in _SEVERITIES else "low",
+        "severity": severity,
         "summary": summary,
     }
 
@@ -52,36 +52,14 @@ def _to_content(document: ParsedDocument) -> dict[str, object]:
         "status": document.frontmatter["status"],
         "summary": summary[0],
         "issues": [] if issues is None else [_issue_content(item) for item in issues.items],
+        "review_evidence": _item_texts(document, "Review Evidence"),
         "what_came_up_short": _item_texts(document, "What Came Up Short"),
         "how_to_fix": _item_texts(document, "How To Fix"),
     }
 
 
-def _validate_frontmatter(document: ParsedDocument) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
-    if document.frontmatter["type"] != "issues":
-        diagnostics.append(
-            Diagnostic(
-                document.frontmatter_lines["type"],
-                None,
-                "ISSUES001",
-                "frontmatter 'type' must be 'issues'",
-            )
-        )
-    if document.frontmatter["status"] not in _STATUSES:
-        diagnostics.append(
-            Diagnostic(
-                document.frontmatter_lines["status"],
-                None,
-                "SPEC010",
-                "frontmatter 'status' must be one of: issues_found, no_issues",
-            )
-        )
-    return diagnostics
-
-
 def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
-    diagnostics = _validate_frontmatter(document)
+    diagnostics: list[Diagnostic] = []
     issues = document.section("Issues")
     if issues is None:
         return diagnostics
@@ -96,16 +74,6 @@ def _validate_document(document: ParsedDocument) -> list[Diagnostic]:
                     "issue items must use 'path | severity | summary'",
                 )
             )
-        elif parts[1] not in _SEVERITIES:
-            diagnostics.append(
-                Diagnostic(
-                    item.line,
-                    "Issues",
-                    "ISSUES003",
-                    f"severity {parts[1]!r} coerced to 'low'",
-                    "warning",
-                )
-            )
     return diagnostics
 
 
@@ -116,8 +84,13 @@ def _normalize(content: dict[str, object]) -> dict[str, object]:
 ISSUES_SPEC = MdArtifactSpec(
     artifact_type="issues",
     required_frontmatter=frozenset({"type", "status"}),
+    closed_frontmatter={
+        "type": FrontmatterVocabulary(("issues",), "ISSUES001"),
+        "status": FrontmatterVocabulary(_STATUSES),
+    },
     sections={
         "Summary": SectionRule(require_items=True, max_items=1, allow_body=True),
+        "Review Evidence": SectionRule(required=False, allow_body=True),
         "Issues": SectionRule(required=False, allow_body=True),
         "What Came Up Short": SectionRule(required=False, allow_body=True),
         "How To Fix": SectionRule(required=False, allow_body=True),
@@ -125,6 +98,8 @@ ISSUES_SPEC = MdArtifactSpec(
     to_content=_to_content,
     normalize_content=_normalize,
     validate_document=_validate_document,
+    allow_unknown_frontmatter=True,
+    allow_unknown_sections=True,
 )
 
 register_spec(ISSUES_SPEC)

@@ -728,6 +728,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
@@ -836,6 +837,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
@@ -947,6 +949,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
+                requires_completion_evidence=False,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),

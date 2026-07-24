@@ -18,9 +18,9 @@ Submit with `ralph_submit_md_artifact`; pre-check with
 
 ## Document Shape
 
-Frontmatter: `type: development_result` and `status: completed` or
-`status: partial` (an unknown status is coerced to `completed` with a
-warning — set it deliberately).
+Frontmatter: `type: development_result` and exactly one closed-vocabulary
+status: `completed` or `partial`. Any other status is invalid and must be
+repaired before submission.
 
 | Section | Required | Items |
 |---|---|---|

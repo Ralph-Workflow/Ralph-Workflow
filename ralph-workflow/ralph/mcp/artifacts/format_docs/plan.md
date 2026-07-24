@@ -6,11 +6,10 @@ Validate with `ralph_verify_md_artifact`, then submit with
 `ralph_submit_md_artifact` (`artifact_type: plan`). Large plans may use the
 stage/get/finalize tools.
 
-For a step inside a conventional `## Steps` section, call
-`ralph_edit_md_plan_step` with its stable `S-n` ID. Insert, move, replace, and
-remove never renumber IDs. A replacement is one complete
-`### [S-n] Title` block whose ID matches `step_id`. Resubmit the whole document
-to edit steps placed under custom or nested headings.
+Call `ralph_edit_md_plan_step` with a step's stable `S-n` ID wherever that step
+appears in the document, including under custom, repeated, or nested headings.
+Insert, move, replace, and remove never renumber IDs. A replacement is one
+complete `### [S-n] Title` block whose ID matches `step_id`.
 
 Parallel work is delegated to agent-managed sub-agents. Ralph-managed fan-out is dormant
 in this build, but work-unit markers are still validated when used.
@@ -48,11 +47,13 @@ Files:
 - modify src/settings.py
 - modify tests/test_settings.py
 Verify: pytest tests/test_settings.py -q
+Expect: the focused settings tests pass with exit code 0
 
 ## Acceptance Criteria
 - [AC-01] The configured default is returned and covered by the regression test.
   Satisfied by: S-1
   Verify: pytest tests/test_settings.py -q
+  Expect: the focused settings tests pass with exit code 0
 ```
 
 ### Medium task: conventional linear plan
@@ -106,6 +107,7 @@ Prove the regression is fixed.
 Type: verify
 Depends on: S-2
 Verify: pytest tests/test_foo.py -q
+Expect: test_clamp_out_of_range passes with exit code 0
 
 ## Critical Files
 - [CF-1] src/foo.py
@@ -119,6 +121,7 @@ Verify: pytest tests/test_foo.py -q
 - [AC-01] Invalid indexes no longer crash foo()
   Satisfied by: S-1, S-2
   Verify: pytest tests/test_foo.py -q
+  Expect: test_clamp_out_of_range passes with exit code 0
 
 ## Risks
 - [R-1] Clamping could mask a caller bug
@@ -131,29 +134,27 @@ Verify: pytest tests/test_foo.py -q
   Timeout: 60
 ```
 
-### Large task: five-work-unit fan-out
+### Large task: four-subplan fan-out with main-session fan-in
 
-Use this shape when four independent sub-agents can work concurrently and a
-fifth unit owns explicit fan-in integration and verification. Each work unit
-has a separate subplan; step IDs remain globally unique across the document.
+Use this shape when four or five dedicated execution sub-agents can run
+substantial independent mini-plans concurrently. The main session owns
+explicit fan-in integration and verification after those subplans finish.
+Step IDs remain globally unique across the document.
+
+`## Work Units` is a different, lighter shape for small bounded tasks or
+verification gates. A substantial execution sub-agent gets a repeatable
+`## <Name> Subplan` or `## Subplan: <Name>` section with its own scoped steps.
+Matching is case-insensitive and also accepts `Sub-plan` plus colon or dash
+prefix/suffix variants; the standard forms above remain clearest for agents.
+Targeted Subplans normalize to internal work-unit IDs such as
+`subplan-s-10`; cross-subplan `Depends on: S-n` edges remap to those IDs.
+A targetless integration section stays in the main session, so do not label the
+fan-in section as a Subplan.
 
 ```markdown artifact=plan example-size=large
 ---
 type: plan
 ---
-## Work Units
-- [api] Implement the API change
-  Directories: src/api/, tests/api/
-- [web] Implement the web client change
-  Directories: src/web/, tests/web/
-- [docs] Document the operator workflow
-  Directories: docs/
-- [contract-tests] Add cross-surface contract coverage
-  Directories: tests/contracts/
-- [integration] Integrate all four outputs and run fan-in verification
-  Directories: integration/, tests/integration/
-  Depends on: api, web, docs, contract-tests
-
 ## API Subplan
 
 ### [S-10] Add the API capability
@@ -163,6 +164,14 @@ Type: file_change
 Files:
 - modify src/api/routes.py
 - modify tests/api/test_routes.py
+
+### [S-11] Prove the API capability
+Run the API boundary tests inside this execution subplan.
+
+Type: verify
+Depends on: S-10
+Verify: pytest tests/api/test_routes.py -q
+Expect: the focused API route tests pass with exit code 0
 
 ## Web Subplan
 
@@ -174,6 +183,14 @@ Files:
 - modify src/web/client.ts
 - modify tests/web/client.test.ts
 
+### [S-21] Prove the web workflow
+Run the web-client test inside this execution subplan.
+
+Type: verify
+Depends on: S-20
+Verify: npm test -- tests/web/client.test.ts
+Expect: the focused web-client test passes with exit code 0
+
 ## Documentation Subplan
 
 ### [S-30] Document the operator path
@@ -182,6 +199,14 @@ Describe setup, expected behavior, and the concrete success check.
 Type: file_change
 Files:
 - modify docs/operator-workflow.md
+
+### [S-31] Prove the documentation contract
+Run the repository's documentation check inside this execution subplan.
+
+Type: verify
+Depends on: S-30
+Verify: python scripts/check_docs.py docs/operator-workflow.md
+Expect: the documentation checker reports docs/operator-workflow.md valid
 
 ## Contract-Test Subplan
 
@@ -192,13 +217,21 @@ Type: file_change
 Files:
 - modify tests/contracts/test_api_web_contract.py
 
-## Integration Subplan
+### [S-41] Prove the shared contract
+Run the contract test inside this execution subplan.
 
-### [S-50] Fan in the four work-unit outputs
+Type: verify
+Depends on: S-40
+Verify: pytest tests/contracts/test_api_web_contract.py -q
+Expect: the API-to-web contract test passes with exit code 0
+
+## Integration and Verification
+
+### [S-50] Fan in the four execution-subplan outputs
 Integrate the API, web, documentation, and contract-test changes and resolve
 cross-surface mismatches.
 
-Depends on: S-10, S-20, S-30, S-40
+Depends on: S-11, S-21, S-31, S-41
 
 ### [S-51] Run integrated verification
 Prove the combined workflow after fan-in.
@@ -206,23 +239,28 @@ Prove the combined workflow after fan-in.
 Type: verify
 Depends on: S-50
 Verify: pytest tests/integration/test_operator_workflow.py -q
+Expect: the integrated operator-workflow test passes with exit code 0
 
 ## Acceptance Criteria
 - [AC-10] The API behavior is covered at its public boundary.
-  Satisfied by: S-10
+  Satisfied by: S-10, S-11
   Verify: pytest tests/api/test_routes.py -q
+  Expect: the focused API route tests pass with exit code 0
 - [AC-20] The web workflow exercises the new API capability.
-  Satisfied by: S-20
+  Satisfied by: S-20, S-21
   Verify: npm test -- tests/web/client.test.ts
+  Expect: the focused web-client test passes with exit code 0
 - [AC-30] The operator workflow is documented with a success check.
-  Satisfied by: S-30
+  Satisfied by: S-30, S-31
   Evidence: docs/operator-workflow.md
 - [AC-40] One contract test covers the API-to-web agreement.
-  Satisfied by: S-40
+  Satisfied by: S-40, S-41
   Verify: pytest tests/contracts/test_api_web_contract.py -q
-- [AC-50] All work-unit outputs operate together after fan-in.
+  Expect: the API-to-web contract test passes with exit code 0
+- [AC-50] All execution-subplan outputs operate together after fan-in.
   Satisfied by: S-50
   Verify: pytest tests/integration/test_operator_workflow.py -q
+  Expect: the integrated operator-workflow test passes with exit code 0
 
 ## Verification
 - [V-10] pytest tests/integration/test_operator_workflow.py -q
@@ -235,7 +273,8 @@ Verify: pytest tests/integration/test_operator_workflow.py -q
 
 Every conventional section is optional, repeatable, and may appear in any order.
 Custom `##` headings are valid, and an `### [S-n] Title` step may live under any
-section. The validator therefore accepts radically different shapes, including:
+section. In other words, arbitrary headings remain descriptive. The validator
+therefore accepts radically different shapes, including:
 
 - one linear `## Steps` list;
 - two or more separate subplans, each with its own scope, steps, and criteria;
@@ -255,23 +294,37 @@ Only machine-consumed structure is hard:
 - A non-noop plan must contain at least one `### [S-n] Title` block somewhere
   in the document. Each ID uses a positive number and is globally unique
   across all linear steps, separate subplans, sub-agent sections, and nested
-  mini-plans.
+  mini-plans. Alphabetic or mixed malformed step-like IDs such as `S-X`,
+  `STEP-X`, or `S-1a` fail instead of disappearing into prose.
 - Every step or criterion reference must be resolvable by stable ID.
   `Depends on:` and `Satisfied by:` values name existing `S-n` steps;
   dangling references and dependency cycles are errors.
-- When `## Work Units` or `## Parallel Plan` is used for fan-out, each marker
-  is a parseable `- [unit-id] description` item. Its optional `Directories:`,
-  `Paths:`, and `Depends on:` fields must remain parseable, and unit
-  dependencies must resolve.
+- An exact, case-sensitive `## Work Units` or `## Parallel Plan` heading opts
+  into machine-consumed fan-out grammar and fails closed. Loose top-level body
+  prose and malformed bullets are errors. Stable-ID list items are parseable
+  `- [unit-id] description` markers or evaluatable `- [AC-n]` criteria;
+  nested `### [S-n]` step blocks may follow unit markers. A consumed section
+  must declare at least one real unit. Acceptance-criterion items are criteria,
+  never phantom work units. Optional `Directories:`, `Paths:`, and
+  `Depends on:` fields must remain parseable, and unit dependencies must
+  resolve. Lowercase lookalikes and other arbitrary headings remain
+  descriptive.
 - Acceptance criteria and verification must be genuinely evaluatable when
-  used. Each `## Acceptance Criteria` item declares either a concrete
-  `Verify:` command or a specific `Evidence:` file/artifact. Each
-  `## Verification` item declares `Expect:`. A step declared
-  `Type: verify` supplies `Verify:` or `Location:`.
+  used. Every `Verify:` command is paired with a specific `Expect:` output;
+  alternatively, a criterion may name a specific `Evidence:` file/artifact and
+  a verify step may name a specific `Location:`. Each `## Verification` item
+  also declares a specific `Expect:` result. For compatibility, a step or
+  criterion may reuse the outcome from a global Verification item whose command
+  text matches exactly, but co-locating `Expect:` is clearer.
+- Explicit Work Unit and Parallel Plan dependencies must resolve to declared
+  unit IDs and form a DAG. Nested mini-plan step ownership is one-to-one.
 
 Use direct verification commands; they must not start with `bash -c`, `sh -c`, or `eval`.
-A step declared `Type: file_change` supplies at least
-one `Files:` target.
+Project-specific `Type:` values and target actions are preserved verbatim,
+without coercion. Recommended built-ins are `file_change`, `action`,
+`research`, and `verify`; only the built-in `file_change` and `verify`
+contracts add type-specific requirements. A step declared
+`Type: file_change` supplies at least one `Files:` target.
 
 ## Conventional syntax
 
@@ -280,16 +333,20 @@ not make the surrounding sections mandatory:
 
 - Steps use `### [S-n] Title`, description prose, and optional fields such as
   `Type:`, `Priority:`, `Files:`, `Depends on:`, `Satisfies:`, `Verify:`,
-  `Location:`, `Rationale:`, and `Evidence:`.
-- Acceptance criteria use `- [AC-n] outcome` with `Verify:` or `Evidence:`;
-  `Satisfied by:` may link them to steps.
+  `Expect:`, `Location:`, `Rationale:`, and `Evidence:`. When `Verify:` is
+  present, `Expect:` is required.
+- Acceptance criteria use `- [AC-n] outcome` with `Verify:` plus `Expect:`, or
+  with a specific `Evidence:` artifact; `Satisfied by:` may link them to steps.
 - Verification uses `- [V-n] method` plus a concrete `Expect:` result.
 - Work units use `- [unit-id] description`; add `Directories:` and
   `Depends on:` only when fan-out consumes them.
 - Summary, Scope, Skills MCP, Critical Files, Design, Constraints, and Risks
   may use natural prose and the labels shown in the example.
 
-Descriptive labels and vocabulary are advisory. Unfamiliar wording may produce
-a warning or be treated as prose; never depend on fallback behavior. Structural
-hard errors name the malformed ID, unresolved reference, fan-out marker, or
-unevaluatable check that must be repaired.
+Descriptive labels and vocabulary are advisory. `Intent`, `Coverage`, scope
+`Category`, step `Type`, step `Priority`, target and critical-file `Action`,
+and risk `Severity` are free-form descriptive hints, so project-specific
+values are preserved. An unrecognized field label may still produce a warning
+or remain prose; never depend on a typo being consumed.
+Structural hard errors name the malformed ID, unresolved reference, fan-out
+marker, or unevaluatable check that must be repaired.

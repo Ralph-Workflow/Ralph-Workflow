@@ -45,10 +45,10 @@ def _run_mock_agy(
 def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
     """Normal behavior emits stdout with a tool-use line and writes the artifact.
 
-    The mock no longer emits a transcript completion marker because the AGY
-    smoke prompt no longer asks the agent to print one. The authoritative
-    completion signal is the canonical receipt promoted from the artifact
-    write; the authoritative tool-activity signal is the
+    The mock never emits a spoofable transcript completion marker. In the
+    harness, ``RALPH_MCP_RUN_ID`` also makes it write the durable declaration
+    sentinel; this standalone call intentionally omits that run id. The
+    authoritative tool-activity signal is the
     ``[plain] tool: NAME`` line that the GenericParser classifies as
     ``type='tool_use'``.
     """

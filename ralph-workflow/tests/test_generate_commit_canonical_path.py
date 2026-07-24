@@ -23,6 +23,7 @@ from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+from ralph.mcp.tools.coordination import handle_declare_complete
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.pipeline.events import PipelineEvent
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
@@ -87,6 +88,12 @@ def test_generate_commit_end_to_end_uses_canonical_submit(
             },
             deps=ArtifactHandlerDeps(backend=backend),
         )
+        completion = handle_declare_complete(
+            session,
+            workspace,
+            {"summary": "commit message submitted"},
+        )
+        assert completion.is_error is False
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(

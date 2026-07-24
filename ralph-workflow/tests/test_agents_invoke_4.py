@@ -465,6 +465,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                requires_completion_evidence=False,
             ),
             _clock=FakeClock(),
         )
@@ -888,6 +889,34 @@ def test_nanocoder_command_for_log_redacts_run_prompt_text(tmp_path: Path) -> No
 
     assert log_line == f"nanocoder --mode yolo --no-plain run {prompt_file}"
     assert "Build the feature." not in log_line
+
+
+@pytest.mark.parametrize(
+    ("transport", "command"),
+    (
+        (AgentTransport.PI, "pi"),
+        (AgentTransport.CURSOR, "agent"),
+        (AgentTransport.GENERIC, "custom-agent"),
+    ),
+)
+def test_command_for_log_redacts_inline_prompt_for_every_remaining_positional_transport(
+    tmp_path: Path,
+    transport: AgentTransport,
+    command: str,
+) -> None:
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text("operator secret", encoding="utf-8")
+    config = AgentConfig(cmd=command, transport=transport)
+
+    log_line = command_for_log(
+        config,
+        [command, "durable secret\n\noperator secret"],
+        str(prompt_file),
+    )
+
+    assert log_line == f"{command} {prompt_file}"
+    assert "durable secret" not in log_line
+    assert "operator secret" not in log_line
 
 
 def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:

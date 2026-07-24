@@ -41,7 +41,7 @@ _MINIMAL_PLANNING_ANALYSIS_DECISION = (
     "---\n\n"
     "## Summary\n\n- [SUM-1] Revise the plan.\n\n"
     "## What Came Up Short\n\n- [GAP-1] Verification is too vague.\n\n"
-    "## How To Fix\n\n- [FIX-1] Edit the existing plan instead of starting over.\n"
+    "## How To Fix\n\n- [GAP-1] Edit the existing plan instead of starting over.\n"
 )
 
 
