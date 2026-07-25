@@ -936,6 +936,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.tools._exec_completed_process",
             ("_CompletedProcessAdapter",),
         ),
+        (
+            "tests/test_mcp_endpoint_functional_sweep.py",
+            "ralph.mcp.tools._exec_completed_process",
+            ("_CompletedProcessAdapter",),
+        ),
     }
 )
 

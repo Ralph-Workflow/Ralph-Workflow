@@ -248,6 +248,79 @@ def test_prompt_reference_variables_cover_visible_tools(drain: SessionDrain) -> 
         )
 
 
+@pytest.mark.parametrize("drain", list(SessionDrain))
+def test_server_registry_visible_names_equals_rendered_prompt_set(
+    drain: SessionDrain,
+) -> None:
+    """Server's live registry visible names equal the prompt-rendered set, per drain.
+
+    Per-drain AC-01 / S-3 regression: build an :class:`AgentSession`
+    with the drain's bundled default capabilities, attach a
+    :class:`MemoryWorkspace`, build the production :class:`ToolBridge`
+    registry, and ``list_definitions()`` to get the LIVE visible
+    canonical tool names. Compare those names (plus their Claude
+    aliases) against the names the prompt-rendering machinery
+    produces for the same drain via
+    :func:`visible_tool_names_for_capabilities` and
+    :func:`capability_template_variables`.
+
+    The test compares two LIVE surfaces (server vs. prompt
+    rendering), not a snapshot, so a future drift that registers a
+    new tool but forgets to register it in ``RalphToolName`` (or
+    vice versa) fails closed on both directions: the registry can
+    never advertise a name the prompt cannot render, and the prompt
+    can never render a name the registry cannot serve.
+    """
+    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.tool_contract import canonicalize_tool_names
+    from ralph.mcp.tools.bridge import build_ralph_tool_registry
+    from ralph.workspace.memory import MemoryWorkspace
+
+    capability_ids = template_variables.default_capability_identifiers_for_drain(drain)
+    if not capability_ids:
+        pytest.skip(f"drain {drain!r} has no default capabilities")
+    session = AgentSession(
+        session_id=f"ac01-{drain.value}",
+        run_id=f"ac01-{drain.value}",
+        drain=drain.value,
+        capabilities=set(capability_ids),
+    )
+    workspace = MemoryWorkspace()
+    registry = build_ralph_tool_registry(session, workspace)
+    server_visible_canonical = {
+        str(name) for name in canonicalize_tool_names(
+            [definition.name for definition in registry.list_definitions()]
+        )
+    }
+
+    prompt_visible = set(
+        visible_tool_names_for_capabilities(capability_ids, drain=drain.value)
+    )
+    prompt_canonical = set(canonicalize_tool_names(prompt_visible))
+
+    assert server_visible_canonical == prompt_canonical, (
+        f"drain {drain!r}: server registry visible names vs. rendered "
+        f"prompt tool set must be equal. "
+        f"only-server={sorted(server_visible_canonical - prompt_canonical)}, "
+        f"only-prompt={sorted(prompt_canonical - server_visible_canonical)}"
+    )
+
+    # Every server-side visible tool renders a non-empty
+    # ``*_TOOL_REFERENCE`` variable for the same drain — the prompt
+    # contract pins both sides at once.
+    caps, flags = template_variables.default_caps_and_flags_for_drain(drain)
+    vars_map = template_variables.capability_template_variables(caps, flags)
+    enum_member_by_value = {tool.value: tool.name for tool in RalphToolName}
+    for tool in sorted(server_visible_canonical):
+        member_name = enum_member_by_value.get(tool, tool.upper())
+        var_name = f"{member_name}_TOOL_REFERENCE"
+        assert vars_map.get(var_name, ""), (
+            f"drain {drain!r}: server-visible tool {tool!r} rendered "
+            f"empty {var_name} (every server-visible tool MUST have a "
+            f"non-empty prompt reference)"
+        )
+
+
 # --- AC-04: edit-tools-only rule in shared partial ----------------------
 #
 # The shared partial :file:`_mcp_tools.jinja` is the only prompt-side

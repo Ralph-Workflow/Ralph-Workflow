@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ralph.config.mcp_models import McpConfig
 from ralph.mcp.protocol._session_drain import SessionDrain
@@ -45,10 +45,15 @@ from ralph.mcp.server._in_memory_transport import (
     parse_sse_data,
 )
 from ralph.mcp.server.runtime import McpServer
+from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
+from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.names import RalphToolName
 from ralph.workspace.fs import FsWorkspace
 from tests._support.typed_accessors import must_dict_list, must_mapping, must_str_list
+
+if TYPE_CHECKING:
+    import pytest
 
 # Tools that hit the live network — exercised at the contract level
 # (registered, described, parameter-validated) but NEVER called with
@@ -120,6 +125,72 @@ def _canonical_tool_names(advertised: list[str]) -> set[str]:
     so the sweep only needs to cover the canonical set.
     """
     return {name for name in advertised if not name.startswith("mcp__ralph__")}
+
+
+def _make_in_memory_runner() -> Any:
+    """Return a deterministic in-memory runner for ``ExecRunDeps``.
+
+    The runner swallows whatever argv the handler receives and
+    returns an empty completed-process adapter with exit code 0. It
+    is used to assert that the sweeP covers the exec tool
+    *end-to-end through the bridge* (capability check, parameter
+    parsing, output formatting, spill policy) without spawning a real
+    OS process.
+    """
+
+    def runner(
+        argv: list[str],
+        cwd: Path,
+        timeout_seconds: float | None,
+    ) -> _CompletedProcessAdapter:
+        del argv, cwd, timeout_seconds
+        return _CompletedProcessAdapter(
+            stdout=b"",
+            stderr=b"",
+            returncode=0,
+            truncated=False,
+        )
+
+    return runner
+
+
+def _patch_exec_handlers_with_in_memory_runner(monkeypatch: Any) -> None:
+    """Wrap ``handle_exec_command`` and ``handle_unsafe_exec`` with an in-memory runner.
+
+    Both handlers accept an optional ``deps`` keyword. The default
+    branch dispatches to the global ``ProcessManager`` and spawns a
+    real OS process. The sweep is a unit-tier test in the immutable
+    60s combined budget — real subprocess execution (even the cheap
+    ``true`` / ``echo`` invocations used here) would loosen the
+    contract and reintroduce the audit_test_policy gap that the plan
+    flagged.
+
+    The wrapper imports each handler's module lazily (matching the
+    production ``LazyToolHandler`` resolution path), then patches the
+    module attribute so the next bridge dispatch finds the wrapped
+    version. The original handlers are called with the injected
+    ``deps`` so every other layer — capability check, parameter
+    parsing, VCS blacklist, output formatting, spill policy —
+    remains live, only the process boundary is faked.
+    """
+    runner = _make_in_memory_runner()
+    deps = ExecRunDeps(runner=runner)
+    import ralph.mcp.tools.exec as _exec_mod
+    import ralph.mcp.tools.unsafe_exec as _unsafe_exec_mod
+
+    real_handle_exec_command = _exec_mod.handle_exec_command
+    real_handle_unsafe_exec = _unsafe_exec_mod.handle_unsafe_exec
+
+    def patched_exec_command(session, workspace, params):
+        return real_handle_exec_command(session, workspace, params, deps=deps)
+
+    def patched_unsafe_exec(session, workspace, params):
+        return real_handle_unsafe_exec(session, workspace, params, deps=deps)
+
+    monkeypatch.setattr(_exec_mod, "handle_exec_command", patched_exec_command)
+    monkeypatch.setattr(
+        _unsafe_exec_mod, "handle_unsafe_exec", patched_unsafe_exec
+    )
 
 
 # Minimal-valid-args per tool. Each entry is ``(name, arguments)``;
@@ -281,7 +352,9 @@ def _assert_call_round_trips(name: str, response: dict[str, Any]) -> None:
     assert result, f"{name}: tools/call result is empty: {response}"
 
 
-def test_advertised_tool_set_round_trips(tmp_path: Path) -> None:
+def test_advertised_tool_set_round_trips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC-03 / S-5: every advertised tool name round-trips through the real bridge.
 
     The sweep seeds a tmp_path workspace, stands up a real McpServer
@@ -291,8 +364,16 @@ def test_advertised_tool_set_round_trips(tmp_path: Path) -> None:
     capability-denied). Live-network tools are skipped here and
     asserted at the contract level by the
     ``test_live_network_tools_have_contract_coverage`` test below.
+
+    The exec / unsafe_exec / raw_exec handlers are wrapped with an
+    in-memory :class:`ExecRunDeps` runner so the sweep exercises the
+    real bridge dispatch (capability check, parameter parsing,
+    blacklist policy, output formatting, spill path) without ever
+    spawning an OS process. See
+    :func:`_patch_exec_handlers_with_in_memory_runner`.
     """
     _seed_workspace(tmp_path)
+    _patch_exec_handlers_with_in_memory_runner(monkeypatch)
     server, _session = _build_server(tmp_path)
     advertised = _canonical_tool_names(_drive_tools_list(server))
 
@@ -312,6 +393,7 @@ def test_advertised_tool_set_round_trips(tmp_path: Path) -> None:
 
 def test_every_advertised_tool_round_trips_or_has_contract_coverage(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """AC-03: every tool in ``tools/list`` either round-trips or has documented coverage.
 
@@ -330,8 +412,14 @@ def test_every_advertised_tool_round_trips_or_has_contract_coverage(
     No tool is left in a coverage gap — if a new tool lands in
     ``RalphToolName`` without a SWEEP_CALL or an exclusion here, this
     test fails closed.
+
+    The exec handler is wrapped with the in-memory runner (see
+    :func:`_patch_exec_handlers_with_in_memory_runner`) so the
+    coverage gate for ``exec`` / ``unsafe_exec`` / ``raw_exec`` does
+    not depend on a real subprocess.
     """
     _seed_workspace(tmp_path)
+    _patch_exec_handlers_with_in_memory_runner(monkeypatch)
     server, _session = _build_server(tmp_path)
     advertised = _canonical_tool_names(_drive_tools_list(server))
 
@@ -412,3 +500,68 @@ def test_unknown_tool_returns_documented_error(tmp_path: Path) -> None:
     error_block = must_mapping(response["error"], field="error")
     code = error_block.get("code")
     assert code is not None, f"unknown tool: error envelope has no code: {response}"
+
+
+def test_exec_handler_does_not_spawn_subprocess_under_sweep(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the wrapped sweep MUST NOT reach the real process-manager spawn path.
+
+    AC-03 / S-4 require the sweep to stay in-process, fit inside
+    the 60s combined budget, and exercise the production handler
+    dispatch path. The earlier sweep directly invoked ``true`` /
+    ``echo`` through the global ``ProcessManager.spawn`` which is
+    real subprocess execution — disallowed by
+    ``ralph.testing.audit_test_policy`` and the plan's "no real
+    subprocess" constraint.
+
+    This test pins the fix: with
+    :func:`_patch_exec_handlers_with_in_memory_runner` applied, the
+    bridge round-trips the exec / unsafe_exec / raw_exec tools but
+    the ``ProcessManager.spawn`` stub injected for this test never
+    sees a call. A regression that reverts to the real runner path
+    fails closed here.
+    """
+    from ralph.process.manager import ProcessManager
+
+    _seed_workspace(tmp_path)
+    _patch_exec_handlers_with_in_memory_runner(monkeypatch)
+
+    spawn_calls: list[list[str]] = []
+
+    class _SpyProcessManager(ProcessManager):
+        """``ProcessManager`` subclass that records spawn attempts without running them."""
+
+        def spawn(self, argv, options):
+            spawn_calls.append([str(arg) for arg in argv])
+            raise AssertionError(
+                "ProcessManager.spawn should not be invoked — the "
+                "in-memory runner swallows exec dispatch in this sweep"
+            )
+
+    monkeypatch.setattr(
+        "ralph.process.manager.get_process_manager",
+        _SpyProcessManager,
+        raising=True,
+    )
+
+    server, _session = _build_server(tmp_path)
+    for tool_name in (
+        RalphToolName.EXEC,
+        RalphToolName.UNSAFE_EXEC,
+        RalphToolName.RAW_EXEC,
+    ):
+        arguments = (
+            {"command": "true"}
+            if tool_name is RalphToolName.EXEC
+            else {"command": "true", "timeout_ms": 5000}
+        )
+        response = _drive_call(server, tool_name, arguments)
+        _assert_call_round_trips(tool_name, response)
+
+    assert spawn_calls == [], (
+        f"ProcessManager.spawn was reached under the sweep; "
+        f"the in-memory runner must intercept all exec dispatch. "
+        f"argv seen: {spawn_calls}"
+    )

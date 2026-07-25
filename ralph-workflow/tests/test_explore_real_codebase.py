@@ -550,6 +550,12 @@ def test_real_transport_indexes_real_codebase_through_file_backed_session(
             entry.get("name")
             for entry in must_mapping(tools_result, field="result")["tools"]
         )
+        # AC-02 / S-4 requires the explore surface — including
+        # ``grep_files`` (the indexed search the bridge advertises) —
+        # to be present in tools/list, otherwise an agent cannot
+        # discover the indexed search path even though the handler is
+        # engaged.
+        assert "grep_files" in tool_names
         assert "ralph_index_status" in tool_names
         assert "ralph_reindex" in tool_names
         assert "ralph_graph" in tool_names
