@@ -64,6 +64,26 @@ def _model(*, started: float, attention: str | None = None) -> StatusBarModel:
     )
 
 
+def _model_no_anchor(*, attention: str | None = None) -> StatusBarModel:
+    """Return a ``StatusBarModel`` with NO ``run_started_monotonic`` anchor.
+
+    The anchor-less branch in :meth:`StatusBar._renderable` (the
+    ``model.run_started_monotonic is None`` path) was the regression
+    site for DA-001: the previous code only ran
+    ``_model_with_live_attention`` on the anchored branch, so a
+    watchdog-sourced ``stalled`` was invisible when the runner had
+    not yet pushed an elapsed-time anchor. These tests pin the
+    corrected behavior in BOTH branches.
+    """
+    return StatusBarModel(
+        workspace_root="/tmp/ws",
+        phase_label="Development",
+        phase_style="bold",
+        run_started_monotonic=None,
+        attention=attention,
+    )
+
+
 def test_watchdog_stalled_renders_stalled() -> None:
     """A watchdog-sourced ``stalled`` (no pushed attention) renders ``STALLED``."""
     now = 100.0
@@ -148,6 +168,67 @@ def test_unknown_watchdog_value_is_ignored() -> None:
     now = 100.0
     bar = StatusBar(_HostWithUnknown(), clock=lambda: now)
     bar._model = _model(started=100.0, attention=None)
+
+    rendered = bar._renderable().plain
+    assert "STALLED" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# DA-001: anchor-less host cases.
+#
+# These pin the DA-001 fix: ``_renderable`` must run
+# ``_model_with_live_attention`` BEFORE branching on
+# ``run_started_monotonic`` so the watchdog-sourced STALLED slot is
+# honored even when the runner has not yet pushed an elapsed-time
+# anchor. The original code only substituted the watchdog value on
+# the anchored branch, so a watchdog-sourced ``stalled`` was
+# invisible on the anchor-less branch.
+# ---------------------------------------------------------------------------
+
+
+def test_watchdog_stalled_renders_stalled_anchor_less_host() -> None:
+    """Watchdog ``stalled`` renders ``STALLED`` even with no elapsed-time anchor.
+
+    DA-001 regression: the bar must mirror the watchdog's STALLED
+    assessment on the ``run_started_monotonic is None`` branch
+    (the previous code only substituted on the anchored branch).
+    """
+    now = 100.0
+    host = _HostWithWatchdogAttention("stalled")
+    bar = StatusBar(host, clock=lambda: now)
+    bar._model = _model_no_anchor(attention=None)
+
+    assert "STALLED" in bar._renderable().plain
+
+
+def test_watchdog_attention_none_renders_blank_anchor_less_host() -> None:
+    """Watchdog cleared + anchor-less host renders blank (no STALLED)."""
+    now = 100.0
+    host = _HostWithWatchdogAttention(None)
+    bar = StatusBar(host, clock=lambda: now)
+    bar._model = _model_no_anchor(attention=None)
+
+    rendered = bar._renderable().plain
+    assert "STALLED" not in rendered
+
+
+def test_pushed_waiting_wins_over_watchdog_stalled_anchor_less_host() -> None:
+    """Pushed ``waiting`` wins over watchdog ``stalled`` on the anchor-less branch too."""
+    now = 100.0
+    host = _HostWithWatchdogAttention("stalled")
+    bar = StatusBar(host, clock=lambda: now)
+    bar._model = _model_no_anchor(attention="waiting")
+
+    rendered = bar._renderable().plain
+    assert "WAITING" in rendered
+    assert "STALLED" not in rendered
+
+
+def test_legacy_host_anchor_less_does_not_invent_stalled() -> None:
+    """Legacy host + anchor-less model renders blank (no STALLED)."""
+    now = 100.0
+    bar = StatusBar(_LegacyHost(), clock=lambda: now)
+    bar._model = _model_no_anchor(attention=None)
 
     rendered = bar._renderable().plain
     assert "STALLED" not in rendered

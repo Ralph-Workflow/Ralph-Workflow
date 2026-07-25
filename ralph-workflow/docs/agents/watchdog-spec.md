@@ -500,8 +500,9 @@ value are no-ops (no per-tick spam).
 
 ### `STALLED` trigger sites
 
-All four sites are inside the watchdog's single evaluation path;
-each flips the runtime flag and emits `STALLED` via `_set_stall`:
+All five production sites are inside the watchdog's single
+evaluation path; each flips the runtime flag and emits `STALLED`
+via `_set_stall`:
 
 - `ralph/agents/idle_watchdog/_waiting_branch.py:318-326` — alongside
   the `SUSPECTED_FROZEN` emission (the suspect-threshold cross).
@@ -522,8 +523,8 @@ liveness sense.
 
 ### `STALL_RESUMED` trigger sites
 
-Five sites clear the runtime flag and emit `STALL_RESUMED` via
-`_set_stall`:
+Three production sites clear the runtime flag and emit
+`STALL_RESUMED` via `_set_stall`:
 
 - `ralph/agents/idle_watchdog/idle_watchdog.py:883-887` — inside
   `_reset_idle_baseline()` (called by `record_activity` and the

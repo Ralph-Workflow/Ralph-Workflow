@@ -40,8 +40,11 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
+    AliveBy,
+    CorroborationSnapshot,
     IdleWatchdog,
     TimeoutPolicy,
+    WaitingCorroborator,
     WaitingStatusEvent,
     WaitingStatusKind,
     WatchdogFireReason,
@@ -51,7 +54,6 @@ from ralph.agents.idle_watchdog._stuck_classifier import StuckKind
 from ralph.agents.timeout_clock import FakeClock
 
 if TYPE_CHECKING:
-    from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusListener
 
 
@@ -76,6 +78,9 @@ def _make_watchdog(
     no_progress_quiet_seconds: float | None = None,
     watchdog_log_throttle_seconds: float = 30.0,
     activity_evidence_ttl_seconds: float | None = 180.0,
+    suspect_waiting_on_child_seconds: float | None = None,
+    max_waiting_on_child_no_progress_seconds: float | None = None,
+    corroborator: object | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     """Construct a watchdog with the canonical test policy.
 
@@ -89,8 +94,49 @@ def _make_watchdog(
     can drive ``STALLED_AFTER_TOOL_RESULT`` deterministically without
     needing real time. The ``stuck_job_sub_ceiling_seconds`` is left
     default so the cumulative-ceiling branch can be exercised.
+
+    The ``corroborator`` parameter is forwarded into
+    ``IdleWatchdog.__init__`` so SUSPECTED_FROZEN tests can drive the
+    WAITING_ON_CHILD branch through ``evaluate()`` (the SUSPECTED
+    threshold is computed against the corroborator's ``alive_by``).
+
+    The ``max_waiting_on_child_no_progress_seconds`` parameter is
+    needed when a test narrows ``max_waiting_on_child_seconds`` below
+    the dataclass default of 600.0 -- the cross-field validator
+    rejects any no-progress ceiling that exceeds the main ceiling.
+    Tests that keep the default ``max_waiting_on_child_seconds`` of
+    1800.0 do not need to override it.
     """
     clock = FakeClock(start=0.0)
+    # If the no-progress ceiling is unset but the test narrows
+    # ``max_waiting_on_child_seconds`` below the dataclass default
+    # of 600.0, mirror the test's narrower ceiling so the validator
+    # is satisfied without forcing the caller to spell out the
+    # secondary knob. Same trick for the
+    # ``os_descendant_only_ceiling_seconds`` (default 300.0) and the
+    # ``stuck_job_sub_ceiling_seconds`` (default 600.0) -- they
+    # must all be <= ``max_waiting_on_child_seconds``.
+    if (
+        max_waiting_on_child_no_progress_seconds is None
+        and max_waiting_on_child_seconds < 600.0
+    ):
+        max_waiting_on_child_no_progress_seconds = max_waiting_on_child_seconds
+    if max_waiting_on_child_seconds < 300.0:
+        os_descendant_only_ceiling_seconds: float | None = max_waiting_on_child_seconds
+        # The OS-descendant-only suspect threshold (default 60.0) must
+        # be strictly less than the OS-descendant-only ceiling. When
+        # the test narrows the ceiling below 60.0, mirror it.
+        os_descendant_only_suspect_seconds: float | None = max(
+            suspect_waiting_on_child_seconds or 1.0,
+            max_waiting_on_child_seconds / 2.0,
+        )
+    else:
+        os_descendant_only_ceiling_seconds = None
+        os_descendant_only_suspect_seconds = None
+    if max_waiting_on_child_seconds < 600.0:
+        stuck_job_sub_ceiling_seconds: float | None = max_waiting_on_child_seconds
+    else:
+        stuck_job_sub_ceiling_seconds = None
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout_seconds,
         drain_window_seconds=drain_window_seconds,
@@ -100,8 +146,16 @@ def _make_watchdog(
         no_progress_quiet_seconds=no_progress_quiet_seconds,
         watchdog_log_throttle_seconds=watchdog_log_throttle_seconds,
         activity_evidence_ttl_seconds=activity_evidence_ttl_seconds,
+        suspect_waiting_on_child_seconds=suspect_waiting_on_child_seconds,
+        max_waiting_on_child_no_progress_seconds=max_waiting_on_child_no_progress_seconds,
+        os_descendant_only_ceiling_seconds=os_descendant_only_ceiling_seconds,
+        os_descendant_only_suspect_seconds=os_descendant_only_suspect_seconds,
+        stuck_job_sub_ceiling_seconds=stuck_job_sub_ceiling_seconds,
     )
-    return IdleWatchdog(policy, clock, listener=listener), clock
+    return (
+        IdleWatchdog(policy, clock, listener=listener, corroborator=corroborator),
+        clock,
+    )
 
 
 def _classifier_to_stuck_now(
@@ -186,16 +240,88 @@ def test_set_stall_idempotent_false_emits_no_event() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _fresh_progress_corroborator() -> WaitingCorroborator:
+    """Return a corroborator that always reports a fresh-progress child.
+
+    ``FRESH_PROGRESS`` is the cleanest live-child signal for these
+    tests because it is excluded from the watchdog's
+    ``_STUCK_ALIVE_BY_VALUES`` and ``_NON_PROGRESS_ALIVE_BY_VALUES``
+    sets, so neither the stuck-job sub-ceiling nor the
+    no-progress ceiling engages. The SUSPECTED_FROZEN emission site
+    then fires on the standard suspect threshold without competing
+    HARD_STOP branches.
+    """
+
+    def _corr() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.FRESH_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    return _corr
+
+
 def test_suspected_frozen_emits_stalled_event() -> None:
-    """The SUSPECTED_FROZEN emission site flips the watchdog's stall state."""
+    """The SUSPECTED_FROZEN emission site drives a single STALLED transition.
+
+    Drives the actual production path: the first ``evaluate()`` with
+    WAITING_ON_CHILD enters the deferral branch and emits ENTERED;
+    the second ``evaluate()`` after the clock has advanced past the
+    suspect threshold crosses the SUSPECTED_FROZEN line and emits
+    one SUSPECTED_FROZEN plus one STALLED. A third ``evaluate()``
+    on the same tick must NOT emit a duplicate STALLED (the
+    ``_set_stall`` helper dedupes by the runtime flag).
+
+    The previous version of this test only called ``_set_stall``
+    directly and never drove the SUSPECTED_FROZEN production site
+    (DA-002: it pinned the helper, not the contract). The new
+    version drives the SUSPECTED branch through ``evaluate()`` and
+    inspects the capturing listener.
+    """
     captured: list[WaitingStatusEvent] = []
-    watchdog, _clock = _make_watchdog(listener=captured.append)
-    # Drive the watchdog into a WAITING_ON_CHILD deferral branch
-    # (the SUSPECTED_FROZEN emission site lives there).
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
-    # Direct: the SUSPECTED_FROZEN emit must be accompanied by the STALLED
-    # state read.
+    watchdog, clock = _make_watchdog(
+        listener=captured.append,
+        idle_timeout_seconds=10.0,
+        max_waiting_on_child_seconds=30.0,
+        suspect_waiting_on_child_seconds=5.0,
+        no_progress_quiet_seconds=None,
+        corroborator=_fresh_progress_corroborator(),
+    )
+
+    def _waiting() -> AgentExecutionState:
+        return AgentExecutionState.WAITING_ON_CHILD
+
+    # First evaluate: enter WAITING_ON_CHILD, emit ENTERED.
+    clock.advance(11.0)
+    watchdog.evaluate(classify_quiet=_waiting)
+    assert _stall_state(watchdog) is False
+    assert any(e.kind == WaitingStatusKind.ENTERED for e in _events(captured))
+
+    # Second evaluate after crossing the suspect threshold (5s).
+    clock.advance(6.0)
+    watchdog.evaluate(classify_quiet=_waiting)
+
+    stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    suspect_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.SUSPECTED_FROZEN]
+    assert len(suspect_events) == 1, (
+        f"Expected exactly one SUSPECTED_FROZEN event, got {len(suspect_events)}: "
+        f"{[e.kind for e in _events(captured)]}"
+    )
+    assert len(stalled_events) == 1, (
+        f"Expected exactly one STALLED event paired with the SUSPECTED_FROZEN transition, "
+        f"got {len(stalled_events)}: {[e.kind for e in _events(captured)]}"
+    )
     assert _stall_state(watchdog) is True
+
+    # Third evaluate on the same tick: NO new STALLED, NO new SUSPECTED.
+    # SUSPECTED_FROZEN is gated by ``_suspicion_announced_for_run``; the
+    # STALLED transition is gated by ``_stall_active``. Both must dedupe.
+    watchdog.evaluate(classify_quiet=_waiting)
+    stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
+    suspect_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.SUSPECTED_FROZEN]
+    assert len(stalled_events) == 1
+    assert len(suspect_events) == 1
 
 
 # ---------------------------------------------------------------------------

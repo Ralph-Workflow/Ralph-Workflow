@@ -1160,14 +1160,27 @@ class StatusBar:
         recomputes on each tick (when ``model.run_started_monotonic``
         is set), so the bar keeps ticking during quiet agent turns
         without a model re-push.
+
+        wt-047-stall-label (DA-001): the watchdog-sourced attention
+        substitution fires BEFORE the anchor branch so the bar
+        mirrors the watchdog's STALLED assessment even when no
+        ``run_started_monotonic`` anchor was pushed (the previous
+        ordering only substituted on the anchored branch and left
+        the anchor-less host invisible to the watchdog signal).
         """
         model = self._model
         if model is None:
             return Text(" ")
+        # Apply the watchdog-attention substitution FIRST so it is
+        # honored regardless of whether the host pushed a
+        # ``run_started_monotonic`` anchor. Only the elapsed-time
+        # branch needs the live clock; the substitution itself is
+        # anchor-agnostic.
+        model = self._model_with_live_attention(model)
         if model.run_started_monotonic is None:
             return render_status_bar(model, self._ctx(), home=self._home)
         return render_status_bar(
-            self._model_with_live_attention(model),
+            model,
             self._ctx(),
             home=self._home,
             now_monotonic=self._clock(),
