@@ -399,6 +399,7 @@ def _build_status_bar_model(
     workspace_root: Path,
     *,
     elapsed_seconds: float | None = None,
+    run_started_monotonic: float | None = None,
 ) -> StatusBarModel:
     """Build a :class:`StatusBarModel` from the live pipeline state.
 
@@ -409,6 +410,12 @@ def _build_status_bar_model(
     ``AnalysisLoopCounter.display_iteration``. The status bar at the bottom
     of the terminal reads from this model so operators can see the active
     working directory, phase, and applicable cycle counts without scrolling.
+
+    P0 (wt-028-display AC-01): ``run_started_monotonic`` is the
+    ``time.monotonic`` anchor captured when the run started. When
+    present, the renderer recomputes elapsed on every Live tick so
+    the bar keeps ticking during quiet agent turns without a model
+    re-push. ``None`` keeps the existing snapshot-elapsed contract.
     """
     entry = build_phase_entry_model_from_state(
         state.phase, state, policy_bundle.pipeline
@@ -426,6 +433,7 @@ def _build_status_bar_model(
         integration_alert=_integration_alert_for_state(state),
         elapsed_seconds=elapsed_seconds,
         agent_name=entry_agent_name if isinstance(entry_agent_name, str) else None,
+        run_started_monotonic=run_started_monotonic,
     )
 
 
@@ -468,8 +476,17 @@ def _push_status_bar_if_changed(
             if isinstance(active_display, ParallelDisplay)
             else None
         )
+        run_started_monotonic = (
+            active_display.run_started_monotonic
+            if isinstance(active_display, ParallelDisplay)
+            else None
+        )
         model = _build_status_bar_model(
-            state, policy_bundle, workspace_root, elapsed_seconds=elapsed_seconds
+            state,
+            policy_bundle,
+            workspace_root,
+            elapsed_seconds=elapsed_seconds,
+            run_started_monotonic=run_started_monotonic,
         )
         signature = (
             state.phase,

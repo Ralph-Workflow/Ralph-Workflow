@@ -83,6 +83,7 @@ import os
 import pathlib
 import re
 import threading
+import time
 from dataclasses import dataclass
 from typing import IO, TYPE_CHECKING, Protocol
 
@@ -96,8 +97,11 @@ from ralph.display.phase_status import (
     format_dev_cycle_compact,
     format_dev_cycle_minimal,
 )
+from ralph.display.theme import identity_color
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from rich.live import Live as _Live
 
     from ralph.display.context import DisplayContext
@@ -264,6 +268,11 @@ class StatusBarModel:
     outer_label: str | None = None
     elapsed_seconds: float | None = None
     agent_name: str | None = None
+    # P0 (wt-028-display AC-01): the run-start monotonic anchor lets
+    # ``render_status_bar`` recompute elapsed at render time so the
+    # bar keeps ticking during quiet agent turns without a model
+    # re-push. ``None`` keeps the existing snapshot-elapsed contract.
+    run_started_monotonic: float | None = None
 
 
 def _home_relative(path: str, home: str | None) -> str:
@@ -740,6 +749,67 @@ def _format_elapsed(seconds: float) -> str:
     return f"Time {minutes:02d}:{secs:02d}"
 
 
+def _split_agent_label(label: str) -> tuple[str, str]:
+    """Split ``"Agent <name>"`` into the ``"Agent "`` prefix and the name.
+
+    Used by :func:`render_status_bar` to color the agent's name
+    portion with the deterministic identity color from
+    :func:`ralph.display.theme.identity_color` while leaving the
+    ``"Agent "`` carrier in the default status-info style. Returns
+    ``("", label)`` when the label does not match the canonical
+    shape so the caller falls back to the default rendering.
+    """
+    prefix = "Agent "
+    if label.startswith(prefix):
+        return prefix, label[len(prefix):]
+    return "", label
+
+
+def _resolve_elapsed_label(
+    model: StatusBarModel, now_monotonic: float | None
+) -> str:
+    """Return the elapsed-time label, recomputed at render time when anchors are set.
+
+    P0 (wt-028-display AC-01): when both ``run_started_monotonic`` and
+    ``now_monotonic`` are present, recompute elapsed at render time so
+    the bar keeps ticking during quiet agent turns without a model
+    re-push. The fallback to the snapshot value keeps the existing
+    pre-P0 contract for callers that supply only ``elapsed_seconds``.
+    """
+    base = (
+        _format_elapsed(model.elapsed_seconds)
+        if model.elapsed_seconds is not None
+        else ""
+    )
+    if (
+        model.run_started_monotonic is not None
+        and now_monotonic is not None
+        and now_monotonic >= model.run_started_monotonic
+    ):
+        return _format_elapsed(now_monotonic - model.run_started_monotonic)
+    return base
+
+
+def _prune_optional_segments(
+    candidates: tuple[str, str], separator: str, path_budget: int
+) -> list[str]:
+    """Drop optional segments (elapsed, agent) when they would crowd the path.
+
+    Priority: keep both, then only ``elapsed``, then drop both. The
+    prune ladder is the canonical AC-04 / AC-05 narrow-width contract:
+    the workspace path stays readable at every width.
+    """
+    keep: list[str] = [label for label in candidates if label]
+    keep_width = sum(len(separator) + len(label) for label in keep)
+    if keep_width <= path_budget - _MIN_PATH_BUDGET:
+        return keep
+    only_elapsed = [candidates[0]] if candidates[0] else []
+    only_elapsed_width = sum(len(separator) + len(label) for label in only_elapsed)
+    if only_elapsed_width <= path_budget - _MIN_PATH_BUDGET:
+        return only_elapsed
+    return []
+
+
 def _format_analysis_label(n: int, cap: int | None, max_chars: int) -> str:
     """Format the inner_analysis label using the form that fits ``max_chars``."""
     if max_chars <= 0:
@@ -756,6 +826,7 @@ def render_status_bar(
     ctx: DisplayContext,
     *,
     home: str | None = None,
+    now_monotonic: float | None = None,
 ) -> Text:
     """Render the single-line Status Bar footer for the given model.
 
@@ -817,19 +888,15 @@ def render_status_bar(
         outer_label_canonical_chars=_outer_label_canonical_chars(model.outer_label),
     )
 
-    elapsed_label = _format_elapsed(model.elapsed_seconds) if model.elapsed_seconds is not None else ""
+    elapsed_label = _resolve_elapsed_label(model, now_monotonic)
     agent_label = f"Agent {_safe_single_line(model.agent_name)}" if model.agent_name else ""
     # Optional trailing context yields before path/phase/cycle context. Reserve
     # only path surplus so the established narrow-width contract is unchanged.
-    optional_segments = [label for label in (elapsed_label, agent_label) if label]
+    optional_segments = _prune_optional_segments(
+        (elapsed_label, agent_label), separator, budgets.path_budget
+    )
     optional_width = sum(len(separator) + len(label) for label in optional_segments)
     path_budget = budgets.path_budget
-    if optional_width > path_budget - _MIN_PATH_BUDGET:
-        optional_segments = [elapsed_label] if elapsed_label else []
-        optional_width = sum(len(separator) + len(label) for label in optional_segments)
-    if optional_width > path_budget - _MIN_PATH_BUDGET:
-        optional_segments = []
-        optional_width = 0
     path_display = _middle_truncate_path(path_display, path_budget - optional_width)
     phase_display = _tail_truncate(phase_display, budgets.phase_budget)
     render_outer_dev = has_outer_dev and budgets.outer_dev_label_max_chars > 0
@@ -878,7 +945,20 @@ def render_status_bar(
         )
     for label in optional_segments:
         text.append(separator, style="theme.status.path_marker")
-        text.append(label, style="theme.status.info")
+        # P3 (wt-028-display AC-15): the agent segment surfaces the
+        # deterministic identity color so the live footer reveals
+        # which agent produced the current cycle. The label is
+        # always preserved (color only assists recognition), so a
+        # grayscale / colourblind operator still reads the bare
+        # name.
+        if label is agent_label and model.agent_name:
+            agent_prefix, agent_rest = _split_agent_label(label)
+            if agent_prefix:
+                text.append(agent_prefix, style=identity_color(model.agent_name))
+            if agent_rest:
+                text.append(agent_rest, style="theme.status.info")
+        else:
+            text.append(label, style="theme.status.info")
     # Final width clamp: at extremely narrow widths (1-2 cols) the
     # phase|path separator alone exceeds the budget so the rendered text
     # cannot fit. Truncate the rendered text to ``ctx.width`` so the
@@ -914,15 +994,25 @@ class StatusBar:
         _lock: Threading lock guarding ``_model`` assignment.
     """
 
-    __slots__ = ("_display", "_fallback_rendered", "_home", "_live", "_lock", "_model")
+    __slots__ = ("_clock", "_display", "_fallback_rendered", "_home", "_live", "_lock", "_model")
 
-    def __init__(self, display: ParallelDisplay) -> None:
+    def __init__(
+        self,
+        display: ParallelDisplay,
+        *,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
         self._display: _StatusBarHost = display
         self._home = str(pathlib.Path.home())
         self._model: StatusBarModel | None = None
         self._live: _Live | None = None
         self._lock = threading.Lock()
         self._fallback_rendered = False
+        # P0 (wt-028-display AC-01): injectable clock so the bar can
+        # recompute elapsed on every Live tick without touching
+        # ``time.monotonic`` directly (and so tests can drive the
+        # tick deterministically with no ``time.sleep``).
+        self._clock: Callable[[], float] = clock if clock is not None else time.monotonic
 
     @property
     def is_active(self) -> bool:
@@ -963,11 +1053,26 @@ class StatusBar:
         return self._real_tty()
 
     def _renderable(self) -> Text:
-        """Return the current renderable for the Live region's get_renderable callable."""
+        """Return the current renderable for the Live region's get_renderable callable.
+
+        P0 (wt-028-display AC-01): the Live region re-invokes
+        ``get_renderable`` on every refresh tick. Passing the current
+        ``time.monotonic`` anchor here means the elapsed segment
+        recomputes on each tick (when ``model.run_started_monotonic``
+        is set), so the bar keeps ticking during quiet agent turns
+        without a model re-push.
+        """
         model = self._model
         if model is None:
             return Text(" ")
-        return render_status_bar(model, self._ctx(), home=self._home)
+        if model.run_started_monotonic is None:
+            return render_status_bar(model, self._ctx(), home=self._home)
+        return render_status_bar(
+            model,
+            self._ctx(),
+            home=self._home,
+            now_monotonic=self._clock(),
+        )
 
     def _live_console_is_interactive(self) -> bool:
         is_interactive: object = getattr(self._ctx().console, "is_interactive", False)

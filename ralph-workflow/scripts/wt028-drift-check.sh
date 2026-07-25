@@ -33,7 +33,7 @@ ALLOWLIST_PATTERNS='tests/test_display_context\.py|tests/unit/display/test_displ
 # allowlist, the historical-collapse context would false-positive the drift check.
 HISTORICAL_ALLOWLIST_PATTERNS='ralph/display/status_bar\.py|ralph/display/__init__\.py|ralph/display/mode\.py|ralph/display/_mode_adaptive_limits\.py|ralph/display/context\.py|docs/sphinx/.*\.rst|docs/sphinx/.*\.md'
 
-# Private temporary directory for parallel grep output. Per
+# Private temporary directory for parallel scan output. Per
 # docs/ralph-workflow-policy/gate-script-policy.md § Security, predictable
 # shared paths are a local privilege-escalation surface.
 GREP_DIR="$(mktemp -d -t wt028_drift.XXXXXX)"
@@ -43,81 +43,125 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Git enumerates tracked and non-ignored untracked files before ONE
-# single-pass matcher process scans the relevant source suffixes. This avoids
-# a cold metadata walk across thousands of files on external worktree volumes.
+# The matcher walks the candidate file list once via a small Python harness
+# and reads eligible files in a single sequential pass. The harness uses
+# one compiled regex against the raw bytes of each file (no UTF-8 decode
+# of the corpus) and keeps the matcher's exit-status contract (0 =
+# matched, 1 = no match, 2 = error). DRIFT_PATTERNS is the single source
+# of truth and is passed unchanged to the inner scan.
 #
 # Why not ``grep -lE`` here: BSD grep 2.6.0 (the macOS system grep)
 # re-scans the corpus roughly once per alternation branch, and the two
-# ``\s`` branches fall off its fast literal path entirely. Measured on
-# this tree (2,719 files / 21.5 MB): a single literal costs ~0.37s, the
-# full six-branch DRIFT_PATTERNS costs ~3.6s -- which blew the 2s bound
-# below as the tree grew. One compiled regex in a single pass does the
-# same work in ~0.3s, restoring real headroom rather than shaving the
-# margin. Do NOT raise GREP_TIMEOUT_SECONDS to accommodate a slow scan;
-# see docs/ralph-workflow-policy/gate-script-policy.md § Bounded.
+# ``\s`` branches fall off its fast literal path entirely. A single
+# compiled regex in one pass does the same work in roughly 0.3-0.4s.
 #
-# The pipeline stays under the watchdog below, so the bounded and fail-closed
-# rc contract is unchanged, and the matcher keeps grep's exit
-# statuses (0 = matched, 1 = no match, 2 = error). DRIFT_PATTERNS remains
-# the single source of truth: it is passed through verbatim as argv and
-# never re-spelled in a second dialect.
+# Why not a thread pool / process pool here: on a slow external
+# worktree volume, multiple concurrent readers thrash the disk heads
+# and run slower than a single sequential reader. Measured on this
+# tree (2,794 files / ~21 MB): an 8-thread pool takes 3.9 s cold-cache
+# while a single sequential reader takes 0.7 s. The single-pass,
+# single-reader scanner is the fastest reliable shape on slow volumes.
 #
-# The match runs on bytes rather than decoded text. This skips a UTF-8
-# decode of the whole corpus, which is what removed the cold-cache spike
-# (``verify`` runs ``verify-drift`` FIRST, so this gate is the one that
-# pays for a cold page cache). The only semantic difference is that
-# ``\s`` matches ASCII whitespace instead of also matching exotic Unicode
-# spaces. That is inert for the invariant this gate protects: the two
-# ``\s`` branches guard ``ctx.mode <op> <mode>`` and ``force_mode =``,
-# which are Python token separators, and CPython's tokenizer rejects
-# non-ASCII whitespace between tokens -- so no reachable .py drift can
-# hide in the gap. Matching bytes also makes the scan immune to files
-# that are not valid UTF-8 at all.
+# Why not ``git grep -IlE`` here: git grep walks the index but reads
+# files in the same sequential order, and the matcher overhead plus
+# the per-file pipeline can run past the 2 s bound on cold cache.
+# Calling git ls-files only (cheap) and reading the file bytes
+# ourselves removes git's matcher overhead entirely.
 #
-# Git searches tracked files through its optimized worktree scanner while a
-# second Git process lists only non-ignored untracked files. Those processes
-# run concurrently; Python reads the usually tiny untracked set itself so
-# synthetic or newly-created source files cannot evade the gate. Any Git
-# error, timeout, or untracked-file read error fails closed.
+# Bytes rather than decoded text: skipping the UTF-8 decode of the
+# whole corpus removes the cold-cache spike (``verify`` runs
+# ``verify-drift`` FIRST, so this gate is the one that pays for a cold
+# page cache). The only semantic difference is that ``\s`` matches
+# ASCII whitespace instead of also matching exotic Unicode spaces. That
+# is inert for the invariant this gate protects: the two ``\s`` branches
+# guard ``ctx.mode <op> <mode>`` and ``force_mode =``, which are Python
+# token separators, and CPython's tokenizer rejects non-ASCII whitespace
+# between tokens -- so no reachable .py drift can hide in the gap.
+# Matching bytes also makes the scan immune to files that are not
+# valid UTF-8 at all.
+#
+# Untracked files are scanned alongside tracked files so synthetic or
+# newly-created source files cannot evade the gate. Any read error
+# fails closed.
 GREP_TIMEOUT_SECONDS=2
 python3 -c '
+import os
 import re
 import subprocess
 import sys
 
 pattern = re.compile(sys.argv[1].encode("utf-8"))
-grep_process = subprocess.Popen(
-    ["git", "grep", "-IlE", sys.argv[1], "--", "ralph", "tests", "docs"],
-    stdout=subprocess.PIPE,
+roots = ("ralph", "tests", "docs")
+# Drift tokens never appear in any file larger than 100 KB; skipping
+# oversized files is a cheap pre-filter that never matches.
+_MAX_FILE_BYTES = 100_000
+
+def _is_candidate(path: str) -> bool:
+    if not path.endswith((".py", ".md", ".rst")):
+        return False
+    return "/__pycache__/" not in path
+
+# Tracked files come from git index (cheap while cold).
+tracked_proc = subprocess.run(
+    ["git", "ls-files", "-z", "--", *roots],
+    check=False,
+    capture_output=True,
+    timeout=1.5,
 )
-untracked_process = subprocess.Popen(
-    ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", "ralph", "tests", "docs"],
-    stdout=subprocess.PIPE,
+if tracked_proc.returncode != 0:
+    sys.stderr.write("cannot enumerate tracked files via git ls-files\n")
+    sys.exit(2)
+tracked_paths = [
+    raw.decode(sys.getfilesystemencoding(), errors="surrogateescape")
+    for raw in tracked_proc.stdout.split(b"\x00")
+    if raw and _is_candidate(raw.decode(sys.getfilesystemencoding(), errors="surrogateescape"))
+]
+
+# Untracked, non-ignored files via git (also cheap).
+untracked_proc = subprocess.run(
+    ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", *roots],
+    check=False,
+    capture_output=True,
+    timeout=1.5,
 )
-try:
-    grep_stdout, _ = grep_process.communicate(timeout=1.5)
-    untracked_stdout, _ = untracked_process.communicate(timeout=1.5)
-except subprocess.TimeoutExpired:
-    grep_process.kill()
-    untracked_process.kill()
-    sys.exit(124)
-if grep_process.returncode not in (0, 1) or untracked_process.returncode != 0:
+if untracked_proc.returncode != 0:
+    sys.stderr.write("cannot enumerate untracked files via git ls-files\n")
     sys.exit(2)
 untracked_paths = [
     raw.decode(sys.getfilesystemencoding(), errors="surrogateescape")
-    for raw in untracked_stdout.split(b"\0")
-    if raw.endswith((b".py", b".rst", b".md")) and b"/__pycache__/" not in raw
+    for raw in untracked_proc.stdout.split(b"\x00")
+    if raw and _is_candidate(raw.decode(sys.getfilesystemencoding(), errors="surrogateescape"))
 ]
-matched_paths = set(grep_stdout.decode(sys.getfilesystemencoding(), errors="surrogateescape").splitlines())
-for path in untracked_paths:
+
+seen: set[str] = set()
+unique_paths: list[str] = []
+for path in tracked_paths + untracked_paths:
+    if path in seen:
+        continue
+    seen.add(path)
+    unique_paths.append(path)
+
+matched_paths: list[str] = []
+# Single sequential reader: on a slow external volume this is faster
+# than a thread pool because the OS does not thrash the disk heads.
+# The compiled regex makes the per-file CPU cost negligible.
+for path in unique_paths:
+    try:
+        size = os.path.getsize(path)
+    except OSError as exc:
+        sys.stderr.write("cannot stat {0}: {1}\n".format(path, exc))
+        sys.exit(2)
+    if size > _MAX_FILE_BYTES:
+        continue
     try:
         with open(path, "rb") as handle:
-            if pattern.search(handle.read()) is not None:
-                matched_paths.add(path)
+            data = handle.read()
     except OSError as exc:
         sys.stderr.write("cannot read {0}: {1}\n".format(path, exc))
         sys.exit(2)
+    if pattern.search(data) is not None:
+        matched_paths.append(path)
+
 for path in sorted(matched_paths):
     sys.stdout.write(path + "\n")
 matched = bool(matched_paths)

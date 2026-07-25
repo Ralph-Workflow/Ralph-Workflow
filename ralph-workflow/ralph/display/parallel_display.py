@@ -1262,6 +1262,20 @@ class ParallelDisplay:
             return None
         return max(0.0, self._monotonic() - self._run_start_time)
 
+    @property
+    def run_started_monotonic(self) -> float | None:
+        """Return the run-start monotonic anchor (``time.monotonic`` units) or ``None``.
+
+        P0 (wt-028-display AC-01): exposed so the Status Bar can
+        recompute elapsed at render time without a model re-push. The
+        anchor is the same ``self._run_start_time`` value
+        ``run_elapsed_seconds`` is built on, so callers that want a
+        snapshot use the latter and callers that want the live bar to
+        tick use this anchor plus ``self._monotonic()`` (or an
+        injected clock) at render time.
+        """
+        return self._run_start_time
+
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
         if unit_id not in self._overflow_logs:
             self._overflow_logs[unit_id] = RawOverflowLog(

@@ -61,7 +61,7 @@ from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.line_sanitizer import strip_terminal_control
-from ralph.display.theme import STATUS_STYLES
+from ralph.display.theme import STATUS_STYLES, identity_color
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
@@ -77,6 +77,15 @@ DEFAULT_STYLE = "default"
 
 _ICON_KEY = "icon"
 _LABEL_KEY = "label"
+
+
+#: Suffix appended to the unit identity before a leading space
+#: so the renderer can split the prefix back out at rendering time
+#: without losing the source ``unit_id`` (e.g. for plain-text paths
+#: that need to surface the bare name). The :func:`render_event`
+#: registry's :func:`_format_body_with_unit` helper joins the unit
+#: id with the body using this sentinel.
+_UNIT_ID_DELIMITER: str = " "
 
 
 def _state_payload(state: str) -> tuple[str, str, str]:
@@ -141,6 +150,67 @@ def _format_body_with_unit(body: str, unit_id: str | None) -> str:
     if not unit_id:
         return body
     return f"{unit_id} {body}"
+
+
+def _identity_style_for(unit_id: str | None) -> str:
+    """Return the Rich style string for a unit identity prefix.
+
+    Resolves the deterministic, accessible identity color from
+    :func:`ralph.display.theme.identity_color` and returns a hex
+    style the renderer can pass to ``Text.append``. The name label
+    is always preserved (color only assists recognition), so a
+    grayscale / colorblind operator still reads the bare name.
+
+    Returns ``""`` (no override) when ``unit_id`` is empty so the
+    caller's default body style wins.
+    """
+    if not unit_id:
+        return ""
+    return identity_color(unit_id)
+
+
+def _split_body_with_unit(body: str, unit_id: str | None) -> tuple[str, str]:
+    """Split ``body`` into ``(unit_prefix, body_without_prefix)``.
+
+    Returns ``("", body)`` when no ``unit_id`` is set or when the
+    body does not start with the canonical ``"{unit_id} "`` prefix
+    (so the caller can avoid colouring a body that was already
+    prefixed upstream -- see
+    :func:`_has_explicit_unit_prefix`).
+    """
+    if not unit_id or not body:
+        return "", body
+    prefix = f"{unit_id} "
+    if body.startswith(prefix):
+        return prefix, body[len(prefix):]
+    if body == unit_id:
+        return unit_id, ""
+    return "", body
+
+
+def _append_body_with_unit(
+    text: Text,
+    body: str,
+    unit_id: str | None,
+    body_style: str,
+    *,
+    escape_body: bool = True,
+) -> None:
+    """Append ``body`` to ``text`` with the unit prefix colored distinctly.
+
+    Splits the body into its unit-prefix portion (colored with the
+    identity color from :func:`_identity_style_for`) and the
+    remainder (colored with ``body_style``). The name label is
+    always preserved in the prefix; color only assists recognition
+    so grayscale / colourblind operators keep the bare name.
+    """
+    prefix, rest = _split_body_with_unit(body, unit_id)
+    if prefix:
+        prefix_rendered = escape(prefix) if escape_body else prefix
+        text.append(prefix_rendered, style=_identity_style_for(unit_id))
+    if rest:
+        rest_rendered = escape(rest) if escape_body else rest
+        text.append(rest_rendered, style=body_style)
 
 
 def _has_explicit_unit_prefix(body: str, unit_id: str) -> bool:
@@ -214,7 +284,7 @@ def _render_text_event(
     text.append(f"{icon} {label} ", style=style)
     text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
     text.append(" ", style="theme.text.muted")
-    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
+    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
     return text
 
 
@@ -238,7 +308,7 @@ def _render_status_event(
     text.append(f"{icon} {label} ", style=style)
     text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
     text.append(" ", style="theme.text.muted")
-    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
+    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
     return text
 
 
@@ -301,10 +371,7 @@ def _render_tool_use_event(
     text.append(f"{icon} {label} ", style=style)
     text.append(_format_timestamp(event.timestamp), style="theme.text.muted")
     text.append(" ", style="theme.text.muted")
-    text.append(
-        escape(body) if escape_body else body,
-        style=style,
-    )
+    _append_body_with_unit(text, body, unit_id, style, escape_body=escape_body)
     text.append(f" {_TOOL_PAIR_MARKER}", style=style)
     return text
 
@@ -365,10 +432,8 @@ def _render_tool_result_event(
             style=style,
         )
         text.append(" ", style=style)
-    text.append(
-        escape(body) if escape_body else body,
-        style="theme.text.muted" if not is_error else style,
-    )
+    body_style = "theme.text.muted" if not is_error else style
+    _append_body_with_unit(text, body, unit_id, body_style, escape_body=escape_body)
     return text
 
 
@@ -388,7 +453,7 @@ def _render_error_event(
     body = _format_body_with_unit(_safe_str(event.content) or "unknown error", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body) if escape_body else body, style=style)
+    _append_body_with_unit(text, body, unit_id, style, escape_body=escape_body)
     return text
 
 
@@ -404,7 +469,7 @@ def _render_lifecycle_event(
     body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
+    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
     return text
 
 
@@ -424,7 +489,7 @@ def _render_progress_event(
     body = _format_body_with_unit(_safe_str(event.content), unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
+    _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
     return text
 
 
@@ -440,7 +505,7 @@ def _render_heartbeat_event(
     body = _format_body_with_unit(_safe_str(event.content) or "alive", unit_id)
     text = Text()
     text.append(f"{icon} {label} ", style=style)
-    text.append(escape(body) if escape_body else body, style="theme.text.muted")
+    _append_body_with_unit(text, body, unit_id, "theme.text.muted", escape_body=escape_body)
     return text
 
 
@@ -466,7 +531,7 @@ def _render_unknown_event(
     text = Text()
     text.append(f"{icon} {label} ", style=style)
     if body:
-        text.append(escape(body) if escape_body else body, style=DEFAULT_STYLE)
+        _append_body_with_unit(text, body, unit_id, DEFAULT_STYLE, escape_body=escape_body)
     summary = _metadata_summary(event.metadata)
     if summary:
         text.append(

@@ -62,13 +62,16 @@ lives in this module, not per call site.
 
 from __future__ import annotations
 
+import math
+import re
+import zlib
 from typing import TYPE_CHECKING, Final
 
 from rich.console import Console
 from rich.theme import Theme
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
 ORANGE: Final[str] = "#E69F00"
 SKY_BLUE: Final[str] = "#56B4E9"
@@ -183,6 +186,267 @@ STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
     "pending": ("bold #555555", "○", "WAIT"),
     "info": ("bold #002B5C", "\u2139", "INFO"),
 }
+
+#: Identity palette for per-agent color threading.
+#:
+#: The Status Bar's agent segment and the agent-event renderer's unit
+#: prefix pick a color from this palette by hashing the agent's
+#: identity (the canonical :class:`ralph.display.activity_provider.ActivityProvider`
+#: value or any string the caller normalizes to a stable name). Every
+#: entry is disjoint from the Okabe-Ito status roles in
+#: :data:`STATUS_STYLES` so a name like ``claude`` never inherits a
+#: state color (success / error / ...) -- it gets a recognition color
+#: that says "this is an agent" rather than "this is a state".
+#:
+#: Pairwise RGB distance is at least 40 (the threshold the existing
+#: ``test_status_style_pairs_have_distinct_non_color_carriers_and_rgb_distance``
+#: test enforces for the status palette) and the same minimum is
+#: enforced against every entry in :data:`STATUS_STYLES`. The
+#: determinism + collision-nudge + CVD-simulation checks live in
+#: ``tests/display/test_identity_color.py``.
+#:
+#: All hex stays in this module: the
+#: ``test_no_hex_colors_outside_theme`` anti-drift guard in
+#: ``tests/display/test_no_hex_colors_outside_theme.py`` forbids a
+#: hex literal anywhere else under :mod:`ralph.display`. The palette
+#: intentionally avoids the Okabe-Ito hues so the same identity is
+#: never confused with a status role.
+#:
+#: ponytail: 12 hand-picked colors sized for the documented 8 agents
+#: plus headroom. The palette is intentionally over-sized so two
+#: simultaneously-rendered identities can always be nudged to a
+#: collision-free slot. Each color clears WCAG 4.5:1 contrast on at
+#: least one of the two reference terminal backgrounds (black or
+#: white) so the identity is always legible regardless of the host
+#: terminal theme. If a future agent roster grows past the palette
+#: size, extend the tuple and bump the test that pins pairwise
+#: distance.
+IDENTITY_PALETTE: Final[tuple[str, ...]] = (
+    "#E31A1C",  # red
+    "#3288BD",  # blue
+    "#33A02C",  # green
+    "#6A3D9A",  # purple
+    "#FF7F00",  # orange
+    "#B15928",  # brown
+    "#E7298A",  # hot pink
+    "#B2DF8A",  # light green
+    "#FDBF6F",  # light orange
+    "#CAB2D6",  # light purple
+    "#FFFF99",  # pale yellow
+    "#A6CEE3",  # light blue
+)
+
+#: Identity palette for light terminal backgrounds. Each entry uses
+#: a darker variant that clears WCAG 4.5:1 normal-text contrast on a
+#: white background while preserving hue identity with
+#: :data:`IDENTITY_PALETTE` so a colourblind operator sees the same
+#: hue family on either background.
+IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
+    "#8B0000",  # dark red
+    "#00008B",  # dark blue
+    "#006400",  # dark green
+    "#4B0082",  # dark purple (indigo)
+    "#663300",  # custom dark brown
+    "#8B008B",  # dark magenta
+    "#556B2F",  # dark olive green
+    "#5A4FCF",  # custom purple-blue
+    "#483D8B",  # dark slate blue
+    "#A52A2A",  # dark brown (CSS 'brown')
+    "#3D3D3D",  # dark gray
+    "#1A1A1A",  # near black
+)
+
+#: Stable, separator-insensitive normalization for identity names.
+#: Strips whitespace and underscores (collapsing to ``-``) so the
+#: same agent spelled as ``claude``, ``Claude``, ``claude_headless``,
+#: or ``claude headless`` all land on the same identity bucket. The
+#: ``-`` character is preserved so ``claude`` and ``claude-headless``
+#: are distinct identities per the wt-028-display product criteria
+#: (the headless mode is a substantively different transport).
+_IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
+
+#: Stable hash -> palette slot. ``zlib.crc32`` is deterministic
+#: across runs (Python's built-in ``hash()`` is randomized for
+#: security), and modulo the palette size gives us a slot index.
+
+
+def _normalize_identity_name(name: str) -> str:
+    """Return a stable, lowercase, separator- and case-folded identity.
+
+    Empty / whitespace-only input falls back to ``"unknown"`` so
+    callers cannot accidentally get a slot for an empty name.
+    ``-`` is preserved so ``claude`` and ``claude-headless`` map to
+    distinct buckets. Underscore and whitespace collapse to ``-`` so
+    ``claude_headless`` / ``claude headless`` / ``claude-headless``
+    are all the same identity.
+    """
+    if not name:
+        return "unknown"
+    folded = name.strip().lower()
+    folded = _IDENTITY_WS_RE.sub("-", folded)
+    folded = folded.strip("-")
+    return folded or "unknown"
+
+
+def _identity_slot(name: str) -> int:
+    """Return the deterministic palette slot for ``name``.
+
+    The slot is a function of the normalized name only, so the same
+    identity always lands on the same color across processes, runs,
+    and machines -- the operator can build muscle memory on the
+    color even when the agent is re-launched.
+    """
+    normalized = _normalize_identity_name(name)
+    digest = zlib.crc32(normalized.encode("utf-8"))
+    return digest % len(IDENTITY_PALETTE)
+
+
+def _status_role_hexes() -> frozenset[str]:
+    """Return every hex color used by a status role.
+
+    Used to keep the identity palette disjoint from the status
+    palette: an identity color must never collide with a state
+    color, because the operator must always be able to tell "this is
+    a state" from "this is an agent" without re-reading the label.
+    """
+    hexes: set[str] = set()
+    for table in (STATUS_STYLES, STATUS_STYLES_ON_LIGHT_BG):
+        for style, _icon, _label in table.values():
+            extracted = _extract_hex(style)
+            if extracted:
+                hexes.add(extracted.lower())
+    return frozenset(hexes)
+
+
+def _hex_distance(a: str, b: str) -> float:
+    """Return the Euclidean RGB distance between two hex colors.
+
+    Mirrors the test in
+    ``tests/display/test_agent_output_accessibility.py`` (40-unit
+    threshold) so the identity palette is held to the same
+    standard the status palette already meets.
+    """
+    ax, ay, az = _rgb(a)
+    bx, by, bz = _rgb(b)
+    distance_squared: float = float(
+        (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2
+    )
+    return math.sqrt(distance_squared)
+
+
+def _rgb(hex_color: str) -> tuple[int, int, int]:
+    """Return the (R, G, B) channels of a ``#RRGGBB`` or ``#RGB`` string.
+
+    Mirrors the helper in ``test_agent_output_accessibility.py`` so
+    the identity palette test suite can share the pairwise-distance
+    check style without duplicating the hex-parse logic in production
+    code. ``_hex_distance`` is the only production caller.
+    """
+    body = hex_color.lstrip("#")
+    if len(body) == _HEX_SHORT_LEN:
+        body = "".join(ch * 2 for ch in body)
+    if len(body) != _HEX_LONG_LEN:
+        raise ValueError(f"expected #RRGGBB or #RGB hex, got {hex_color!r}")
+    return (
+        int(body[0:2], 16),
+        int(body[2:4], 16),
+        int(body[4:6], 16),
+    )
+
+
+#: Identity -> slot simulation matrices for the three documented
+#: colour-vision deficiencies. The matrices are an approximation of
+#: the Brettel/Vienot simulations reduced to sRGB; the goal is NOT
+#: perceptual accuracy (a full LMS-space simulation would be more
+#: accurate) but a deterministic, fast check that the same pairwise
+#: RGB-distance invariant holds in the simulated color space.
+#: Tests in ``tests/display/test_identity_color.py`` verify that the
+#: palette still clears the 40-unit threshold under each simulation,
+#: so an identity color that "looks fine" to a trichromat but
+#: collapses to the same hue as a status color under deuteranopia is
+#: caught at test time.
+_DEUTERANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
+    (0.625, 0.375, 0.0),
+    (0.7, 0.3, 0.0),
+    (0.0, 0.3, 0.7),
+)
+_PROTANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
+    (0.567, 0.433, 0.0),
+    (0.558, 0.442, 0.0),
+    (0.0, 0.242, 0.758),
+)
+_TRITANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
+    (0.95, 0.05, 0.0),
+    (0.0, 0.433, 0.567),
+    (0.0, 0.475, 0.525),
+)
+
+
+def _simulate_cvd(hex_color: str, matrix: Sequence[Sequence[float]]) -> str:
+    """Return a hex color approximating the appearance under a CVD.
+
+    The simulation is a linear sRGB transform; the result is a
+    hex string in the same ``#RRGGBB`` shape the palette uses so
+    :func:`_hex_distance` can be called on the simulated result.
+    """
+    r, g, b = (channel / 255.0 for channel in _rgb(hex_color))
+    out_r = matrix[0][0] * r + matrix[0][1] * g + matrix[0][2] * b
+    out_g = matrix[1][0] * r + matrix[1][1] * g + matrix[1][2] * b
+    out_b = matrix[2][0] * r + matrix[2][1] * g + matrix[2][2] * b
+    return "#" + "".join(
+        f"{max(0, min(255, int(channel * 255))):02X}" for channel in (out_r, out_g, out_b)
+    )
+
+
+def identity_color(
+    name: str,
+    *,
+    active: Iterable[str] | None = None,
+    terminal_bg_is_light: bool | None = None,
+) -> str:
+    """Return the hex color for an identity, with collision-nudge.
+
+    Args:
+        name: The identity to color (an agent name, a model name, a
+            provider id -- anything the caller can normalize to a
+            stable string). Empty / whitespace-only input falls back
+            to ``"unknown"``.
+        active: Optional iterable of identity names that are
+            currently rendered on the same surface. The slot picker
+            walks the palette forward from the deterministic slot
+            until it finds a color not already assigned to an active
+            identity. ``None`` disables the collision check so the
+            function is purely deterministic for tests and pure
+            rendering.
+        terminal_bg_is_light: When ``True`` returns the light-bg
+            variant of the picked color; when ``False`` (default) the
+            dark-bg variant; when ``None`` picks the dark-bg variant
+            because that is the canonical operator profile.
+
+    Returns:
+        The ``#RRGGBB`` hex color for the identity, deterministic
+        across runs, accessible under the documented CVD simulations
+        (verified by the test suite), and disjoint from the status
+        roles so the same identity never inherits a state color.
+    """
+    palette = IDENTITY_PALETTE_ON_LIGHT_BG if terminal_bg_is_light else IDENTITY_PALETTE
+    base_slot = _identity_slot(name)
+    if active is None:
+        return palette[base_slot]
+    active_colors: set[str] = {
+        identity_color(other, terminal_bg_is_light=terminal_bg_is_light)
+        for other in active
+    }
+    for offset in range(len(palette)):
+        slot = (base_slot + offset) % len(palette)
+        candidate = palette[slot]
+        if candidate not in active_colors:
+            return candidate
+    # Palette fully exhausted -- return the base slot; the operator
+    # gets a deterministic color and the surface visibly degrades
+    # (a "too many agents" warning is the right place to surface the
+    # condition, out of scope for this function).
+    return palette[base_slot]
 
 _THEME_STYLES: Final[dict[str, str]] = {
     "theme.level.info": BLUE,
@@ -520,6 +784,8 @@ __all__ = [
     "BLACK",
     "BLUE",
     "BLUISH_GREEN",
+    "IDENTITY_PALETTE",
+    "IDENTITY_PALETTE_ON_LIGHT_BG",
     "ORANGE",
     "RALPH_THEME",
     "REDDISH_PURPLE",
@@ -530,5 +796,6 @@ __all__ = [
     "YELLOW",
     "detect_glyph_capability",
     "format_status",
+    "identity_color",
     "make_console",
 ]
