@@ -215,6 +215,12 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
         for ev_key, ev_value in evidence_block_sj.items():
             if ev_key not in diag_sj:
                 diag_sj[ev_key] = ev_value
+        # wt-047-stall-label: emit STALLED alongside HARD_STOP. The
+        # watchdog is the sole owner of the STALLED label; the
+        # HARD_STOP + gate-passed FIRE is the explicit liveness
+        # signal that the bar must mirror. ``_set_stall`` is
+        # idempotent.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.HARD_STOP,
             current_run_seconds=current_run_elapsed,
@@ -271,6 +277,12 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
         for ev_key, ev_value in evidence_block.items():
             if ev_key not in diag:
                 diag[ev_key] = ev_value
+        # wt-047-stall-label: emit STALLED alongside HARD_STOP. The
+        # watchdog is the sole owner of the STALLED label; the
+        # cumulative ceiling + unconditional FIRE is the explicit
+        # liveness signal the bar must mirror. ``_set_stall`` is
+        # idempotent.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.HARD_STOP,
             current_run_seconds=current_run_elapsed,
@@ -305,6 +317,14 @@ def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + 
             effective_suspect,
             effective_ceiling,
         )
+        # wt-047-stall-label: emit STALLED alongside SUSPECTED_FROZEN.
+        # The watchdog is the sole owner of the STALLED label; the
+        # suspect-threshold cross is the explicit liveness signal the
+        # bar must mirror. ``_set_stall`` is idempotent so a later
+        # HARD_STOP transition is a no-op. The flag is also reset on
+        # EXITED (``_accumulate_waiting_run``) so the wait-then-resume
+        # path emits STALL_RESUMED exactly once on exit.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         self._emit(
             WaitingStatusKind.SUSPECTED_FROZEN,
             current_run_seconds=current_run_elapsed,

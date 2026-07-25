@@ -197,6 +197,19 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # that AC-07/AC-06's terminal-state invariant depends on.
     ("auto_integrate_recovery", "PLR0911"),
     ("auto_integrate_recovery", "PLR0912"),
+    # wt-047-stall-label: subscriber._format_waiting_status_line renders
+    # one explicit line per WaitingStatusKind (ENTERED / PROGRESS /
+    # SUSPECTED_FROZEN / EXITED / SUBAGENT_PROGRESS / STALLED /
+    # STALL_RESUMED / HARD_STOP fallback). The kind dispatch is
+    # one-statement-per-branch and consolidating it into a dict-based
+    # dispatcher would scatter the per-kind diagnostic payload
+    # handling (workspace_event_delta / alive_by / subagent_activity)
+    # across helper functions and obscure the per-kind fallback that
+    # the wt-047 plan locks against the ``hit hard ceiling``
+    # template. Mirrors the existing idle_watchdog / _waiting_branch
+    # / _stuck_classifier allowlist entries that already accept
+    # kind-dispatch fan-out as the readability-vs-branch-count trade.
+    ("subscriber", "PLR0911"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

@@ -9,6 +9,7 @@ from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
     WaitingStatusEvent,
+    WaitingStatusKind,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -148,8 +149,16 @@ def test_no_progress_quiet_diagnostic_payload_contains_required_fields() -> None
     assert verdict == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
 
-    assert len(captured_events) == 1
-    evt = captured_events[0]
+    assert len(captured_events) == 2
+    # wt-047-stall-label: HARD_STOP fires alongside STALLED (the
+    # watchdog is the sole owner of the STALLED label). The order
+    # matters: STALLED is emitted FIRST so the Status Bar reflects
+    # the new stall state in the same tick as the HARD_STOP.
+    stalled_evt = next(e for e in captured_events if e.kind == WaitingStatusKind.STALLED)
+    assert stalled_evt is not None
+    hard_stop_evt = next(e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP)
+    assert hard_stop_evt is not None
+    evt = hard_stop_evt
     assert evt.kind.value == "hard_stop"
 
     diag = evt.diagnostic

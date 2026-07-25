@@ -33,6 +33,22 @@ if TYPE_CHECKING:
 _DECISION_LOG_MAX = 16
 
 
+class _Sentinel:
+    """Marker singleton for the no-call default in ``record_waiting_status``.
+
+    Distinguishes "no sink call this tick" from "sink called with None
+    this tick" (a STALL_RESUMED transition). Used as the initial value
+    of ``sink_value`` so the defensive sink call only fires when the
+    event kind actually mapped to a stall-state transition.
+    """
+
+
+_SENTINEL_NO_CALL = _Sentinel()
+
+
+_logger = logger
+
+
 @dataclass
 class _VisibleActivityState:
     active_agent: str | None = None
@@ -63,6 +79,8 @@ class _WaitingKindLike(Protocol):
     HARD_STOP: object
     EXITED: object
     SUBAGENT_PROGRESS: object
+    STALLED: object
+    STALL_RESUMED: object
     name: str
 
 
@@ -84,7 +102,7 @@ def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKind
     )
 
 
-def _format_waiting_status_line(event: object) -> str:
+def _format_waiting_status_line(event: object) -> str:  # noqa: PLR0911 - 8 distinct WaitingStatusKind branches (ENTERED/PROGRESS/SUSPECTED_FROZEN/EXITED/SUBAGENT_PROGRESS/STALLED/STALL_RESUMED/HARD_STOP fallback)
     """Build the human-readable line for a WaitingStatusEvent."""
     waiting_event_cls, waiting_kind_cls = _resolve_waiting_types()
     assert isinstance(event, waiting_event_cls)
@@ -93,9 +111,10 @@ def _format_waiting_status_line(event: object) -> str:
     ceil = f"{cast_event.ceiling_seconds:.0f}"
     run = f"{cast_event.current_run_seconds:.0f}"
     subagent_part = _format_subagent_activity_suffix(cast_event.subagent_activity)
-    if cast_event.kind == waiting_kind_cls.ENTERED:
+    kind = cast_event.kind
+    if kind == waiting_kind_cls.ENTERED:
         return f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
-    if cast_event.kind == waiting_kind_cls.PROGRESS:
+    if kind == waiting_kind_cls.PROGRESS:
         delta = cast_event.diagnostic.get("workspace_event_delta")
         alive_by = cast_event.diagnostic.get("alive_by")
         parts = [f"run={run}s", f"cumulative={cum}s", f"ceiling={ceil}s"]
@@ -105,7 +124,7 @@ def _format_waiting_status_line(event: object) -> str:
             parts.append(f"alive_by={alive_by}")
         base = f"Background child work still active ({', '.join(parts)})"
         return base + subagent_part
-    if cast_event.kind == waiting_kind_cls.SUSPECTED_FROZEN:
+    if kind == waiting_kind_cls.SUSPECTED_FROZEN:
         evidence = str(cast_event.diagnostic.get("evidence", "unknown"))
         alive_by = cast_event.diagnostic.get("alive_by")
         suffix = f", alive_by={alive_by}" if alive_by is not None else ""
@@ -114,9 +133,9 @@ def _format_waiting_status_line(event: object) -> str:
             f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence}{suffix})"
         )
         return base + subagent_part
-    if cast_event.kind == waiting_kind_cls.EXITED:
+    if kind == waiting_kind_cls.EXITED:
         return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
-    if cast_event.kind == waiting_kind_cls.SUBAGENT_PROGRESS:
+    if kind == waiting_kind_cls.SUBAGENT_PROGRESS:
         # Real-time subagent progress (R5, Trustworthy Idle Watchdog spec).
         # This is an in-progress signal -- a live subagent is producing
         # activity, NOT a hard ceiling / stuck signal.  Rendering it as
@@ -137,6 +156,14 @@ def _format_waiting_status_line(event: object) -> str:
             f" (cumulative={cum}s, ceiling={ceil}s, {live_label})"
         )
         return base + subagent_part
+    # wt-047-stall-label: explicit text for the two new stall-state
+    # transitions. NEVER fall through to the ``hit hard ceiling``
+    # template below for STALLED / STALL_RESUMED -- the line is
+    # semantically distinct from a ceiling-crossing event.
+    if kind == waiting_kind_cls.STALLED:
+        return f"Agent stalled (idle_elapsed={run}s, watchdog assessment)"
+    if kind == waiting_kind_cls.STALL_RESUMED:
+        return f"Agent resumed after stall (idle_elapsed={run}s)"
     scoped = cast_event.diagnostic.get("scoped_child_active", "?")
     oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
@@ -219,6 +246,7 @@ class PipelineSubscriber:
         _plan_marker_reader: Callable[[Path], int | None] | None = None,
         on_snapshot: Callable[[PipelineSnapshot], None] | None = None,
         pipeline_policy: PipelinePolicy | None = None,
+        watchdog_attention_sink: Callable[[str | None], None] | None = None,
     ) -> None:
         self._queue = queue
         self._run_id = run_id
@@ -229,6 +257,17 @@ class PipelineSubscriber:
         self._pipeline_policy: PipelinePolicy | None = pipeline_policy
         self._plan_reader = _plan_reader
         self._plan_marker_reader = _plan_marker_reader
+        # wt-047-stall-label: the watchdog publishes stall-state
+        # transitions as WaitingStatusEvents. The subscriber's sink
+        # forwards those transitions to the Status Bar host (the
+        # ParallelDisplay) so the bar's STALLED slot reads the
+        # watchdog-sourced state (NOT a display-side 30s gap
+        # derivation). The sink is wrapped in a defensive try/except
+        # in ``record_waiting_status`` so a misbehaving host does not
+        # break the snapshot path.
+        self._watchdog_attention_sink: Callable[[str | None], None] | None = (
+            watchdog_attention_sink
+        )
 
         prompt_path = _prompt_path_finder(workspace_root)
         self._prompt_path: str | None = str(prompt_path) if prompt_path is not None else None
@@ -451,6 +490,7 @@ class PipelineSubscriber:
             return
         cast_event = event
         snapshots_to_publish: list[PipelineSnapshot] = []
+        sink_value: str | None | _Sentinel = _SENTINEL_NO_CALL
         with self._lock:
             self._invalidate_snapshot_cache_locked()
             if unit_id is not None:
@@ -468,6 +508,25 @@ class PipelineSubscriber:
                     decision=cast_event.kind.name,
                     reason=line,
                 )
+            # wt-047-stall-label: map the watchdog's stall-state
+            # transitions to the Status Bar's attention sink. The
+            # mapping is: STALLED / SUSPECTED_FROZEN / HARD_STOP =>
+            # "stalled" (the watchdog considers the run stalled);
+            # STALL_RESUMED / EXITED => None (no longer stalled).
+            # The sink is the only writer of the Status Bar's
+            # ``watchdog_attention`` slot; the subscriber is the
+            # only reader of the watchdog's stall-state event stream.
+            if cast_event.kind in (
+                waiting_kind_cls.STALLED,
+                waiting_kind_cls.SUSPECTED_FROZEN,
+                waiting_kind_cls.HARD_STOP,
+            ):
+                sink_value = "stalled"
+            elif cast_event.kind in (
+                waiting_kind_cls.STALL_RESUMED,
+                waiting_kind_cls.EXITED,
+            ):
+                sink_value = None
             snapshot = self._build_snapshot_locked(self._last_state)
             if snapshot is not None:
                 snapshots_to_publish.append(snapshot)
@@ -476,6 +535,22 @@ class PipelineSubscriber:
                 cleared = self._build_snapshot_locked(self._last_state)
                 if cleared is not None:
                     snapshots_to_publish.append(cleared)
+        # Sink call is wrapped defensively outside the lock so a
+        # misbehaving host does not break the snapshot path. The
+        # sink is invoked at most once per record_waiting_status
+        # call, and only when the event kind mapped to a stall-state
+        # transition (the default _SENTINEL_NO_CALL is no-op).
+        if sink_value is not _SENTINEL_NO_CALL and self._watchdog_attention_sink is not None:
+            # Narrow the sentinel-typed value to ``str | None`` for the
+            # sink (the sentinel means "do not call", already filtered
+            # above). mypy cannot infer this through the union.
+            assert isinstance(sink_value, (str, type(None)))
+            try:
+                self._watchdog_attention_sink(sink_value)
+            except Exception as exc:
+                _logger.warning(
+                    f"watchdog attention sink raised: snapshot path remains intact ({exc!r})"
+                )
         for s in snapshots_to_publish:
             self._publish(s)
 

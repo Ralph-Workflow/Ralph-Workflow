@@ -143,6 +143,13 @@ def gate_fire(
         return WatchdogVerdict.FIRE
     kind = self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed, corroboration=corroboration)
     if kind == StuckKind.STUCK:
+        # wt-047-stall-label: the watchdog is the sole owner of the
+        # STALLED label. A STUCK classifier verdict means the run
+        # is actually stuck (not just deferred by the gate); flip
+        # the stall flag here so the Status Bar reflects the
+        # watchdog's own assessment. ``_set_stall`` is idempotent
+        # so a redundant call is a no-op.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         return WatchdogVerdict.FIRE
     # SILENT_SUBAGENT is a LABEL, never a veto.
     #
@@ -174,6 +181,12 @@ def gate_fire(
             fire_reason,
             round(idle_elapsed, 1),
         )
+        # wt-047-stall-label: SILENT_SUBAGENT is the gate's fire
+        # signal for a subagent that went quiet past the configured
+        # ``silent_subagent_seconds`` with no live-child signal. Flip
+        # the stall flag here so the Status Bar mirrors the
+        # watchdog's own assessment. ``_set_stall`` is idempotent.
+        self._set_stall(active=True, now=now, idle_elapsed=idle_elapsed)
         return WatchdogVerdict.FIRE
     self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
     self._last_deferred_kind = kind

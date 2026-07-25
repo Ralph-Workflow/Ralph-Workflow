@@ -93,6 +93,7 @@ from __future__ import annotations
 import contextlib
 import queue
 import textwrap
+import threading
 import time
 import uuid
 from datetime import UTC, datetime
@@ -424,7 +425,6 @@ class ParallelDisplay:
         "_emitted_empty_decision_log",
         "_emitted_empty_plan",
         "_is_quiet",
-        "_last_activity_monotonic",
         "_last_activity_signature",
         "_last_analysis_signature",
         "_last_budget_progress",
@@ -450,6 +450,8 @@ class ParallelDisplay:
         "_status_bar",
         "_subscriber",
         "_terminal_bg_is_light",
+        "_watchdog_attention",
+        "_watchdog_attention_lock",
         "_workspace_root",
     )
 
@@ -489,13 +491,16 @@ class ParallelDisplay:
         self._monotonic: Callable[[], float] = (
             monotonic if monotonic is not None else time.monotonic
         )
-        # P0 (wt-028-display S-2 / AC-01): the run loop needs the
-        # most-recent agent-activity timestamp so the Status Bar
-        # model can drive the stalled / advancing derivation.
-        # The producer here records ``time.monotonic()`` (or the
-        # injected clock) on every ``_emit_activity_event`` so
-        # :attr:`last_activity_monotonic` is always current.
-        self._last_activity_monotonic: float | None = None
+        # wt-047-stall-label: watchdog-sourced attention state for
+        # the Status Bar's STALLED slot. Set by the
+        # ``PipelineSubscriber`` via the watchdog_attention_sink
+        # when the watchdog publishes STALLED / STALL_RESUMED /
+        # SUSPECTED_FROZEN / HARD_STOP / EXITED transitions; the
+        # Status Bar host reads this field on every Live tick and
+        # substitutes it into the model when the pushed ``attention``
+        # is None. Thread-safe via the dedicated lock below.
+        self._watchdog_attention: str | None = None
+        self._watchdog_attention_lock = threading.Lock()
 
         # Inlined from _PlainLogRendererBase.__init__ -- 22 state attributes
         # that previously lived on a separate renderer instance. Documented in
@@ -619,6 +624,7 @@ class ParallelDisplay:
                 run_id=effective_run_id,
                 on_snapshot=self.emit_snapshot,
                 pipeline_policy=pipeline_policy,
+                watchdog_attention_sink=self.set_watchdog_attention,
             )
 
     @property
@@ -1589,18 +1595,36 @@ class ParallelDisplay:
         return self._run_start_time
 
     @property
-    def last_activity_monotonic(self) -> float | None:
-        """Return the most-recent agent-activity monotonic timestamp, or ``None``.
+    def watchdog_attention(self) -> str | None:
+        """Return the watchdog-sourced attention state, or ``None``.
 
-        P0 (wt-028-display S-2 / AC-01): the producer (every
-        :meth:`_emit_activity_event` call) records ``self._monotonic()``
-        so the Status Bar can derive ``stalled`` from a real
-        activity gap. ``None`` means the run has not produced an
-        event yet, which the bar's renderer treats as
-        "starting up" rather than "stalled" so the operator
-        does not get a false alarm before the first phase.
+        wt-047-stall-label: this is the Status Bar host's read of
+        the watchdog's stall-state transition stream. The watchdog
+        publishes STALLED / STALL_RESUMED / SUSPECTED_FROZEN /
+        HARD_STOP / EXITED events; the subscriber maps them to
+        ``"stalled"`` / ``None`` and calls
+        :meth:`set_watchdog_attention` here. The Status Bar host
+        reads this on every Live tick and substitutes the value
+        into the model ONLY when the pushed ``attention`` is None
+        (a pushed ``waiting`` / ``retrying`` / ``terminated``
+        always wins). Returns ``None`` when the watchdog has not
+        published a stall transition since the last run cleanup.
         """
-        return self._last_activity_monotonic
+        with self._watchdog_attention_lock:
+            return self._watchdog_attention
+
+    def set_watchdog_attention(self, value: str | None) -> None:
+        """Set the watchdog-sourced attention state.
+
+        wt-047-stall-label: the subscriber's sink that maps
+        stall-state transitions to ``"stalled"`` / ``None``. The
+        sink is called from the subscriber thread (and indirectly
+        from the watchdog's emit path), so the field is guarded
+        by a dedicated lock to keep the Status Bar host's reads
+        race-free. ``None`` clears the stall.
+        """
+        with self._watchdog_attention_lock:
+            self._watchdog_attention = value
 
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
         if unit_id not in self._overflow_logs:
@@ -1884,13 +1908,6 @@ class ParallelDisplay:
         """
         metadata = {} if metadata is None else metadata
         text_content = content or ""
-
-        # P0 (wt-028-display S-2 / AC-01): record the activity timestamp
-        # at the producer site so the Status Bar can derive ``stalled``
-        # from a real activity gap. Use ``self._monotonic()`` (the
-        # injected clock) so the test can drive a 30 s gap without
-        # sleeping.
-        self._last_activity_monotonic = self._monotonic()
 
         # Normalize loose render args to a canonical
         # :class:`AgentActivityEvent` BEFORE rendering so the registry

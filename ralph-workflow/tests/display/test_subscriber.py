@@ -630,3 +630,159 @@ def test_subagent_progress_event_does_not_add_decision_log_entry(tmp_path: Path)
     assert len(sub.decision_log) == initial_len, (
         "SUBAGENT_PROGRESS must NOT add a decision-log entry"
     )
+
+
+# ---------------------------------------------------------------------------
+# wt-047-stall-label: STALLED / STALL_RESUMED status kinds.
+#
+# The watchdog is the sole owner of the STALLED label. The subscriber
+# receives the watchdog's WaitingStatusEvent and renders an explicit
+# line for STALLED / STALL_RESUMED (never the "hit hard ceiling" fallback
+# the unspecified kinds fall through to). It also forwards the stall
+# signal to the watchdog_attention_sink so the status bar can render
+# STALLED itself.
+# ---------------------------------------------------------------------------
+
+
+def test_stalled_event_renders_explicit_line(tmp_path: Path) -> None:
+    """STALLED renders an explicit, distinct waiting-status line."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.STALLED,
+                diagnostic={"cumulative": 1800.0},
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "stalled" in line.lower()
+    # The fallback "hit hard ceiling" path is reserved for HARD_STOP;
+    # STALLED MUST render its own explicit line.
+    assert "hit hard ceiling" not in line
+
+
+def test_stall_resumed_event_renders_explicit_line(tmp_path: Path) -> None:
+    """STALL_RESUMED renders an explicit, distinct waiting-status line."""
+    sub = _make_subscriber(tmp_path)
+    state = PipelineState(
+        phase="development",
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+    )
+    sub.notify(state)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.STALL_RESUMED,
+                diagnostic={"cumulative": 60.0},
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "resumed" in line.lower()
+    assert "hit hard ceiling" not in line
+
+
+def test_stalled_event_calls_watchdog_attention_sink_tmp_path(tmp_path: Path) -> None:
+    """STALLED / STALL_RESUMED forward the watchdog attention to the sink.
+
+    The status bar reads the watchdog-attention state from the
+    ParallelDisplay's watchdog_attention surface. The subscriber
+    receives the watchdog's WaitingStatusEvent and calls the sink
+    with ``"stalled"`` for STALLED / SUSPECTED_FROZEN / HARD_STOP and
+    with ``None`` for STALL_RESUMED / EXITED.
+
+    This test pins the sink contract.
+    """
+
+    def _record_sink(value: str | None) -> None:
+        received.append(value)
+
+    received: list[str | None] = []
+
+    from ralph.display.subscriber import PipelineSubscriber
+
+    q: queue.Queue[PipelineSnapshot] = queue.Queue(maxsize=64)
+    sub = PipelineSubscriber(
+        queue=q,
+        workspace_root=tmp_path,
+        run_id="test-run",
+        watchdog_attention_sink=_record_sink,
+    )
+    state = PipelineState(
+        phase="development",
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+    )
+    sub.notify(state)
+
+    # STALLED -> sink "stalled"
+    sub.record_waiting_status(
+        _event(_EventOptions(kind=WaitingStatusKind.STALLED, diagnostic={}))
+    )
+    assert received[-1] == "stalled"
+
+    # SUSPECTED_FROZEN -> sink "stalled"
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.SUSPECTED_FROZEN,
+                diagnostic={"evidence": "time_only"},
+            )
+        )
+    )
+    assert received[-1] == "stalled"
+
+    # HARD_STOP -> sink "stalled"
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.HARD_STOP,
+                diagnostic={"scoped_child_active": True},
+            )
+        )
+    )
+    assert received[-1] == "stalled"
+
+    # STALL_RESUMED -> sink None
+    sub.record_waiting_status(
+        _event(_EventOptions(kind=WaitingStatusKind.STALL_RESUMED, diagnostic={}))
+    )
+    assert received[-1] is None
+
+    # EXITED -> sink None
+    sub.record_waiting_status(
+        _event(_EventOptions(kind=WaitingStatusKind.EXITED, diagnostic={}))
+    )
+    assert received[-1] is None
+
+
+def test_subscriber_sink_call_is_defensive(tmp_path: Path) -> None:
+    """A misbehaving sink (raises) is caught and must not break the snapshot path."""
+
+    from ralph.display.subscriber import PipelineSubscriber
+
+    q: queue.Queue[PipelineSnapshot] = queue.Queue(maxsize=64)
+
+    def _raising_sink(_value: str | None) -> None:
+        raise RuntimeError("sink raised")
+
+    sub = PipelineSubscriber(
+        queue=q,
+        workspace_root=tmp_path,
+        run_id="test-run",
+        watchdog_attention_sink=_raising_sink,
+    )
+    state = PipelineState(
+        phase="development",
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+    )
+    sub.notify(state)
+    # Must not raise — the sink exception is swallowed defensively.
+    sub.record_waiting_status(
+        _event(_EventOptions(kind=WaitingStatusKind.STALLED, diagnostic={}))
+    )
+    # Snapshot path still produced.
+    snapshot = sub.build_snapshot(state)
+    assert snapshot is not None

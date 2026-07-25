@@ -43,6 +43,14 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Changed
+
+- **feat(display): Status Bar `STALLED` is now exclusively watchdog-sourced** — the watchdog is the single source of truth for the `STALLED` label. The display-side 30s gap derivation (the `_STALL_THRESHOLD_SECONDS` constant and the gap branch in `StatusBar._resolve_attention_state`) is removed; the watchdog publishes `WaitingStatusKind.STALLED` / `STALL_RESUMED` events on every transition into and out of a stall, the subscriber forwards them to the Status Bar host via a `watchdog_attention_sink`, and the host substitutes the value into the model ONLY when the pushed `attention` is `None` (a pushed `waiting` / `retrying` / `terminated` always wins). Behavior change: a healthy run with quiet stdout no longer flips to `STALLED` after 30s of display quiet, and a stalled run now flips to `STALLED` only when the watchdog has actually fired (SUSPECTED_FROZEN / HARD_STOP / non-absolute FIRE). Locked by `tests/agents/idle_watchdog/test_stall_status_events.py`, `tests/display/test_status_bar_liveness.py`, `tests/display/test_status_bar_live_activity_anchor.py`, `tests/display/test_subscriber.py`, `tests/display/test_accessibility_matrix.py`, and `tests/pipeline/test_run_loop_status_bar_wiring.py`.
+
+### Removed
+
+- **refactor(display): delete the display-side 30s stall derivation (`_STALL_THRESHOLD_SECONDS`, `StatusBarModel.last_activity_monotonic`, and the producer write at `ParallelDisplay._emit_activity_event`)** — zero dead code; the watchdog owns the stall label end-to-end and surfaces its state via the host's `watchdog_attention` slot. The `test_status_bar_live_activity_anchor.py` module is rewritten in place to test the new `_model_with_live_attention` host substitution (the old `_model_with_live_activity_anchor` symbol is gone). Locked by `tests/display/test_status_bar_liveness.py` (`test_stall_threshold_named_constant_removed`), `tests/pipeline/test_run_loop_status_bar_wiring.py`, and `tests/display/test_status_bar_live_activity_anchor.py`.
+
 ## [0.9.3] - 2026-07-25
 
 Patch release. `__version__` moved from `0.9.2` to `0.9.3` in

@@ -322,8 +322,14 @@ def test_attention_terminated_label_renders() -> None:
     assert "DONE" in rendered.plain
 
 
-def test_attention_stall_derived_from_activity_gap() -> None:
-    """A gap > 30s with no activity flips the attention slot to ``stalled``."""
+def test_attention_stall_rendered_only_when_pushed() -> None:
+    """wt-047-stall-label: the bar renders ``STALLED`` ONLY when the
+    watchdog has pushed ``attention='stalled'``.
+
+    The display-side 30s gap derivation is removed (the watchdog is the
+    sole owner of the stall label). A bare gap between model push and
+    ``now_monotonic`` no longer flips the attention slot to ``stalled``.
+    """
     ctx = _ctx()
     model = StatusBarModel(
         workspace_root="/tmp/probe",
@@ -333,26 +339,18 @@ def test_attention_stall_derived_from_activity_gap() -> None:
         outer_dev_cap=4,
         elapsed_seconds=0.0,
         run_started_monotonic=100.0,
-        last_activity_monotonic=100.0,
     )
-    # Below threshold: no stall.
-    early_text = render_status_bar(model, ctx, now_monotonic=120.0).plain
-    assert "STALLED" not in early_text
-    # Above threshold: stall appears.
-    late_text = render_status_bar(model, ctx, now_monotonic=200.0).plain
-    assert "STALLED" in late_text
+    # No pushed attention and no ``last_activity_monotonic`` field: stale
+    # rendered text for ANY now_monotonic must never show STALLED.
+    for now_at in (100.0, 500.0, 9_999.0):
+        text = render_status_bar(model, ctx, now_monotonic=now_at).plain
+        assert "STALLED" not in text, (
+            f"STALLED must not appear without a pushed attention; got {text!r}"
+        )
 
 
-def test_attention_stall_threshold_is_named_constant() -> None:
-    """The stall threshold is exposed so a future caller can tune it deliberately."""
-    from ralph.display.status_bar import _STALL_THRESHOLD_SECONDS
-
-    assert _STALL_THRESHOLD_SECONDS > 0
-    assert isinstance(_STALL_THRESHOLD_SECONDS, float)
-
-
-def test_attention_operator_state_wins_over_stall_derivation() -> None:
-    """A pushed ``waiting`` / ``retrying`` / ``terminated`` overrides ``stalled``."""
+def test_attention_stall_rendered_when_pushed() -> None:
+    """wt-047-stall-label: a pushed ``attention='stalled'`` renders STALLED."""
     ctx = _ctx()
     model = StatusBarModel(
         workspace_root="/tmp/probe",
@@ -362,11 +360,47 @@ def test_attention_operator_state_wins_over_stall_derivation() -> None:
         outer_dev_cap=4,
         elapsed_seconds=0.0,
         run_started_monotonic=100.0,
-        last_activity_monotonic=100.0,
+        attention="stalled",
+    )
+    text = render_status_bar(model, ctx, now_monotonic=100.0).plain
+    assert "STALLED" in text
+
+
+def test_stall_threshold_named_constant_removed() -> None:
+    """wt-047-stall-label: ``_STALL_THRESHOLD_SECONDS`` no longer exists.
+
+    The display-side gap derivation is removed because the watchdog is the
+    sole owner of the stall label. Importing the constant from
+    ``ralph.display.status_bar`` MUST raise ``ImportError`` so any caller
+    that still relies on the display-side gap derivation is caught at
+    import time (not at render time).
+    """
+    import importlib
+
+    status_bar = importlib.import_module("ralph.display.status_bar")
+    assert not hasattr(status_bar, "_STALL_THRESHOLD_SECONDS")
+
+
+def test_attention_operator_state_wins_over_stall() -> None:
+    """wt-047-stall-label: a pushed ``waiting`` overrides a pushed ``stalled``.
+
+    The pushed operator state (waiting / retrying / terminated) wins
+    over the watchdog-sourced ``stalled`` because operator intent must
+    always be visible. This is the precedence rule pinned by the
+    S-2 / S-4 contract.
+    """
+    ctx = _ctx()
+    model = StatusBarModel(
+        workspace_root="/tmp/probe",
+        phase_label="Development",
+        phase_style=phase_style_for_phase("development"),
+        outer_dev_iteration=1,
+        outer_dev_cap=4,
+        elapsed_seconds=0.0,
+        run_started_monotonic=100.0,
         attention="waiting",
     )
-    # Gap is large enough to derive stalled, but operator-pushed waiting wins.
-    text = render_status_bar(model, ctx, now_monotonic=200.0).plain
+    text = render_status_bar(model, ctx, now_monotonic=100.0).plain
     assert "WAITING" in text
     assert "STALLED" not in text
 
@@ -387,27 +421,4 @@ def test_attention_unknown_pushed_value_renders_blank() -> None:
     assert "not-a-real-state" not in text
 
 
-def test_attention_stall_uses_named_constant_for_threshold() -> None:
-    """Exact threshold boundary: at-threshold does NOT stall, just-above does."""
-    from ralph.display.status_bar import _STALL_THRESHOLD_SECONDS
 
-    ctx = _ctx()
-    model = StatusBarModel(
-        workspace_root="/tmp/probe",
-        phase_label="Development",
-        phase_style=phase_style_for_phase("development"),
-        outer_dev_iteration=1,
-        outer_dev_cap=4,
-        elapsed_seconds=0.0,
-        run_started_monotonic=100.0,
-        last_activity_monotonic=100.0,
-    )
-    boundary = 100.0 + _STALL_THRESHOLD_SECONDS
-    # One second before the boundary: no stall.
-    before_text = render_status_bar(
-        model, ctx, now_monotonic=boundary - 1.0
-    ).plain
-    assert "STALLED" not in before_text
-    # Exactly at the boundary: stall appears.
-    boundary_text = render_status_bar(model, ctx, now_monotonic=boundary).plain
-    assert "STALLED" in boundary_text

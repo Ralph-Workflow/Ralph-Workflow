@@ -1,18 +1,26 @@
-"""Regression tests: the bar must not invent STALLED for a live agent.
+"""Regression tests: the bar must mirror the watchdog's STALLED assessment.
 
-``StatusBarModel.last_activity_monotonic`` is a *push-time snapshot*. The
-runner re-pushes a model only when the (phase, cycle, alert, label) signature
-changes, which during a long development phase is many minutes apart, while
-``StatusBar._renderable`` re-derives ``stalled`` against a ``now_monotonic``
-that advances on every Live tick. The gap being measured was therefore "time
-since the last model push", not "time since the last activity" — so a run whose
-agent was demonstrably alive (the idle watchdog holding fresh waiting-status and
-subagent-progress evidence, all of which the host records) still flipped to
-STALLED 30 s in.
+wt-047-stall-label: the watchdog is the sole owner of the STALLED
+label. The bar reads the watchdog-sourced attention via the host's
+``watchdog_attention`` property and substitutes it into the model
+ONLY when the pushed ``attention`` is None (a pushed operator state
+such as ``waiting`` / ``retrying`` / ``terminated`` always wins).
 
-The host's ``last_activity_monotonic`` is the live anchor and is what the
-watchdog's evidence ultimately refreshes; the bar reads it at render time so
-the two liveness views cannot drift apart.
+These tests pin the contract:
+
+- a watchdog-sourced ``stalled`` renders ``STALLED``;
+- a pushed ``waiting`` / ``retrying`` / ``terminated`` always wins
+  over a watchdog-sourced ``stalled``;
+- a host without ``watchdog_attention`` degrades to the pushed model
+  without raising inside the render callback;
+- a watchdog-sourced ``None`` (no stall) renders blank (no STALLED).
+
+The previous file tested the deleted ``_model_with_live_activity_anchor``
+behavior (30 s gap derivation); the new file tests the
+``_model_with_live_attention`` behavior in its place. The renamings
+are intentional: the live-activity anchor was the OBSERVED symptom of
+the drift, the watchdog-attention slot is the FIX (single source of
+truth).
 """
 
 from __future__ import annotations
@@ -20,80 +28,126 @@ from __future__ import annotations
 from ralph.display.context import make_display_context
 from ralph.display.status_bar import StatusBar, StatusBarModel
 
-_STALL_SECONDS = 30.0
-
 
 def _ctx(width: int = 160) -> object:
     return make_display_context(force_width=width, force_glyphs=True)
 
 
-class _HostWithAnchor:
-    """Stand-in for ParallelDisplay: keeps a live activity anchor."""
+class _HostWithWatchdogAttention:
+    """Stand-in for ParallelDisplay: keeps a watchdog-sourced attention state."""
 
-    def __init__(self, anchor: float | None) -> None:
+    def __init__(self, attention: str | None) -> None:
         self._ctx = _ctx()
         self._is_quiet = False
-        self._anchor = anchor
+        self._attention = attention
 
     @property
-    def last_activity_monotonic(self) -> float | None:
-        return self._anchor
+    def watchdog_attention(self) -> str | None:
+        return self._attention
 
 
 class _LegacyHost:
-    """Host predating the live anchor; the bar must still render."""
+    """Host predating the watchdog-attention slot; the bar must still render."""
 
     def __init__(self) -> None:
         self._ctx = _ctx()
         self._is_quiet = False
 
 
-def _model(*, started: float, pushed_anchor: float | None) -> StatusBarModel:
+def _model(*, started: float, attention: str | None = None) -> StatusBarModel:
     return StatusBarModel(
         workspace_root="/tmp/ws",
         phase_label="Development",
         phase_style="bold",
         run_started_monotonic=started,
-        last_activity_monotonic=pushed_anchor,
+        attention=attention,
     )
 
 
-def test_live_anchor_prevents_stalled_for_an_active_agent() -> None:
-    """A stale push + fresh host activity must NOT read as stalled."""
-    now = 100.0 + 10 * _STALL_SECONDS
-    # Model was pushed at the start of the phase; the agent has been emitting
-    # activity ever since, the most recent one moments ago.
-    host = _HostWithAnchor(now - 1.0)
+def test_watchdog_stalled_renders_stalled() -> None:
+    """A watchdog-sourced ``stalled`` (no pushed attention) renders ``STALLED``."""
+    now = 100.0
+    host = _HostWithWatchdogAttention("stalled")
     bar = StatusBar(host, clock=lambda: now)
-    bar._model = _model(started=100.0, pushed_anchor=100.0)
-
-    assert "STALLED" not in bar._renderable().plain
-
-
-def test_genuinely_idle_run_still_reports_stalled() -> None:
-    """The guard must not disable the signal it is protecting."""
-    now = 100.0 + 10 * _STALL_SECONDS
-    host = _HostWithAnchor(now - (_STALL_SECONDS + 1.0))
-    bar = StatusBar(host, clock=lambda: now)
-    bar._model = _model(started=100.0, pushed_anchor=100.0)
+    bar._model = _model(started=100.0, attention=None)
 
     assert "STALLED" in bar._renderable().plain
 
 
-def test_a_newer_pushed_snapshot_is_not_discarded() -> None:
-    """The later of the two anchors wins, whichever side it came from."""
-    now = 100.0 + 10 * _STALL_SECONDS
-    host = _HostWithAnchor(100.0)
+def test_pushed_waiting_wins_over_watchdog_stalled() -> None:
+    """A pushed ``waiting`` always wins over a watchdog-sourced ``stalled``."""
+    now = 100.0
+    host = _HostWithWatchdogAttention("stalled")
     bar = StatusBar(host, clock=lambda: now)
-    bar._model = _model(started=100.0, pushed_anchor=now - 1.0)
+    bar._model = _model(started=100.0, attention="waiting")
 
-    assert "STALLED" not in bar._renderable().plain
+    rendered = bar._renderable().plain
+    assert "WAITING" in rendered
+    assert "STALLED" not in rendered
 
 
-def test_host_without_a_live_anchor_falls_back_to_the_snapshot() -> None:
-    """A legacy host must degrade, never raise inside the render callback."""
-    now = 100.0 + 10 * _STALL_SECONDS
+def test_pushed_retrying_wins_over_watchdog_stalled() -> None:
+    """A pushed ``retrying`` always wins over a watchdog-sourced ``stalled``."""
+    now = 100.0
+    host = _HostWithWatchdogAttention("stalled")
+    bar = StatusBar(host, clock=lambda: now)
+    bar._model = _model(started=100.0, attention="retrying")
+
+    rendered = bar._renderable().plain
+    assert "RETRYING" in rendered
+    assert "STALLED" not in rendered
+
+
+def test_pushed_terminated_wins_over_watchdog_stalled() -> None:
+    """A pushed ``terminated`` always wins over a watchdog-sourced ``stalled``."""
+    now = 100.0
+    host = _HostWithWatchdogAttention("stalled")
+    bar = StatusBar(host, clock=lambda: now)
+    bar._model = _model(started=100.0, attention="terminated")
+
+    rendered = bar._renderable().plain
+    assert "DONE" in rendered
+    assert "STALLED" not in rendered
+
+
+def test_host_without_watchdog_attention_falls_back_to_pushed_model() -> None:
+    """A legacy host (no watchdog_attention slot) degrades to the pushed model."""
+    now = 100.0
     bar = StatusBar(_LegacyHost(), clock=lambda: now)
-    bar._model = _model(started=100.0, pushed_anchor=now - 1.0)
+    bar._model = _model(started=100.0, attention=None)
 
-    assert "STALLED" not in bar._renderable().plain
+    # The render must not raise and must not invent a STALLED label
+    # out of thin air (the watchdog never reported one).
+    rendered = bar._renderable().plain
+    assert "STALLED" not in rendered
+
+
+def test_watchdog_attention_none_renders_blank() -> None:
+    """A watchdog-sourced ``None`` (no stall) renders blank (no STALLED)."""
+    now = 100.0
+    host = _HostWithWatchdogAttention(None)
+    bar = StatusBar(host, clock=lambda: now)
+    bar._model = _model(started=100.0, attention=None)
+
+    rendered = bar._renderable().plain
+    assert "STALLED" not in rendered
+
+
+def test_unknown_watchdog_value_is_ignored() -> None:
+    """An unknown watchdog-sourced value (defensive) is ignored -- no STALLED."""
+
+    class _HostWithUnknown:
+        def __init__(self) -> None:
+            self._ctx = _ctx()
+            self._is_quiet = False
+
+        @property
+        def watchdog_attention(self) -> str | None:
+            return "in_progress"  # not a known attention key
+
+    now = 100.0
+    bar = StatusBar(_HostWithUnknown(), clock=lambda: now)
+    bar._model = _model(started=100.0, attention=None)
+
+    rendered = bar._renderable().plain
+    assert "STALLED" not in rendered

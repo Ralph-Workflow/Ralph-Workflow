@@ -25,7 +25,6 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.status_bar import (
-    _STALL_THRESHOLD_SECONDS,
     StatusBarModel,
     render_status_bar,
 )
@@ -65,15 +64,22 @@ def _model(
     now: float = 100.0,
     phase: str = "development",
 ) -> StatusBarModel:
+    # wt-047-stall-label: the display-side 30s gap derivation was removed.
+    # The watchdog is the sole owner of the stall label; the bar reads
+    # ``attention`` (one of ``waiting`` / ``stalled`` / ``retrying`` /
+    # ``terminated`` / ``None``) directly. Test models that exercise stall
+    # now push ``attention="stalled"`` instead of relying on a gap between
+    # ``last_activity_monotonic`` and ``now_monotonic``.
+    del last_activity
+    del now
     return StatusBarModel(
         workspace_root="/tmp/probe",
         phase_label=phase.title(),
         phase_style="info",
         outer_dev_iteration=1,
         outer_dev_cap=4,
-        elapsed_seconds=now - last_activity,
+        elapsed_seconds=0.0,
         run_started_monotonic=100.0,
-        last_activity_monotonic=last_activity,
         attention=attention,
     )
 
@@ -120,21 +126,30 @@ def test_attention_states_pairwise_distinct_in_grayscale() -> None:
     assert len(seen) == len(label_carriers), "labels must be pairwise distinct"
 
 
-def test_stall_derived_from_time_gap() -> None:
-    """A gap >= ``_STALL_THRESHOLD_SECONDS`` produces STALLED."""
+def test_stall_pushed_attention_renders() -> None:
+    """wt-047-stall-label: a pushed ``attention='stalled'`` renders STALLED.
+
+    The watchdog is the sole owner of the stall label; the bar reads
+    ``attention`` directly. A model with ``attention='stalled'`` MUST
+    render the STALLED slot at every width regardless of activity gap.
+    """
     ctx = _ctx(width=120, height=40)
-    model = _model(last_activity=100.0)
-    boundary = 100.0 + _STALL_THRESHOLD_SECONDS
-    text = render_status_bar(model, ctx, now_monotonic=boundary).plain
+    model = _model(attention="stalled")
+    text = render_status_bar(model, ctx, now_monotonic=100.0).plain
     assert "STALLED" in text
 
 
-def test_stall_under_threshold_does_not_appear() -> None:
-    """A gap just below the threshold does NOT fire STALLED."""
+def test_stall_no_attention_does_not_render() -> None:
+    """wt-047-stall-label: a model with no pushed attention never renders STALLED.
+
+    The display-side 30s gap derivation is gone; without a pushed
+    ``attention`` the bar MUST NOT show STALLED, regardless of the gap
+    between the model's last activity anchor and ``now_monotonic``.
+    """
     ctx = _ctx(width=120, height=40)
-    model = _model(last_activity=100.0)
+    model = _model(attention=None)
     text = render_status_bar(
-        model, ctx, now_monotonic=100.0 + _STALL_THRESHOLD_SECONDS - 1.0
+        model, ctx, now_monotonic=100.0 + 9_999.0
     ).plain
     assert "STALLED" not in text
 

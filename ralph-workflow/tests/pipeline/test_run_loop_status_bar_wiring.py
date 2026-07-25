@@ -725,18 +725,17 @@ def test_setup_active_display_returns_live_context_object() -> None:
 
 
 def test_liveness_producer_writes_to_last_activity_monotonic() -> None:
-    """S-2 / AC-01: every ``_emit_activity_event`` records the liveness anchor.
+    """wt-047-stall-label: STALLED is now watchdog-sourced.
 
-    The producer-side wiring is the AC-01 contract: a display that
-    emits an event must update ``last_activity_monotonic`` so the
-    Status Bar can derive ``stalled`` from a real activity gap.
-    Without the producer call the renderer-only ``stalled``
-    derivation is dead code in production.
+    The display no longer owns a ``last_activity_monotonic`` producer
+    -- the watchdog is the sole owner of the STALLED label. The
+    display surfaces the watchdog-sourced attention via the
+    ``watchdog_attention`` slot and the setter is wired to the
+    ``PipelineSubscriber``'s sink.
+
+    This test pins the new surface (the slot exists, defaults to
+    ``None``, and the setter writes the slot).
     """
-    # Each emit call advances the clock. The exact order in which
-    # the producer reads the clock depends on prior inits, so the
-    # test asserts only that the recorded anchor advances with
-    # the clock (not the absolute value).
     clock = {"t": 1000.0}
     console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
     pd = ParallelDisplay(
@@ -744,29 +743,27 @@ def test_liveness_producer_writes_to_last_activity_monotonic() -> None:
         workspace_root=Path(tempfile.mkdtemp()),
         monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
     )
-    # Initial state: no activity yet.
-    assert pd.last_activity_monotonic is None
-    from ralph.display.activity_event_kind import ActivityEventKind
-    before = clock["t"]
-    pd._emit_activity_event("u1", ActivityEventKind.TEXT, "hello", None, {})
-    first = pd.last_activity_monotonic
-    assert first is not None and first >= before, (
-        f"last_activity_monotonic must advance on emit; got {first!r} >= {before!r}"
-    )
-    pd._emit_activity_event("u1", ActivityEventKind.TEXT, "world", None, {})
-    second = pd.last_activity_monotonic
-    assert second is not None and second > first, (
-        f"last_activity_monotonic must advance between emits; got {second!r} > {first!r}"
-    )
+    # Initial state: no watchdog transition yet.
+    assert pd.watchdog_attention is None
+    # Sink path: the subscriber calls set_watchdog_attention.
+    pd.set_watchdog_attention("stalled")
+    assert pd.watchdog_attention == "stalled"
+    # None clears.
+    pd.set_watchdog_attention(None)
+    assert pd.watchdog_attention is None
 
 
 def test_push_status_bar_carries_liveness_through_production_path() -> None:
-    """S-2 / AC-01: the production push path carries ``last_activity_monotonic``.
+    """wt-047-stall-label: the production push path no longer carries
+    ``last_activity_monotonic``.
 
-    The run-loop helper :func:`_push_status_bar_if_changed` reads
-    ``active_display.last_activity_monotonic`` and forwards it into
-    :func:`_build_status_bar_model`. The captured model carries
-    the same anchor so the bar can drive the stall derivation.
+    The display-side 30 s stall derivation is gone (zero dead code).
+    The watchdog is the sole owner of the STALLED label and surfaces
+    its state via the host's ``watchdog_attention`` slot. The push
+    helper still pushes the model through to the StatusBar so the
+    ``last_model`` reads the pushed state, but the captured model
+    carries only ``run_started_monotonic`` and ``attention`` (NOT
+    ``last_activity_monotonic``).
     """
     clock = {"t": 1000.0}
     console = Console(file=_TtyLikeStringIO(), force_terminal=True, width=120)
@@ -776,12 +773,8 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
         workspace_root=workspace_root,
         monotonic=lambda c=clock: c.__setitem__("t", c["t"] + 1) or c["t"],
     )
-    # Seed the producer with a recent activity anchor.
-    from ralph.display.activity_event_kind import ActivityEventKind
-    pd._emit_activity_event("u1", ActivityEventKind.TEXT, "seed", None, {})
-    expected_anchor = pd.last_activity_monotonic
-    assert expected_anchor is not None
-    # Build a policy-aware state for the push helper.
+    # Seed the watchdog-sourced attention via the host setter.
+    pd.set_watchdog_attention("stalled")
     policy_bundle = load_policy(workspace_root / ".agent")
     state = _make_state("development", 1, 1, 1)
     sig = _push_status_bar_if_changed(
@@ -792,17 +785,23 @@ def test_push_status_bar_carries_liveness_through_production_path() -> None:
         last_sig=None,
     )
     assert sig is not None
-    # The StatusBar's ``last_model`` property surfaces the captured
-    # model so the test can read it without monkeypatching.
     pushed = pd.status_bar.last_model
     assert pushed is not None, (
-        "P0 (AC-01): the production push path must reach the StatusBar's "
-        "update seam so ``last_model`` reflects the new model."
+        "The production push path must reach the StatusBar's update "
+        "seam so ``last_model`` reflects the new model."
     )
-    # P0 (AC-01): the captured model carries the liveness anchor
-    # through the production push path.
-    assert pushed.last_activity_monotonic == expected_anchor, (
-        f"Captured model must carry last_activity_monotonic; got {pushed.last_activity_monotonic!r}"
+    # wt-047-stall-label: the pushed model carries the operator-pushed
+    # ``attention`` slot only; the watchdog-sourced ``stalled`` is
+    # substituted on each Live tick via ``_model_with_live_attention``.
+    # The captured model itself does NOT carry the watchdog attention.
+    assert pushed.attention is None, (
+        "The pushed model's attention slot is operator-pushed only; "
+        "the watchdog-sourced value is substituted on each Live tick."
+    )
+    # Sanity: the field the production push path USED to carry is gone.
+    assert not hasattr(pushed, "last_activity_monotonic"), (
+        "wt-047-stall-label: the dead display-side stall derivation "
+        "must be removed from the model entirely (zero dead code)."
     )
 
 

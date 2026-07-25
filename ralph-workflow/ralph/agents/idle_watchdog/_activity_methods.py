@@ -250,6 +250,13 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._entry_corroboration = None
     self._last_progress_fingerprint = None
     self._classify_quiet_provider = None
+    # wt-047-stall-label: clear stall on invocation start. A new
+    # invocation cannot inherit a stale STALLED state from the
+    # previous run; the watchdog's stall-state flag is the single
+    # source of truth for the Status Bar's STALLED slot and a
+    # fresh invocation starts un-stalled. ``_set_stall`` dedupes
+    # so a no-op ``False`` set is harmless.
+    self._set_stall(active=False, now=now, idle_elapsed=0.0)
 
 
 def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[str, object]:

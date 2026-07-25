@@ -115,8 +115,17 @@ if TYPE_CHECKING:
         _is_quiet: bool
 
         @property
-        def last_activity_monotonic(self) -> float | None:
-            """Live activity anchor, refreshed by the host on every activity event."""
+        def watchdog_attention(self) -> str | None:
+            """Watchdog-sourced attention state (the STALLED slot).
+
+            wt-047-stall-label: the watchdog is the sole owner of the
+            STALLED label. The Status Bar host reads this property on
+            every Live tick and substitutes the value into the model
+            ONLY when the pushed ``attention`` is None (a pushed
+            ``waiting`` / ``retrying`` / ``terminated`` always wins).
+            The property is missing-safe (``getattr`` default ``None``)
+            so stub hosts degrade to the pushed model.
+            """
             ...
 
 
@@ -229,13 +238,6 @@ _MIN_PATH_BUDGET: int = 4
 _MIN_PHASE_PLUS_PATH: int = _MIN_PHASE_BUDGET + _MIN_PATH_BUDGET
 
 
-# P0 (wt-028-display AC-02): stall threshold in seconds. When
-# ``now_monotonic - last_activity_monotonic`` exceeds this constant,
-# the renderer promotes ``attention`` to ``"stalled"`` (unless an
-# operator-pushed attention state such as ``waiting`` / ``retrying``
-# / ``terminated`` is already set).
-_STALL_THRESHOLD_SECONDS: float = 30.0
-
 # P0 (wt-028-display AC-03): attention-state presentation. The label
 # + glyph + style trio means color is never the only carrier of the
 # ``needs you`` signal -- an operator who cannot distinguish the
@@ -285,11 +287,13 @@ class StatusBarModel:
             when set, it renders ``<outer_label> N/cap``.
         attention: ``None`` (healthy), ``"waiting"``, ``"stalled"``,
             ``"retrying"``, or ``"terminated"``. P0 (wt-028-display AC-03).
-        last_activity_monotonic: Most recent agent-activity timestamp in
-            ``time.monotonic()`` units, or ``None`` when no activity has
-            been observed yet. P0 (wt-028-display AC-02): the renderer
-            derives ``stalled`` from the gap between this and the
-            ``now_monotonic`` argument.
+            The ``"stalled"`` value is sourced EXCLUSIVELY from the
+            idle watchdog via the host's ``watchdog_attention`` slot
+            (wt-047-stall-label): the model carries the pushed
+            operator-state value, and the Status Bar host substitutes
+            the watchdog-sourced value on each Live tick ONLY when the
+            pushed ``attention`` is None. Pushed operator states
+            (``waiting`` / ``retrying`` / ``terminated``) always win.
     """
 
     workspace_root: str
@@ -309,10 +313,12 @@ class StatusBarModel:
     # re-push. ``None`` keeps the existing snapshot-elapsed contract.
     run_started_monotonic: float | None = None
     # P0 (wt-028-display AC-02 / AC-03): the typed attention slot is
-    # reserved at every width; ``last_activity_monotonic`` lets the
-    # renderer derive ``stalled`` from the gap to ``now_monotonic``.
+    # the ONLY place the STALLED label is sourced from in the
+    # pushed model. wt-047-stall-label: a separate 30s-gap derivation
+    # was removed (zero dead code); the watchdog is the sole owner of
+    # the STALLED label and surfaces its state via the host's
+    # ``watchdog_attention`` property (``_model_with_live_attention``).
     attention: str | None = None
-    last_activity_monotonic: float | None = None
 
 
 def _home_relative(path: str, home: str | None) -> str:
@@ -854,21 +860,29 @@ def _resolve_attention_state(
 ) -> str | None:
     """Return the active attention state for the bar.
 
+    The ``attention`` slot in the pushed model is the SOLE source
+    for ``stalled`` (wt-047-stall-label). The watchdog is the sole
+    owner of the STALLED label and surfaces its state via the
+    Status Bar host's ``watchdog_attention`` property (see
+    :meth:`StatusBar._model_with_live_attention`); the renderer
+    here never derives ``stalled`` from a time gap.
+
     Operator-pushed states (``waiting``, ``retrying``, ``terminated``)
-    win over the time-derived ``stalled`` signal because they
-    represent deliberate intent that the operator wants to see no
-    matter what the activity timestamp says. ``stalled`` is derived
-    from the gap between ``last_activity_monotonic`` and
-    ``now_monotonic``; when the gap is below the threshold the run
-    is considered ``advancing`` and the slot renders blank.
+    win over the watchdog-sourced ``stalled`` because they represent
+    deliberate intent that the operator wants to see no matter what
+    the watchdog assesses. When the pushed ``attention`` is ``None``,
+    the host substitutes the watchdog-sourced value on the Live
+    tick path; ``_resolve_attention_state`` reads the substituted
+    value as ``model.attention`` and indexes it normally.
 
     Args:
-        model: Status bar view-model carrying the operator-pushed
-            ``attention`` and the ``last_activity_monotonic`` anchor.
-        now_monotonic: Optional wall-clock anchor for the stall
-            computation. ``None`` disables the stall derivation (the
-            existing snapshot contract); operator-pushed states still
-            surface.
+        model: Status bar view-model carrying the attention slot
+            (pushed operator state OR the host-substituted
+            watchdog-sourced value).
+        now_monotonic: Currently unused (reserved for future
+            derivations; the stall signal is sourced from the
+            watchdog, NOT a display-side gap). Retained in the
+            signature for forward-compatibility.
 
     Returns:
         ``None`` (blank slot, healthy run) or one of the named
@@ -877,18 +891,12 @@ def _resolve_attention_state(
         the presentation table without a defensive fallback.
     """
     pushed = model.attention
-    if pushed is not None:
-        # Defensive: an unknown pushed value is ignored so a future
-        # addition to the named state set cannot poison the slot.
-        if pushed in ATTENTION_PRESENTATION:
-            return pushed
+    if pushed is None:
         return None
-    if (
-        now_monotonic is not None
-        and model.last_activity_monotonic is not None
-        and now_monotonic - model.last_activity_monotonic >= _STALL_THRESHOLD_SECONDS
-    ):
-        return "stalled"
+    # Defensive: an unknown value is ignored so a future
+    # addition to the named state set cannot poison the slot.
+    if pushed in ATTENTION_PRESENTATION:
+        return pushed
     return None
 
 
@@ -1159,42 +1167,42 @@ class StatusBar:
         if model.run_started_monotonic is None:
             return render_status_bar(model, self._ctx(), home=self._home)
         return render_status_bar(
-            self._model_with_live_activity_anchor(model),
+            self._model_with_live_attention(model),
             self._ctx(),
             home=self._home,
             now_monotonic=self._clock(),
         )
 
-    def _model_with_live_activity_anchor(self, model: StatusBarModel) -> StatusBarModel:
-        """Return ``model`` with the host's live activity anchor substituted in.
+    def _model_with_live_attention(self, model: StatusBarModel) -> StatusBarModel:
+        """Return ``model`` with the host's watchdog-sourced attention substituted in.
 
-        ``model.last_activity_monotonic`` is a *push-time snapshot*: the runner
-        only re-pushes a model when the (phase, cycle, alert, label) signature
-        changes, which during a long phase can be many minutes apart. Meanwhile
-        ``_renderable`` re-derives ``stalled`` against a ``now_monotonic`` that
-        advances on every Live tick, so the snapshot goes stale and the bar
-        reports STALLED for a run whose agent is demonstrably alive — the gap
-        being measured is "time since the last model push", not "time since the
-        last activity".
+        wt-047-stall-label: the watchdog is the sole owner of the
+        STALLED label. The Status Bar host publishes the
+        watchdog-sourced attention via the ``watchdog_attention``
+        property; this helper substitutes it into the model on every
+        Live tick so the bar reflects the watchdog's assessment.
 
-        The host keeps ``last_activity_monotonic`` fresh from every activity
-        event it renders, including the idle watchdog's waiting-status and
-        subagent-progress events, so reading it here is what keeps the bar's
-        liveness and the watchdog's from drifting apart. The later of the two
-        anchors wins: a host that reports nothing yet must not erase a snapshot
-        the runner supplied.
+        Pushed operator states (``waiting`` / ``retrying`` /
+        ``terminated``) ALWAYS win: a host that reports ``stalled``
+        while the runner pushed ``waiting`` does not overwrite the
+        pushed state. The substitution only fires when the pushed
+        ``attention`` is ``None``.
+
+        Defensive read via ``getattr``: a legacy or stub host without
+        ``watchdog_attention`` (e.g. a unit-test double) degrades to
+        the pushed model rather than raising inside the render
+        callback and blanking the bar.
         """
-        # Read defensively: this runs on every Live tick, and a legacy or
-        # stub host without the anchor must degrade to the snapshot rather
-        # than raise inside the render callback and blank the bar.
-        raw_anchor: object = getattr(self._display, "last_activity_monotonic", None)
-        if not isinstance(raw_anchor, float):
+        raw_attention: object = getattr(self._display, "watchdog_attention", None)
+        if raw_attention is None:
             return model
-        live_anchor: float = raw_anchor
-        snapshot = model.last_activity_monotonic
-        if snapshot is not None and snapshot >= live_anchor:
+        # Pushed states win.
+        if model.attention is not None:
             return model
-        return dataclasses.replace(model, last_activity_monotonic=live_anchor)
+        # Defensive: unknown watchdog value must not poison the slot.
+        if raw_attention not in ATTENTION_PRESENTATION:
+            return model
+        return dataclasses.replace(model, attention=raw_attention)
 
     def _live_console_is_interactive(self) -> bool:
         is_interactive: object = getattr(self._ctx().console, "is_interactive", False)

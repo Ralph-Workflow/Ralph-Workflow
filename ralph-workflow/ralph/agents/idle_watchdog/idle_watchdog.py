@@ -473,6 +473,13 @@ class IdleWatchdog:
     # state unambiguous so ``_safe_corroborate()`` can route outside
     # calls to the raw corroborator without touching the cache.
     _evaluate_tick_active: bool = field(default=False, init=False)
+    # wt-047-stall-label: stall-state flag. The watchdog is the sole
+    # owner of the STALLED label; the flag is the single source of
+    # truth for the Status Bar's ``STALLED`` slot. ``_set_stall``
+    # emits one ``WaitingStatusKind.STALLED`` event on transition
+    # into a stall and one ``WaitingStatusKind.STALL_RESUMED`` event
+    # on transition out (deduplicated by the flag; no per-tick spam).
+    _stall_active: bool = field(default=False, init=False)
 
     def __init__(
         self,
@@ -553,6 +560,8 @@ class IdleWatchdog:
         self._last_progress_fingerprint: str | None = None
         self._is_waiting_state = False
         self._classify_quiet_provider = None
+        # wt-047-stall-label: stall-state flag initializer.
+        self._stall_active = False
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -595,6 +604,54 @@ class IdleWatchdog:
         via the typed exception's ``__cause__`` chain.
         """
         return self._last_alive_by
+
+    @property
+    def is_stalled(self) -> bool:
+        """Whether the watchdog currently considers the run stalled.
+
+        wt-047-stall-label: the watchdog is the sole owner of the
+        STALLED label. The flag here is the runtime stall state and
+        the Status Bar's ``STALLED`` slot reads the watchdog-sourced
+        event stream (NOT a display-side 30s gap derivation). The
+        flag transitions only via ``_set_stall`` so the
+        ``STALLED`` / ``STALL_RESUMED`` events fire exactly once per
+        transition.
+        """
+        return self._stall_active
+
+    def _set_stall(self, active: bool, *, now: float, idle_elapsed: float) -> None:
+        """Transition the watchdog's stall state and emit the matching event.
+
+        wt-047-stall-label: the watchdog is the sole owner of the
+        STALLED label. ``_set_stall`` fires exactly once per
+        transition: ``WaitingStatusKind.STALLED`` on entry into a
+        stall, ``WaitingStatusKind.STALL_RESUMED`` on exit. Repeated
+        calls with the same ``active`` value are no-ops (no per-tick
+        spam).
+
+        The ``now`` and ``idle_elapsed`` arguments are threaded into
+        the existing ``_emit`` path so the emitted event carries the
+        same diagnostic payload as the watchdog's other emissions.
+        They are NOT used for any gating logic in the helper itself:
+        the stall transition is purely a state-machine flip triggered
+        by the caller (the SUSPECTED_FROZEN / HARD_STOP / FIRE
+        emission sites inside the watchdog's single evaluation path).
+        """
+        if active == self._stall_active:
+            return
+        self._stall_active = active
+        if active:
+            self._emit(
+                WaitingStatusKind.STALLED,
+                current_run_seconds=0.0,
+                idle_elapsed=idle_elapsed,
+            )
+        else:
+            self._emit(
+                WaitingStatusKind.STALL_RESUMED,
+                current_run_seconds=0.0,
+                idle_elapsed=idle_elapsed,
+            )
 
     def diagnostic_snapshot(self, now: float | None = None) -> dict[str, object]:
         return activity_diagnostic_snapshot(self, now)
@@ -823,6 +880,11 @@ class IdleWatchdog:
         self._in_drain_window = False
         self._drain_started_at = None
         self._awaiting_post_tool_result_progression = False
+        # wt-047-stall-label: clear the stall state on any baseline
+        # reset (real activity). The flag is the single source of
+        # truth for the Status Bar's STALLED slot; ``_set_stall``
+        # dedupes so a redundant call is a no-op.
+        self._set_stall(active=False, now=now, idle_elapsed=0.0)
 
     def record_tool_result_activity(self) -> None:
         activity_record_tool_result_activity(self)
@@ -1043,6 +1105,10 @@ class IdleWatchdog:
         consecutive WAITING evaluations).
 
         Emits a EXITED event if we were actually in a WAITING run.
+        Also clears the watchdog's stall state on EXITED: the run is no
+        longer WAITING, so any SUSPECTED_FROZEN/HARD_STOP-driven stall
+        is now stale. ``_set_stall`` dedupes, so a no-op ``False`` set
+        is harmless.
         """
         if self._waiting_on_child_started_at is not None:
             elapsed = now - self._waiting_on_child_started_at
@@ -1058,6 +1124,10 @@ class IdleWatchdog:
             self._last_waiting_status_at = None
             self._suspicion_announced_for_run = False
             self._entry_corroboration = None
+            # wt-047-stall-label: clear stall on EXITED. The waiting
+            # run is over; any prior SUSPECTED_FROZEN/HARD_STOP-driven
+            # stall is stale. ``_set_stall`` dedupes redundant clears.
+            self._set_stall(active=False, now=now, idle_elapsed=idle_elapsed)
 
     def _safe_corroborate(self) -> CorroborationSnapshot:
         """Call the corroborator safely, returning an empty snapshot on None or error.

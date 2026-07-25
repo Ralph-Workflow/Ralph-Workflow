@@ -440,7 +440,6 @@ def _build_status_bar_model(
     *,
     elapsed_seconds: float | None = None,
     run_started_monotonic: float | None = None,
-    last_activity_monotonic: float | None = None,
     attention: str | None = None,
 ) -> StatusBarModel:
     """Build a :class:`StatusBarModel` from the live pipeline state.
@@ -459,13 +458,14 @@ def _build_status_bar_model(
     the bar keeps ticking during quiet agent turns without a model
     re-push. ``None`` keeps the existing snapshot-elapsed contract.
 
-    P0 (wt-028-display S-2 / AC-01): ``last_activity_monotonic`` is
-    the most recent agent-activity anchor captured by the
-    display's :class:`ParallelDisplay`; the renderer derives
-    ``stalled`` from a real activity gap. ``attention`` carries
-    the explicit attention state (``waiting`` / ``retrying`` /
-    ``terminated``) so a run-end or operator-pushed state can
-    override the stall derivation.
+    wt-047-stall-label: the ``last_activity_monotonic`` parameter was
+    removed (zero dead code). The watchdog is the sole owner of the
+    STALLED label and surfaces its state via the host's
+    ``watchdog_attention`` slot (``StatusBar._model_with_live_attention``);
+    a separate display-side 30s gap derivation is no longer needed.
+    ``attention`` carries the explicit attention state (``waiting`` /
+    ``retrying`` / ``terminated``) so a run-end or operator-pushed
+    state can take precedence over the watchdog-sourced stall.
     """
     entry = build_phase_entry_model_from_state(state.phase, state, policy_bundle.pipeline)
     phase_style = phase_style_for_phase(state.phase, policy_bundle.pipeline)
@@ -482,7 +482,6 @@ def _build_status_bar_model(
         elapsed_seconds=elapsed_seconds,
         agent_name=entry_agent_name if isinstance(entry_agent_name, str) else None,
         run_started_monotonic=run_started_monotonic,
-        last_activity_monotonic=last_activity_monotonic,
         attention=attention,
     )
 
@@ -561,17 +560,15 @@ def _push_status_bar_if_changed(
             if isinstance(active_display, ParallelDisplay)
             else None
         )
-        # P0 (wt-028-display S-2 / AC-01): forward the liveness
-        # producer's last-activity anchor so the Status Bar can
-        # derive ``stalled`` from a real activity gap. ``attention``
-        # carries the explicit attention state when the run loop
-        # pushes one (waiting / retrying / terminated / starting
-        # up); ``None`` keeps the existing snapshot-only contract.
-        last_activity_monotonic = (
-            active_display.last_activity_monotonic
-            if isinstance(active_display, ParallelDisplay)
-            else None
-        )
+        # wt-047-stall-label: forward the watchdog-sourced attention
+        # via the host's ``watchdog_attention`` slot only (the
+        # display-side ``last_activity_monotonic`` plumbing is gone,
+        # zero dead code). ``attention`` carries the explicit
+        # operator-pushed state when the run loop pushes one
+        # (waiting / retrying / terminated); ``None`` keeps the
+        # existing snapshot-only contract for pushed attention and
+        # lets the host's ``_model_with_live_attention`` substitute
+        # the watchdog-sourced value on each Live tick.
         attention = _attention_state_for_state(state)
         model = _build_status_bar_model(
             state,
@@ -579,7 +576,6 @@ def _push_status_bar_if_changed(
             workspace_root,
             elapsed_seconds=elapsed_seconds,
             run_started_monotonic=run_started_monotonic,
-            last_activity_monotonic=last_activity_monotonic,
             attention=attention,
         )
         signature = (
@@ -1546,6 +1542,15 @@ def _cleanup_pipeline(
         unsubscribe_bus()
     with suppress(Exception):
         unsubscribe_display()
+    # wt-047-stall-label: clear the host's watchdog attention at
+    # run cleanup so a stale ``stalled`` value never outlives the
+    # run. The pushed ``terminated`` state already wins during
+    # shutdown rendering, so clearing the watchdog attention here
+    # is the safest cleanup step (no leaked state across runs).
+    active_display_obj = loop_ctx.active_display
+    if active_display_obj is not None and hasattr(active_display_obj, "set_watchdog_attention"):
+        with suppress(Exception):
+            active_display_obj.set_watchdog_attention(None)
     with suppress(Exception):
         display_stop()
     if loop_ctx.monitor_stop is not None:
