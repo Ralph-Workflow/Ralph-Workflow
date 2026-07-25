@@ -389,22 +389,17 @@ not make the surrounding sections mandatory:
 Descriptive labels and vocabulary are advisory. `Intent`, `Coverage`, scope
 `Category`, step `Type`, step `Priority`, target and critical-file `Action`,
 and risk `Severity` are free-form descriptive hints, so project-specific
-`Type:` values and target actions are preserved verbatim. Recommended
-built-in `Type:` values follow the built-in `file_change` and `verify`
-contracts; project-specific values are accepted and preserved verbatim. An
-unrecognized field label may still produce a warning or remain prose; never
-depend on a typo being consumed. Arbitrary headings remain descriptive;
-machine-consumed anchors stay strict, so only the sections the validator or
-fan-out reads are enforced. Structural hard errors name the malformed ID,
-unresolved reference, fan-out marker, or unevaluatable check that must be
-repaired.
-
-Descriptive labels and vocabulary are advisory. `Intent`, `Coverage`, scope
-`Category`, step `Type`, step `Priority`, target and critical-file `Action`,
-and risk `Severity` are free-form descriptive hints. Project-specific
+`Type:` values and target actions are preserved verbatim. Project-specific
 `Type:` values and target actions are preserved verbatim, and arbitrary
 headings remain descriptive — only the fan-out parser, validators, and the
-schema rules above enforce structure.
+schema rules above enforce structure. Recommended built-in `Type:` values
+follow the built-in `file_change` and `verify` contracts; project-specific
+values are accepted and preserved verbatim. An unrecognized field label may
+still produce a warning or remain prose; never depend on a typo being
+consumed. Machine-consumed anchors stay strict, so only the sections the
+validator or fan-out reads are enforced. Structural hard errors name the
+malformed ID, unresolved reference, fan-out marker, or unevaluatable check
+that must be repaired.
 
 ## Validation Overrides
 

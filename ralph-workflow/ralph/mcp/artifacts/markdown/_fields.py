@@ -198,13 +198,25 @@ def _malformed_field(
     field-shaped line as consumed structure: missing-value, duplicate, or
     bullet-as-scalar diagnostics stay blocking and the message names the
     fan-out consumer so the agent can see why the line is not "just prose".
+
+    In descriptive contexts the malformed field still falls back to prose so
+    multi-line item prose is legal, but the warning now states what was
+    observed, the cost to the run, and how to resolve it in the same
+    ``what; the run cost is <cost>; resolve by <fix>`` convention every
+    other advisory diagnostic uses.
     """
     is_fan_out = _is_fan_out_section(section)
     if prose_allowed and not is_fan_out:
         result.prose.append(line)
         diagnostics.append(
             Diagnostic(
-                line.line, section, "PLAN020", f"{message}; line treated as prose", "warning"
+                line.line,
+                section,
+                "PLAN020",
+                f"{message}; the run cost is the field drops to prose and the "
+                "executor has to infer the missing value; resolve by adding the "
+                "missing value or removing the field",
+                "warning",
             )
         )
     elif prose_allowed and is_fan_out:
@@ -238,7 +250,10 @@ def _consume_unlabeled(
                     line.line,
                     section,
                     "PLAN009",
-                    f"{context}: unrecognized field label {key!r} treated as prose",
+                    f"{context}: unrecognized field label {key!r}; the run cost is "
+                    "the field drops to prose so the executor cannot rely on the "
+                    f"value; resolve by renaming {key!r} to a documented label or "
+                    "removing the line",
                     "warning",
                 )
             )

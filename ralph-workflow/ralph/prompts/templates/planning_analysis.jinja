@@ -191,6 +191,114 @@ When describing remediation, target the planner's revision workflow: tell it whi
 
 The shared defect vocabulary, the per-entry shape, and the closure-ledger discipline are owned by the `## PLAN QUALITY RUBRIC` section below; do not duplicate them here.
 
+A `## Validation Overrides` section in the plan is the planner's recorded judgement:
+each `- [RULE-ID] reason` entry pairs an advisory diagnostic with the reason the
+planner kept it in place. An overridden finding is settled and must not be re-raised
+as a new finding in `## What Came Up Short`, unless repository evidence proves the
+recorded reason false. Tool payloads surface overridden findings in an `overridden`
+list and the validator only emits PLAN025/PLAN026 for stale or error-targeted
+overrides; the analysis prompt treats any other re-litigation as noise.
+
+---
+
+## DECISION ARTIFACT
+
+The decision is a markdown document (grammar: `.agent/artifact-formats/planning_analysis_decision.md`):
+`---` frontmatter with `type: planning_analysis_decision` and `status: completed|request_changes|failed`,
+then `## Summary` (exactly one item), and — for any non-completed status — `## What Came Up Short`
+and `## How To Fix`, one `- [PA-###] ...` item per gap with matching IDs across the two sections.
+A completed decision must omit both remediation sections; any known gap requires
+a non-completed status. The two remediation ID sets must match exactly: no
+missing, extra, or mismatched gap/fix IDs.
+
+- Choose `status: completed` when the plan is sound across every applicable, evaluatable dimension.
+- Choose `status: request_changes` when it falls short in any evaluatable dimension with a gap you proved yourself.
+- Choose `status: failed` when the analysis found major incompleteness or an otherwise unusable plan; stronger remediation may be needed, including starting over from the planning phase.
+
+Author the document, submit it per the procedure below, and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+
+---
+
+## `## What Came Up Short` — MANDATORY FOR ANY NON-COMPLETED STATUS
+
+1. **List every gap found** across all applicable, evaluatable dimensions. Do not stop after the first problem.
+
+2. **For each gap, include:**
+   - A stable gap ID that the replanner can preserve verbatim in the corresponding fix entry
+   - The dimension it belongs to (Product Criteria Compliance / Executor Readiness / Gap Analysis and Consistency /
+     Repository Accuracy / Risk Coverage / Verification Quality / Parallelization Safety /
+     Maintainability of the Plan / Parallel Execution)
+   - Exact file path, plan section, or command if applicable
+   - What the gap is and why it blocks a sound execution handoff
+   - What should have been present instead
+
+3. **Cite concrete evidence.** File paths, function names, test names, command output,
+   section names, observed output, exact mismatches. "The plan is vague" is not evidence.
+
+4. **No vague summaries.** "Needs more detail" or "incomplete" without specifics means the artifact
+   is incomplete.
+
+5. **Every entry must be provable and actionable** (see HARD RULE: NO UNPROVABLE GAPS). If you did
+   not personally observe the defect in this session, or the planner cannot close it through the
+   MCP plan-edit tools, it is not a gap — at most it is a not-evaluatable limit to disclose in the
+   single `## Summary` item.
+
+---
+
+## `## How To Fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
+
+For every item in `## What Came Up Short`, provide a corresponding fix entry:
+
+1. **Exact plan sections to resubmit via the MCP plan-edit tools.** If repository files matter, cite them as evidence the revised sections must incorporate, not as files the planner should edit.
+2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
+3. **Preserve the same stable gap ID from the corresponding `## What Came Up Short` entry** so the planner can prove closure without ambiguity.
+4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
+5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, then for targeted edits use `ralph_stage_md_artifact` → `ralph_edit_md_plan_step` → `ralph_get_md_draft` → `ralph_finalize_md_artifact`; restart only when truly unsalvageable).
+6. **Commands or checks to validate the revised plan.**
+7. **What passing evidence looks like.**
+
+One gap, one fix entry. No grouping multiple gaps under one fix.
+
+For every non-completed decision, classify the overall defect scope as
+`local_section`, `cross_section`, or `repo_wide` and state it inside the
+single `## Summary` item (for example `Scope: repo_wide — ...`). Never add
+sections, frontmatter keys, or extra summary items for the scope. If defect
+scope is `repo_wide`, the summary must say explicitly that the next planning
+pass re-derives the plan globally rather than patching only the cited
+sections.
+
+Use this shared defect vocabulary in both analysis findings and replanning
+fixes: Explicit requirement missing, Implied core workflow missing,
+Prerequisite action/state missing, Verification gap, Repository reference
+invalid, Cross-section inconsistency, Executor research burden.
+
+Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry. Every `## What Came Up Short` entry has the
+form `- [PA-###] Dimension: <one of the nine rubric dimensions> | Defect:
+<shared-vocabulary class> | Evidence: ... | Missing: ...` and every
+`## How To Fix` entry has the form `- [PA-###] <fix>` with the SAME ID.
+
+When a finding touches the ## Critical Files section, scope, risks, or
+verification strategy, name each affected section explicitly so the planner
+can rewrite Steps, ## Critical Files, Risks, and Verification together
+instead of patching one section in isolation.
+
+Infer the core user-facing workflows and prerequisite actions that must exist for the PRODUCT CRITERIA to count as satisfied, even when the criteria state them only implicitly. Use this reasoning chain explicitly
+when needed: Goal → required workflow → prerequisite action/state → plan coverage. If a required workflow or prerequisite is missing from the plan,
+treat that as missing work rather than as an optional product idea.
+
+If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles
+before deciding it is sound.
+
+---
+
+## PLAN QUALITY RUBRIC
+
+You are the sole owner of these nine dimensions. The planner sees them only as
+the headings the analysis phase will judge against. Every `## What Came Up Short`
+entry you write must cite the dimension it belongs to from this list; do not
+introduce parallel or overlapping vocabularies. Use the dimension headings as
+your review checklist; do not restate them — they appear once, here.
+
 ### 1. PRODUCT CRITERIA COMPLIANCE
 
 For every task, requirement, and acceptance criterion in the PRODUCT CRITERIA that can be checked from the
@@ -287,7 +395,7 @@ required by the task.
 - **No parallelizable work declared**: a plan without Work Units, Parallel
   Plan, or execution Subplans is valid; the executing agent runs steps in
   dependency order.
-- **Fan-out**: confirm Work Units, Parallel Plan, or execution Subplans express
+- **Fan-out**: confirm `## Work Units`, `## Parallel Plan`, or execution Subplans express
   agent-facing parallelization intent, NOT as Ralph fan-out instructions.
   Plans MUST NOT route parallel plan work through Ralph-managed
   coordination — the bundled CLI exposes no coordination command for
@@ -296,149 +404,10 @@ required by the task.
 
 ---
 
-## DECISION ARTIFACT
-
-The decision is a markdown document (grammar: `.agent/artifact-formats/planning_analysis_decision.md`):
-`---` frontmatter with `type: planning_analysis_decision` and `status: completed|request_changes|failed`,
-then `## Summary` (exactly one item), and — for any non-completed status — `## What Came Up Short`
-and `## How To Fix`, one `- [PA-###] ...` item per gap with matching IDs across the two sections.
-A completed decision must omit both remediation sections; any known gap requires
-a non-completed status. The two remediation ID sets must match exactly: no
-missing, extra, or mismatched gap/fix IDs.
-
-- Choose `status: completed` when the plan is sound across every applicable, evaluatable dimension.
-- Choose `status: request_changes` when it falls short in any evaluatable dimension with a gap you proved yourself.
-- Choose `status: failed` when the analysis found major incompleteness or an otherwise unusable plan; stronger remediation may be needed, including starting over from the planning phase.
-
-Author the document, submit it per the procedure below, and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
-
----
-
-## `## What Came Up Short` — MANDATORY FOR ANY NON-COMPLETED STATUS
-
-1. **List every gap found** across all applicable, evaluatable dimensions. Do not stop after the first problem.
-
-2. **For each gap, include:**
-   - A stable gap ID that the replanner can preserve verbatim in the corresponding fix entry
-   - The dimension it belongs to (Product Criteria Compliance / Executor Readiness / Gap Analysis and Consistency /
-     Repository Accuracy / Risk Coverage / Verification Quality / Parallelization Safety /
-     Maintainability of the Plan / Parallel Execution)
-   - Exact file path, plan section, or command if applicable
-   - What the gap is and why it blocks a sound execution handoff
-   - What should have been present instead
-
-3. **Cite concrete evidence.** File paths, function names, test names, command output,
-   section names, observed output, exact mismatches. "The plan is vague" is not evidence.
-
-4. **No vague summaries.** "Needs more detail" or "incomplete" without specifics means the artifact
-   is incomplete.
-
-5. **Every entry must be provable and actionable** (see HARD RULE: NO UNPROVABLE GAPS). If you did
-   not personally observe the defect in this session, or the planner cannot close it through the
-   MCP plan-edit tools, it is not a gap — at most it is a not-evaluatable limit to disclose in the
-   single `## Summary` item.
-
----
-
-## `## How To Fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
-
-For every item in `## What Came Up Short`, provide a corresponding fix entry:
-
-1. **Exact plan sections to resubmit via the MCP plan-edit tools.** If repository files matter, cite them as evidence the revised sections must incorporate, not as files the planner should edit.
-2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
-3. **Preserve the same stable gap ID from the corresponding `## What Came Up Short` entry** so the planner can prove closure without ambiguity.
-4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
-5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, then for targeted edits use `ralph_stage_md_artifact` → `ralph_edit_md_plan_step` → `ralph_get_md_draft` → `ralph_finalize_md_artifact`; restart only when truly unsalvageable).
-6. **Commands or checks to validate the revised plan.**
-7. **What passing evidence looks like.**
-
-One gap, one fix entry. No grouping multiple gaps under one fix.
-
----
-
----
-
-## PLAN QUALITY RUBRIC
-
-You are the sole owner of these nine dimensions. The planner sees them only as
-the headings the analysis phase will judge against. Every `## What Came Up Short`
-entry you write must cite the dimension it belongs to from this list; do not
-introduce parallel or overlapping vocabularies.
-
-1. **Product Criteria Compliance** — every requirement and acceptance criterion in the PRODUCT CRITERIA maps to concrete steps and verification
-2. **Executor Readiness** — ordered, literally executable steps; precise targets; no hidden prerequisites or executor research burden
-3. **Gap Analysis and Consistency** — no missing implementation, migration, cleanup, or verification work; no contradictions between sections
-4. **Repository Accuracy** — every referenced file, pattern, command, and integration point is real in the current repository
-5. **Risk Coverage** — concrete failure modes with actionable mitigations; relevant edge cases acknowledged
-6. **Verification Quality** — exact commands with expected outcomes, covering the plan's biggest claims rather than a safe subset
-7. **Parallelization Safety** — declared work units are disjoint and independently executable
-8. **Maintainability of the Plan** — concise, no dead steps, clear rationale, explicit development handoff
-9. **Parallel Execution (Agent-Driven)** — `## Work Units` / `## Parallel Plan` are phrased for the executing agent's sub-agents with per-step evidence, never as Ralph-managed fan-out instructions
-
----
-
 `completed` with no findings is a normal, visible outcome. Manufacturing a
 toll finding miscalibrates the review and burns the planner's iteration
 budget without producing a fix. When every gap you can prove is closed,
 choose `completed` — even if not-evaluatable items remain.
-
----
-
-## Review checklist
-
-Use the rubric dimensions above as the review checklist headings. Do not
-restate them — they appear once, in the PLAN QUALITY RUBRIC section above.
-Each `## What Came Up Short` entry references one of those dimensions by name.
-
-Evaluate every dimension below that is actually evaluatable from the plan
-artifact, repository contents, or commands you can run in this session. For
-each scored judgment, cite concrete evidence from the plan or repository
-(file paths, section names, commands, observed output). If a dimension is
-not evaluatable from observable evidence, skip it rather than scoring it.
-
-For every non-completed decision, classify the overall defect scope as
-`local_section`, `cross_section`, or `repo_wide` and state it inside the
-single `## Summary` item (for example `Scope: repo_wide — ...`). Never add
-sections, frontmatter keys, or extra summary items for the scope. If defect
-scope is `repo_wide`, the summary must say explicitly that the next planning
-pass re-derives the plan globally rather than patching only the cited
-sections.
-
-Before issuing `request_changes`, enumerate all currently visible
-repo-grounded gaps, not just the first blocking gap. Judge the plan against
-the PRODUCT CRITERIA, not only against the most recent review comments.
-When describing remediation, target the planner's revision workflow: tell
-it which plan document sections to rewrite and what repository evidence
-those revised sections must incorporate. When a fix is limited to specific
-executor steps, tell the planner to stage the complete plan with
-`ralph_stage_md_artifact`, use the matching `ralph_edit_md_plan_step` action
-(`replace` for a vague or wrong step, `insert` for missing work, `move` for
-reordering dependencies, or `remove` for unsupported work), inspect the
-saved draft with `ralph_get_md_draft`, and submit it with
-`ralph_finalize_md_artifact`. Do not tell the planner to edit
-`.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
-
-When a finding touches the ## Critical Files section, scope, risks, or
-verification strategy, name each affected section explicitly so the planner
-can rewrite Steps, ## Critical Files, Risks, and Verification together
-instead of patching one section in isolation.
-
-Infer the core user-facing workflows and prerequisite actions that must exist for the PRODUCT CRITERIA to count as satisfied, even when the criteria state them only implicitly. Use this reasoning chain explicitly
-when needed: Goal → required workflow → prerequisite action/state → plan coverage. If a required workflow or prerequisite is missing from the plan,
-treat that as missing work rather than as an optional product idea.
-
-Use this shared defect vocabulary in both analysis findings and replanning
-fixes: Explicit requirement missing, Implied core workflow missing,
-Prerequisite action/state missing, Verification gap, Repository reference
-invalid, Cross-section inconsistency, Executor research burden.
-
-Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry. Every `## What Came Up Short` entry has the
-form `- [PA-###] Dimension: <one of the nine rubric dimensions> | Defect:
-<shared-vocabulary class> | Evidence: ... | Missing: ...` and every
-`## How To Fix` entry has the form `- [PA-###] <fix>` with the SAME ID.
-
-If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles
-before deciding it is sound.
 
 {% set planning_decision_example %}
 ---

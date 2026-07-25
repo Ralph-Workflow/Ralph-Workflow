@@ -222,6 +222,46 @@ def test_rendered_planning_prompt_orders_thinking_before_submission(
     )
 
 
+def test_rendered_planning_prompt_orders_thinking_before_readonly_block(
+    tmp_path: Path,
+) -> None:
+    """Thinking precedes the READ-ONLY block and the submit-or-fail mechanic.
+
+    The previous iteration kept the submission / READ-ONLY block above the
+    thinking partial; this iteration moves the include so the planner's
+    first substantive content is how to think, not the submit-or-fail
+    instruction or the read-only prohibition list.
+    """
+    rendered = _render_planning(tmp_path)
+    normalized = " ".join(rendered.split())
+    assert _THINKING_HEADING in rendered
+    assert "You MUST submit your plan" in normalized
+    assert "READ-ONLY planning task" in normalized
+    assert rendered.index(_THINKING_HEADING) < normalized.index("You MUST submit your plan"), (
+        "the thinking-first rewrite requires the thinking heading to appear "
+        "BEFORE 'You MUST submit your plan' in the rendered prompt"
+    )
+    assert rendered.index(_THINKING_HEADING) < normalized.index("READ-ONLY planning task"), (
+        "the thinking-first rewrite requires the thinking heading to appear "
+        "BEFORE the READ-ONLY planning task block in the rendered prompt"
+    )
+
+
+def test_rendered_planning_prompt_states_each_commitment_once(
+    tmp_path: Path,
+) -> None:
+    """The Document contract section carries the brevity commitment.
+
+    The thinking-first rewrite adds two brevity lines so the plan stays
+    short enough to re-read mid-run: state each commitment once, and keep
+    the plan short enough to re-read in one pass.
+    """
+    rendered = _render_planning(tmp_path)
+    normalized = " ".join(rendered.split())
+    assert "State each commitment once" in normalized
+    assert "re-read in one pass" in normalized or "re-read in one" in normalized
+
+
 def test_rendered_planning_prompt_keeps_characterization_phase_mandatory(
     tmp_path: Path,
 ) -> None:

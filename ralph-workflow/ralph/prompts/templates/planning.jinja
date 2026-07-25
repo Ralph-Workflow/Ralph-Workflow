@@ -22,6 +22,8 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
 
+{% include 'shared/_planning_thinking.j2' %}
+
 CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
 - Creating, modifying, or deleting any files
 - Running any commands that modify system state
@@ -31,8 +33,6 @@ You MUST submit your plan via Ralph Workflow's planning MCP tools.
 - Not submitting the plan is a FAILURE.
 - Allowed operations: any non-mutating tools
   (for example file reads/search/listing and image analysis)
-
-{% include 'shared/_planning_thinking.j2' %}
 
 {% if HAS_DOCS_MCP %}
 

@@ -80,6 +80,13 @@ executor, optional when the work is small enough to skip without losing
 clarity. Radically different headings are valid when the consumed anchors
 parse.
 
+State each commitment once, next to the step it describes; the executor
+will re-read this document mid-run under context pressure, and restating
+the same promise in Summary, Critical Files, and Verification costs the
+attention the executor needs for the step itself. Keep the plan short
+enough to re-read in one pass — detail that does not survive contact with
+the code belongs in a comment, not in the plan.
+
 Validation findings split into three severities:
 
 - **error** — a pipeline-consumed anchor is broken. Each error names the

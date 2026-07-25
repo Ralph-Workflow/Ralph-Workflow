@@ -199,3 +199,81 @@ def test_analysis_examples_keep_the_judged_artifact_as_the_subject() -> None:
     assert "The plan" in planning_example
     assert "Implementation" in development_example
     assert "The submitted review" in review_example
+
+
+def test_planning_analysis_dedups_enumerate_and_remediation_paragraphs() -> None:
+    """The two formerly-duplicated review paragraphs now appear exactly once.
+
+    The single-standard rewrite keeps the substance once and deletes the
+    second copy: ``enumerate all currently visible repo-grounded gaps`` and
+    ``target the planner's revision workflow`` each appear exactly once in
+    the rendered planning_analysis template.
+    """
+    source = _template("planning_analysis")
+    assert source.count("enumerate all currently visible") == 1, (
+        "the 'enumerate all currently visible repo-grounded gaps' paragraph "
+        "should appear exactly once in the planning_analysis prompt"
+    )
+    assert source.count("target the planner's revision workflow") == 1, (
+        "the 'target the planner's revision workflow' paragraph should "
+        "appear exactly once in the planning_analysis prompt"
+    )
+    # The legacy second `## Review checklist` heading is gone (only the
+    # capitalized `## REVIEW CHECKLIST` survives as the operational section).
+    assert source.count("## Review checklist\n") == 0, (
+        "the second `## Review checklist` section should have been removed "
+        "by the single-standard rewrite"
+    )
+
+
+def test_planning_analysis_houses_the_nine_dimensions_under_plan_quality_rubric() -> None:
+    """The detailed ``### 1..9`` dimension definitions live under PLAN QUALITY RUBRIC.
+
+    Previously the detailed dimension text lived inside ``## REVIEW CHECKLIST``
+    while ``## PLAN QUALITY RUBRIC`` carried a short list of the same nine
+    dimensions, so the rubric appeared twice. The rewrite moves the detailed
+    text under ``## PLAN QUALITY RUBRIC`` so the operational review section
+    stays short and the rubric lives in exactly one place.
+    """
+    source = _template("planning_analysis")
+    rubric_index = source.index("## PLAN QUALITY RUBRIC")
+    submission_index = source.rindex("render_artifact_submission(")
+    rubric_block = source[rubric_index:submission_index]
+    # Each of the nine detailed dimension headings should appear in the
+    # rubric block, in order.
+    expected_dimensions = [
+        "### 1. PRODUCT CRITERIA COMPLIANCE",
+        "### 2. EXECUTOR READINESS",
+        "### 3. GAP ANALYSIS AND CONSISTENCY",
+        "### 4. REPOSITORY ACCURACY",
+        "### 5. RISK COVERAGE",
+        "### 6. VERIFICATION QUALITY",
+        "### 7. PARALLELIZATION SAFETY",
+        "### 8. MAINTAINABILITY OF THE PLAN",
+        "### 9. PARALLEL EXECUTION (AGENT-DRIVEN)",
+    ]
+    for heading in expected_dimensions:
+        assert heading in rubric_block, (
+            f"the detailed {heading!r} dimension definition should live under "
+            "## PLAN QUALITY RUBRIC, not inside ## REVIEW CHECKLIST"
+        )
+
+
+def test_planning_analysis_treats_validation_overrides_as_settled() -> None:
+    """A ``## Validation Overrides`` entry is settled planner judgement.
+
+    The reviewer must not re-litigate an overridden advisory finding unless
+    repository evidence proves the recorded reason false; the rewrite adds
+    the corresponding paragraph to the analysis prompt so the standard is
+    stated once.
+    """
+    source = _template("planning_analysis")
+    normalized = _normalized(source)
+    assert (
+        "## Validation Overrides` section in the plan is the planner's recorded judgement"
+    ) in normalized
+    assert (
+        "An overridden finding is settled and must not be re-raised as a "
+        "new finding in `## What Came Up Short`, unless repository evidence "
+        "proves the recorded reason false."
+    ) in normalized

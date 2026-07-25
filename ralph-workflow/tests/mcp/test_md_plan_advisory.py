@@ -466,3 +466,162 @@ This is prose, not an override item.
     malformed = [d for d in diagnostics if d.rule_id == "PLAN025" and d.severity == "error"]
     assert len(malformed) == 1
     assert "list items" in malformed[0].message
+
+
+# ---------------------------------------------------------------------------
+# (e) Convention-corpus battery — every reachable diagnostic follows the
+# message contract so the agent can read what, the consumer / cost, and the
+# fix in linear order. These are the residue gaps closed by the consumer-
+# naming iteration; if a future edit rewrites any of these messages back
+# to a non-convention form, the test fails closed.
+# ---------------------------------------------------------------------------
+
+
+def test_spec002_missing_type_frontmatter_names_consumer() -> None:
+    """A plan with no ``type`` frontmatter surfaces SPEC002 with consumer phrase."""
+    document = """---
+schema_version: 1
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert content == {}
+    spec002_errors = [d for d in diagnostics if d.rule_id == "SPEC002"]
+    assert spec002_errors, "expected SPEC002 for missing type frontmatter"
+    for d in spec002_errors:
+        assert _BLOCKING_CONSUMER_RE.search(d.message), (
+            f"SPEC002 missing required frontmatter does not name its consumer: "
+            f"{d.message!r}"
+        )
+
+
+def test_md006_duplicate_type_frontmatter_names_consumer() -> None:
+    """A plan with duplicate ``type`` frontmatter lines surfaces MD006 with consumer phrase."""
+    document = """---
+type: plan
+type: plan
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert content == {}
+    md006_errors = [
+        d for d in diagnostics if d.rule_id == "MD006" and d.severity == "error"
+    ]
+    assert md006_errors, "expected MD006 for duplicate type frontmatter"
+    for d in md006_errors:
+        assert _BLOCKING_CONSUMER_RE.search(d.message), (
+            f"MD006 duplicate frontmatter does not name its consumer: {d.message!r}"
+        )
+
+
+def test_spec010_pydantic_failure_names_consumer() -> None:
+    """A pydantic-schema rejection surfaces SPEC010 with the schema consumer phrase."""
+    document = """---
+type: plan
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+Satisfies: AC-99
+
+## Verification
+- [V-1] pytest tests/x.py -q
+  Expect: the focused tests pass with exit code 0
+"""
+
+    content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    assert content == {}
+    spec010_errors = [d for d in diagnostics if d.rule_id == "SPEC010"]
+    assert spec010_errors, "expected SPEC010 for pydantic schema rejection"
+    for d in spec010_errors:
+        assert _BLOCKING_CONSUMER_RE.search(d.message), (
+            f"SPEC010 pydantic failure does not name its consumer: {d.message!r}"
+        )
+
+
+def test_plan009_unknown_field_label_names_cost() -> None:
+    """An unknown field label surfaces PLAN009 with the cost/fix convention."""
+    document = """---
+type: plan
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Filse:
+- modify foo.py
+
+## Verification
+- [V-1] pytest tests/x.py -q
+  Expect: the focused tests pass with exit code 0
+"""
+
+    _content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    plan009_warnings = [
+        d for d in diagnostics if d.rule_id == "PLAN009" and d.severity == "warning"
+    ]
+    assert plan009_warnings, "expected PLAN009 warning for unknown field label"
+    for d in plan009_warnings:
+        assert _ADVISORY_COST_RE.search(d.message), (
+            f"PLAN009 unknown label warning does not follow cost/fix convention: "
+            f"{d.message!r}"
+        )
+
+
+def test_plan020_prose_drop_advisory_names_cost() -> None:
+    """A known field with a missing value surfaces PLAN020 with the cost/fix convention."""
+    document = """---
+type: plan
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+Verify:
+Expect: pytest will pass
+
+## Verification
+- [V-1] pytest tests/x.py -q
+  Expect: the focused tests pass with exit code 0
+"""
+
+    _content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    plan020_warnings = [
+        d for d in diagnostics if d.rule_id == "PLAN020" and d.severity == "warning"
+    ]
+    assert plan020_warnings, "expected PLAN020 warning for missing-value prose drop"
+    # The warning is the prose-drop fallback (the field falls back to prose
+    # because the recognized label lacks a value); pin that the diagnostic
+    # follows the advisory cost/fix convention.
+    prose_drop = [
+        d
+        for d in plan020_warnings
+        if "requires a value" in d.message or "drops to prose" in d.message
+    ]
+    assert prose_drop, (
+        "expected at least one PLAN020 prose-drop warning; got "
+        f"{[d.message for d in plan020_warnings]}"
+    )
+    for d in prose_drop:
+        assert _ADVISORY_COST_RE.search(d.message), (
+            f"PLAN020 prose-drop warning does not follow cost/fix convention: "
+            f"{d.message!r}"
+        )

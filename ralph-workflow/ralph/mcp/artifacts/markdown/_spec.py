@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -154,15 +155,38 @@ def _missing_frontmatter_message(spec: MdArtifactSpec, key: str) -> str:
     vocabulary = spec.closed_frontmatter.get(key)
     if vocabulary is not None:
         accepted = ", ".join(vocabulary.values)
-        return f"missing required frontmatter {key!r}; accepted values are: {accepted}"
-    return spec.required_frontmatter_hints.get(key, f"missing required frontmatter {key!r}")
+        return (
+            f"missing required frontmatter {key!r}; blocking because the closed "
+            f"vocabulary for {key!r} is consumed by the spec registry "
+            "(ralph/mcp/artifacts/markdown/registry.py) and the value cannot be "
+            f"inferred; resolve by setting {key!r} to one of: {accepted}"
+        )
+    hint = spec.required_frontmatter_hints.get(key)
+    if hint is not None:
+        return (
+            f"missing required frontmatter {key!r}; blocking because {hint}"
+        )
+    return (
+        f"missing required frontmatter {key!r}; blocking because the artifact "
+        "spec registry (ralph/mcp/artifacts/markdown/registry.py) routes the "
+        f"parsed {key!r} value to a validator and a missing field cannot be "
+        f"routed; resolve by adding a {key!r} field whose value names this "
+        "artifact's canonical type"
+    )
 
 
 def _teach_duplicate_closed_frontmatter_vocabulary(
     diagnostics: list[Diagnostic],
     spec: MdArtifactSpec,
 ) -> None:
-    """Make duplicate consumed-field errors name the accepted vocabulary."""
+    """Rewrite MD006 duplicate-frontmatter diagnostics into the consumer convention.
+
+    Every MD006 message starts as ``duplicate frontmatter field <key>``; the
+    teach pass appends the consumer phrase (closed-vocabulary acceptance
+    list when one is registered, otherwise the spec-registry phrase for the
+    plain ``type`` frontmatter field) plus a ``resolve by`` clause so the
+    diagnostic reads ``what; blocking because <consumer>; resolve by <fix>``.
+    """
     for index, diagnostic in enumerate(diagnostics):
         if diagnostic.rule_id != "MD006":
             continue
@@ -174,11 +198,31 @@ def _teach_duplicate_closed_frontmatter_vocabulary(
                 diagnostic.line,
                 diagnostic.section,
                 diagnostic.rule_id,
-                f"{diagnostic.message}; keep exactly one {field_name!r} field "
+                f"{diagnostic.message}; blocking because the closed vocabulary for "
+                f"{field_name!r} is consumed by the spec registry "
+                "(ralph/mcp/artifacts/markdown/registry.py) so duplicates cannot be "
+                f"routed; resolve by keeping exactly one {field_name!r} field "
                 f"whose value is one of: {accepted}",
                 diagnostic.severity,
             )
             break
+        else:
+            # Plain ``type`` (or any other non-closed field with a hint):
+            # name the spec-registry consumer without inventing a vocabulary.
+            field_match = re.match(r"duplicate frontmatter field ('.*?')", diagnostic.message)
+            if field_match is None:
+                continue
+            field_name = field_match.group(1)
+            diagnostics[index] = Diagnostic(
+                diagnostic.line,
+                diagnostic.section,
+                diagnostic.rule_id,
+                f"{diagnostic.message}; blocking because the artifact spec registry "
+                "(ralph/mcp/artifacts/markdown/registry.py) routes the parsed "
+                f"{field_name} value to the plan validator and a duplicate field "
+                f"cannot be routed; resolve by keeping exactly one {field_name} field",
+                diagnostic.severity,
+            )
 
 
 def _validate_closed_frontmatter(
@@ -260,7 +304,36 @@ def _normalizer_diagnostic(document: ParsedDocument, message: str) -> Diagnostic
         ),
         None,
     )
-    return Diagnostic(line, section, "SPEC010", message or "canonical validation failed")
+    return Diagnostic(
+        line,
+        section,
+        "SPEC010",
+        _spec010_message(message or "canonical validation failed"),
+    )
+
+
+def _spec010_message(message: str) -> str:
+    """Wrap a pydantic / size / normalizer rejection in the consumer convention.
+
+    The plan spec normalizer can fail in three ways: a pydantic schema
+    rejection, a ``plan size violation`` from the canonical plan payload
+    bound, or any other TypeError/ValueError surfaced by the normalizer
+    callable. Each one ends with ``; blocking because <consumer>; resolve
+    by <fix>`` so the diagnostic matches the convention every other
+    blocking finding follows.
+    """
+    what = message.strip() or "canonical validation failed"
+    if what.lower().startswith("plan size violation"):
+        return (
+            f"{what}; blocking because the plan is carried through MCP tool result "
+            "payloads and unbounded documents exceed the bounded payload contract; "
+            "resolve by reducing the plan to its essential steps and verification"
+        )
+    return (
+        f"{what}; blocking because ralph/mcp/artifacts/plan/_validation.py "
+        "enforces pydantic field schemas on the canonical plan content dict; "
+        "resolve by correcting the rejected field against its pydantic schema"
+    )
 
 
 def _has_errors(diagnostics: list[Diagnostic]) -> bool:
