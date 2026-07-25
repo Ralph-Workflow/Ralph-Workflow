@@ -149,6 +149,7 @@ from ralph.display.phase_status import (
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.record_writer import RenderedRecordWriter
 from ralph.display.subscriber import PipelineSubscriber
+from ralph.display.theme import detect_terminal_background_is_light
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
@@ -439,6 +440,7 @@ class ParallelDisplay:
         "_run_start_time",
         "_status_bar",
         "_subscriber",
+        "_terminal_bg_is_light",
         "_workspace_root",
     )
 
@@ -462,6 +464,16 @@ class ParallelDisplay:
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._is_quiet: bool = is_quiet
+        # Resolve the terminal background ONCE, here, so the pure
+        # preview builder never touches env or the tty. The resolution
+        # asks the terminal for its actual background colour (OSC 11)
+        # and falls back to env hints, so syntax-highlight colours are
+        # chosen against the operator's real background rather than an
+        # assumed one. Any failure degrades to ``None`` (dark default);
+        # the probe must never be able to break display construction.
+        self._terminal_bg_is_light: bool | None = None
+        with contextlib.suppress(Exception):
+            self._terminal_bg_is_light = detect_terminal_background_is_light(display_context.env)
         self._clock: Callable[[], datetime] = (
             clock if clock is not None else (lambda: datetime.now(UTC))
         )
@@ -537,7 +549,9 @@ class ParallelDisplay:
         # writers beyond the per-wave set. Quiet mode (single-line runs)
         # and tests that disable the writer get a no-op append.
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
-        self._rendered_writers: dict[str, RenderedRecordWriter] = {}  # bounded-accumulator-ok: drop_unit
+        self._rendered_writers: dict[
+            str, RenderedRecordWriter
+        ] = {}  # bounded-accumulator-ok: drop_unit
 
         self._activity_router: ActivityRouter = ActivityRouter(
             on_event=self._on_activity_router_event,
@@ -1302,9 +1316,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return None
         if unit_id not in self._rendered_writers:
-            self._rendered_writers[unit_id] = RenderedRecordWriter(
-                self._workspace_root, unit_id
-            )
+            self._rendered_writers[unit_id] = RenderedRecordWriter(self._workspace_root, unit_id)
         return self._rendered_writers[unit_id]
 
     def _raw_overflow_write(self, unit_id: str, raw_line: str) -> None:
@@ -1516,9 +1528,7 @@ class ParallelDisplay:
         # close, the joined passage would carry the prefix between every
         # fragment. The close path formats the joined passage itself via
         # ``_build_line`` so per-fragment formatting must be skipped here.
-        content_for_emit = (
-            text_content if kind.value in _STREAMING_KINDS else visible
-        )
+        content_for_emit = text_content if kind.value in _STREAMING_KINDS else visible
 
         # S-7 (wt-028-display P1): SUBAGENT_PROGRESS is a watchdog-side
         # companion event. The audit trail (rendered record writer below)
@@ -1555,7 +1565,10 @@ class ParallelDisplay:
             # surface and must survive even when the preview cannot.
             if kind is ActivityEventKind.TOOL_USE and not self._is_quiet:
                 preview = build_edit_preview(
-                    text_content, input_dict, width=self._ctx.width
+                    text_content,
+                    input_dict,
+                    width=self._ctx.width,
+                    terminal_bg_is_light=self._terminal_bg_is_light,
                 )
                 if preview is not None:
                     with contextlib.suppress(Exception):

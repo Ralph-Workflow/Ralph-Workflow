@@ -190,14 +190,27 @@ def _records_show_no_progress(
     return no_progress
 
 
+def _signalable_pgid(record: ProcessRecord) -> int | None:
+    """Return the record's PGID when it is safe to signal.
+
+    ``killpg(0, ...)`` signals the CALLER's own group and PID 1 is init: a
+    record carrying either (``-1`` placeholders on a failed spawn, fabricated
+    PIDs from a fake process manager) must never reach ``os.killpg``.
+    """
+    pgid = record.pgid
+    return pgid if pgid > 1 else None
+
+
 def _kill_records(records: list[ProcessRecord]) -> None:
-    kill_method = os.killpg if hasattr(os, "killpg") else os.kill
+    use_killpg = hasattr(os, "killpg")
     for record in records:
         with suppress(ProcessLookupError, PermissionError):
-            if kill_method is os.killpg:
-                kill_method(record.pgid, signal.SIGKILL)
-            else:
-                kill_method(record.pid, signal.SIGKILL)
+            if use_killpg:
+                pgid = _signalable_pgid(record)
+                if pgid is not None:
+                    os.killpg(pgid, signal.SIGKILL)
+            elif record.pid > 1:
+                os.kill(record.pid, signal.SIGKILL)
 
 
 def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]) -> None:
@@ -211,8 +224,11 @@ def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]
     )
     if callable(kill_method):
         for record in records:
+            pgid = _signalable_pgid(record)
+            if pgid is None:
+                continue
             with suppress(ProcessLookupError, PermissionError):
-                kill_method(record.pgid, signal.SIGKILL)
+                kill_method(pgid, signal.SIGKILL)
         return
     _kill_records(records)
 

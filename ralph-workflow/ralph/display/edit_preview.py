@@ -70,11 +70,37 @@ Design:
   wider ``tests/display/test_no_hex_colors_outside_theme.py``
   anti-drift guard (which walks every ``ralph/display/*.py``) does
   not flag this module (R-2).
+
+Background-aware highlighting
+-----------------------------
+
+Highlight colours are NOT fixed RGB. Every ``Syntax`` renderable this
+module builds is themed via
+:func:`ralph.display.theme.syntax_theme_for_background`, which returns
+an ANSI theme (``ansi_dark`` / ``ansi_light``). ANSI themes colour
+tokens with the terminal's own 16-colour palette and paint no
+background, so the preview inherits whatever colour scheme the
+operator configured and always contrasts with their background.
+
+The previous implementation pinned pygments' ``default`` theme, which
+is a *light-background* theme: it renders plain identifiers and
+punctuation at pure black and keywords at dark navy. Combined with a
+transparent background that made most of a preview invisible on the
+(overwhelmingly common) dark terminal. The background is resolved once
+by the display owner via
+:func:`ralph.display.theme.detect_terminal_background_is_light` -- which
+asks the terminal for its actual background colour rather than assuming
+one -- and threaded in as ``terminal_bg_is_light``; this module stays
+pure and reads no env.
+
+The diff ``-`` / ``+`` markers are resolved the same way, through
+:func:`ralph.display.theme.pick_status_styles`, so the marker colours
+also clear WCAG contrast on a light terminal.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from pygments.lexers import get_lexer_for_filename
 from pygments.util import ClassNotFound
@@ -83,8 +109,15 @@ from rich.syntax import Syntax
 from rich.text import Text
 
 from ralph.display.line_sanitizer import strip_terminal_control
+from ralph.display.theme import (
+    SYNTAX_BACKGROUND_TRANSPARENT,
+    pick_status_styles,
+    syntax_theme_for_background,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from rich.console import RenderableType
 
 #: Bare tool names that produce a content preview. The MCP prefix
@@ -130,13 +163,6 @@ _SUFFIX_LEXER: Final[dict[str, str]] = {
     ".xml": "xml",
 }
 
-#: Pygments theme name. ``"default"`` is bright-on-dark and works on
-#: every terminal; named constant so no hex literal appears in this
-#: module (the Okabe-Ito discipline is enforced by
-#: ``tests/display/test_no_hex_colors_outside_theme.py`` which walks
-#: every ``ralph/display/*.py``).
-_SYNTAX_THEME: Final[str] = "default"
-
 #: Maximum number of lines a preview may show. Anything longer is
 #: truncated and replaced with a muted elision line so the preview
 #: stays scannable and the panel cannot grow without bound.
@@ -147,13 +173,24 @@ _MAX_PREVIEW_LINES: Final[int] = 40
 #: clear truncation cue.
 _ELISION_GLYPH: Final[str] = "\u2026"
 
-#: Theme style keys used by the diff-style old / new line markers.
-#: These are NAMED references into :data:`ralph.display.theme.STATUS_STYLES`
-#: (success -> bluish-green, error -> vermillion) and the muted
-#: ``theme.text.muted`` style for the elision line. No hex literal.
-_DIFF_OLD_STYLE: Final[str] = "theme.status.error"
-_DIFF_NEW_STYLE: Final[str] = "theme.status.success"
+#: Semantic status names used by the diff-style old / new line markers.
+#: They are resolved through
+#: :func:`ralph.display.theme.pick_status_styles` so the marker colour
+#: is the background-appropriate variant (``error`` -> vermillion,
+#: ``success`` -> bluish-green, darkened on a light terminal). No hex
+#: literal appears here.
+_DIFF_OLD_STATUS: Final[str] = "error"
+_DIFF_NEW_STATUS: Final[str] = "success"
+
+#: Muted style used for the ``… (N more lines)`` elision line. ``dim``
+#: is a terminal attribute rather than a colour, so it reads correctly
+#: on either background.
 _ELISION_STYLE: Final[str] = "theme.text.muted"
+
+
+def _diff_marker_style(status: str, *, terminal_bg_is_light: bool | None) -> str:
+    """Return the Rich style string for a diff marker on this background."""
+    return pick_status_styles(terminal_bg_is_light)[status][0]
 
 
 def _normalize_tool_name(name: str) -> str:
@@ -170,21 +207,35 @@ def _lexer_for_path(path: str) -> str:
 
     Unknown extensions fall back to ``pygments.lexers.get_lexer_for_filename``
     and ultimately to ``"text"`` (plain text) so the preview never
-    raises on an unexpected extension. The lexer name is a pygments
-    ``str`` like ``"Python"`` or ``"Markdown"``.
+    raises on an unexpected extension.
+
+    The returned value is always a pygments *alias* (``"python"``,
+    ``"markdown"``, ``"text"``) rather than a display name, because
+    ``rich.syntax.Syntax`` resolves its lexer argument through
+    ``get_lexer_by_name``, which only accepts aliases. Returning the
+    display name (``"Python"``) made every fallback-path preview
+    silently degrade to unhighlighted plain text.
     """
     # Cheap suffix scan first: avoids pygments lookup for the common
     # types and keeps the lexer name stable across pygments versions.
     lowered = path.lower()
-    for suffix, lexer in _SUFFIX_LEXER.items():
+    for suffix, alias in _SUFFIX_LEXER.items():
         if lowered.endswith(suffix):
-            return lexer
+            return alias
     try:
-        return get_lexer_for_filename(path).name
+        lexer: object = get_lexer_for_filename(path)
     except ClassNotFound:
         return "text"
     except Exception:
         return "text"
+    aliases = cast("Sequence[str]", getattr(lexer, "aliases", ()))
+    return aliases[0] if aliases else "text"
+
+
+#: Lexer aliases that identify markdown. ``get_lexer_for_filename``
+#: reports ``"markdown"`` first, but ``"md"`` is the alias some
+#: pygments versions lead with, so both are accepted.
+_MARKDOWN_LEXER_ALIASES: Final[frozenset[str]] = frozenset({"markdown", "md"})
 
 
 def _is_markdown_lexer(lexer_name: str) -> bool:
@@ -193,7 +244,7 @@ def _is_markdown_lexer(lexer_name: str) -> bool:
     Markdown is the only lexer that benefits from word-wrap; code
     must NOT wrap or indentation breaks.
     """
-    return lexer_name.lower() == "markdown"
+    return lexer_name.lower() in _MARKDOWN_LEXER_ALIASES
 
 
 def _safe_lines(content: str, *, max_lines: int) -> tuple[list[str], int | None]:
@@ -222,12 +273,36 @@ def _elision_text(omitted: int) -> Text:
     return text
 
 
+def _make_syntax(
+    body: str,
+    lexer_name: str,
+    *,
+    is_markdown: bool,
+    terminal_bg_is_light: bool | None,
+) -> Syntax:
+    """Build the themed ``Syntax`` renderable used by both preview shapes.
+
+    ``background_color`` is transparent and the theme is an ANSI theme,
+    so the block never paints over the terminal background and its token
+    colours come from the operator's own 16-colour scheme.
+    """
+    return Syntax(
+        body,
+        lexer_name,
+        theme=syntax_theme_for_background(terminal_bg_is_light),
+        line_numbers=True,
+        word_wrap=is_markdown,
+        background_color=SYNTAX_BACKGROUND_TRANSPARENT,
+    )
+
+
 def _build_write_preview(
     tool_name: str,
     path: str | None,
     content: str,
     *,
     width: int,
+    terminal_bg_is_light: bool | None,
 ) -> RenderableType | None:
     """Build a ``Syntax``-based preview for ``write_file`` / ``append_file``
     and the two artifact-stage / artifact-submit tools."""
@@ -239,14 +314,11 @@ def _build_write_preview(
     lines, omitted = _safe_lines(content, max_lines=_MAX_PREVIEW_LINES)
     if not lines:
         return None
-    body = "\n".join(lines)
-    syntax = Syntax(
-        body,
+    syntax = _make_syntax(
+        "\n".join(lines),
         lexer_name,
-        theme=_SYNTAX_THEME,
-        line_numbers=True,
-        word_wrap=is_markdown,
-        background_color="default",
+        is_markdown=is_markdown,
+        terminal_bg_is_light=terminal_bg_is_light,
     )
     if omitted is None:
         return syntax
@@ -258,6 +330,7 @@ def _build_edit_preview(
     edits: list[dict[str, object]],
     *,
     width: int,
+    terminal_bg_is_light: bool | None,
 ) -> RenderableType | None:
     """Build a diff-style preview for ``edit_file`` / ``ralph_edit_md_artifact``.
 
@@ -276,6 +349,8 @@ def _build_edit_preview(
         return None
     lexer_name = "markdown" if path is None else _lexer_for_path(path or "")
     is_markdown = _is_markdown_lexer(lexer_name)
+    old_style = _diff_marker_style(_DIFF_OLD_STATUS, terminal_bg_is_light=terminal_bg_is_light)
+    new_style = _diff_marker_style(_DIFF_NEW_STATUS, terminal_bg_is_light=terminal_bg_is_light)
     blocks: list[RenderableType] = []
     total_omitted = 0
     for edit in edits:
@@ -290,35 +365,35 @@ def _build_edit_preview(
             old_lines, old_omitted = _safe_lines(old_safe, max_lines=_MAX_PREVIEW_LINES)
             old_block = Text()
             for index, line in enumerate(old_lines, start=1):
-                old_block.append(
-                    f"{index:>3} - {line}\n",
-                    style=_DIFF_OLD_STYLE,
-                )
+                old_block.append(f"{index:>3} - {line}\n", style=old_style)
             if old_omitted is not None:
                 old_block.append_text(_elision_text(old_omitted))
+            # Drop the trailing newline: Console.print already ends the
+            # renderable with one, and the extra blank line between the
+            # ``-`` and ``+`` halves makes a two-line edit read as four
+            # disconnected fragments.
+            old_block.rstrip()
             blocks.append(old_block)
             total_omitted += old_omitted or 0
         # New block: Syntax-highlighted with line numbers starting at 1.
         if new_safe:
             new_lines, new_omitted = _safe_lines(new_safe, max_lines=_MAX_PREVIEW_LINES)
             if new_lines:
-                new_body = "\n".join(new_lines)
-                new_syntax = Syntax(
-                    new_body,
+                new_syntax = _make_syntax(
+                    "\n".join(new_lines),
                     lexer_name,
-                    theme=_SYNTAX_THEME,
-                    line_numbers=True,
-                    start_line=1,
-                    word_wrap=is_markdown,
-                    background_color="default",
+                    is_markdown=is_markdown,
+                    terminal_bg_is_light=terminal_bg_is_light,
                 )
                 # Wrap the new block in a Text frame so the leading
                 # ``+`` marker on the first line is visible without
                 # disturbing the Syntax line-number column. The diff
                 # prefix carries the meaning; the per-line new content
-                # remains syntax-highlighted.
+                # remains syntax-highlighted. No trailing newline:
+                # ``Group`` already places the frame and the Syntax
+                # block on separate lines.
                 frame = Text()
-                frame.append(f"+ ({path or 'edit'})\n", style=_DIFF_NEW_STYLE)
+                frame.append(f"+ ({path or 'edit'})", style=new_style)
                 blocks.append(Group(frame, new_syntax))
                 total_omitted += new_omitted or 0
     if not blocks:
@@ -331,6 +406,7 @@ def build_edit_preview(
     input_dict: dict[str, object],
     *,
     width: int,
+    terminal_bg_is_light: bool | None = None,
 ) -> RenderableType | None:
     """Return a rich renderable previewing the edit described by ``input_dict``.
 
@@ -341,7 +417,22 @@ def build_edit_preview(
     or a :class:`rich.console.Group` (edit-style tools with multiple
     blocks). The caller (``ParallelDisplay``) prints the renderable
     through its own Console so the same width / quiet / sanitization
-    policies apply. No I/O happens here.
+    policies apply. No I/O happens here -- including no env reads and
+    no terminal probing: the caller resolves the background once and
+    passes the answer in.
+
+    Parameters:
+        tool_name: Raw tool name from the event (MCP / alias prefixes
+            are stripped internally).
+        input_dict: The tool-call input payload.
+        width: Effective console width.
+        terminal_bg_is_light: ``True`` when the terminal background is
+            light, ``False`` when dark, ``None`` when undetermined
+            (treated as dark). Selects the ANSI syntax theme and the
+            diff-marker styles.
+
+    Returns:
+        A rich renderable, or ``None`` when there is nothing to preview.
     """
     bare = _normalize_tool_name(tool_name)
     if bare not in CONTENT_EDIT_TOOLS:
@@ -357,9 +448,16 @@ def build_edit_preview(
             path,
             [e for e in edits_obj if isinstance(e, dict)],
             width=width,
+            terminal_bg_is_light=terminal_bg_is_light,
         )
     if isinstance(content_obj, str) and content_obj:
-        return _build_write_preview(bare, path, content_obj, width=width)
+        return _build_write_preview(
+            bare,
+            path,
+            content_obj,
+            width=width,
+            terminal_bg_is_light=terminal_bg_is_light,
+        )
     return None
 
 

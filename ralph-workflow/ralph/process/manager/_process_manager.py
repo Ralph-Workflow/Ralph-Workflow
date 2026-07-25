@@ -41,6 +41,7 @@ from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessSta
 from ralph.process.manager._process_termination_error import ProcessTerminationError
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._spawn_options import SpawnOptions
+from ralph.process.teardown import register_child_session
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -526,6 +527,13 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
+        # Prove ownership of the child's session NOW, while it is alive: the
+        # call records the PGID only for a live descendant of ours that leads
+        # its own group. Once the leader exits, its PID is a reusable integer
+        # that proves nothing and teardown will (correctly) refuse to signal
+        # it, so a group that is not banked here can never be reaped later.
+        register_child_session(pid)
+
         record = ProcessRecord(
             pid=pid,
             pgid=pgid,
@@ -593,6 +601,13 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
+        # Prove ownership of the child's session NOW, while it is alive: the
+        # call records the PGID only for a live descendant of ours that leads
+        # its own group. Once the leader exits, its PID is a reusable integer
+        # that proves nothing and teardown will (correctly) refuse to signal
+        # it, so a group that is not banked here can never be reaped later.
+        register_child_session(pid)
+
         record = ProcessRecord(
             pid=pid,
             pgid=pgid,
@@ -655,6 +670,13 @@ class ProcessManager:
             pgid = os.getpgid(pid) if hasattr(os, "getpgid") else pid
         except (ProcessLookupError, OSError):
             pgid = pid
+
+        # Prove ownership of the child's session NOW, while it is alive: the
+        # call records the PGID only for a live descendant of ours that leads
+        # its own group. Once the leader exits, its PID is a reusable integer
+        # that proves nothing and teardown will (correctly) refuse to signal
+        # it, so a group that is not banked here can never be reaped later.
+        register_child_session(pid)
 
         record = ProcessRecord(
             pid=pid,

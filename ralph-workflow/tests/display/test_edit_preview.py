@@ -87,12 +87,8 @@ def test_build_edit_preview_write_file_python_uses_python_lexer() -> None:
         width=80,
     )
     assert preview is not None, "write_file with content must produce a preview"
-    assert isinstance(preview, Syntax), (
-        f"expected rich.syntax.Syntax, got {type(preview).__name__}"
-    )
-    assert preview.lexer.name == "Python", (
-        f"expected Python lexer, got {preview.lexer.name!r}"
-    )
+    assert isinstance(preview, Syntax), f"expected rich.syntax.Syntax, got {type(preview).__name__}"
+    assert preview.lexer.name == "Python", f"expected Python lexer, got {preview.lexer.name!r}"
 
 
 def test_build_edit_preview_write_file_renders_line_numbers() -> None:
@@ -127,9 +123,7 @@ def test_build_edit_preview_artifact_stage_uses_markdown_lexer() -> None:
     )
     assert preview is not None, "stage artifact with content must produce a preview"
     assert isinstance(preview, Syntax)
-    assert preview.lexer.name == "Markdown", (
-        f"expected Markdown lexer, got {preview.lexer.name!r}"
-    )
+    assert preview.lexer.name == "Markdown", f"expected Markdown lexer, got {preview.lexer.name!r}"
     assert preview.word_wrap is True, "markdown previews must word-wrap"
 
 
@@ -243,9 +237,7 @@ def test_build_edit_preview_sanitizes_ansi_escape_sequences() -> None:
     console = Console(file=buf, force_terminal=False, color_system=None, width=80)
     console.print(preview)
     rendered = buf.getvalue()
-    assert "\x1b" not in rendered, (
-        f"raw ESC byte leaked into preview:\n{rendered!r}"
-    )
+    assert "\x1b" not in rendered, f"raw ESC byte leaked into preview:\n{rendered!r}"
     # Body residue from incomplete regexes that the full stripper removes.
     for forbidden in ("[?1049h", "[2J", "[>0c"):
         assert forbidden not in rendered, (
@@ -302,9 +294,7 @@ def test_build_edit_preview_truncates_long_content_with_elision() -> None:
     # Either an explicit "more lines" marker OR a … ellipsis token must
     # appear to signal truncation.
     has_marker = "more line" in rendered.lower() or "\u2026" in rendered or "..." in rendered
-    assert has_marker, (
-        f"elision marker missing from truncated preview:\n{rendered[-500:]!r}"
-    )
+    assert has_marker, f"elision marker missing from truncated preview:\n{rendered[-500:]!r}"
     # The very last line in the source must NOT appear (it was truncated).
     assert "line 0199" not in rendered, (
         f"truncation cap not enforced; final source line still rendered:\n{rendered[-500:]!r}"
@@ -328,7 +318,10 @@ def test_parallel_display_emit_parsed_event_prints_header_and_preview_for_tool_u
             "input": {
                 "path": "src/example.py",
                 "edits": [
-                    {"oldText": "def old():\n    return 1\n", "newText": "def new():\n    return 2\n"},
+                    {
+                        "oldText": "def old():\n    return 1\n",
+                        "newText": "def new():\n    return 2\n",
+                    },
                 ],
             }
         },
@@ -406,6 +399,116 @@ def test_parallel_display_quiet_mode_suppresses_tool_use_preview() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 8b. Highlight colours adapt to the terminal background
+# ---------------------------------------------------------------------------
+
+
+_PY_SNIPPET = 'import os\n\n\ndef handler(value: int) -> str:\n    # note\n    return f"{value}"\n'
+
+
+def _render_truecolor(preview: object) -> str:
+    """Render with escape codes intact so colour choices are inspectable."""
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=True, color_system="truecolor", width=80)
+    console.print(preview)
+    return buf.getvalue()
+
+
+def test_preview_emits_no_fixed_rgb_colours() -> None:
+    """Token colours must come from the terminal's own ANSI palette.
+
+    A fixed-RGB theme emits ``38;2;R;G;B`` sequences, which ignore the
+    operator's colour scheme entirely -- and pygments' ``default`` theme
+    (the previous setting) paints plain identifiers pure black, invisible
+    on a dark terminal. Assert no truecolor foreground escape is produced
+    at all, on either background.
+    """
+    for flag in (True, False, None):
+        preview = build_edit_preview(
+            "write_file",
+            {"path": "a.py", "content": _PY_SNIPPET},
+            width=80,
+            terminal_bg_is_light=flag,
+        )
+        rendered = _render_truecolor(preview)
+        assert "38;2;" not in rendered, (
+            f"fixed-RGB foreground leaked for terminal_bg_is_light={flag!r}; "
+            f"highlighting must use the terminal palette:\n{rendered!r}"
+        )
+
+
+def test_preview_does_not_paint_its_own_background() -> None:
+    """The preview must let the terminal background show through.
+
+    Any RGB background escape would paint a rectangle in a colour picked
+    without knowing the operator's scheme.
+    """
+    preview = build_edit_preview(
+        "write_file",
+        {"path": "a.py", "content": _PY_SNIPPET},
+        width=80,
+        terminal_bg_is_light=False,
+    )
+    rendered = _render_truecolor(preview)
+    assert "48;2;" not in rendered, f"preview painted an RGB background:\n{rendered!r}"
+
+
+def test_preview_colours_differ_between_light_and_dark_backgrounds() -> None:
+    """The same content highlights differently on a light vs dark terminal.
+
+    Dark backgrounds get the bright ANSI slots, light backgrounds the
+    normal ones; identical output would mean the resolved background is
+    not reaching the renderable.
+    """
+    payload = {"path": "a.py", "content": _PY_SNIPPET}
+    on_dark = _render_truecolor(
+        build_edit_preview("write_file", payload, width=80, terminal_bg_is_light=False)
+    )
+    on_light = _render_truecolor(
+        build_edit_preview("write_file", payload, width=80, terminal_bg_is_light=True)
+    )
+    assert on_dark != on_light, (
+        "light and dark backgrounds produced identical output; the resolved "
+        "background is not reaching the Syntax renderable"
+    )
+
+
+def test_diff_markers_use_background_appropriate_styles() -> None:
+    """The ``-`` / ``+`` marker colours are the background-aware variants."""
+    payload = {
+        "path": "a.py",
+        "edits": [{"oldText": "x = 1\n", "newText": "x = 2\n"}],
+    }
+    on_dark = _render_truecolor(
+        build_edit_preview("edit_file", payload, width=80, terminal_bg_is_light=False)
+    )
+    on_light = _render_truecolor(
+        build_edit_preview("edit_file", payload, width=80, terminal_bg_is_light=True)
+    )
+    assert on_dark != on_light, "diff marker styles did not change with the terminal background"
+
+
+def test_unknown_extension_still_gets_a_real_lexer() -> None:
+    """Extensions outside the fast-path map resolve to a usable lexer alias.
+
+    ``get_lexer_for_filename(...).name`` returns a DISPLAY name
+    (``"Ruby"``), which ``Syntax`` cannot resolve -- every such file
+    silently rendered unhighlighted. The alias (``"ruby"``) is what the
+    lexer lookup accepts.
+    """
+    preview = build_edit_preview(
+        "write_file",
+        {"path": "lib/thing.rb", "content": "def go\n  puts 'hi'\nend\n"},
+        width=80,
+    )
+    assert isinstance(preview, Syntax)
+    assert preview.lexer is not None, "unknown-extension path resolved no lexer"
+    assert preview.lexer.name == "Ruby", (
+        f"expected the Ruby lexer via alias lookup, got {preview.lexer.name!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 9. No hex color literals in the new module
 # ---------------------------------------------------------------------------
 
@@ -419,9 +522,7 @@ def test_edit_preview_module_uses_no_hex_color_literals() -> None:
     file that exercises it."""
     from pathlib import Path
 
-    module_path = (
-        Path(__file__).parent.parent.parent / "ralph" / "display" / "edit_preview.py"
-    )
+    module_path = Path(__file__).parent.parent.parent / "ralph" / "display" / "edit_preview.py"
     assert module_path.exists(), f"module missing at {module_path}"
     text = module_path.read_text(encoding="utf-8")
     import re

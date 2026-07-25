@@ -13,7 +13,7 @@ from ralph.executor._process_result import ProcessResult
 from ralph.executor._process_run_options import ProcessRunOptions
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
-from ralph.process.teardown import teardown_subtree
+from ralph.process.teardown import teardown_subtree, verified_child_session_pgid
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -44,7 +44,7 @@ TIMEOUT_EXIT_CODE = 124
 _DEFAULT_RUN_PROCESS_LABEL: Final[str] = "executor:run-process"
 
 
-def _reap_subtree(pid: int | None) -> None:
+def _reap_subtree(pid: int | None, pgid: int | None = None) -> None:
     """Reap the whole descendant tree of an exec child, transitively.
 
     Runs on EVERY exit path (success, timeout, cancellation, error).
@@ -54,13 +54,28 @@ def _reap_subtree(pid: int | None) -> None:
     ``start_new_session=True``: without their own session there is no
     group to signal and deep descendants cannot be reached.
 
+    ``pgid`` must come from ``verified_child_session_pgid`` called while the
+    child was alive. It is what makes the post-exit group sweep safe: by the
+    time this runs on the success path, ``communicate()`` has already reaped
+    the child, and its PID number carries no authority to kill anything.
+
     Best-effort: a teardown failure must never mask the call's own result
     or exception.
     """
     if pid is None:
         return
     with contextlib.suppress(Exception):
-        teardown_subtree(pid)
+        teardown_subtree(pid, pgid=pgid)
+
+
+def _verified_pgid(pid: int | None) -> int | None:
+    """Capture the child's session PGID while it is still alive."""
+    if pid is None:
+        return None
+    try:
+        return verified_child_session_pgid(pid)
+    except Exception:
+        return None
 
 
 # Defense-in-depth bound for the post-terminate pipe drain. The child has
@@ -160,6 +175,7 @@ async def run_process_async(
     communicate_task = asyncio.create_task(handle.communicate())  # mcp-timeout-ok: wait-bounded
 
     child_pid = handle.pid
+    child_pgid = _verified_pgid(child_pid)
     try:
         done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
         if communicate_task not in done:
@@ -186,7 +202,7 @@ async def run_process_async(
         raise
     finally:
         # Every exit path, including the two `return`s above: reap the tree.
-        _reap_subtree(child_pid)
+        _reap_subtree(child_pid, child_pgid)
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
@@ -238,6 +254,7 @@ def run_process(
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
     child_pid = handle.pid
+    child_pgid = _verified_pgid(child_pid)
     try:
         stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired:
@@ -268,7 +285,7 @@ def run_process(
         raise
     finally:
         # Every exit path, including the timeout `return` above: reap the tree.
-        _reap_subtree(child_pid)
+        _reap_subtree(child_pid, child_pgid)
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(

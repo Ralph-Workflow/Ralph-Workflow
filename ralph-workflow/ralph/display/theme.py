@@ -196,15 +196,33 @@ STATUS_STYLES_ON_LIGHT_BG: Final[dict[str, tuple[str, str, str]]] = {
 }
 
 IDENTITY_PALETTE: Final[tuple[str, ...]] = (
-    "#E31A1C", "#3288BD", "#33A02C", "#6A3D9A",
-    "#FF7F00", "#B15928", "#E7298A", "#B2DF8A",
-    "#FDBF6F", "#CAB2D6", "#FFFF99", "#A6CEE3",
+    "#E31A1C",
+    "#3288BD",
+    "#33A02C",
+    "#6A3D9A",
+    "#FF7F00",
+    "#B15928",
+    "#E7298A",
+    "#B2DF8A",
+    "#FDBF6F",
+    "#CAB2D6",
+    "#FFFF99",
+    "#A6CEE3",
 )
 
 IDENTITY_PALETTE_ON_LIGHT_BG: Final[tuple[str, ...]] = (
-    "#8B0000", "#00008B", "#006400", "#4B0082",
-    "#663300", "#8B008B", "#556B2F", "#5A4FCF",
-    "#483D8B", "#A52A2A", "#3D3D3D", "#1A1A1A",
+    "#8B0000",
+    "#00008B",
+    "#006400",
+    "#4B0082",
+    "#663300",
+    "#8B008B",
+    "#556B2F",
+    "#5A4FCF",
+    "#483D8B",
+    "#A52A2A",
+    "#3D3D3D",
+    "#1A1A1A",
 )
 
 _IDENTITY_WS_RE: Final[re.Pattern[str]] = re.compile(r"[\s_]+")
@@ -253,13 +271,19 @@ def _rgb(hex_color: str) -> tuple[int, int, int]:
 
 
 _DEUTERANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.625, 0.375, 0.0), (0.7, 0.3, 0.0), (0.0, 0.3, 0.7),
+    (0.625, 0.375, 0.0),
+    (0.7, 0.3, 0.0),
+    (0.0, 0.3, 0.7),
 )
 _PROTANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.567, 0.433, 0.0), (0.558, 0.442, 0.0), (0.0, 0.242, 0.758),
+    (0.567, 0.433, 0.0),
+    (0.558, 0.442, 0.0),
+    (0.0, 0.242, 0.758),
 )
 _TRITANOPIA_MATRIX: Final[tuple[tuple[float, float, float], ...]] = (
-    (0.95, 0.05, 0.0), (0.0, 0.433, 0.567), (0.0, 0.475, 0.525),
+    (0.95, 0.05, 0.0),
+    (0.0, 0.433, 0.567),
+    (0.0, 0.475, 0.525),
 )
 
 
@@ -308,9 +332,7 @@ def identity_color(
 
     def _resolve_hexes(names: Iterable[str]) -> dict[str, str]:
         # First pass: deterministic base slot for every name.
-        resolved: dict[str, str] = {
-            other: palette[_identity_slot(other)] for other in names
-        }
+        resolved: dict[str, str] = {other: palette[_identity_slot(other)] for other in names}
         # Second pass: nudge each name away from already-resolved
         # peers. We iterate in sorted order so the resolution is
         # stable across runs.
@@ -329,9 +351,7 @@ def identity_color(
                 candidate = palette[slot]
                 if candidate in occupied:
                     continue
-                if {
-                    _simulate_cvd(candidate, matrix) for matrix in cvd_matrices
-                } & occupied_cvd:
+                if {_simulate_cvd(candidate, matrix) for matrix in cvd_matrices} & occupied_cvd:
                     continue
                 chosen = candidate
                 break
@@ -356,9 +376,7 @@ def identity_color(
     # already-resolved active identities with the same logic.
     active_hexes = set(resolved_active.values())
     active_cvd_simulated = {
-        _simulate_cvd(hex_color, matrix)
-        for hex_color in active_hexes
-        for matrix in cvd_matrices
+        _simulate_cvd(hex_color, matrix) for hex_color in active_hexes for matrix in cvd_matrices
     }
     used = active_hexes | active_cvd_simulated
     for offset in range(len(palette)):
@@ -366,9 +384,7 @@ def identity_color(
         candidate = palette[slot]
         if candidate in used:
             continue
-        candidate_cvd = {
-            _simulate_cvd(candidate, matrix) for matrix in cvd_matrices
-        }
+        candidate_cvd = {_simulate_cvd(candidate, matrix) for matrix in cvd_matrices}
         if candidate_cvd & active_cvd_simulated:
             continue
         return candidate
@@ -524,14 +540,123 @@ _DARK_BG_HEX: Final[str] = "#000000"
 _LIGHT_BG_HEX: Final[str] = "#FFFFFF"
 
 
-def terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
+#: WCAG crossover luminance. Below this value light foregrounds
+#: out-contrast dark ones against the background; above it, dark
+#: foregrounds win. Derived by solving
+#: ``(L + 0.05) / 0.05 == 1.05 / (L + 0.05)`` -- the exact luminance at
+#: which the preference flips. Using the crossover rather than a
+#: hand-picked "is it brighter than grey" threshold means an arbitrary
+#: background colour (a warm cream, a deep teal, a mid-tone slate) is
+#: classified by measured contrast, not by assumption.
+_LIGHT_BG_LUMINANCE_CROSSOVER: Final[float] = 0.1791
+
+
+def _explicit_background_override(env: Mapping[str, str]) -> bool | None:
+    """Read ``RALPH_TERMINAL_BG`` as a light/dark word or a hex colour."""
+    explicit = env.get("RALPH_TERMINAL_BG", "").lower().strip()
+    if explicit in {"light", "1", "true", "yes"}:
+        return True
+    if explicit in {"dark", "0", "false", "no"}:
+        return False
+    if explicit.startswith("#"):
+        return background_hex_is_light(explicit)
+    return None
+
+
+def _colorfgbg_is_light(env: Mapping[str, str]) -> bool | None:
+    """Classify the background from the legacy ``COLORFGBG`` hint.
+
+    Only the four palette indices whose lightness is unambiguous are
+    honoured; every other value stays undetermined rather than guessed.
+    """
+    colorfgbg = env.get("COLORFGBG", "").strip()
+    if not colorfgbg:
+        return None
+    parts = colorfgbg.split(";")
+    if len(parts) < _COLORFGBG_MIN_PARTS or not parts[1].isdigit():
+        return None
+    bg_index = int(parts[1])
+    if bg_index in (7, 15):
+        return True
+    if bg_index in (0, 8):
+        return False
+    return None
+
+
+def background_hex_is_light(bg_hex: str) -> bool | None:
+    """Classify an arbitrary background colour as light or dark.
+
+    Uses the WCAG relative luminance of the colour and the exact
+    crossover point at which dark foregrounds start out-contrasting
+    light ones, so any background colour -- not just black or white --
+    is classified from its measured contrast behaviour.
+
+    Parameters:
+        bg_hex: Background colour in ``#rgb`` or ``#rrggbb`` form.
+
+    Returns:
+        ``True`` when dark foregrounds read better on this background,
+        ``False`` when light foregrounds do, ``None`` when ``bg_hex``
+        is not a parseable colour.
+    """
+    try:
+        luminance = relative_luminance(bg_hex)
+    except ValueError:
+        return None
+    return luminance > _LIGHT_BG_LUMINANCE_CROSSOVER
+
+
+def terminal_background_is_light(
+    env: Mapping[str, str],
+    *,
+    measured_bg_hex: str | None = None,
+) -> bool | None:
     """Detect whether the terminal background is light.
 
-    Reads the ``RALPH_TERMINAL_BG`` override first, then falls
-    back to the ``COLORFGBG`` environment variable (the
-    conventional hint for dark/light detection). Returns ``None``
-    when neither signal is available so the caller can fall back
-    to the default (dark) palette.
+    Precedence, strongest signal first:
+
+    1. ``RALPH_TERMINAL_BG`` as an explicit ``light`` / ``dark`` word --
+       the operator overriding everything.
+    2. ``RALPH_TERMINAL_BG`` as a ``#RRGGBB`` colour -- classified by
+       :func:`background_hex_is_light`.
+    3. ``measured_bg_hex`` -- the colour the terminal itself reported
+       (see :mod:`ralph.display._terminal_bg_query`). This is a
+       measurement, so it beats the heuristic below.
+    4. ``COLORFGBG`` -- a coarse legacy hint set by only some
+       emulators, and usable only for the palette indices whose
+       lightness is unambiguous.
+
+    Returns ``None`` when no signal resolves, so the caller can fall
+    back to its documented default rather than acting on a guess.
+
+    Parameters:
+        env: Mapping of environment variable names to values.
+        measured_bg_hex: Background colour measured from the terminal,
+            or ``None`` when no measurement is available.
+
+    Returns:
+        ``True`` when the background is light, ``False`` when dark,
+        ``None`` when undetermined.
+    """
+    explicit = _explicit_background_override(env)
+    if explicit is not None:
+        return explicit
+    if measured_bg_hex:
+        measured = background_hex_is_light(measured_bg_hex)
+        if measured is not None:
+            return measured
+    return _colorfgbg_is_light(env)
+
+
+def detect_terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
+    """Resolve the terminal background, asking the terminal when allowed.
+
+    Wraps :func:`terminal_background_is_light` with the OSC 11 probe so
+    the answer comes from the emulator's own reported background colour
+    whenever it will tell us. The probe is skipped entirely when an
+    explicit ``RALPH_TERMINAL_BG`` override is present (no reason to
+    touch the tty when the operator already answered) and degrades to
+    ``None`` on every terminal that does not implement the query.
 
     Parameters:
         env: Mapping of environment variable names to values.
@@ -540,21 +665,58 @@ def terminal_background_is_light(env: Mapping[str, str]) -> bool | None:
         ``True`` when the background is light, ``False`` when dark,
         ``None`` when undetermined.
     """
-    explicit = env.get("RALPH_TERMINAL_BG", "").lower().strip()
-    if explicit in {"light", "1", "true", "yes"}:
-        return True
-    if explicit in {"dark", "0", "false", "no"}:
-        return False
-    colorfgbg = env.get("COLORFGBG", "").strip()
-    if colorfgbg:
-        parts = colorfgbg.split(";")
-        if len(parts) >= _COLORFGBG_MIN_PARTS and parts[1].isdigit():
-            bg_index = int(parts[1])
-            if bg_index in (7, 15):
-                return True
-            if bg_index in (0, 8):
-                return False
-    return None
+    if env.get("RALPH_TERMINAL_BG", "").strip():
+        return terminal_background_is_light(env)
+    from ralph.display._terminal_bg_query import query_terminal_background_hex
+
+    return terminal_background_is_light(env, measured_bg_hex=query_terminal_background_hex())
+
+
+#: Syntax-highlighting theme for code previews on a DARK terminal
+#: background. ``ansi_dark`` maps every token type onto one of the
+#: terminal's own 16 ANSI colours (bright blue for keywords, yellow for
+#: strings, dim for comments, ...) and leaves the background
+#: transparent. That is deliberate: the operator's terminal colour
+#: scheme already defines those 16 slots, so highlighted code inherits
+#: the scheme they configured instead of fighting it with fixed RGB.
+SYNTAX_THEME_ON_DARK_BG: Final[str] = "ansi_dark"
+
+#: Same contract as :data:`SYNTAX_THEME_ON_DARK_BG` for a LIGHT terminal
+#: background: ``ansi_light`` uses the NORMAL (rather than bright) ANSI
+#: slots so the foregrounds stay dark enough to read.
+SYNTAX_THEME_ON_LIGHT_BG: Final[str] = "ansi_light"
+
+#: Rich's ``Syntax(background_color=...)`` sentinel meaning "do not
+#: paint a background; let the terminal's own background show through".
+#: Named here so syntax-preview call sites never hard-code the literal.
+SYNTAX_BACKGROUND_TRANSPARENT: Final[str] = "default"
+
+
+def syntax_theme_for_background(terminal_bg_is_light: bool | None) -> str:
+    """Return the code-highlighting theme name for the given background.
+
+    Both returned themes are ANSI themes: they colour tokens with the
+    terminal's own 16-colour palette and paint no background, so
+    highlighted code automatically adopts the operator's terminal colour
+    scheme and always contrasts with whatever background that scheme
+    uses. A fixed-RGB pygments theme (such as pygments' ``default``,
+    which paints plain identifiers pure black) cannot make that
+    guarantee and renders unreadable on a dark terminal.
+
+    An unknown background (``None``) resolves to the dark-background
+    theme because dark terminals are the common case and the bright
+    ANSI slots stay legible on mid-tone backgrounds.
+
+    Parameters:
+        terminal_bg_is_light: ``True`` for light backgrounds,
+            ``False`` for dark, ``None`` for unknown.
+
+    Returns:
+        The Rich syntax theme name to pass to ``rich.syntax.Syntax``.
+    """
+    if terminal_bg_is_light:
+        return SYNTAX_THEME_ON_LIGHT_BG
+    return SYNTAX_THEME_ON_DARK_BG
 
 
 def pick_status_styles(terminal_bg_is_light: bool | None) -> dict[str, tuple[str, str, str]]:
@@ -725,11 +887,20 @@ __all__ = [
     "REDDISH_PURPLE",
     "SKY_BLUE",
     "STATUS_STYLES",
+    "STATUS_STYLES_ON_LIGHT_BG",
+    "SYNTAX_BACKGROUND_TRANSPARENT",
+    "SYNTAX_THEME_ON_DARK_BG",
+    "SYNTAX_THEME_ON_LIGHT_BG",
     "UNICODE_GLYPHS",
     "VERMILLION",
     "YELLOW",
+    "background_hex_is_light",
     "detect_glyph_capability",
+    "detect_terminal_background_is_light",
     "format_status",
     "identity_color",
     "make_console",
+    "pick_status_styles",
+    "syntax_theme_for_background",
+    "terminal_background_is_light",
 ]

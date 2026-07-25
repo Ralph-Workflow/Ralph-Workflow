@@ -9,7 +9,7 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
@@ -180,6 +180,40 @@ def _signal_if_now_online(monitor: _ConnectivityMonitorLike, wake: threading.Eve
         wake.set()
 
 
+#: Re-poll interval for the offline pause. The pause is normally released by
+#: the monitor's ONLINE transition event; the poll only covers the case where
+#: no event can arrive any more.
+_OFFLINE_REPOLL_INTERVAL_SECONDS: Final[float] = 5.0
+
+#: How often the offline pause reports that it is still waiting. Without this
+#: the run looks identical to a hang: one warning line, then silence.
+_OFFLINE_HEARTBEAT_INTERVAL_SECONDS: Final[float] = 60.0
+
+
+def _wait_for_connectivity(monitor: _ConnectivityMonitorLike, wake: threading.Event) -> None:
+    """Block until connectivity returns, re-polling instead of waiting forever.
+
+    An unbounded ``wake.wait()`` here is a silent-hang vector: the pause is
+    released only by an ONLINE transition event, so if the connectivity
+    monitor thread dies or its probe wedges, no event can ever arrive and the
+    pipeline blocks forever behind a single "Pipeline paused" warning — no
+    timeout, no watchdog, no further output. Polling the monitor's own state
+    on each wake-up makes the pause self-healing, and the periodic heartbeat
+    keeps a legitimately long outage distinguishable from a wedge.
+    """
+    waited = 0.0
+    next_heartbeat = _OFFLINE_HEARTBEAT_INTERVAL_SECONDS
+    while not wake.wait(timeout=_OFFLINE_REPOLL_INTERVAL_SECONDS):
+        if monitor.current_state != ConnectivityState.OFFLINE:
+            return
+        waited += _OFFLINE_REPOLL_INTERVAL_SECONDS
+        if waited >= next_heartbeat:
+            next_heartbeat += _OFFLINE_HEARTBEAT_INTERVAL_SECONDS
+            logger.bind(recovery=True).warning(
+                "Pipeline still paused: network offline for {}s, still waiting", int(waited)
+            )
+
+
 def _apply_connectivity_check(
     state: PipelineState, monitor: _ConnectivityMonitorLike
 ) -> PipelineState:
@@ -202,8 +236,7 @@ def _apply_connectivity_check(
     unsub = monitor.add_listener(_on_transition)
     try:
         _signal_if_now_online(monitor, wake)
-        if not wake.is_set():
-            wake.wait()
+        _wait_for_connectivity(monitor, wake)
     finally:
         unsub()
 
