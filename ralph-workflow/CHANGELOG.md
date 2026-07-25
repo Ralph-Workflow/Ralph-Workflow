@@ -43,6 +43,13 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-07-25
+
+Patch release. `__version__` moved from `0.9.1` to `0.9.2` in
+`ralph/__init__.py` (the canonical version source `pyproject.toml`
+reads via `[tool.hatch.version]`), with `skills-package/package.json`
+kept in parity by `tests/test_skills_package_version_parity.py`.
+
 ### Removed
 
 - **refactor(mcp)!: retire the plan-specific submission and per-step edit API** — the retired JSON-era tools (`ralph_submit_artifact`, `ralph_submit_plan_section`, `ralph_submit_plan_sections`, `ralph_finalize_plan`, `ralph_get_plan_draft`, `ralph_discard_plan_draft`, `ralph_validate_draft`, `ralph_edit_md_plan_step`, `ralph_patch_step`, `ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_remove_plan_step`, `ralph_move_plan_step`) now hard-error with replacement guidance to the standard markdown artifact endpoints (`ralph_stage_md_artifact`, `ralph_get_md_draft`, `ralph_discard_md_draft`, `ralph_verify_md_artifact`, `ralph_finalize_md_artifact`, `ralph_submit_md_artifact`); there are no aliases and no dead handlers. Breaking change for any out-of-tree consumer that still calls the retired names; the in-repo skills, prompts, and tests are updated to the standard path. Locked by `tests/test_tool_bridge_retired_json_tools.py`, `tests/test_tool_bridge_tool_specs_web_search.py`, `tests/test_skill_instructions_round_trip.py`, `tests/test_internal_skills_mcp_prompts.py`, `tests/test_prompts_developer.py`, `tests/test_prompt_template_files.py`, `tests/test_prompt_materialize_1.py`, `tests/test_planning_prompt_step_tools.py`, and `tests/test_plan_artifact_schema_hardening.py`.

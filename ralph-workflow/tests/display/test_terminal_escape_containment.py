@@ -48,6 +48,10 @@ HOSTILE_LINE = "\x1b[?1049h\x1b[2J\x1b[>0cboom"
 # appears in captured output, the sink is still leaking.
 _FORBIDDEN_BODIES = ("[?1049h", "[2J", "[>0c")
 
+# Bracket-heavy agent output that Rich parses as an unmatched CLOSING tag.
+# Taken from a real run: a grep whose pattern listed PDF filter names.
+BRACKET_HEAVY_LINE = "Command: grep -B 2 [/pdf /text /imageb /imagec /imagei]"
+
 
 def _make_parallel_display(
     *, is_quiet: bool = False
@@ -106,6 +110,28 @@ def test_sanitize_plain_constants_preserves_literal_rich_markup() -> None:
     assert _sanitize("plain text") == "plain text"
 
 
+def test_sanitize_plain_constants_survives_unmatched_closing_tag() -> None:
+    """Bracket-heavy agent output must stay literal, never raise.
+
+    Rich reads ``[/pdf ...]`` as a closing tag with no open tag and raises
+    ``MarkupError`` (a ``ConsoleError``, NOT a ``ValueError``), so a
+    ``ValueError``-only guard lets it escape and kills the emit path.
+    """
+    for line in (BRACKET_HEAVY_LINE, "[/]", "[a][/b]"):
+        assert _sanitize(line) == line, (
+            f"_sanitize must keep malformed markup literal; got {_sanitize(line)!r}"
+        )
+
+
+def test_sanitize_plain_constants_strips_controls_from_malformed_markup() -> None:
+    """The malformed-markup fallback still strips terminal control bytes."""
+    sanitized = _sanitize(HOSTILE_LINE + BRACKET_HEAVY_LINE)
+    assert sanitized == "boom" + BRACKET_HEAVY_LINE, (
+        f"_sanitize fallback must still strip escapes; got {sanitized!r}"
+    )
+    _assert_no_escape_leak(sanitized, sink_label="_sanitize")
+
+
 # ---------------------------------------------------------------------------
 # Sink 2: ralph.display.parallel_display.strip_markup (public helper)
 # ---------------------------------------------------------------------------
@@ -130,6 +156,29 @@ def test_parallel_display_strip_markup_removes_rich_markup() -> None:
     """``strip_markup`` removes valid Rich markup and terminal controls."""
     assert strip_markup("[green]ok[/green]") == "ok"
     assert strip_markup("plain text") == "plain text"
+
+
+def test_parallel_display_strip_markup_survives_unmatched_closing_tag() -> None:
+    """The same ``MarkupError`` guard gap crashed the activity emit path.
+
+    Real trace: a grep over PDF filter names put ``[/pdf /text /imageb]`` on
+    an activity line and ``MarkupError`` propagated out of
+    ``emit_parsed_event``.
+    """
+    for line in (BRACKET_HEAVY_LINE, "[/]", "[a][/b]"):
+        assert strip_markup(line) == line, (
+            f"strip_markup must keep malformed markup literal; "
+            f"got {strip_markup(line)!r}"
+        )
+
+
+def test_parallel_display_strip_markup_strips_controls_from_malformed() -> None:
+    """The malformed-markup fallback still strips terminal control bytes."""
+    stripped = strip_markup(HOSTILE_LINE + BRACKET_HEAVY_LINE)
+    assert stripped == "boom" + BRACKET_HEAVY_LINE, (
+        f"strip_markup fallback must still strip escapes; got {stripped!r}"
+    )
+    _assert_no_escape_leak(stripped, sink_label="strip_markup")
 
 
 # ---------------------------------------------------------------------------

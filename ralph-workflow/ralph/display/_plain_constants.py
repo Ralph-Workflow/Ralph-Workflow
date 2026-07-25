@@ -166,5 +166,5 @@ def _sanitize(text: str) -> str:
     """
     try:
         return strip_terminal_control(Text.from_markup(text).plain)
-    except ValueError:
+    except (ValueError, ConsoleError):
         return strip_terminal_control(text)

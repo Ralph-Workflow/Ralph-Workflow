@@ -79,6 +79,7 @@ prefix.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import os
 import pathlib
 import re
@@ -112,6 +113,11 @@ if TYPE_CHECKING:
 
         _ctx: DisplayContext
         _is_quiet: bool
+
+        @property
+        def last_activity_monotonic(self) -> float | None:
+            """Live activity anchor, refreshed by the host on every activity event."""
+            ...
 
 
 _STATUS_BAR_REFRESH_PER_SECOND: float = 4.0
@@ -1153,11 +1159,42 @@ class StatusBar:
         if model.run_started_monotonic is None:
             return render_status_bar(model, self._ctx(), home=self._home)
         return render_status_bar(
-            model,
+            self._model_with_live_activity_anchor(model),
             self._ctx(),
             home=self._home,
             now_monotonic=self._clock(),
         )
+
+    def _model_with_live_activity_anchor(self, model: StatusBarModel) -> StatusBarModel:
+        """Return ``model`` with the host's live activity anchor substituted in.
+
+        ``model.last_activity_monotonic`` is a *push-time snapshot*: the runner
+        only re-pushes a model when the (phase, cycle, alert, label) signature
+        changes, which during a long phase can be many minutes apart. Meanwhile
+        ``_renderable`` re-derives ``stalled`` against a ``now_monotonic`` that
+        advances on every Live tick, so the snapshot goes stale and the bar
+        reports STALLED for a run whose agent is demonstrably alive — the gap
+        being measured is "time since the last model push", not "time since the
+        last activity".
+
+        The host keeps ``last_activity_monotonic`` fresh from every activity
+        event it renders, including the idle watchdog's waiting-status and
+        subagent-progress events, so reading it here is what keeps the bar's
+        liveness and the watchdog's from drifting apart. The later of the two
+        anchors wins: a host that reports nothing yet must not erase a snapshot
+        the runner supplied.
+        """
+        # Read defensively: this runs on every Live tick, and a legacy or
+        # stub host without the anchor must degrade to the snapshot rather
+        # than raise inside the render callback and blank the bar.
+        raw_anchor: object = getattr(self._display, "last_activity_monotonic", None)
+        if not isinstance(raw_anchor, float):
+            return model
+        live_anchor: float = raw_anchor
+        snapshot = model.last_activity_monotonic
+        if snapshot is not None and snapshot >= live_anchor:
+            return model
+        return dataclasses.replace(model, last_activity_monotonic=live_anchor)
 
     def _live_console_is_interactive(self) -> bool:
         is_interactive: object = getattr(self._ctx().console, "is_interactive", False)
