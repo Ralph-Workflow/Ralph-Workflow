@@ -108,3 +108,29 @@ def test_prompt_templates_use_markdown_tools_without_retired_json_vocabulary() -
         "plan.json",
     ):
         assert retired not in combined
+
+
+def test_planning_analysis_prompt_requires_cost_element_per_finding() -> None:
+    """Every ``## What Came Up Short`` entry must surface a ``Cost:`` element.
+
+    The product brief (AC-12) requires every analysis finding to state
+    the run cost it imposes; the per-entry form lives in
+    ``planning_analysis.jinja``. If the ``Cost:`` element is dropped or
+    rephrased, the standard is no longer stated once and this test
+    fails closed.
+    """
+    source = TemplateContext.default().registry.get_template("planning_analysis.jinja")
+    assert "Cost:" in source, (
+        "planning_analysis.jinja must require a `Cost:` element per finding"
+    )
+    # The per-entry form must include the cost class in the same line
+    # that names the dimension / defect / evidence / missing / cost.
+    assert "Dimension:" in source
+    assert "Defect:" in source
+    assert "Evidence:" in source
+    assert "Missing:" in source
+    # The form must keep the cost/fix contract to one finding each.
+    assert "Cost:" in source
+    # The form must NOT regress to the legacy ``MCP plan-edit tools``
+    # vocabulary that no longer exists in the runtime.
+    assert "MCP plan-edit tools" not in source

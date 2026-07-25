@@ -556,3 +556,102 @@ def test_analysis_prompt_dedups_formally_duplicated_paragraphs() -> None:
     # The legacy second `## Review checklist` heading is gone; only the
     # operational `## REVIEW CHECKLIST` survives.
     assert source.count("## Review checklist\n") == 0
+
+
+# ---------------------------------------------------------------------------
+# Oversize parity: ralph_verify_md_artifact and ralph_submit_md_artifact must
+# produce the same diagnostic for a plan body that exceeds the MCP payload
+# bound. The plan validator's structure validation re-uses the parsed
+# frontmatter (via _reconstructed_text) rather than the full document for
+# size checks, so the body bound is enforced only at canonical normalization
+# (SPEC010). This pin catches any future drift that lets verify stay silent
+# while submit rejects the document.
+# ---------------------------------------------------------------------------
+
+
+def _oversized_plan_body() -> str:
+    """A plan whose body alone exceeds the MCP payload bound.
+
+    The payload bound is taken from the canonical plan normalizer's size
+    check in ``ralph/mcp/artifacts/plan/_validation.py`` (SPEC010). The
+    frontmatter is small; the body is a single padded ``## Steps`` block
+    that pushes the total over the bound. Big enough to fail in any
+    realistic configuration, small enough to keep the test focused.
+    """
+    padding = "x" * 200_000
+    return f"""---
+type: plan
+---
+## Steps
+
+### [S-1] Big step
+{padding}
+
+Type: file_change
+Files:
+- modify foo.py
+
+## Verification
+- [V-1] pytest tests/x.py -q
+  Expect: the focused tests pass with exit code 0
+"""
+
+
+def test_oversize_plan_body_fails_parity_across_verify_and_submit() -> None:
+    """An oversized plan body produces the same diagnostic in verify and submit.
+
+    The public tool path MUST surface the same error for an oversize
+    plan body whether the agent calls ``ralph_verify_md_artifact`` or
+    ``ralph_submit_md_artifact``: ``parse_and_validate`` runs the same
+    structure validation either way, and the canonical normalizer (which
+    is the other place the size bound is enforced) must agree. If verify
+    silently accepts a body that submit then rejects, the agent sees a
+    contradictory chain and cannot tell which call is authoritative.
+    """
+    session = MockSession()
+    workspace = MockWorkspace(Path("/tmp"))
+    params = {"artifact_type": "plan", "content": _oversized_plan_body()}
+
+    verify_payload = json.loads(
+        handle_verify_md_artifact(session, workspace, params).content[0].text
+    )
+
+    from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
+
+    submit_payload = json.loads(
+        handle_submit_md_artifact(session, workspace, params).content[0].text
+    )
+
+    verify_rule_ids = {
+        d.get("rule_id")
+        for d in verify_payload.get("diagnostics", [])
+        if d.get("severity") == "error"
+    }
+    submit_rule_ids = {
+        d.get("rule_id")
+        for d in submit_payload.get("diagnostics", [])
+        if d.get("severity") == "error"
+    }
+
+    # Both surfaces must surface at least one error; the canonical
+    # normalizer emits SPEC010 for oversize payloads.
+    assert verify_payload["valid"] is False, (
+        "verify must report an invalid payload for an oversize plan body; "
+        f"got {verify_payload!r}"
+    )
+    assert submit_payload["valid"] is False, (
+        "submit must report an invalid payload for an oversize plan body; "
+        f"got {submit_payload!r}"
+    )
+    assert verify_rule_ids, "verify must surface at least one error rule"
+    assert submit_rule_ids, "submit must surface at least one error rule"
+    # The two surfaces must agree on the rule IDs they emit. SPEC010 is
+    # the canonical normalizer's oversize error; SPEC002 / SPEC003 etc.
+    # belong to the structure-validation path. The intersection must be
+    # non-empty so the agent sees the same shape either way.
+    shared = verify_rule_ids & submit_rule_ids
+    assert shared, (
+        "verify and submit must share at least one error rule for an "
+        "oversize plan body; got verify="
+        f"{sorted(verify_rule_ids)} submit={sorted(submit_rule_ids)}"
+    )

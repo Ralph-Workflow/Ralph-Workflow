@@ -43,6 +43,14 @@ tag exists yet — a link to one would be a dead link.
 
 ## [Unreleased]
 
+### Removed
+
+- **refactor(mcp)!: retire the plan-specific submission and per-step edit API** — the retired JSON-era tools (`ralph_submit_artifact`, `ralph_submit_plan_section`, `ralph_submit_plan_sections`, `ralph_finalize_plan`, `ralph_get_plan_draft`, `ralph_discard_plan_draft`, `ralph_validate_draft`, `ralph_edit_md_plan_step`, `ralph_patch_step`, `ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_remove_plan_step`, `ralph_move_plan_step`) now hard-error with replacement guidance to the standard markdown artifact endpoints (`ralph_stage_md_artifact`, `ralph_get_md_draft`, `ralph_discard_md_draft`, `ralph_verify_md_artifact`, `ralph_finalize_md_artifact`, `ralph_submit_md_artifact`); there are no aliases and no dead handlers. Breaking change for any out-of-tree consumer that still calls the retired names; the in-repo skills, prompts, and tests are updated to the standard path. Locked by `tests/test_tool_bridge_retired_json_tools.py`, `tests/test_tool_bridge_tool_specs_web_search.py`, `tests/test_skill_instructions_round_trip.py`, `tests/test_internal_skills_mcp_prompts.py`, `tests/test_prompts_developer.py`, `tests/test_prompt_template_files.py`, `tests/test_prompt_materialize_1.py`, `tests/test_planning_prompt_step_tools.py`, and `tests/test_plan_artifact_schema_hardening.py`.
+
+- **refactor(skills)!: drop the `submit-plan-step-edits` skill and resync `submit-plan-artifact`** — the per-step edit skill is gone from the packaged baseline (`ralph/skills/content/`); the installer's `_prune_removed_baseline_skills` removes the retired skill from every project's canonical and sibling roots, including broken symlinks, and the user-edit preservation contract is preserved (user-owned skills without the managed marker are never touched). The installed `submit-plan-artifact/SKILL.md` is byte-identical to the packaged source. Locked by `tests/test_skills_installer_project.py::test_install_prunes_managed_skill_removed_from_baseline` and `::test_prune_removes_broken_symlinks_to_retired_baseline_skills`.
+
+- **refactor(mcp): demote remaining shape-level diagnostics to advisory** — PLAN010 (file_change without `Files:`), PLAN011 (verify without `Verify:`/`Location:`), and the PLAN020 concreteness sites no longer block submission; each now follows the `what; the run cost is <cost>; resolve by <fix>` convention and is overridable through `## Validation Overrides`. Locked by `tests/mcp/test_md_plan_advisory.py`, `tests/mcp/test_md_plan_relaxation.py`, and `tests/mcp/test_md_plan_chain_e2e.py`.
+
 ## [0.9.1] - 2026-07-25
 
 Patch release. `__version__` moved from `0.9.0` to `0.9.1` in

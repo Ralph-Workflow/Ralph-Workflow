@@ -326,7 +326,16 @@ def _with_prose(text: str, fields: ParsedFields) -> str:
 
 
 def _verification_expectations(document: ParsedDocument) -> dict[str, str]:
-    """Index global verification outcomes for legacy exact-command reuse."""
+    """Index global verification outcomes for legacy exact-command reuse.
+
+    Live consumer: ``_steps_content`` and ``_acceptance_criteria_content``
+    look up a step / criterion ``Verify:`` command by exact text match
+    and reuse the corresponding ``## Verification`` ``Expect:`` value as
+    ``expected_outcome`` when the step itself does not declare one. Without
+    this index, a step that points at a global ``V-n`` item by command
+    text would lose its expected outcome because the new flow expects
+    ``Expect:`` to live next to the step.
+    """
     expectations: dict[str, str] = {}
     for item in _verification_items(document):
         fields = parse_fields(
@@ -1205,7 +1214,7 @@ def _collect_diagnostics_with_overrides(
         # override ledger's error-vs-stale distinction.
         _content, analyze_diagnostics = _analyze(document)
         diagnostics.extend(analyze_diagnostics)
-    overridden, _stale = _apply_validation_overrides(document, diagnostics)
+    overridden = _apply_validation_overrides(document, diagnostics)
     return diagnostics, overridden, minimal_content
 
 
@@ -1230,10 +1239,11 @@ def _reconstructed_text(document: ParsedDocument) -> str:
     return "\n".join(parts)
 
 
-# Result of the override ledger applied to collected diagnostics. Both lists
-# are produced by ``_apply_validation_overrides``; ``overridden`` carries the
-# diagnostic plus the recorded reason; ``stale`` carries the override items
-# whose rule (and optional section) matched no diagnostic in this document.
+# Result of the override ledger applied to collected diagnostics. The single
+# list is produced by ``_apply_validation_overrides``; ``overridden`` carries
+# the diagnostic plus the recorded reason. Stale and error-targeted overrides
+# are surfaced back into the diagnostic list as PLAN025/PLAN026 so callers
+# do not need a second return tuple.
 @dataclass(frozen=True)
 class _OverrideMatch:
     """One recorded override paired with the diagnostic it suppressed."""
@@ -1242,14 +1252,6 @@ class _OverrideMatch:
     section: str | None
     reason: str
     diagnostic: Diagnostic
-
-
-@dataclass(frozen=True)
-class _OverrideOutcome:
-    """The full override-ledger result, split by what it consumed."""
-
-    overridden: tuple[_OverrideMatch, ...]
-    stale: tuple[tuple[str, str | None, str], ...]
 
 
 _OVERRIDE_ITEM_PATTERN = re.compile(
@@ -1327,16 +1329,16 @@ def _parse_override_items(
 def _apply_validation_overrides(
     document: ParsedDocument,
     diagnostics: list[Diagnostic],
-) -> tuple[list[_OverrideMatch], list[tuple[str, str | None, str]]]:
+) -> list[_OverrideMatch]:
     """Move matched non-error diagnostics into an ``overridden`` list and flag stale entries.
 
     Errors are never overridable; an override targeting a rule that fired
     only as error stays visible as PLAN026. Overrides with no matching
-    diagnostic surface as PLAN025 info.
+    diagnostic surface as PLAN025 info (also appended to ``diagnostics``).
     """
     entries = _parse_override_items(document, diagnostics)
     if not entries:
-        return [], []
+        return []
     overridden: list[_OverrideMatch] = []
     used_entries: set[int] = set()
     seen_rule_errors: dict[str, list[Diagnostic]] = {}
@@ -1421,12 +1423,7 @@ def _apply_validation_overrides(
                     "info",
                 )
             )
-    stale: list[tuple[str, str | None, str]] = [
-        entry
-        for index, entry in enumerate(entries)
-        if index not in used_entries and not seen_rule_errors.get(entry[0])
-    ]
-    return overridden, stale
+    return overridden
 
 
 def _minimal_noop_variant(

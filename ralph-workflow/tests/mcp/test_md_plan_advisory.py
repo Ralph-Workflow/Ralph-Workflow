@@ -747,3 +747,50 @@ Files:
     assert error_severity >= {"MD005", "MD006"}
     assert content == {}
 
+
+# ---------------------------------------------------------------------------
+# (g) PLAN006 coercion: unknown evidence kind is coerced to 'file' with a
+# warning. The other warning rules follow the what/cost/fix convention; this
+# pin catches PLAN006 if it ever regresses to a flat 'unknown evidence kind'
+# message without the cost-named rationale the run pays when the executor
+# reads the evidence as a file the planner did not mean.
+# ---------------------------------------------------------------------------
+
+
+def test_plan006_unknown_evidence_kind_follows_advisory_convention() -> None:
+    """PLAN006 surfaces as a warning that names the run cost and the fix.
+
+    A bullet of the form ``- prefix: value`` that uses an evidence kind
+    outside the canonical {file, command_output, test_name} set is coerced
+    to ``file`` with PLAN006. The diagnostic must follow the advisory
+    ``what; the run cost is <cost>; resolve by <fix>`` convention so the
+    agent can read why the coercion matters and what to do about it.
+    """
+    document = """---
+type: plan
+---
+## Steps
+
+### [S-1] Step
+Type: file_change
+Files:
+- modify foo.py
+Evidence:
+- link: https://example.com/spec
+
+## Verification
+- [V-1] pytest tests/x.py -q
+  Expect: the focused tests pass with exit code 0
+"""
+
+    _content, diagnostics = parse_and_validate(document, PLAN_SPEC)
+    plan006_warnings = [
+        d for d in diagnostics if d.rule_id == "PLAN006" and d.severity == "warning"
+    ]
+    assert plan006_warnings, "expected PLAN006 warning for unknown evidence kind"
+    for d in plan006_warnings:
+        assert _ADVISORY_COST_RE.search(d.message), (
+            "PLAN006 unknown evidence kind does not follow the cost/fix convention: "
+            f"{d.message!r}"
+        )
+

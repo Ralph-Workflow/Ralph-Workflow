@@ -47,7 +47,13 @@ def evidence_content(entry: ParsedLine, context: str, diagnostics: list[Diagnost
             entry.line,
             "Steps",
             "PLAN006",
-            f"{context}: unknown evidence kind coerced to 'file'",
+            (
+                f"{context}: unknown evidence kind {kind!r} coerced to 'file'; "
+                "the run cost is the executor may read the evidence as a file "
+                "the planner did not mean; resolve by replacing the prefix with "
+                "one of the canonical EvidenceKind values: file, command_output, "
+                "or test_name"
+            ),
             "warning",
         )
     )

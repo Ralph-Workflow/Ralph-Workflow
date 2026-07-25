@@ -863,6 +863,19 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.skills._agent_paths",
             ("_SKILL_ROOT_PREFIXES",),
         ),
+        # wt-044: the installer's prune helper removes managed skills that
+        # the baseline no longer ships; the test pins the contract by
+        # importing the private helper and the managed-marker constant.
+        (
+            "tests/test_skills_installer_project.py",
+            "ralph.skills._content",
+            ("_MANAGED_MARKER",),
+        ),
+        (
+            "tests/test_skills_installer_project.py",
+            "ralph.skills._installer",
+            ("_prune_removed_baseline_skills",),
+        ),
         (
             "tests/test_submit_artifact_writes_receipt.py",
             "ralph.agents.completion_signals",

@@ -187,7 +187,7 @@ finding.
 Before issuing `request_changes`, enumerate all currently visible repo-grounded gaps, not just the first blocking gap.
 Judge the plan against the PRODUCT CRITERIA, not only against the most recent review comments.
 If the task is repository-wide, check that inventories, remediation scope, critical files, risks, and verification are repository-wide rather than example-scoped or subset-scoped.
-When describing remediation, target the planner's revision workflow: tell it which plan document sections to rewrite and what repository evidence those revised sections must incorporate. The planner's only valid revision path is the standard stage/replace_all/finalize flow: stage the complete plan with `ralph_stage_md_artifact` (`mode="replace_all"`), edit the staged draft directly, inspect with `ralph_get_md_draft`, then submit with `ralph_finalize_md_artifact`. Mechanical shape properties (frontmatter, step syntax, ID stability, dependency shape, work-unit shape) are owned by the validator and must not be re-raised as findings unless they produce a concrete run cost the validator cannot see — findings belong to the user's request and the repository, not to the document grammar. Do not tell the planner to edit `.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
+When describing remediation, target the planner's revision workflow: tell it which plan document sections to rewrite and what repository evidence those revised sections must incorporate. The recipe for that revision lives once in `## How To Fix` (item 5); reference it by step number rather than restating it. Mechanical shape properties (frontmatter, step syntax, ID stability, dependency shape, work-unit shape) are owned by the validator and must not be re-raised as findings unless they produce a concrete run cost the validator cannot see — findings belong to the user's request and the repository, not to the document grammar. Do not tell the planner to edit `.agent/PLAN.md` or `.agent/artifacts/plan.md` directly.
 
 The shared defect vocabulary, the per-entry shape, and the closure-ledger discipline are owned by the `## PLAN QUALITY RUBRIC` section below; do not duplicate them here.
 
@@ -240,8 +240,8 @@ Author the document, submit it per the procedure below, and only then call {{DEC
 
 5. **Every entry must be provable and actionable** (see HARD RULE: NO UNPROVABLE GAPS). If you did
    not personally observe the defect in this session, or the planner cannot close it through the
-   MCP plan-edit tools, it is not a gap — at most it is a not-evaluatable limit to disclose in the
-   single `## Summary` item.
+   standard stage/replace_all/finalize revision flow, it is not a gap — at most it is a
+   not-evaluatable limit to disclose in the single `## Summary` item.
 
 ---
 
@@ -249,11 +249,11 @@ Author the document, submit it per the procedure below, and only then call {{DEC
 
 For every item in `## What Came Up Short`, provide a corresponding fix entry:
 
-1. **Exact plan sections to resubmit via the MCP plan-edit tools.** If repository files matter, cite them as evidence the revised sections must incorporate, not as files the planner should edit.
+1. **Exact plan sections to resubmit via the standard stage/replace_all/finalize flow.** If repository files matter, cite them as evidence the revised sections must incorporate, not as files the planner should edit.
 2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
 3. **Preserve the same stable gap ID from the corresponding `## What Came Up Short` entry** so the planner can prove closure without ambiguity.
 4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
-5. **Step-by-step remediation using the planner's revision flow** (rewrite the affected document sections, then stage the complete revised plan with `ralph_stage_md_artifact` (`mode="replace_all"`) → edit the staged text → `ralph_get_md_draft` to inspect → `ralph_finalize_md_artifact` to validate and submit; restart only when truly unsalvageable).
+5. **Step-by-step remediation using the planner's revision flow** (the canonical recipe is stated once here): rewrite the affected document sections, then stage the complete revised plan with `ralph_stage_md_artifact` (`mode="replace_all"`) → edit the staged text → `ralph_get_md_draft` to inspect → `ralph_finalize_md_artifact` to validate and submit; restart only when truly unsalvageable.
 6. **Commands or checks to validate the revised plan.**
 7. **What passing evidence looks like.**
 
@@ -274,8 +274,13 @@ invalid, Cross-section inconsistency, Executor research burden.
 
 Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry. Every `## What Came Up Short` entry has the
 form `- [PA-###] Dimension: <one of the nine rubric dimensions> | Defect:
-<shared-vocabulary class> | Evidence: ... | Missing: ...` and every
-`## How To Fix` entry has the form `- [PA-###] <fix>` with the SAME ID.
+<shared-vocabulary class> | Evidence: ... | Missing: ... | Cost: <concrete
+run cost this gap imposes>` and every `## How To Fix` entry has the form
+`- [PA-###] <fix>` with the SAME ID. The `Cost:` element is required for
+every finding — the analysis prompt is the only link that can name the
+run cost the gap will impose, and the validator's advisory findings
+already state their own cost. Omitting `Cost:` makes the finding unreadable
+to the replanner and must be repaired before the artifact is submitted.
 
 When a finding touches the ## Critical Files section, scope, risks, or
 verification strategy, name each affected section explicitly so the planner
@@ -419,12 +424,12 @@ status: request_changes
 - [SUM-1] Scope: cross_section — the plan captures the broad goal but is not yet executor-ready; steps, repository references, and verification each have provable gaps.
 
 ## What Came Up Short
-- [PA-001] Dimension: Executor Readiness | Defect: Executor research burden | Evidence: S-2 content only says update the review flow | Missing: exact policy, prompt, artifact, and routing edits
-- [PA-002] Dimension: Repository Accuracy | Defect: Repository reference invalid | Evidence: repository search finds no tests/test_planning_analysis.py | Missing: real target files and an existing test pattern to mirror
-- [PA-003] Dimension: Verification Quality | Defect: Verification gap | Evidence: V-1 method is "run tests" | Missing: exact command and expected passing result
+- [PA-001] Dimension: Executor Readiness | Defect: Executor research burden | Evidence: S-2 content only says update the review flow | Missing: exact policy, prompt, artifact, and routing edits | Cost: the executor will halt at S-2 to discover which files the change touches, blowing the run budget on framing instead of editing
+- [PA-002] Dimension: Repository Accuracy | Defect: Repository reference invalid | Evidence: repository search finds no tests/test_planning_analysis.py | Missing: real target files and an existing test pattern to mirror | Cost: the executor will spend a discovery step verifying the missing path and likely write a stub test where none was planned
+- [PA-003] Dimension: Verification Quality | Defect: Verification gap | Evidence: V-1 method is "run tests" | Missing: exact command and expected passing result | Cost: the executor cannot prove the change is verified and the analysis phase will reject the development_result on Plan Items Proven
 
 ## How To Fix
-- [PA-001] Rewrite the S-2 step block so it names the exact policy, prompt, and artifact files plus the routing behavior to implement. To apply the revision, stage the complete revised plan with ralph_stage_md_artifact (`mode="replace_all"`), inspect the saved draft with ralph_get_md_draft, then submit it with ralph_finalize_md_artifact.
+- [PA-001] Rewrite the S-2 step block so it names the exact policy, prompt, and artifact files plus the routing behavior to implement. Apply the revision through the standard stage/replace_all/finalize flow (see `## How To Fix` item 5).
 - [PA-002] Rewrite the affected Steps and Critical Files entries so the nonexistent tests/test_planning_analysis.py reference is replaced with real target files and an existing test file whose pattern should be mirrored.
 - [PA-003] Rewrite the Verification section with exact commands such as `uv run pytest -q tests/test_policy_loader.py` and name the expected passing evidence, then resubmit the document.
 {% endset %}
