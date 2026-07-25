@@ -28,6 +28,13 @@ _SEED_ARTIFACT_PLANNING: tuple[AuditEntry, ...] = (
         counters=_counters(transcript_tokens=96, returned_bytes=192, tool_calls=1),
     ),
     AuditEntry(
+        tool=RalphToolName.EDIT_MD_ARTIFACT,
+        family=AuditFamily.ARTIFACT,
+        outcome=AuditOutcome.KEEP,
+        rationale="In-place draft edits repair a rejected document without re-transcribing it.",
+        counters=_counters(transcript_tokens=96, returned_bytes=256, tool_calls=1),
+    ),
+    AuditEntry(
         tool=RalphToolName.GET_MD_DRAFT,
         family=AuditFamily.ARTIFACT,
         outcome=AuditOutcome.KEEP,

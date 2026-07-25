@@ -9,7 +9,11 @@ import pytest
 from ralph.config.mcp_models import McpConfig
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.bridge import tool_specs
-from ralph.mcp.tools.md_artifact import handle_submit_md_artifact, handle_verify_md_artifact
+from ralph.mcp.tools.md_artifact import (
+    REPAIR_HINT,
+    handle_submit_md_artifact,
+    handle_verify_md_artifact,
+)
 from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, VERIFY_MD_ARTIFACT_TOOL
 from tests._support.typed_accessors import (
     must_dict_list,
@@ -64,6 +68,7 @@ def test_markdown_artifact_handlers_verify_and_submit_through_the_same_gate(tmp_
         "diagnostics": [],
         "counts": {"error": 0, "info": 0, "warning": 0},
         "overridden": [],
+        "repair_hint": REPAIR_HINT,
     }
     assert _payload(submitted) == _payload(verified)
 

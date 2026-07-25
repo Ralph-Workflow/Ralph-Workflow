@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import difflib
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -18,6 +17,14 @@ from ralph.mcp.tools.coordination import (
     ToolError,
     ToolResult,
     require_capability,
+)
+from ralph.mcp.tools.text_edits import (
+    MATCH_STRATEGIES,
+    RejectedTextEdits,
+    TextEditAnchor,
+    apply_text_edits,
+    parse_text_edits,
+    sha256_text,
 )
 from ralph.mcp.tools.workspace._utils import (
     WORKSPACE_DELETE_CAPABILITY,
@@ -206,12 +213,7 @@ def handle_edit_file(
     normalized = normalize_relative_path(path)
     check_edit_area_restriction(session, normalized)
     require_capability(session, WORKSPACE_EDIT_CAPABILITY, "Workspace edit")
-    edits_param = params.get("edits")
-    if not isinstance(edits_param, list) or len(edits_param) == 0:
-        raise InvalidParamsError("Missing 'edits' parameter as non-empty list")
-    edits = cast(
-        "list[dict[str, str]]", edits_param
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    edits = parse_text_edits(params)
     dry_run = bool(params.get("dry_run", False))
     expected_hash_raw = params.get("expected_content_hash")
     expected_hash: str | None = (
@@ -219,7 +221,7 @@ def handle_edit_file(
     )
     target_param = params.get("target")
     match_strategy = str(params.get("match_strategy", "exact"))
-    if match_strategy not in {"exact", "within_target", "all_in_target"}:
+    if match_strategy not in MATCH_STRATEGIES:
         raise InvalidParamsError(
             f"Invalid match_strategy: {match_strategy!r}; expected "
             "'exact', 'within_target', or 'all_in_target'"
@@ -410,148 +412,28 @@ def handle_edit_file(
     except FileNotFoundError:
         original_content = ""
 
-    current_content = original_content
-    applied_edits: list[dict[str, str]] = []
-
-    for i, edit in enumerate(edits):
-        old_text = edit.get("oldText")
-        new_text = edit.get("newText", "")
-        if not isinstance(old_text, str):
-            raise InvalidParamsError(f"Edit {i}: missing 'oldText' string")
-        if not old_text:
-            raise InvalidParamsError(f"Edit {i}: 'oldText' must be non-empty")
-
-        idx = current_content.find(old_text)
-        if idx == -1:
-            diff = difflib.unified_diff(
-                original_content.splitlines(keepends=True),
-                current_content.splitlines(keepends=True),
-                fromfile=path,
-                tofile=path,
-                lineterm="",
-            )
-            return ToolResult(
-                content=[
-                    ToolContent.text_content(
-                        _tool_json(
-                            {
-                                "status": "no_match",
-                                "edit_index": i,
-                                "preview": "".join(diff),
-                            }
-                        )
-                    )
-                ],
-                is_error=True,
-            )
-        # Target anchoring: convert the line offset to byte offset.
-        if target_span is not None:
-            line_start, line_end = target_span
-            anchor_offset, anchor_end = _line_range_to_byte_offsets(
-                current_content, line_start, line_end
-            )
-            if match_strategy == "exact":
-                if idx != anchor_offset or (idx + len(old_text)) != anchor_end:
-                    return ToolResult(
-                        content=[
-                            ToolContent.text_content(
-                                _tool_json(
-                                    {
-                                        "status": "ambiguous_target",
-                                        "reason": "match_strategy_exact_violation",
-                                        "edit_index": i,
-                                    }
-                                )
-                            )
-                        ],
-                        is_error=True,
-                    )
-            elif match_strategy == "within_target":
-                if idx < anchor_offset or (idx + len(old_text)) > anchor_end:
-                    return ToolResult(
-                        content=[
-                            ToolContent.text_content(
-                                _tool_json(
-                                    {
-                                        "status": "ambiguous_target",
-                                        "reason": "match_strategy_within_target_violation",
-                                        "edit_index": i,
-                                    }
-                                )
-                            )
-                        ],
-                        is_error=True,
-                    )
-            elif match_strategy == "all_in_target":
-                # AC-10: every oldText occurrence must lie within the
-                # target span. The boundary is checked against
-                # ``len(old_text)`` (NOT ``len(new_text)``) so a caller
-                # cannot hide an over-broad oldText behind a short
-                # replacement. ``findallindex`` walks all
-                # non-overlapping occurrences; the first-occurrence
-                # index reported by ``find()`` is re-validated against
-                # the full occurrence list so a single edit cannot
-                # silently reach outside the span.
-                first_occurrence_idx = idx
-                old_len = len(old_text)
-                occurrence_starts: list[int] = []
-                search_from = 0
-                while True:
-                    found_idx = current_content.find(old_text, search_from)
-                    if found_idx == -1:
-                        break
-                    occurrence_starts.append(found_idx)
-                    search_from = found_idx + old_len
-                if not occurrence_starts:
-                    return ToolResult(
-                        content=[
-                            ToolContent.text_content(
-                                _tool_json(
-                                    {
-                                        "status": "no_match",
-                                        "edit_index": i,
-                                    }
-                                )
-                            )
-                        ],
-                        is_error=True,
-                    )
-                for occ_idx in occurrence_starts:
-                    if occ_idx < anchor_offset or (occ_idx + old_len) > anchor_end:
-                        return ToolResult(
-                            content=[
-                                ToolContent.text_content(
-                                    _tool_json(
-                                        {
-                                            "status": "ambiguous_target",
-                                            "reason": "match_strategy_all_in_target_violation",
-                                            "edit_index": i,
-                                            "first_match_index": first_occurrence_idx,
-                                            "first_match_in_target": (
-                                                anchor_offset <= first_occurrence_idx
-                                                and (first_occurrence_idx + old_len) <= anchor_end
-                                            ),
-                                        }
-                                    )
-                                )
-                            ],
-                            is_error=True,
-                        )
-        current_content = current_content[:idx] + new_text + current_content[idx + len(old_text) :]
-        applied_edits.append({"oldText": old_text, "newText": new_text})
-
-    diff = difflib.unified_diff(
-        original_content.splitlines(keepends=True),
-        current_content.splitlines(keepends=True),
-        fromfile=path,
-        tofile=path,
-        lineterm="",
+    anchor = (
+        TextEditAnchor(
+            start_line=target_span[0], end_line=target_span[1], match_strategy=match_strategy
+        )
+        if target_span is not None
+        else None
     )
+    outcome = apply_text_edits(original_content, edits, label=path, anchor=anchor)
+    if isinstance(outcome, RejectedTextEdits):
+        return ToolResult(
+            content=[ToolContent.text_content(_tool_json(outcome.payload))],
+            is_error=True,
+        )
+
+    current_content = outcome.content
+    applied_edits = outcome.applied
+    diff_text = outcome.diff
 
     if dry_run:
         preview_payload: dict[str, object] = {
             "status": "preview",
-            "diff": "".join(diff),
+            "diff": diff_text,
             "edits_applied": len(applied_edits),
         }
         if impact_preview:
@@ -716,7 +598,7 @@ def handle_edit_file(
     payload = _with_freshness(
         {
             "status": "applied",
-            "diff": "".join(diff),
+            "diff": diff_text,
             "bytes_written": len(current_content),
         },
         freshness,
@@ -736,32 +618,11 @@ def handle_edit_file(
 
 def _hash_file_text(workspace: Workspace, normalized: str) -> str | None:
     """Return the SHA-256 hex digest of the file's current bytes."""
-    import hashlib
-
     try:
         content = workspace.read(normalized)
     except Exception:
         return None
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
-def _line_range_to_byte_offsets(text: str, start_line: int, end_line: int) -> tuple[int, int]:
-    """Convert ``(start_line, end_line)`` (1-based, inclusive) to byte offsets.
-
-    The mapping is conservative: missing line boundaries fall back
-    to ``0`` and ``len(text)`` so the byte-offset checks in
-    ``match_strategy`` never crash on edge cases.
-    """
-    if not text:
-        return 0, 0
-    lines = text.splitlines(keepends=True)
-    if not lines:
-        return 0, 0
-    start_index = max(0, min(len(lines), start_line - 1))
-    end_index = max(start_index, min(len(lines), end_line))
-    start_offset = sum(len(line) for line in lines[:start_index])
-    end_offset = sum(len(line) for line in lines[:end_index])
-    return start_offset, end_offset
+    return sha256_text(content)
 
 
 def handle_append_file(

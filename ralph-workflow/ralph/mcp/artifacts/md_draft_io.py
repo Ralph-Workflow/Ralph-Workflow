@@ -33,9 +33,23 @@ def md_draft_character_cap(spec: MdArtifactSpec) -> int:
     return DEFAULT_MD_DRAFT_CHARACTER_CAP
 
 
+def md_draft_filename(artifact_type: str) -> str:
+    """Return the draft file name for one artifact type."""
+    return f".{artifact_type}.draft.md"
+
+
 def md_draft_path(artifact_dir: Path, artifact_type: str) -> Path:
     """Return the canonical draft path for one artifact type."""
-    return artifact_dir / f".{artifact_type}.draft.md"
+    return artifact_dir / md_draft_filename(artifact_type)
+
+
+def md_draft_workspace_path(artifact_type: str) -> str:
+    """Return the workspace-relative draft path for one artifact type.
+
+    Used by phase-entry clearing, which addresses artifacts by
+    workspace-relative path rather than by resolved artifact directory.
+    """
+    return f".agent/artifacts/{md_draft_filename(artifact_type)}"
 
 
 def load_md_draft(

@@ -10,6 +10,7 @@ from ralph.mcp.tools.names import (
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
     DISCARD_MD_DRAFT_TOOL,
+    EDIT_MD_ARTIFACT_TOOL,
     FINALIZE_MD_ARTIFACT_TOOL,
     GET_MD_DRAFT_TOOL,
     READ_ENV_TOOL,
@@ -74,6 +75,41 @@ def artifact_specs() -> list[ToolSpec]:
             ),
             module_name="ralph.mcp.tools.md_artifact",
             handler_name="handle_stage_md_artifact",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=EDIT_MD_ARTIFACT_TOOL,
+                description=(
+                    "Edit the staged markdown draft in place with oldText/newText replacements "
+                    "(same semantics as edit_file): sequential first-occurrence replacement, "
+                    "all-or-nothing on a miss. Prefer this over resending a whole document to "
+                    "fix validation errors."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "artifact_type": {"type": "string"},
+                        "edits": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "oldText": {"type": "string"},
+                                    "newText": {"type": "string"},
+                                },
+                                "required": ["oldText", "newText"],
+                            },
+                        },
+                        "dry_run": {"type": "boolean"},
+                        "expected_content_hash": {"type": "string"},
+                    },
+                    "required": ["artifact_type", "edits"],
+                },
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
+            ),
+            module_name="ralph.mcp.tools.md_artifact",
+            handler_name="handle_edit_md_artifact",
         ),
         ToolSpec(
             metadata=_metadata(

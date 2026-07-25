@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from pydantic import TypeAdapter
 
 from ralph.mcp.tools.md_artifact import (
+    REPAIR_HINT,
     handle_get_md_draft,
     handle_stage_md_artifact,
     handle_verify_md_artifact,
@@ -54,6 +55,7 @@ def test_verify_complete_plan_is_valid_without_persisting_it(tmp_path: Path) -> 
         "diagnostics": [],
         "counts": {"error": 0, "info": 0, "warning": 0},
         "overridden": [],
+        "repair_hint": REPAIR_HINT,
     }
     assert not (tmp_path / ".agent" / "artifacts" / "plan.md").exists()
 

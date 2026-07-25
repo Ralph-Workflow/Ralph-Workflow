@@ -181,17 +181,24 @@ diagnostic rejects the submission and nothing is persisted; `warning` diagnostic
 reported but do not block. The repair loop is: fix the markdown the diagnostics point
 at (the format docs under `.agent/artifact-formats/` describe each type's expected
 shape), optionally re-check with `ralph_verify_md_artifact`, then retry
-`ralph_submit_md_artifact`. For staged `plan` documents, revisions go through
-`ralph_stage_md_artifact` (`mode="replace_all"`) → `ralph_get_md_draft` →
-`ralph_finalize_md_artifact` — the whole document is the unit of revision; there
-is no per-step edit endpoint.
+`ralph_submit_md_artifact`. Because every submission stages its document as the
+artifact's draft, a rejected document can be repaired in place: revisions go through
+`ralph_edit_md_artifact` (`oldText`/`newText` edits) → `ralph_get_md_draft` →
+`ralph_finalize_md_artifact`. Resending the whole document via
+`ralph_stage_md_artifact` (`mode="replace_all"`) is the wholesale-rewrite fallback.
 
 Large documents can be authored incrementally: `ralph_stage_md_artifact` accumulates
 markdown into a persisted per-type draft (reporting a section outline and non-gating
 diagnostics after each call), `ralph_get_md_draft` returns the draft for resumption
 after an interruption, `ralph_discard_md_draft` deletes it, and
 `ralph_finalize_md_artifact` runs the full submission gate over the assembled draft —
-submitting canonically on success and keeping the draft for repair on failure.
+submitting canonically on success and keeping the draft either way. `ralph_edit_md_artifact`
+applies `oldText`/`newText` edits to the draft with the same engine `edit_file` uses
+(sequential first-occurrence replacement, all-or-nothing on a miss, optional `dry_run`
+and `expected_content_hash`). Drafts survive a same-phase retry or an analysis loopback
+and are cleared on genuine fresh phase entry; on a retry or loopback with no draft on
+disk, the canonical artifact is loaded back as the draft so a rejected document is
+immediately editable.
 
 | Artifact type | Submitted by | Description |
 |---------------|-------------|-------------|

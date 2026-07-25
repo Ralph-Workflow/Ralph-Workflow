@@ -16,10 +16,12 @@ from ralph.mcp.tools.md_artifact import (
     handle_finalize_md_artifact,
     handle_get_md_draft,
     handle_stage_md_artifact,
+    handle_submit_md_artifact,
     handle_verify_md_artifact,
 )
 from ralph.mcp.tools.names import (
     DISCARD_MD_DRAFT_TOOL,
+    EDIT_MD_ARTIFACT_TOOL,
     FINALIZE_MD_ARTIFACT_TOOL,
     GET_MD_DRAFT_TOOL,
     STAGE_MD_ARTIFACT_TOOL,
@@ -59,6 +61,7 @@ def _workspace(root: Path) -> WorkspaceLike:
             return str(root / path)
 
     return Workspace()
+
 
 _HEAD = """---
 type: product_spec
@@ -199,7 +202,7 @@ def test_discard_md_draft_drops_the_draft(tmp_path: Path) -> None:
     assert after["exists"] is False
 
 
-def test_finalize_submits_through_the_canonical_path_and_clears_the_draft(
+def test_finalize_submits_through_the_canonical_path_and_retains_the_draft(
     tmp_path: Path,
 ) -> None:
     session = MockSession()
@@ -220,8 +223,61 @@ def test_finalize_submits_through_the_canonical_path_and_clears_the_draft(
     assert _payload(finalized) == _payload(verified)
     artifact_path = tmp_path / ".agent" / "artifacts" / "product_spec.md"
     assert artifact_path.read_text(encoding="utf-8") == _HEAD + _TAIL
+    # The submitted document stays editable for an in-phase revision; only a
+    # fresh phase entry clears it.
     after = _payload(handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"}))
-    assert after["exists"] is False
+    assert after["exists"] is True
+    assert after["content"] == _HEAD + _TAIL
+
+
+def test_submit_stages_the_submitted_document_as_the_draft(tmp_path: Path) -> None:
+    """Whole-document submission leaves an editable draft, valid or not."""
+    session = MockSession()
+    workspace = _workspace(tmp_path)
+    broken = _HEAD
+
+    rejected = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": broken}
+    )
+
+    assert rejected.is_error is True
+    after_reject = _payload(
+        handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"})
+    )
+    assert after_reject["exists"] is True
+    assert after_reject["content"] == broken
+
+    accepted = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": _HEAD + _TAIL}
+    )
+
+    assert accepted.is_error is False
+    after_accept = _payload(
+        handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"})
+    )
+    assert after_accept["exists"] is True
+    assert after_accept["content"] == _HEAD + _TAIL
+
+
+def test_every_validating_endpoint_points_at_in_place_repair(tmp_path: Path) -> None:
+    """Agents must learn about the editor from whichever endpoint rejected them."""
+    session = MockSession()
+    workspace = _workspace(tmp_path)
+
+    submitted = handle_submit_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
+    )
+    verified = handle_verify_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": _HEAD}
+    )
+    staged = handle_stage_md_artifact(
+        session, workspace, {"artifact_type": "product_spec", "content": _TAIL}
+    )
+    fetched = handle_get_md_draft(session, workspace, {"artifact_type": "product_spec"})
+    finalized = handle_finalize_md_artifact(session, workspace, {"artifact_type": "product_spec"})
+
+    for result in (submitted, verified, staged, fetched, finalized):
+        assert EDIT_MD_ARTIFACT_TOOL in str(_payload(result)["repair_hint"])
 
 
 def test_finalize_rejects_an_invalid_draft_and_keeps_it_for_repair(tmp_path: Path) -> None:

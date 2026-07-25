@@ -88,11 +88,14 @@ Submit one native-markdown document:
    line/section/rule diagnostic. Override any advisory finding by recording
    a reason under `## Validation Overrides`; errors cannot be overridden.
 4. Submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (same arguments).
-5. To revise a staged plan, call {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}}
-   (`artifact_type="plan"`, `content` = the complete updated document,
-   `mode="replace_all"`), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then
-   submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
-   The whole document is the unit of revision; no per-step edit endpoint exists.
+5. To revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}
+   (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs),
+   inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit with
+   {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). Every
+   submission stages its document as the draft, so this works after a
+   rejected submit. Resend the whole document via
+   {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) only for a
+   wholesale rewrite.
 6. For a long plan, use {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}},
    {{GET_MD_DRAFT_TOOL_REFERENCE}}, and {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}};
    {{DISCARD_MD_DRAFT_TOOL_REFERENCE}} intentionally restarts the draft.

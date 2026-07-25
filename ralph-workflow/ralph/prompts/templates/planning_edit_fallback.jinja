@@ -56,7 +56,7 @@ Submission gates:
 
 Revise the plan as ONE markdown document (grammar: `.agent/artifact-formats/plan.md`):
 1. Read the current plan at `.agent/artifacts/plan.md` with read-only tools and rewrite every section the feedback invalidates.
-2. To revise a staged plan, call {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete updated document, `mode="replace_all"`), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), then submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). The whole document is the unit of revision; no per-step edit endpoint exists.
+2. To revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}} (`artifact_type="plan"`), then submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`). Every submission stages its document as the draft, so this works after a rejected submit. Resend the whole document via {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) only for a wholesale rewrite.
 4. For a holistic rewrite that does not use the step editor, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit the revised document with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments.
 5. A valid artifact receipt—or a validated, promoted fallback receipt—is mandatory.
    After that receipt exists, you MUST call

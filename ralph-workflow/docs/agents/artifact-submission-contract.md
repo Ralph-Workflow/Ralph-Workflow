@@ -63,10 +63,27 @@ The only allowed writers are:
    the canonical backend for the MCP ``ralph_submit_md_artifact`` and
    ``ralph_finalize_md_artifact`` tools (``handle_submit_md_artifact`` /
    ``handle_finalize_md_artifact`` in ``ralph.mcp.tools.md_artifact``).
-   Draft staging (``ralph_stage_md_artifact`` / ``ralph_get_md_draft`` /
+   Draft staging and editing (``ralph_stage_md_artifact`` /
+   ``ralph_edit_md_artifact`` / ``ralph_get_md_draft`` /
    ``ralph_discard_md_draft``) writes only the per-type draft file
    ``.<artifact_type>.draft.md`` via ``ralph.mcp.artifacts.md_draft_io``,
    never the canonical artifact, receipt, or sentinel surfaces.
+
+   Both submission tools also write that draft: they stage the submitted
+   document before validating it, and retain it after a successful submit,
+   so a rejected or superseded document can be repaired in place with
+   ``ralph_edit_md_artifact`` instead of being re-transcribed. The draft is
+   never authoritative — it is an authoring surface, and only
+   ``submit_artifact_canonical`` produces canonical content and receipts.
+
+   Draft lifetime is one phase attempt.
+   ``ralph.pipeline.phase_entry_cleaner`` clears every draft on genuine
+   fresh phase entry (independent of ``clear_drains_on_fresh_entry``, since
+   canonical artifacts legitimately outlive their producing phase but their
+   drafts must not). Same-phase retry and analysis loopback preserve the
+   draft, and seed it from the canonical artifact when none is on disk, so
+   an agent sent back for changes finds the rejected document loaded and
+   editable.
 2. ``ralph.mcp.artifacts.completion_receipts.write_artifact_receipt`` —
    the receipt writer used by canonical submit. It writes
    ``.agent/state.db`` first and uses the legacy receipt file only as a

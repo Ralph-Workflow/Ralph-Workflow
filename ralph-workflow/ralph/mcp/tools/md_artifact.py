@@ -36,11 +36,33 @@ from ralph.mcp.tools.coordination import (
     WorkspaceLike,
     require_capability,
 )
+from ralph.mcp.tools.names import (
+    EDIT_MD_ARTIFACT_TOOL,
+    FINALIZE_MD_ARTIFACT_TOOL,
+    GET_MD_DRAFT_TOOL,
+)
+from ralph.mcp.tools.text_edits import (
+    RejectedTextEdits,
+    apply_text_edits,
+    parse_text_edits,
+    sha256_text,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
+
+#: Every validating endpoint returns this so a rejected document is repaired
+#: in place rather than re-transcribed in full. Submission always leaves the
+#: submitted text staged as the draft, so the repair path is available even
+#: after a one-shot whole-document submit.
+REPAIR_HINT: str = (
+    f"The submitted document is staged as this artifact's draft. Repair it in place with "
+    f"`{EDIT_MD_ARTIFACT_TOOL}` (oldText/newText edits) instead of resending the whole "
+    f"document, read it back with `{GET_MD_DRAFT_TOOL}`, and resubmit with "
+    f"`{FINALIZE_MD_ARTIFACT_TOOL}`."
+)
 
 
 def handle_verify_md_artifact(
@@ -62,15 +84,78 @@ def handle_submit_md_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Validate and canonically persist a markdown artifact atomically."""
+    """Validate and canonically persist a markdown artifact atomically.
+
+    The submitted text is staged as the artifact's draft first, whether or
+    not it validates, so a rejected document can be repaired in place with
+    ``ralph_edit_md_artifact`` rather than re-transcribed in full.
+    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown artifact submission")
     artifact_type, content = _params(params)
+    _write_draft(session, workspace, artifact_type, content, deps)
     parsed_content, diagnostics, overridden = _parse_with_overrides(artifact_type, content)
     result = _validation_result(artifact_type, diagnostics, overridden)
     if result.is_error:
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
     return result
+
+
+def handle_edit_md_artifact(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    params: dict[str, object],
+    *,
+    deps: ArtifactHandlerDeps | None = None,
+) -> ToolResult:
+    """Apply oldText/newText edits to the staged draft, ``edit_file``-style.
+
+    Edits apply sequentially, each replacing the first occurrence of its
+    ``oldText``; a single miss rejects the whole batch and writes nothing.
+    ``dry_run`` previews the diff without persisting, and
+    ``expected_content_hash`` fails closed when the draft changed underneath
+    the caller. The response carries the refreshed draft diagnostics so one
+    call shows both what changed and whether the artifact now validates.
+    """
+    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft editing")
+    artifact_type = _artifact_type_param(params)
+    edits = parse_text_edits(params)
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    artifact_dir = _resolve_artifact_dir(session, workspace)
+    draft = load_md_draft(artifact_dir, artifact_type, backend=backend)
+    if draft is None:
+        raise InvalidParamsError(
+            f"no staged draft for {artifact_type!r}; stage or submit content first"
+        )
+
+    expected_hash = params.get("expected_content_hash")
+    if isinstance(expected_hash, str):
+        current_hash = sha256_text(draft)
+        if current_hash != expected_hash:
+            return _stale_draft_result(artifact_type, expected_hash, current_hash)
+
+    label = f".{artifact_type}.draft.md"
+    outcome = apply_text_edits(draft, edits, label=label)
+    if isinstance(outcome, RejectedTextEdits):
+        return ToolResult(
+            content=[ToolContent.json_content(_with_hint(outcome.payload))],
+            is_error=True,
+        )
+
+    cap = md_draft_character_cap(get_spec(artifact_type))
+    if len(outcome.content) > cap:
+        raise InvalidParamsError(
+            f"edited draft for {artifact_type!r} would exceed its character cap "
+            f"({len(outcome.content)} > {cap}); the existing draft is unchanged"
+        )
+
+    if bool(params.get("dry_run", False)):
+        return _edit_result(artifact_type, draft, outcome.diff, len(outcome.applied), "preview")
+
+    save_md_draft(artifact_dir, artifact_type, outcome.content, backend=backend)
+    return _edit_result(
+        artifact_type, outcome.content, outcome.diff, len(outcome.applied), "applied"
+    )
 
 
 def handle_stage_md_artifact(
@@ -97,13 +182,7 @@ def handle_stage_md_artifact(
         draft = existing + content
     else:
         draft = f"{existing}\n{content}"
-    cap = md_draft_character_cap(get_spec(artifact_type))
-    if len(draft) > cap:
-        raise InvalidParamsError(
-            f"staged draft for {artifact_type!r} would exceed its character cap "
-            f"({len(draft)} > {cap}); the existing draft is unchanged"
-        )
-    save_md_draft(artifact_dir, artifact_type, draft, backend=backend)
+    _write_draft(session, workspace, artifact_type, draft, deps, label="staged")
     return _draft_status_result(artifact_type, draft)
 
 
@@ -153,8 +232,10 @@ def handle_finalize_md_artifact(
 ) -> ToolResult:
     """Validate the assembled draft with the submission gate and submit it canonically.
 
-    On validation failure the draft is kept intact for repair and the result
-    carries the exact diagnostics ``ralph_submit_md_artifact`` would produce.
+    The draft is retained either way: on failure so it can be repaired, and
+    on success so the submitted document remains the editable substrate for a
+    later revision within the same phase attempt. Fresh phase entry — not
+    submission — is what clears it.
     """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Markdown draft finalization")
     artifact_type = _artifact_type_param(params)
@@ -171,7 +252,6 @@ def handle_finalize_md_artifact(
     if result.is_error:
         return result
     _submit_canonical(session, workspace, artifact_type, parsed_content, content, deps)
-    delete_md_draft(artifact_dir, artifact_type, backend=backend)
     return result
 
 
@@ -234,9 +314,73 @@ def _artifact_type_param(params: dict[str, object]) -> str:
     return artifact_type
 
 
-def _draft_status_result(
-    artifact_type: str, draft: str, *, exists: bool | None = None
+def _write_draft(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    artifact_type: str,
+    content: str,
+    deps: ArtifactHandlerDeps | None,
+    *,
+    label: str = "submitted",
+) -> None:
+    """Persist ``content`` as the artifact's draft, enforcing the character cap.
+
+    Raises:
+        InvalidParamsError: when the content exceeds the artifact's draft
+            cap. The existing draft is left untouched.
+    """
+    cap = md_draft_character_cap(get_spec(artifact_type))
+    if len(content) > cap:
+        raise InvalidParamsError(
+            f"{label} draft for {artifact_type!r} would exceed its character cap "
+            f"({len(content)} > {cap}); the existing draft is unchanged"
+        )
+    backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
+    save_md_draft(
+        _resolve_artifact_dir(session, workspace), artifact_type, content, backend=backend
+    )
+
+
+def _with_hint(payload: dict[str, object]) -> dict[str, object]:
+    """Attach the in-place repair hint to a tool payload."""
+    payload["repair_hint"] = REPAIR_HINT
+    return payload
+
+
+def _stale_draft_result(artifact_type: str, expected: str, current: str) -> ToolResult:
+    """Report a draft that changed since the caller last read it."""
+    return ToolResult(
+        content=[
+            ToolContent.json_content(
+                _with_hint(
+                    {
+                        "status": "stale_evidence",
+                        "artifact_type": artifact_type,
+                        "expected_content_hash": expected,
+                        "current_content_hash": current,
+                        "reason": "content_changed",
+                    }
+                )
+            )
+        ],
+        is_error=True,
+    )
+
+
+def _edit_result(
+    artifact_type: str, draft: str, diff: str, edits_applied: int, status: str
 ) -> ToolResult:
+    """Return the edit outcome alongside the refreshed draft diagnostics."""
+    payload = _draft_status_payload(artifact_type, draft)
+    payload["status"] = status
+    payload["diff"] = diff
+    payload["edits_applied"] = edits_applied
+    return ToolResult(content=[ToolContent.json_content(payload)], is_error=False)
+
+
+def _draft_status_payload(
+    artifact_type: str, draft: str, *, exists: bool | None = None
+) -> dict[str, object]:
     """Describe the draft-so-far: length, section outline, check-only diagnostics.
 
     Diagnostics come from the same validator submission uses, but never gate
@@ -258,7 +402,19 @@ def _draft_status_result(
         counts=_severity_counts(diagnostics),
         overridden=[_override_payload(item) for item in overridden],
     )
-    return ToolResult(content=[ToolContent.json_content(payload)], is_error=False)
+    return _with_hint(payload)
+
+
+def _draft_status_result(
+    artifact_type: str, draft: str, *, exists: bool | None = None
+) -> ToolResult:
+    """Return the draft-status payload as a non-gating tool result."""
+    return ToolResult(
+        content=[
+            ToolContent.json_content(_draft_status_payload(artifact_type, draft, exists=exists))
+        ],
+        is_error=False,
+    )
 
 
 def _validation_result(
@@ -269,16 +425,15 @@ def _validation_result(
     return ToolResult(
         content=[
             ToolContent.json_content(
-                {
-                    "artifact_type": artifact_type,
-                    "valid": not any(item.severity == "error" for item in diagnostics),
-                    "diagnostics": [_diagnostic_payload(item) for item in diagnostics],
-                    "counts": _severity_counts(diagnostics),
-                    "overridden": [
-                        _override_payload(item)
-                        for item in (overridden or [])
-                    ],
-                }
+                _with_hint(
+                    {
+                        "artifact_type": artifact_type,
+                        "valid": not any(item.severity == "error" for item in diagnostics),
+                        "diagnostics": [_diagnostic_payload(item) for item in diagnostics],
+                        "counts": _severity_counts(diagnostics),
+                        "overridden": [_override_payload(item) for item in (overridden or [])],
+                    }
+                )
             )
         ],
         is_error=any(item.severity == "error" for item in diagnostics),

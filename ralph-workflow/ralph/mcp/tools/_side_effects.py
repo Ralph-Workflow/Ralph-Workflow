@@ -68,6 +68,7 @@ REGISTRY: dict[str, SideEffectContract] = {
     "delete_path": _contract("delete_path", "mutate"),
     "ralph_submit_md_artifact": _contract("ralph_submit_md_artifact", "mutate"),
     "ralph_stage_md_artifact": _contract("ralph_stage_md_artifact", "mutate"),
+    "ralph_edit_md_artifact": _contract("ralph_edit_md_artifact", "mutate"),
     "ralph_finalize_md_artifact": _contract("ralph_finalize_md_artifact", "mutate"),
     "ralph_discard_md_draft": _contract("ralph_discard_md_draft", "mutate"),
     "coordinate": _contract("coordinate", "mutate"),

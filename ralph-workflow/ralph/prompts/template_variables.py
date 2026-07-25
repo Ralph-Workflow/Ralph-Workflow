@@ -12,6 +12,7 @@ from ralph.mcp.tools.names import (
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
     DISCARD_MD_DRAFT_TOOL,
+    EDIT_MD_ARTIFACT_TOOL,
     EXEC_TOOL,
     FINALIZE_MD_ARTIFACT_TOOL,
     GET_MD_DRAFT_TOOL,
@@ -172,6 +173,12 @@ def capability_template_variables(
         ),
         tool_name_var(
             visible_tools,
+            "EDIT_MD_ARTIFACT_TOOL_NAME",
+            EDIT_MD_ARTIFACT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
             "GET_MD_DRAFT_TOOL_NAME",
             GET_MD_DRAFT_TOOL,
             tool_name_prefix=tool_name_prefix,
@@ -288,6 +295,12 @@ def capability_template_variables(
             visible_tools,
             "STAGE_MD_ARTIFACT_TOOL_REFERENCE",
             STAGE_MD_ARTIFACT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "EDIT_MD_ARTIFACT_TOOL_REFERENCE",
+            EDIT_MD_ARTIFACT_TOOL,
             tool_name_prefix=tool_name_prefix,
         ),
         tool_name_reference_var(

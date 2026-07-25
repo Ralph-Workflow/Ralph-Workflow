@@ -133,7 +133,11 @@ def test_planning_edit_templates_explain_stable_targeted_edits() -> None:
         assert "GET_MD_DRAFT_TOOL_REFERENCE" in text
         assert "FINALIZE_MD_ARTIFACT_TOOL_REFERENCE" in text
         assert "mode=\"replace_all\"" in text
-        assert "no per-step edit endpoint exists" in text or "unit of revision" in text
+        # In-place repair is the taught default; whole-document replacement is
+        # the documented fallback for a wholesale rewrite.
+        assert "EDIT_MD_ARTIFACT_TOOL_REFERENCE" in text
+        assert "oldText" in text and "newText" in text
+        assert "no per-step edit endpoint exists" not in text
         assert "stable" in text.lower() or "stable" in _template("shared/_planning_thinking.jinja").lower()
         assert "never renumbered" in text or "never renumbered" in _template("shared/_planning_thinking.jinja")
 
@@ -161,7 +165,12 @@ def test_planning_author_templates_use_the_persisted_step_edit_flow() -> None:
         # The staged-revision-flow arguments are shared across every author template
         # because the thinking partial owns the revision-flow narrative.
         assert "mode=\"replace_all\"" in combined
-        assert "no per-step edit endpoint exists" in combined
+        # Every author template must teach in-place repair, since any rejected
+        # submission leaves an editable draft behind.
+        assert "EDIT_MD_ARTIFACT_TOOL_REFERENCE" in combined, (
+            f"{name} (or its thinking partial) must reference the in-place edit flow"
+        )
+        assert "no per-step edit endpoint exists" not in combined
 
 
 def test_planning_analysis_teaches_standard_revision_flow() -> None:

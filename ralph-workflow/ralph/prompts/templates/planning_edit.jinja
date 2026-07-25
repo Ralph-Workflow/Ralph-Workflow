@@ -84,7 +84,7 @@ Recommended edit flow:
 5. Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before you decide the revision is ready.
 6. When subagents are available, fan out one scout per analyzer finding to verify its closure against the repository, plus one reviewer per rubric dimension to hunt for the next rejection (see ## PLANNING WITH SUBAGENTS); without subagents, run the same checks sequentially yourself.
 7. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then rewrite every affected section in the document.
-8. To revise a staged plan, call {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the complete updated document, `mode="replace_all"`), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}. The whole document is the unit of revision; no per-step edit endpoint exists.
+8. To revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}. Every submission stages its document as the draft, so this works after a rejected submit. Resend the whole document via {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) only for a wholesale rewrite.
 9. For a holistic document revision that does not use the staged flow, validate with {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document), repair every diagnostic, then submit with {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments. Use either this direct path or the staged path only after the revised plan passes the self-audit below.
 
 Do not write `.agent/artifacts/plan.md` directly — the submit and finalize tools are the only valid paths. Do not throw away valid sections just because one part of the plan was rejected, but do rewrite every section whose correctness depends on changed scope, inventory, paths, or verification. If fixing one section changes the truth of another section, revise every dependent section in the same document so the submitted plan is internally consistent. When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
@@ -106,7 +106,7 @@ If the feedback says the structure is unsound, revise the affected sections syst
 Do not make transient .agent handoff files part of the revised plan's execution inputs unless the original request is explicitly about Ralph Workflow's own planning or artifact plumbing.
 
 Submission recap:
-- Staged revision: {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}} (`mode="replace_all"`) → {{GET_MD_DRAFT_TOOL_REFERENCE}} → {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
+- In-place revision: {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}} (`oldText`/`newText` edits) → {{GET_MD_DRAFT_TOOL_REFERENCE}} → {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`).
 - Holistic rewrite: {{VERIFY_MD_ARTIFACT_TOOL_REFERENCE}} then {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} (`artifact_type="plan"`, `content` = the document).
 
 After a valid submission or finalization receipt, call

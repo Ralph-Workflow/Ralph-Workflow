@@ -104,7 +104,10 @@ def test_replace_all_repairs_a_staged_plan_before_finalization(tmp_path: Path) -
     assert (tmp_path / ".agent" / "artifacts" / "plan.md").read_text(
         encoding="utf-8"
     ) == _plan_document()
+    # The finalized document is retained as the draft so it stays editable for
+    # an in-phase revision; only fresh phase entry clears it.
     after = handle_get_md_draft(
         _session(), workspace, {"artifact_type": "plan"}
     )
-    assert _payload(after)["exists"] is False
+    assert _payload(after)["exists"] is True
+    assert _payload(after)["content"] == _plan_document()

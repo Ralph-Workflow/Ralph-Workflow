@@ -2334,6 +2334,13 @@ ralph.mcp.tools.invalid_params_error
    :members:
    :show-inheritance:
 
+ralph.mcp.tools.text_edits
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.text_edits
+   :members:
+   :show-inheritance:
+
 ralph.mcp.tools.tool_content
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

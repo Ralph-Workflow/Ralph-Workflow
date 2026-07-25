@@ -325,7 +325,10 @@ def test_planning_prompts_regression_step_editor_uses_staged_draft_contract(
     for prompt in prompts:
         assert "ralph_stage_md_artifact" in prompt
         assert "mode=\"replace_all\"" in prompt
-        assert "unit of revision" in prompt
+        # In-place repair is the taught default; whole-document replacement
+        # remains available as the wholesale-rewrite fallback.
+        assert "ralph_edit_md_artifact" in prompt
+        assert "oldText" in prompt
         assert "ralph_finalize_md_artifact" in prompt
         assert "ralph_edit_md_plan_step" not in prompt
 

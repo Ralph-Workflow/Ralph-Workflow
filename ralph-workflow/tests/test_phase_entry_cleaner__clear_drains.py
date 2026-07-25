@@ -130,6 +130,102 @@ class TestClearPhaseEntryDrains:
         assert ws.exists(".agent/artifacts/development_result.md")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
+    def test_fresh_entry_clears_the_retained_draft(self, tmp_path: Path) -> None:
+        """A retained draft must not outlive the canonical artifact it produced."""
+        pipeline, artifacts_policy = _load_default_policy_bundle()
+        root = tmp_path / ".agent"
+        root.mkdir(parents=True)
+        ws = FsWorkspace(root)
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
+        ws.write(".agent/artifacts/.plan.draft.md", "stale draft from a previous attempt")
+
+        clear_phase_entry_drains(ws, "planning", None, pipeline, artifacts_policy)
+
+        assert not ws.exists(".agent/artifacts/plan.md")
+        assert not ws.exists(".agent/artifacts/.plan.draft.md")
+
+    def test_phase_transition_clears_a_draft_whose_artifact_survives(self, tmp_path: Path) -> None:
+        """plan.md must outlive planning; the plan draft must not."""
+        pipeline, artifacts_policy = _load_default_policy_bundle()
+        root = tmp_path / ".agent"
+        root.mkdir(parents=True)
+        ws = FsWorkspace(root)
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
+        ws.write(".agent/artifacts/.plan.draft.md", "planning-phase draft")
+
+        # planning -> development: development reads plan.md, so the canonical
+        # artifact is deliberately not a declared drain here.
+        clear_phase_entry_drains(ws, "development", "planning", pipeline, artifacts_policy)
+
+        assert ws.exists(".agent/artifacts/plan.md")
+        assert not ws.exists(".agent/artifacts/.plan.draft.md")
+
+    def test_retry_keeps_the_retained_draft(self, tmp_path: Path) -> None:
+        """Same-phase retry is exactly the case that may resume from the draft."""
+        pipeline, artifacts_policy = _load_default_policy_bundle()
+        root = tmp_path / ".agent"
+        root.mkdir(parents=True)
+        ws = FsWorkspace(root)
+        ws.mkdirs(".agent/artifacts")
+        ws.write(".agent/artifacts/.plan.draft.md", "draft under repair")
+
+        clear_phase_entry_drains(ws, "planning", "planning", pipeline, artifacts_policy)
+
+        assert ws.exists(".agent/artifacts/.plan.draft.md")
+
+    def test_analysis_loopback_refills_a_missing_draft_from_the_rejected_plan(
+        self, tmp_path: Path
+    ) -> None:
+        """Requested changes must land the agent on the rejected plan, ready to edit."""
+        pipeline, artifacts_policy = _load_default_policy_bundle()
+        root = tmp_path / ".agent"
+        root.mkdir(parents=True)
+        ws = FsWorkspace(root)
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
+
+        # planning_analysis -> planning loopback, with no draft on disk.
+        clear_phase_entry_drains(ws, "planning", "planning_analysis", pipeline, artifacts_policy)
+
+        assert ws.read(".agent/artifacts/.plan.draft.md") == ws.read(".agent/artifacts/plan.md")
+
+    def test_loopback_does_not_overwrite_an_existing_draft(self, tmp_path: Path) -> None:
+        """In-progress repairs are deliberately ahead of the canonical artifact."""
+        pipeline, artifacts_policy = _load_default_policy_bundle()
+        root = tmp_path / ".agent"
+        root.mkdir(parents=True)
+        ws = FsWorkspace(root)
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
+        ws.write(".agent/artifacts/.plan.draft.md", "half-repaired plan")
+
+        clear_phase_entry_drains(ws, "planning", "planning_analysis", pipeline, artifacts_policy)
+
+        assert ws.read(".agent/artifacts/.plan.draft.md") == "half-repaired plan"
+
+    def test_fresh_entry_does_not_seed_a_draft(self, tmp_path: Path) -> None:
+        """A new attempt starts empty, never preloaded with prior-phase text."""
+        pipeline, artifacts_policy = _load_default_policy_bundle()
+        root = tmp_path / ".agent"
+        root.mkdir(parents=True)
+        ws = FsWorkspace(root)
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.md", ".agent/PLAN.md")
+
+        clear_phase_entry_drains(ws, "development", "planning", pipeline, artifacts_policy)
+
+        assert not ws.exists(".agent/artifacts/.plan.draft.md")
+
+    def test_loopback_keeps_the_retained_draft(self, tmp_path: Path) -> None:
+        """Analysis loopback resumes the attempt, so the draft survives."""
+        pipeline, artifacts_policy = _load_default_policy_bundle()
+        root = tmp_path / ".agent"
+        root.mkdir(parents=True)
+        ws = FsWorkspace(root)
+        ws.mkdirs(".agent/artifacts")
+        ws.write(".agent/artifacts/.plan.draft.md", "draft under repair")
+
+        clear_phase_entry_drains(ws, "planning", "planning_analysis", pipeline, artifacts_policy)
+
+        assert ws.exists(".agent/artifacts/.plan.draft.md")
+
     def test_loopback_does_not_clear(self, tmp_path: Path) -> None:
         """Analysis loopback: is_fresh=False → files are NOT deleted."""
         pipeline, artifacts_policy = _load_default_policy_bundle()

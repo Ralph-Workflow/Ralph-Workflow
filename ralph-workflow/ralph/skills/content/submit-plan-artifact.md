@@ -165,7 +165,9 @@ For a long plan:
 1. Append chunks with `ralph_stage_md_artifact` (`mode: append`), or replace
    the draft with `mode: replace_all`.
 2. Inspect the full draft with `ralph_get_md_draft`.
-3. Edit the staged draft directly — there is no per-step edit endpoint.
+3. Edit the staged draft in place with `ralph_edit_md_artifact` (`edits`: a
+   list of `oldText`/`newText` pairs). Every submission stages its document
+   as the draft, so this also repairs a rejected submission.
 4. Submit the assembled draft with `ralph_finalize_md_artifact`. Failed
    validation preserves the draft.
 5. Use `ralph_discard_md_draft` only when intentionally starting over.

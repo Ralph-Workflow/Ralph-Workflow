@@ -40,6 +40,7 @@ class RalphToolName(StrEnum):
     SUBMIT_MD_ARTIFACT = "ralph_submit_md_artifact"
     VERIFY_MD_ARTIFACT = "ralph_verify_md_artifact"
     STAGE_MD_ARTIFACT = "ralph_stage_md_artifact"
+    EDIT_MD_ARTIFACT = "ralph_edit_md_artifact"
     GET_MD_DRAFT = "ralph_get_md_draft"
     DISCARD_MD_DRAFT = "ralph_discard_md_draft"
     FINALIZE_MD_ARTIFACT = "ralph_finalize_md_artifact"
@@ -99,6 +100,7 @@ RAW_EXEC_TOOL = RalphToolName.RAW_EXEC
 SUBMIT_MD_ARTIFACT_TOOL = RalphToolName.SUBMIT_MD_ARTIFACT
 VERIFY_MD_ARTIFACT_TOOL = RalphToolName.VERIFY_MD_ARTIFACT
 STAGE_MD_ARTIFACT_TOOL = RalphToolName.STAGE_MD_ARTIFACT
+EDIT_MD_ARTIFACT_TOOL = RalphToolName.EDIT_MD_ARTIFACT
 GET_MD_DRAFT_TOOL = RalphToolName.GET_MD_DRAFT
 DISCARD_MD_DRAFT_TOOL = RalphToolName.DISCARD_MD_DRAFT
 FINALIZE_MD_ARTIFACT_TOOL = RalphToolName.FINALIZE_MD_ARTIFACT
@@ -142,6 +144,7 @@ PROCESS_EXEC_UNBOUNDED_TOOLS: tuple[str, ...] = (UNSAFE_EXEC_TOOL, RAW_EXEC_TOOL
 ARTIFACT_SUBMIT_TOOLS: tuple[str, ...] = (
     SUBMIT_MD_ARTIFACT_TOOL,
     STAGE_MD_ARTIFACT_TOOL,
+    EDIT_MD_ARTIFACT_TOOL,
     FINALIZE_MD_ARTIFACT_TOOL,
     DISCARD_MD_DRAFT_TOOL,
     DECLARE_COMPLETE_TOOL,

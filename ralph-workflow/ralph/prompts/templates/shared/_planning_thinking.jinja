@@ -112,11 +112,13 @@ Author the document, validate it with
 `content` = the document), repair every diagnostic — each names the line,
 section, rule, and what to fix — in one repair pass, then submit with
 {{SUBMIT_MD_ARTIFACT_TOOL_REFERENCE}} using the same two arguments. To
-revise a staged plan, call {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}}
-(`artifact_type="plan"`, `content` = the complete updated document,
-`mode="replace_all"`), inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then
-submit with {{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}. The whole document
-is the unit of revision; no per-step edit endpoint exists. IDs are
+revise a plan, edit it in place with {{EDIT_MD_ARTIFACT_TOOL_REFERENCE}}
+(`artifact_type="plan"`, `edits` = a list of `oldText`/`newText` pairs),
+inspect with {{GET_MD_DRAFT_TOOL_REFERENCE}}, then submit with
+{{FINALIZE_MD_ARTIFACT_TOOL_REFERENCE}}. Every submission stages its
+document as the draft, so this works after a rejected submit; resend the
+whole document via {{STAGE_MD_ARTIFACT_TOOL_REFERENCE}}
+(`mode="replace_all"`) only for a wholesale rewrite. IDs are
 stable and never renumbered.
 
 The submit/finalize tools are the only valid paths to write
