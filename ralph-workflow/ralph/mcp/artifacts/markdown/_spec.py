@@ -101,7 +101,7 @@ def parse_and_validate(text: str, spec: MdArtifactSpec) -> tuple[Content, list[D
             diagnostics.extend(exc.diagnostics)
             return {}, diagnostics
         except (TypeError, ValueError) as exc:
-            diagnostics.append(_normalizer_diagnostic(document, str(exc)))
+            diagnostics.append(_normalizer_diagnostic(document, str(exc), spec.artifact_type))
             return {}, diagnostics
         return normalized, diagnostics
     return {}, diagnostics
@@ -318,7 +318,9 @@ def _validate_section_shapes(section: ParsedSection, rule: SectionRule) -> list[
     return diagnostics
 
 
-def _normalizer_diagnostic(document: ParsedDocument, message: str) -> Diagnostic:
+def _normalizer_diagnostic(
+    document: ParsedDocument, message: str, artifact_type: str
+) -> Diagnostic:
     field_name = message.split(" ", 1)[0].split(".", 1)[0]
     line = document.frontmatter_lines.get(field_name, 1)
     section = next(
@@ -333,19 +335,21 @@ def _normalizer_diagnostic(document: ParsedDocument, message: str) -> Diagnostic
         line,
         section,
         "SPEC010",
-        _spec010_message(message or "canonical validation failed"),
+        _spec010_message(message or "canonical validation failed", artifact_type),
     )
 
 
-def _spec010_message(message: str) -> str:
+def _spec010_message(message: str, artifact_type: str) -> str:
     """Wrap a pydantic / size / normalizer rejection in the consumer convention.
 
-    The plan spec normalizer can fail in three ways: a pydantic schema
-    rejection, a ``plan size violation`` from the canonical plan payload
-    bound, or any other TypeError/ValueError surfaced by the normalizer
-    callable. Each one ends with ``; blocking because <consumer>; resolve
-    by <fix>`` so the diagnostic matches the convention every other
-    blocking finding follows.
+    A spec normalizer can fail in three ways: a pydantic schema rejection,
+    a ``plan size violation`` from the canonical plan payload bound, or any
+    other TypeError/ValueError surfaced by the normalizer callable. Each one
+    ends with ``; blocking because <consumer>; resolve by <fix>`` so the
+    diagnostic matches the convention every other blocking finding follows.
+    The consumer clause names the artifact type that actually rejected the
+    document: attributing every artifact's rejection to the plan pydantic
+    schema sends the agent to read a validator that never saw its payload.
     """
     what = message.strip() or "canonical validation failed"
     if what.lower().startswith("plan size violation"):
@@ -354,10 +358,16 @@ def _spec010_message(message: str) -> str:
             "payloads and unbounded documents exceed the bounded payload contract; "
             "resolve by reducing the plan to its essential steps and verification"
         )
+    if artifact_type == "plan":
+        return (
+            f"{what}; blocking because ralph/mcp/artifacts/plan/_validation.py "
+            "enforces pydantic field schemas on the canonical plan content dict; "
+            "resolve by correcting the rejected field against its pydantic schema"
+        )
     return (
-        f"{what}; blocking because ralph/mcp/artifacts/plan/_validation.py "
-        "enforces pydantic field schemas on the canonical plan content dict; "
-        "resolve by correcting the rejected field against its pydantic schema"
+        f"{what}; blocking because the canonical {artifact_type} normalizer rejects "
+        "the document before it is stored, so the artifact was not accepted; "
+        "resolve by applying the correction named above and resubmitting"
     )
 
 

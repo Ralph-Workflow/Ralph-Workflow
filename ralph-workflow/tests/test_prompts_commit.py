@@ -20,9 +20,16 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert diff in prompt
     assert "<ralph-commit>" not in prompt
     assert "<ralph-subject>" not in prompt
-    assert "## COMMIT MESSAGE FORMAT" in prompt
-    assert "## WHEN TO USE A BODY" in prompt
-    assert "most commits need a body" in prompt.lower()
+    assert "## HOW TO WRITE THE SUBJECT" in prompt
+    assert "## HOW TO WRITE THE BODY" in prompt
+    # Anti-churn: a weak model told only to "write a good subject" enumerates
+    # candidates and re-picks. The prompt must give a terminating procedure.
+    assert "do not generate candidate subjects and compare them" in prompt.lower()
+    assert "the subject is finished. do not look for a better one" in prompt.lower()
+    assert "do not reconsider it" in prompt.lower()
+    # No unenforced constraint an agent could keep failing (e.g. a length cap
+    # the canonical validator never checks).
+    assert "there is no length limit" in prompt.lower()
     assert "commit document" in prompt.lower()
     assert "skip document" in prompt.lower()
     # Architectural fix (2026-06-14): the template MUST NOT carry a
@@ -48,12 +55,16 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert ".agent/tmp/commit_message.md" in prompt
     assert "raw markdown" in prompt.lower()
     assert "edit the json file on disk" not in prompt.lower()
-    assert "use `chore` only for repo maintenance" in prompt.lower()
-    assert "omit the scope when the change spans multiple subsystems" in prompt.lower()
-    assert "one-liner subjects (no body) are only acceptable for" in prompt.lower()
-    assert "common mistakes to avoid" in prompt.lower()
-    assert "bad: chore: update files" in prompt.lower()
-    assert "bad: fix: stuff" in prompt.lower()
+    # The grammar the canonical validator enforces is stated in full, so a
+    # rejection is a bug in the prompt rather than something to iterate on.
+    assert "changes only repo maintenance, tooling, config, or dependencies | chore" in prompt
+    assert "otherwise omit the scope and the parentheses entirely" in prompt.lower()
+    assert "no dots, no uppercase" in prompt.lower()
+    assert "quotes become part of the subject" in prompt.lower()
+    assert "starts with a lowercase letter or digit" in prompt.lower()
+    assert "## WORKED EXAMPLES" in prompt
+    assert "`chore: update files`" in prompt
+    assert "`fix: stuff`" in prompt
     assert "changes not yet committed" in prompt.lower()
     assert "current worktree vs the last commit" in prompt.lower()
 
@@ -114,10 +125,13 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     # markdown document — never JSON.
     assert ".agent/tmp/commit_message.md" in prompt
     assert "raw markdown" in prompt.lower()
-    assert "Use `chore` only for repo maintenance" in prompt
-    assert "Omit the scope when the change spans multiple subsystems" in prompt
-    assert "Most commits need a body" in prompt
-    assert "One-liner subjects (no body) are only" in prompt
+    assert "use `chore` only for repo maintenance" in prompt
+    assert "omit it and its parentheses" in prompt
+    assert "every other commit gets a body" in prompt
+    # Anti-churn: the simplified prompt must terminate subject selection too.
+    assert "do not generate alternatives" in prompt
+    assert "there is no length limit" in prompt.lower()
+    assert "no dots, no uppercase" in prompt
     assert "Bad" in prompt
     assert "Good" in prompt
     assert prompt.startswith("Task:")

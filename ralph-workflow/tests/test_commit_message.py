@@ -120,6 +120,31 @@ def test_normalize_commit_message_content_rejects_non_conventional_subject() -> 
         normalize_commit_message_content({"type": "commit", "subject": "update files"})
 
 
+@pytest.mark.parametrize(
+    ("subject", "expected_cause"),
+    [
+        ('"fix(auth): prevent token expiry race"', "surrounding quotes"),
+        ("update files", "no 'kind: description' separator"),
+        ("Fix(auth): prevent race", "kinds are lowercase"),
+        ("wibble(auth): prevent race", "not one of the allowed kinds"),
+        ("fix(MCP): prevent race", "scope 'MCP' may only contain"),
+        ("fix(mcp.artifacts): prevent race", "scope 'mcp.artifacts' may only contain"),
+        ("fix(auth): Prevent race", "description must start with a lowercase letter or digit"),
+        ("fix(auth): ", "no 'kind: description' separator"),
+    ],
+)
+def test_rejected_subject_names_its_exact_cause(subject: str, expected_cause: str) -> None:
+    """One generic rejection for every cause makes weak agents guess; name the cause."""
+    with pytest.raises(ValueError) as excinfo:
+        normalize_commit_message_content({"type": "commit", "subject": subject})
+
+    message = str(excinfo.value)
+    assert expected_cause in message, message
+    assert subject.strip() in message, (
+        f"the rejection must echo the offending subject so the agent sees it: {message!r}"
+    )
+
+
 def test_normalize_commit_message_content_rejects_legacy_message_field() -> None:
     with pytest.raises(ValueError):
         normalize_commit_message_content({"message": "fix: legacy JSON payload"})

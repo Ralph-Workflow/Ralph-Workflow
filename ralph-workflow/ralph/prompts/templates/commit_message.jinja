@@ -11,62 +11,78 @@ Read the diff silently. Do not write an analysis.
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 ---
-## COMMIT MESSAGE FORMAT
-<type>[optional scope][!]: subject
+## HOW TO WRITE THE SUBJECT — follow these four steps once, in order
 
-Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. Use `chore` only for repo maintenance, tooling, or admin-only changes; do not default to `chore` for meaningful product or code changes. Keep the subject concise and write it in lowercase imperative mood.
+Do not generate candidate subjects and compare them. Do not revise a subject
+that already satisfies step 4. One pass through these steps produces the
+subject; then move on to the body.
 
-## WHEN TO USE A BODY
+**Step 1 — pick the kind.** Take the FIRST row that matches the diff:
 
-Most commits need a body. A body provides context, rationale, and impact that the subject alone cannot convey.
+| The diff mainly... | kind |
+|---|---|
+| changes only repo maintenance, tooling, config, or dependencies | chore |
+| changes only CI/workflow files | ci |
+| changes only build scripts or packaging | build |
+| changes only documentation or comments | docs |
+| changes only tests | test |
+| changes only formatting, with no behavior change | style |
+| fixes wrong behavior | fix |
+| adds behavior that did not exist | feat |
+| restructures code with no behavior change | refactor |
+| changes code to make it faster | perf |
 
-**Include a body when the change is non-trivial:**
-- Multi-file changes or changes affecting multiple subsystems
-- New behavior, removed behavior, or behavior modifications
-- Refactors that change public APIs, data structures, or contracts
-- Changes requiring migration notes, deprecation warnings, or compatibility concerns
-- Any change where the *why* is not immediately obvious from reading the diff
+**Step 2 — pick the scope.** If one directory or subsystem owns most of the
+diff, use its name. Otherwise omit the scope and the parentheses entirely.
+Do not deliberate between two candidate scopes: if it is not obvious in one
+look, omit it.
 
-**One-liner subjects (no body) are only acceptable for:**
-- Trivial typo fixes or single-character corrections
-- Single-file cosmetic changes (formatting, imports, comments) with obvious intent
-- Truly obvious micro-changes where subject fully captures the entire change
+**Step 3 — write the description.** Say what the change does, in one clause,
+in lowercase imperative mood. Do not say that files changed. Do not use
+"update", "misc", "stuff", or file counts. There is no length limit; stop at
+the end of the clause.
 
-## BODY STRUCTURE: WHEN TO USE SIMPLE VS DETAILED
+**Step 4 — check the grammar, then stop.** The subject must match exactly:
 
-For commits requiring a body, choose the right structure:
+```
+<kind>(<scope>)?!?: <description>
+```
 
-**Use `## Body` (a single item) when:**
-- The explanation is concise and self-contained (1-2 paragraphs)
-- The rationale is straightforward and doesn't need separation
+- `<kind>` is lowercase and from the table above.
+- `<scope>`, if present, is lowercase letters, digits, `/`, `_`, `-` only —
+  no dots, no uppercase.
+- `!` before the colon marks a breaking change.
+- Exactly one space follows the colon.
+- `<description>` starts with a lowercase letter or digit.
+- Write the value unquoted in frontmatter. Quotes become part of the subject
+  and are rejected.
 
-**Use the detailed body sections when the change is complex (never combined with `## Body`):**
-- `## Body Summary`: What changed and why in 1-2 sentences
-- `## Body Details`: Deep dive — edge cases handled, design decisions, alternatives considered, behavioral notes
-- `## Body Footer`: Breaking changes, migration steps, deprecation warnings, "Fixes #123", "Closes #456"
+If it matches, the subject is finished. Do not look for a better one.
 
-Complex refactors, architecture changes, new features with non-obvious behavior, and any change affecting multiple subsystems should use the detailed structure.
+## HOW TO WRITE THE BODY
 
-## QUALITY RULES
-- Match the repo's conventional-commit style. Prefer the narrowest stable scope when one subsystem clearly owns most of the diff.
-- Omit the scope when the change spans multiple subsystems or no single scope would be honest.
-- The subject must say what changed, not that files changed. Avoid filler like "update", "misc", "stuff", or file-count summaries.
-- Body text should explain impact and rationale, not restate which files changed or re-summarize the diff.
-- When in doubt, include a body. An extra explanatory paragraph is almost never wrong.
+Omit the body only for a one-line typo, formatting, or comment change whose
+subject already states the whole change. Every other commit gets a body.
 
-## COMMON MISTAKES TO AVOID
-- Bad: chore: update files
-  Counterexample: feat(mcp): add structured commit retries
-  Body: Explains what structured retries solve and how they work.
-- Bad: fix: stuff
-  Counterexample: fix(parser): preserve prefixed transcript lines
-  Body: Explains why prefixed lines were being dropped and the edge case that triggered it.
-- Bad: refactor: rename files
-  Counterexample: refactor(auth): extract token validation to dedicated module
-  Body: Explains the architectural reason and what callers must do differently.
-- Bad: feat: add validation
-  Counterexample: feat(api): add query filter validation for export endpoint
-  Body: Explains which invalid inputs were causing problems and what happens now.
+Pick the structure with this rule, and do not reconsider it:
+
+- Default: one `## Body` item explaining WHY the change was needed and what
+  it affects.
+- Use `## Body Summary` + `## Body Details` + `## Body Footer` instead, never
+  alongside `## Body`, only when the change has migration steps, breaking
+  changes, or issue references to record in the footer.
+
+Body text explains rationale and impact. It does not list files or restate
+the diff.
+
+## WORKED EXAMPLES
+- Bad: `chore: update files` → `feat(mcp): add structured commit retries`,
+  with a body explaining what structured retries solve.
+- Bad: `fix: stuff` → `fix(parser): preserve prefixed transcript lines`,
+  with a body explaining the edge case that dropped them.
+- Bad: `refactor: rename files` →
+  `refactor(auth): extract token validation to dedicated module`,
+  with a body explaining what callers must do differently.
 
 ## OUTPUT RULES
 Do not output additional explanation, markdown, bullets, or prose after the

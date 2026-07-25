@@ -75,6 +75,25 @@ status: request_changes
     )
 
 
+def test_spec010_names_the_rejecting_artifact_not_the_plan_validator() -> None:
+    """A non-plan normalizer rejection must not point the agent at the plan pydantic schema."""
+    _, diagnostics = parse_and_validate(
+        """---
+type: commit
+subject: fix(MCP): prevent race
+---
+""",
+        get_spec("commit_message"),
+    )
+
+    spec010 = [diagnostic for diagnostic in diagnostics if diagnostic.rule_id == "SPEC010"]
+    assert spec010, "expected SPEC010 for the rejected commit subject"
+    for diagnostic in spec010:
+        assert "plan/_validation.py" not in diagnostic.message, diagnostic.message
+        assert "pydantic" not in diagnostic.message, diagnostic.message
+        assert "commit_message" in diagnostic.message, diagnostic.message
+
+
 def test_analysis_decision_keeps_stable_how_to_fix_identifier() -> None:
     content, diagnostics = parse_and_validate(
         """---

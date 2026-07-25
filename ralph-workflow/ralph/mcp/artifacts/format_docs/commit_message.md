@@ -37,8 +37,12 @@ reason: No committable changes; only generated files were touched.
   values; correct the frontmatter and resubmit.
 - `subject` — required for `commit`; must be a conventional-commit subject:
   `kind(scope)?!?: lowercase description` with kind one of feat, fix, docs,
-  refactor, test, style, perf, build, ci, chore. An optional `!` before the
-  colon marks a breaking change (`feat!: ...`, `feat(api)!: ...`).
+  refactor, test, style, perf, build, ci, chore. The optional scope may
+  contain only lowercase letters, digits, `/`, `_` and `-` — no dots and no
+  uppercase. Exactly one space follows the colon, and the description starts
+  with a lowercase letter or digit. There is no subject length limit.
+  An optional `!` before the colon marks a breaking change
+  (`feat!: ...`, `feat(api)!: ...`).
   Frontmatter values are taken literally and must be unquoted — quotes
   become part of the value and fail subject validation.
 - `reason` — required for `skip`.

@@ -1148,7 +1148,7 @@ def analyze_plan_document(
             # Canonical pydantic validation rejects the mapped content even
             # though the markdown side has no blocking diagnostic. Surface it
             # as a SPEC010 error so the tool payload reflects the failure.
-            diagnostics.append(_normalizer_diagnostic(document, str(exc)))
+            diagnostics.append(_normalizer_diagnostic(document, str(exc), "plan"))
             content = {}
     return content, diagnostics, overridden
 

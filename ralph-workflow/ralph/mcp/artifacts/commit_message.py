@@ -29,8 +29,23 @@ _SKIP_KIND = "skip"
 _SKIP_PREFIX = "SKIP:"
 _DETAILED_BODY_KEYS = ("body_summary", "body_details", "body_footer")
 _EXCLUDED_FILE_REASONS = frozenset({"internal_ignore", "not_task_related", "sensitive", "deferred"})
+_COMMIT_KINDS = (
+    "feat",
+    "fix",
+    "docs",
+    "refactor",
+    "test",
+    "style",
+    "perf",
+    "build",
+    "ci",
+    "chore",
+)
+_COMMIT_SCOPE_PATTERN = re.compile(r"[a-z0-9/_-]+")
+_QUOTED_VALUE_PATTERN = re.compile(r"([\"']).*\1", re.DOTALL)
 _COMMIT_SUBJECT_PATTERN = re.compile(
-    r"^(feat|fix|docs|refactor|test|style|perf|build|ci|chore)(\([a-z0-9/_-]+\))?(!)?: [a-z0-9].+"
+    rf"^({'|'.join(_COMMIT_KINDS)})"
+    rf"(\({_COMMIT_SCOPE_PATTERN.pattern}\))?(!)?: [a-z0-9].+"
 )
 
 
@@ -171,11 +186,59 @@ def _required_string_field(content: dict[str, object], field: str) -> str:
 
 
 def _validate_commit_subject(subject: str) -> None:
-    if not _COMMIT_SUBJECT_PATTERN.fullmatch(subject):
-        raise ValueError(
-            "commit_message subjects must use conventional commit format "
-            "like 'fix(parser): preserve prefixed transcript lines'"
+    if _COMMIT_SUBJECT_PATTERN.fullmatch(subject):
+        return
+    raise ValueError(
+        f"commit_message subject {subject!r} does not use conventional commit format: "
+        f"{_diagnose_commit_subject(subject)}; rewrite it as "
+        "'<kind>(<scope>)?!?: <lowercase description>', for example "
+        "'fix(parser): preserve prefixed transcript lines'"
+    )
+
+
+def _diagnose_commit_subject(subject: str) -> str:
+    """Name the single reason this subject was rejected.
+
+    One generic message for every cause makes an agent guess and rewrite the
+    subject repeatedly; each branch below states the one edit that fixes it.
+    """
+    if _QUOTED_VALUE_PATTERN.fullmatch(subject):
+        return (
+            "the value is wrapped in surrounding quotes, which frontmatter takes "
+            "literally as part of the subject — remove them"
         )
+
+    prefix, separator, description = subject.partition(": ")
+    if not separator:
+        return "it has no 'kind: description' separator (a colon followed by one space)"
+
+    return _diagnose_commit_prefix(prefix) or _diagnose_commit_description(description)
+
+
+def _diagnose_commit_prefix(prefix: str) -> str | None:
+    """Return why the ``kind(scope)!`` half is invalid, or None when it is valid."""
+    kind = prefix.removesuffix("!")
+    scope = ""
+    if kind.endswith(")"):
+        kind, _, scope_text = kind.partition("(")
+        scope = scope_text.removesuffix(")")
+
+    if kind not in _COMMIT_KINDS:
+        if kind.lower() in _COMMIT_KINDS:
+            return f"kinds are lowercase, so write {kind.lower()!r} rather than {kind!r}"
+        return f"{kind!r} is not one of the allowed kinds: {', '.join(_COMMIT_KINDS)}"
+
+    if scope and not _COMMIT_SCOPE_PATTERN.fullmatch(scope):
+        return f"the scope {scope!r} may only contain lowercase letters, digits, '/', '_' and '-'"
+
+    return None
+
+
+def _diagnose_commit_description(description: str) -> str:
+    """Return why the description half is invalid; the caller knows it is."""
+    if not description:
+        return "the description after the colon is empty"
+    return "the description must start with a lowercase letter or digit"
 
 
 def _optional_string_field(content: dict[str, object], field: str) -> str | None:

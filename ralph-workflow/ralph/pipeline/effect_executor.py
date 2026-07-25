@@ -48,6 +48,7 @@ from ralph.pipeline._retry_progress_guard import (
     RetryProgressGuard,
     retry_failure_signature,
 )
+from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.agent_execution_deps import build_agent_execution_deps
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
@@ -107,6 +108,27 @@ _DEFAULT_PHASE_NAMES = frozenset(
         "failed_terminal",
     }
 )
+
+
+def _record_successful_attempt_session(
+    ctx: _AgentInvocationCtx,
+    raw_output: tuple[str, ...],
+    session_id: str | None,
+) -> None:
+    """Publish the successful attempt's session id and clear the retry intent.
+
+    Recording the session matters because failures are also raised AFTER the
+    agent exits successfully — artifact validation is the common case. The
+    reducer resumes ``state.last_agent_session_id`` so the agent repairs its
+    own artifact in place; without this the id is never captured, the resume
+    branch cannot fire, and every such retry restarts the whole phase from a
+    blank prompt.
+    """
+    final_session_id = extract_transport_session_id(raw_output) or session_id
+    if ctx.deps.set_session_id_cb is not None:
+        ctx.deps.set_session_id_cb(final_session_id)
+    set_last_captured_session_id(final_session_id)
+    _set_last_captured_retry_intent(cleared_agent_retry_intent())
 
 
 @dataclass(frozen=True)
@@ -450,10 +472,7 @@ def _invoke_agent_with_recovery(
                     capture_session_id,
                     pipeline_deps,
                 )
-                final_session_id = extract_transport_session_id(tuple(raw_output)) or session_id
-                if ctx.deps.set_session_id_cb is not None:
-                    ctx.deps.set_session_id_cb(final_session_id)
-                _set_last_captured_retry_intent(cleared_agent_retry_intent())
+                _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
                 recovery_plan = build_agent_recovery_plan(
