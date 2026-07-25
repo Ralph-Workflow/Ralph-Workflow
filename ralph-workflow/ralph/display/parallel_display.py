@@ -174,6 +174,7 @@ _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 _MAX_RENDERED_UNIT_ID_CHARS = 24
 _MAX_STREAMING_FRAGMENTS: int = 2048
+_SECONDS_PER_MINUTE: int = 60
 
 # A tool activity is "repeated" (coalesced with a "xN" count in the live status)
 # starting from the second consecutive identical call.
@@ -413,6 +414,8 @@ class ParallelDisplay:
         "_active_block",
         "_active_block_chars",
         "_activity_router",
+        "_block_open_mono",
+        "_block_open_wall",
         "_clock",
         "_ctx",
         "_drop_last_warned",
@@ -431,11 +434,13 @@ class ParallelDisplay:
         "_last_phase_elapsed_seconds",
         "_last_phase_saved_counters",
         "_last_plan_signature",
+        "_last_recorded_body",
         "_last_waiting_signature",
         "_last_worker_states",
         "_monotonic",
         "_overflow_logs",
         "_overflow_warned",
+        "_pending_phase_headers",
         "_phase_close_emitted",
         "_phase_counters",
         "_rendered_writers",
@@ -519,6 +524,13 @@ class ParallelDisplay:
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._active_block: dict[str, tuple[str, list[str]]] = {}  # bounded-accumulator-ok
         self._active_block_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
+        # Streaming block-open wall + monotonic times so the close entry can
+        # carry the sanctioned sketch-J span and duration. Populated in
+        # ``_handle_new_streaming_block`` and popped in ``_close_block``;
+        # the lifetime never exceeds ``_active_block`` so the bounded-accumulator
+        # contract carries through.
+        self._block_open_wall: dict[str, datetime] = {}  # bounded-accumulator-ok: _active_block
+        self._block_open_mono: dict[str, float] = {}  # bounded-accumulator-ok: _active_block
         self._last_checkpoint_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
         self._emitted_empty_plan: bool = False
         self._emitted_empty_activity: bool = False
@@ -532,6 +544,17 @@ class ParallelDisplay:
         self._run_counters: _PhaseCounters = _PhaseCounters()
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._last_emitted_tool_signature: dict[str, tuple[str, str]] = {}  # bounded-accumulator-ok
+        # S-13 (wt-028-display P1 / AC-02 / AC-03): cross-kind
+        # identical-content dedup at the rendered-record seam. The
+        # ``pi`` agent (and others) can emit a ``text:`` event and a
+        # ``thinking:`` event with byte-identical bodies for the same
+        # reasoning pass; tracking the last body per unit at the
+        # record seam drops the second one so the record stays one
+        # entry per logical event. The lifetime never exceeds the
+        # per-wave set so the bounded-accumulator contract carries
+        # through.
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._last_recorded_body: dict[str, str] = {}  # bounded-accumulator-ok: drop_unit
 
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
@@ -555,6 +578,18 @@ class ParallelDisplay:
         self._rendered_writers: dict[
             str, RenderedRecordWriter
         ] = {}  # bounded-accumulator-ok: drop_unit
+
+        # S-15 (wt-028-display P1 / AC-05): phase banners may fire
+        # before any unit has produced visible events (a phase_start
+        # triggered by an empty session, or a phase banner emitted
+        # above the first agent line). The render-to-record seam
+        # only writes to existing writers, so a phase_start with no
+        # writers would be lost. Buffer the headers here and flush
+        # them when the first writer is created. The buffer is
+        # bounded by the number of phase transitions per run, so
+        # even an aggressive failure loop cannot accumulate
+        # unbounded entries.
+        self._pending_phase_headers: list[dict[str, object]] = []  # bounded-accumulator-ok: _flush_pending_phase_headers
 
         self._activity_router: ActivityRouter = ActivityRouter(
             on_event=self._on_activity_router_event,
@@ -594,6 +629,33 @@ class ParallelDisplay:
     def _format_timestamp(self, ts: datetime) -> str:
         """Format a datetime as an ISO 8601 timestamp string (single default mode)."""
         return ts.isoformat()
+
+    @staticmethod
+    def _format_hh_mm_ss(ts: datetime) -> str:
+        """Format a wall-clock datetime as ``HH:MM:SS`` for span markers.
+
+        The sketch-J close-line shape uses a compact ``HH:MM:SS`` so the
+        span ``start \u2192 end`` fits on one line; the full ISO-8601
+        timestamp still appears as the leading column of the line
+        (see ``_format_timestamp``). Time is rendered as-is from the
+        ``datetime`` value (the production clock returns a UTC value).
+        """
+        return ts.strftime("%H:%M:%S")
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Format a duration in seconds as a compact human string.
+
+        Sub-minute deltas render as ``<n>s`` (e.g. ``0s``, ``10s``);
+        longer deltas render as ``<m>m<ss>s`` (e.g. ``1m30s``). The
+        value is floored to whole seconds so a sub-second
+        monotonic delta still renders as ``0s``.
+        """
+        total = max(0, int(seconds))
+        if total < _SECONDS_PER_MINUTE:
+            return f"{total}s"
+        minutes, secs = divmod(total, _SECONDS_PER_MINUTE)
+        return f"{minutes}m{secs}s"
 
     def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
         """Build a styled Text line with level and category badge segments."""
@@ -662,45 +724,105 @@ class ParallelDisplay:
         if opts.condensed_ref is not None and opts.condensed_flag:
             sanitized = f"{sanitized} [see {opts.condensed_ref}]"
 
-        if kind in _STREAMING_KINDS:
-            if kind == "thinking" and not content.strip():
-                return
-            block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
-            if block_tags is not None:
-                ctx = _StreamingCtx(
-                    unit_id=unit_id,
-                    kind=kind,
-                    content=content,
-                    base_tag=base_tag,
-                    timestamp=timestamp,
-                )
-                result = self._process_streaming_block(ctx, block_tags)
-                if result is None:
-                    return
-                tag, sanitized_override = result
-                if sanitized_override is not None:
-                    sanitized = sanitized_override
-            else:
-                tag = base_tag
-                self._update_counters(kind, is_new_block=False)
-        else:
-            for uid in list(self._active_block.keys()):
-                self._close_block(uid, timestamp)
-            tag = base_tag
-            self._update_counters(kind, is_new_block=False)
+        # S-7 (wt-028-display P1): streaming blocks buffer fragments and the
+        # close path emits the single coalesced entry. ``_route_streaming``
+        # returns False when the live console should stay silent.
+        if self._route_streaming(unit_id, kind, content, base_tag, timestamp) is False:
+            return
+
+        # S-14 (wt-028-display P1 / AC-04): the empty-body guard
+        # for non-streaming TEXT / THINKING / ERROR / TOOL_RESULT
+        # kinds. Empty bodies produce no live-log line AND no
+        # record entry; the seam append below short-circuits the
+        # same way. Streaming TEXT / THINKING already had its own
+        # ``content.strip()`` guard at the top of the
+        # ``_STREAMING_KINDS`` branch; ``tool_use`` / ``status`` /
+        # ``raw`` / ``progress`` are not body-bearing lines and
+        # may legitimately carry no body, so they are excluded.
+        if kind in {"text", "thinking", "error", "tool_result"} and not sanitized.strip():
+            return
 
         if kind == "tool_use" and opts.tool_signature is not None:
             tool_name, tool_path = opts.tool_signature
             self._last_emitted_tool_signature[unit_id] = (tool_name, tool_path)
 
-        self._emit_activity_supplements(unit_id, timestamp, tag, cat, opts)
+        self._emit_activity_supplements(unit_id, timestamp, base_tag, cat, opts)
 
-        self._console.print(
-            self._build_line(timestamp, level, cat, f"[{tag}][{rendered_unit_id}] {sanitized}"),
-            markup=False,
-            highlight=False,
-            no_wrap=False,
-            overflow="fold",
+        # S-7 (wt-028-display P1 / AC-07): quiet mode suppresses the
+        # terminal surface only. The rendered record append below
+        # still runs so the file surface keeps the same presented
+        # entries a non-quiet run would have written.
+        if not self._is_quiet:
+            self._console.print(
+                self._build_line(
+                    timestamp, level, cat, f"[{base_tag}][{rendered_unit_id}] {sanitized}"
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=False,
+                overflow="fold",
+            )
+
+        self._append_seam_record(unit_id, kind, sanitized, timestamp, opts)
+
+    def _route_streaming(
+        self,
+        unit_id: str,
+        kind: str,
+        content: str,
+        base_tag: str,
+        timestamp: str,
+    ) -> bool:
+        """Dispatch streaming blocks; return False to suppress live emission."""
+        if kind not in _STREAMING_KINDS:
+            for uid in list(self._active_block.keys()):
+                self._close_block(uid, timestamp)
+            self._update_counters(kind, is_new_block=False)
+            return True
+
+        if kind == "thinking" and not content.strip():
+            return False
+
+        block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
+        if block_tags is None:
+            self._update_counters(kind, is_new_block=False)
+            return True
+
+        ctx = _StreamingCtx(
+            unit_id=unit_id,
+            kind=kind,
+            content=content,
+            base_tag=base_tag,
+            timestamp=timestamp,
+        )
+        self._process_streaming_block(ctx, block_tags)
+        return False
+
+    def _append_seam_record(
+        self,
+        unit_id: str,
+        kind: str,
+        sanitized: str,
+        timestamp: str,
+        opts: _ActivityLineOptions,
+    ) -> None:
+        """Append one record entry at the shared presentation seam (S-13)."""
+        if kind == "raw":
+            return
+        if kind == ActivityEventKind.SUBAGENT_PROGRESS:
+            return
+        try:
+            event_kind = ActivityEventKind(kind)
+        except ValueError:
+            # Defensive: unrecognised kinds still reach the live log but skip
+            # the record append rather than crash the seam.
+            return
+        self._append_recorded_entry(
+            unit_id,
+            event_kind=event_kind,
+            body=sanitized,
+            timestamp=timestamp,
+            metadata=opts.activity_metadata,
         )
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
@@ -849,6 +971,14 @@ class ParallelDisplay:
         per-fragment emission paths are all retired; the live log must
         present a single coalesced entry for the whole block rather than
         the up-to-four repeat-renderings that used to surface here.
+
+        S-13 (wt-028-display P1): the close line is shaped as
+        ``\u22ef <tag> \u00b7 <start> \u2192 <end> \u00b7 <duration>`` followed by the
+        joined passage on the next line. ``<start>`` is the wall-clock
+        time the block opened (``HH:MM:SS``); ``<end>`` is the wall-clock
+        time of the close; ``<duration>`` is the monotonic delta in
+        seconds. Both clocks are injected, so tests render a deterministic
+        ``0s`` / ``10s`` / ``<m>m<ss>s`` shape.
         """
         if unit_id not in self._active_block:
             return
@@ -856,6 +986,12 @@ class ParallelDisplay:
         base_tag, accumulated = self._active_block.pop(unit_id)
         self._last_checkpoint_chars.pop(unit_id, None)
         self._active_block_chars.pop(unit_id, None)
+        # S-13: pop the recorded block-open wall + monotonic times so the
+        # close line can carry the sanctioned sketch-J span and duration.
+        open_wall = self._block_open_wall.pop(unit_id, None)
+        open_mono = self._block_open_mono.pop(unit_id, None)
+        end_wall = self._clock()
+        end_mono = self._monotonic()
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
         if block_tags is None:
             return
@@ -885,21 +1021,53 @@ class ParallelDisplay:
             with contextlib.suppress(Exception):
                 overflow.append(sanitized_joined)
                 self._check_overflow_size(unit_id, overflow)
-        # S-7 / S-9 (wt-028-display P1 / AC-04 / AC-05): single-entry
+        # S-7 / S-9 / S-13 (wt-028-display P1 / AC-04 / AC-05): single-entry
         # shape with human vocabulary only. The "fragments" footer
         # and the "CONT" category are machine vocabulary and
         # belong on no surface. The close line carries the base
-        # tag, the joined passage, and (when oversized) the
+        # tag, a span and duration suffix, and (when oversized) the
         # condensation marker the condenser already produced; the
         # verbatim overflow log under .agent/raw/<safe_id>.log
         # remains the destination the marker points to.
-        body = f"\u22ef {base_tag}\n{visible}"
-        self._console.print(
-            self._build_line(timestamp, "INFO", "", f"[{base_tag}][{rendered_unit_id}] {body}"),
-            markup=False,
-            highlight=False,
-            no_wrap=False,
-            overflow="fold",
+        start_str = (
+            self._format_hh_mm_ss(open_wall) if open_wall is not None else "??:??:??"
+        )
+        end_str = self._format_hh_mm_ss(end_wall)
+        if open_mono is not None:
+            duration_str = self._format_duration(end_mono - open_mono)
+        else:
+            duration_str = "0s"
+        body = (
+            f"\u22ef {base_tag} \u00b7 {start_str} \u2192 {end_str} \u00b7 {duration_str}\n{visible}"
+        )
+        # S-7 (AC-07): quiet mode suppresses the terminal surface;
+        # the record append below still runs so the file surface
+        # keeps the same close entry.
+        if not self._is_quiet:
+            self._console.print(
+                self._build_line(
+                    timestamp, "INFO", "", f"[{base_tag}][{rendered_unit_id}] {body}"
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=False,
+                overflow="fold",
+            )
+
+        # S-13 (wt-028-display P1 / AC-02 / AC-03): the close entry is
+        # also the single record entry for the streaming block. Map the
+        # base_tag back to an ``ActivityEventKind`` so the record line
+        # carries the same kind vocabulary as the live log.
+        _base_tag_to_kind = {
+            "content": ActivityEventKind.TEXT,
+            "thinking": ActivityEventKind.THINKING,
+        }
+        record_kind = _base_tag_to_kind.get(base_tag, ActivityEventKind.TEXT)
+        self._append_recorded_entry(
+            unit_id,
+            event_kind=record_kind,
+            body=visible,
+            timestamp=timestamp,
         )
 
     def flush_blocks(self) -> None:
@@ -923,10 +1091,18 @@ class ParallelDisplay:
         Returning ``None`` here causes ``emit_activity_line`` to skip the
         per-fragment console-print while the fragment is still buffered
         into ``_active_block`` for ``_close_block`` to join.
+
+        S-13 (wt-028-display P1): record block-open wall + monotonic times
+        so the close path can render the sanctioned sketch-J span
+        ``start → end`` and duration ``<n>s`` / ``<m>s<n>s`` shape. Both
+        clocks flow through the injected ``self._clock`` and
+        ``self._monotonic`` so tests stay deterministic.
         """
         self._active_block[ctx.unit_id] = (ctx.base_tag, [ctx.content])
         self._last_checkpoint_chars[ctx.unit_id] = 0
         self._active_block_chars[ctx.unit_id] = len(ctx.content)
+        self._block_open_wall[ctx.unit_id] = self._clock()
+        self._block_open_mono[ctx.unit_id] = self._monotonic()
         self._update_counters(ctx.kind, is_new_block=True)
         return None  # S-7: suppress per-fragment emission; close emits one entry
 
@@ -1310,17 +1486,189 @@ class ParallelDisplay:
 
         P0 (wt-028-display S-11 / AC-07): the writer is created on
         first use so quiet-mode runs and tests that never emit
-        activity events pay nothing. Quiet mode returns ``None`` so
-        the caller can skip the append in a single guarded branch.
-        ``drop_unit`` flushes and removes the writer; ``stop()``
-        flushes any straggler writers at run end so a buffered line
-        is not lost.
+        activity events pay nothing. ``drop_unit`` flushes and
+        removes the writer; ``stop()`` flushes any straggler
+        writers at run end so a buffered line is not lost.
+
+        S-7 (wt-028-display P1 / AC-07): quiet mode no longer
+        suppresses the file surface. The terminal surface is silent
+        (``_is_quiet`` still short-circuits ``emit_activity_line``
+        and the phase-banner methods), but the rendered record
+        receives the same presented entries a non-quiet run would
+        have written. Plumbing commands are unaffected because
+        they never reach ``_emit_activity_event`` (they emit status
+        and progress through their own sinks).
         """
-        if self._is_quiet:
-            return None
         if unit_id not in self._rendered_writers:
-            self._rendered_writers[unit_id] = RenderedRecordWriter(self._workspace_root, unit_id)
+            self._rendered_writers[unit_id] = RenderedRecordWriter(
+                self._workspace_root, unit_id
+            )
+            # S-15 (AC-05): a phase_start may have arrived before any
+            # unit produced a visible event. Flush the buffered
+            # headers into the freshly-spawned writer so the
+            # rendered record carries the phase boundary at the
+            # right place.
+            self._flush_pending_phase_headers(unit_id)
         return self._rendered_writers[unit_id]
+
+    def _flush_pending_phase_headers(self, unit_id: str) -> None:
+        """Drain buffered phase-start headers into ``unit_id``'s record.
+
+        The buffer holds entries whose phase_start happened before
+        any writer existed; once the first writer is created, the
+        headers are flushed in arrival order so the rendered record
+        shows the phase boundary at the correct position relative to
+        the first event. The buffer is always drained (not partially
+        flushed) so a stale header cannot leak into a later wave.
+        """
+        if not self._pending_phase_headers:
+            return
+        for entry in self._pending_phase_headers:
+            cycle_value = entry["cycle"]
+            cycle_int = int(cycle_value) if isinstance(cycle_value, int) else None
+            self._append_recorded_entry(
+                unit_id,
+                event_kind=ActivityEventKind.LIFECYCLE,
+                body=str(entry["body"]),
+                timestamp=str(entry["timestamp"]),
+                phase=str(entry["phase"]) if entry["phase"] is not None else None,
+                cycle=cycle_int,
+                iter_=str(entry["iter_"]) if entry["iter_"] is not None else None,
+            )
+        self._pending_phase_headers.clear()
+
+    def _append_recorded_entry(
+        self,
+        unit_id: str,
+        *,
+        event_kind: ActivityEventKind,
+        body: str,
+        timestamp: str,
+        metadata: dict[str, object] | None = None,
+        phase: str | None = None,
+        cycle: int | None = None,
+        iter_: str | None = None,
+    ) -> None:
+        """Append a presented entry to the rendered record at the seam.
+
+        S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered record
+        consumes the same stream the live log emits so the file
+        surface and the terminal surface present one entry per
+        logical event, in the same order, with the same vocabulary.
+        The caller is responsible for stamping the entry with the
+        display clock (``self._clock()``); the record line carries a
+        real ``[hh:mm:ss]`` slot, never ``[??:??:??]``.
+
+        Cross-kind identical-content dedup: a second entry for the
+        same unit with a byte-identical body to the immediately
+        previous entry is dropped on the file surface. This kills
+        the ``text:`` / ``thinking:`` double that pi (and others)
+        emit when the agent's reasoning pass writes the same content
+        through both channels.
+
+        SUBAGENT_PROGRESS is intentionally routed through this seam
+        (not the per-event append it used to live on) so the
+        watchdog audit-trail entry is still recorded; the live
+        console continues to skip it via the ``emit_activity_line``
+        guard so the live log and the record are still one entry
+        per visible event.
+
+        Suppresses on any writer error so a transient disk failure
+        cannot break the display path.
+        """
+        if not body.strip():
+            # S-14 (AC-04): never record an empty-body entry.
+            return
+        writer = self._get_rendered_writer(unit_id)
+        if writer is None:
+            return
+        # Cross-kind identical-content dedup at the seam.
+        prev = self._last_recorded_body.get(unit_id)
+        if prev is not None and prev == body:
+            return
+        # Build the canonical PresentedEntry so the writer's
+        # formatter produces the stable field-order line.
+        from ralph.display.agent_event_renderer import make_event_for_emit
+        from ralph.display.presented_entry import build_presented_entry
+
+        event = make_event_for_emit(
+            event_kind,
+            body,
+            timestamp=timestamp,
+            metadata=metadata or {},
+            source=unit_id,
+        )
+        entry = build_presented_entry(
+            event,
+            unit_id=unit_id,
+            timestamp=timestamp,
+            phase=phase,
+            cycle=cycle,
+            iter_=iter_,
+        )
+        with contextlib.suppress(Exception):
+            writer.append(entry)
+            self._last_recorded_body[unit_id] = body
+
+    def _emit_phase_header_record(
+        self,
+        phase: str,
+        transition: str,
+        *,
+        cycle: int | None = None,
+        iter_: str | None = None,
+        agent_name: str | None = None,
+    ) -> None:
+        """Append a phase-header record entry to every active unit's record.
+
+        S-15 (wt-028-display P1 / AC-05): phase banners on the live
+        surface (``emit_phase_start`` / ``emit_phase_close_from_exit``)
+        carry rich glyphs and the phase label; the corresponding
+        record line is the text-first equivalent -- ``kind=lifecycle``,
+        ``phase=<phase>``, ``body=phase_start`` / ``body=phase_close``,
+        ``role=phase_header``, ``indent_level=0`` -- so a reader of
+        ``.agent/raw/<id>.rendered.log`` can locate the phase
+        boundaries without parsing Rich output. The entry is written
+        to every unit that already has a writer (i.e. units that have
+        produced visible events this run); units with no writer yet
+        are skipped because the phase banner is a global event and
+        creating an empty record for a phase-only run would create
+        stale ``.agent/raw/<id>.rendered.log`` files.
+
+        ``transition`` is the canonical body token (``phase_start``
+        or ``phase_close``); a future transition (``phase_pause``,
+        ``phase_resume``) extends the contract by adding one new
+        token, never a new field.
+        """
+        timestamp = self._format_timestamp(self._clock())
+        body = f"{transition} phase={phase}"
+        if agent_name is not None:
+            body = f"{body} agent={agent_name}"
+        if not self._rendered_writers:
+            # No writer yet: buffer the header so the first writer
+            # spawn can flush it (S-15 / AC-05). The header carries
+            # the same body so the rendered record line is identical
+            # whether the writer existed at phase_start time or not.
+            self._pending_phase_headers.append(
+                {
+                    "body": body,
+                    "timestamp": timestamp,
+                    "phase": phase,
+                    "cycle": cycle,
+                    "iter_": iter_,
+                }
+            )
+            return
+        for unit_id in list(self._rendered_writers.keys()):
+            self._append_recorded_entry(
+                unit_id,
+                event_kind=ActivityEventKind.LIFECYCLE,
+                body=body,
+                timestamp=timestamp,
+                phase=phase,
+                cycle=cycle,
+                iter_=iter_,
+            )
 
     def _raw_overflow_write(self, unit_id: str, raw_line: str) -> None:
         """Write a raw malformed line to the per-unit overflow log for diagnosis.
@@ -1550,6 +1898,7 @@ class ParallelDisplay:
                     summary_line=effective_summary_line,
                     ai_summary_line=ai_summary_line,
                     tool_signature=tool_signature,
+                    activity_metadata=metadata,
                 ),
             )
 
@@ -1577,20 +1926,29 @@ class ParallelDisplay:
                     with contextlib.suppress(Exception):
                         self._console.print(preview)
 
-        # P0 (wt-028-display S-11 / AC-07): the same event that
-        # lands in the live log also lands in the rendered record.
-        # ``build_presented_entry`` returns the canonical
-        # ``PresentedEntry`` (one timestamp, one identity, one
-        # severity) the writer's ``_format_entry_line`` consumes.
-        # The append is suppressed on any exception so a writer
-        # error can never break the live display path.
-        with contextlib.suppress(Exception):
-            writer = self._get_rendered_writer(unit_id)
-            if writer is not None:
-                from ralph.display.presented_entry import build_presented_entry
-
-                entry = build_presented_entry(event, unit_id=unit_id)
-                writer.append(entry)
+        # S-13 (wt-028-display P1 / AC-02 / AC-03): the rendered
+        # record append now lives at the shared presentation seam
+        # (the ``emit_activity_line`` print path and the
+        # ``_close_block`` single close entry). The per-event append
+        # here is gone so the file surface cannot drift ahead of the
+        # terminal surface (the original bug: raw events appended
+        # upstream of the streaming-block coalescing produced
+        # doubled / fragmented rows the operator never saw).
+        #
+        # The watchdog companion (``SUBAGENT_PROGRESS``) still needs
+        # an audit-trail entry, but its live console emission is
+        # suppressed inside ``emit_activity_line`` so the file
+        # surface and the terminal surface remain one entry per
+        # visible event. We route that companion through the seam
+        # explicitly with the display clock.
+        if kind is ActivityEventKind.SUBAGENT_PROGRESS:
+            self._append_recorded_entry(
+                unit_id,
+                event_kind=kind,
+                body=visible,
+                timestamp=self._format_timestamp(self._clock()),
+                metadata=metadata,
+            )
 
         self._emit_drop_warning(unit_id)
 
@@ -1627,6 +1985,16 @@ class ParallelDisplay:
             with contextlib.suppress(Exception):
                 writer.disable()
         self._rendered_writers.clear()
+        # S-23 (wt-028-display P1 / AC-06): flush the verbatim
+        # overflow logs too so the condensed-content marker on the
+        # rendered record line points at a file that has the
+        # unabridged body on disk. ``RawOverflowLog`` buffers in
+        # userspace; without this flush the marker would advertise a
+        # reference that is empty until the 5-second flush interval
+        # elapses (or run end never arrives).
+        for overflow in self._overflow_logs.values():
+            with contextlib.suppress(Exception):
+                overflow.flush()
 
     def update_status_bar(self, model: object) -> None:
         """Push a new :class:`StatusBarModel` to the composed StatusBar.
@@ -2010,6 +2378,23 @@ class ParallelDisplay:
             self._last_phase_artifact_outcome = exit_model.artifact_outcome
             self._phase_close_emitted = True
             iter_ctx = exit_model.to_iteration_context()
+        # S-15 (AC-05): write the phase-close record entry outside
+        # the suppressed body block so a record-side error cannot
+        # roll back the live emission (or vice versa). The
+        # ``_append_recorded_entry`` helper is itself suppress-
+        # guarded, so a phase-close record failure stays invisible.
+        with contextlib.suppress(Exception):
+            self._emit_phase_header_record(
+                exit_model.phase_name,
+                "phase_close",
+                cycle=exit_model.outer_dev_iteration,
+                iter_=(
+                    f"{exit_model.inner_analysis}/{exit_model.inner_analysis_cap}"
+                    if exit_model.inner_analysis is not None
+                    and exit_model.inner_analysis_cap is not None
+                    else None
+                ),
+            )
             counter_overrides = None
             if (
                 exit_model.content_blocks > 0
@@ -2233,6 +2618,14 @@ class ParallelDisplay:
             if agent_name is not None:
                 line.append(f"  agent={agent_name}", style="theme.text.muted")
             c.print(line)
+        # S-15 (AC-05): write the phase-header record entry so the
+        # text-first surface carries the phase boundary.
+        with contextlib.suppress(Exception):
+            self._emit_phase_header_record(
+                phase,
+                "phase_start",
+                agent_name=agent_name,
+            )
 
     def emit_phase_start_from_entry(
         self,
@@ -2257,6 +2650,20 @@ class ParallelDisplay:
             start_glyph = self._ctx.glyph_for("start")
             od_glyph = self._ctx.glyph_for("outer_dev")
             ia_glyph = self._ctx.glyph_for("inner_analysis")
+        # S-15 (AC-05): write the phase-header record entry.
+        with contextlib.suppress(Exception):
+            self._emit_phase_header_record(
+                entry.phase_name,
+                "phase_start",
+                cycle=entry.outer_dev_iteration,
+                iter_=(
+                    f"{entry.inner_analysis}/{entry.inner_analysis_cap}"
+                    if entry.inner_analysis is not None
+                    and entry.inner_analysis_cap is not None
+                    else None
+                ),
+                agent_name=entry.agent_name,
+            )
 
             rule_title = Text()
             rule_title.append(f"{start_glyph} ", style=style)
@@ -3198,16 +3605,37 @@ class ParallelDisplay:
         ``ActivityRouter``. Safe to call for a unit that was never
         added; missing entries are silently skipped.
         """
-        overflow = self._overflow_logs.pop(unit_id, None)
-        if overflow is not None:
-            overflow.close()
         self._overflow_warned.discard(unit_id)
         self._drop_last_warned.pop(unit_id, None)
         self._last_emitted_tool_signature.pop(unit_id, None)
         self._last_worker_states.pop(unit_id, None)
+        # S-13 (wt-028-display P1 / AC-02): close any open
+        # streaming block for this unit so the seam-append path
+        # emits the close entry (carrying the joined passage, span,
+        # and duration) and the rendered record receives the
+        # matching single entry. Without this, ``drop_unit`` would
+        # flush an empty writer for streaming-kinds runs and the
+        # close entry would vanish on the file surface.
+        # S-23 (wt-028-display P1): the close MUST run BEFORE the
+        # overflow log is popped so the close path's appended
+        # buffered full payload lands in the same RawOverflowLog
+        # the original event opened (and that drop_unit will close).
+        if unit_id in self._active_block:
+            with contextlib.suppress(Exception):
+                self._close_block(unit_id, self._format_timestamp(self._clock()))
         self._active_block.pop(unit_id, None)
         self._active_block_chars.pop(unit_id, None)
         self._last_checkpoint_chars.pop(unit_id, None)
+        self._last_recorded_body.pop(unit_id, None)
+        # S-23 (wt-028-display P1): close the overflow log AFTER
+        # the streaming-block close so the buffered full payload
+        # lands in the same handle drop_unit is about to close.
+        overflow = self._overflow_logs.pop(unit_id, None)
+        if overflow is not None:
+            with contextlib.suppress(Exception):
+                overflow.flush()
+            with contextlib.suppress(Exception):
+                overflow.close()
         # P0 (wt-028-display S-11 / AC-07): the rendered-record
         # writer is per-unit; ``drop_unit`` flushes the buffered
         # entries to ``.agent/raw/<safe_id>.rendered.log`` and

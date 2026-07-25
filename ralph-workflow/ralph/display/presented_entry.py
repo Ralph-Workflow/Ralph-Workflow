@@ -128,6 +128,16 @@ def build_presented_entry(
     rather than embedded glyphs. The mapping is fixed in
     :data:`_KIND_TO_GROUPING`; adding a new event kind means
     picking a role there once.
+
+    S-14 (wt-028-display P1 / AC-04): severity is derived from
+    *outcome* metadata for ``TOOL_RESULT`` (nonzero exit code or
+    explicit ``is_error=True`` \u2192 ``error``; otherwise
+    ``info``). ``ERROR`` is the only kind that maps to
+    ``severity=error`` unconditionally. The
+    ``UNKNOWN``-as-``info`` fallback (the AC-04 missing-data
+    graceful-degrade contract) is preserved: when a ``TOOL_RESULT``
+    omits its exit code and error flag, the renderer does not
+    invent a failure; it stays ``info``.
     """
     identity = unit_id or ""
     metadata: dict[str, object] = {}
@@ -136,15 +146,7 @@ def build_presented_entry(
         body = str(event.content)
     if event.metadata:
         metadata.update(event.metadata)
-    severity = "info"
-    if event.kind in (
-        ActivityEventKind.TOOL_RESULT,
-        ActivityEventKind.ERROR,
-        ActivityEventKind.UNKNOWN,
-    ):
-        severity = "warn"
-    if event.kind == ActivityEventKind.ERROR:
-        severity = "error"
+    severity = _derive_severity(event.kind, metadata)
     grouping_role, indent_level = _KIND_TO_GROUPING.get(
         event.kind, ("agent_text", 0)
     )
@@ -161,6 +163,77 @@ def build_presented_entry(
         indent_level=indent_level,
         grouping_role=grouping_role,
     )
+
+
+def _derive_severity(
+    kind: ActivityEventKind, metadata: dict[str, object]
+) -> str:
+    """Return ``info`` / ``warn`` / ``error`` for ``kind`` + outcome metadata.
+
+    S-14 (wt-028-display P1 / AC-04): the bug was that every
+    ``TOOL_RESULT`` (and ``UNKNOWN``) became ``severity=warn``
+    regardless of outcome, and ``ERROR`` was also ``warn`` not
+    ``error``. Severity now reflects outcome:
+
+    * ``ERROR`` \u2192 ``error`` (the only kind that is unconditional).
+    * ``TOOL_RESULT``: outcome metadata drives the verdict. A
+      truthy ``is_error``, a nonzero ``exit_code`` / ``status``
+      / ``error_code`` (or any numeric metadata value whose
+      ``int(...)`` is nonzero), or a present ``error`` /
+      ``stderr`` payload \u2192 ``error``. A missing or zero outcome
+      \u2192 ``info`` (missing-data graceful-degrade).
+    * ``UNKNOWN`` \u2192 ``info`` (the designed fallback).
+    * Everything else \u2192 ``info``.
+
+    The function never invents a failure when outcome metadata is
+    absent; it preserves the operator's principle "the file
+    surface and the terminal surface carry the same vocabulary",
+    so a successful tool result renders ``info`` on both surfaces
+    and a failed one renders ``error`` on both.
+    """
+    if kind is ActivityEventKind.ERROR:
+        return "error"
+    if kind is ActivityEventKind.TOOL_RESULT:
+        if _outcome_is_failure(metadata):
+            return "error"
+        return "info"
+    if kind is ActivityEventKind.UNKNOWN:
+        return "info"
+    return "info"
+
+
+def _outcome_is_failure(metadata: dict[str, object]) -> bool:
+    """True when the tool-result outcome metadata flags a failure.
+
+    Inspects the conventional parser metadata keys
+    (``is_error``, ``exit_code``, ``status``, ``error_code``,
+    ``error``, ``stderr``). The first three are explicit signals;
+    a present ``error`` or ``stderr`` payload is treated as a
+    failure even without an explicit code, because the parser
+    only emits those when something went wrong.
+    """
+    if not metadata:
+        return False
+    flag = metadata.get("is_error")
+    if isinstance(flag, bool) and flag:
+        return True
+    for key in ("exit_code", "status", "error_code"):
+        if _code_value_is_failure(metadata.get(key)):
+            return True
+    return bool(metadata.get("error") or metadata.get("stderr"))
+
+
+def _code_value_is_failure(value: object) -> bool:
+    """True for explicit outcome codes that mean failure."""
+    if isinstance(value, bool):
+        # ``status=True`` is success; ``status=False`` is failure.
+        return value is False
+    if isinstance(value, (int, float)):
+        return int(value) != 0
+    if isinstance(value, str):
+        stripped = value.strip()
+        return bool(stripped) and stripped != "0"
+    return False
 
 
 #: Map ``ActivityEventKind`` to ``(grouping_role, indent_level)`` for

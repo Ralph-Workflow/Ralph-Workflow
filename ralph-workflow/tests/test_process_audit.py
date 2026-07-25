@@ -142,6 +142,11 @@ TESTS_ALLOWLIST: set[str] = {
     # up the crashed state and drive the recovery + resume argv.
     "test_auto_integrate_rung4_self_resume.py",
     "test_check_route_page_links.py",  # drives a real git subprocess to validate route-page link contracts
+    # Patches ``os.killpg`` via monkeypatch to record what production teardown
+    # would have signalled; no real subprocess or signal is delivered. The
+    # regression test pins the AC-12 ownership guard (PID 1 and already-reaped
+    # children must never reach the signal path).
+    "test_teardown_ownership_guard.py",
 }
 
 _MCP_FIXTURE_FILES = {

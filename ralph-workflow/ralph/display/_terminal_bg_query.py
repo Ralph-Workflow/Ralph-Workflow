@@ -75,9 +75,11 @@ _REPLY_TERMINATORS: Final[tuple[str, ...]] = ("\x07", "\x1b\\")
 
 _HEX_DIGITS_PER_BYTE: Final[int] = 2
 
-#: Process-lifetime cache. ``False`` means "probe already ran and found
-#: nothing"; a ``str`` is the resolved ``#RRGGBB``.
-_cached_background: str | None | bool = False
+#: Process-lifetime cache. ``None`` means "probe has not yet run" OR
+#: "probe ran and the terminal gave no usable reply"; a ``str`` is the
+#: resolved ``#RRGGBB``. The :data:`_probed` flag disambiguates.
+_cached_background: str | None = None
+_probed: bool = False
 
 
 def _scale_channel(raw: str) -> int:
@@ -198,11 +200,12 @@ def query_terminal_background_hex(
     Returns:
         The measured background colour as ``#RRGGBB``, or ``None``.
     """
-    global _cached_background  # noqa: PLW0603 - process-lifetime memo of an immutable probe
-    if _cached_background is not False:
-        return _cached_background  # type: ignore[return-value]
+    global _cached_background, _probed  # noqa: PLW0603 - process-lifetime memo of an immutable probe
+    if _probed:
+        return _cached_background
     result = _probe(timeout)
     _cached_background = result
+    _probed = True
     return result
 
 
@@ -212,8 +215,9 @@ def reset_cache() -> None:
     Exists for tests and for callers that deliberately want a fresh
     measurement; production code relies on the cache.
     """
-    global _cached_background  # noqa: PLW0603 - test seam for the memo above
-    _cached_background = False
+    global _cached_background, _probed  # noqa: PLW0603 - test seam for the memo above
+    _cached_background = None
+    _probed = False
 
 
 __all__ = [

@@ -30,6 +30,14 @@ import pytest
 from ralph.executor._process_run_options import ProcessRunOptions
 from ralph.executor.process import TIMEOUT_EXIT_CODE, run_process
 
+# Real POSIX process-tree teardown coverage. The tests must
+# actually fork, exec, and wait for OS-level process state
+# transitions (PID alive / gone, signal delivery, reparenting
+# to PID 1), so a fake clock / fake subprocess cannot stand in
+# for the system under test. Wall-clock and sleep() are part
+# of the contract.
+pytestmark = pytest.mark.subprocess_e2e
+
 # A grandchild that outlives its parent: the parent forks it, prints its PID,
 # and exits immediately. Nothing but a transitive reaper reaches it.
 _ORPHAN_MAKER = textwrap.dedent(

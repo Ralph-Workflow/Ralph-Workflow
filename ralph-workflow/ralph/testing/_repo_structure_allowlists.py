@@ -987,6 +987,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/display/parallel_display.py", 1968),
         ("ralph/mcp/server/_metrics.py", 77),
         ("ralph/mcp/server/_metrics.py", 86),
+        # process-lifetime memo of an immutable terminal probe (OSC 11)
+        # and the disambiguating _probed flag — see audit_lint_bypass for
+        # the policy-compliant rationale.
+        ("ralph/display/_terminal_bg_query.py", 203),
+        ("ralph/display/_terminal_bg_query.py", 218),
         ("ralph/mcp/tools/artifact.py", 239),
         ("ralph/mcp/tools/artifact.py", 269),
         ("ralph/mcp/tools/artifact.py", 386),

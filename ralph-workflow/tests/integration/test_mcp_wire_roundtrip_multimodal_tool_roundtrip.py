@@ -222,7 +222,7 @@ class TestMultimodalToolRoundtrip:
         list_req = JsonRpcRequest(jsonrpc="2.0", method="resources/list", params={}, msg_id=20)
         list_resp, _ = server.handle_request(list_req, state)
         assert list_resp is not None and list_resp.result is not None
-        resources = must_mapping(list_resp.result).get("resources", []),
+        resources = must_mapping(list_resp.result).get("resources", [])
         resource_uris = {r.get("uri") for r in resources}
         assert uri in resource_uris, f"URI {uri!r} not found in resources/list: {resource_uris}"
 
@@ -234,7 +234,7 @@ class TestMultimodalToolRoundtrip:
         assert read_resp is not None and read_resp.result is not None, (
             f"resources/read failed: {read_resp}"
         )
-        contents = must_mapping(read_resp.result).get("contents", []),
+        contents = must_mapping(read_resp.result).get("contents", [])
         assert len(contents) == 1
         assert contents[0].get("uri") == uri
         assert contents[0].get("mimeType") == "application/pdf"
@@ -280,7 +280,7 @@ class TestMultimodalToolRoundtrip:
         assert read_resp is not None and read_resp.result is not None, (
             f"resources/read failed for audio: {read_resp}"
         )
-        contents = must_mapping(read_resp.result).get("contents", []),
+        contents = must_mapping(read_resp.result).get("contents", [])
         assert len(contents) == 1
         assert contents[0].get("uri") == uri
         assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
@@ -324,7 +324,7 @@ class TestMultimodalToolRoundtrip:
         assert read_resp is not None and read_resp.result is not None, (
             f"resources/read failed for video: {read_resp}"
         )
-        contents = must_mapping(read_resp.result).get("contents", []),
+        contents = must_mapping(read_resp.result).get("contents", [])
         assert len(contents) == 1
         assert contents[0].get("uri") == uri
         assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0

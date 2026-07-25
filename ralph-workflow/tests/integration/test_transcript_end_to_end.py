@@ -217,18 +217,19 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     assert run_start_idx < planning_idx, "run-start should appear before the first phase transition"
 
     # --- Assert streaming content block structure ---
-    # S-7 / S-9 (wt-028-display P1): one entry per block close, with
-    # the joined passage only. The close-line tag is ``[content]``
-    # (NOT ``[content-start]`` / ``[content-end]``); there are no
-    # per-fragment ``[content-continue#N]`` markers because the
-    # streaming layer is silent during open / continue. The
-    # ``fragments`` / ``chars`` footers are machine vocabulary and
-    # belong on no surface.
+    # S-7 (wt-028-display P1): one entry per block close, with the
+    # joined passage. The close-line tag is ``[content]`` (NOT
+    # ``[content-start]`` / ``[content-end]``); there are no per-fragment
+    # ``[content-continue#N]`` markers because the streaming layer is
+    # silent during open / continue.
     assert "[content]" in out, "Transcript should contain a [content] close line"
-    # The retired fragment-count footer must NOT surface.
-    assert "fragments" not in out, (
-        "Close line must not carry the retired 'fragments' footer; machine vocabulary"
-    )
+    # S-2 (wt-028-display P1): close-line shape carries span + duration
+    # via the sketch-J shape ``⋯ <tag> · <start> → <end> · <duration>``
+    # followed by the joined passage. The retirement of the S-9
+    # ``fragments`` / ``chars`` footer vocabulary is part of the SAME
+    # deliberate contract change, so the transcript must NOT contain
+    # the retired tokens either.
+    assert "→" in out, "Transcript should contain span → end character on close"
     # The pre-S-7 per-fragment / preview tokens must NOT surface.
     for forbidden in (
         "[content-start]",

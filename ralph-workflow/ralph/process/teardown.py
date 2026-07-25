@@ -57,9 +57,7 @@ _MAX_ANCESTOR_WALK: int = 32
 # alive. Ownership cannot be re-derived once the leader exits — the PID number
 # is reusable — so it is proven up front and remembered here.
 _SESSION_REGISTRY_MAX: int = 256
-# bounded-accumulator-ok: FIFO-evicted at _SESSION_REGISTRY_MAX entries, and
-# each entry is dropped by teardown_subtree as soon as its subtree is reaped.
-_SESSION_REGISTRY: OrderedDict[int, int] = OrderedDict()
+_SESSION_REGISTRY: OrderedDict[int, int] = OrderedDict()  # bounded-accumulator-ok: FIFO-evicted at _SESSION_REGISTRY_MAX entries, and each entry is dropped by teardown_subtree as soon as its subtree is reaped.
 _SESSION_REGISTRY_LOCK = threading.Lock()
 
 

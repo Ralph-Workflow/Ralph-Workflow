@@ -67,21 +67,22 @@ def test_emit_parsed_event_writes_one_line_to_rendered_record(tmp_path: Path) ->
 
 
 def test_emit_parsed_event_writes_one_line_per_event(tmp_path: Path) -> None:
-    """N events produce N lines in the rendered record (one entry per event).
+    """N non-streaming events produce N lines in the rendered record.
 
-    This is the AC-07 invariant: the same logical event is rendered
-    once. The live log and the rendered record both carry exactly
-    one entry per event - preview-then-repeat and
-    preview-then-summary duplication is gone from the rendered
-    surface.
+    This is the AC-07 invariant for non-streaming kinds (e.g.
+    ``TOOL_USE``): the same logical event is rendered once. The
+    live log and the rendered record both carry exactly one entry
+    per event. Streaming kinds (``TEXT`` / ``THINKING``) are
+    coalesced into one entry per streaming block, pinned by
+    ``test_plain_renderer_kind_tags.py``'s close-line shape tests.
     """
     pd, _buf = _make_display(tmp_path)
     for index in range(5):
         pd.emit_parsed_event(
             unit_id="codex",
-            kind=ActivityEventKind.TEXT,
+            kind=ActivityEventKind.TOOL_USE,
             content=f"event {index} body",
-            metadata={},
+            metadata={"tool_name": "read_file", "tool_path": f"/tmp/f{index}.txt"},
         )
     pd.stop()
     expected_path = tmp_path / ".agent" / "raw" / f"{safe_id_for('codex')}.rendered.log"
@@ -92,8 +93,54 @@ def test_emit_parsed_event_writes_one_line_per_event(tmp_path: Path) -> None:
         assert f"event {index} body" in body
 
 
-def test_quiet_mode_does_not_open_rendered_writer(tmp_path: Path) -> None:
-    """Quiet mode skips the writer entirely so single-line runs pay nothing."""
+def test_streaming_kinds_coalesce_to_single_record_entry(tmp_path: Path) -> None:
+    """S-13 (AC-02): N streaming fragments coalesce to one record entry.
+
+    The rendered record appends from the shared presentation seam
+    (the ``_close_block`` single close entry), so streaming
+    fragments share the same coalesced passage that the live log
+    shows. Five ``TEXT`` events for the same unit produce exactly
+    one record line carrying the joined passage; the per-fragment
+    record entries are gone. The close-line span/duration header
+    is a live-log surface concern, not a record concern: the
+    record line carries the joined body, not the visual close
+    header.
+    """
+    pd, _buf = _make_display(tmp_path)
+    for index in range(5):
+        pd.emit_parsed_event(
+            unit_id="pi",
+            kind=ActivityEventKind.TEXT,
+            content=f"event {index} body",
+            metadata={},
+        )
+    pd.stop()
+    expected_path = tmp_path / ".agent" / "raw" / f"{safe_id_for('pi')}.rendered.log"
+    body = expected_path.read_text(encoding="utf-8")
+    lines = [line for line in body.splitlines() if line.strip()]
+    assert len(lines) == 1, f"expected 1 coalesced line, got {len(lines)}: {lines!r}"
+    # Joined passage carries all five fragments.
+    for index in range(5):
+        assert f"event {index} body" in body
+    # The record line is text-first: no glyphs like \u22ef or
+    # \u2192 from the visual close header leak into the record
+    # body. Span / duration are live-log surface concerns.
+    assert "\u22ef" not in body
+    assert "\u2192" not in body
+
+
+def test_quiet_mode_writes_rendered_writer(tmp_path: Path) -> None:
+    """S-7 (AC-07): quiet mode writes the record but silences the terminal surface.
+
+    The pre-S-7 contract was "quiet mode skips the writer
+    entirely so single-line runs pay nothing". The refined
+    contract is "quiet mode suppresses the terminal surface only;
+    the rendered record is a content audit trail and must receive
+    the same presented entries a non-quiet run would have written"
+    so a headless run leaves the same trail as an interactive one.
+    Plumbing commands never reach ``emit_parsed_event``, so they
+    never create spurious record entries.
+    """
     _pd, _buf = _make_display(tmp_path)
     pd_quiet = ParallelDisplay(
         make_display_context(
@@ -110,11 +157,12 @@ def test_quiet_mode_does_not_open_rendered_writer(tmp_path: Path) -> None:
         metadata={},
     )
     pd_quiet.stop()
-    # The quiet display never called ``_get_rendered_writer``, so the
-    # .agent/raw directory is either absent or contains no .rendered.log
-    # file for this unit.
     expected = tmp_path / ".agent" / "raw" / f"{safe_id_for('pi')}.rendered.log"
-    assert not expected.exists()
+    assert expected.exists(), (
+        f"Quiet mode must still write the rendered record; missing {expected}"
+    )
+    body = expected.read_text(encoding="utf-8")
+    assert "quiet event" in body
 
 
 def test_drop_unit_flushes_rendered_writer(tmp_path: Path) -> None:

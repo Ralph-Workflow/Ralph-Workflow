@@ -81,6 +81,12 @@ _BOUNDARY_HELPERS: frozenset[tuple[str, str]] = frozenset(
         ("_pty_line_reader", "parse_event"),
         ("_tool_call_extraction", "parse_event"),
         ("_completion", "parse_event"),
+        # ``ralph/display/edit_preview.py`` - pygments lexer-aliases
+        # boundary helper. The pygments ``Lexer`` class exposes an
+        # ``aliases`` attribute whose declared type varies by version
+        # (``()`` / ``Sequence[str]``); the helper normalises the shape
+        # for the rest of the module.
+        ("edit_preview", "_lexer_for_path"),
     }
 )
 

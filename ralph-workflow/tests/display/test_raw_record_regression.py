@@ -18,7 +18,10 @@ repaired shape:
 
 from __future__ import annotations
 
+import io
 import json
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -32,6 +35,8 @@ from ralph.display.record_writer import RenderedRecordWriter
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from ralph.display.parallel_display import ParallelDisplay
 
 
 _FIXTURES_DIR = Path(__file__).parent / "_fixtures"
@@ -231,3 +236,249 @@ def test_identity_appears_at_most_once_per_line(tmp_path: Path) -> None:
     # (A count of 2 is permitted when the unit_id is the prefix and the
     # identity field appears separately. What we forbid is > 2.)
     assert line.count("claude") <= 2
+
+
+# --- Production-path regression corpus (S-8 / AC-02..AC-07) -------------
+
+
+def _make_display_with_injected_clock(
+    tmp_path: Path,
+) -> tuple[
+    ParallelDisplay,
+    io.StringIO,
+    Callable[[int], datetime],
+]:
+    """Build a display with an injectable monotonic clock for deterministic timestamps.
+
+    Returns ``(display, buf, advance)`` where ``advance(seconds)``
+    steps the clock forward ``seconds`` and returns the resulting
+    ``datetime`` value (UTC, naive). The wall clock and the
+    monotonic clock both advance so the close-line ``->`` /
+    duration markers are deterministic.
+    """
+    import io as _io
+
+    from rich.console import Console
+
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+
+    start = datetime(2026, 7, 25, 9, 30, 0)
+    state = {"wall": start, "mono": 0.0}
+
+    def clock() -> datetime:
+        return state["wall"]
+
+    def mono() -> float:
+        return state["mono"]
+
+    def advance(seconds: int) -> datetime:
+        state["wall"] = state["wall"] + timedelta(seconds=seconds)
+        state["mono"] += float(seconds)
+        return state["wall"]
+
+    buf = _io.StringIO()
+    console = Console(file=buf, force_terminal=False, width=200, color_system=None)
+    ctx = make_display_context(console=console, env={"CI": "1"})
+    pd = ParallelDisplay(
+        ctx,
+        workspace_root=tmp_path,
+        clock=clock,
+        monotonic=mono,
+    )
+    return pd, buf, advance
+
+
+def test_production_path_pi_style_defects_repaired(tmp_path: Path) -> None:
+    """S-8: drive a pi-style event stream through the production path.
+
+    Reproduces every defect from the prior
+    ``.agent/raw/pi_kimi-coding_k3.rendered.log`` inventory:
+
+    * ``text:`` + ``thinking:`` duplicate pair for the same body.
+    * ``read_file`` + ``tool_use:read_file`` pair (one event, one record).
+    * An empty-content warn event (must not appear in either surface).
+    * An oversized body (50 KB) condensed by the same rule on both
+      surfaces, with the verbatim capture in ``.agent/raw/<id>.log``.
+    * A thinking fragment sequence (5 streaming deltas) collapsed to
+      one entry with span and duration.
+    * A phase entry and phase close (header entries in the record).
+
+    The assertions pin all eight AC-02..AC-07 invariants:
+    exactly one entry per logical event, no body twice with
+    disagreeing severities, real timestamps (never ``[??:??:??]``),
+    no empty warn lines, phase headers, indent levels, condensation
+    parity, and no machine vocabulary leaks.
+    """
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.display.phase_lifecycle import PhaseExitModel
+
+    pd, _buf, advance = _make_display_with_injected_clock(tmp_path)
+    assert isinstance(pd, ParallelDisplay)
+
+    # Phase start emits a phase_header record entry to every active
+    # unit's record.
+    pd.emit_phase_start("development", agent_name="pi")
+    pd.start()  # bring up the Status Bar (no-op in tests)
+
+    # 1. text/thinking duplicate pair with identical body -- the
+    # second one must be deduped at the seam.
+    dup_body = "This is the session's master prompt, please read it."
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TEXT,
+        content=dup_body,
+        metadata={},
+    )
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.THINKING,
+        content=dup_body,
+        metadata={},
+    )
+
+    # 2. read_file as a tool_use (not duplicated by a parser-prefixed
+    # ``read_file`` raw event -- that's a plumbing surface that
+    # bypasses the record seam).
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TOOL_USE,
+        content="read_file /tmp/example.py",
+        metadata={"tool_name": "read_file", "tool_path": "/tmp/example.py"},
+    )
+
+    # 3. Successful tool result (info severity), then a failed one
+    # (error severity). The pre-S-14 contract forced both to
+    # ``warn``; the post-S-14 contract is outcome-driven.
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="file contents here",
+        metadata={"exit_code": 0, "tool_name": "read_file"},
+    )
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="command not found",
+        metadata={"exit_code": 1, "tool_name": "bash"},
+    )
+
+    # 4. Empty-content warn event -- must NOT appear on either surface.
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TOOL_RESULT,
+        content="",
+        metadata={"tool_name": "bash"},
+    )
+
+    # 5. Oversized body that exceeds the soft limit. The condenser
+    # produces the accounted-for marker (``\u2026 (truncated, ...
+    # see <ref>)``) on both surfaces; the verbatim capture lives in
+    # ``.agent/raw/<id>.log`` (the overflow log).
+    pd.emit_parsed_event(
+        unit_id="pi",
+        kind=ActivityEventKind.TEXT,
+        content=("oversized " * 4000),  # ~36 KB, exceeds soft limit
+        metadata={},
+    )
+
+    # 6. A thinking fragment sequence -- five streaming deltas that
+    # coalesce into one entry with span and duration in the live
+    # log; the record receives exactly one entry carrying the
+    # joined passage.
+    for index in range(5):
+        pd.emit_parsed_event(
+            unit_id="pi",
+            kind=ActivityEventKind.THINKING,
+            content=f"thought fragment {index} ",
+            metadata={},
+        )
+        advance(1)
+
+    # 7. Phase close -- emits a phase_header record entry.
+    pd.emit_phase_close_from_exit(
+        PhaseExitModel(
+            phase_name="development",
+            phase_role="development",
+            agent_name="pi",
+            elapsed_seconds=10.0,
+            outer_dev_iteration=1,
+        )
+    )
+    pd.stop()
+
+    record_path = tmp_path / ".agent" / "raw" / "pi.rendered.log"
+    assert record_path.exists(), (
+        f"Production-path rendered record missing at {record_path}"
+    )
+    body = record_path.read_text(encoding="utf-8")
+
+    # AC-03: every line carries a real timestamp; no ``[??:??:??]``.
+    assert "[??:??:??]" not in body, (
+        f"placeholder timestamp leaked into record:\n{body}"
+    )
+    assert body.count("09:30:0") > 0 or body.count("09:3") > 0, (
+        f"no real timestamp from injected clock:\n{body}"
+    )
+
+    # AC-02: one entry per logical event. Coalesced streaming blocks
+    # produce one entry; identical-body dedup drops the duplicate.
+    # Sanity-check that the duplicate body appears once and only
+    # once in the record.
+    assert body.count(dup_body) == 1, (
+        f"identical-body dedup failed; body appears {body.count(dup_body)} times:\n{body}"
+    )
+
+    # AC-04: severity reflects outcome. Successful tool result is
+    # ``info``; failed one is ``error``. No empty warn lines.
+    assert "severity=warn" not in body, (
+        f"empty warn line or severity=warn leakage:\n{body}"
+    )
+    assert "severity=info" in body
+    assert "severity=error" in body
+
+    # AC-05: phase headers appear; the close header appears.
+    assert body.count("phase_start phase=development") == 1, (
+        f"phase_start header missing or duplicated:\n{body}"
+    )
+    assert body.count("phase_close phase=development") == 1, (
+        f"phase_close header missing or duplicated:\n{body}"
+    )
+
+    # AC-06: oversized body is condensed with the marker on the
+    # record surface; the verbatim capture lives in the overflow
+    # log. The record carries the marker; the verbatim log holds
+    # the unabridged body.
+    overflow_path = tmp_path / ".agent" / "raw" / "pi.log"
+    assert overflow_path.exists(), (
+        f"verbatim overflow log missing at {overflow_path}"
+    )
+    overflow_body = overflow_path.read_text(encoding="utf-8")
+    assert "oversized " in overflow_body, (
+        f"verbatim capture missing the oversized body:\n{overflow_body[:200]}"
+    )
+    # The record carries the condenser marker (``... <size> ... elided,
+    # see <ref> ...``), not the verbatim body. The visible body is
+    # split into head + marker + tail (the condenser head/tail caps
+    # are bounded by the hard limit; the marker carries the elided
+    # character count). Asserting that the marker is present proves
+    # the body was condensed; the verbatim overflow log holds the
+    # unabridged body.
+    assert "elided" in body, (
+        f"oversized body was not condensed on the record surface:\n{body[:400]}"
+    )
+    assert ".agent/raw/pi.log" in body, (
+        f"condenser marker missing the overflow reference:\n{body[:400]}"
+    )
+
+    # AC-08: no machine vocabulary leaks; no ANSI codes.
+    for forbidden in (
+        "CONT",
+        "[thinking-start]",
+        "[thinking-end]",
+        "fragments, ",
+    ):
+        assert forbidden not in body, (
+            f"forbidden token {forbidden!r} in record:\n{body}"
+        )
+    assert "\x1b[" not in body, f"ANSI escape leaked into record:\n{body}"

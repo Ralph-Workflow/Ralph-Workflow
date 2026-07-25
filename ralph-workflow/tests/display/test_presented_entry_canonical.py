@@ -86,11 +86,55 @@ def test_build_presented_entry_picks_severity_for_errors() -> None:
 
 
 def test_build_presented_entry_picks_severity_for_warn_kinds() -> None:
-    """TOOL_RESULT / UNKNOWN map to ``warn`` severity (the contract)."""
+    """S-14 (AC-04): TOOL_RESULT / UNKNOWN default to ``info`` (missing-data graceful).
+
+    The pre-S-14 contract (TOOL_RESULT / UNKNOWN \u2192 ``warn``)
+    was wrong: severity must reflect outcome, not kind. A
+    successful tool result is ``info``; an absent exit code is
+    treated as "data missing, do not invent a failure" and
+    stays ``info``. The ``is_error`` flag, a nonzero exit code,
+    or a present ``error`` / ``stderr`` payload flips the
+    verdict to ``error``.
+    """
     for kind in (ActivityEventKind.TOOL_RESULT, ActivityEventKind.UNKNOWN):
         event = _event(kind, "x")
         entry = build_presented_entry(event, unit_id="claude")
-        assert entry.severity == "warn", f"{kind} should be warn"
+        assert entry.severity == "info", f"{kind} without outcome metadata should be info"
+
+
+def test_build_presented_entry_tool_result_severity_by_outcome() -> None:
+    """S-14 (AC-04): TOOL_RESULT severity is driven by outcome metadata.
+
+    A successful tool result (zero exit code, no error flag)
+    renders ``info``; a failed one (nonzero exit code, or
+    ``is_error=True``, or a present ``error`` / ``stderr``
+    payload) renders ``error``. The same content never appears
+    twice with disagreeing severities.
+    """
+    success = _event(
+        ActivityEventKind.TOOL_RESULT,
+        "ok",
+        metadata={"exit_code": 0, "tool_name": "read_file"},
+    )
+    failure_exit = _event(
+        ActivityEventKind.TOOL_RESULT,
+        "fail",
+        metadata={"exit_code": 1, "tool_name": "bash"},
+    )
+    failure_flag = _event(
+        ActivityEventKind.TOOL_RESULT,
+        "fail",
+        metadata={"is_error": True, "tool_name": "bash"},
+    )
+    failure_stderr = _event(
+        ActivityEventKind.TOOL_RESULT,
+        "fail",
+        metadata={"stderr": "command not found", "tool_name": "bash"},
+    )
+    assert build_presented_entry(success, unit_id="c").severity == "info"
+    assert build_presented_entry(failure_exit, unit_id="c").severity == "error"
+    assert build_presented_entry(failure_flag, unit_id="c").severity == "error"
+    assert build_presented_entry(failure_stderr, unit_id="c").severity == "error"
 
 
 def test_build_presented_entry_picks_info_severity_for_text() -> None:

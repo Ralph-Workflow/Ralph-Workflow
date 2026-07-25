@@ -236,45 +236,46 @@ def test_condensed_ref_not_appended_when_not_condensed() -> None:
 # --- Streaming close line shape ---------------------------------------
 
 
-def test_close_line_carries_joined_passage_and_counts() -> None:
-    """S-7 / S-9 close line carries the joined passage; fragment / char
-    counts are machine vocabulary and were deliberately retired in the
-    post-consolidation revision (``S-7 / S-9`` block in
-    ``ParallelDisplay._close_block``: "The 'fragments' footer and the
-    'CONT' category are machine vocabulary and belong on no surface").
+def test_close_line_carries_joined_passage_and_span_duration() -> None:
+    """S-13 close line carries joined passage + sketch-J span and duration.
 
-    Format: ``INFO  [<tag>][<unit>] \u22ef <tag>\n<joined passage>``.
+    Format: ``INFO [<tag>][<unit>] \u22ef <tag> \u00b7 <start HH:MM:SS> \u2192 <end
+    HH:MM:SS> \u00b7 <duration>`` followed by the joined passage on the next
+    line. The ``fragments`` / ``chars`` plumbing is retired; the operator
+    sees the human-vocabulary span and duration instead.
     """
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "hello")  # 5 chars
     pd.emit_activity_line("u", "text", "world")  # 5 chars
     pd.flush_blocks()
     out = buf.getvalue()
-    # Joined passage still surfaces (preserves the operator-visible content).
-    assert "hello world" in out, f"joined passage missing from close line:\n{out!r}"
-    # The retired fragment-count footer must NOT surface — machine vocabulary.
-    assert "fragments" not in out, (
-        f"close line must not carry the retired 'fragments' footer; got:\n{out!r}"
+    # Joined passage survives exactly once.
+    assert "hello world" in out
+    # Sketch-J span and duration markers are present.
+    assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
+    assert "s\n" in out or out.endswith("s"), (
+        f"close line missing duration suffix 's': {out!r}"
     )
-    # The retired char-count footer must NOT surface either.
-    assert "chars" not in out or "joined passage" in out, (
-        f"close line must not carry the retired char-count footer; got:\n{out!r}"
-    )
+    # No retired plumbing leaks.
+    assert "fragments" not in out
+    assert "chars" not in out
 
 
-def test_close_line_uses_bullet_separator_not_comma() -> None:
-    """The close-line fragment/char footer was retired entirely (see
-    ``test_close_line_carries_joined_passage_and_counts``); what
-    remains is the bullet-glyph (\u22ef) introducing the joined passage
-    on its own line, with no comma-separated count tuple."""
+def test_close_line_uses_middle_dot_separators() -> None:
+    """The close line uses ``\u00b7`` (middle dot) between header fields, never a comma."""
     pd, buf = _make_display()
     pd.emit_activity_line("u", "text", "abc")
     pd.flush_blocks()
     out = buf.getvalue()
-    # No fragment-count footer.
-    assert "fragments" not in out, (
-        f"close line must not carry the retired 'fragments' footer; got:\n{out!r}"
-    )
+    # Sketch-J header: \u22ef <tag> \u00b7 HH:MM:SS \u2192 HH:MM:SS \u00b7 <duration>.
+    assert "\u22ef content" in out, f"close line missing \u22ef marker: {out!r}"
+    assert "\u00b7" in out, f"close line missing \u00b7 separator: {out!r}"
+    assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
+    # Joined passage survives exactly once.
+    assert out.count("abc") == 1
+    # No retired plumbing leaks.
+    assert "fragments" not in out
+    assert "chars" not in out
     # No comma-separated (n, m) parenthesis format.
     assert "(1 fragments, 3 chars)" not in out
 

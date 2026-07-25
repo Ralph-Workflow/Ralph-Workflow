@@ -118,11 +118,14 @@ def test_dedup_disabled_by_env_still_emits_one_close_line() -> None:
     assert len(content_lines) == 1, (
         f"Expected 1 close line, got {len(content_lines)}: {out!r}"
     )
-    # With dedup off, all 3 fragments are buffered; joined passage
-    # shows them all. With dedup on (default), only 1 is buffered.
-    # The retired 'fragments' footer must NOT surface (machine vocabulary).
-    assert "fragments" not in out
+    # With dedup off, all 3 fragments are buffered; the joined
+    # passage shows them all separated by spaces (S-13 sketch-J shape
+    # carries the span and duration in the close header instead of
+    # the retired ``<n> fragments`` plumbing).
     assert out.count("same content") == 3
+    # Sketch-J header markers must be present.
+    assert "\u2192" in out, f"close line missing \u2192 span marker: {out!r}"
+    assert "fragments" not in out
 
 
 def test_dedup_operates_independently_per_unit_id() -> None:

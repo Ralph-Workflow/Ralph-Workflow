@@ -302,7 +302,7 @@ def test_pdf_resource_reference_is_retrievable_via_resources_read(
     )
     read_resp, _ = server.handle_request(read_req, state)
     assert read_resp is not None and read_resp.result is not None
-    contents = must_mapping(read_resp.result).get("contents", []),
+    contents = must_mapping(read_resp.result).get("contents", [])
     assert len(contents) == 1
     assert contents[0].get("uri") == uri
     assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0

@@ -115,6 +115,12 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("_runtime_resolvers", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
     # _media_io.py: global state for periodic prune counter (wt-024 AC-10).
     ("_media_io", "PLW0603"),
+    # _terminal_bg_query.py: process-lifetime memo of an immutable
+    # terminal probe (OSC 11 reply) and the _probed flag that
+    # disambiguates a sentinel-less cache. The setters must update
+    # those module-level scalars in-place via `global`, which ruff
+    # flags as PLW0603.
+    ("_terminal_bg_query", "PLW0603"),
     # wt-024 memory-perf: the bounded-accumulator-ok marker must live
     # on the same physical line as the assignment so the
     # audit_resource_lifecycle AST marker scan finds it. When the
